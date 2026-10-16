@@ -22,7 +22,7 @@ import type {
 } from "../contract/parts.ts";
 import { decodePartRecord } from "../contract/records.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
-import { openAction, recordAcquisition, reserveRerun } from "../engine/durable.ts";
+import { openAction, recordAcquisition, reserveRerun, runAction } from "../engine/durable.ts";
 import type { ActionIntent } from "../engine/durable.ts";
 import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
 import { commit } from "../fold/commit.ts";
@@ -531,46 +531,44 @@ async function perform(
     controller.signal.addEventListener("abort", () => resolve({ kind: "closed" }), { once: true }),
   );
 
-  const ran = kernel.durable
-    .run({
-      session,
-      part: record.id,
-      action: input.action,
-      call: input.call,
-      signal: controller.signal,
-      async body(durable) {
-        const actionContext: ActionContext<unknown, ActionSchemas> = {
-          wait: (target) => durable.wait(target),
-          memo: (key, compute) => durable.memo(key, compute),
-          now: () => durable.now(),
-          part: partHandle(kernel, context, session, record.id),
-          session,
-          get api() {
-            return kernel.plugins.api(registered.owner ?? "core", session);
-          },
-          principal: context.principal,
-          signal: controller.signal,
+  const ran = runAction(kernel, {
+    session,
+    part: record.id,
+    action: input.action,
+    call: input.call,
+    signal: controller.signal,
+    async body(durable) {
+      const actionContext: ActionContext<unknown, ActionSchemas> = {
+        wait: (target) => durable.wait(target),
+        memo: (key, compute) => durable.memo(key, compute),
+        now: () => durable.now(),
+        part: partHandle(kernel, context, session, record.id),
+        session,
+        get api() {
+          return kernel.plugins.api(registered.owner ?? "core", session);
+        },
+        principal: context.principal,
+        signal: controller.signal,
+      };
+
+      return registered.definition.onAction?.(input.action, input.input, actionContext);
+    },
+  }).then(
+    (outcome): Performed | Promise<Performed> => {
+      if (outcome.kind === "done") return { kind: "returned", output: outcome.value };
+
+      if (outcome.kind === "interrupted")
+        return {
+          kind: "threw",
+          error: new Error(
+            `The ${input.action} action was interrupted and may have partially run.`,
+          ),
         };
 
-        return registered.definition.onAction?.(input.action, input.input, actionContext);
-      },
-    })
-    .then(
-      (outcome): Performed | Promise<Performed> => {
-        if (outcome.kind === "done") return { kind: "returned", output: outcome.value };
-
-        if (outcome.kind === "interrupted")
-          return {
-            kind: "threw",
-            error: new Error(
-              `The ${input.action} action was interrupted and may have partially run.`,
-            ),
-          };
-
-        return new Promise<Performed>(() => undefined);
-      },
-      (error: unknown): Performed => ({ kind: "threw", error }),
-    );
+      return new Promise<Performed>(() => undefined);
+    },
+    (error: unknown): Performed => ({ kind: "threw", error }),
+  );
 
   try {
     return await Promise.race([ran, closed]);

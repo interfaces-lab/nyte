@@ -1,7 +1,6 @@
 import type {
   Activation,
   CallId,
-  CommandOutcome,
   CommitId,
   Configuration,
   ConfigurationPatch,
@@ -23,7 +22,6 @@ import type {
   ModelRequestInput,
   ModelRequestOutcome,
   PartId,
-  Placement,
   PluginLoadOutcome,
   PrincipalId,
   Revision,
@@ -52,7 +50,7 @@ import type {
   OpenOptions,
   SettingsApi,
 } from "./host.ts";
-import type { Part, PartDefinition, PartDefinitions, PartState, PartTable } from "./parts.ts";
+import type { PartDefinition, PartDefinitions, PartTable } from "./parts.ts";
 import type {
   Agent,
   ContributionTable,
@@ -69,7 +67,7 @@ import type {
 import type { CallRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
-import type { Durable, ToolDefinition } from "./tools.ts";
+import type { ToolDefinition } from "./tools.ts";
 import type {
   EnvironmentRegistry,
   ExecutionEnv,
@@ -128,8 +126,6 @@ export interface Kernel {
 
   readonly admit: AdmissionGate;
 
-  readonly command: CommandRunner;
-
   readonly waits: WaitRegistry;
 
   readonly models: ModelsApi;
@@ -139,13 +135,9 @@ export interface Kernel {
 
   readonly workspaces: Workspaces;
 
-  readonly parts: PartProvider;
-
   readonly partDefinitions: PartDefinitions;
 
   readonly partTable: PartTable;
-
-  readonly durable: DurableProvider;
 
   tools(runtime: PluginRuntime): ToolSource;
 
@@ -323,40 +315,6 @@ export interface AdmissionGate {
       readonly signal: AbortSignal;
     },
   ): Promise<Decision<Submission>>;
-}
-
-export interface CommandRunner {
-  (
-    context: ConnectionContext,
-    session: SessionId,
-    name: string,
-    args?: Json,
-  ): Promise<CommandOutcome>;
-}
-
-export interface PartProvider {
-  create<K extends PartDefinition>(
-    context: ConnectionContext,
-    session: SessionId,
-    kind: K,
-    input: { readonly state: PartState<K>; readonly placement: Placement; readonly id?: PartId },
-  ): Promise<Part<K>>;
-
-  part(context: ConnectionContext, session: SessionId, id: PartId): Part<PartDefinition>;
-
-  /** Runs a parked part action again once its wait resolves. */
-  rerun(session: SessionId, call: CallId): Promise<void>;
-}
-
-export interface DurableProvider {
-  run(input: {
-    readonly session: SessionId;
-    readonly part: PartId;
-    readonly action: string;
-    readonly call: CallId;
-    readonly signal: AbortSignal;
-    body(durable: Durable): Promise<unknown>;
-  }): Promise<StepOutcome<unknown>>;
 }
 
 export interface ToolGate {

@@ -31,6 +31,7 @@ import { recordAcquisition } from "../engine/durable.ts";
 import { stopRun } from "../engine/fence.ts";
 import { receiptHandle, withdraw } from "../engine/receipts.ts";
 import { runHandle } from "../engine/runs.ts";
+import { runCommand } from "../extend/registry.ts";
 import { dropScans } from "../extend/resources.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
@@ -50,6 +51,7 @@ import {
 } from "../store/session.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
+import { createPart, partHandle } from "./part.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const DEFAULT_LIMIT = 50;
@@ -95,16 +97,16 @@ export function sessionHandle(kernel: Kernel, context: ConnectionContext, id: Se
     async command(name, args) {
       await kernel.plugins.runtime(id).ready;
 
-      return kernel.command(context, id, name, args);
+      return runCommand(kernel, context, id, name, args);
     },
     parts: {
       async create(kind, input) {
         await kernel.plugins.runtime(id).ready;
 
-        return kernel.parts.create(context, id, kind, input);
+        return createPart(kernel, context, id, kind, input);
       },
     },
-    part: (part) => activated(kernel, kernel.parts.part(context, id, part), id),
+    part: (part) => activated(kernel, partHandle(kernel, context, id, part), id),
   };
 }
 
@@ -142,9 +144,9 @@ export function activationSession(
     ...sessionHandle(kernel, context, id),
     ...head(MAIN),
     head,
-    command: async (name, args) => kernel.command(context, id, name, args),
-    parts: { create: async (kind, input) => kernel.parts.create(context, id, kind, input) },
-    part: (part) => kernel.parts.part(context, id, part),
+    command: async (name, args) => runCommand(kernel, context, id, name, args),
+    parts: { create: async (kind, input) => createPart(kernel, context, id, kind, input) },
+    part: (part) => partHandle(kernel, context, id, part),
   };
 }
 

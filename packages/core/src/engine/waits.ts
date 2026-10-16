@@ -44,7 +44,10 @@ const STOPPED: WaitOutcome = { kind: "stopped" };
  * drops the index entry that led to it. The registry keeps no copy of what is parked; only this
  * process's live action loops are held, as resumers.
  */
-export function createWaitRegistry(kernel: Kernel): WaitRegistry {
+export function createWaitRegistry(
+  kernel: Kernel,
+  rerunAction: (session: SessionId, call: CallId) => Promise<void>,
+): WaitRegistry {
   const resumers = new Map<
     string,
     { readonly session: SessionId; readonly call: CallId; readonly resume: () => void }
@@ -352,9 +355,9 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
       if (resumer !== undefined) resumer.resume();
       else
-        void kernel.parts
-          .rerun(session, call)
-          .catch((error: unknown) => dev("waits", "rerun failed", { call, error: String(error) }));
+        void rerunAction(session, call).catch((error: unknown) =>
+          dev("waits", "rerun failed", { call, error: String(error) }),
+        );
     },
     onReceipt(session, id, listener) {
       const key = `${session}/${id}`;

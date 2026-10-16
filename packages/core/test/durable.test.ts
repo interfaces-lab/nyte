@@ -14,7 +14,7 @@ import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
 import { holdLease } from "../src/engine/lease.ts";
 import { createKernel } from "../src/compose.ts";
-import { runStep } from "../src/engine/durable.ts";
+import { runAction, runStep } from "../src/engine/durable.ts";
 import { endRun } from "../src/engine/runs.ts";
 import { earliestWake, loadWaits } from "../src/engine/waits.ts";
 import { readCalls } from "../src/store/session.ts";
@@ -711,7 +711,7 @@ describe("durable steps", () => {
     let ran = 0;
 
     const act = () =>
-      kernel.durable.run({
+      runAction(kernel, {
         session: session.id,
         part: asId("p1"),
         action: "boom",
@@ -739,7 +739,7 @@ describe("durable steps", () => {
     let ran = 0;
 
     const act = (call: string, big: boolean) =>
-      kernel.durable.run({
+      runAction(kernel, {
         session: session.id,
         part: asId("p1"),
         action: "count",

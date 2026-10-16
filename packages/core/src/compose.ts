@@ -19,7 +19,7 @@ import { createTurnDriver } from "./agent/turn.ts";
 import { createConnection, createHost } from "./api/connection.ts";
 import { createHostState } from "./api/host.ts";
 import { createServerHost } from "./api/server.ts";
-import { createPart, partHandle, rerunAction } from "./api/part.ts";
+import { rerunAction } from "./api/part.ts";
 import { activationSession, sessionHandle } from "./api/session.ts";
 import { delegationPlugin } from "./builtins/delegation.ts";
 import { environmentPlugin } from "./builtins/environment.ts";
@@ -52,7 +52,6 @@ import type {
   Workspaces,
 } from "./contract/workspace.ts";
 import { createExecutionState, dispatchHead, driveInProcess } from "./drive/execution.ts";
-import { runAction } from "./engine/durable.ts";
 import { createJobTable } from "./engine/jobs.ts";
 import { createPartDefinitions } from "./engine/part-definitions.ts";
 import { createConnectionRegistry, createPrincipals } from "./engine/principals.ts";
@@ -71,7 +70,7 @@ import {
   hostPluginRows,
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
-import { bumpGeneration, runCommand, toolSource } from "./extend/registry.ts";
+import { bumpGeneration, toolSource } from "./extend/registry.ts";
 import { dropScans, resourcesPlugin } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-layers.ts";
 import { createSettingsApi } from "./extend/settings.ts";
@@ -431,9 +430,10 @@ export function createKernel(input: KernelOptions): Kernel {
           : createConfigurationResolver(kernel, models));
     },
     admit: input.admit ?? ((submission, context) => gateSubmission(kernel, submission, context)),
-    command: (context, session, name, args) => runCommand(kernel, context, session, name, args),
     get waits() {
-      return (waits ??= createWaitRegistry(kernel));
+      return (waits ??= createWaitRegistry(kernel, (session, call) =>
+        rerunAction(kernel, session, call),
+      ));
     },
     get models() {
       return (modelsApi ??= models === undefined ? NO_MODELS : createModelsApi(kernel, models));
@@ -445,16 +445,10 @@ export function createKernel(input: KernelOptions): Kernel {
     get workspaces() {
       return (workspaces ??= createWorkspaces(kernel, CORE_CONTEXT));
     },
-    parts: {
-      create: (context, session, kind, value) => createPart(kernel, context, session, kind, value),
-      part: (context, session, id) => partHandle(kernel, context, session, id),
-      rerun: (session, call) => rerunAction(kernel, session, call),
-    },
     get partDefinitions() {
       return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
     },
     partTable: createPartTable(bus),
-    durable: { run: (step) => runAction(kernel, step) },
     tools: input.tools ?? toolSource,
     beforeTool:
       input.beforeTool ??
