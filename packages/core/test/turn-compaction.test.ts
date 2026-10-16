@@ -2,7 +2,7 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { compaction, isPart, text } from "../src/index.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { label, until } from "./harness.ts";
+import { label, until } from "../src/harness.ts";
 import { recorder, events, sent, lastUserText } from "./turn-support.ts";
 
 afterEach(() => {

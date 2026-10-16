@@ -3,8 +3,7 @@ import { LOCAL } from "@nyte-ai/core";
 import { headRef, memoryStore } from "@nyte-ai/core/store";
 import { describe, expect, it } from "vitest";
 import { createTransport } from "@nyte-ai/protocol";
-import { createServerHost, pollStore } from "@nyte-ai/core/testing";
-import { main, setup } from "../../../core/test/harness.ts";
+import { createServerHost, main, pollStore, setup } from "@nyte-ai/core/testing";
 import { createHandler } from "../../src/serve/handler.ts";
 
 describe("head revisions across instances", () => {

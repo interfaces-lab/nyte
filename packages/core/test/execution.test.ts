@@ -13,7 +13,7 @@ import {
   sessionRef,
 } from "../src/store.ts";
 import type { StoreConnection } from "../src/index.ts";
-import { completed, expireLease, main, setup, until } from "./harness.ts";
+import { completed, expireLease, main, setup, until } from "../src/harness.ts";
 
 describe("execution", () => {
   it("answers busy for a lease another host holds mid-turn and fenced once this host's lease is taken", async () => {

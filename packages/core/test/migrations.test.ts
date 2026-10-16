@@ -5,7 +5,7 @@ import { runStep } from "../src/engine/durable.ts";
 import { migrateStore, STORE_VERSION } from "../src/store.ts";
 import type { StoredRecord } from "../src/store.ts";
 import { liveRef } from "../src/store/refs.ts";
-import { configuration, main, setup, startRun } from "./harness.ts";
+import { configuration, main, setup, startRun } from "../src/harness.ts";
 
 it("gives an older store's unstopped runs their live ref and its parked calls their wait index", async () => {
   const { kernel, host } = await setup();

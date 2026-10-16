@@ -8,8 +8,8 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { Head, Host, StoreConnection } from "../src/index.ts";
 import { commit } from "../src/fold/commit.ts";
 import { readRefExpectation, toCommitObjectId, put, readTip } from "../src/store/session.ts";
-import { label, main, recording, setup, usage } from "./harness.ts";
-import type { Script } from "./harness.ts";
+import { label, main, recording, setup, usage } from "../src/harness.ts";
+import type { Script } from "../src/harness.ts";
 
 const side: HeadName = asId("side");
 

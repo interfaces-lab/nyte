@@ -8,7 +8,7 @@ import { callRef, decodeCallRecord, decodeRunRecord, runRef } from "../src/store
 import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
 import type { ConnectionContext, Session, ToolDefinition } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
-import { configuration, main, setup, startRun } from "./harness.ts";
+import { configuration, main, setup, startRun } from "../src/harness.ts";
 
 export const caller: ConnectionContext = {
   principal: LOCAL,

@@ -7,7 +7,7 @@ import { decodePartRecord, decodeRunRecord, memoryStore, partRef, runRef } from 
 import type { Plugin, Store, ToolDefinition } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import type { Reply } from "./fake-models.ts";
-import { expireLease, label, main, until } from "./harness.ts";
+import { expireLease, label, main, until } from "../src/harness.ts";
 import {
   nothing,
   echo,

@@ -18,7 +18,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, Durable, Page, Plugin } from "../src/index.ts";
 import type { WorkspaceRecord } from "../src/store.ts";
 import { addWorkspace, collect, kernelOver, world } from "./fake-env.ts";
-import { main, until } from "./harness.ts";
+import { main, until } from "../src/harness.ts";
 
 function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
   return createConnection(kernel, {

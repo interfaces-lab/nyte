@@ -2,7 +2,7 @@ import { SdkError } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { kvRef } from "../src/store.ts";
 import type { Plugin, PluginApi, PluginStorage, Setting } from "../src/index.ts";
-import { configuration, setup, workspace } from "./harness.ts";
+import { configuration, setup, workspace } from "../src/harness.ts";
 import { volume, theme, loaded } from "./plugin-support.ts";
 
 afterEach(() => {

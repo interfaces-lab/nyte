@@ -6,7 +6,7 @@ import { resourceIssues, resourcesPlugin, scanResources } from "../src/extend/re
 import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
-import { env, until } from "./harness.ts";
+import { env, until } from "../src/harness.ts";
 
 function seeded() {
   const disk = createDisk();

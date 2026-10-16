@@ -11,7 +11,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { Connection, Durable, StoreConnection, Workspace } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { FakeProvider } from "./fake-env.ts";
-import { main, setup, workspace } from "./harness.ts";
+import { main, setup, workspace } from "../src/harness.ts";
 
 async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<string, string>> {
   const git = await at.git();

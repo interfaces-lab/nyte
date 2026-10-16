@@ -19,7 +19,15 @@ import {
 } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { StoreConnection } from "../src/index.ts";
-import { completed, configuration, label, livePart, main, setup, startRun } from "./harness.ts";
+import {
+  completed,
+  configuration,
+  label,
+  livePart,
+  main,
+  setup,
+  startRun,
+} from "../src/harness.ts";
 
 describe("runs", () => {
   it("settles the receipts of a run's landed inputs in its end set, so a crash right after it leaves none pending", async () => {

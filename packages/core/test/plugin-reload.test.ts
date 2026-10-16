@@ -9,7 +9,7 @@ import { envelope, memoryStore, workspaceRef } from "../src/store.ts";
 import type { Plugin, ToolDefinition } from "../src/index.ts";
 import { world } from "./fake-env.ts";
 import { chatOnly, fakeModels, open } from "./fake-models.ts";
-import { configuration, env, main, script, setup, until, workspace } from "./harness.ts";
+import { configuration, env, main, script, setup, until, workspace } from "../src/harness.ts";
 
 const nothing = standard(Type.Object({}));
 

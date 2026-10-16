@@ -4,7 +4,7 @@ import { watchSessions } from "../src/api/session.ts";
 import { pollStore } from "../src/fold/watch.ts";
 import { envelope, headRef, memoryStore, seenRef, sessionRef } from "../src/store.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { main, setup } from "./harness.ts";
+import { main, setup } from "../src/harness.ts";
 
 it("keeps the revision and log for unchanged session updates, and publishes changed fields", async () => {
   const store = memoryStore();

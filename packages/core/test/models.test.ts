@@ -10,7 +10,7 @@ import { createLogin, modelInfo, settingsVersion } from "../src/extend/models.ts
 import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
-import { main, until } from "./harness.ts";
+import { main, until } from "../src/harness.ts";
 
 const smart: ModelRef = { provider: "test", id: "smart" };
 

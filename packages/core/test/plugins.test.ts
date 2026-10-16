@@ -5,7 +5,7 @@ import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
 import { LOCAL, text } from "../src/index.ts";
 import type { Plugin, PluginApi } from "../src/index.ts";
-import { main, setup } from "./harness.ts";
+import { main, setup } from "../src/harness.ts";
 import { ok, echo, opaque, volume, says, provider, loaded } from "./plugin-support.ts";
 
 afterEach(() => {

@@ -9,7 +9,7 @@ import { decodeReceiptRecord, receiptRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, FilesApi } from "../src/index.ts";
 import { collect, world } from "./fake-env.ts";
-import { configuration, main, startRun, until } from "./harness.ts";
+import { configuration, main, startRun, until } from "../src/harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,

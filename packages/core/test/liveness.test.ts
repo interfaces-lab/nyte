@@ -26,7 +26,15 @@ import type { Plugin, StoreConnection } from "../src/index.ts";
 import type { PartRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { completed, configuration, livePart, main, setup, startRun, until } from "./harness.ts";
+import {
+  completed,
+  configuration,
+  livePart,
+  main,
+  setup,
+  startRun,
+  until,
+} from "../src/harness.ts";
 
 function park(
   kernel: Kernel,

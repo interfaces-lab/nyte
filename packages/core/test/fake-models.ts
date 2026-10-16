@@ -22,7 +22,7 @@ import { memoryStore } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Plugin, Store } from "../src/index.ts";
 import type { ComposeOptions, ServedHost } from "../src/server.ts";
-import { env } from "./harness.ts";
+import { env } from "../src/harness.ts";
 
 export type Block =
   | { readonly type: "text"; readonly text: string; readonly signature?: string }

@@ -5,7 +5,7 @@ import { assert, describe, expect, it } from "vitest";
 import { isPart, tool } from "../src/index.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import type { Reply, Request } from "./fake-models.ts";
-import { until } from "./harness.ts";
+import { until } from "../src/harness.ts";
 
 function settledCall(messages: readonly Message[], call: string) {
   const found = messages.find(

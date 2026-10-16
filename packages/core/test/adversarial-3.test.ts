@@ -19,7 +19,7 @@ import type {
 } from "../src/index.ts";
 import { readInbox } from "../src/store/session.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
-import { configuration, main, setup, startRun, until, usage } from "./harness.ts";
+import { configuration, main, setup, startRun, until, usage } from "../src/harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,

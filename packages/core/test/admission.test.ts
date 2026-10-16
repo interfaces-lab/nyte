@@ -5,7 +5,16 @@ import { createConnection } from "../src/api/connection.ts";
 import { TOKEN } from "../src/server.ts";
 import { decodeInboxRecord, inboxRef, memoryStore } from "../src/store.ts";
 import type { Session } from "../src/index.ts";
-import { completed, label, livePart, main, recording, setup, until, usage } from "./harness.ts";
+import {
+  completed,
+  label,
+  livePart,
+  main,
+  recording,
+  setup,
+  until,
+  usage,
+} from "../src/harness.ts";
 
 async function message(session: Session, id: string): Promise<Message | undefined> {
   return (await session.view()).messages.find((current) => current.id === id);

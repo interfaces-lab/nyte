@@ -18,7 +18,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put, readTip } from "../src/store/session.ts";
-import { configuration, main, setup, usage } from "./harness.ts";
+import { configuration, main, setup, usage } from "../src/harness.ts";
 
 async function land(kernel: Kernel, session: SessionId, text: string): Promise<void> {
   const tip = await readTip(kernel.store, session, main);

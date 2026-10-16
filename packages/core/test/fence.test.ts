@@ -23,7 +23,7 @@ import {
   setup,
   startRun,
   usage,
-} from "./harness.ts";
+} from "../src/harness.ts";
 
 function hooked(
   connection: StoreConnection,

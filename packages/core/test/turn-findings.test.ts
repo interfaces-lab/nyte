@@ -11,7 +11,7 @@ import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.t
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Plugin, Store, ToolDefinition } from "../src/index.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { configuration, label, main, until } from "./harness.ts";
+import { configuration, label, main, until } from "../src/harness.ts";
 import { nothing, ZERO_TEST, events, sent, landedRun } from "./turn-support.ts";
 
 afterEach(() => {

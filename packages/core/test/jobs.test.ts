@@ -14,7 +14,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, Durable } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { Process } from "./fake-env.ts";
-import { main, until } from "./harness.ts";
+import { main, until } from "../src/harness.ts";
 
 const question = definePart({
   kind: "test/question",

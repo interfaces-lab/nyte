@@ -23,7 +23,7 @@ import type { ActionContext, ActionOutput, Durable, ToolDefinition } from "../sr
 import type { CallRecord } from "../src/store.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put } from "../src/store/session.ts";
-import { configuration, main, setup, startRun, until } from "./harness.ts";
+import { configuration, main, setup, startRun, until } from "../src/harness.ts";
 
 /** The earliest time a wait on the main head is due, read from its parked calls. */
 async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {

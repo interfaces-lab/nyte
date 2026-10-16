@@ -12,22 +12,23 @@ import type {
   Usage,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import { createHost } from "../src/api/connection.ts";
-import { createHostState } from "../src/api/host.ts";
-import { createKernel } from "../src/compose.ts";
-import { begin, newRun } from "../src/engine/runs.ts";
-import { publishSet } from "../src/fold/watch.ts";
-import { envelope, leaseRef, memoryStore, partRef, workspaceRef } from "../src/store.ts";
-import type { Kernel, TurnDriver } from "../src/contract/kernel.ts";
+import { createHost } from "./api/connection.ts";
+import { createHostState } from "./api/host.ts";
+import { createKernel } from "./compose.ts";
+import { begin, newRun } from "./engine/runs.ts";
+import { publishSet } from "./fold/watch.ts";
+import { envelope, leaseRef, memoryStore, partRef, workspaceRef } from "./store.ts";
+import type { Kernel, TurnDriver } from "./contract/kernel.ts";
 import type {
   EnvironmentProvider,
   ExecutionEnv,
   Host,
   SnapshotsApi,
   StoreConnection,
-} from "../src/index.ts";
-import type { PartRecord, WorkspaceRecord } from "../src/store.ts";
+} from "./index.ts";
+import type { PartRecord, WorkspaceRecord } from "./store.ts";
 
+/** The head a test session drives. */
 export const main: HeadName = asId("main");
 
 export const workspace: WorkspaceId = asId("w1");
@@ -76,17 +77,20 @@ export const env: ExecutionEnv = {
   close: async () => undefined,
 };
 
+/** One turn the scripted driver started: its input, and `finish` to end it (`completed` by default). */
 export interface Turn {
   readonly input: Parameters<TurnDriver["run"]>[0];
   finish(end?: Awaited<ReturnType<TurnDriver["run"]>>): void;
 }
 
+/** A turn driver whose turns wait until a test finishes them; a stopped run ends its turn `stopped`. */
 export interface Script {
   readonly driver: TurnDriver;
   readonly turns: readonly Turn[];
   started(count: number): Promise<Turn>;
 }
 
+/** Returns a {@link Script} with no turns started. */
 export function script(): Script {
   const turns: Turn[] = [];
 
@@ -124,6 +128,7 @@ export async function until<T>(
   }
 }
 
+/** Returns a kernel over `options.store` (default a fresh memory store) with the test workspace added, a connected host over it, and the {@link Script} driving its turns. */
 export async function setup(
   options?: Partial<
     Pick<

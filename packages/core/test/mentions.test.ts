@@ -6,7 +6,7 @@ import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels } from "./fake-models.ts";
 import type { Request } from "./fake-models.ts";
-import { env } from "./harness.ts";
+import { env } from "../src/harness.ts";
 
 function notes(files: Map<string, string>): Plugin<"core"> {
   const read = async (path: string): Promise<FileDocument> => {

@@ -33,7 +33,7 @@ import {
   setup,
   startRun,
   until,
-} from "./harness.ts";
+} from "../src/harness.ts";
 
 /** The earliest time a wait on the main head is due, read from its parked calls. */
 async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {

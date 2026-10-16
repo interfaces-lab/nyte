@@ -30,7 +30,7 @@ import type {
   Page,
   Plugin,
 } from "../src/index.ts";
-import { configuration } from "./harness.ts";
+import { configuration } from "../src/harness.ts";
 
 export interface Disk {
   readonly files: Map<

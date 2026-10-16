@@ -5,7 +5,7 @@ import { pollStore } from "../src/fold/watch.ts";
 import { definePart } from "../src/index.ts";
 import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.ts";
 import type { StoreConnection, ToolDefinition } from "../src/index.ts";
-import { expireLease, main, setup, until } from "./harness.ts";
+import { expireLease, main, setup, until } from "../src/harness.ts";
 import { echo, source, liveRun, call, readCall, readRun, toolPart } from "./tool-support.ts";
 
 describe("parked tool calls", () => {

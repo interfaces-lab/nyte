@@ -7,7 +7,7 @@ import { memoryStore, objectId, sessionRef } from "../src/store.ts";
 import { commit } from "../src/fold/commit.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { attempt, STALE } from "../src/store/session.ts";
-import { main, setup, until } from "./harness.ts";
+import { main, setup, until } from "../src/harness.ts";
 
 const session: SessionId = asId("s1");
 

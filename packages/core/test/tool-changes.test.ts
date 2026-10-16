@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { memoryStore } from "../src/store.ts";
 import type { ToolDefinition } from "../src/index.ts";
-import { configuration, recording, setup, startRun } from "./harness.ts";
+import { configuration, recording, setup, startRun } from "../src/harness.ts";
 import {
   caller,
   echo,

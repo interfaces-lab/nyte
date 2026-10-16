@@ -14,7 +14,7 @@ import type {
   ToolDefinition,
 } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
-import { env, setup } from "./harness.ts";
+import { env, setup } from "../src/harness.ts";
 
 export const caller: ConnectionContext = {
   principal: LOCAL,

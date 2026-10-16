@@ -10,7 +10,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { Durable, StoreConnection } from "../src/index.ts";
 import { coveredHere } from "../src/store/session.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { completed, configuration, main, setup, startRun, until } from "./harness.ts";
+import { completed, configuration, main, setup, startRun, until } from "../src/harness.ts";
 
 function counting(store: StoreConnection): {
   readonly store: StoreConnection;

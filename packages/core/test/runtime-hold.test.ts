@@ -6,7 +6,7 @@ import type { Kernel } from "../src/contract/kernel.ts";
 import type { Plugin, ToolDefinition } from "../src/index.ts";
 import { world } from "./fake-env.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { main, until } from "./harness.ts";
+import { main, until } from "../src/harness.ts";
 
 const nothing = standard(Type.Object({}));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

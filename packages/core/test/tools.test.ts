@@ -6,7 +6,7 @@ import { LOCAL, definePart, text, tool } from "../src/index.ts";
 import { callRef, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Session, StoreConnection, ToolDefinition } from "../src/index.ts";
-import { expireLease, main, recording, setup, until } from "./harness.ts";
+import { expireLease, main, recording, setup, until } from "../src/harness.ts";
 import {
   echoes,
   echo,

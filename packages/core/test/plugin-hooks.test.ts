@@ -3,7 +3,7 @@ import type { Json, PartId, ToolOutcome } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { LOCAL } from "../src/index.ts";
-import { completed, configuration, main, startRun, until } from "./harness.ts";
+import { completed, configuration, main, startRun, until } from "../src/harness.ts";
 import { caller, ok, echo, approve, approvals, loaded, readCall } from "./plugin-support.ts";
 
 afterEach(() => {

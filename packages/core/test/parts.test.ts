@@ -20,7 +20,7 @@ import { decodePartRecord, memoryStore, partRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ActionContext, ActionOutput, PartDefinition, StoreConnection } from "../src/index.ts";
 import { settleAnswersFrom } from "../src/store/parts.ts";
-import { label, main, recording, setup, until, usage } from "./harness.ts";
+import { label, main, recording, setup, until, usage } from "../src/harness.ts";
 
 const question = definePart({
   kind: "test/question",

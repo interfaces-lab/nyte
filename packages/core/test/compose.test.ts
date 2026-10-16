@@ -7,7 +7,7 @@ import { definePart, isPart, text } from "../src/index.ts";
 import { decodePartRecord, partRef, hostIdentityRef, memoryStore, runRef } from "../src/store.ts";
 import type { Plugin, PluginApi, ToolDefinition } from "../src/index.ts";
 import { chatOnly, composed, fakeModels, open } from "./fake-models.ts";
-import { label, until } from "./harness.ts";
+import { label, until } from "../src/harness.ts";
 
 const echo: ToolDefinition<{ readonly text: string }> = {
   name: "echo",
