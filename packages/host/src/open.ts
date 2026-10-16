@@ -121,12 +121,14 @@ async function composeOpen(
   const given = options.plugins ?? [];
   const usesLocalProvider = !given.some((plugin) => plugin.environment?.kind === "local");
 
-  if (usesLocalProvider) await migrateLocalWorkspaceIdentities(await store.open());
   const claudeCode = claudeCodeSdk();
 
-  const models =
-    options.models ??
-    (await nyteModels({ store, secrets, home, providers: [claudeCode.provider] }));
+  const [models, files, settings] = await Promise.all([
+    options.models ?? nyteModels({ store, secrets, home, providers: [claudeCode.provider] }),
+    filePlugins(home),
+    settingsSeed(home),
+    usesLocalProvider ? store.open().then(migrateLocalWorkspaceIdentities) : undefined,
+  ]);
 
   const builtins = [
     question,
@@ -148,7 +150,6 @@ async function composeOpen(
     ...given,
   ];
 
-  const [files, settings] = await Promise.all([filePlugins(home), settingsSeed(home)]);
   let projectDirs: () => Promise<readonly string[]> = async () => [];
 
   const host = await composeHost({
@@ -274,8 +275,10 @@ async function nyteModels(input: {
   });
 
   for (const provider of [...nyteProviders(), ...input.providers]) models.setProvider(provider);
-  const stored = await credentials.list();
-  const selected = await readModelSelection(await input.store.open());
+  const [stored, selected] = await Promise.all([
+    credentials.list(),
+    input.store.open().then(readModelSelection),
+  ]);
 
   const restored = await models.refresh({
     providers: [
