@@ -3,6 +3,7 @@ import type {
   CallId,
   Disposer,
   DurableEvent,
+  Failure,
   HeadName,
   Json,
   PartId,
@@ -15,7 +16,7 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import type { Models } from "@nyte-ai/ai";
-import type { AssistantMessage, AssistantMessageEvent, Failure } from "@nyte-ai/schema/model";
+import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema/model";
 import { LOCAL, PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type {
@@ -699,19 +700,13 @@ async function settledParts(
       parent,
       expect: parent === tip.id ? readRefExpectation(tip.ref) : undefined,
       record: { ...part.record, state, version },
+      revision: part.ref.revision,
+      logged: [{ head, kind: "part", part: entry.part, change: "updated", state, version }],
       body: { kind: "part", part: entry.part },
       at,
     });
 
-    updates.push(
-      {
-        name: partRef(session, entry.part),
-        target: landed.target,
-        expect: part.ref.revision,
-        events: [{ head, kind: "part", part: entry.part, change: "updated", state, version }],
-      },
-      ...landed.updates,
-    );
+    updates.push(...landed.updates);
     parent = landed.landed;
   }
 

@@ -4,6 +4,7 @@ import type {
   CompactionPlan,
   Configuration,
   DurableEvent,
+  Failure,
   HeadName,
   Json,
   ModelInfo,
@@ -20,7 +21,6 @@ import type {
 import { contentText } from "@nyte-ai/schema/model";
 import type {
   Api,
-  Failure,
   JsonValue,
   Message,
   Model,
@@ -501,19 +501,16 @@ async function writeCompaction(
     parent: tip.id,
     expect: readRefExpectation(tip.ref),
     record: { ...live.record, state, version },
+    revision: live.ref.revision,
+    logged: [
+      { head, kind: "part", part, change: "updated", state, version },
+      ...(written.event === null ? [] : [written.event]),
+    ],
     body: { kind: "compaction", part, replaces },
     at,
   });
 
-  const { target } = landed;
-
   const outcome = await commit(kernel, [
-    {
-      name,
-      target,
-      expect: live.ref.revision,
-      events: [{ head, kind: "part", part, change: "updated", state, version }],
-    },
     ...landed.updates,
     ...(run === null
       ? [
@@ -532,7 +529,6 @@ async function writeCompaction(
           },
         ]
       : []),
-    ...(written.event === null ? [] : [{ name, target, events: [written.event] }]),
     ...(fence === null ? [] : [fence.update]),
   ]);
 

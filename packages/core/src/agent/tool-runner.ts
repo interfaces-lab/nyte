@@ -18,7 +18,6 @@ import type {
   HeadName,
   Infer,
   Json,
-  ObjectId,
   Placement,
   RefUpdate,
   RunId,
@@ -603,33 +602,31 @@ async function settlement(
 
   const record = { ...found.record, state, version: found.record.version + 1 };
 
-  const opened = (target: ObjectId): readonly RefUpdate[] => [
+  const logged: readonly DurableEvent[] = [
     {
-      name,
-      target,
-      expect: found.ref.revision,
-      events: [
-        {
-          head,
-          kind: "call",
-          call,
-          part,
-          change: "settled",
-          outcome: settled.outcome,
-          changes: settled.changes,
-        },
-        ...(settled.files.length === 0
-          ? []
-          : [{ head: null, kind: "changes", files: settled.files } as const]),
-      ],
+      head,
+      kind: "call",
+      call,
+      part,
+      change: "settled",
+      outcome: settled.outcome,
+      changes: settled.changes,
     },
+    ...(settled.files.length === 0
+      ? []
+      : [{ head: null, kind: "changes", files: settled.files } as const]),
   ];
 
-  if (found.record.status.kind === "failed" || found.record.status.kind === "settled") {
-    const target = await put(store, "part", record, at);
-
-    return [...opened(target), ...based];
-  }
+  if (found.record.status.kind === "failed" || found.record.status.kind === "settled")
+    return [
+      {
+        name,
+        target: await put(store, "part", record, at),
+        expect: found.ref.revision,
+        events: logged,
+      },
+      ...based,
+    ];
 
   const landed = await settling(store, {
     session,
@@ -638,11 +635,13 @@ async function settlement(
     parent: tip.id,
     expect: readRefExpectation(tip.ref),
     record,
+    revision: found.ref.revision,
+    logged,
     body: { kind: "part", part },
     at,
   });
 
-  return [...opened(landed.target), ...landed.updates, ...based];
+  return [...landed.updates, ...based];
 }
 
 async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {

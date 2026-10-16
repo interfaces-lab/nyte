@@ -1,16 +1,17 @@
 import { asId } from "@nyte-ai/schema";
 import type {
   CommitId,
+  DurableEvent,
+  Failure,
   HeadName,
-  ObjectId,
   PartId,
   RefUpdate,
+  Revision,
   RunId,
   SessionId,
   ToolPartState,
   WaitOutcome,
 } from "@nyte-ai/schema";
-import type { Failure } from "@nyte-ai/schema/model";
 import type { SessionBus } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { tool } from "../contract/parts.ts";
@@ -113,6 +114,7 @@ export async function settleAnswersFrom(kernel: Kernel): Promise<void> {
   }
 }
 
+/** Settles a part on its head in one write of each ref: the part's record, expecting the revision it was read at, logs `logged` and then its settled event, and the commit that lands it moves the head. */
 export async function settling(
   store: StoreConnection,
   input: {
@@ -122,28 +124,28 @@ export async function settling(
     readonly parent: CommitId | null;
     readonly expect: RefUpdate["expect"];
     readonly record: PartRecord;
+    readonly revision: Revision;
+    readonly logged: readonly DurableEvent[];
     readonly body: CommitRecord["body"];
     readonly at: number;
   },
-): Promise<{
-  readonly landed: CommitId;
-  readonly target: ObjectId;
-  readonly updates: RefUpdate[];
-}> {
+): Promise<{ readonly landed: CommitId; readonly updates: readonly RefUpdate[] }> {
   const { session, head, run, parent, record, body, at } = input;
   const landed = asId<"commit">(await put(store, "commit", { parent, at, run, body }, at));
   const status = { kind: "settled", commit: landed, endedAt: at } as const;
-  const target = await put(store, "part", { ...record, status }, at);
   const part = record.id;
 
   return {
     landed,
-    target,
     updates: [
       {
         name: partRef(session, part),
-        target,
-        events: [{ head, kind: "part", part, change: "settled", commit: landed, endedAt: at }],
+        target: await put(store, "part", { ...record, status }, at),
+        expect: input.revision,
+        events: [
+          ...input.logged,
+          { head, kind: "part", part, change: "settled", commit: landed, endedAt: at },
+        ],
       },
       {
         name: headRef(session, head),
@@ -204,19 +206,13 @@ export async function stoppedParts(
       parent,
       expect: parent === tip.id ? readRefExpectation(tip.ref) : undefined,
       record,
+      revision: found.ref.revision,
+      logged: [{ head, kind: "part", part, change: "updated", state, version }],
       body: { kind: "part", part },
       at,
     });
 
-    committed.push(
-      {
-        name,
-        target: await put(store, "part", record, at),
-        expect: found.ref.revision,
-        events: [{ head, kind: "part", part, change: "updated", state, version }],
-      },
-      ...landed.updates,
-    );
+    committed.push(...landed.updates);
     parent = landed.landed;
   }
 

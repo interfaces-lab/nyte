@@ -686,9 +686,9 @@ describe("turn", () => {
     expect(labels.slice(created, created + 5)).toEqual([
       "part:created",
       "part:updated",
+      "request",
       "part:settled",
       "commit",
-      "request",
     ]);
     const asked = view.messages.findLast((message) => message.kind === "user");
 
