@@ -3,7 +3,7 @@
  * model, and tool types live in @nyte-ai/schema and are re-exported here so
  * callers can import everything from one place; this
  * file adds only what a provider request needs on top of them: transport and
- * auth options, the stream function contract, and the per-API option map.
+ * auth options, and the stream function contract.
  */
 import type {
   Api,
@@ -13,11 +13,6 @@ import type {
   ThinkingLevel,
   TranscriptContext,
 } from "@nyte-ai/schema/model";
-import type { AnthropicOptions } from "./api/anthropic-messages.ts";
-import type { GoogleOptions } from "./api/google-generative-ai.ts";
-import type { OpenAICodexResponsesOptions } from "./api/openai-codex-protocol.ts";
-import type { OpenAICompletionsOptions } from "./api/openai-completions-params.ts";
-import type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 import type { AssistantMessageEventStream } from "./utils/event-stream.ts";
 
 export type { AssistantMessageEventStream } from "./utils/event-stream.ts";
@@ -258,26 +253,6 @@ export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>>
 
 /** Request options for best-effort deferred-response cancellation. */
 export type DeferredCancelOptions = ProviderRequestOptions<Model<Api>>;
-
-/**
- * Maps known APIs to their full provider-specific stream option types.
- * Type-only imports from API implementation modules are erased at emit, so
- * this is tree-shake safe.
- */
-export interface ApiOptionsMap {
-  "anthropic-messages": AnthropicOptions;
-  "google-generative-ai": GoogleOptions;
-  "openai-completions": OpenAICompletionsOptions;
-  "openai-responses": OpenAIResponsesOptions;
-  "openai-codex-responses": OpenAICodexResponsesOptions;
-}
-
-/**
- * Full stream options for an API. Known APIs resolve to their concrete option
- * type; custom API strings fall back to the generic shape.
- */
-export type ApiStreamOptions<TApi extends Api> = StreamOptions &
-  (TApi extends keyof ApiOptionsMap ? ApiOptionsMap[TApi] : Record<string, unknown>);
 
 /**
  * The uniform stream contract of an API implementation module: every module

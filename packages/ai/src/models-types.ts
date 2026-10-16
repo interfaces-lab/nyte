@@ -17,12 +17,12 @@ import type {
   ModelAuth,
   ProviderAuth,
 } from "./auth/types.ts";
+import type { ApiStreamOptions } from "./api-options.ts";
 import { type ModelsStore, type ModelsStoreEntry } from "./models-store.ts";
 import type {
   AccountLimits,
   AccountLimitsResult,
   Api,
-  ApiStreamOptions,
   AssistantMessage,
   AssistantMessageEventStream,
   Context,

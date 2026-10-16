@@ -92,6 +92,8 @@ export * from "./session-resources.ts";
 
 export * from "./types.ts";
 
+export type { ApiOptionsMap, ApiStreamOptions } from "./api-options.ts";
+
 export * from "./utils/diagnostics.ts";
 
 export * from "./utils/estimate.ts";
