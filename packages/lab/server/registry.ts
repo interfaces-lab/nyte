@@ -23,8 +23,6 @@ export type Author = Static<typeof AuthorSchema>;
 
 const ApprovalSchema = Type.Object({ head: Type.String(), at: Type.Number() });
 
-export type Approval = Static<typeof ApprovalSchema>;
-
 const RecordSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),

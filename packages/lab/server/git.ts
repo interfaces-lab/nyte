@@ -29,9 +29,9 @@ export interface CommitInfo {
   readonly body: string;
 }
 
-export type ChangeStatus = "added" | "modified" | "deleted" | "renamed";
+type ChangeStatus = "added" | "modified" | "deleted" | "renamed";
 
-export interface FileChange {
+interface FileChange {
   readonly path: string;
   readonly previousPath?: string;
   readonly status: ChangeStatus;
@@ -42,7 +42,7 @@ export interface FileChange {
   readonly blobs: string;
 }
 
-export interface BranchInfo {
+interface BranchInfo {
   readonly name: string;
   readonly oid: string;
   readonly subject: string;
@@ -53,12 +53,12 @@ export interface BranchInfo {
   readonly behind: number;
 }
 
-export interface Worktree {
+interface Worktree {
   readonly path: string;
   readonly branch?: string;
 }
 
-export class GitError extends Error {
+class GitError extends Error {
   /** The process exit code, when git ran and failed. */
   readonly code: number | undefined;
 
