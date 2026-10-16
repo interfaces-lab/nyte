@@ -6,7 +6,7 @@ import {
   decodeSessionRecord,
   decodeWorkspaceRecord,
   parseSessionRef,
-} from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
 import type { ModelRef, SessionId, Usage } from "@nyte-ai/schema";
 import type {
   UsageEntry,

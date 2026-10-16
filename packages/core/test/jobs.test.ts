@@ -2,20 +2,16 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { CallId, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
-import {
-  LOCAL,
-  callRef,
-  createHost,
-  decodeCallRecord,
-  definePart,
-  jobHandle,
-  loadWaits,
-  workspaceHandle,
-  memoryStore,
-  runStep,
-  viewHead,
-} from "../src/index.ts";
-import type { ConnectionContext, Durable, Kernel } from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { jobHandle } from "../src/engine/jobs.ts";
+import { loadWaits } from "../src/engine/waits.ts";
+import { workspaceHandle } from "../src/env/workspaces.ts";
+import { viewHead } from "../src/fold/view.ts";
+import { LOCAL, definePart } from "../src/index.ts";
+import { callRef, decodeCallRecord, memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ConnectionContext, Durable } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { Process } from "./fake-env.ts";
 import { main, until } from "./harness.ts";

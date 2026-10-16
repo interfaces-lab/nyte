@@ -18,8 +18,9 @@ import {
   objectId,
   sessionIndexRef,
   parseSessionRef,
-} from "@nyte-ai/core";
-import type { MigrationTarget, Store, StoreConnection } from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
+import type { Store, StoreConnection } from "@nyte-ai/core";
+import type { MigrationTarget } from "@nyte-ai/core/store";
 import { Pool } from "pg";
 import {
   collect,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { SessionEventType, WaitOutcomeType } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
-import { STORED_RECORD_TYPES } from "../src/index.ts";
+import { STORED_RECORD_TYPES } from "../src/store.ts";
 
 it("keeps every stored shape until a store change is decided", () => {
   const fingerprints = Object.fromEntries(

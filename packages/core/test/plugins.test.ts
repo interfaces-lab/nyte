@@ -9,25 +9,15 @@ import type {
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import {
-  ALL_AUTHORITY,
-  LOCAL,
-  SdkError,
-  callRef,
-  decodeCallRecord,
-  decodePartRecord,
-  definePart,
-  executeCall,
-  kvRef,
-  systemPromptPlugin,
-  text,
-} from "../src/index.ts";
+import { executeCall } from "../src/agent/tool-runner.ts";
+import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
+import { ALL_AUTHORITY, LOCAL, SdkError, definePart, text } from "../src/index.ts";
+import { callRef, decodeCallRecord, decodePartRecord, kvRef } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
 import type {
-  CallRecord,
   Command,
   ConnectionContext,
   EnvironmentProvider,
-  Kernel,
   Plugin,
   PluginApi,
   PluginStorage,
@@ -35,6 +25,7 @@ import type {
   SettingDefinition,
   ToolDefinition,
 } from "../src/index.ts";
+import type { CallRecord } from "../src/store.ts";
 import {
   completed,
   configuration,

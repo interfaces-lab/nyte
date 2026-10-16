@@ -2,14 +2,10 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { Infer, ModelRequest } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import {
-  createHost,
-  createHostState,
-  createKernel,
-  envelope,
-  memoryStore,
-  workspaceRef,
-} from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { createHostState } from "../src/api/host.ts";
+import { createKernel } from "../src/compose.ts";
+import { envelope, memoryStore, workspaceRef } from "../src/store.ts";
 import type { Plugin, Resources, ToolDefinition } from "../src/index.ts";
 import { world } from "./fake-env.ts";
 import { chatOnly, fakeModels, open } from "./fake-models.ts";

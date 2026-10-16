@@ -1,5 +1,6 @@
 import { realpath, stat } from "node:fs/promises";
-import { SdkError, decodeWorkspaceRecord, envelope } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/core";
+import { decodeWorkspaceRecord, envelope } from "@nyte-ai/core/store";
 import type { StoreConnection } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import type { RefUpdate } from "@nyte-ai/schema";

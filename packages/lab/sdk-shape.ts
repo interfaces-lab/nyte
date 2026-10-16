@@ -12,7 +12,8 @@
  * Run `pnpm --dir packages/lab typecheck` to check this reference along with
  * the lab browser, host and video code.
  */
-import { definePart, isPart, memoryStore, text, tool } from "@nyte-ai/core";
+import { definePart, isPart, text, tool } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import { asId, asSeq, standard } from "@nyte-ai/schema";
 import { createSendJournal, pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
 import type {

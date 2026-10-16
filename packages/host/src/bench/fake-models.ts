@@ -17,8 +17,10 @@ import type {
   ThinkingContent,
   TranscriptContext,
 } from "@nyte-ai/schema/model";
-import { composeHost, memoryStore } from "@nyte-ai/core";
-import type { ComposeOptions, ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
+import type { ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import type { ComposeOptions } from "@nyte-ai/core/server";
 
 /** One content block a scripted reply streams. */
 export type Block =

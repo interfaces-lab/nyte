@@ -15,8 +15,9 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
-import { emptyFold, fold, project } from "../src/index.ts";
-import type { FoldState } from "../src/index.ts";
+import { emptyFold, fold } from "../src/fold/fold.ts";
+import { project } from "../src/fold/project.ts";
+import type { FoldState } from "../src/contract/fold.ts";
 
 const session: SessionId = asId("s1");
 

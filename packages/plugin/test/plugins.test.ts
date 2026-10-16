@@ -1,4 +1,4 @@
-import { checkPlugins } from "@nyte-ai/core";
+import { checkPlugins } from "../../core/src/extend/plugin-runtime.ts";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { Plugin as ClientPlugin } from "../src/client.ts";
 import type { Plugin as CorePlugin } from "../src/core.ts";

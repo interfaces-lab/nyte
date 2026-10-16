@@ -12,7 +12,8 @@ import type {
   PrincipalId,
 } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model, TextContent } from "@nyte-ai/schema/model";
-import { SdkError, memoryStore } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import type {
   BrowserApi,
   EnvironmentProvider,

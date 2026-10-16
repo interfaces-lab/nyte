@@ -1,7 +1,9 @@
 import { asId } from "@nyte-ai/schema";
 import type { Authority, CommitId, Message } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { TOKEN, createConnection, decodeInboxRecord, inboxRef, memoryStore } from "../src/index.ts";
+import { createConnection } from "../src/api/connection.ts";
+import { TOKEN } from "../src/server.ts";
+import { decodeInboxRecord, inboxRef, memoryStore } from "../src/store.ts";
 import type { Session } from "../src/index.ts";
 import { completed, label, livePart, main, recording, setup, until, usage } from "./harness.ts";
 

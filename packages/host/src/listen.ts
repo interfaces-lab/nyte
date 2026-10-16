@@ -1,7 +1,8 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { SdkError } from "@nyte-ai/core";
-import type { ListenOptions, Listener, ServedHost } from "@nyte-ai/core";
+import type { ListenOptions, Listener } from "@nyte-ai/core";
+import type { ServedHost } from "@nyte-ai/core/server";
 import { encodeError, errorStatus } from "@nyte-ai/protocol";
 import { listenFetch } from "./listen-fetch.ts";
 

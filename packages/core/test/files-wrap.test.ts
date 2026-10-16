@@ -1,16 +1,13 @@
 import { asId } from "@nyte-ai/schema";
 import type { Json, ToolOutcome } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  ALL_AUTHORITY,
-  EMPTY_SNAPSHOT,
-  LOCAL,
-  decodeReceiptRecord,
-  environmentPlugin,
-  executeCall,
-  receiptRef,
-} from "../src/index.ts";
-import type { ConnectionContext, FilesApi, Kernel } from "../src/index.ts";
+import { executeCall } from "../src/agent/tool-runner.ts";
+import { environmentPlugin } from "../src/builtins/environment.ts";
+import { EMPTY_SNAPSHOT } from "../src/engine/batches.ts";
+import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
+import { decodeReceiptRecord, receiptRef } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ConnectionContext, FilesApi } from "../src/index.ts";
 import { collect, world } from "./fake-env.ts";
 import { configuration, main, startRun, until } from "./harness.ts";
 

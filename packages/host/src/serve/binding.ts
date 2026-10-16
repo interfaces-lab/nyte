@@ -26,8 +26,8 @@ import type {
   Login,
   Page,
   Receipt,
-  ServerHost,
 } from "@nyte-ai/core";
+import type { ServerHost } from "@nyte-ai/core/server";
 import { mapped, viewFrames } from "@nyte-ai/protocol";
 import type {
   ByteName,

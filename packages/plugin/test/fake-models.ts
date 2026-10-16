@@ -2,16 +2,10 @@ import type { SimpleStreamOptions } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
-import { memoryStore } from "@nyte-ai/core";
-import type {
-  BrowserApi,
-  ComposeOptions,
-  ExecutionEnv,
-  Kernel,
-  Plugin,
-  ServedHost,
-  Store,
-} from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
+import type { BrowserApi, ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import type { ComposeOptions, ServedHost } from "@nyte-ai/core/server";
+import type { Kernel } from "../../core/src/contract/kernel.ts";
 import { asId } from "@nyte-ai/schema";
 import { composeServer } from "../../core/src/compose.ts";
 import type { Api, AssistantMessage, Model, TranscriptContext } from "@nyte-ai/schema/model";

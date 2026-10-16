@@ -1,7 +1,7 @@
 import { asSeq } from "@nyte-ai/schema";
 import type { ObjectId, Ref, Revision, Seq, SessionId, SetOutcome } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/core";
 import {
-  SdkError,
   admits,
   assertStoreVersion,
   blobId,
@@ -11,8 +11,9 @@ import {
   objectId,
   sessionIndexRef,
   parseSessionRef,
-} from "@nyte-ai/core";
-import type { CommitOutcome, MigrationTarget, Store, StoreConnection } from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
+import type { Store, StoreConnection } from "@nyte-ai/core";
+import type { CommitOutcome, MigrationTarget } from "@nyte-ai/core/store";
 import {
   collect,
   decodeEvent,

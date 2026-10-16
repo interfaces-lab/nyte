@@ -1,21 +1,14 @@
 import { OPERATIONS, asId } from "@nyte-ai/schema";
 import type { Authority, PrincipalId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  ALL_AUTHORITY,
-  CORE_CONTEXT,
-  PARTICIPANT_AUTHORITY,
-  SdkError,
-  authenticateToken,
-  createConnection,
-  createHost,
-  createInvocation,
-  gated,
-  hostPrincipalsRef,
-  memoryStore,
-  redeemPairing,
-} from "../src/index.ts";
-import type { Connection, Durable, Kernel, StoreConnection, Workspace } from "../src/index.ts";
+import { createInvocation } from "../src/agent/tool-runner.ts";
+import { createConnection, createHost } from "../src/api/connection.ts";
+import { CORE_CONTEXT, PARTICIPANT_AUTHORITY } from "../src/contract/host.ts";
+import { authenticateToken, gated, redeemPairing } from "../src/engine/principals.ts";
+import { ALL_AUTHORITY, SdkError } from "../src/index.ts";
+import { hostPrincipalsRef, memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Connection, Durable, StoreConnection, Workspace } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { FakeProvider } from "./fake-env.ts";
 import { main, setup, workspace } from "./harness.ts";

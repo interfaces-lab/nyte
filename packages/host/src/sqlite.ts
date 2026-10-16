@@ -4,19 +4,20 @@ import { DatabaseSync } from "node:sqlite";
 import type { SQLInputValue, StatementSync } from "node:sqlite";
 import { asSeq } from "@nyte-ai/schema";
 import type { ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
 import {
   admits,
   assertStoreVersion,
   blobId,
   decodeObject,
   collectSessionEvents,
-  dev,
   migrateStore,
   objectId,
   sessionIndexRef,
   parseSessionRef,
-} from "@nyte-ai/core";
-import type { MigrationTarget, Relog, Store, StoreConnection } from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
+import type { Store, StoreConnection } from "@nyte-ai/core";
+import type { MigrationTarget, Relog } from "@nyte-ai/core/store";
 import {
   collect,
   decodeEvent,

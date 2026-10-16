@@ -1,18 +1,13 @@
 import { asId } from "@nyte-ai/schema";
 import type { CallId, HeadName, Json, RunId, SessionId, WaitTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  driveInProcess,
-  endRun,
-  envelope,
-  headRef,
-  inboxRef,
-  leaseRef,
-  memoryStore,
-  pollStore,
-  runStep,
-} from "../src/index.ts";
-import type { Durable, Kernel, StoreConnection } from "../src/index.ts";
+import { driveInProcess } from "../src/drive/execution.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { endRun } from "../src/engine/runs.ts";
+import { pollStore } from "../src/fold/watch.ts";
+import { envelope, headRef, inboxRef, leaseRef, memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Durable, StoreConnection } from "../src/index.ts";
 import { isCovered } from "../src/store/session.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import { completed, configuration, main, setup, startRun, until } from "./harness.ts";

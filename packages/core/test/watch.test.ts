@@ -10,25 +10,24 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
+import { createHostState, watchHost } from "../src/api/host.ts";
+import { sessionInfo, watchSessions } from "../src/api/session.ts";
+import { createKernel } from "../src/compose.ts";
+import { project } from "../src/fold/project.ts";
+import { watchHead } from "../src/fold/view.ts";
+import { publishSet } from "../src/fold/watch.ts";
+import { coalesce } from "../src/index.ts";
 import {
-  coalesce,
-  createHostState,
-  createKernel,
   decodeSeenRecord,
   envelope,
   headRef,
   inboxRef,
   memoryStore,
-  project,
-  publishSet,
   seenRef,
-  sessionInfo,
   sessionRef,
-  watchHead,
-  watchHost,
-  watchSessions,
-} from "../src/index.ts";
-import type { CommitRecord, Kernel, SessionRecord } from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { CommitRecord, SessionRecord } from "../src/store.ts";
 
 const first: SessionId = asId("s1");
 

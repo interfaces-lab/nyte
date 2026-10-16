@@ -1,34 +1,22 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { Authority, CallId, Json, PatchSet, RunId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  LOCAL,
-  SdkError,
-  authenticateToken,
-  envelope,
-  hostPrincipalsRef,
-  createConnection,
-  createFoldCache,
-  createHost,
-  createInvocation,
-  driveInProcess,
-  environmentPlugin,
-  project,
-  redeemPairing,
-  resourcesPlugin,
-  runStep,
-  viewHead,
-  workspaceHandle,
-  workspaceRef,
-} from "../src/index.ts";
-import type {
-  ConnectionContext,
-  Durable,
-  Kernel,
-  Page,
-  Plugin,
-  WorkspaceRecord,
-} from "../src/index.ts";
+import { createInvocation } from "../src/agent/tool-runner.ts";
+import { createConnection, createHost } from "../src/api/connection.ts";
+import { environmentPlugin } from "../src/builtins/environment.ts";
+import { driveInProcess } from "../src/drive/execution.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { authenticateToken, redeemPairing } from "../src/engine/principals.ts";
+import { workspaceHandle } from "../src/env/workspaces.ts";
+import { resourcesPlugin } from "../src/extend/resources.ts";
+import { project } from "../src/fold/project.ts";
+import { viewHead } from "../src/fold/view.ts";
+import { createFoldCache } from "../src/fold/watch.ts";
+import { LOCAL, SdkError } from "../src/index.ts";
+import { envelope, hostPrincipalsRef, workspaceRef } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ConnectionContext, Durable, Page, Plugin } from "../src/index.ts";
+import type { WorkspaceRecord } from "../src/store.ts";
 import { addWorkspace, collect, kernelOver, world } from "./fake-env.ts";
 import { main, until } from "./harness.ts";
 

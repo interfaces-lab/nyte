@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, test } from "vitest";
-import { envelope } from "@nyte-ai/core";
+import { envelope } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import type { DurableEvent, Usage } from "@nyte-ai/schema";
 import { sqliteStore } from "../src/sqlite.ts";

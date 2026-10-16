@@ -1,7 +1,9 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, RefUpdate, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { dev, memoryStore, objectId, publishSet, sessionRef } from "../src/index.ts";
+import { publishSet } from "../src/fold/watch.ts";
+import { dev } from "../src/index.ts";
+import { memoryStore, objectId, sessionRef } from "../src/store.ts";
 import { commit } from "../src/fold/commit.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { attempt, STALE } from "../src/store/session.ts";

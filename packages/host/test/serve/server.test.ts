@@ -1,14 +1,7 @@
 import { asId, standard } from "@nyte-ai/schema";
 import type { HeadName, Json } from "@nyte-ai/schema";
-import {
-  SdkError,
-  decodeSeenRecord,
-  definePart,
-  dev,
-  headRef,
-  memoryStore,
-  seenRef,
-} from "@nyte-ai/core";
+import { SdkError, definePart, dev } from "@nyte-ai/core";
+import { decodeSeenRecord, headRef, memoryStore, seenRef } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";

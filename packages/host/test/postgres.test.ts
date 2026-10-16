@@ -1,6 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Pool } from "pg";
-import { STORE_VERSION, envelope } from "@nyte-ai/core";
+import { STORE_VERSION, envelope } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
 import { postgresStore } from "../src/index.ts";

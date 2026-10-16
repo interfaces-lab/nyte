@@ -1,5 +1,5 @@
 import type { ByteReader, ExecutionCoverage, Owned } from "@nyte-ai/schema";
-import { memoryStore } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { Listener, Store } from "@nyte-ai/core";
 import { decodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";

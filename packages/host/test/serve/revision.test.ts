@@ -1,5 +1,7 @@
 import { asId } from "@nyte-ai/schema";
-import { LOCAL, headRef, memoryStore, pollStore } from "@nyte-ai/core";
+import { LOCAL } from "@nyte-ai/core";
+import { headRef, memoryStore } from "@nyte-ai/core/store";
+import { pollStore } from "../../../core/src/fold/watch.ts";
 import { describe, expect, it } from "vitest";
 import { createTransport } from "@nyte-ai/protocol";
 import { createServerHost } from "../../../core/src/api/server.ts";

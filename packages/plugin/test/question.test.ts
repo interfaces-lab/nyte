@@ -1,4 +1,5 @@
-import { isPart, memoryStore, tool } from "@nyte-ai/core";
+import { isPart, tool } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import { assert, expect, it } from "vitest";
 import questionPlugin, { question } from "../src/question/question.ts";
 import { openQuestions } from "../src/question/schema.ts";

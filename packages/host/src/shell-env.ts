@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { holdProcessEnvironment } from "@nyte-ai/core";
+import { holdProcessEnvironment } from "@nyte-ai/core/server";
 
 const TIMEOUT_MS = 10_000;
 

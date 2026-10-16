@@ -4,14 +4,10 @@ import type { Configuration, ModelRef } from "@nyte-ai/schema";
 import type { AuthCheck } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import {
-  collectContributions,
-  createLogin,
-  modelInfo,
-  settingsVersion,
-  calculateUsage,
-  memoryStore,
-} from "../src/index.ts";
+import { calculateUsage } from "../src/agent/request.ts";
+import { collectContributions } from "../src/engine/contributions.ts";
+import { createLogin, modelInfo, settingsVersion } from "../src/extend/models.ts";
+import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import { main, until } from "./harness.ts";

@@ -2,33 +2,24 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer, Json, PartId, RunId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
+import { executeCall } from "../src/agent/tool-runner.ts";
+import { createKernel } from "../src/compose.ts";
+import { repair } from "../src/drive/execution.ts";
+import { LEASE_MS, runStep } from "../src/engine/durable.ts";
+import { loadWaits } from "../src/engine/waits.ts";
+import { LOCAL, ALL_AUTHORITY, definePart } from "../src/index.ts";
 import {
-  LEASE_MS,
-  LOCAL,
-  ALL_AUTHORITY,
   callRef,
-  createKernel,
   decodeCallRecord,
   decodePartRecord,
   decodeRunRecord,
-  definePart,
-  executeCall,
-  failedParts,
-  loadWaits,
   partRef,
-  repair,
   runRef,
-  runStep,
-} from "../src/index.ts";
-import type {
-  ActionContext,
-  ActionOutput,
-  CallRecord,
-  Durable,
-  Kernel,
-  ToolDefinition,
-  ToolSource,
-} from "../src/index.ts";
+} from "../src/store.ts";
+import { failedParts } from "../src/store/parts.ts";
+import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
+import type { ActionContext, ActionOutput, Durable, ToolDefinition } from "../src/index.ts";
+import type { CallRecord } from "../src/store.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put } from "../src/store/session.ts";
 import { configuration, main, setup, startRun, until } from "./harness.ts";

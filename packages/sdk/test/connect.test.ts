@@ -1,6 +1,8 @@
 import { asId } from "@nyte-ai/schema";
 import type { HostView } from "@nyte-ai/schema";
-import { SdkError, TOKEN, composeHost, memoryStore } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/core";
+import { TOKEN, composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection } from "@nyte-ai/core";
 import { listenFetch } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";

@@ -1,7 +1,8 @@
 import { asId } from "@nyte-ai/schema";
 import type { FileDocument } from "@nyte-ai/schema";
 import { assert, expect, it } from "vitest";
-import { composeHost, memoryStore } from "../src/index.ts";
+import { composeHost } from "../src/server.ts";
+import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels } from "./fake-models.ts";
 import type { Request } from "./fake-models.ts";

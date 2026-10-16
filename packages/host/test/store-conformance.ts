@@ -1,6 +1,6 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
-import { envelope, objectId } from "@nyte-ai/core";
+import { envelope, objectId } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 

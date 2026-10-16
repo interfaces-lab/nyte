@@ -1,14 +1,8 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import { assert, expect, it } from "vitest";
-import {
-  envelope,
-  headRef,
-  memoryStore,
-  pollStore,
-  seenRef,
-  sessionRef,
-  watchSessions,
-} from "../src/index.ts";
+import { watchSessions } from "../src/api/session.ts";
+import { pollStore } from "../src/fold/watch.ts";
+import { envelope, headRef, memoryStore, seenRef, sessionRef } from "../src/store.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import { main, setup } from "./harness.ts";
 

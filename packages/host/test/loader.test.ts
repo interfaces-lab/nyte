@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { composeHost, memoryStore } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadPluginDirectory, loadPluginFiles, pluginLoader } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";

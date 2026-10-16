@@ -1,27 +1,29 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { CallId, HeadName, Json, RunId, SessionId, WaitTarget } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { landing } from "../src/engine/admission.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { stopRun } from "../src/engine/fence.ts";
+import { move } from "../src/engine/move.ts";
+import { endRun } from "../src/engine/runs.ts";
+import { publishSet } from "../src/fold/watch.ts";
 import {
   callRef,
   decodeCallRecord,
   decodePartRecord,
   decodeRunRecord,
   decodeSessionRecord,
-  endRun,
   envelope,
-  landing,
   leaseRef,
   memoryStore,
-  move,
   partRef,
-  publishSet,
   receiptRef,
   runRef,
-  runStep,
   sessionRef,
-  stopRun,
-} from "../src/index.ts";
-import type { Kernel, PartRecord, Plugin, StoreConnection } from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Plugin, StoreConnection } from "../src/index.ts";
+import type { PartRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import { completed, configuration, livePart, main, setup, startRun, until } from "./harness.ts";

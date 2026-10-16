@@ -1,21 +1,21 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
+import { tree } from "../src/api/head.ts";
+import { landing } from "../src/engine/admission.ts";
+import { emptyFold, fold } from "../src/fold/fold.ts";
+import { project } from "../src/fold/project.ts";
+import { pollStore } from "../src/fold/watch.ts";
+import { LOCAL } from "../src/index.ts";
 import {
-  LOCAL,
-  emptyFold,
-  fold,
-  project,
   decodeCommitRecord,
   decodeRunRecord,
   envelope,
   headRef,
-  landing,
   memoryStore,
-  pollStore,
-  tree,
-} from "../src/index.ts";
-import type { Kernel, StoreConnection } from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { StoreConnection } from "../src/index.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put, readTip } from "../src/store/session.ts";
 import { configuration, main, setup, usage } from "./harness.ts";

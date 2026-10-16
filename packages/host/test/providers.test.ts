@@ -1,6 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceId, WorkspaceTarget } from "@nyte-ai/schema";
-import { composeHost, memoryStore } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { EnvironmentProvider, GitApi, Plugin } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { chatOnlyProvider, sandboxProvider } from "../src/providers.ts";

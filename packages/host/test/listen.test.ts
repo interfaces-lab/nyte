@@ -12,8 +12,10 @@ import type {
   ReceiptId,
   SessionId,
 } from "@nyte-ai/schema";
-import type { ComposeOptions, Listener, ListenOptions } from "@nyte-ai/core";
-import { SdkError, memoryStore } from "@nyte-ai/core";
+import type { Listener, ListenOptions } from "@nyte-ai/core";
+import type { ComposeOptions } from "@nyte-ai/core/server";
+import { SdkError } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { listen, pluginLoader } from "../src/index.ts";

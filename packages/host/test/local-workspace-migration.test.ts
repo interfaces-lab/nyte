@@ -1,8 +1,8 @@
 import { mkdir, mkdtemp, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { decodeWorkspaceRecord, envelope, workspaceRef } from "@nyte-ai/core";
-import type { WorkspaceRecord } from "@nyte-ai/core";
+import { decodeWorkspaceRecord, envelope, workspaceRef } from "@nyte-ai/core/store";
+import type { WorkspaceRecord } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it } from "vitest";
 import { fakeModels } from "../src/bench/fake-models.ts";

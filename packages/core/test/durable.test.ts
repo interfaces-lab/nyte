@@ -13,26 +13,15 @@ import type {
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
 import { holdLease } from "../src/engine/lease.ts";
-import {
-  callRef,
-  createKernel,
-  decodeCallRecord,
-  decodeRunRecord,
-  definePart,
-  endRun,
-  loadWaits,
-  memoryStore,
-  runRef,
-  runStep,
-} from "../src/index.ts";
-import type {
-  ActionContext,
-  ActionOutput,
-  CallRecord,
-  Durable,
-  Kernel,
-  StepOutcome,
-} from "../src/index.ts";
+import { createKernel } from "../src/compose.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { endRun } from "../src/engine/runs.ts";
+import { loadWaits } from "../src/engine/waits.ts";
+import { definePart } from "../src/index.ts";
+import { callRef, decodeCallRecord, decodeRunRecord, memoryStore, runRef } from "../src/store.ts";
+import type { Kernel, StepOutcome } from "../src/contract/kernel.ts";
+import type { ActionContext, ActionOutput, Durable } from "../src/index.ts";
+import type { CallRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import {
   completed,

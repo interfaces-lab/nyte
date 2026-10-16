@@ -14,7 +14,11 @@ import type {
   SnapshotId,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
-import { createHost, createHostState, createKernel, memoryStore } from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { createHostState } from "../src/api/host.ts";
+import { createKernel } from "../src/compose.ts";
+import { memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
 import type {
   BrowserApi,
   EnvironmentProvider,
@@ -23,7 +27,6 @@ import type {
   GitApi,
   Host,
   Job,
-  Kernel,
   Page,
   Plugin,
 } from "../src/index.ts";

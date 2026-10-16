@@ -1,7 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { HeadName } from "@nyte-ai/schema";
 import type { Store } from "@nyte-ai/core";
-import { hostPrincipalsRef, memoryStore } from "@nyte-ai/core";
+import { hostPrincipalsRef, memoryStore } from "@nyte-ai/core/store";
 import { assert, describe, expect, it } from "vitest";
 import { listen } from "../src/index.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";

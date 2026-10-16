@@ -1,7 +1,8 @@
 import { asId } from "@nyte-ai/schema";
 import type { ByteReader, Ref, Revision, SessionEvent } from "@nyte-ai/schema";
-import { SdkError, loggedEvent } from "@nyte-ai/core";
-import type { LoggedRow, StoredRecord } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/core";
+import { loggedEvent } from "@nyte-ai/core/store";
+import type { LoggedRow, StoredRecord } from "@nyte-ai/core/store";
 
 export function prefixEnd(prefix: string): string | null {
   const points = Array.from(prefix);

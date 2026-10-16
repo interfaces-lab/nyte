@@ -1,7 +1,9 @@
 import process from "node:process";
 import { createModels } from "@nyte-ai/ai/models";
-import { SdkError, composeHost } from "@nyte-ai/core";
-import type { Host, Listener, OpenOptions, ServedHost } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import type { Host, Listener, OpenOptions } from "@nyte-ai/core";
+import type { ServedHost } from "@nyte-ai/core/server";
 import { postgresStore } from "@nyte-ai/host";
 import { credentialStore } from "@nyte-ai/host/credentials";
 import { seedSigner } from "@nyte-ai/host/identity";

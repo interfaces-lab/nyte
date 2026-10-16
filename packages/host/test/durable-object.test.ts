@@ -1,4 +1,4 @@
-import { STORE_VERSION, envelope } from "@nyte-ai/core";
+import { STORE_VERSION, envelope } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
 import { durableObjectStore } from "../src/durable-object.ts";

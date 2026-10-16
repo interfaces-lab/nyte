@@ -1,8 +1,11 @@
 import { asId } from "@nyte-ai/schema";
 import type { CommitId, HeadName, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { LOCAL, headRef, memoryStore, tree } from "../src/index.ts";
-import type { Head, Host, Kernel, StoreConnection } from "../src/index.ts";
+import { tree } from "../src/api/head.ts";
+import { LOCAL } from "../src/index.ts";
+import { headRef, memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Head, Host, StoreConnection } from "../src/index.ts";
 import { commit } from "../src/fold/commit.ts";
 import { readRefExpectation, toCommitObjectId, put, readTip } from "../src/store/session.ts";
 import { label, main, recording, setup, usage } from "./harness.ts";

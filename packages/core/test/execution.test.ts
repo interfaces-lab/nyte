@@ -1,9 +1,9 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { ExecutionCoverage, Json } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
+import { driveInProcess } from "../src/drive/execution.ts";
 import {
   decodeCommitRecord,
-  driveInProcess,
   envelope,
   headRef,
   inboxRef,
@@ -11,7 +11,7 @@ import {
   memoryStore,
   receiptRef,
   sessionRef,
-} from "../src/index.ts";
+} from "../src/store.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { completed, expireLease, main, setup, until } from "./harness.ts";
 

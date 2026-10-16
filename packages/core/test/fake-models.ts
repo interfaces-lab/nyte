@@ -18,8 +18,10 @@ import type {
   TranscriptContext,
 } from "@nyte-ai/schema/model";
 import { composeServer } from "../src/compose.ts";
-import { memoryStore } from "../src/index.ts";
-import type { ComposeOptions, Kernel, Plugin, ServedHost, Store } from "../src/index.ts";
+import { memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Plugin, Store } from "../src/index.ts";
+import type { ComposeOptions, ServedHost } from "../src/server.ts";
 import { env } from "./harness.ts";
 
 export type Block =

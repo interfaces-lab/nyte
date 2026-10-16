@@ -1,4 +1,5 @@
-import { SdkError, envelope, kvRef, memoryStore } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/core";
+import { envelope, kvRef, memoryStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
 import { storedAccounts } from "../../ai/test/credential-fixture.ts";

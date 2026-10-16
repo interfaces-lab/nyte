@@ -1,6 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import { assert, expect, it } from "vitest";
-import { createHost, memoryStore } from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { memoryStore } from "../src/store.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 
 it("converges concurrent registrations across kernels on one stored workspace", async () => {

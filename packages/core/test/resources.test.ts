@@ -1,13 +1,9 @@
 import { readFileSync } from "node:fs";
 import { asId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  createHost,
-  memoryStore,
-  resourceIssues,
-  resourcesPlugin,
-  scanResources,
-} from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { resourceIssues, resourcesPlugin, scanResources } from "../src/extend/resources.ts";
+import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import { env, until } from "./harness.ts";
@@ -156,7 +152,8 @@ describe("resources", () => {
 
     const session = await host.sessions.create({ workspace });
     await kernel.pluginsFor(session.id).ready;
-    const names = (): readonly string[] => kernel.catalog(session.id).skills.map((skill) => skill.name);
+    const names = (): readonly string[] =>
+      kernel.catalog(session.id).skills.map((skill) => skill.name);
 
     expect(names()).not.toContain("fresh");
     await until(() => (disk.watchers.size === 2 ? true : undefined));

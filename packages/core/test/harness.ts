@@ -12,28 +12,15 @@ import type {
   Usage,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import {
-  begin,
-  createHost,
-  createHostState,
-  createKernel,
-  envelope,
-  leaseRef,
-  memoryStore,
-  newRun,
-  partRef,
-  publishSet,
-  workspaceRef,
-} from "../src/index.ts";
-import type {
-  ExecutionEnv,
-  Host,
-  Kernel,
-  PartRecord,
-  StoreConnection,
-  TurnDriver,
-  WorkspaceRecord,
-} from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { createHostState } from "../src/api/host.ts";
+import { createKernel } from "../src/compose.ts";
+import { begin, newRun } from "../src/engine/runs.ts";
+import { publishSet } from "../src/fold/watch.ts";
+import { envelope, leaseRef, memoryStore, partRef, workspaceRef } from "../src/store.ts";
+import type { Kernel, TurnDriver } from "../src/contract/kernel.ts";
+import type { ExecutionEnv, Host, StoreConnection } from "../src/index.ts";
+import type { PartRecord, WorkspaceRecord } from "../src/store.ts";
 
 export const main: HeadName = asId("main");
 

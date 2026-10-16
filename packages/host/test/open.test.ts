@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { memoryStore } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Store } from "@nyte-ai/core";
 import type { HostView } from "@nyte-ai/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";

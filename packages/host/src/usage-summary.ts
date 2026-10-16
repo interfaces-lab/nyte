@@ -1,4 +1,4 @@
-import { addUsage } from "@nyte-ai/core";
+import { addUsage } from "@nyte-ai/core/server";
 import type { Usage } from "@nyte-ai/schema";
 import type { Usage as ModelUsageCounts } from "@nyte-ai/schema/model";
 import type { ModelUsage, UsageSummary } from "./usage-types.ts";

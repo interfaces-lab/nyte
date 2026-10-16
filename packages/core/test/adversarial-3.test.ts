@@ -2,28 +2,20 @@ import { asId, asSeq, standard } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
-import {
-  ALL_AUTHORITY,
-  LOCAL,
-  callRef,
-  decodePartRecord,
-  executeCall,
-  headRef,
-  landing,
-  memoryStore,
-  move,
-  partRef,
-  stopRun,
-} from "../src/index.ts";
+import { executeCall } from "../src/agent/tool-runner.ts";
+import { landing } from "../src/engine/admission.ts";
+import { stopRun } from "../src/engine/fence.ts";
+import { move } from "../src/engine/move.ts";
+import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
+import { callRef, decodePartRecord, headRef, memoryStore, partRef } from "../src/store.ts";
+import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
 import type {
   ConnectionContext,
-  Kernel,
   Plugin,
   Session,
   Store,
   StoreConnection,
   ToolDefinition,
-  ToolSource,
 } from "../src/index.ts";
 import { readInbox } from "../src/store/session.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";

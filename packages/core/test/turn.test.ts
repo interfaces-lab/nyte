@@ -5,23 +5,20 @@ import type { AssistantMessage } from "@nyte-ai/schema/model";
 import type { DurableEvent, Infer, Message, RunId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { requestBody } from "../src/agent/transcript.ts";
+import { createPluginRuntime } from "../src/extend/plugin-runtime.ts";
+import { publishSet } from "../src/fold/watch.ts";
+import { compaction, isPart, text, thinking, tool } from "../src/index.ts";
 import {
-  compaction,
-  createPluginRuntime,
   decodePartRecord,
   decodeRunRecord,
   envelope,
-  isPart,
   memoryStore,
   partRef,
-  publishSet,
-  requestBody,
   runRef,
-  text,
-  thinking,
-  tool,
-} from "../src/index.ts";
-import type { Kernel, Plugin, Store, ToolDefinition } from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Plugin, Store, ToolDefinition } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import type { FakeModels, Reply } from "./fake-models.ts";
 import { configuration, expireLease, label, main, until } from "./harness.ts";

@@ -2,33 +2,22 @@ import { asId, asSeq, standard } from "@nyte-ai/schema";
 import type { CallId, Json, RunId, SessionId, ToolOutcome } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
+import { executeCall } from "../src/agent/tool-runner.ts";
+import { pollStore } from "../src/fold/watch.ts";
+import { ALL_AUTHORITY, LOCAL, definePart, isPart, text, tool } from "../src/index.ts";
 import {
-  ALL_AUTHORITY,
-  LOCAL,
   callRef,
   decodeCallRecord,
   decodePartRecord,
   decodeRunRecord,
-  definePart,
   envelope,
-  executeCall,
-  isPart,
   memoryStore,
   partRef,
-  pollStore,
   runRef,
-  text,
-  tool,
-} from "../src/index.ts";
-import type {
-  CallRecord,
-  ConnectionContext,
-  Kernel,
-  Session,
-  StoreConnection,
-  ToolDefinition,
-  ToolSource,
-} from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
+import type { ConnectionContext, Session, StoreConnection, ToolDefinition } from "../src/index.ts";
+import type { CallRecord } from "../src/store.ts";
 import { configuration, expireLease, main, recording, setup, startRun, until } from "./harness.ts";
 
 const caller: ConnectionContext = {

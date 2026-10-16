@@ -2,18 +2,9 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import {
-  SdkError,
-  decodePartRecord,
-  definePart,
-  partRef,
-  hostIdentity,
-  hostIdentityRef,
-  isPart,
-  memoryStore,
-  runRef,
-  text,
-} from "../src/index.ts";
+import { hostIdentity } from "../src/compose.ts";
+import { SdkError, definePart, isPart, text } from "../src/index.ts";
+import { decodePartRecord, partRef, hostIdentityRef, memoryStore, runRef } from "../src/store.ts";
 import type { Plugin, PluginApi, ToolDefinition } from "../src/index.ts";
 import { chatOnly, composed, fakeModels, open } from "./fake-models.ts";
 import { label, until } from "./harness.ts";

@@ -5,7 +5,8 @@ import { LATEST_PROTOCOL_VERSION, isJsonRpcRequest } from "@earendil-works/pi-mc
 import type { McpTransport } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
-import { isPart, memoryStore, tool } from "@nyte-ai/core";
+import { isPart, tool } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import type { Host } from "@nyte-ai/core";
 import type { McpView } from "@nyte-ai/schema";

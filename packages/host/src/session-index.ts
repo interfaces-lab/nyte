@@ -1,4 +1,4 @@
-import { projectSessionIndex, sessionIndexRef } from "@nyte-ai/core";
+import { projectSessionIndex, sessionIndexRef } from "@nyte-ai/core/store";
 import type { SessionIndex } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import type { Json, Revision } from "@nyte-ai/schema";

@@ -1,26 +1,24 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { CallId, Json, PatchEvent, WaitTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
+import { driveInProcess } from "../src/drive/execution.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { endRun, publishPatch } from "../src/engine/runs.ts";
+import { LOCAL, isPart, text } from "../src/index.ts";
 import {
-  LOCAL,
   callRef,
   decodeCallRecord,
   decodePartRecord,
   decodeReceiptRecord,
   decodeRunRecord,
-  driveInProcess,
-  endRun,
   envelope,
-  isPart,
   memoryStore,
   partRef,
-  publishPatch,
   receiptRef,
   runRef,
-  runStep,
-  text,
-} from "../src/index.ts";
-import type { Kernel, StoreConnection } from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { StoreConnection } from "../src/index.ts";
 import { completed, configuration, label, livePart, main, setup, startRun } from "./harness.ts";
 
 describe("runs", () => {

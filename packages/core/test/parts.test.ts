@@ -3,30 +3,23 @@ import { asId, asSeq, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer, Json, PartId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
+import { runStep } from "../src/engine/durable.ts";
+import { createPartDefinitions } from "../src/engine/part-definitions.ts";
+import { viewHead } from "../src/fold/view.ts";
 import {
   LOCAL,
   SdkError,
   branchSummary,
   compaction,
-  createPartDefinitions,
-  decodePartRecord,
   definePart,
   isPart,
-  memoryStore,
-  partRef,
-  runStep,
   text,
   thinking,
   tool,
-  viewHead,
 } from "../src/index.ts";
-import type {
-  ActionContext,
-  ActionOutput,
-  Kernel,
-  PartDefinition,
-  StoreConnection,
-} from "../src/index.ts";
+import { decodePartRecord, memoryStore, partRef } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ActionContext, ActionOutput, PartDefinition, StoreConnection } from "../src/index.ts";
 import { settleAnswersFrom } from "../src/store/parts.ts";
 import { label, main, recording, setup, until, usage } from "./harness.ts";
 

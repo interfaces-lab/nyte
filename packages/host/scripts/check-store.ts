@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { isJsonObject } from "@nyte-ai/core";
 import {
   decodeCallRecord,
   decodeCommitRecord,
@@ -15,10 +16,9 @@ import {
   decodeSeenRecord,
   decodeSessionRecord,
   decodeWorkspaceRecord,
-  isJsonObject,
   loggedEvent,
-} from "@nyte-ai/core";
-import type { RecordKind } from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
+import type { RecordKind } from "@nyte-ai/core/store";
 import { SessionEventType, compile, withJson } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 
