@@ -65,10 +65,6 @@ interface Channel {
   responseEnded: boolean;
 }
 
-function isRelayStatus(status: number): boolean {
-  return (status >= 200 && status <= 299) || (status >= 400 && status <= 599);
-}
-
 function headersOf(response: IncomingMessage): Headers {
   const headers = new Headers();
 
@@ -388,7 +384,9 @@ export class RelayConnection {
   private respond(channel: Channel, response: IncomingMessage): void {
     const status = response.statusCode ?? 0;
 
-    if (this.channels.get(channel.id) !== channel || !isRelayStatus(status)) {
+    const relayable = (status >= 200 && status <= 299) || (status >= 400 && status <= 599);
+
+    if (this.channels.get(channel.id) !== channel || !relayable) {
       this.reset(channel);
 
       return;

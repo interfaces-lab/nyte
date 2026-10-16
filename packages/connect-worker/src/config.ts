@@ -2,7 +2,7 @@
  * Worker bindings and their parsed form. Every string is checked on each
  * request; a bad value fails the request closed and logs only its name.
  */
-import { Base64Url32, isBrokerOrigin } from "@nyte-ai/connect";
+import { Base64Url32, namesBrokerOrigin } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -81,7 +81,7 @@ export function parseWebOrigins(value: unknown): string[] | undefined {
   if (value === "") return [];
 
   for (const origin of origins) {
-    if (isBrokerOrigin(origin)) continue;
+    if (namesBrokerOrigin(origin)) continue;
     let url: URL;
 
     try {
@@ -112,8 +112,8 @@ export function parseConfig(env: Env): Config | { readonly invalid: readonly str
 
   const webOrigins = parseWebOrigins(env.CONNECT_WEB_ORIGINS);
   check("CONNECT_WEB_ORIGINS", webOrigins !== undefined);
-  check("CONNECT_ORIGIN", isBrokerOrigin(env.CONNECT_ORIGIN));
-  check("CLERK_ISSUER", isBrokerOrigin(env.CLERK_ISSUER));
+  check("CONNECT_ORIGIN", namesBrokerOrigin(env.CONNECT_ORIGIN));
+  check("CLERK_ISSUER", namesBrokerOrigin(env.CLERK_ISSUER));
   check("CLERK_JWT_KEY", env.CLERK_JWT_KEY.includes("-----BEGIN PUBLIC KEY-----"));
   check("CLERK_SECRET_KEY", SECRET_TEXT.test(env.CLERK_SECRET_KEY));
   check("CLERK_WEBHOOK_SIGNING_SECRET", env.CLERK_WEBHOOK_SIGNING_SECRET.startsWith("whsec_"));

@@ -130,10 +130,6 @@ export class ConnectStoreFailed extends Error {
   }
 }
 
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
-}
-
 /**
  * The Connect state file as every part of the runtime reads and changes it. `origin` is the
  * broker this build talks to, so a link through any other is not current; `onFailed` runs when a
@@ -272,7 +268,9 @@ export class ConnectStore {
         await handle.close();
       }
     } catch (cause) {
-      return isMissing(cause) ? { kind: "ready", file: EMPTY_CONNECT_FILE } : { kind: "failed" };
+      return cause instanceof Error && "code" in cause && cause.code === "ENOENT"
+        ? { kind: "ready", file: EMPTY_CONNECT_FILE }
+        : { kind: "failed" };
     }
 
     try {

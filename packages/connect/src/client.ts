@@ -7,7 +7,7 @@
  */
 import { Value } from "typebox/value";
 import type { TSchema, Static } from "typebox";
-import { isBrokerOrigin } from "./encoding.ts";
+import { namesBrokerOrigin } from "./encoding.ts";
 import {
   BROKER_ROUTES,
   EnrollResponse,
@@ -201,8 +201,16 @@ async function boundedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+/**
+ * A broker client bound to `options.origin`. Each request's time bound starts before the session
+ * token lookup, so a stalled Clerk cannot hold a call past its timeout or its caller's abort, and a
+ * token that arrives as the bound runs out is not sent. The bound uses timers and listeners rather
+ * than `AbortSignal.timeout`/`any`, which Hermes may lack. The request init is built apart from the
+ * call so runtimes whose `RequestInit` lacks `credentials` (Workers) still accept it; phones and
+ * browsers send no cookies with it.
+ */
 export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
-  if (!isBrokerOrigin(options.origin))
+  if (!namesBrokerOrigin(options.origin))
     throw new Error("The connect origin must be a canonical https:// origin.");
   const send = options.fetch ?? fetch;
   const { origin } = options;
@@ -213,9 +221,6 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
     readonly body?: unknown;
     readonly signal?: AbortSignal;
   }): Promise<{ readonly status: number; readonly body: unknown }> => {
-    // The bound starts before the token lookup, so a stalled Clerk cannot hold a
-    // call past its timeout or its caller's abort. Timers and listeners rather
-    // than AbortSignal.timeout/any, which Hermes may lack.
     const controller = new AbortController();
     const abort = () => controller.abort();
     const timer = setTimeout(abort, REQUEST_TIMEOUT_MS);
@@ -235,13 +240,10 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
 
       if (token === null) throw new BrokerError({ kind: "signed_out" });
 
-      // A token that arrived as the bound ran out is not sent.
       if (controller.signal.aborted) throw new BrokerError({ kind: "network" });
       const headers = new Headers({ accept: "application/json", authorization: `Bearer ${token}` });
 
       if (input.body !== undefined) headers.set("content-type", "application/json");
-      // Built apart from the call so runtimes whose `RequestInit` lacks `credentials`
-      // (Workers) still accept it; phones and browsers send no cookies with it.
       const init = {
         method: input.method,
         headers,

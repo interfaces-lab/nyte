@@ -64,11 +64,7 @@ export interface AuthorizingRequest {
 export function bearerToken(request: AuthorizingRequest): string | undefined {
   const header = request.headers.get("authorization");
 
-  if (header === null) return undefined;
-  const space = header.indexOf(" ");
-
-  if (space === -1 || header.slice(0, space).toLowerCase() !== "bearer") return undefined;
-  const token = header.slice(space + 1).trim();
+  const token = /^bearer (.*)$/isu.exec(header ?? "")?.[1].trim();
 
   return token === "" ? undefined : token;
 }

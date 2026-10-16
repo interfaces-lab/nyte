@@ -1,4 +1,4 @@
-import { isBrokerOrigin } from "./encoding.ts";
+import { namesBrokerOrigin } from "./encoding.ts";
 
 /**
  * What a build needs to offer Nyte account sign-in. A build missing any of it
@@ -22,7 +22,7 @@ const FRONTEND_API =
  * throws during render on a key it cannot parse, so a malformed key turns the
  * account off instead.
  */
-function isPublishableKey(key: string): boolean {
+function parsesAsPublishableKey(key: string): boolean {
   const encoded = PUBLISHABLE_KEY.exec(key)?.[1];
 
   if (encoded === undefined) return false;
@@ -42,7 +42,7 @@ export function parseAccountConfig(input: {
 
   if (publishableKey === undefined || origin === undefined) return undefined;
 
-  if (!isPublishableKey(publishableKey) || !isBrokerOrigin(origin)) return undefined;
+  if (!parsesAsPublishableKey(publishableKey) || !namesBrokerOrigin(origin)) return undefined;
 
   return { publishableKey, origin };
 }

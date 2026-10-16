@@ -15,7 +15,7 @@ import {
   REQUEST_TIMEOUT_MS,
   RESPONSE_LIMIT_BYTES,
   UUID_PATTERN,
-  isBrokerOrigin,
+  namesBrokerOrigin,
   relayAddress,
 } from "../index.ts";
 import type { LinkTransactionRequest, PublicJwk } from "../index.ts";
@@ -86,7 +86,7 @@ export class DesktopBroker {
   private readonly send: BrokerFetch;
 
   constructor(options: DesktopBrokerOptions) {
-    if (!isBrokerOrigin(options.origin))
+    if (!namesBrokerOrigin(options.origin))
       throw new Error("The broker origin is not canonical HTTPS");
     this.origin = options.origin;
     this.send = options.fetch ?? ((input, init) => fetch(input, init));

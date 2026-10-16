@@ -1,5 +1,5 @@
 import process from "node:process";
-import { isBrokerOrigin } from "@nyte-ai/connect";
+import { namesBrokerOrigin } from "@nyte-ai/connect";
 import type { HostConnectConfig } from "@nyte-ai/connect/host";
 
 declare const NYTE_BUILT_CONNECT_ORIGIN: string | undefined;
@@ -15,5 +15,5 @@ export function readConnectConfig(
       : DEFAULT_CONNECT_ORIGIN;
   const origin = env["NYTE_CONNECT_ORIGIN"] ?? built;
 
-  return isBrokerOrigin(origin) ? { origin } : undefined;
+  return namesBrokerOrigin(origin) ? { origin } : undefined;
 }
