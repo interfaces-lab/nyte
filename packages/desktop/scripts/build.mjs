@@ -1,4 +1,4 @@
-// node scripts/build.mjs [--package <electron-builder args>]
+/** Usage: node scripts/build.mjs [--package <electron-builder args>] */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -22,16 +22,18 @@ const desktopRoot = join(import.meta.dirname, "..");
 
 const args = process.argv.slice(2);
 
-const packageIndex = args.indexOf("--package");
+const packageIndex = args.findIndex((argument) => argument === "--package");
 
 const shouldPackage = packageIndex !== -1;
 
 const builderArgs = shouldPackage ? args.slice(packageIndex + 1) : [];
 
-// A terminal gets a live tail of each long stage. Turbo's stream output
-// prefixes lines and ignores cursor movement, so it gets one line per change.
-// Anything else (CI, a piped log) gets every line the tools print, folded per
-// stage on GitHub Actions.
+/**
+ * A terminal gets a live tail of each long stage. Turbo's stream output
+ * prefixes lines and ignores cursor movement, so it gets one line per change.
+ * Anything else (CI, a piped log) gets every line the tools print, folded per
+ * stage on GitHub Actions.
+ */
 const turboStream = process.env.TURBO_HASH !== undefined && process.env.TURBO_IS_TUI === undefined;
 
 const live = process.stdout.isTTY === true && !turboStream;
@@ -40,8 +42,10 @@ const githubActions = process.env.GITHUB_ACTIONS === "true";
 
 let panel;
 
-// Under Turbo, package depends on build, so out/ is already current or was
-// restored from cache. Ad-block lists are not cached and stay in both paths.
+/**
+ * Under Turbo, package depends on build, so out/ is already current or was
+ * restored from cache. Ad-block lists are not cached and stay in both paths.
+ */
 const compiled = shouldPackage && process.env.TURBO_HASH !== undefined;
 
 const stages = [{ title: "Ad-block lists", run: () => node("scripts/build-adblock.mjs") }];
@@ -139,10 +143,12 @@ function node(script, ...rest) {
   return run(process.execPath, [join(desktopRoot, script), ...rest]);
 }
 
+/**
+ * spawn() does not resolve `.cmd` shims; npm_execpath is a native binary, not JS.
+ * Windows additionally refuses to launch a `.cmd` without a shell, so ask for
+ * one there. Every argument is a bare word or relative path, so shell quoting is moot.
+ */
 function pnpm(...rest) {
-  // spawn() does not resolve `.cmd` shims; npm_execpath is a native binary, not JS.
-  // Windows additionally refuses to launch a `.cmd` without a shell, so ask for
-  // one there. Every argument below is a bare word or relative path, so shell quoting is moot.
   return process.platform === "win32" ? run("pnpm.cmd", rest, { shell: true }) : run("pnpm", rest);
 }
 

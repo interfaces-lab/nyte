@@ -1,233 +1,662 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Desktop: subagent reports today vs proposed</title>
-<style>
-  :root {
-    --bg: #ffffff; --page: #f4f4f5; --muted: #f5f5f5; --raised: #fafafa;
-    --border: #e5e5e5; --border-strong: #d4d4d4;
-    --c1: #0a0a0a; --c2: #525252; --c3: #8a8a8a;
-    --accent: #1a85d4; --ok: #18a46c; --warn: #b8900a; --warn-bg: #fdf6dc; --danger: #d52c36; --danger-bg: #fdecea;
-    --sans: Inter, -apple-system, system-ui, sans-serif;
-    --mono: ui-monospace, "SF Mono", Menlo, monospace;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--page); color: var(--c1); font: 14px/1.5 var(--sans); }
-  main { max-width: 1180px; margin: 0 auto; padding: 36px 20px 72px; }
-  h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
-  h2 { font-size: 16px; margin: 40px 0 6px; }
-  .lede { color: var(--c2); max-width: 78ch; margin: 0 0 14px; }
-  code { font: 12.5px var(--mono); background: var(--muted); padding: 1px 5px; border-radius: 4px; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Desktop: subagent reports today vs proposed</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --page: #f4f4f5;
+        --muted: #f5f5f5;
+        --raised: #fafafa;
+        --border: #e5e5e5;
+        --border-strong: #d4d4d4;
+        --c1: #0a0a0a;
+        --c2: #525252;
+        --c3: #8a8a8a;
+        --accent: #1a85d4;
+        --ok: #18a46c;
+        --warn: #b8900a;
+        --warn-bg: #fdf6dc;
+        --danger: #d52c36;
+        --danger-bg: #fdecea;
+        --sans: Inter, -apple-system, system-ui, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--c1);
+        font: 14px/1.5 var(--sans);
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 36px 20px 72px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 6px;
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 40px 0 6px;
+      }
+      .lede {
+        color: var(--c2);
+        max-width: 78ch;
+        margin: 0 0 14px;
+      }
+      code {
+        font: 12.5px var(--mono);
+        background: var(--muted);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
 
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
-  .grid.two { grid-template-columns: repeat(2, 1fr); }
-  .caption { font-size: 12.5px; font-weight: 600; color: var(--c2); margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
-  .badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 99px; }
-  .badge.bad { background: var(--danger-bg); color: var(--danger); }
-  .badge.good { background: #e3f4ea; color: #0f7a4a; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        align-items: start;
+      }
+      .grid.two {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .caption {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--c2);
+        margin: 0 0 8px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .badge {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 7px;
+        border-radius: 99px;
+      }
+      .badge.bad {
+        background: var(--danger-bg);
+        color: var(--danger);
+      }
+      .badge.good {
+        background: #e3f4ea;
+        color: #0f7a4a;
+      }
 
-  .win { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05); overflow: hidden; display: flex; flex-direction: column; min-height: 470px; }
-  .bar { height: 34px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12px; color: var(--c3); }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
-  .bar .t { margin-left: 8px; color: var(--c2); font-weight: 500; }
-  .col { padding: 14px 16px 10px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+      .win {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.04),
+          0 8px 24px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        min-height: 470px;
+      }
+      .bar {
+        height: 34px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px;
+        font-size: 12px;
+        color: var(--c3);
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--border-strong);
+      }
+      .bar .t {
+        margin-left: 8px;
+        color: var(--c2);
+        font-weight: 500;
+      }
+      .col {
+        padding: 14px 16px 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex: 1;
+      }
 
-  .user { align-self: stretch; background: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; font-size: 14.5px; position: relative; }
-  .user .edit { position: absolute; right: 8px; top: 8px; font-size: 11px; color: var(--c3); border: 1px solid var(--border); border-radius: 6px; padding: 0 5px; background: var(--bg); }
-  .user.sticky { box-shadow: 0 6px 10px -8px rgba(0,0,0,.25); }
-  .user.report { border-color: #f3c3bf; background: #fff7f6; }
-  .prose { color: var(--c1); }
-  .muted { color: var(--c3); }
-  .line { display: flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--c2); }
-  .ic { width: 15px; height: 15px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; flex-shrink: 0; }
-  .ic.ok { background: #e3f4ea; color: var(--ok); }
-  .ic.run { border: 2px solid #cfe3f5; border-top-color: var(--accent); }
-  .line b { color: var(--c1); font-weight: 500; }
-  .line .model { color: var(--c3); font-size: 12px; }
-  .shimmer { background: linear-gradient(90deg, var(--c3), var(--c1), var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .user {
+        align-self: stretch;
+        background: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 9px 12px;
+        font-size: 14.5px;
+        position: relative;
+      }
+      .user .edit {
+        position: absolute;
+        right: 8px;
+        top: 8px;
+        font-size: 11px;
+        color: var(--c3);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 0 5px;
+        background: var(--bg);
+      }
+      .user.sticky {
+        box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.25);
+      }
+      .user.report {
+        border-color: #f3c3bf;
+        background: #fff7f6;
+      }
+      .prose {
+        color: var(--c1);
+      }
+      .muted {
+        color: var(--c3);
+      }
+      .line {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13.5px;
+        color: var(--c2);
+      }
+      .ic {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        display: inline-grid;
+        place-items: center;
+        font-size: 10px;
+        flex-shrink: 0;
+      }
+      .ic.ok {
+        background: #e3f4ea;
+        color: var(--ok);
+      }
+      .ic.run {
+        border: 2px solid #cfe3f5;
+        border-top-color: var(--accent);
+      }
+      .line b {
+        color: var(--c1);
+        font-weight: 500;
+      }
+      .line .model {
+        color: var(--c3);
+        font-size: 12px;
+      }
+      .shimmer {
+        background: linear-gradient(90deg, var(--c3), var(--c1), var(--c3));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
 
-  .report { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; background: var(--raised); }
-  .report .head { display: flex; align-items: center; gap: 7px; font-size: 13.5px; }
-  .report .head b { font-weight: 500; }
-  .report .head .open { margin-left: auto; font-size: 12px; color: var(--accent); }
-  .report .body { color: var(--c2); font-size: 13px; margin: 4px 0 0 22px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .report .when { margin: 6px 0 0 22px; font-size: 12px; color: var(--c3); display: flex; align-items: center; gap: 6px; }
-  .report .when.held { color: var(--warn); }
-  .report .when .send { margin-left: auto; font-size: 11.5px; color: var(--c1); border: 1px solid var(--border-strong); border-radius: 6px; padding: 1px 7px; background: var(--bg); }
-  .pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: .6; }
+      .report {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: var(--raised);
+      }
+      .report .head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13.5px;
+      }
+      .report .head b {
+        font-weight: 500;
+      }
+      .report .head .open {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--accent);
+      }
+      .report .body {
+        color: var(--c2);
+        font-size: 13px;
+        margin: 4px 0 0 22px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .report .when {
+        margin: 6px 0 0 22px;
+        font-size: 12px;
+        color: var(--c3);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .report .when.held {
+        color: var(--warn);
+      }
+      .report .when .send {
+        margin-left: auto;
+        font-size: 11.5px;
+        color: var(--c1);
+        border: 1px solid var(--border-strong);
+        border-radius: 6px;
+        padding: 1px 7px;
+        background: var(--bg);
+      }
+      .pulse {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.6;
+      }
 
-  .dock { padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; }
-  .tray { border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
-  .tray .th { padding: 8px 12px; font-size: 13px; color: var(--c1); }
-  .tray .th span { color: var(--c3); }
-  .tray .row { margin: 0 6px 6px; padding: 6px 8px; border-radius: 8px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
-  .tray .row:hover, .tray .row.hl { background: var(--muted); }
-  .tray .row .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tray .row.bad { outline: 1.5px dashed var(--danger); outline-offset: -1px; }
-  .acts { display: flex; gap: 2px; color: var(--c3); font-size: 12px; }
-  .acts i { font-style: normal; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; }
-  .composer { border: 1px solid var(--border-strong); border-radius: 12px; padding: 9px 12px; color: var(--c3); display: flex; justify-content: space-between; }
-  .composer .stop { width: 22px; height: 22px; border-radius: 6px; background: var(--c1); }
+      .dock {
+        padding: 0 12px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .tray {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--bg);
+      }
+      .tray .th {
+        padding: 8px 12px;
+        font-size: 13px;
+        color: var(--c1);
+      }
+      .tray .th span {
+        color: var(--c3);
+      }
+      .tray .row {
+        margin: 0 6px 6px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 13px;
+      }
+      .tray .row:hover,
+      .tray .row.hl {
+        background: var(--muted);
+      }
+      .tray .row .txt {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tray .row.bad {
+        outline: 1.5px dashed var(--danger);
+        outline-offset: -1px;
+      }
+      .acts {
+        display: flex;
+        gap: 2px;
+        color: var(--c3);
+        font-size: 12px;
+      }
+      .acts i {
+        font-style: normal;
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+      }
+      .composer {
+        border: 1px solid var(--border-strong);
+        border-radius: 12px;
+        padding: 9px 12px;
+        color: var(--c3);
+        display: flex;
+        justify-content: space-between;
+      }
+      .composer .stop {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: var(--c1);
+      }
 
-  .note { font-size: 12.5px; color: var(--c2); margin: 8px 2px 0; }
-  .note li { margin: 2px 0; }
-  .flow { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font: 12.5px/1.65 var(--mono); color: var(--c2); overflow-x: auto; white-space: pre; }
-  .flow b { color: var(--c1); font-weight: 600; } .flow .x { color: var(--danger); } .flow .y { color: var(--ok); }
+      .note {
+        font-size: 12.5px;
+        color: var(--c2);
+        margin: 8px 2px 0;
+      }
+      .note li {
+        margin: 2px 0;
+      }
+      .flow {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font: 12.5px/1.65 var(--mono);
+        color: var(--c2);
+        overflow-x: auto;
+        white-space: pre;
+      }
+      .flow b {
+        color: var(--c1);
+        font-weight: 600;
+      }
+      .flow .x {
+        color: var(--danger);
+      }
+      .flow .y {
+        color: var(--ok);
+      }
 
-  @media (max-width: 980px) { .grid, .grid.two { grid-template-columns: 1fr; } }
-</style>
-</head>
-<body>
-<main>
-  <h1>Desktop: a background subagent finishing</h1>
-  <p class="lede">A mockup based on the code in <code>packages/app</code>; it isn't a screenshot. The scenario: the parent started a background subagent <b>Fix lint</b>, kept working, and the child finished while the parent was still mid-step.</p>
+      @media (max-width: 980px) {
+        .grid,
+        .grid.two {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Desktop: a background subagent finishing</h1>
+      <p class="lede">
+        A mockup based on the code in <code>packages/app</code>; it isn't a screenshot. The
+        scenario: the parent started a background subagent <b>Fix lint</b>, kept working, and the
+        child finished while the parent was still mid-step.
+      </p>
 
-  <h2>Today</h2>
-  <div class="grid">
-    <div>
-      <p class="caption">1 · Child finishes, parent still running <span class="badge bad">looks like your message</span></p>
-      <div class="win">
-        <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">Clean up the lint setup</span></div>
-        <div class="col">
-          <div class="user">Clean up the lint setup and fix what's failing</div>
-          <div class="line"><span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span> <span class="muted">· Done</span></div>
-          <div class="prose">While that runs, I'll update the oxlint config to match the new rules…</div>
-          <div class="line"><span class="ic run"></span><span class="shimmer">Editing oxlint.config.ts</span></div>
-        </div>
-        <div class="dock">
-          <div class="tray">
-            <div class="th">1 queued message <span>· Enter to steer</span></div>
-            <div class="row hl bad"><span class="txt">Child s-01JXK4… completed: Fixed all 12 lint errors across 7 files. The remai…</span><span class="acts"><i>✎</i><i>↑</i><i>🗑</i></span></div>
+      <h2>Today</h2>
+      <div class="grid">
+        <div>
+          <p class="caption">
+            1 · Child finishes, parent still running
+            <span class="badge bad">looks like your message</span>
+          </p>
+          <div class="win">
+            <div class="bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span
+              ><span class="t">Clean up the lint setup</span>
+            </div>
+            <div class="col">
+              <div class="user">Clean up the lint setup and fix what's failing</div>
+              <div class="line">
+                <span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span>
+                <span class="muted">· Done</span>
+              </div>
+              <div class="prose">
+                While that runs, I'll update the oxlint config to match the new rules…
+              </div>
+              <div class="line">
+                <span class="ic run"></span><span class="shimmer">Editing oxlint.config.ts</span>
+              </div>
+            </div>
+            <div class="dock">
+              <div class="tray">
+                <div class="th">1 queued message <span>· Enter to steer</span></div>
+                <div class="row hl bad">
+                  <span class="txt"
+                    >Child s-01JXK4… completed: Fixed all 12 lint errors across 7 files. The
+                    remai…</span
+                  ><span class="acts"><i>✎</i><i>↑</i><i>🗑</i></span>
+                </div>
+              </div>
+              <div class="composer">Ask a follow-up… <span class="stop"></span></div>
+            </div>
           </div>
-          <div class="composer">Ask a follow-up… <span class="stop"></span></div>
+          <ul class="note">
+            <li>
+              It's listed as <em>your</em> queued message, showing the raw
+              <code>Child &lt;id&gt; completed:</code> header.
+            </li>
+            <li>
+              Edit, "Add to next response" and Remove all work on it, so you can rewrite or delete
+              the subagent's result.
+            </li>
+            <li>Enter on an empty composer "steers" with it.</li>
+          </ul>
         </div>
-      </div>
-      <ul class="note">
-        <li>It's listed as <em>your</em> queued message, showing the raw <code>Child &lt;id&gt; completed:</code> header.</li>
-        <li>Edit, "Add to next response" and Remove all work on it, so you can rewrite or delete the subagent's result.</li>
-        <li>Enter on an empty composer "steers" with it.</li>
-      </ul>
-    </div>
 
-    <div>
-      <p class="caption">2 · Parent reaches its boundary <span class="badge bad">user bubble</span></p>
-      <div class="win">
-        <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">Clean up the lint setup</span></div>
-        <div class="col">
-          <div class="line"><span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span> <span class="muted">· Done</span></div>
-          <div class="prose">Updated the oxlint config to match the new rules.</div>
-          <div class="user report sticky"><span class="edit">Edit</span>Child s-01JXK4… completed:<br><br>Fixed all 12 lint errors across 7 files. The remaining warning in <code>sidebar.tsx</code> is a false positive…</div>
-          <div class="prose">The subagent fixed all 12 errors. One warning remains in <code>sidebar.tsx</code>…</div>
-        </div>
-        <div class="dock"><div class="composer">Ask a follow-up… <span class="stop"></span></div></div>
-      </div>
-      <ul class="note">
-        <li><code>TurnPartView</code> draws every <code>user</code> message as a <code>UserMessageView</code>, reports included.</li>
-        <li>So the report is a prompt bubble: editable (branching from it), and it <b>sticks to the top</b> as you scroll.</li>
-      </ul>
-    </div>
-
-    <div>
-      <p class="caption">3 · Parent was stopped <span class="badge bad">silently stuck</span></p>
-      <div class="win">
-        <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">Clean up the lint setup</span></div>
-        <div class="col">
-          <div class="line"><span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span> <span class="muted">· Done</span></div>
-          <div class="prose">While that runs, I'll update the oxlint config…</div>
-          <div class="line" style="color:var(--c3)">Stopped</div>
-          <div class="user" style="opacity:.6">Child s-01JXK4… completed:<br><br>Fixed all 12 lint errors across 7 files…</div>
-        </div>
-        <div class="dock"><div class="composer">Ask a follow-up…</div></div>
-      </div>
-      <ul class="note">
-        <li>Idle head, so the report counts as "landing" and draws dimmed under the transcript with the tooltip "Lands at the next response".</li>
-        <li>Core won't start a run from it after a stop, so it never lands until you send something, and nothing says so.</li>
-      </ul>
-    </div>
-  </div>
-
-  <h2>Proposed: the report is the subagent's, it shows at once, and it says when Nyte reads it</h2>
-  <div class="grid">
-    <div>
-      <p class="caption">1 · Child finishes, parent still running <span class="badge good">instant</span></p>
-      <div class="win">
-        <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">Clean up the lint setup</span></div>
-        <div class="col">
-          <div class="user">Clean up the lint setup and fix what's failing</div>
-          <div class="line"><span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span> <span class="muted">· Done</span></div>
-          <div class="prose">While that runs, I'll update the oxlint config to match the new rules…</div>
-          <div class="line"><span class="ic run"></span><span class="shimmer">Editing oxlint.config.ts</span></div>
-          <div class="report">
-            <div class="head"><span class="ic ok">✓</span><b>Fix lint</b> finished <span class="open">Open</span></div>
-            <div class="body">Fixed all 12 lint errors across 7 files. The remaining warning in sidebar.tsx is a false positive from the a11y rule…</div>
-            <div class="when"><span class="pulse"></span>Reaches Nyte after this step</div>
+        <div>
+          <p class="caption">
+            2 · Parent reaches its boundary <span class="badge bad">user bubble</span>
+          </p>
+          <div class="win">
+            <div class="bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span
+              ><span class="t">Clean up the lint setup</span>
+            </div>
+            <div class="col">
+              <div class="line">
+                <span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span>
+                <span class="muted">· Done</span>
+              </div>
+              <div class="prose">Updated the oxlint config to match the new rules.</div>
+              <div class="user report sticky">
+                <span class="edit">Edit</span>Child s-01JXK4… completed:<br /><br />Fixed all 12
+                lint errors across 7 files. The remaining warning in <code>sidebar.tsx</code> is a
+                false positive…
+              </div>
+              <div class="prose">
+                The subagent fixed all 12 errors. One warning remains in <code>sidebar.tsx</code>…
+              </div>
+            </div>
+            <div class="dock">
+              <div class="composer">Ask a follow-up… <span class="stop"></span></div>
+            </div>
           </div>
+          <ul class="note">
+            <li>
+              <code>TurnPartView</code> draws every <code>user</code> message as a
+              <code>UserMessageView</code>, reports included.
+            </li>
+            <li>
+              So the report is a prompt bubble: editable (branching from it), and it
+              <b>sticks to the top</b> as you scroll.
+            </li>
+          </ul>
         </div>
-        <div class="dock"><div class="composer">Ask a follow-up… <span class="stop"></span></div></div>
-      </div>
-      <ul class="note">
-        <li>The tray only holds things <em>you</em> typed; reports are filtered out of <code>queued</code>.</li>
-        <li>The block names the task, not the raw id. "Open" opens the child in the subagent tray.</li>
-      </ul>
-    </div>
 
-    <div>
-      <p class="caption">2 · Parent reaches its boundary <span class="badge good">same block</span></p>
-      <div class="win">
-        <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">Clean up the lint setup</span></div>
-        <div class="col">
-          <div class="line"><span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span> <span class="muted">· Done</span></div>
-          <div class="prose">Updated the oxlint config to match the new rules.</div>
-          <div class="report">
-            <div class="head"><span class="ic ok">✓</span><b>Fix lint</b> finished <span class="open">Open</span></div>
-            <div class="body">Fixed all 12 lint errors across 7 files. The remaining warning in sidebar.tsx is a false positive from the a11y rule…</div>
+        <div>
+          <p class="caption">
+            3 · Parent was stopped <span class="badge bad">silently stuck</span>
+          </p>
+          <div class="win">
+            <div class="bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span
+              ><span class="t">Clean up the lint setup</span>
+            </div>
+            <div class="col">
+              <div class="line">
+                <span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span>
+                <span class="muted">· Done</span>
+              </div>
+              <div class="prose">While that runs, I'll update the oxlint config…</div>
+              <div class="line" style="color: var(--c3)">Stopped</div>
+              <div class="user" style="opacity: 0.6">
+                Child s-01JXK4… completed:<br /><br />Fixed all 12 lint errors across 7 files…
+              </div>
+            </div>
+            <div class="dock"><div class="composer">Ask a follow-up…</div></div>
           </div>
-          <div class="prose">The subagent fixed all 12 errors. One warning remains in <code>sidebar.tsx</code>…</div>
+          <ul class="note">
+            <li>
+              Idle head, so the report counts as "landing" and draws dimmed under the transcript
+              with the tooltip "Lands at the next response".
+            </li>
+            <li>
+              Core won't start a run from it after a stop, so it never lands until you send
+              something, and nothing says so.
+            </li>
+          </ul>
         </div>
-        <div class="dock"><div class="composer">Ask a follow-up…</div></div>
       </div>
-      <ul class="note">
-        <li>The status line goes away and the block stays in place. It's never a user bubble: not sticky, not editable.</li>
-      </ul>
-    </div>
 
-    <div>
-      <p class="caption">3 · Parent was stopped <span class="badge good">says so</span></p>
-      <div class="win">
-        <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="t">Clean up the lint setup</span></div>
-        <div class="col">
-          <div class="line"><span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span> <span class="muted">· Done</span></div>
-          <div class="prose">While that runs, I'll update the oxlint config…</div>
-          <div class="line" style="color:var(--c3)">Stopped</div>
-          <div class="report">
-            <div class="head"><span class="ic ok">✓</span><b>Fix lint</b> finished <span class="open">Open</span></div>
-            <div class="body">Fixed all 12 lint errors across 7 files…</div>
-            <div class="when held">Held: Nyte reads it with your next message</div>
+      <h2>
+        Proposed: the report is the subagent's, it shows at once, and it says when Nyte reads it
+      </h2>
+      <div class="grid">
+        <div>
+          <p class="caption">
+            1 · Child finishes, parent still running <span class="badge good">instant</span>
+          </p>
+          <div class="win">
+            <div class="bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span
+              ><span class="t">Clean up the lint setup</span>
+            </div>
+            <div class="col">
+              <div class="user">Clean up the lint setup and fix what's failing</div>
+              <div class="line">
+                <span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span>
+                <span class="muted">· Done</span>
+              </div>
+              <div class="prose">
+                While that runs, I'll update the oxlint config to match the new rules…
+              </div>
+              <div class="line">
+                <span class="ic run"></span><span class="shimmer">Editing oxlint.config.ts</span>
+              </div>
+              <div class="report">
+                <div class="head">
+                  <span class="ic ok">✓</span><b>Fix lint</b> finished
+                  <span class="open">Open</span>
+                </div>
+                <div class="body">
+                  Fixed all 12 lint errors across 7 files. The remaining warning in sidebar.tsx is a
+                  false positive from the a11y rule…
+                </div>
+                <div class="when"><span class="pulse"></span>Reaches Nyte after this step</div>
+              </div>
+            </div>
+            <div class="dock">
+              <div class="composer">Ask a follow-up… <span class="stop"></span></div>
+            </div>
           </div>
+          <ul class="note">
+            <li>
+              The tray only holds things <em>you</em> typed; reports are filtered out of
+              <code>queued</code>.
+            </li>
+            <li>
+              The block names the task, not the raw id. "Open" opens the child in the subagent tray.
+            </li>
+          </ul>
         </div>
-        <div class="dock"><div class="composer">Ask a follow-up…</div></div>
+
+        <div>
+          <p class="caption">
+            2 · Parent reaches its boundary <span class="badge good">same block</span>
+          </p>
+          <div class="win">
+            <div class="bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span
+              ><span class="t">Clean up the lint setup</span>
+            </div>
+            <div class="col">
+              <div class="line">
+                <span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span>
+                <span class="muted">· Done</span>
+              </div>
+              <div class="prose">Updated the oxlint config to match the new rules.</div>
+              <div class="report">
+                <div class="head">
+                  <span class="ic ok">✓</span><b>Fix lint</b> finished
+                  <span class="open">Open</span>
+                </div>
+                <div class="body">
+                  Fixed all 12 lint errors across 7 files. The remaining warning in sidebar.tsx is a
+                  false positive from the a11y rule…
+                </div>
+              </div>
+              <div class="prose">
+                The subagent fixed all 12 errors. One warning remains in <code>sidebar.tsx</code>…
+              </div>
+            </div>
+            <div class="dock"><div class="composer">Ask a follow-up…</div></div>
+          </div>
+          <ul class="note">
+            <li>
+              The status line goes away and the block stays in place. It's never a user bubble: not
+              sticky, not editable.
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <p class="caption">3 · Parent was stopped <span class="badge good">says so</span></p>
+          <div class="win">
+            <div class="bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span
+              ><span class="t">Clean up the lint setup</span>
+            </div>
+            <div class="col">
+              <div class="line">
+                <span class="ic ok">✓</span><b>Fix lint</b> <span class="model">Sonnet 4.5</span>
+                <span class="muted">· Done</span>
+              </div>
+              <div class="prose">While that runs, I'll update the oxlint config…</div>
+              <div class="line" style="color: var(--c3)">Stopped</div>
+              <div class="report">
+                <div class="head">
+                  <span class="ic ok">✓</span><b>Fix lint</b> finished
+                  <span class="open">Open</span>
+                </div>
+                <div class="body">Fixed all 12 lint errors across 7 files…</div>
+                <div class="when held">Held: Nyte reads it with your next message</div>
+              </div>
+            </div>
+            <div class="dock"><div class="composer">Ask a follow-up…</div></div>
+          </div>
+          <ul class="note">
+            <li>
+              Warning tone, because only you can move it. The words match the TUI's "held · send a
+              message to deliver".
+            </li>
+          </ul>
+        </div>
       </div>
-      <ul class="note">
-        <li>Warning tone, because only you can move it. The words match the TUI's "held · send a message to deliver".</li>
-      </ul>
-    </div>
-  </div>
 
-  <h2>What would change</h2>
-<div class="flow">packages/app/src/conversation/<b>transcript-rows.ts</b>   conversationMessages
-  queued:   pending &amp;&amp; not joined          <span class="x">→ includes reports</span>
-            <span class="y">+ &amp;&amp; source is "user" | "action"   → reports never reach the tray</span>
-  landing:  <span class="y">+ pending reports, at once, while running too</span>
+      <h2>What would change</h2>
+      <div class="flow">
+        packages/app/src/conversation/<b>transcript-rows.ts</b> conversationMessages queued: pending
+        &amp;&amp; not joined <span class="x">→ includes reports</span>
+        <span class="y"
+          >+ &amp;&amp; source is "user" | "action" → reports never reach the tray</span
+        >
+        landing: <span class="y">+ pending reports, at once, while running too</span>
 
-packages/app/src/conversation/<b>turn-view.tsx</b>   TurnPartView
-  user message → UserMessageView              <span class="x">→ reports become prompt bubbles</span>
-  <span class="y">+ source child | job → &lt;ReportBlock&gt;  (title from the task, clamped answer, Open, "when" line)</span>
+        packages/app/src/conversation/<b>turn-view.tsx</b> TurnPartView user message →
+        UserMessageView <span class="x">→ reports become prompt bubbles</span>
+        <span class="y"
+          >+ source child | job → &lt;ReportBlock&gt; (title from the task, clamped answer, Open,
+          "when" line)</span
+        >
 
-packages/app/src/conversation/<b>timeline.tsx</b>   "landing" row
-  <span class="y">+ report → &lt;ReportBlock pending&gt; instead of a dimmed UserMessageView</span></div>
-  <p class="lede" style="margin-top:10px">Not decided yet: whether the block sits in the turn's flow (as shown) or folds into the <b>Fix lint</b> card as its result. Folding it in is tidier, but the card is where the subagent <em>started</em>, which can be far above.</p>
-</main>
-</body>
+        packages/app/src/conversation/<b>timeline.tsx</b> "landing" row
+        <span class="y"
+          >+ report → &lt;ReportBlock pending&gt; instead of a dimmed UserMessageView</span
+        >
+      </div>
+      <p class="lede" style="margin-top: 10px">
+        Not decided yet: whether the block sits in the turn's flow (as shown) or folds into the
+        <b>Fix lint</b> card as its result. Folding it in is tidier, but the card is where the
+        subagent <em>started</em>, which can be far above.
+      </p>
+    </main>
+  </body>
 </html>

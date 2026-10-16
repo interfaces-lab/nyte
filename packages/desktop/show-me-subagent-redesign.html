@@ -1,111 +1,359 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Subagent UI: redesign</title>
-<style>
-  :root {
-    --bg: #fff; --page: #f4f4f5; --muted: #f5f5f5; --border: #e5e5e5;
-    --c1: #0a0a0a; --c2: #525252; --c3: #8a8a8a; --accent: #1a85d4;
-    --ok: #18a46c; --warn: #b8900a; --danger: #d52c36;
-    --sans: Inter, -apple-system, system-ui, sans-serif;
-    --mono: ui-monospace, "SF Mono", Menlo, monospace;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--page); color: var(--c1); font: 14px/1.5 var(--sans); }
-  main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 72px; }
-  h1 { font-size: 22px; margin: 0 0 6px; }
-  h2 { font-size: 16px; margin: 36px 0 8px; }
-  h3 { font-size: 13px; margin: 0 0 6px; color: var(--c2); }
-  p, li { color: var(--c2); max-width: 84ch; }
-  code { font: 12.5px var(--mono); background: var(--muted); padding: 1px 5px; border-radius: 4px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
-  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: start; }
-  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-  .card ul { margin: 6px 0 0; padding-left: 18px; } .card li { font-size: 13px; margin: 2px 0; }
-  pre.term { margin: 0; background: #111; color: #ddd; border-radius: 10px; padding: 12px 14px;
-    font: 12.5px/1.5 var(--mono); white-space: pre; overflow-x: auto; }
-  .term .d { color: #8a8a8a; } .term .g { color: #4ec98a; } .term .b { color: #6cb6ff; }
-  .term .w { color: #e3b341; } .term .r { color: #f47067; } .term .h { color: #fff; font-weight: 600; }
-  .win { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
-    display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
-  .user { background: var(--muted); border: 1px solid var(--border); border-radius: 12px; padding: 8px 12px; }
-  .group { display: flex; flex-direction: column; gap: 6px; }
-  .ghead { color: var(--c2); font-size: 13.5px; }
-  .row { display: flex; gap: 8px; align-items: flex-start; }
-  .ind { width: 20px; display: flex; justify-content: center; padding-top: 7px; flex-shrink: 0; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c3); }
-  .dot.ok { background: var(--c3); } .dot.unread { background: var(--accent); } .dot.err { background: var(--danger); }
-  .spin { width: 9px; height: 9px; border: 1.5px solid #cfe3f5; border-top-color: var(--accent); border-radius: 50%; }
-  .col { display: flex; flex-direction: column; min-width: 0; }
-  .title { color: var(--c1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .model { color: var(--c3); margin-left: 6px; }
-  .status { color: var(--c2); font-size: 13.5px; }
-  .shimmer { background: linear-gradient(90deg, var(--c3), var(--c1), var(--c3)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .line { color: var(--c2); font-size: 13.5px; display: flex; gap: 6px; align-items: center; }
-  .line b { color: var(--c1); font-weight: 400; text-decoration: underline dotted var(--c3); }
-  .warn { color: var(--warn); }
-  table { border-collapse: collapse; width: 100%; background: var(--bg); border: 1px solid var(--border); }
-  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
-  th { background: var(--muted); color: var(--c2); font-weight: 600; }
-  .no { color: var(--danger); } .yes { color: var(--ok); }
-</style>
-</head>
-<body>
-<main>
-  <h1>Subagent UI: redesign</h1>
-  <p>Built from three references: the Cursor IDE bundle, the Cursor CLI bundle
-  (<code>~/.local/share/cursor-agent</code>), and Nyte's old UI on <code>main</code>. All three draw a subagent the
-  same way: <b>one compact row per child, and that row is the result.</b> None of them puts the child's answer in
-  the transcript. That answer is for the parent model.</p>
+  <head>
+    <meta charset="utf-8" />
+    <title>Subagent UI: redesign</title>
+    <style>
+      :root {
+        --bg: #fff;
+        --page: #f4f4f5;
+        --muted: #f5f5f5;
+        --border: #e5e5e5;
+        --c1: #0a0a0a;
+        --c2: #525252;
+        --c3: #8a8a8a;
+        --accent: #1a85d4;
+        --ok: #18a46c;
+        --warn: #b8900a;
+        --danger: #d52c36;
+        --sans: Inter, -apple-system, system-ui, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--c1);
+        font: 14px/1.5 var(--sans);
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 32px 20px 72px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 6px;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 36px 0 8px;
+      }
+      h3 {
+        font-size: 13px;
+        margin: 0 0 6px;
+        color: var(--c2);
+      }
+      p,
+      li {
+        color: var(--c2);
+        max-width: 84ch;
+      }
+      code {
+        font: 12.5px var(--mono);
+        background: var(--muted);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      .grid3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .card {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+      }
+      .card ul {
+        margin: 6px 0 0;
+        padding-left: 18px;
+      }
+      .card li {
+        font-size: 13px;
+        margin: 2px 0;
+      }
+      pre.term {
+        margin: 0;
+        background: #111;
+        color: #ddd;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font: 12.5px/1.5 var(--mono);
+        white-space: pre;
+        overflow-x: auto;
+      }
+      .term .d {
+        color: #8a8a8a;
+      }
+      .term .g {
+        color: #4ec98a;
+      }
+      .term .b {
+        color: #6cb6ff;
+      }
+      .term .w {
+        color: #e3b341;
+      }
+      .term .r {
+        color: #f47067;
+      }
+      .term .h {
+        color: #fff;
+        font-weight: 600;
+      }
+      .win {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        font-size: 14px;
+      }
+      .user {
+        background: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 8px 12px;
+      }
+      .group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .ghead {
+        color: var(--c2);
+        font-size: 13.5px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .ind {
+        width: 20px;
+        display: flex;
+        justify-content: center;
+        padding-top: 7px;
+        flex-shrink: 0;
+      }
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--c3);
+      }
+      .dot.ok {
+        background: var(--c3);
+      }
+      .dot.unread {
+        background: var(--accent);
+      }
+      .dot.err {
+        background: var(--danger);
+      }
+      .spin {
+        width: 9px;
+        height: 9px;
+        border: 1.5px solid #cfe3f5;
+        border-top-color: var(--accent);
+        border-radius: 50%;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .title {
+        color: var(--c1);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .model {
+        color: var(--c3);
+        margin-left: 6px;
+      }
+      .status {
+        color: var(--c2);
+        font-size: 13.5px;
+      }
+      .shimmer {
+        background: linear-gradient(90deg, var(--c3), var(--c1), var(--c3));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .line {
+        color: var(--c2);
+        font-size: 13.5px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .line b {
+        color: var(--c1);
+        font-weight: 400;
+        text-decoration: underline dotted var(--c3);
+      }
+      .warn {
+        color: var(--warn);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        background: var(--bg);
+        border: 1px solid var(--border);
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+        vertical-align: top;
+      }
+      th {
+        background: var(--muted);
+        color: var(--c2);
+        font-weight: 600;
+      }
+      .no {
+        color: var(--danger);
+      }
+      .yes {
+        color: var(--ok);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Subagent UI: redesign</h1>
+      <p>
+        Built from three references: the Cursor IDE bundle, the Cursor CLI bundle
+        (<code>~/.local/share/cursor-agent</code>), and Nyte's old UI on <code>main</code>. All
+        three draw a subagent the same way:
+        <b>one compact row per child, and that row is the result.</b> None of them puts the child's
+        answer in the transcript. That answer is for the parent model.
+      </p>
 
-  <h2>What the references do</h2>
-  <div class="grid3">
-    <div class="card">
-      <h3>Cursor IDE (SubagentTaskCard)</h3>
-      <ul>
-        <li>One row per Task: 20px indicator (a 3×3 dot spinner while running, otherwise a 6px dot), the title, a dim model label, then one status line.</li>
-        <li>The status line is the child's current step ("Reading foo.ts", "Thinking", the first 50 characters of its reply) with a shimmer. Each text stays at least 1.2s.</li>
-        <li>Finished rows show "Completed", "Stopped" or "Stopped with error", with an unread dot. <b>The result isn't shown inline.</b></li>
-        <li>Click or Enter opens the child's chat; Alt or Cmd opens it beside the current one. The child's own children appear as nested rows.</li>
-        <li>14px/22px, regular weight, sans. No token count or elapsed time.</li>
-      </ul>
-    </div>
-    <div class="card">
-      <h3>Cursor CLI (the screenshots)</h3>
-      <ul>
-        <li>Task calls from one step are <b>grouped</b> under "Running N agents… (k done)". When all finish: "N agents completed" or "N completed, X cancelled".</li>
-        <li>Each agent shows a title (up to 40 characters) and a status: the child's last tool call ("Finding apps/**/package.json"), "✓ Done" or "✗ Cancelled".</li>
-        <li>The tasks panel ("Tasks (1 task)") shows each task's prompt and elapsed time. Enter replaces the chat with the child's transcript; Esc goes back.</li>
-        <li>When a background task finishes, the transcript gets <b>one line</b>: "Finished &lt;title&gt;".</li>
-      </ul>
-    </div>
-    <div class="card">
-      <h3>Nyte main (old TUI and desktop)</h3>
-      <ul>
-        <li>The create card <i>is</i> the child: its glyph follows the child's run, there's one fixed-height activity row, and the model is shown in dim text.</li>
-        <li>The child's id was known as soon as the call started (<code>childOf(head, run, call)</code>), so the card could be clicked immediately.</li>
-        <li><b>No report row.</b> "A background result answers the model, not the user." The card turning ✓ is the result.</li>
-        <li><code>await</code> is never drawn; the child's card already shows that state. send, read and stop are one line each.</li>
-        <li>Depth lives in the inspector or tray: elapsed time, model, the full transcript, and next/previous task.</li>
-      </ul>
-    </div>
-  </div>
+      <h2>What the references do</h2>
+      <div class="grid3">
+        <div class="card">
+          <h3>Cursor IDE (SubagentTaskCard)</h3>
+          <ul>
+            <li>
+              One row per Task: 20px indicator (a 3×3 dot spinner while running, otherwise a 6px
+              dot), the title, a dim model label, then one status line.
+            </li>
+            <li>
+              The status line is the child's current step ("Reading foo.ts", "Thinking", the first
+              50 characters of its reply) with a shimmer. Each text stays at least 1.2s.
+            </li>
+            <li>
+              Finished rows show "Completed", "Stopped" or "Stopped with error", with an unread dot.
+              <b>The result isn't shown inline.</b>
+            </li>
+            <li>
+              Click or Enter opens the child's chat; Alt or Cmd opens it beside the current one. The
+              child's own children appear as nested rows.
+            </li>
+            <li>14px/22px, regular weight, sans. No token count or elapsed time.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Cursor CLI (the screenshots)</h3>
+          <ul>
+            <li>
+              Task calls from one step are <b>grouped</b> under "Running N agents… (k done)". When
+              all finish: "N agents completed" or "N completed, X cancelled".
+            </li>
+            <li>
+              Each agent shows a title (up to 40 characters) and a status: the child's last tool
+              call ("Finding apps/**/package.json"), "✓ Done" or "✗ Cancelled".
+            </li>
+            <li>
+              The tasks panel ("Tasks (1 task)") shows each task's prompt and elapsed time. Enter
+              replaces the chat with the child's transcript; Esc goes back.
+            </li>
+            <li>
+              When a background task finishes, the transcript gets <b>one line</b>: "Finished
+              &lt;title&gt;".
+            </li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Nyte main (old TUI and desktop)</h3>
+          <ul>
+            <li>
+              The create card <i>is</i> the child: its glyph follows the child's run, there's one
+              fixed-height activity row, and the model is shown in dim text.
+            </li>
+            <li>
+              The child's id was known as soon as the call started (<code
+                >childOf(head, run, call)</code
+              >), so the card could be clicked immediately.
+            </li>
+            <li>
+              <b>No report row.</b> "A background result answers the model, not the user." The card
+              turning ✓ is the result.
+            </li>
+            <li>
+              <code>await</code> is never drawn; the child's card already shows that state. send,
+              read and stop are one line each.
+            </li>
+            <li>
+              Depth lives in the inspector or tray: elapsed time, model, the full transcript, and
+              next/previous task.
+            </li>
+          </ul>
+        </div>
+      </div>
 
-  <h2>Rules taken from them</h2>
-  <ol>
-    <li><b>The child's row is the result.</b> It shows the indicator, title, model, and one line: the current step, or how it ended.</li>
-    <li><b>The child's answer never goes in the transcript.</b> To read it, open the child (TUI inspector, desktop tray).</li>
-    <li><b>Parallel children share one block:</b> "Running 5 agents… (1 done)", then "5 agents completed".</li>
-    <li><b>A background finish is one line, not a message.</b> Core wakes the parent with the report: a running parent takes it at its next step, and an idle parent whose last run completed starts a new run. The line names why the parent started talking again. The only case to call out is "held": the parent stopped or failed, so the report waits for your next message.</li>
-    <li><b>Don't draw what the card already shows.</b> <code>await</code> disappears; send, read and stop stay as one line each.</li>
-  </ol>
+      <h2>Rules taken from them</h2>
+      <ol>
+        <li>
+          <b>The child's row is the result.</b> It shows the indicator, title, model, and one line:
+          the current step, or how it ended.
+        </li>
+        <li>
+          <b>The child's answer never goes in the transcript.</b> To read it, open the child (TUI
+          inspector, desktop tray).
+        </li>
+        <li>
+          <b>Parallel children share one block:</b> "Running 5 agents… (1 done)", then "5 agents
+          completed".
+        </li>
+        <li>
+          <b>A background finish is one line, not a message.</b> Core wakes the parent with the
+          report: a running parent takes it at its next step, and an idle parent whose last run
+          completed starts a new run. The line names why the parent started talking again. The only
+          case to call out is "held": the parent stopped or failed, so the report waits for your
+          next message.
+        </li>
+        <li>
+          <b>Don't draw what the card already shows.</b> <code>await</code> disappears; send, read
+          and stop stay as one line each.
+        </li>
+      </ol>
 
-  <h2>TUI</h2>
-  <div class="grid">
-    <div>
-      <h3>Running: five tracers in parallel</h3>
-<pre class="term"> I'll launch five read-only tracers in parallel.
+      <h2>TUI</h2>
+      <div class="grid">
+        <div>
+          <h3>Running: five tracers in parallel</h3>
+          <pre class="term"> I'll launch five read-only tracers in parallel.
 
  <span class="h">Running 5 agents…</span> <span class="d">(1 done)</span>
  <span class="b">●</span> Trace 1: session activation  <span class="d">sonnet-4.5 · high</span>
@@ -118,10 +366,12 @@
    <span class="w">needs your answer</span>
 
  <span class="g">✓</span> sent to Trace 2: resources &amp; catalog</pre>
-    </div>
-    <div>
-      <h3>Done</h3>
-<pre class="term"> <span class="h">4 agents completed</span> <span class="d">· 1 failed</span>
+        </div>
+        <div>
+          <h3>Done</h3>
+          <pre
+            class="term"
+          > <span class="h">4 agents completed</span> <span class="d">· 1 failed</span>
  <span class="g">✓</span> Trace 1: session activation  <span class="d">sonnet-4.5 · high</span>
    <span class="d">The activation path splits in two places…</span>
  <span class="g">✓</span> Trace 2: resources &amp; catalog  <span class="d">sonnet-4.5 · high</span>
@@ -132,70 +382,150 @@
    <span class="r">model overloaded</span>
 
  I found 10 problems across the traces. …</pre>
-    </div>
-    <div>
-      <h3>A background child finishes while the parent works</h3>
-<pre class="term"> <span class="b">●</span> Editing oxlint.config.ts
+        </div>
+        <div>
+          <h3>A background child finishes while the parent works</h3>
+          <pre class="term"> <span class="b">●</span> Editing oxlint.config.ts
 
  <span class="g">↳</span> Finished Trace 2: resources &amp; catalog   <span class="d">↓ view</span></pre>
-    </div>
-    <div>
-      <h3>…and the parent was stopped (the only case needing you)</h3>
-<pre class="term"> <span class="r">✗</span> Stopped
+        </div>
+        <div>
+          <h3>…and the parent was stopped (the only case needing you)</h3>
+          <pre class="term"> <span class="r">✗</span> Stopped
 
  <span class="g">↳</span> Finished Trace 2: resources &amp; catalog  <span class="w">held · send a message to deliver</span></pre>
-    </div>
-  </div>
-  <p>Each agent is the old <code>daniel/schema</code> card, unchanged: <code>● title  model · thinking</code>, then one
-  dim activity row, one line high and cut off if too long. That row is the child's newest step: a tool call,
-  the first line of its last text, or its failure. The header line is the one thing taken from the Cursor CLI.
-  Enter or a click on any agent row opens the inspector. That's the existing <code>/tasks</code> inspector with
-  the child's full transcript, elapsed time and model. The tasks line ("● 2 running in background · ↓ view")
-  stays as it is.</p>
-
-  <h2>Desktop</h2>
-  <div class="grid">
-    <div>
-      <h3>Running</h3>
-      <div class="win">
-        <div class="user">trace everything</div>
-        <div class="group">
-          <div class="ghead">Running 5 agents… (1 done)</div>
-          <div class="row"><span class="ind"><span class="spin"></span></span><span class="col"><span class="title">Trace 1: session activation<span class="model">Sonnet 4.5</span></span><span class="status shimmer">Reading src/session.ts</span></span></div>
-          <div class="row"><span class="ind"><span class="spin"></span></span><span class="col"><span class="title">Trace 2: resources &amp; catalog<span class="model">Sonnet 4.5</span></span><span class="status shimmer">Searching publishCatalog</span></span></div>
-          <div class="row"><span class="ind"><span class="dot unread"></span></span><span class="col"><span class="title">Trace 3: TUI host thread<span class="model">Sonnet 4.5</span></span><span class="status">Completed</span></span></div>
         </div>
       </div>
-    </div>
-    <div>
-      <h3>Background finish, parent stopped</h3>
-      <div class="win">
-        <div class="line">Stopped</div>
-        <div class="line">Finished <b>Trace 2: resources &amp; catalog</b> <span class="warn">· Held until your next message</span></div>
-        <div class="status">No user bubble, nothing in the queue tray, nothing to edit. The name opens the child in the tray.</div>
+      <p>
+        Each agent is the old <code>daniel/schema</code> card, unchanged:
+        <code>● title model · thinking</code>, then one dim activity row, one line high and cut off
+        if too long. That row is the child's newest step: a tool call, the first line of its last
+        text, or its failure. The header line is the one thing taken from the Cursor CLI. Enter or a
+        click on any agent row opens the inspector. That's the existing
+        <code>/tasks</code> inspector with the child's full transcript, elapsed time and model. The
+        tasks line ("● 2 running in background · ↓ view") stays as it is.
+      </p>
+
+      <h2>Desktop</h2>
+      <div class="grid">
+        <div>
+          <h3>Running</h3>
+          <div class="win">
+            <div class="user">trace everything</div>
+            <div class="group">
+              <div class="ghead">Running 5 agents… (1 done)</div>
+              <div class="row">
+                <span class="ind"><span class="spin"></span></span
+                ><span class="col"
+                  ><span class="title"
+                    >Trace 1: session activation<span class="model">Sonnet 4.5</span></span
+                  ><span class="status shimmer">Reading src/session.ts</span></span
+                >
+              </div>
+              <div class="row">
+                <span class="ind"><span class="spin"></span></span
+                ><span class="col"
+                  ><span class="title"
+                    >Trace 2: resources &amp; catalog<span class="model">Sonnet 4.5</span></span
+                  ><span class="status shimmer">Searching publishCatalog</span></span
+                >
+              </div>
+              <div class="row">
+                <span class="ind"><span class="dot unread"></span></span
+                ><span class="col"
+                  ><span class="title"
+                    >Trace 3: TUI host thread<span class="model">Sonnet 4.5</span></span
+                  ><span class="status">Completed</span></span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <h3>Background finish, parent stopped</h3>
+          <div class="win">
+            <div class="line">Stopped</div>
+            <div class="line">
+              Finished <b>Trace 2: resources &amp; catalog</b>
+              <span class="warn">· Held until your next message</span>
+            </div>
+            <div class="status">
+              No user bubble, nothing in the queue tray, nothing to edit. The name opens the child
+              in the tray.
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-  <p>The card itself is the existing <code>SubagentCallView</code> (indicator, title, model, status line, nested rows);
-  it already matches Cursor's card. The only new thing on desktop is grouping parallel calls under one header.</p>
+      <p>
+        The card itself is the existing <code>SubagentCallView</code> (indicator, title, model,
+        status line, nested rows); it already matches Cursor's card. The only new thing on desktop
+        is grouping parallel calls under one header.
+      </p>
 
-  <h2>Changes against the current branch</h2>
-  <table>
-    <tr><th></th><th>Current branch</th><th>Redesign</th></tr>
-    <tr><td>task/create card</td><td>Now linked through <code>SessionInfo.call</code> (done)</td><td>Same. Before the child is listed it shows "Starting up" (main could open it at once because it derived the child id from the call)</td></tr>
-    <tr><td>Parallel calls</td><td>One card each, separated by blank rows</td><td>One block: "Running N agents… (k done)" → "N agents completed"</td></tr>
-    <tr><td>await</td><td>"● waiting on Trace 2"</td><td class="yes">Not drawn (as on main)</td></tr>
-    <tr><td>Report row</td><td class="no">Title, an answer preview cut in the middle, and a delivery label every time</td><td class="yes">One line "↳ Finished &lt;title&gt;"; the answer is one click away; "held" only when you have to act</td></tr>
-    <tr><td>Desktop report</td><td class="no">An editable user bubble, and a queued message while the run is live</td><td class="yes">The same one line</td></tr>
-    <tr><td>Deleted</td><td colspan="2">The report body preview and its <code>head</code> cut, the "reaches the model after …" variants (only "held" stays), await lines, the desktop provisional children, and the regex on <code>Child … completed:</code></td></tr>
-  </table>
+      <h2>Changes against the current branch</h2>
+      <table>
+        <tr>
+          <th></th>
+          <th>Current branch</th>
+          <th>Redesign</th>
+        </tr>
+        <tr>
+          <td>task/create card</td>
+          <td>Now linked through <code>SessionInfo.call</code> (done)</td>
+          <td>
+            Same. Before the child is listed it shows "Starting up" (main could open it at once
+            because it derived the child id from the call)
+          </td>
+        </tr>
+        <tr>
+          <td>Parallel calls</td>
+          <td>One card each, separated by blank rows</td>
+          <td>One block: "Running N agents… (k done)" → "N agents completed"</td>
+        </tr>
+        <tr>
+          <td>await</td>
+          <td>"● waiting on Trace 2"</td>
+          <td class="yes">Not drawn (as on main)</td>
+        </tr>
+        <tr>
+          <td>Report row</td>
+          <td class="no">
+            Title, an answer preview cut in the middle, and a delivery label every time
+          </td>
+          <td class="yes">
+            One line "↳ Finished &lt;title&gt;"; the answer is one click away; "held" only when you
+            have to act
+          </td>
+        </tr>
+        <tr>
+          <td>Desktop report</td>
+          <td class="no">An editable user bubble, and a queued message while the run is live</td>
+          <td class="yes">The same one line</td>
+        </tr>
+        <tr>
+          <td>Deleted</td>
+          <td colspan="2">
+            The report body preview and its <code>head</code> cut, the "reaches the model after …"
+            variants (only "held" stays), await lines, the desktop provisional children, and the
+            regex on <code>Child … completed:</code>
+          </td>
+        </tr>
+      </table>
 
-  <h2>Open decisions</h2>
-  <ol>
-    <li><s>Linking.</s> Settled: <code>SessionInfo.call</code>. On desktop the existing card and the Agents tray pill already open the tray.</li>
-    <li><s>Model on the TUI row.</s> Settled: keep it on the title line, dim, as the old card did.</li>
-    <li><s>Landed report line.</s> Settled: keep "↳ Finished X". It explains the turn the parent starts without a prompt from you.</li>
-  </ol>
-</main>
-</body>
+      <h2>Open decisions</h2>
+      <ol>
+        <li>
+          <s>Linking.</s> Settled: <code>SessionInfo.call</code>. On desktop the existing card and
+          the Agents tray pill already open the tray.
+        </li>
+        <li>
+          <s>Model on the TUI row.</s> Settled: keep it on the title line, dim, as the old card did.
+        </li>
+        <li>
+          <s>Landed report line.</s> Settled: keep "↳ Finished X". It explains the turn the parent
+          starts without a prompt from you.
+        </li>
+      </ol>
+    </main>
+  </body>
 </html>

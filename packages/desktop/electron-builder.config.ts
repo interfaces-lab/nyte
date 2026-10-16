@@ -21,13 +21,17 @@ const mac = {
 export default {
   appId: updateTest ? "ai.nyte.desktop.update-test" : "ai.nyte.desktop",
   productName,
-  // Workspace name is `@nyte-ai/desktop`. electron-builder would otherwise emit
-  // `@nyte-aidesktop`, which AppImage and NSIS reject as an executable name.
+  /**
+   * Workspace name is `@nyte-ai/desktop`. electron-builder would otherwise emit
+   * `@nyte-aidesktop`, which AppImage and NSIS reject as an executable name.
+   */
   executableName: productName,
   extraMetadata: { name: productName, productName },
   artifactName: "Nyte-${version}-${os}-${arch}.${ext}",
-  // Clerk's OAuth callback returns here. macOS reads it from Info.plist and Linux from
-  // the .desktop entry; Windows registers it at run time.
+  /**
+   * Clerk's OAuth callback returns here. macOS reads it from Info.plist and Linux from
+   * the .desktop entry; Windows registers it at run time.
+   */
   protocols: {
     name: productName,
     schemes: [updateTest ? ACCOUNT_SCHEMES.updateTest : ACCOUNT_SCHEMES.production],
