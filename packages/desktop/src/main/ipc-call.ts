@@ -1,6 +1,7 @@
 import type { CallReplyFor, CallRequest } from "../shared/ipc.ts";
 import { ipcResult } from "./errors.ts";
-import type { DesktopHost, HostWindow } from "./host.ts";
+import type { DesktopHost } from "./host.ts";
+import type { HostWindow } from "./host-window.ts";
 import { decodeCallInput, decodeCallRequest } from "./ipc-inputs.ts";
 
 /** Main-frame authorization happens before this request boundary. */

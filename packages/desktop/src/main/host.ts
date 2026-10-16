@@ -24,6 +24,7 @@ import type {
 } from "@nyte-ai/app/bridge.ts";
 import type { CallInput, CallOutput, CallPath } from "../shared/ipc.ts";
 import type { BrowserPanels } from "./browser.ts";
+import type { HostWindow } from "./host-window.ts";
 import { desktopBrowserPlugin } from "./browser-tools.ts";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import {
@@ -82,8 +83,6 @@ export interface DesktopHostDependencies {
   /** Native folder picker; resolves undefined on cancel. */
   pickFolder(window: HostWindow): Promise<string | undefined>;
 }
-
-export type HostWindow = number;
 
 /** One handler per renderer operation, so a missing or misshapen one is a type error. */
 type CallHandlers = {

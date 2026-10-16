@@ -12,7 +12,7 @@ import type { BrowserHistoryStore } from "./browser-history.ts";
 import type { BrowserHolder, BrowserOwner, BrowserRect } from "./browser-agent.ts";
 import { surfaceSecurity } from "./browser-policy.ts";
 import type { SurfaceRuntime } from "./browser-runtime.ts";
-import type { HostWindow } from "./host.ts";
+import type { HostWindow } from "./host-window.ts";
 
 /** Per-workspace guest session: its own cookie jar and storage. */
 export interface GuestSession {

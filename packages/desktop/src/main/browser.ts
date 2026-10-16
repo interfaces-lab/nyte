@@ -23,7 +23,7 @@ import { DEFAULT_BOUNDS, hasViewHolder, placeSurface, surfaceState } from "./bro
 import type { BrowserSurfacesDependencies, Surface, SurfaceRegistry } from "./browser-surface.ts";
 import { wireSurface } from "./browser-surface-events.ts";
 import { ExpectedHostError } from "./errors.ts";
-import type { HostWindow } from "./host.ts";
+import type { HostWindow } from "./host-window.ts";
 
 /**
  * How many idle agent-only hidden pages stay warm. Beyond this the longest-idle one
