@@ -1,5 +1,5 @@
 import { lineDiff } from "@nyte-ai/core";
-import { asId, writePatch } from "@nyte-ai/schema";
+import { writePatch } from "@nyte-ai/schema";
 import type { FileStatus, LineStat, PatchEntry } from "@nyte-ai/schema";
 import { sha256 } from "../hash.ts";
 import type { Ran } from "./command.ts";
