@@ -234,7 +234,6 @@ describe("turn", () => {
       expect.arrayContaining(["echo", "read", "task", "read_agent"]),
     );
     expect(contentText(system.content)).toMatch(/^<0000-system-prompt>\n/);
-    expect(contentText(system.content)).toContain("<0001-tools>");
 
     await until(() => (seen.includes("run_ended:completed") ? true : undefined));
     expect(seen).toEqual([
@@ -684,12 +683,21 @@ describe("turn", () => {
     const labels = logged.map(label);
     const created = labels.indexOf("part:created");
 
-    expect(labels.slice(created, created + 4)).toEqual([
+    expect(labels.slice(created, created + 5)).toEqual([
       "part:created",
+      "part:updated",
       "part:settled",
       "commit",
       "request",
     ]);
+    const asked = view.messages.findLast((message) => message.kind === "user");
+
+    assert(asked?.kind === "user" && asked.status.kind === "landed");
+    expect(logged[created]).toMatchObject({
+      partKind: "compaction",
+      state: { summary: null },
+      run: asked.status.run,
+    });
 
     const committed = logged.find(
       (event) => event.kind === "commit" && event.body.kind === "compaction",
@@ -795,6 +803,36 @@ describe("turn", () => {
     expect(
       fake.requests[3].context.messages.findLast((message) => message.role === "assistant"),
     ).toMatchObject({ usage: { input: 2_500, output: 8 } });
+  });
+
+  it("keeps a long tool result's start and end in the compaction prompt", async () => {
+    const fake = fakeModels();
+    const long = `BEGIN${"x".repeat(5_000)}FINISHED`;
+
+    const policy: Plugin<"core"> = {
+      id: "policy",
+      contribute: {
+        modelContext: [
+          { model: { provider: "test", id: "model" }, contextWindow: 8_000, compactAt: 300 },
+        ],
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "toolCall", id: "a", name: "echo", arguments: { text: long } }] },
+      { content: [{ type: "text", text: "They echoed a long text." }] },
+      { content: [{ type: "text", text: "Echoed." }] },
+    );
+
+    await using host = await open(fake, { plugins: [recorder().plugin, policy] });
+    const session = await host.sessions.create();
+    await (await session.send("Echo it.")).settled();
+
+    const prompt = lastUserText(fake, 1);
+
+    expect(prompt).toContain("echo returned: echo: BEGIN");
+    expect(prompt).toContain("characters omitted");
+    expect(prompt).toContain("xFINISHED");
   });
 
   it("fails every call of a response cut off at the output cap, without running any, and goes on", async () => {

@@ -544,7 +544,7 @@ function failedRequest(message: string): Prepared<TurnRequest> {
 
 async function resumed(context: Turn, run: RunView): Promise<AttemptState> {
   const { kernel, session, head } = context;
-  await failLeftoverCompactions(kernel, session, head);
+  await failLeftoverCompactions(kernel, session, head, run.id);
 
   const orphans = await withFold(kernel, session, (state) =>
     [...state.parts.values()].flatMap((part) =>
