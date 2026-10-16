@@ -108,8 +108,12 @@ test("the browser tools drive the session's page through the desktop agent", asy
     { content: [{ type: "text", text: "done" }] },
   );
 
-  const session = await host.sessions.create({ name: "browse" });
-  await (await session.send("Open the page and sign in")).settled();
+  const { session, receipt } = await host.sessions.start({
+    name: "browse",
+    content: "Open the page and sign in",
+  });
+
+  await receipt.settled();
   const results = toolResults(await session.view());
 
   const owner: BrowserOwner = { kind: "home" };

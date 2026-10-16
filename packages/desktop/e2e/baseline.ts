@@ -7,6 +7,7 @@ import { dev } from "@nyte-ai/core";
 import { idSchema } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
+import type { SendReceipt } from "@nyte-ai/sdk";
 import { E2E_MODEL, e2eModels } from "../src/main/fixtures/e2e-models.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -95,17 +96,27 @@ async function seed(home: string): Promise<Manifest> {
     await host.models.setDefault(E2E_MODEL);
     const sessions: Record<string, SessionId> = {};
 
+    const settle = async (fixture: Fixture, text: string, receipt: SendReceipt): Promise<void> => {
+      const outcome = await receipt.settled();
+
+      if (outcome.kind !== "completed")
+        throw new Error(`Seeding ${FIXTURES[fixture]} failed on ${text}: ${outcome.kind}`);
+    };
+
     for (const fixture of FIXTURE_NAMES) {
-      const session = await host.sessions.create({ name: FIXTURES[fixture] });
+      const [first, ...rest] = TRANSCRIPTS[fixture];
+
+      if (first === undefined) throw new Error(`${FIXTURES[fixture]} has no first message`);
+
+      const { session, receipt } = await host.sessions.start({
+        name: FIXTURES[fixture],
+        content: first,
+      });
+
       sessions[fixture] = session.id;
+      await settle(fixture, first, receipt);
 
-      for (const text of TRANSCRIPTS[fixture]) {
-        const receipt = await session.send(text);
-        const outcome = await receipt.settled();
-
-        if (outcome.kind !== "completed")
-          throw new Error(`Seeding ${FIXTURES[fixture]} failed on ${text}: ${outcome.kind}`);
-      }
+      for (const text of rest) await settle(fixture, text, await session.send(text));
     }
 
     return { sessions };

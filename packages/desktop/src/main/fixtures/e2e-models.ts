@@ -1,6 +1,5 @@
 import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
 import type { Reply } from "@nyte-ai/host/bench";
-import type { ToolResultMessage } from "@nyte-ai/schema/model";
 import type { ModelRef } from "@nyte-ai/schema";
 
 export const E2E_PROVIDER = "e2e";
@@ -76,13 +75,13 @@ export function scriptedReply(text: string): Reply {
             type: "toolCall",
             id: "agent-core",
             name: "create",
-            arguments: { title: "Map the core" },
+            arguments: { title: "Map the core", prompt: "Trace part 1." },
           },
           {
             type: "toolCall",
             id: "agent-app",
             name: "create",
-            arguments: { title: "Map the app" },
+            arguments: { title: "Map the app", prompt: "Trace part 2." },
           },
         ],
       };
@@ -102,30 +101,6 @@ export function scriptedReply(text: string): Reply {
   }
 }
 
-function delegationStep(results: readonly ToolResultMessage[]): Reply {
-  const created = results.flatMap((result) => {
-    const text = result.content
-      .flatMap((part) => (part.type === "text" ? [part.text] : []))
-      .join("");
-
-    const id = /^Created subagent (\S+)\.$/u.exec(text)?.[1];
-
-    return result.toolName === "create" && id !== undefined ? [id] : [];
-  });
-
-  if (created.length > 0)
-    return {
-      content: created.map((session, index) => ({
-        type: "toolCall",
-        id: `agent-send-${String(index)}`,
-        name: "send",
-        arguments: { session, prompt: `Trace part ${String(index + 1)}.` },
-      })),
-    };
-
-  return { content: [{ type: "text", text: "Both agents are working in the background." }] };
-}
-
 export function e2eModels() {
   return fakeModels({
     id: E2E_PROVIDER,
@@ -134,15 +109,8 @@ export function e2eModels() {
     fallback: (request): Reply => {
       const text = lastUserText(request);
 
-      const answered = request.context.messages.findLastIndex(
-        (message) => message.role !== "toolResult",
-      );
-
-      const results = request.context.messages
-        .slice(answered + 1)
-        .flatMap((message) => (message.role === "toolResult" ? [message] : []));
-
-      if (results.length > 0) return delegationStep(results);
+      if (request.context.messages.at(-1)?.role === "toolResult")
+        return { content: [{ type: "text", text: "Both agents are working in the background." }] };
 
       const title = titleReply(request);
 

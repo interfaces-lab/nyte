@@ -70,7 +70,7 @@ async function localServer(): Promise<Local> {
         );
 
         return;
-      case "/sessions.create":
+      case "/sessions.start":
         response.writeHead(302, { location: "http://127.0.0.1:1/" });
         response.end();
 
@@ -230,7 +230,7 @@ test("a relayed request reaches only the listener's port, and only allowlisted h
   });
 
   assert.equal(
-    (await relay.exchange({ method: "POST", path: "/sessions.create" })).status,
+    (await relay.exchange({ method: "POST", path: "/sessions.start" })).status,
     503,
     "a redirect is never followed or passed on",
   );

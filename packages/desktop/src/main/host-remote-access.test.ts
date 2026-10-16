@@ -33,7 +33,7 @@ async function serving(): Promise<{
 test("a client on the remote address reads and drives the desktop's own host", async () => {
   const { made, address, token } = await serving();
   const host = await made.host.host();
-  const mine = await host.sessions.create({ name: "from the Mac" });
+  const { session: mine } = await host.sessions.start({ name: "from the Mac", content: "Hi" });
 
   const connection = await sdk.connect({
     url: address,
@@ -45,7 +45,12 @@ test("a client on the remote address reads and drives the desktop's own host", a
   const { items } = await connection.sessions.list();
 
   assert.ok(items.some((session) => session.id === mine.sessionId));
-  const theirs = await connection.sessions.create({ name: "from the phone" });
+
+  const { session: theirs } = await connection.sessions.start({
+    name: "from the phone",
+    content: "Hi",
+  });
+
   assert.ok((await host.sessions.list()).items.some((session) => session.id === theirs.sessionId));
 });
 
