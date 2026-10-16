@@ -26,6 +26,8 @@ import { waitFor } from "./waits.ts";
 
 const TAIL_BYTES = 4096;
 
+const SCROLLBACK_BYTES = 256 * 1024;
+
 const READER_BYTES = 64 * 1024;
 
 const REPORT_BYTES = 4096;
@@ -467,10 +469,18 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
   });
 }
 
+/** A job's output for its readers: each reader opens on the last 256 KiB (the scrollback a re-attached terminal shows) and then follows it live, a gap where it fell 64 KiB behind; the view's tail is the last 4 KiB as text. */
 function createOutput(): JobOutput {
-  type Reader = { frames: OutputFrame[]; size: number; missed: boolean; wake: (() => void) | null };
+  type Reader = {
+    replay: OutputFrame[];
+    frames: OutputFrame[];
+    size: number;
+    missed: boolean;
+    wake: (() => void) | null;
+  };
 
-  let kept = new Uint8Array(0);
+  let kept: Uint8Array[] = [];
+  let size = 0;
   let cut = false;
   let exit: { readonly code: number | null } | null = null;
   const readers = new Set<Reader>();
@@ -481,17 +491,28 @@ function createOutput(): JobOutput {
     resolve?.();
   };
 
+  const last = (bytes: number): Uint8Array => {
+    const out = new Uint8Array(Math.min(bytes, size));
+    let end = out.byteLength;
+
+    for (let index = kept.length - 1; index >= 0 && end > 0; index -= 1) {
+      const chunk = kept[index] ?? new Uint8Array(0);
+      const take = chunk.subarray(Math.max(0, chunk.byteLength - end));
+      end -= take.byteLength;
+      out.set(take, end);
+    }
+
+    return out;
+  };
+
   return {
     open() {
-      const reader: Reader = { frames: [], size: 0, missed: false, wake: null };
+      const replay: OutputFrame[] = cut ? [{ kind: "gap" }] : [];
+
+      if (size > 0) replay.push({ kind: "bytes", data: last(size) });
+
+      const reader: Reader = { replay, frames: [], size: 0, missed: false, wake: null };
       let closed = false;
-
-      if (cut) reader.frames.push({ kind: "gap" });
-
-      if (kept.byteLength > 0) {
-        reader.frames.push({ kind: "bytes", data: kept.slice() });
-        reader.size += kept.byteLength;
-      }
 
       if (exit === null) readers.add(reader);
       else reader.frames.push({ kind: "exit", code: exit.code });
@@ -499,6 +520,9 @@ function createOutput(): JobOutput {
       return {
         async next() {
           for (;;) {
+            const replayed = reader.replay.shift();
+
+            if (replayed !== undefined) return { done: false, value: replayed };
             const frame = reader.frames.shift();
 
             if (frame !== undefined) {
@@ -522,12 +546,24 @@ function createOutput(): JobOutput {
       };
     },
     push(bytes) {
-      const joined = new Uint8Array(kept.byteLength + bytes.byteLength);
-      joined.set(kept);
-      joined.set(bytes, kept.byteLength);
+      kept.push(bytes);
+      size += bytes.byteLength;
 
-      if (joined.byteLength > TAIL_BYTES) cut = true;
-      kept = joined.slice(Math.max(0, joined.byteLength - TAIL_BYTES));
+      while (size > SCROLLBACK_BYTES) {
+        const first = kept[0];
+
+        if (first === undefined) break;
+        const over = size - SCROLLBACK_BYTES;
+        cut = true;
+
+        if (first.byteLength <= over) {
+          kept.shift();
+          size -= first.byteLength;
+        } else {
+          kept[0] = first.subarray(over);
+          size -= over;
+        }
+      }
 
       for (const reader of readers) {
         if (reader.size + bytes.byteLength > READER_BYTES) {
@@ -545,7 +581,8 @@ function createOutput(): JobOutput {
     },
     gap() {
       cut = true;
-      kept = new Uint8Array(0);
+      kept = [];
+      size = 0;
 
       for (const reader of readers) reader.missed = true;
     },
@@ -564,10 +601,9 @@ function createOutput(): JobOutput {
       for (const reader of ended) wake(reader);
     },
     tail() {
-      const text = new TextDecoder().decode(kept);
-      const first = text.indexOf("\n");
+      const text = new TextDecoder().decode(last(TAIL_BYTES));
 
-      return cut && first >= 0 && first < text.length - 1 ? text.slice(first + 1) : text;
+      return cut || size > TAIL_BYTES ? text.replace(/^[^\n]*\n(?=[\s\S])/, "") : text;
     },
   };
 }

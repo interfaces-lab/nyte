@@ -195,6 +195,37 @@ describe("jobs", () => {
     ]);
   });
 
+  it("opens a late reader on the last 256 KiB of output, after a gap for what it dropped, and keeps the view's tail at 4 KiB", async () => {
+    const { host, provider, workspace } = await world();
+    const jobs = host.workspace(workspace).jobs;
+    const job = await jobs.start({ command: "pnpm dev" });
+    const process = await started(provider.processes, 1);
+    const line = new TextEncoder().encode(`${"x".repeat(1023)}\n`);
+
+    for (let index = 0; index < 300; index += 1) process.emit(line);
+    process.emit("ready\n");
+    const view = await until(async () => {
+      const [current] = await jobs.list();
+
+      return current?.tail.endsWith("ready\n") === true ? current : undefined;
+    });
+    const reader = job.output()[Symbol.asyncIterator]();
+    const gap = await reader.next();
+    const replay = await reader.next();
+
+    expect(gap.value).toEqual({ kind: "gap" });
+    assert(!replay.done && replay.value.kind === "bytes");
+    expect(replay.value.data.byteLength).toBe(256 * 1024);
+    expect(new TextDecoder().decode(replay.value.data).endsWith("x\nready\n")).toBe(true);
+    expect(view.tail.length).toBeLessThanOrEqual(4096);
+    expect(view.tail.startsWith("x")).toBe(true);
+    process.emit("live\n");
+    const live = await reader.next();
+    assert(!live.done && live.value.kind === "bytes");
+    expect(new TextDecoder().decode(live.value.data)).toBe("live\n");
+    await reader.return?.();
+  });
+
   it("gives a slow reader a gap instead of stalling the process", async () => {
     const { host, provider, workspace } = await world();
     const job = await host.workspace(workspace).jobs.start({ command: "yes" });
