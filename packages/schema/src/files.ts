@@ -53,12 +53,26 @@ export const ScanFrameType = Type.Union([
 
 export type ScanFrame = Decoded<typeof ScanFrameType>;
 
+export const SearchInputType = Type.Object({
+  query: Type.String(),
+  limit: Type.Optional(Type.Number()),
+  caseSensitive: Type.Optional(Type.Boolean()),
+  wholeWord: Type.Optional(Type.Boolean()),
+  regex: Type.Optional(Type.Boolean()),
+  include: Type.Optional(Type.Array(Type.String())),
+  exclude: Type.Optional(Type.Array(Type.String())),
+  drafts: Type.Optional(Type.Array(Type.Object({ path: Type.String(), contents: Type.String() }))),
+});
+
+export type SearchInput = Decoded<typeof SearchInputType>;
+
 export const SearchFrameType = Type.Union([
   Type.Object({
     kind: Type.Literal("match"),
     path: Type.String(),
     line: Type.Number(),
     column: Type.Number(),
+    length: Type.Number(),
     text: Type.String(),
   }),
   Type.Object({ kind: Type.Literal("complete") }),

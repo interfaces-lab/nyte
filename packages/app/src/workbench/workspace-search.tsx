@@ -53,12 +53,12 @@ type SearchState =
 
 function searchResult(
   root: string,
-  query: string,
   found: {
     readonly matches: readonly {
       readonly path: string;
       readonly line: number;
       readonly column: number;
+      readonly length: number;
       readonly text: string;
     }[];
     readonly truncated: boolean;
@@ -71,7 +71,7 @@ function searchResult(
     matches.push({
       line: match.line,
       column: match.column,
-      length: query.length,
+      length: match.length,
       snippet: match.text,
       snippetColumn: 1,
     });
@@ -277,7 +277,7 @@ export function WorkspaceSearch({
           ? { kind: "error", message: search.error.message }
           : search.data === undefined
             ? { kind: "loading" }
-            : { kind: "ready", result: searchResult(root, debouncedInput.query, search.data) };
+            : { kind: "ready", result: searchResult(root, search.data) };
 
   return (
     <section aria-label="Workspace search" {...props(text.base, styles.panel)}>

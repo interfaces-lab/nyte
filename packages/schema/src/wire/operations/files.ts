@@ -6,6 +6,7 @@ import {
   FormatOutcomeSchema,
   ScanFrameSchema,
   SearchFrameSchema,
+  SearchInputType,
   WriteOutcomeSchema,
 } from "../../files.ts";
 import { BlobIdSchema, idSchema } from "../../ids.ts";
@@ -118,7 +119,12 @@ export const FILE_OPERATIONS = {
     input: QUERY_INPUT,
     output: wireSchema(Type.Array(FileEntryViewType)),
   },
-  "files.search": { ...FILES, kind: "stream", input: QUERY_INPUT, output: SearchFrameSchema },
+  "files.search": {
+    ...FILES,
+    kind: "stream",
+    input: wireObject({ ...WORKSPACE, ...SearchInputType.properties }),
+    output: SearchFrameSchema,
+  },
   "files.watch": {
     ...FILES,
     kind: "watch",

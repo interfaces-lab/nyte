@@ -25,6 +25,7 @@ import type {
   PatchSet,
   RunId,
   SearchFrame,
+  SearchInput,
   SessionId,
   SessionInfo,
   SessionView,
@@ -568,7 +569,7 @@ export function useWorkspaceFile(path: string | undefined) {
   });
 }
 
-async function searchWorkspace(input: { readonly query: string; readonly limit?: number }) {
+async function searchWorkspace(input: SearchInput) {
   const matches: Extract<SearchFrame, { readonly kind: "match" }>[] = [];
   let truncated = false;
 
@@ -581,10 +582,7 @@ async function searchWorkspace(input: { readonly query: string; readonly limit?:
   return { matches, truncated };
 }
 
-export function useWorkspaceSearch(
-  input: { readonly query: string; readonly limit?: number } | undefined,
-  enabled = true,
-) {
+export function useWorkspaceSearch(input: SearchInput | undefined, enabled = true) {
   const host = useHostState();
   const workspace = host.data?.workspace?.id;
 
@@ -596,6 +594,7 @@ export function useWorkspaceSearch(
       return searchWorkspace(input);
     },
     enabled: enabled && workspace !== undefined && input !== undefined && input.query.length > 0,
+    retry: false,
     staleTime: 0,
     refetchOnMount: true,
     gcTime: 0,

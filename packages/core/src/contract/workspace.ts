@@ -53,6 +53,7 @@ import type {
   RunId,
   ScanFrame,
   SearchFrame,
+  SearchInput,
   SessionId,
   SnapshotId,
   StopOutcome,
@@ -304,7 +305,7 @@ export interface FilesApi {
     readonly query: string;
     readonly limit?: number;
   }): Promise<readonly FileEntryView[]>;
-  search(input: { readonly query: string; readonly limit?: number }): AsyncIterable<SearchFrame>;
+  search(input: SearchInput): AsyncIterable<SearchFrame>;
   watch(input?: { readonly paths?: readonly string[] }): AsyncIterable<readonly FileEvent[]>;
   upload(source: AsyncIterable<Uint8Array>): Promise<BlobId>;
 }

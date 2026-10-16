@@ -79,7 +79,7 @@ export const workspaceCases = {
   ),
   SearchFrameSchema: sample(
     SearchFrameSchema,
-    { kind: "match", path: "a.ts", line: 1, column: 2, text: "x" },
+    { kind: "match", path: "a.ts", line: 1, column: 2, length: 1, text: "x" },
     { kind: "truncated" },
   ),
   FormatOutcomeSchema: sample(

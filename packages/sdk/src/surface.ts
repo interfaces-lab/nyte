@@ -218,6 +218,7 @@ export type {
   SdkErrorCode,
   Schema,
   SearchFrame,
+  SearchInput,
   SendOptions,
   Seq,
   SessionCatalogView,

@@ -424,8 +424,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await files(id)).scan({ directory, ignored }),
     "files.find": async ({ workspace: id, query, limit }) =>
       (await files(id)).find({ query, limit }),
-    "files.search": async ({ workspace: id, query, limit }) =>
-      (await files(id)).search({ query, limit }),
+    "files.search": async ({ workspace: id, ...input }) => (await files(id)).search(input),
     "files.watch": async ({ workspace: id, paths }) => (await files(id)).watch({ paths }),
     "files.upload": async ({ workspace: id }, { body }) =>
       (await files(id)).upload(readChunks(body)),

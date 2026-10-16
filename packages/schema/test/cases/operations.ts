@@ -525,8 +525,17 @@ export const operations = {
   "files.find output": operation(OPERATIONS["files.find"].output, [fileEntry], [{ path: "a.ts" }]),
   "files.search input": operation(
     OPERATIONS["files.search"].input,
-    { workspace, query: "TODO" },
-    { query: "TODO" },
+    {
+      workspace,
+      query: "TODO",
+      caseSensitive: true,
+      wholeWord: true,
+      regex: true,
+      include: ["src/**"],
+      exclude: ["**/*.test.*"],
+      drafts: [{ path: "a.ts", contents: "TODO" }],
+    },
+    { workspace, query: "TODO", include: "src/**" },
   ),
   "files.watch input": operation(
     OPERATIONS["files.watch"].input,
