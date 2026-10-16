@@ -67,7 +67,7 @@ export function fakeModels(): FakeModels {
   };
 
   const respond = (options: SimpleStreamOptions | undefined): AssistantMessageEventStream =>
-    streamOf(model, queue.shift() ?? null, options);
+    replyStream(model, queue.shift() ?? null, options);
 
   const provider: Provider = {
     id: "test",
@@ -161,8 +161,10 @@ export function localProvider(
         async write(path, contents) {
           minted += 1;
           const version = asId<"file-version">(`v${minted}`);
+
           const bytes =
             typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+
           disk.set(`${root}/${path}`, { contents: bytes, version });
 
           return { kind: "saved", version };
@@ -303,6 +305,7 @@ function echo(command: string): Job {
         { kind: "exit", code: 0 },
       ]
     : [{ kind: "exit", code: 127 }];
+
   const end: JobEnd = {
     kind: "exited",
     code: command.startsWith("echo ") ? 0 : 127,
@@ -416,7 +419,7 @@ function refusingFiles(): FilesApi {
   };
 }
 
-function streamOf(
+function replyStream(
   model: Model<Api>,
   text: string | null,
   options: SimpleStreamOptions | undefined,

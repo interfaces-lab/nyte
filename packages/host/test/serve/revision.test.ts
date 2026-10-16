@@ -49,6 +49,7 @@ describe("head revisions across instances", () => {
       [Symbol.asyncIterator]();
 
     const frame = await frames.next();
+
     const edited = await session.send("From A, edited.", {
       replace: sent.message,
       expect: view.revision ?? undefined,

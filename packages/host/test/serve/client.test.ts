@@ -43,6 +43,7 @@ describe("transport", () => {
     const owner = transport("Bearer owner");
     fake.reply("Hello.");
     const { session } = decodeOutput("sessions.create", await owner.invoke("sessions.create", {}));
+
     const { receipt } = decodeOutput(
       "head.send",
       await owner.invoke("head.send", { session, head: "main", content: "Hi." }),
@@ -116,6 +117,7 @@ describe("transport", () => {
   it("uploads bytes, reads them back with their version, and streams frames", async () => {
     const { transport, workspace } = await served();
     const owner = transport("Bearer owner");
+
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new TextEncoder().encode("hel"));
@@ -191,10 +193,12 @@ describe("transport", () => {
     }
 
     expect(rest.at(-1)).toEqual({ kind: "done" });
+
     const accounts = decodeOutput(
       "models.accounts",
       await owner.invoke("models.accounts", { provider: "test" }),
     );
+
     const [account] = accounts;
     assert(account !== undefined);
 
@@ -297,6 +301,7 @@ describe("transport", () => {
   it("reads job output as framed octets whatever Content-Type the answer carries (ADV G8)", async () => {
     const { owner } = await served();
     const channels = createStreamChannels();
+
     const frames = async function* () {
       yield { kind: "bytes", data: new TextEncoder().encode("hi") } as const;
       yield { kind: "exit", code: 0 } as const;
@@ -307,11 +312,13 @@ describe("transport", () => {
       headers: async () => ({}),
       fetch: async (input, init) => {
         const request = new Request(input, init);
+
         if (new URL(request.url).pathname === `/${CHANNEL_PATH}`)
           return channels.open(owner, request.signal);
         const channel = request.headers.get(CHANNEL_HEADER);
         const stream = request.headers.get(STREAM_HEADER);
         assert(channel !== null && stream !== null);
+
         return channels.start(
           owner,
           channel,

@@ -44,7 +44,7 @@ async function until(response: Response, done: (frame: Json) => boolean): Promis
   return frames;
 }
 
-function kindOf(frame: Json): string | null {
+function readKind(frame: Json): string | null {
   return typeof frame === "object" &&
     frame !== null &&
     "kind" in frame &&
@@ -73,6 +73,7 @@ async function sent(handler: (request: Request) => Promise<Response>) {
     "sessions.create",
     await (await post(handler, "sessions.create", {})).json(),
   );
+
   const receipt = decodeOutput(
     "head.send",
     await (
@@ -147,6 +148,7 @@ describe("handler", () => {
             : opened.refs.set(updates),
       },
     }));
+
     const { handler, fake } = await served({ store });
     const lines: string[] = [];
     const sink = dev.sink;
@@ -172,10 +174,12 @@ describe("handler", () => {
 
   it("closes a raw byte body and its provider reader when the request aborts (ADV G P5)", async () => {
     const reader = endless();
+
     const store = changed((opened) => ({
       ...opened,
       objects: { ...opened.objects, blob: async () => reader },
     }));
+
     const { handler } = await served({ store });
     const controller = new AbortController();
     const response = await post(handler, "connection.blob", { id: "b1" }, {}, controller.signal);
@@ -217,6 +221,7 @@ describe("handler", () => {
       });
 
       const controller = new AbortController();
+
       const init = withInputHeader(
         name === "files.upload" ? { workspace } : { workspace, path: "AFTER_CLOSE" },
         input,
@@ -250,11 +255,14 @@ describe("handler", () => {
 
   it("ends a stream with its abort's SdkError, so a client revoked here reads unauthenticated (ADV C N2)", async () => {
     const { handler } = await served();
+
     const { session } = decodeOutput(
       "sessions.create",
       await (await post(handler, "sessions.create", {})).json(),
     );
+
     const controller = new AbortController();
+
     const response = await post(
       handler,
       "head.watch",
@@ -299,6 +307,7 @@ describe("handler", () => {
 
   it("denies a participant an owner row and answers each failure at its status", async () => {
     const { handler, workspace } = await served({ maxBodyBytes: 64 });
+
     const denied = await post(
       handler,
       "git.stage",
@@ -337,6 +346,7 @@ describe("handler", () => {
 
   it("answers CORS for the allowed origins and denies the rest", async () => {
     const { handler } = await served();
+
     const preflight = (origin: string) =>
       handler(
         new Request("http://host.test/sessions.list", {
@@ -344,6 +354,7 @@ describe("handler", () => {
           headers: { Origin: origin },
         }),
       );
+
     const allowed = await preflight("https://app.nyte.dev");
     const refused = await preflight("https://evil.example");
     const listed = await post(handler, "sessions.list", {}, { Origin: "https://app.nyte.dev" });
@@ -364,10 +375,12 @@ describe("handler", () => {
 
   it("writes bytes with the input in X-Nyte-Input and reads them back as an octet stream", async () => {
     const { handler, workspace } = await served();
+
     const request = new Request(
       "http://host.test/files.write",
       withInputHeader({ workspace, path: "notes.txt" }, new TextEncoder().encode("hello")),
     );
+
     request.headers.set("Authorization", "Bearer owner");
     const written = await handler(request);
 
@@ -382,7 +395,7 @@ describe("handler", () => {
     expect(await read.text()).toBe("hello");
 
     const scan = await post(handler, "files.scan", { workspace });
-    const frames = await until(scan, (frame) => kindOf(frame) === "complete");
+    const frames = await until(scan, (frame) => readKind(frame) === "complete");
 
     expect(frames).toHaveLength(2);
     expect(frames[0]).toMatchObject({ kind: "entries", entries: [{ path: "notes.txt" }] });
@@ -390,10 +403,12 @@ describe("handler", () => {
 
   it("frames a job's output end to end through the environment's exec", async () => {
     const { handler, workspace } = await served();
+
     const started = decodeOutput(
       "jobs.start",
       await (await post(handler, "jobs.start", { workspace, command: "echo hi" })).json(),
     );
+
     const output = await post(handler, "job.output", { workspace, job: started.id });
 
     expect(output.headers.get("Content-Type")).toBe("application/octet-stream");
@@ -401,6 +416,7 @@ describe("handler", () => {
     const frames = [];
 
     for await (const frame of parseOutputFrames(output.body)) frames.push(frame);
+
     const text = frames
       .map((frame) => (frame.kind === "bytes" ? new TextDecoder().decode(frame.data) : ""))
       .join("");
@@ -424,6 +440,7 @@ describe("handler", () => {
       "sessions.create",
       await (await post(handler, "sessions.create", {})).json(),
     );
+
     const created = decodeOutput(
       "parts.create",
       await (
@@ -434,6 +451,7 @@ describe("handler", () => {
         })
       ).json(),
     );
+
     const acted = await post(handler, "part.act", {
       session,
       part: created.part,
@@ -456,10 +474,12 @@ describe("handler", () => {
     const store = memoryStore();
     const plugins = [{ id: "asker", contribute: { parts: [question] } }];
     const warm = await served({ store, plugins });
+
     const { session } = decodeOutput(
       "sessions.create",
       await (await post(warm.handler, "sessions.create", {})).json(),
     );
+
     const cold = await served({ store, plugins });
 
     const created = await post(cold.handler, "parts.create", {
@@ -536,10 +556,12 @@ describe("handler", () => {
     ).toEqual({ kind: "missing" });
 
     const open = { workspace, url: "https://a.b", id: "open-1" };
+
     const first = decodeOutput(
       "browser.open",
       await (await post(handler, "browser.open", open)).json(),
     );
+
     const second = decodeOutput(
       "browser.open",
       await (await post(handler, "browser.open", open)).json(),
