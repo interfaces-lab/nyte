@@ -49,7 +49,7 @@ interface Line {
 }
 
 /** What one message shows: the user's text, the model's prose, a tool's name; nothing else. */
-function lineOf(message: Message): Line | null {
+function toLine(message: Message): Line | null {
   if (message.kind === "user") {
     const { content } = message;
 
@@ -92,7 +92,7 @@ function App() {
     <box flexDirection="column" height="100%" padding={1}>
       <scrollbox flexGrow={1} stickyScroll stickyStart="bottom">
         <box flexDirection="column" gap={1}>
-          <Index each={(view()?.messages ?? []).flatMap((message) => lineOf(message) ?? [])}>
+          <Index each={(view()?.messages ?? []).flatMap((message) => toLine(message) ?? [])}>
             {(line) => (
               <text wrapMode="word" fg={palette()[line().tone]}>
                 <span style={{ fg: palette().accent }}>{line().mark}</span>
