@@ -1,4 +1,3 @@
-
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -215,11 +214,11 @@ const styleText = (node) => {
   return [];
 };
 
-/** A condition, pseudo-selector, or at-rule key names a state, not a property. */
-const isCondition = (key) =>
-  key === "default" || key.startsWith(":") || key.startsWith("@") || key.startsWith("[");
+/** A key names a property unless it is a condition, pseudo-selector, or at-rule, which name a state. */
+const namesProperty = (key) =>
+  key !== "default" && !key.startsWith(":") && !key.startsWith("@") && !key.startsWith("[");
 
-const isLengthProperty = (key) => SPACING_PROPERTIES.has(key) || SIZE_PROPERTIES.has(key);
+const takesLength = (key) => SPACING_PROPERTIES.has(key) || SIZE_PROPERTIES.has(key);
 
 /**
  * Both call forms are in use: `stylex.create` and a bare `create` from a named
@@ -406,7 +405,7 @@ const eachCreatedStyle = (governs, visit) => {
 const styleValueRule = (description, report) => ({
   meta: { docs: { description } },
   create(context) {
-    return eachCreatedStyle(isLengthProperty, (property, value, member) => {
+    return eachCreatedStyle(takesLength, (property, value, member) => {
       const values = lengthValues(value);
 
       if (values === null) return;
@@ -454,29 +453,26 @@ const sizeGrid = styleValueRule(
 const noRawColors = {
   meta: { docs: { description: "Keep literal colors out of StyleX styles." } },
   create(context) {
-    return eachCreatedStyle(
-      (key) => !isCondition(key),
-      (property, value, member) => {
-        if (MASK_PROPERTIES.has(property)) return;
+    return eachCreatedStyle(namesProperty, (property, value, member) => {
+      if (MASK_PROPERTIES.has(property)) return;
 
-        for (const text of styleText(value)) {
-          const color = literalColor(text);
+      for (const text of styleText(value)) {
+        const color = literalColor(text);
 
-          if (color === null) continue;
-          context.report({
-            node: member,
-            message:
-              `"${property}" uses the literal color "${color}": the roles own color, so dark ` +
-              `mode and appearances never reach a literal. Use ${colorHandles(property)} from ` +
-              `${VARS_MODULE}; transparent, currentColor, and color-mix() over handles also ` +
-              `pass. Add a role to ${ROLES_PATH} with a handle in ${VARS_PATH} only if the ` +
-              `design calls for a new color.`,
-          });
+        if (color === null) continue;
+        context.report({
+          node: member,
+          message:
+            `"${property}" uses the literal color "${color}": the roles own color, so dark ` +
+            `mode and appearances never reach a literal. Use ${colorHandles(property)} from ` +
+            `${VARS_MODULE}; transparent, currentColor, and color-mix() over handles also ` +
+            `pass. Add a role to ${ROLES_PATH} with a handle in ${VARS_PATH} only if the ` +
+            `design calls for a new color.`,
+        });
 
-          return;
-        }
-      },
-    );
+        return;
+      }
+    });
   },
 };
 
@@ -521,7 +517,7 @@ const controlSize = styleValueRule(
 const touchInTokens = {
   meta: { docs: { description: "Keep coarse-pointer sizes in the tokens." } },
   create(context) {
-    return eachCreatedStyle(isLengthProperty, (property, _value, member) => {
+    return eachCreatedStyle(takesLength, (property, _value, member) => {
       const condition = keyName(member.key, member.computed);
 
       if (condition === null || !condition.includes("pointer: coarse")) return;
@@ -554,52 +550,46 @@ const weightValue = (node) => {
 const noRawFontWeight = {
   meta: { docs: { description: "Write StyleX font weights with the type.weight* handles." } },
   create(context) {
-    return eachCreatedStyle(
-      (key) => !isCondition(key),
-      (property, value, member) => {
-        if (property !== "fontWeight") return;
-        const weight = weightValue(value);
+    return eachCreatedStyle(namesProperty, (property, value, member) => {
+      if (property !== "fontWeight") return;
+      const weight = weightValue(value);
 
-        if (weight === null) return;
-        const handle = WEIGHT_HANDLES.get(weight);
+      if (weight === null) return;
+      const handle = WEIGHT_HANDLES.get(weight);
 
-        const nearest = [...WEIGHT_HANDLES.keys()].reduce((best, step) =>
-          Math.abs(step - weight) < Math.abs(best - weight) ? step : best,
-        );
+      const nearest = [...WEIGHT_HANDLES.keys()].reduce((best, step) =>
+        Math.abs(step - weight) < Math.abs(best - weight) ? step : best,
+      );
 
-        context.report({
-          node: member,
-          message:
-            `"fontWeight: ${weight}" is a raw weight: type.weight* owns weight, so it follows ` +
-            `the UI font. ` +
-            (handle
-              ? `Use ${handle} from ${VARS_MODULE}.`
-              : `Use the nearest, ${WEIGHT_HANDLES.get(nearest)} (${nearest}), from ` +
-                `${VARS_MODULE}. Add a weight to ${TOKENS_PATH} with a handle in ${VARS_PATH} ` +
-                `only if the design calls for one.`),
-        });
-      },
-    );
+      context.report({
+        node: member,
+        message:
+          `"fontWeight: ${weight}" is a raw weight: type.weight* owns weight, so it follows ` +
+          `the UI font. ` +
+          (handle
+            ? `Use ${handle} from ${VARS_MODULE}.`
+            : `Use the nearest, ${WEIGHT_HANDLES.get(nearest)} (${nearest}), from ` +
+              `${VARS_MODULE}. Add a weight to ${TOKENS_PATH} with a handle in ${VARS_PATH} ` +
+              `only if the design calls for one.`),
+      });
+    });
   },
 };
 
 const noLightDarkOutsideTokens = {
   meta: { docs: { description: "Keep light-dark() pairs in the token layer." } },
   create(context) {
-    return eachCreatedStyle(
-      (key) => !isCondition(key),
-      (property, value, member) => {
-        if (!styleText(value).some((text) => /light-dark\(/i.test(text))) return;
-        context.report({
-          node: member,
-          message:
-            `"${property}" writes a light-dark() pair in a component: the roles own dark ` +
-            `mode, and appearances and tinted scopes only retint a role. Use ` +
-            `${colorHandles(property)} from ${VARS_MODULE}. Add the pair to ${ROLES_PATH} with ` +
-            `a handle in ${VARS_PATH} only if no role matches.`,
-        });
-      },
-    );
+    return eachCreatedStyle(namesProperty, (property, value, member) => {
+      if (!styleText(value).some((text) => /light-dark\(/i.test(text))) return;
+      context.report({
+        node: member,
+        message:
+          `"${property}" writes a light-dark() pair in a component: the roles own dark ` +
+          `mode, and appearances and tinted scopes only retint a role. Use ` +
+          `${colorHandles(property)} from ${VARS_MODULE}. Add the pair to ${ROLES_PATH} with ` +
+          `a handle in ${VARS_PATH} only if no role matches.`,
+      });
+    });
   },
 };
 

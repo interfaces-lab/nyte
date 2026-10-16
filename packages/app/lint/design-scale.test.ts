@@ -28,6 +28,18 @@ type Violation = { file: string; line: number; rule: string; message: string };
 
 let violations: Array<Violation> = [];
 
+/** Only the plugin runs: an unrelated warning in the fixture must not read as a design-scale violation. */
+const pluginOnlyConfig = {
+  categories: {},
+  jsPlugins: [join(here, "design-scale.js")],
+  rules: {
+    "nyte-design/spacing-scale": "error",
+    "nyte-design/size-grid": "error",
+    "nyte-design/no-raw-font-weight": "error",
+    "nyte-design/no-light-dark-outside-tokens": "error",
+  },
+};
+
 const lineOf = (needle: string): number => {
   const index = readFileSync(fixture, "utf8")
     .split("\n")
@@ -46,21 +58,7 @@ const rulesOn = (needle: string): Array<string> =>
 
 beforeAll(async () => {
   const config = join(configDirectory, "oxlintrc.json");
-  writeFileSync(
-    config,
-    JSON.stringify({
-      // Only the plugin runs: an unrelated warning in the fixture must not read
-      // as a design-scale violation.
-      categories: {},
-      jsPlugins: [join(here, "design-scale.js")],
-      rules: {
-        "nyte-design/spacing-scale": "error",
-        "nyte-design/size-grid": "error",
-        "nyte-design/no-raw-font-weight": "error",
-        "nyte-design/no-light-dark-outside-tokens": "error",
-      },
-    }),
-  );
+  writeFileSync(config, JSON.stringify(pluginOnlyConfig));
 
   const result = await run("node", [
     join(repoRoot, "node_modules/oxlint/bin/oxlint"),

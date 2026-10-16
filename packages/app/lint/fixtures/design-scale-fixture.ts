@@ -1,7 +1,9 @@
 import { create } from "@stylexjs/stylex";
 
-// Every value here is deliberate. `design-scale.test.ts` asserts the exact set
-// of lines the rules report, so edit the test when you edit this file.
+/**
+ * Every value here is deliberate. `design-scale.test.ts` asserts the exact set
+ * of lines the rules report, so edit the test when you edit this file.
+ */
 const ink = "var(--nyte-content-primary)";
 
 export const fixtureStyles = create({
@@ -40,8 +42,10 @@ export const bareStyles = create({
   },
 });
 
-// Known holes, asserted as silent so a future fix is a visible test change:
-// a value the compiler resolves rather than the linter, and a plain object.
+/**
+ * Known holes, asserted as silent so a future fix is a visible test change:
+ * a value the compiler resolves rather than the linter, and a plain object.
+ */
 const SPACING = 7;
 
 export const unreadable = create({ indirect: { gap: SPACING } });

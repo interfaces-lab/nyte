@@ -98,15 +98,6 @@ const keyName = (key) => {
   return null;
 };
 
-const isCreateCall = (node, creators, namespaces) =>
-  node?.type === "CallExpression" &&
-  (node.callee.type === "Identifier"
-    ? creators.has(node.callee.name)
-    : node.callee.type === "MemberExpression" &&
-      node.callee.object.type === "Identifier" &&
-      namespaces.has(node.callee.object.name) &&
-      keyName(node.callee.property) === "create");
-
 /** The style object a `create` entry defines, or the object its function returns. */
 const styleObject = (node) => {
   if (node.type === "ArrowFunctionExpression") {
@@ -263,7 +254,17 @@ const noRestyle = {
       VariableDeclarator(node) {
         if (node.id.type !== "Identifier" || !node.init) return;
 
-        if (!isCreateCall(node.init, creators, namespaces)) {
+        const { init } = node;
+        const createsStyles =
+          init.type === "CallExpression" &&
+          (init.callee.type === "Identifier"
+            ? creators.has(init.callee.name)
+            : init.callee.type === "MemberExpression" &&
+              init.callee.object.type === "Identifier" &&
+              namespaces.has(init.callee.object.name) &&
+              keyName(init.callee.property) === "create");
+
+        if (!createsStyles) {
           values.set(node.id.name, node.init);
 
           return;
