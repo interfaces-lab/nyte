@@ -1,0 +1,6 @@
+- region "Messages":
+  - paragraph: /hold
+  - button "Edit Message"
+  - paragraph: /error
+  - button "Edit Message"
+  - alert: The provider refused this request.

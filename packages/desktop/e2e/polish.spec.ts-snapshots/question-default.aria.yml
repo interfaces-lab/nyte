@@ -1,0 +1,12 @@
+- form "Check whether Luigi's Trattoria is open now?":
+  - group "Check whether Luigi's Trattoria is open now?":
+    - text: Question
+    - button "Hide choices" [expanded]
+    - heading "Check whether Luigi's Trattoria is open now?" [level=2]
+    - radiogroup "Check whether Luigi's Trattoria is open now?":
+      - radio "Run it Runs ./places-hours luigi in your home folder."
+      - text: Run it Runs ./places-hours luigi in your home folder.
+      - radio "Skip Answer without checking the hours."
+      - text: Skip Answer without checking the hours.
+    - button "Dismiss"
+    - button "Submit"

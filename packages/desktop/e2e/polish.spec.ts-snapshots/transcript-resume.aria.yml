@@ -1,0 +1,27 @@
+- region "Messages":
+  - paragraph: why did CI fail on my PR, fix it
+  - button "Edit Message"
+  - paragraph: Let me look at the checks.
+  - button "Explored SKILL.md, ran 2 tools"
+  - figure "CI failures":
+    - iframe
+  - button "Edited sum.js, ran 2 commands, 1 tool"
+  - paragraph:
+    - text: Fixed
+    - link "src/sum.js:2":
+      - /url: /file:\/\/.+\/repo\/src\/sum\.js/
+      - code: src/
+      - code: sum.js:2
+    - text: ":"
+    - code: sum
+    - text: subtracted its arguments.
+    - code: node --test
+    - text: passes now;
+    - link "the failing job":
+      - /url: https://ci.fixture.test/run/1/job/2
+    - text: .
+  - region "1 File Changed":
+    - button "Review"
+    - list:
+      - listitem:
+        - button "Open src/sum.js in Changes": sum.js +1 −1
