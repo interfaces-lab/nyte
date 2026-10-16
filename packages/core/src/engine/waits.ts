@@ -133,9 +133,11 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         return completion(session, current, { kind: "all", outcomes });
 
       const on = waitingOn(target, partial);
+      const filled = { ...current, partial };
+      const kept = new Set(waitIndex(session, filled));
 
       return {
-        record: { ...current, partial },
+        record: filled,
         events:
           on === null || current.part === null
             ? []
@@ -156,7 +158,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
                 parked: record.parked,
                 waiting: on,
               })),
-        index: { add: [], drop: entry.name === null ? [] : [entry.name] },
+        index: { add: [], drop: waitIndex(session, current).filter((name) => !kept.has(name)) },
       };
     });
 
