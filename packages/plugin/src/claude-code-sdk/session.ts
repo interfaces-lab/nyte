@@ -14,7 +14,7 @@ import type { Api, AssistantMessageEventStream, Model } from "@nyte-ai/ai";
 import type { ContentBlock } from "./transcript.ts";
 import { BACKGROUND_TOOL, emptyMessage, mirrorCall, Translator } from "./translate.ts";
 
-export interface Launch {
+interface Launch {
   readonly key: string;
   readonly model: string;
   readonly cwd: string;
@@ -28,7 +28,7 @@ export interface Launch {
 
 export type QuestionAnswers = Record<string, string> | null;
 
-export interface ClaudeToolOutput {
+interface ClaudeToolOutput {
   readonly text: string;
   readonly isError: boolean;
 }
