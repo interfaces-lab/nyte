@@ -252,11 +252,11 @@ export function watchSessions(
           if (!DIRECTORY_EVENTS.has(event.kind)) return;
           changed();
         });
-        const timer = kernel.poll === null ? undefined : setInterval(changed, kernel.poll);
+        kernel.externalCommits.add(changed);
 
         return () => {
           dispose();
-          clearInterval(timer);
+          kernel.externalCommits.delete(changed);
         };
       }),
     )[Symbol.asyncIterator]();

@@ -4,6 +4,7 @@ import {
   envelope,
   headRef,
   memoryStore,
+  pollStore,
   seenRef,
   sessionRef,
   watchSessions,
@@ -38,6 +39,7 @@ it("updates directory rows from another host while keeping unread state specific
   const store = await memoryStore().open();
   const writer = await setup({ store });
   const reader = await setup({ store, poll: 5 });
+  const unpoll = pollStore(reader.kernel);
   const session = await writer.host.sessions.create({ name: "Shared" });
   const local = watchSessions(reader.kernel, asId("local"))[Symbol.asyncIterator]();
   const other = watchSessions(reader.kernel, asId("other"))[Symbol.asyncIterator]();
@@ -70,6 +72,7 @@ it("updates directory rows from another host while keeping unread state specific
     expect(changed.value.find((row) => row.id === session.id)?.heads[0]?.unread).toBe(true);
     expect(changed.value.find((row) => row.id === newSession.id)?.name).toBe("Second");
   } finally {
+    unpoll();
     await local.return?.();
     await other.return?.();
   }

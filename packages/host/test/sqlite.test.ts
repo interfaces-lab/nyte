@@ -2,11 +2,12 @@ import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { STORE_VERSION, envelope, memoryStore } from "@nyte-ai/core";
+import { STORE_VERSION, composeHost, envelope, memoryStore } from "@nyte-ai/core";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { sqliteStore } from "../src/index.ts";
+import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
 import { storeConformance } from "./store-conformance.ts";
 
 const created: DurableEvent = { head: null, kind: "head", from: null, to: null, reason: "created" };
@@ -331,6 +332,64 @@ describe("sqliteStore", () => {
     expect(outcomes.map((outcome) => outcome.kind)).toEqual(["set", "stale"]);
     await left.close();
     await right.close();
+  });
+
+  it("moves its commit mark for another connection's commit, never for its own", async () => {
+    const path = join(await folder(), "nyte.db");
+    const left = sqliteStore({ path });
+    const right = sqliteStore({ path });
+    const one = await left.open();
+    const two = await right.open();
+    const target = await one.objects.put("base");
+    const before = await one.commitMark?.();
+    await one.refs.set([{ name: "kv/x", target }]);
+    const own = await one.commitMark?.();
+    await two.refs.set([{ name: "kv/y", target }]);
+
+    expect(before).toBeTypeOf("number");
+    expect(own).toBe(before);
+    expect(await one.commitMark?.()).not.toBe(own);
+    await left.close();
+    await right.close();
+  });
+
+  it("brings another host's commits on the same file to a polling host's directory and head watch", async () => {
+    const path = join(await folder(), "nyte.db");
+
+    const host = (poll?: number) =>
+      composeHost({
+        store: sqliteStore({ path }),
+        models: fakeModels().models,
+        plugins: [chatOnly],
+        workspace: { kind: "chat-only", locator: null },
+        execution: { kind: "admit-only" },
+        home: null,
+        description: { name: "test", platform: "darwin", version: "0.1.0" },
+        poll,
+      });
+
+    await using reader = await host(20);
+    await using writer = await host();
+    const created = await writer.sessions.create({ name: "Before" });
+    const directory = reader.sessions.watch()[Symbol.asyncIterator]();
+    const views = reader.session(created.id).watch()[Symbol.asyncIterator]();
+    await views.next();
+    await created.update({ name: "After" });
+    await created.send("From the writer.");
+
+    let listed = await directory.next();
+
+    while (listed.done !== true && listed.value[0]?.name !== "After")
+      listed = await directory.next();
+
+    let viewed = await views.next();
+
+    while (viewed.done !== true && viewed.value.messages.length === 0) viewed = await views.next();
+
+    assert(listed.done !== true && viewed.done !== true);
+    expect(viewed.value.messages[0]).toMatchObject({ kind: "user", content: "From the writer." });
+    await directory.return?.();
+    await views.return?.();
   });
 
   it("rewrites records written before the fields the decoders require, once, with a backup", async () => {

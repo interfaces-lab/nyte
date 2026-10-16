@@ -88,6 +88,9 @@ export interface Kernel {
 
   readonly poll: number | null;
 
+  /** Listeners the store poll calls when another process has committed, for readers of what the bus does not carry, such as the session directory. */
+  readonly externalCommits: Set<() => void>;
+
   readonly store: StoreConnection;
 
   readonly description: HostDescription;

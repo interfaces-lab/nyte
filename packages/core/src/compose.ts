@@ -369,6 +369,7 @@ export function createKernel(input: KernelOptions): Kernel {
     hostId: input.hostId,
     instance: crypto.randomUUID(),
     poll: input.poll ?? null,
+    externalCommits: new Set(),
     store: input.store,
     description: input.description,
     bus,

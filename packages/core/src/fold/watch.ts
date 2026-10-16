@@ -256,6 +256,7 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
   let open = true;
   let held: FeedItem[] | null = [];
   let reading: Promise<void> = Promise.resolve();
+  let mark: number | undefined;
 
   const deliver = (item: FeedItem): void => {
     const event = item.event;
@@ -269,6 +270,8 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
   };
 
   const readPast = async (): Promise<void> => {
+    mark = await kernel.store.commitMark?.();
+
     while (open) {
       const events = await kernel.store.refs.log(session, asSeq(through), LOG_PAGE);
 
@@ -361,7 +364,13 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
 
   return {
     ready,
-    sync: () => (held === null ? read([]) : reading),
+    async sync() {
+      if (held !== null) return reading;
+
+      if (mark !== undefined && mark === (await kernel.store.commitMark?.())) return;
+
+      return held === null ? read([]) : reading;
+    },
     async refresh() {
       let cursor = through;
 
@@ -435,14 +444,25 @@ export function pollStore(kernel: Kernel): Disposer {
   if (every === null) return () => undefined;
   let running = false;
   let stopped = false;
+  let seen: number | undefined;
+
+  void kernel.store.commitMark?.().then((mark) => {
+    seen ??= mark;
+  });
 
   const pass = async (): Promise<void> => {
+    await kernel.waits.settleFromStore();
+    const mark = await kernel.store.commitMark?.();
+
+    if (stopped || (mark !== undefined && mark === seen)) return;
+    seen = mark;
     await kernel.folds.refresh();
 
     if (stopped) return;
-    await kernel.waits.settleFromStore();
     await settleAnswersFrom(kernel);
     await rereadFences(kernel);
+
+    for (const listener of kernel.externalCommits) listener();
   };
 
   const timer = setInterval(() => {

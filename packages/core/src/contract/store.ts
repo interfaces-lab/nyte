@@ -23,6 +23,8 @@ export interface StoreConnection {
   readonly refs: RefStore;
   /** Current session roots and outstanding work, updated atomically with refs. */
   readonly sessions: SessionIndex;
+  /** A mark that moves whenever a connection other than this one commits: equal marks mean nothing else wrote in between. Absent where nothing else can write, or where the store cannot tell, so every read and poll goes to the store. */
+  commitMark?(): Promise<number>;
 }
 
 /** Indexed reads of current session roots and unsettled records, never historical objects. */
