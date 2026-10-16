@@ -962,12 +962,8 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         isOAuth = created.isOAuthToken;
       }
 
-      let params = buildParams(model, normalizedContext, isOAuth, nativeToolChanges, options);
-      const nextParams = await options?.onPayload?.(params, model);
-
-      if (nextParams !== undefined) {
-        params = nextParams as MessageCreateParamsStreaming;
-      }
+      const params = buildParams(model, normalizedContext, isOAuth, nativeToolChanges, options);
+      await options?.onPayload?.(params, model);
 
       const requestOptions: Anthropic.RequestOptions = {
         signal: options?.signal,

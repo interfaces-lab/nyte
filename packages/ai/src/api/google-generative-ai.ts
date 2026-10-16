@@ -103,12 +103,8 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
       }
 
       const client = createClient(model, apiKey, options?.headers);
-      let params = buildParams(model, normalizedContext, options);
-      const nextParams = await options?.onPayload?.(params, model);
-
-      if (nextParams !== undefined) {
-        params = nextParams as GenerateContentParameters;
-      }
+      const params = buildParams(model, normalizedContext, options);
+      await options?.onPayload?.(params, model);
 
       const googleStream = await retryGoogleRequest(
         () => client.models.generateContentStream(params),

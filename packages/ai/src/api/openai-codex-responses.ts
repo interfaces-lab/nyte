@@ -360,7 +360,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
       const cacheSessionId = options?.cacheRetention === "none" ? undefined : options?.sessionId;
       const codexSessionId = clampOpenAIPromptCacheKey(cacheSessionId);
 
-      let body = buildRequestBody(
+      const body = buildRequestBody(
         model,
         normalizedContext,
         options,
@@ -368,11 +368,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
         grammarToolInputProperties,
       );
 
-      const nextBody = await options?.onPayload?.(body, model);
-
-      if (nextBody !== undefined) {
-        body = nextBody as RequestBody;
-      }
+      await options?.onPayload?.(body, model);
 
       const websocketRequestId = codexSessionId || uuidv7();
 
@@ -861,27 +857,14 @@ export async function compactOpenAICodexContext(
     options,
     cacheSessionId,
   );
-  request.input = [
+  const input: ResponseInput = [
     ...(request.input ?? []),
     { type: "compaction_trigger" } satisfies ResponseInputItem.CompactionTrigger,
   ];
-  const nextBody = await options?.onPayload?.(request, model);
-  const body = recordOf(nextBody === undefined ? request : nextBody);
-  const input = body?.input;
+  request.input = input;
+  await options?.onPayload?.(request, model);
 
-  if (
-    !body ||
-    !Value.Check(Type.Array(Type.Unknown()), input) ||
-    !Value.Check(
-      Type.Object({ type: Type.Literal("compaction_trigger") }, { additionalProperties: false }),
-      input.at(-1),
-    ) ||
-    input.slice(0, -1).some((item) => recordOf(item)?.type === "compaction_trigger")
-  ) {
-    throw new Error("Invalid Codex compaction request input");
-  }
-
-  const userInputs = input.filter((item) => recordOf(item)?.role === "user");
+  const userInputs = input.filter((item) => "role" in item && item.role === "user");
 
   if (!Value.Check(codexRetainedMessages, userInputs)) {
     throw new Error("Invalid Codex compaction user input");
@@ -902,12 +885,7 @@ export async function compactOpenAICodexContext(
   betaFeatures.add("remote_compaction_v2");
   headers.set("x-codex-beta-features", [...betaFeatures].join(","));
 
-  const encodedBody = JSON.stringify({
-    ...body,
-    store: false,
-    stream: true,
-    input,
-  });
+  const encodedBody = JSON.stringify(request);
 
   const compressedBody = compressRequestBodyZstd(encodedBody);
 

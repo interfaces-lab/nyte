@@ -426,7 +426,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
         compat,
       });
 
-      let params = buildParams(
+      const params = buildParams(
         model,
         normalizedContext,
         options,
@@ -435,11 +435,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
         grammarToolInputProperties,
       );
 
-      const nextParams = await options?.onPayload?.(params, model);
-
-      if (nextParams !== undefined) {
-        params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
-      }
+      await options?.onPayload?.(params, model);
 
       const requestOptions: OpenAI.RequestOptions = {
         signal: options?.signal,

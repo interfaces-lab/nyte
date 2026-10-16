@@ -167,11 +167,8 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
    * proxy variables.
    */
   env?: ProviderEnv;
-  /**
-   * Optional callback for inspecting or replacing provider payloads before sending.
-   * Return undefined to keep the payload unchanged.
-   */
-  onPayload?: (payload: unknown, model: TModel) => unknown;
+  /** Inspects the provider request body just before it is sent. */
+  onPayload?: (payload: unknown, model: TModel) => void | Promise<void>;
   /**
    * Optional callback invoked after an HTTP response is received.
    */

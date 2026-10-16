@@ -55,11 +55,11 @@ Next: preserve this relationship in the shared model type as a union of concrete
 
 ### 3. Payload replacement and provider dispatch erase useful types
 
-[`ProviderRequestOptions.onPayload`](src/types.ts) accepts and returns `unknown`. Adapters cast its replacement back to SDK request types. A callback can therefore produce an invalid request while the compiler treats it as valid.
+[`ProviderRequestOptions.onPayload`](src/types.ts) only inspects the request body; it cannot replace it, so no adapter casts a replacement back to an SDK request type.
 
 [`createProvider`](src/models.ts) also accepts either a stream implementation or an API-keyed map under the same property. It distinguishes them by probing `stream`, then casts both alternatives. `ProviderStreams` deliberately erases per-API option types.
 
-Next: carry the request body type through concrete adapter options. Validate replacements when a genuinely untyped extension crosses in. Separate single-implementation and API-map construction so dispatch does not need structural guessing. Preserve custom-provider support and deferred operations during that change.
+Next: separate single-implementation and API-map construction so dispatch does not need structural guessing. Preserve custom-provider support and deferred operations during that change.
 
 ### 4. Tool coercion needs one explicit schema contract
 

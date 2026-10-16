@@ -228,7 +228,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         compat,
       });
 
-      let params = buildParams(
+      const params = buildParams(
         model,
         normalizedContext,
         options,
@@ -237,11 +237,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         grammarToolInputProperties,
       );
 
-      const nextParams = await options?.onPayload?.(params, model);
-
-      if (nextParams !== undefined) {
-        params = nextParams as ResponseCreateParamsStreaming;
-      }
+      await options?.onPayload?.(params, model);
 
       const requestOptions: OpenAI.RequestOptions = { maxRetries: 0 };
 
