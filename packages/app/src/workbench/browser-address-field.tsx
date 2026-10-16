@@ -10,6 +10,7 @@ import type { FormEvent, KeyboardEvent, ReactElement, ReactNode, Ref } from "rea
 import { flushSync } from "react-dom";
 import type { BrowserHistoryEntry } from "../bridge.ts";
 import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
+import { occludes } from "./browser-occlusion.ts";
 import { browserSuggestions } from "./browser-suggestions.ts";
 import type { BrowserCompletion, BrowserSuggestion } from "./browser-suggestions.ts";
 
@@ -326,6 +327,7 @@ export function AddressField({
       </InputGroup>
       {shown && (
         <div
+          ref={occludes}
           id={listId}
           role="listbox"
           aria-label="Suggestions"

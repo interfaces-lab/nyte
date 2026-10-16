@@ -7,7 +7,6 @@ import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
 import type { BrowserBoundsMessage, BrowserBridge, BrowserNavigationAction } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
-import { overlayCovers, subscribeOverlayRects } from "../components/overlay-occlusion.ts";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "./workbench.stylex.ts";
@@ -21,6 +20,7 @@ import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
+import { overlayCovers, subscribeOverlayRects } from "./browser-occlusion.ts";
 import {
   applyBrowserEvent,
   claimBrowserSurface,
@@ -243,6 +243,10 @@ function useSurfaceBounds(
       frame ??= requestAnimationFrame(measure);
     };
 
+    const scrolled = (event: Event): void => {
+      if (event.target instanceof Node && event.target.contains(element)) schedule();
+    };
+
     const observer = new ResizeObserver(schedule);
 
     for (let node: Element | null = element; node !== null; node = node.parentElement) {
@@ -250,7 +254,7 @@ function useSurfaceBounds(
     }
 
     window.addEventListener("resize", schedule);
-    document.addEventListener("scroll", schedule, { capture: true, passive: true });
+    document.addEventListener("scroll", scrolled, { capture: true, passive: true });
     // The overlay store already batches to a frame, so this applies at once
     // rather than a frame after the popup painted.
     const unsubscribe = subscribeOverlayRects(measure);
@@ -260,7 +264,7 @@ function useSurfaceBounds(
       observer.disconnect();
       unsubscribe();
       window.removeEventListener("resize", schedule);
-      document.removeEventListener("scroll", schedule, { capture: true });
+      document.removeEventListener("scroll", scrolled, { capture: true });
 
       if (frame !== undefined) cancelAnimationFrame(frame);
       const last = lastRef.current;

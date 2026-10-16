@@ -28,6 +28,7 @@ import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
 import { orderedPanes } from "./pane-layout.ts";
+import { occludes } from "../workbench/browser-occlusion.ts";
 import type { DropPlacement, PaneId, PaneLayout } from "./pane-layout.ts";
 import { placementInRect, SESSION_DRAG_ACTIVATION_DISTANCE } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";
@@ -176,7 +177,7 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
       </div>
       <DragOverlay dropAnimation={null} zIndex={10_000}>
         {dragged === undefined ? null : (
-          <div data-slot="drag-overlay" {...props(text.base, styles.overlay)}>
+          <div ref={occludes} data-slot="drag-overlay" {...props(text.base, styles.overlay)}>
             <span {...props(styles.overlayTitle)}>{dragged.title}</span>
           </div>
         )}
