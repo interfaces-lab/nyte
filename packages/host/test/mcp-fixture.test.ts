@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import { isPart, memoryStore, tool } from "@nyte-ai/core";
-import type { Host } from "@nyte-ai/core";
+import type { Host, Plugin } from "@nyte-ai/core";
+import codemode from "@nyte-ai/plugin/core/codemode";
 import type { McpView } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it, vi } from "vitest";
 import { createMcpHub, openHost } from "../src/index.ts";
@@ -37,11 +38,15 @@ async function placesHome(
   return made;
 }
 
-function openPlaces(folder: string, fake: FakeModels): Promise<Host> {
+function openPlaces(
+  folder: string,
+  fake: FakeModels,
+  plugins: readonly Plugin<"core">[] = [],
+): Promise<Host> {
   return openHost({
     store: memoryStore(),
     models: fake.models,
-    plugins: [chatOnly],
+    plugins: [chatOnly, ...plugins],
     workspace: { kind: "chat-only", locator: null },
     home: folder,
     mcp: createMcpHub({ home: folder }),
@@ -56,8 +61,9 @@ function requestTools(request: Request | undefined): readonly string[] {
 
 function systemPrompt(request: Request | undefined): string {
   const system = request?.context.messages[0];
+  const content = system?.role === "system" ? system.content : "";
 
-  return system?.role === "system" && typeof system.content === "string" ? system.content : "";
+  return Array.isArray(content) ? content.map((part) => part.text).join("") : content;
 }
 
 function searchOnce(fake: FakeModels): void {
@@ -106,6 +112,38 @@ it("carries a cold server's tools on the first request after launch", async () =
   });
 });
 
+it("lists a codemode-exposed tool in the prompt and runs it from a script on a cold start", async () => {
+  const fake = fakeModels();
+  fake.reply(
+    {
+      content: [
+        {
+          type: "toolCall",
+          id: "c",
+          name: "codemode",
+          arguments: { code: `return await tools.${SEARCH}({ near: "here", limit: 1 });` },
+        },
+      ],
+    },
+    { content: [{ type: "text", text: "Found one." }] },
+  );
+
+  await using host = await openPlaces(
+    await placesHome({ PLACES_COLD_MS: "400" }, "codemode"),
+    fake,
+    [codemode],
+  );
+
+  const { outcome } = await settledCall(host, "Find a place nearby.");
+
+  expect(requestTools(fake.requests[0])).not.toContain(SEARCH);
+  expect(systemPrompt(fake.requests[0])).toContain(`- ${SEARCH}: Find places near a location.\n`);
+  expect(outcome).toMatchObject({
+    kind: "ok",
+    content: [{ text: expect.stringContaining("luigi") }],
+  });
+});
+
 it("does not hold the first request for a server that crashed, and shows it failed", async () => {
   const fake = fakeModels();
   fake.reply({ content: [{ type: "text", text: "No places tool." }] });
@@ -146,10 +184,12 @@ it("fails the call, not the turn, when the server exits mid-call", async () => {
 it("tells the model a server's instructions", async () => {
   const fake = fakeModels();
   fake.reply({ content: [{ type: "text", text: "Noted." }] });
+
   await using host = await openPlaces(
     await placesHome({ PLACES_INSTRUCTIONS: "Search before you recommend a place." }),
     fake,
   );
+
   const session = await host.sessions.create();
 
   await (await session.send("Find a place nearby.")).settled();
@@ -192,10 +232,12 @@ it("leaves out a tool whose input schema is not JSON Schema, and says why", asyn
 it("shows a server's progress on the running call", async () => {
   const fake = fakeModels();
   searchOnce(fake);
+
   await using host = await openPlaces(
     await placesHome({ PLACES_PROGRESS: "1", PLACES_DELAY_MS: "900" }),
     fake,
   );
+
   const session = await host.sessions.create();
   const run = await session.send("Find a place nearby.");
 

@@ -115,4 +115,7 @@ it("runs a script that calls two tools, one exposed to code only, and keeps its 
 
   assert(system?.role === "system");
   expect(system.toolsAdded?.map((declared) => declared.name)).not.toContain("shout");
+  expect(system.content).toContain(
+    "returns a tool's arguments:\n- shout: Upper-case the text; callable from code only.\n</0096-codemode>",
+  );
 });
