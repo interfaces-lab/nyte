@@ -32,7 +32,10 @@ export function mountWindow(
   const tail = tailStart(rows, weight, WINDOW.tail);
 
   if (start.kind === "tail") return { start: tail, hidden: tail };
-  const found = rows.findIndex((row) => row.key === start.key);
+  const found =
+    rows[start.index]?.key === start.key
+      ? start.index
+      : rows.findIndex((row) => row.key === start.key);
   const anchored = Math.min(found === -1 ? start.index : found, tail);
   const first = Math.max(0, anchored);
 

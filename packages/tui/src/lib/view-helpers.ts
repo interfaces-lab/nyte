@@ -32,43 +32,44 @@ export function isToolMessage(message: Message): message is ToolMessage {
   return isPart(message, tool);
 }
 
-function isLanding(message: UserMessage, view: SessionView): boolean {
-  if (view.execution.kind !== "idle") return false;
+const UNLANDED = new WeakMap<readonly Message[], readonly UserMessage[]>();
 
+function unlandedMessages(messages: readonly Message[]): readonly UserMessage[] {
+  const known = UNLANDED.get(messages);
+
+  if (known !== undefined) return known;
+
+  const unlanded = messages.flatMap((message) =>
+    message.kind === "user" && message.status.kind !== "landed" ? [message] : [],
+  );
+
+  UNLANDED.set(messages, unlanded);
+
+  return unlanded;
+}
+
+function landsNow(message: UserMessage, view: SessionView): boolean {
   return (
-    message.status.kind === "pending" ||
-    (message.status.kind === "unsent" && message.status.retrying === null)
+    view.execution.kind === "idle" &&
+    (message.status.kind === "pending" ||
+      (message.status.kind === "unsent" && message.status.retrying === null))
   );
 }
 
 export function queuedMessages(view: SessionView): readonly UserMessage[] {
-  return view.messages.flatMap((message) =>
-    message.kind === "user" &&
-    message.status.kind !== "landed" &&
-    !isReport(message) &&
-    !isLanding(message, view)
-      ? [message]
-      : [],
+  return unlandedMessages(view.messages).filter(
+    (message) => !isReport(message) && !landsNow(message, view),
   );
 }
 
 export function landingMessages(view: SessionView): readonly UserMessage[] {
-  return view.messages.flatMap((message) =>
-    message.kind === "user" &&
-    message.status.kind !== "landed" &&
-    !isReport(message) &&
-    isLanding(message, view)
-      ? [message]
-      : [],
+  return unlandedMessages(view.messages).filter(
+    (message) => !isReport(message) && landsNow(message, view),
   );
 }
 
 export function pendingReports(view: SessionView): readonly ReportMessage[] {
-  return view.messages.flatMap((message) =>
-    message.kind === "user" && message.status.kind !== "landed" && isReport(message)
-      ? [message]
-      : [],
-  );
+  return unlandedMessages(view.messages).filter(isReport);
 }
 
 export function sessionUsage(view: SessionView): Usage {

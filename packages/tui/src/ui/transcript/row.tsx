@@ -1,74 +1,70 @@
-import type { Message } from "@nyte-ai/sdk";
 import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createMemo, Match, Show, Switch } from "solid-js";
+import { createMemo, Match, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { PartMessage } from "../../lib/view-helpers.ts";
+import type { PartMessage, UserMessage } from "../../lib/view-helpers.ts";
 import type { ShellJob } from "../../model/state.ts";
-import type { Row } from "../../model/transcript.ts";
+import type { Row, TurnModel } from "../../model/transcript.ts";
 import { Column } from "./block.tsx";
 import { Marker } from "./marker.tsx";
-import { useTranscript } from "./scope.tsx";
 import { ShellCard } from "./shell-card.tsx";
 import { MessageView, TurnView } from "./turn.tsx";
 
-type TurnRow = Extract<Row, { readonly kind: "turn" }>;
-
-type NoteRow = Extract<Row, { readonly kind: "note" }>;
-
-type LandingRow = Extract<Row, { readonly kind: "landing" }>;
-
-type ShellRow = Extract<Row, { readonly kind: "shell" }>;
-
-function partOf(message: Message): PartMessage | undefined {
-  return message.kind === "part" ? message : undefined;
-}
-
 export function RowView(props: {
-  readonly row: Row;
+  readonly row: Accessor<Row>;
   readonly anchor: (node: BoxRenderable) => void;
 }): JSX.Element {
-  const scope = useTranscript();
+  const key = props.row().key;
+
+  const turn = createMemo(() => {
+    const row = props.row();
+
+    return row.kind === "turn" ? row.turn : undefined;
+  });
+
+  const note = createMemo(() => {
+    const row = props.row();
+
+    return row.kind === "note" ? row.message : undefined;
+  });
+
+  const landing = createMemo(() => {
+    const row = props.row();
+
+    return row.kind === "landing" ? row.message : undefined;
+  });
+
+  const shell = createMemo(() => {
+    const row = props.row();
+
+    return row.kind === "shell" ? row.job : undefined;
+  });
 
   return (
     <Switch>
-      <Match when={props.row.kind === "turn" ? props.row : undefined}>
-        {(row: Accessor<TurnRow>) => <TurnView id={row().turn} ref={props.anchor} />}
+      <Match when={turn()}>
+        {(model: Accessor<TurnModel>) => <TurnView turn={model} ref={props.anchor} />}
       </Match>
-      <Match when={props.row.kind === "note" ? props.row : undefined}>
-        {(row: Accessor<NoteRow>) => {
-          const note = createMemo(() => {
-            const message = scope.model().messages.get(row().message);
-
-            return message === undefined ? undefined : partOf(message);
-          });
-
-          return (
-            <Column id={row().key} ref={props.anchor}>
-              <Show when={note()}>
-                {(part: Accessor<PartMessage>) => <Marker message={part()} />}
-              </Show>
-            </Column>
-          );
-        }}
-      </Match>
-      <Match when={props.row.kind === "landing" ? props.row : undefined}>
-        {(row: Accessor<LandingRow>) => (
-          <Column id={row().key} ref={props.anchor}>
-            <MessageView id={row().message} />
+      <Match when={note()}>
+        {(message: Accessor<PartMessage>) => (
+          <Column id={key} ref={props.anchor}>
+            <Marker message={message()} />
           </Column>
         )}
       </Match>
-      <Match when={props.row.kind === "shell" ? props.row : undefined}>
-        {(row: Accessor<ShellRow>) => {
-          const job = createMemo(() => scope.model().shells.get(row().job));
-
-          return (
-            <Column id={row().key} ref={props.anchor}>
-              <Show when={job()}>{(shell: Accessor<ShellJob>) => <ShellCard job={shell()} />}</Show>
-            </Column>
-          );
-        }}
+      <Match when={landing()}>
+        {(message: Accessor<UserMessage>) => (
+          <Column id={key} ref={props.anchor}>
+            <MessageView message={message} />
+          </Column>
+        )}
+      </Match>
+      <Match when={shell()}>
+        {(job: Accessor<ShellJob>) => (
+          <Column id={key} ref={props.anchor}>
+            <ShellCard job={job()} />
+          </Column>
+        )}
       </Match>
     </Switch>
   );

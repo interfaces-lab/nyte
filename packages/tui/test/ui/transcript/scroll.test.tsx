@@ -51,11 +51,7 @@ function driver(
     const local = state.local.transcript;
     const { transcript } = harness().screen();
 
-    const window = revealEarlier(
-      transcript.rows,
-      (row) => rowWeight(row, transcript.turns),
-      transcript.window,
-    );
+    const window = revealEarlier(transcript.rows, rowWeight, transcript.window);
 
     state = {
       ...state,

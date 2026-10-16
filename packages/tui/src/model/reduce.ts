@@ -1286,7 +1286,7 @@ export function transcript(
 
       if (model.window.start === 0) return stay(state);
 
-      const window = revealEarlier(model.rows, (row) => rowWeight(row, model.turns), model.window);
+      const window = revealEarlier(model.rows, rowWeight, model.window);
 
       return {
         state: withLocal(state, { transcript: { ...local, following: false, window } }),
