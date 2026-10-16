@@ -1,7 +1,6 @@
+import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { PatchEntry as HostPatch } from "@nyte-ai/sdk";
-import { patchDigest } from "./changes-viewed.ts";
-import { parsePatch } from "./patch-parse.ts";
 import { formatPatch } from "./patch-text.ts";
 
 export const PATCH_READ_MAX = 50;
@@ -57,7 +56,13 @@ const EMPTY: PatchEntry = { kind: "empty" };
 
 const FAILED: PatchEntry = { kind: "failed" };
 
-async function entryOf(diff: HostPatch, earlier: PatchEntry | undefined): Promise<PatchEntry> {
+/**
+ * A host patch as the stack renders it. The renderer reads unified text, so
+ * the host's hunks become text and are parsed once. The host's digest names
+ * the patch within its source's lineage (scope and whitespace mode): an
+ * unchanged digest keeps the earlier entry, and the pair keys the highlighter.
+ */
+function entryFrom(diff: HostPatch, earlier: PatchEntry | undefined, lineage: string): PatchEntry {
   switch (diff.kind) {
     case "too-large":
       return { kind: "too_large", limit: diff.limit };
@@ -77,7 +82,9 @@ async function entryOf(diff: HostPatch, earlier: PatchEntry | undefined): Promis
         kind: "ready",
         patch,
         digest: diff.digest,
-        files: await parsePatch(patch, patchDigest(patch)),
+        files: parsePatchFiles(patch, `${lineage}\u0000${diff.digest}`).flatMap(
+          (parsed) => parsed.files,
+        ),
         added: diff.added,
         removed: diff.removed,
       };
@@ -162,8 +169,9 @@ export function createPatchLoader() {
 
     const entries = new Map<string, PatchEntry>();
 
+    if (generation !== readGeneration) return;
+
     for (const path of batch) {
-      if (generation !== readGeneration) return;
       const diff = answered?.get(path);
 
       entries.set(
@@ -172,11 +180,10 @@ export function createPatchLoader() {
           ? FAILED
           : diff === undefined
             ? EMPTY
-            : await entryOf(diff, snapshot.stale.get(path)).catch(() => FAILED),
+            : entryFrom(diff, snapshot.stale.get(path), current.lineage),
       );
     }
 
-    if (generation !== readGeneration) return;
     const fresh = new Map(snapshot.fresh);
     const stale = new Map(snapshot.stale);
 
