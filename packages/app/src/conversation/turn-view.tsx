@@ -504,10 +504,22 @@ function TurnChangesCard({
   );
 }
 
+/**
+ * A compaction shows while it runs, then folds its summary behind a
+ * disclosure; one that ended without a summary leaves the turn's own notice
+ * to explain.
+ */
 function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 
   if (isPart(message, compaction)) {
+    if (message.status.kind === "live")
+      return (
+        <StatusMarker role="status" variant="retrying">
+          Summarizing chat context…
+        </StatusMarker>
+      );
+
     return message.state.summary === null ? null : (
       <HistoryDisclosure label="Chat context summarized">
         <Prose markdown={message.state.summary} />
