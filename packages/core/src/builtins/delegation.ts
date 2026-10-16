@@ -395,6 +395,8 @@ function scheduled(message: Message | undefined): string {
       return "it runs once its current work ends";
     case "attached":
       return "it rides with its next turn";
+    case "deciding":
+      return "its plugins are deciding it";
   }
 }
 

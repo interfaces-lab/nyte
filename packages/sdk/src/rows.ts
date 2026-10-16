@@ -22,8 +22,12 @@ import type {
 
 export type LinkState = HostView["link"];
 
-type WaitName = {
-  [N in OperationName]: Declarations[N] extends { readonly wait: true } ? N : never;
+type RetryName = {
+  [N in OperationName]: Declarations[N] extends
+    | { readonly wait: true }
+    | { readonly recovery: "replay" }
+    ? N
+    : never;
 }[OperationName];
 
 export interface Link {
@@ -42,7 +46,7 @@ export interface Rows {
     input: OperationInput<N>,
     options?: RequestOptions,
   ): Promise<OperationOutput<N>>;
-  wait<N extends WaitName>(
+  wait<N extends RetryName>(
     name: N,
     input: OperationInput<N>,
     options?: RequestOptions,

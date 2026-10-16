@@ -70,8 +70,10 @@ export const ScheduleType = Type.Union([
     reason: Type.Enum(["requested", "idle", "run-ended", "configuration"]),
   }),
   Type.Object({ kind: Type.Literal("attached") }),
+  Type.Object({ kind: Type.Literal("deciding"), principal: idSchema<"principal">() }),
 ]);
 
+/** When an admitted input runs. `deciding` is a chat's first message, admitted with the chat while its before_send hooks decide it for `principal`; nothing on its head runs until they do. */
 export type Schedule = Decoded<typeof ScheduleType>;
 
 export const DeliverySchema: Schema<Delivery> = standard(DeliveryType);

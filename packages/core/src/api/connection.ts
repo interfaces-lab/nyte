@@ -121,6 +121,11 @@ export function createConnection(
     sessions: {
       watch: (input) => track(sessions.watch(input)),
       create: async (input) => session(await sessions.create(input)),
+      async start(input) {
+        const started = await sessions.start(input);
+
+        return { ...started, session: session(started.session) };
+      },
       list: (input) => sessions.list(input),
     },
     workspaces: gated("workspaces", createWorkspaces(kernel, context), authority),

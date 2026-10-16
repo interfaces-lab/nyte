@@ -54,13 +54,15 @@ import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
 import { followTrace, traced } from "../util/trace.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-interface Sending {
+export interface Sending {
   readonly kernel: Kernel;
   readonly session: SessionId;
   readonly head: HeadName;
   readonly context: ConnectionContext;
   readonly content: UserContent;
   readonly options: SendOptions;
+  /** Aborts a before_send decision still pending, besides the kernel closing. */
+  readonly stop: AbortSignal | null;
 }
 
 type SendInput = {
@@ -71,7 +73,7 @@ type SendInput = {
   readonly options?: SendOptions;
 };
 
-interface MessageRecord {
+export interface MessageRecord {
   readonly id: MessageId;
   readonly at: number;
   readonly content: UserContent;
@@ -84,7 +86,7 @@ interface MessageRecord {
   readonly position: number;
 }
 
-const USER: MessageSource = { kind: "user" };
+export const USER: MessageSource = { kind: "user" };
 
 interface Keyed {
   readonly id: ReceiptId;
@@ -116,11 +118,18 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
     context: input.context,
     content: input.content,
     options: input.options ?? {},
+    stop: null,
   };
 
   const target = sending.options.replace;
 
   if (target === undefined) return admit(sending);
+
+  if (
+    (await withFold(kernel, input.session, (state) => state.inputs.get(target)))?.schedule.kind ===
+    "deciding"
+  )
+    throw new SdkError("invalid", `Message ${target} is still being decided.`);
 
   const keyed = {
     id: sending.options.id ?? asId<"receipt">(crypto.randomUUID()),
@@ -142,6 +151,7 @@ export function selectRunStart(
   head: HeadName,
   inputs: readonly FoldInput[],
 ): { readonly origin: RunView["origin"]; readonly input: FoldInput } | null {
+  if (inputs.some((input) => input.schedule.kind === "deciding")) return null;
   const prompt = inputs.find((input) => input.delivery !== "attach");
 
   if (prompt !== undefined) return { origin: { kind: "input", message: prompt.id }, input: prompt };
@@ -646,7 +656,7 @@ async function locate(
   });
 }
 
-async function gate(
+export async function gate(
   sending: Sending,
   message: MessageId,
   submission: Submission,
@@ -668,7 +678,7 @@ async function gate(
   };
 }
 
-/** Decides the submission through the session's `before_send` hooks, one durable step keyed by the message; a parked hook holds the send until its wait wakes or the kernel closes. */
+/** Decides the submission through the session's `before_send` hooks, one durable step keyed by the message; a parked hook holds the send until its wait wakes, and the kernel closing or the send's stop throws. */
 async function decideBeforeSend(
   sending: Sending,
   message: MessageId,
@@ -686,7 +696,8 @@ async function decideBeforeSend(
       ]);
   }
 
-  const { signal } = kernel.executionState.closing;
+  const closing = kernel.executionState.closing.signal;
+  const signal = sending.stop === null ? closing : AbortSignal.any([closing, sending.stop]);
   let woken = Promise.withResolvers<void>();
   const dispose = kernel.waits.onWoken(session, call, () => woken.resolve());
   const abort = (): void => woken.resolve();
@@ -710,12 +721,15 @@ async function decideBeforeSend(
 
       if (outcome.kind === "done") return outcome.value;
 
-      if (outcome.kind === "interrupted") return { action: "continue" };
-
-      if (!signal.aborted) await woken.promise;
+      if (!signal.aborted) {
+        if (outcome.kind === "interrupted") return { action: "continue" };
+        await woken.promise;
+      }
 
       if (signal.aborted)
-        return { action: "error", message: "The kernel closed before before_send decided." };
+        throw closing.aborted
+          ? new SdkError("unavailable", "The kernel closed before before_send decided.")
+          : new SdkError("invalid", "The send was stopped before before_send decided.");
     }
   } finally {
     signal.removeEventListener("abort", abort);
@@ -723,7 +737,7 @@ async function decideBeforeSend(
   }
 }
 
-async function resolve(
+export async function resolve(
   sending: Sending,
   patch: Configuration | ConfigurationPatch | null,
 ): Promise<Configuration> {
@@ -742,7 +756,7 @@ async function resolve(
   throw refusalError(result);
 }
 
-async function chooseSendSchedule(
+export async function chooseSendSchedule(
   delivery: Delivery,
   configuration: Configuration,
   run: RunRecord | null,
@@ -759,7 +773,7 @@ async function chooseSendSchedule(
   return { kind: "joined", run: run.view.id };
 }
 
-async function admitted(
+export async function admitted(
   store: StoreConnection,
   session: SessionId,
   head: HeadName,
@@ -796,7 +810,7 @@ async function admitted(
   };
 }
 
-async function pendingReceipt(
+export async function pendingReceipt(
   store: StoreConnection,
   session: SessionId,
   id: ReceiptId,

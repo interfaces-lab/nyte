@@ -254,6 +254,11 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
     "sessions.watch": async (input) => connection.sessions.watch(input),
     "sessions.create": async (input) => ({ session: (await connection.sessions.create(input)).id }),
+    "sessions.start": async (input) => {
+      const { session, receipt } = await connection.sessions.start(input);
+
+      return { session: session.id, receipt: receipt.id, message: receipt.message };
+    },
     "sessions.list": (input) => connection.sessions.list(input),
 
     "session.info": ({ session: id }) => session(id).info(),

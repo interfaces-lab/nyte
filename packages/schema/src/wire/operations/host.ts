@@ -9,6 +9,7 @@ import {
 } from "../../host.ts";
 import { idSchema } from "../../ids.ts";
 import { JsonType } from "../../json.ts";
+import { UserContentType } from "../../messages.ts";
 import {
   LoginMethodType,
   ModelAccountType,
@@ -209,6 +210,25 @@ export const HOST_OPERATIONS = {
       prompt: Type.Optional(PromptOverrideType),
     }),
     output: ON_SESSION,
+  },
+  "sessions.start": {
+    ...PARTICIPANT,
+    kind: "receipt",
+    recovery: "replay",
+    input: wireObject({
+      id: Type.Optional(idSchema<"session">()),
+      name: Type.Optional(Type.String()),
+      workspace: Type.Optional(idSchema<"workspace">()),
+      parent: Type.Optional(idSchema<"session">()),
+      configuration: Type.Optional(Type.Union([ConfigurationType, ConfigurationPatchType])),
+      prompt: Type.Optional(PromptOverrideType),
+      content: UserContentType,
+    }),
+    output: wireObject({
+      session: idSchema<"session">(),
+      receipt: idSchema<"receipt">(),
+      message: idSchema<"message">(),
+    }),
   },
   "sessions.list": {
     ...PARTICIPANT,

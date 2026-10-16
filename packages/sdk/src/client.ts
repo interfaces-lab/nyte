@@ -62,6 +62,15 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       watch: (input) => rows.watch("sessions.watch", input ?? {}),
       create: async (input) =>
         sessionHandle(bound, (await rows.call("sessions.create", input ?? {})).session),
+      async start(input) {
+        const id = input.id ?? asId<"session">(crypto.randomUUID());
+        const started = await rows.wait("sessions.start", { ...input, id });
+
+        return {
+          session: sessionHandle(bound, started.session),
+          receipt: sendReceipt(rows, started.session, started.receipt, started.message),
+        };
+      },
       list: (input) => rows.call("sessions.list", input ?? {}),
     },
     workspaces: {
