@@ -210,17 +210,25 @@ test("a key login over the loopback listener connects the provider, and the reop
     const connection = await sdk.connect(await first.host.call(1, "host.endpoint", undefined));
     await vi.waitFor(async () => assert.equal(await credential(connection), "missing"));
 
-    const login = connection.models.login({ provider: "test", method: { kind: "key" } });
+    const login = connection.models.login({
+      provider: "test",
+      method: { kind: "key" },
+      label: "Work",
+    });
     const steps: string[] = [];
 
     for await (const step of login.steps()) {
       steps.push(step.kind);
 
-      if (step.kind === "paste") await login.answer(step.secret ? "sk-test" : "Work");
+      if (step.kind === "paste") await login.answer("sk-test");
     }
 
-    assert.deepEqual(steps, ["paste", "paste", "done"]);
+    assert.deepEqual(steps, ["paste", "done"]);
     await vi.waitFor(async () => assert.equal(await credential(connection), "configured"));
+    assert.deepEqual(
+      (await connection.models.accounts("test")).map((account) => account.label),
+      ["Work"],
+    );
     await connection.close();
     await first.close();
     const written = reads;
