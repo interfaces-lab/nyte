@@ -28,10 +28,33 @@ export function isToolMessage(message: Message): message is ToolMessage {
   return isPart(message, tool);
 }
 
-export function conversationTurns(view: SessionView): {
+export interface ConversationTurns {
   readonly turns: readonly ConversationTurn[];
   readonly loose: readonly Message[];
-} {
+}
+
+const NO_MESSAGES: readonly Message[] = [];
+
+const groupedViews = new WeakMap<SessionView, ConversationTurns>();
+
+const groupedTurns = new WeakMap<TurnInfo, ConversationTurn>();
+
+const groupedLists = new WeakMap<readonly TurnInfo[], readonly ConversationTurn[]>();
+
+/** True when both lists hold the same items in the same order. */
+export function sameItems<T>(left: readonly T[], right: readonly T[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+/**
+ * The view's messages grouped under their turns. A turn whose info and
+ * messages are the ones the last grouping saw comes back as the same object,
+ * so a streamed frame changes only the turn it streams into.
+ */
+export function conversationTurns(view: SessionView): ConversationTurns {
+  const known = groupedViews.get(view);
+
+  if (known !== undefined) return known;
   const byTurn = new Map<string, Message[]>();
 
   for (const message of view.messages) {
@@ -41,13 +64,24 @@ export function conversationTurns(view: SessionView): {
   }
 
   const turns = view.turns.map((info) => {
-    const messages = byTurn.get(info.id) ?? [];
+    const messages = byTurn.get(info.id) ?? NO_MESSAGES;
     byTurn.delete(info.id);
+    const previous = groupedTurns.get(info);
 
-    return { info, messages };
+    if (previous !== undefined && sameItems(previous.messages, messages)) return previous;
+    const turn = { info, messages };
+    groupedTurns.set(info, turn);
+
+    return turn;
   });
 
-  return { turns, loose: [...byTurn.values()].flat() };
+  const previous = groupedLists.get(view.turns);
+  const shared = previous !== undefined && sameItems(previous, turns) ? previous : turns;
+  groupedLists.set(view.turns, shared);
+  const grouped = { turns: shared, loose: [...byTurn.values()].flat() };
+  groupedViews.set(view, grouped);
+
+  return grouped;
 }
 
 export type ToolTense = "running" | "past" | "none";
@@ -256,7 +290,11 @@ export function worktreeFiles(
   for (const row of rows) {
     const current = byPath.get(row.path);
 
-    if (current === undefined || WORKTREE_ORDER.indexOf(row.kind) < WORKTREE_ORDER.indexOf(current))
+    if (
+      current === undefined ||
+      WORKTREE_ORDER.findIndex((kind) => kind === row.kind) <
+        WORKTREE_ORDER.findIndex((kind) => kind === current)
+    )
       byPath.set(row.path, row.kind);
   }
 

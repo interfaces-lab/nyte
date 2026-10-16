@@ -6,7 +6,7 @@
 import type { SessionView } from "@nyte-ai/sdk";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
-import { conversationTurns, isBusy, isToolMessage } from "../view-helpers.ts";
+import { conversationTurns, isBusy, isToolMessage, sameItems } from "../view-helpers.ts";
 import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
 import { isTextMessage } from "./transcript-presentation.ts";
 
@@ -44,8 +44,85 @@ export type TranscriptRow =
       readonly working: boolean;
     };
 
+type TurnRow = Extract<TranscriptRow, { readonly kind: "turn" }>;
+
+type LandingRow = Extract<TranscriptRow, { readonly kind: "landing" }>;
+
+const SKELETON_ROW: TranscriptRow = {
+  kind: "skeleton",
+  messageId: "row:skeleton",
+  scrollAnchor: false,
+};
+
+const ERROR_ROW: TranscriptRow = { kind: "error", messageId: "row:error", scrollAnchor: false };
+
+const LIVE_ROWS = {
+  working: { kind: "live", messageId: "row:live", scrollAnchor: false, working: true },
+  idle: { kind: "live", messageId: "row:live", scrollAnchor: false, working: false },
+} as const satisfies Record<string, TranscriptRow>;
+
+const NO_TURNS: readonly ConversationTurn[] = [];
+
+const NO_USERS: readonly UserMessage[] = [];
+
+const turnRows = new WeakMap<ConversationTurn, TurnRow>();
+
+const landingRows = new WeakMap<UserMessage, LandingRow>();
+
 function turnMessageId(turn: ConversationTurn): string {
   return turn.info.prompt === null ? `turn:${turn.info.id}` : `landing:${turn.info.prompt}`;
+}
+
+/** The row a turn heads; the one built last time when nothing it shows has changed. */
+function turnRow(
+  turn: ConversationTurn,
+  continuations: readonly ConversationTurn[],
+  trailing: boolean,
+): TurnRow {
+  const known = turnRows.get(turn);
+
+  if (
+    known !== undefined &&
+    known.trailing === trailing &&
+    sameItems(known.continuations, continuations)
+  )
+    return known;
+
+  const row: TurnRow = {
+    kind: "turn",
+    messageId: turnMessageId(turn),
+    scrollAnchor: turn.info.prompt !== null,
+    turn,
+    continuations: continuations.length === 0 ? NO_TURNS : continuations,
+    trailing,
+  };
+
+  turnRows.set(turn, row);
+
+  return row;
+}
+
+function landingRow(message: UserMessage, pending: boolean, held: boolean): LandingRow {
+  const known = landingRows.get(message);
+
+  if (known !== undefined && known.pending === pending && known.held === held) return known;
+
+  const row: LandingRow = {
+    kind: "landing",
+    messageId: `landing:${message.id}`,
+    scrollAnchor: true,
+    message,
+    pending,
+    held,
+  };
+
+  landingRows.set(message, row);
+
+  return row;
+}
+
+function present(messages: readonly UserMessage[]): readonly UserMessage[] {
+  return messages.length === 0 ? NO_USERS : messages;
 }
 
 export function conversationMessages(view: SessionView | undefined) {
@@ -77,22 +154,31 @@ export function conversationMessages(view: SessionView | undefined) {
   return {
     running,
     held: view?.execution.kind === "idle" && view.execution.lastRun?.end.kind !== "completed",
-    submitted: landing,
-    queued: users.filter(
-      (message) =>
-        running &&
-        message.status.kind === "pending" &&
-        message.status.schedule.kind !== "joined" &&
-        message.source.kind !== "child" &&
-        message.source.kind !== "job",
+    submitted: present(landing),
+    queued: present(
+      users.filter(
+        (message) =>
+          running &&
+          message.status.kind === "pending" &&
+          message.status.schedule.kind !== "joined" &&
+          message.source.kind !== "child" &&
+          message.source.kind !== "job",
+      ),
     ),
-    unsent: users.filter(
-      (message) =>
-        message.status.kind === "unsent" && (message.status.retrying !== null || running),
+    unsent: present(
+      users.filter(
+        (message) =>
+          message.status.kind === "unsent" && (message.status.retrying !== null || running),
+      ),
     ),
   };
 }
 
+/**
+ * The rows for one view. Rows whose content did not change since the last
+ * call are the same objects, so memoized row views skip them while a reply
+ * streams into the last one.
+ */
 export function transcriptRows({
   loading,
   failed,
@@ -115,50 +201,30 @@ export function transcriptRows({
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
 
-  if (loading && turns.length === 0 && landing.length === 0) {
-    rows.push({ kind: "skeleton", messageId: "row:skeleton", scrollAnchor: false });
-  }
+  if (loading && turns.length === 0 && landing.length === 0) rows.push(SKELETON_ROW);
 
-  if (failed) rows.push({ kind: "error", messageId: "row:error", scrollAnchor: false });
+  if (failed) rows.push(ERROR_ROW);
+
+  const groups: { readonly turn: ConversationTurn; readonly continuations: ConversationTurn[] }[] =
+    [];
 
   for (const turn of turns) {
-    const previous = rows.at(-1);
+    const group = groups.at(-1);
 
-    if (previous?.kind === "turn" && turn.info.prompt === null) {
-      rows[rows.length - 1] = { ...previous, continuations: [...previous.continuations, turn] };
-      continue;
-    }
-
-    rows.push({
-      kind: "turn",
-      messageId: turnMessageId(turn),
-      scrollAnchor: turn.info.prompt !== null,
-      turn,
-      continuations: [],
-      trailing: false,
-    });
+    if (group !== undefined && turn.info.prompt === null) group.continuations.push(turn);
+    else groups.push({ turn, continuations: [] });
   }
 
-  const last = rows.at(-1);
+  for (const [index, group] of groups.entries())
+    rows.push(turnRow(group.turn, group.continuations, index === groups.length - 1));
 
-  if (last?.kind === "turn") rows[rows.length - 1] = { ...last, trailing: true };
-
-  for (const message of landing) {
-    rows.push({
-      kind: "landing",
-      messageId: `landing:${message.id}`,
-      scrollAnchor: true,
-      message,
-      pending: running,
-      held,
-    });
-  }
+  for (const message of landing) rows.push(landingRow(message, running, held));
 
   if (retrying !== undefined) {
     rows.push({ kind: "retry", messageId: "row:retry", scrollAnchor: false, message: retrying });
   }
 
-  rows.push({ kind: "live", messageId: "row:live", scrollAnchor: false, working });
+  rows.push(working ? LIVE_ROWS.working : LIVE_ROWS.idle);
 
   return rows;
 }
