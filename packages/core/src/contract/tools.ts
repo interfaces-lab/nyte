@@ -63,7 +63,7 @@ export interface ToolDefinition<Args = unknown, Output = unknown> {
     | { readonly kind: "lark"; readonly source: string }
     | { readonly kind: "regex"; readonly pattern: string };
   class(args: Args, context: { readonly call: CallId }): ToolClass;
-  /** What a call can change besides the session: `"workspace"` when it may write the workspace's files, so the runner snapshots the tree around it and records what changed; `"none"` when it cannot (reads, browser pages, canvases, questions, delegation, or a script whose nested calls declare their own). Default `"workspace"`. A call nested inside one that snapshots is covered by its parent's pair and takes none of its own. */
+  /** What a call can change besides the session: `"workspace"` when it may write the workspace's files, so the runner snapshots the tree around it and records what changed; `"none"` when it cannot (reads, browser pages, canvases, questions, delegation that does not wait on a subagent, or a script whose nested calls declare their own); `task` and `await` keep the default, since the subagent writes the same workspace while they wait. Default `"workspace"`. A call nested inside one that snapshots is covered by its parent's pair and takes none of its own. */
   readonly effects?: "workspace" | "none";
   readonly replay: "safe" | "never";
   execute(args: Args, invocation: ToolInvocation): Promise<ToolResult<Output>>;

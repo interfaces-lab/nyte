@@ -96,7 +96,6 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     "Run a subagent on a task and wait for its answer. Give it everything it needs; it does not see this conversation.",
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
-  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await invocation.sdk.sessions.create({
@@ -171,7 +170,6 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
     role: "await",
     title: null,
   }),
-  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await requireChildSession(invocation, args.session);
