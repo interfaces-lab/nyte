@@ -25,7 +25,8 @@ export interface GuestSession {
 export interface BrowserSurfacesDependencies {
   /** The open window with this id, or the last focused one when it is gone or unset. */
   readonly window: (id: HostWindow | undefined) => BrowserWindow | undefined;
-  readonly emit: (event: HostEvent) => void;
+  /** Push a host event to one window, or to every window when `window` is omitted. */
+  readonly emit: (event: HostEvent, window?: HostWindow) => void;
   readonly filterListPath: string;
   /** Whether the window has been shown at least once. Mouse input is dropped until then. */
   readonly windowShown: (window: BrowserWindow) => boolean;
@@ -84,6 +85,10 @@ export interface Surface {
   paused: boolean;
   focusWhenShown: boolean;
   readonly pressed: BrowserKey[];
+  /** The state the renderer last received and where it went, so an unchanged state is not resent. */
+  published:
+    | { readonly state: BrowserSurfaceState; readonly window: HostWindow | undefined }
+    | undefined;
 }
 
 /** What the surface modules need from the registry that owns every surface. */
@@ -95,6 +100,8 @@ export interface SurfaceRegistry {
   blockedStyles(url: string): string;
   place(surface: Surface): void;
   publish(surface: Surface): void;
+  /** Send a surface's event to the window showing it, or to every window when none does. */
+  notify(surface: Surface, event: HostEvent): void;
   load(surface: Surface, url: string): void;
   remember(surface: Surface, url: string): void;
   reclaimIdle(): void;

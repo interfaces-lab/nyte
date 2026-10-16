@@ -1,5 +1,6 @@
 /** Browser panel pages: one `WebContentsView` per surface, the holders that keep it, and the bridge over them. */
 import { WebContentsView, webContents } from "electron";
+import { Value } from "typebox/value";
 import type { WebContents } from "electron";
 import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
@@ -84,7 +85,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
 
   constructor(dependencies: BrowserSurfacesDependencies) {
     this.dependencies = dependencies;
-    this.#downloads = new BrowserDownloads((event) => dependencies.emit(event));
+    this.#downloads = new BrowserDownloads((surface, event) => this.notify(surface, event));
     this.#guests = new GuestSessions({
       dependencies,
       downloads: this.#downloads,
@@ -143,13 +144,24 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     placeSurface(surface, window);
   }
 
+  /** A state the surface's window already has is not sent again. */
   publish(surface: Surface): void {
     if (surface.destroyed) return;
-    this.dependencies.emit({
-      kind: "browser_changed",
-      surface: surface.id,
-      state: surfaceState(surface, (url) => this.blocking(url)),
-    });
+    const state = surfaceState(surface, (url) => this.blocking(url));
+    const published = surface.published;
+
+    if (
+      published !== undefined &&
+      published.window === surface.home &&
+      Value.Equal(published.state, state)
+    )
+      return;
+    surface.published = { state, window: surface.home };
+    this.notify(surface, { kind: "browser_changed", surface: surface.id, state });
+  }
+
+  notify(surface: Surface, event: HostEvent): void {
+    this.dependencies.emit(event, surface.home);
   }
 
   load(surface: Surface, url: string): void {
@@ -225,8 +237,10 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
 
     if (contents.getURL() !== target || surface.error !== undefined) this.load(surface, target);
     this.place(surface);
+    const state = surfaceState(surface, (url) => this.blocking(url));
+    surface.published = { state, window };
 
-    return surfaceState(surface, (url) => this.blocking(url));
+    return state;
   }
 
   navigate(input: { readonly surface: string; readonly action: BrowserNavigationAction }): void {
@@ -434,13 +448,14 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     else surface.focusWhenShown = true;
   }
 
-  /** A visible placement moves the page into the reporting window. */
+  /** A visible placement moves the page into the reporting window, which then needs its state. */
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void {
     const surface = this.#surfaces.get(message.surface);
 
     if (surface === undefined) return;
+    const moved = message.visible && surface.home !== window;
 
-    if (message.visible) surface.home = window;
+    if (moved) surface.home = window;
 
     const bounds = {
       x: Math.round(message.bounds.x),
@@ -455,6 +470,8 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     if (bounds.width > 0 && bounds.height > 0) surface.lastBounds = bounds;
 
     this.place(surface);
+
+    if (moved) this.publish(surface);
   }
 
   setFocus(message: BrowserFocusMessage, window: HostWindow): void {
@@ -553,6 +570,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       paused: false,
       focusWhenShown: false,
       pressed: [],
+      published: undefined,
     };
 
     this.#surfaces.set(id, surface);

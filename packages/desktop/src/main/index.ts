@@ -166,6 +166,12 @@ function broadcast(event: HostEvent): void {
   for (const window of windows.keys()) send(window, HOST_EVENT_CHANNEL, event);
 }
 
+/** Push a host event to one window, or to every window when `window` is omitted. */
+function emitHostEvent(event: HostEvent, window?: HostWindow): void {
+  if (window === undefined) broadcast(event);
+  else send(window, HOST_EVENT_CHANNEL, event);
+}
+
 /** The window app-level commands act on: the one focused most recently. */
 function currentWindow(): NyteWindow | undefined {
   return [...windows.values()].at(-1);
@@ -190,7 +196,7 @@ const browserSurfaces = new BrowserSurfaces({
   history: browserHistory,
   window: (id) =>
     (id === undefined ? undefined : windows.get(id))?.window ?? currentWindow()?.window,
-  emit: broadcast,
+  emit: emitHostEvent,
   filterListPath: app.isPackaged
     ? join(process.resourcesPath, "adblock.bin")
     : join(app.getAppPath(), "resources", "adblock.bin"),
@@ -292,8 +298,7 @@ const hostDependencies = {
   },
   // Built-in plugins, registered here; nothing is loaded or discovered at run time.
   remoteAccessPlugins: { cloudflare: new CloudflareTunnelPlugin({ home: join(home, ".nyte") }) },
-  emitHostEvent: (event, window) =>
-    window === undefined ? broadcast(event) : send(window, HOST_EVENT_CHANNEL, event),
+  emitHostEvent,
   openExternal: (url) => void shell.openExternal(url),
   confirmExternal: async (url, id) => {
     const window = windows.get(id)?.window;

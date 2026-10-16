@@ -29,7 +29,7 @@ function wirePopups(registry: SurfaceRegistry, surface: Surface, contents: WebCo
     const wantsTab = disposition === "foreground-tab" || disposition === "background-tab";
 
     if (wantsTab && held) {
-      registry.dependencies.emit({
+      registry.notify(surface, {
         kind: "browser_open_tab",
         surface: surface.id,
         url: target,
@@ -84,7 +84,7 @@ function wireTrust(registry: SurfaceRegistry, surface: Surface, contents: WebCon
     event.preventDefault();
     surface.login?.();
     surface.login = callback;
-    registry.dependencies.emit({
+    registry.notify(surface, {
       kind: "browser_login_requested",
       surface: surface.id,
       host: authInfo.host,

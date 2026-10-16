@@ -13,9 +13,9 @@ const PROGRESS_INTERVAL_MS = 250;
 
 export class BrowserDownloads {
   readonly #items = new Map<string, DownloadItem>();
-  readonly #emit: (event: HostEvent) => void;
+  readonly #emit: (surface: Surface, event: HostEvent) => void;
 
-  constructor(emit: (event: HostEvent) => void) {
+  constructor(emit: (surface: Surface, event: HostEvent) => void) {
     this.#emit = emit;
   }
 
@@ -32,7 +32,7 @@ export class BrowserDownloads {
     this.#items.set(id, item);
 
     const report = (state: BrowserDownload["state"]): void => {
-      this.#emit({
+      this.#emit(surface, {
         kind: "browser_download",
         surface: surface.id,
         download: {
