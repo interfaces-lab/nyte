@@ -5,6 +5,8 @@ import type {
   CapabilityWire,
   HostView,
   HostViewWire,
+  JobsChange,
+  JobView,
   Json,
   OutputFrame,
   PageId,
@@ -383,7 +385,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return "id" in recovered ? startedJob(recovered) : recovered;
     },
     "jobs.list": ({ workspace: id }) => workspace(id).jobs.list(),
-    "jobs.watch": async ({ workspace: id }) => workspace(id).jobs.watch(),
+    "jobs.watch": async ({ workspace: id }) => jobChanges(workspace(id).jobs.watch()),
 
     "job.write": async ({ workspace: id, job }, { body }) => {
       await workspace(id)
@@ -518,6 +520,25 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       return null;
     },
   };
+}
+
+/** The wire form of a job list watch: the whole list first, then each job the next list moved (a new view object) or dropped, alone. */
+async function* jobChanges(lists: AsyncIterable<readonly JobView[]>): AsyncIterable<JobsChange> {
+  let previous: readonly JobView[] | null = null;
+
+  for await (const jobs of lists) {
+    if (previous === null) yield { kind: "jobs", jobs };
+    else {
+      const kept = new Set(jobs.map((job) => job.id));
+      const unmoved = new Set(previous);
+
+      for (const job of previous) if (!kept.has(job.id)) yield { kind: "forgotten", id: job.id };
+
+      for (const job of jobs) if (!unmoved.has(job)) yield { kind: "job", job };
+    }
+
+    previous = jobs;
+  }
 }
 
 async function* readChunks(body: ReadableStream<Uint8Array> | null): AsyncGenerator<Uint8Array> {

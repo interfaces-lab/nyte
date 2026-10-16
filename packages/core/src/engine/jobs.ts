@@ -1,11 +1,10 @@
-import { asId, asSeq, SdkError } from "@nyte-ai/schema";
+import { asId, asSeq, foldJobChange, SdkError } from "@nyte-ai/schema";
 import type {
   BackgroundItem,
   CallId,
   JobChange,
   JobEnd,
   JobId,
-  JobsChange,
   JobView,
   OutputFrame,
   RequestOptions,
@@ -153,12 +152,10 @@ export function createJobs(
   };
 }
 
-function watchJobs(kernel: Kernel, workspace: WorkspaceId): AsyncIterable<JobsChange> {
-  return closable<JobsChange>(() => {
-    let whole: JobsChange | null = {
-      kind: "jobs",
-      jobs: kernel.jobs.list(workspace).map((entry) => entry.view),
-    };
+function watchJobs(kernel: Kernel, workspace: WorkspaceId): AsyncIterable<readonly JobView[]> {
+  return closable<readonly JobView[]>(() => {
+    let jobs: readonly JobView[] = kernel.jobs.list(workspace).map((entry) => entry.view);
+    let opened = false;
 
     const moved = new Map<JobId, JobChange>();
     let wake: (() => void) | null = null;
@@ -173,11 +170,10 @@ function watchJobs(kernel: Kernel, workspace: WorkspaceId): AsyncIterable<JobsCh
 
     return {
       async pull() {
-        if (whole !== null) {
-          const value = whole;
-          whole = null;
+        if (!opened) {
+          opened = true;
 
-          return { done: false, value };
+          return { done: false, value: jobs };
         }
 
         while (moved.size === 0 && !closed)
@@ -190,8 +186,9 @@ function watchJobs(kernel: Kernel, workspace: WorkspaceId): AsyncIterable<JobsCh
 
         if (first === undefined) return { done: true, value: undefined };
         moved.delete(first[0]);
+        jobs = foldJobChange(jobs, first[1]);
 
-        return { done: false, value: first[1] };
+        return { done: false, value: jobs };
       },
       close() {
         closed = true;

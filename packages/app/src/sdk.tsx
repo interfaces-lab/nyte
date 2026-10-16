@@ -1,4 +1,4 @@
-import { foldJobs, pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
+import { pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
 import type {
   ConnectOptions,
   Connection,
@@ -389,7 +389,7 @@ export async function loadEarlierMessages(session: SessionId, limit: number): Pr
 
 export const jobsWatch = watchFamily(
   (current, workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>
-    foldJobs(current.workspace(workspace).jobs.watch()),
+    current.workspace(workspace).jobs.watch(),
 );
 
 export const gitStatusWatch = watchFamily(

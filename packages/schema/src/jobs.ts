@@ -59,6 +59,23 @@ export const JobsChangeType = Type.Union([
 
 export type JobsChange = Decoded<typeof JobsChangeType>;
 
+/** The job list after `change`: the whole list it carries, the moved job in its place (or last, when new), or the list without a forgotten job. Every other job keeps its view object. */
+export function foldJobChange(jobs: readonly JobView[], change: JobsChange): readonly JobView[] {
+  switch (change.kind) {
+    case "jobs":
+      return change.jobs;
+    case "forgotten":
+      return jobs.filter((job) => job.id !== change.id);
+    case "job": {
+      const moved = change.job;
+
+      return jobs.some((job) => job.id === moved.id)
+        ? jobs.map((job) => (job.id === moved.id ? moved : job))
+        : [...jobs, moved];
+    }
+  }
+}
+
 export const OutputFrameType = Type.Union([
   Type.Object({ kind: Type.Literal("bytes"), data: base64Bytes }),
   Type.Object({ kind: Type.Literal("gap") }),

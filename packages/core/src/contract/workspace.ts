@@ -33,7 +33,6 @@ import type {
   JobEnd,
   JobId,
   JobKey,
-  JobsChange,
   JobView,
   Json,
   McpChange,
@@ -113,8 +112,8 @@ export interface Jobs {
 
   list(): Promise<readonly JobView[]>;
 
-  /** Yields the workspace's jobs whole first, then each job that moved alone (a job's own changes coalesced while the reader is behind), so a job's output costs its own view, not the list's. */
-  watch(): AsyncIterable<JobsChange>;
+  /** Yields the workspace's jobs, then the list again after each job that moves (a job's own changes coalesced while the reader is behind), every job that did not move keeping its view object. */
+  watch(): AsyncIterable<readonly JobView[]>;
 }
 
 export interface Job {

@@ -1,5 +1,5 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { CallId, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
+import type { CallId, JobView, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
 import { createHost } from "../src/api/connection.ts";
@@ -333,7 +333,7 @@ describe("jobs", () => {
     });
   });
 
-  it("yields the job list whole, then each job that moves alone, and forgets ended jobs past 32", async () => {
+  it("yields the job list, again after each job that moves, keeping every unmoved view, and forgets ended jobs past 32", async () => {
     const { host, provider, workspace } = await world();
     const jobs = host.workspace(workspace).jobs;
     const server = await jobs.start({ command: "pnpm dev" });
@@ -341,29 +341,35 @@ describe("jobs", () => {
     const watched = jobs.watch()[Symbol.asyncIterator]();
     const opened = await watched.next();
 
-    assert(!opened.done && opened.value.kind === "jobs");
-    expect(opened.value.jobs.map((job) => job.id)).toEqual([server.id]);
+    assert(!opened.done);
+    expect(opened.value.map((job) => job.id)).toEqual([server.id]);
     provider.processes[0]?.emit("listening\n");
     await jobs.start({ command: "echo hi" });
 
     const ended = await until(async () => {
       const next = await watched.next();
-      assert(!next.done && next.value.kind === "job");
+      assert(!next.done);
 
-      return next.value.job.state.kind === "exited" ? next.value.job : undefined;
+      return next.value.find((job) => job.command === "echo hi" && job.state.kind === "exited");
     });
 
     expect(ended).toMatchObject({ command: "echo hi", tail: "hi\n" });
 
     for (let index = 0; index < 32; index += 1) await jobs.start({ command: `echo ${index}` });
-    const forgotten = await until(async () => {
-      const next = await watched.next();
-      assert(!next.done && next.value.kind !== "jobs");
+    let before: readonly JobView[] = [];
 
-      return next.value.kind === "forgotten" ? next.value.id : undefined;
+    const after = await until(async () => {
+      const next = await watched.next();
+      assert(!next.done);
+      const previous = before;
+      before = next.value;
+
+      return next.value.some((job) => job.id === ended.id)
+        ? undefined
+        : { previous, next: next.value };
     });
 
-    expect(forgotten).toBe(ended.id);
+    expect(after.next.filter((job) => !after.previous.includes(job))).toEqual([]);
     await watched.return?.();
   });
 
