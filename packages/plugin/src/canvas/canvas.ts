@@ -1,4 +1,4 @@
-import { definePart } from "@nyte-ai/core";
+import { definePart, followedTrace, traced } from "@nyte-ai/core";
 import type { ActionContext, ActionOutput, ToolDefinition } from "@nyte-ai/core";
 import { asId, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
@@ -112,7 +112,12 @@ const render: ToolDefinition<Infer<typeof parameters>> = {
   effects: "none",
   replay: "safe",
   async execute(args, invocation) {
-    const compiled = await compileCanvas(args.source);
+    const compiled = await traced(
+      "canvas.compile",
+      followedTrace(invocation.session.id),
+      { bytes: args.source.length },
+      () => compileCanvas(args.source),
+    );
 
     if (compiled.kind === "failed")
       throw new Error(`The canvas did not compile:\n${describeErrors(compiled.errors)}`);
