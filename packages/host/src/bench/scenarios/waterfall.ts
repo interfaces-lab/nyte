@@ -67,7 +67,7 @@ export function formatWaterfall(waterfall: Waterfall, width = 48): string {
   const label = Math.max(...waterfall.rows.map((row) => row.name.length + row.process.length + 3));
 
   const lines = waterfall.rows.map((row) => {
-    const offset = Math.min(width - 1, Math.floor(row.at * scale));
+    const offset = Math.max(0, Math.min(width - 1, Math.floor(row.at * scale)));
     const length = Math.max(1, Math.round(row.duration * scale));
     const bar = `${" ".repeat(offset)}${"█".repeat(Math.min(length, width - offset))}`;
     const name = `${row.name} [${row.process}]${row.traced ? "" : "*"}`.padEnd(label + 1);
