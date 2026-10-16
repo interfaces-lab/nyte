@@ -193,7 +193,7 @@ function emptyScopeText(scope: WorkbenchChangesScope): string {
 }
 
 /** The file a confirmation is about, and whether reverting it means the trash. */
-export interface RevertTarget {
+interface RevertTarget {
   readonly path: string;
   readonly untracked: boolean;
 }
@@ -203,7 +203,7 @@ export interface RevertTarget {
  * untracked file has no committed state to return to, so it is trashed instead
  * and the copy says so rather than claiming the change is unrecoverable.
  */
-export function revertConfirmation(target: RevertTarget) {
+function revertConfirmation(target: RevertTarget) {
   if (target.untracked) {
     return {
       title: "Move to Trash",

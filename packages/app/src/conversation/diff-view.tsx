@@ -317,7 +317,7 @@ function renderablePatch(patch: string): RenderablePatch {
 }
 
 /** The bytes a diff draws and the counts beside them; the counts are the record's, not a reparse. */
-export interface DiffFacts {
+interface DiffFacts {
   readonly patch: string;
   readonly added: number;
   readonly removed: number;

@@ -85,10 +85,7 @@ function revealWorkbench(layout: WorkbenchLayout): WorkbenchLayout {
   return workbenchShowsChat(layout) ? MAXIMIZED_WORKBENCH_LAYOUT : layout;
 }
 
-export function sameChangesScope(
-  left: WorkbenchChangesScope,
-  right: WorkbenchChangesScope,
-): boolean {
+function sameChangesScope(left: WorkbenchChangesScope, right: WorkbenchChangesScope): boolean {
   switch (left.kind) {
     case "uncommitted":
     case "staged":
@@ -466,7 +463,7 @@ export function clampWorkbenchWidthToBounds(width: number, bounds: WorkbenchWidt
   return Math.min(bounds.max, Math.max(bounds.min, normalized));
 }
 
-export function decodePersistedWorkbenchSnapshot(
+function decodePersistedWorkbenchSnapshot(
   serialized: string,
 ): PersistedWorkbenchSnapshot | undefined {
   try {

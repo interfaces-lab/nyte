@@ -133,7 +133,7 @@ export function SwitchRow(input: Bound<boolean>): ReactElement | null {
   );
 }
 
-export interface Option<T extends string> {
+interface Option<T extends string> {
   readonly value: T;
   readonly label: string;
 }

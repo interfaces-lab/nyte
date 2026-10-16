@@ -10,7 +10,7 @@ import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 /** A localStorage key, or one field of the JSON object stored at that key. */
-export interface PreferenceSlot {
+interface PreferenceSlot {
   readonly key: string;
   readonly field?: string;
 }

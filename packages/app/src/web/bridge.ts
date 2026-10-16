@@ -41,7 +41,7 @@ function browserPlatform(): NodeJS.Platform {
   return "linux";
 }
 
-export function webPageUrl(url: string): string | undefined {
+function webPageUrl(url: string): string | undefined {
   try {
     const parsed = new URL(url);
 

@@ -76,7 +76,7 @@ const styles = create({
   shell: { flex: 1, minHeight: 0, position: "relative" },
 });
 
-export function DesktopList({
+function DesktopList({
   environments,
   connecting,
   disabled,
@@ -134,7 +134,7 @@ export function DesktopList({
   );
 }
 
-export interface AccountScreenProps {
+interface AccountScreenProps {
   readonly config: AccountConfig;
   readonly onConnected: (connection: Connection, mount: (shell: ReactNode) => void) => void;
 }

@@ -6,7 +6,7 @@ import type { ContextMenuTemplateItem, HostBridge, HostState } from "../bridge.t
 import { macPlatform } from "../platform.ts";
 
 /** An item owns the work it performs, so no call site matches choices back up. */
-export type ContextMenuEntry =
+type ContextMenuEntry =
   | Exclude<ContextMenuTemplateItem, { kind: "item" }>
   | (Extract<ContextMenuTemplateItem, { kind: "item" }> & { readonly run: () => void });
 

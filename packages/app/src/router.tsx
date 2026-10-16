@@ -405,7 +405,7 @@ function leaveMissingChat(router: AppRouter): void {
   );
 }
 
-export const settingsRoute = createRoute({
+const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings/$section",
   params: {

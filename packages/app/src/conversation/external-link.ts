@@ -24,7 +24,7 @@ async function confirmAndOpen(url: URL): Promise<void> {
 }
 
 /** Opens a link in the system browser, asking first unless its host was trusted. */
-export function openExternalLink(href: string): void {
+function openExternalLink(href: string): void {
   const url = URL.parse(href);
 
   if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) return;

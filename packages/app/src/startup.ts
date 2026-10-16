@@ -16,7 +16,7 @@ interface RendererStartupOptions {
 }
 
 /** Whether the host connection behind a mounted shell has opened. */
-export type StartupConnection =
+type StartupConnection =
   | { readonly kind: "connecting" }
   | { readonly kind: "connected" }
   | { readonly kind: "failed"; readonly retry: () => void };

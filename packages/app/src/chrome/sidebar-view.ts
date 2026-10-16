@@ -72,7 +72,7 @@ export function sessionIsDraft(session: SessionInfo): boolean {
  * `sessionMark` reports `waiting` only for a run parked on a reply; one parked
  * on background work arrives here as `working`.
  */
-export function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
+function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
   const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {

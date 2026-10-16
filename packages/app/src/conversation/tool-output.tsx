@@ -13,7 +13,7 @@ const EDGE = 16_384;
  * counts the raw characters left between them. A 5 MB log costs the same as a
  * 32 KB one until someone asks for all of it.
  */
-export interface OutputExcerpt {
+interface OutputExcerpt {
   readonly head: string;
   readonly tail: string;
   readonly hidden: number;
@@ -49,11 +49,6 @@ export function outputExcerpt(raw: string): OutputExcerpt {
 /** The excerpt as one string, with an ellipsis line where the middle was left out. */
 export function excerptText(excerpt: OutputExcerpt): string {
   return excerpt.hidden === 0 ? excerpt.head : `${excerpt.head}…\n${excerpt.tail}`;
-}
-
-/** The excerpt's last lines, for a collapsed preview that shows the end of the output. */
-export function excerptEnd(excerpt: OutputExcerpt): string {
-  return excerpt.hidden === 0 ? excerpt.head : excerpt.tail;
 }
 
 function sizeLabel(characters: number): string {

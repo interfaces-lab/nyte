@@ -60,7 +60,7 @@ export interface UsageTotals {
 }
 
 /** What a usage entry was spent on: a model, tools, or compaction. */
-export type UsageSubject =
+type UsageSubject =
   | { readonly kind: "model"; readonly provider: string; readonly model: string }
   | { readonly kind: "tool" }
   | { readonly kind: "compaction" };
@@ -105,7 +105,7 @@ export interface UsageReport {
 }
 
 /** One model's turns and usage in another tool's history. */
-export interface ModelUsage {
+interface ModelUsage {
   readonly provider: string;
   readonly model: string;
   readonly turns: number;
@@ -113,7 +113,7 @@ export interface ModelUsage {
 }
 
 /** Another tool's history summed by model, compaction and tools. */
-export interface UsageSummary {
+interface UsageSummary {
   readonly models: readonly ModelUsage[];
   readonly compaction: Usage;
   readonly tools: Usage;
@@ -394,13 +394,9 @@ export type RemoteAccessState =
 import type { ConnectView } from "@nyte-ai/connect";
 
 export type {
-  ConnectAccount,
   ConnectDevice,
-  ConnectLease,
   ConnectLinkFailure,
-  ConnectLinking,
   ConnectNotice,
-  ConnectRelay,
   ConnectUnavailable,
   ConnectView,
 } from "@nyte-ai/connect";

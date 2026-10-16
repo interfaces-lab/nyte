@@ -134,12 +134,6 @@ export const preferences = {
 
 type ValueOf<P> = P extends Preference<infer T> ? T : never;
 
-export type StartupDestination = ValueOf<typeof preferences.startupDestination>;
-
 export type RunningMessagePreference = ValueOf<typeof preferences.runningMessage>;
 
-export type LinkPreference = ValueOf<typeof preferences.linkTarget>;
-
 export type ToolCallDensity = ValueOf<typeof preferences.toolCalls>;
-
-export type FontSmoothing = ValueOf<typeof preferences.fontSmoothing>;

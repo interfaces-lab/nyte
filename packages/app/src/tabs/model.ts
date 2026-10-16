@@ -29,7 +29,7 @@ export type Page =
 
 export type Place = PaneSelection | Page;
 
-export interface PaneHistory {
+interface PaneHistory {
   readonly back: readonly PaneSelection[];
   readonly forward: readonly PaneSelection[];
 }
@@ -96,19 +96,6 @@ export function showsPage(place: Place): place is Page {
   return place.kind === "customize" || place.kind === "environments";
 }
 
-export function samePlace(left: Place, right: Place): boolean {
-  if (showsPage(left) || showsPage(right)) {
-    return (
-      showsPage(left) &&
-      showsPage(right) &&
-      left.kind === right.kind &&
-      left.section === right.section
-    );
-  }
-
-  return sameSelection(left, right);
-}
-
 export function currentView(tab: Tab): View {
   const view = tab.views[tab.index];
 
@@ -159,7 +146,7 @@ function panesView(layout: PaneLayout): PanesView {
   return { kind: "panes", layout, history: FRESH_HISTORIES };
 }
 
-export function newTab(id: string, place: Place): Tab {
+function newTab(id: string, place: Place): Tab {
   return {
     id,
     views: [

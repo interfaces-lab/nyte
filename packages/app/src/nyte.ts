@@ -29,22 +29,4 @@ export const nyte: NyteBridge = {
   },
 };
 
-export type {
-  GitHubAccount,
-  GitHubProviderState,
-  GitHubPullRequest,
-  GitHubPullRequestContext,
-  GitHubRepository,
-  HostEvent,
-  HostState,
-  LocalFontCatalog,
-  OpenWorkspaceOutcome,
-  ThemePreference,
-  UsageEntry,
-  UsageReport,
-  UsageSession,
-  UsageSource,
-  UsageSubject,
-  UsageTotals,
-  UsageWindow,
-} from "./bridge.ts";
+export type { HostState, UsageReport, UsageTotals, UsageWindow } from "./bridge.ts";

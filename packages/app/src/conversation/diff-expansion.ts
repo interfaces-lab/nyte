@@ -15,12 +15,12 @@ import { patchDigest } from "../workbench/changes-viewed.ts";
 
 export type DiffContents = Awaited<ReturnType<GitApi["contents"]>>;
 
-export type DiffContentsReader = (input: {
+type DiffContentsReader = (input: {
   readonly scope: GitScope;
   readonly path: string;
 }) => Promise<DiffContents>;
 
-export interface DiffExpansionSource {
+interface DiffExpansionSource {
   readonly readContents: DiffContentsReader;
   /** The repository root, so two checkouts of one path cannot share a cache entry. */
   readonly root: string;

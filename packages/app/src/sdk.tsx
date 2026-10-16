@@ -85,14 +85,14 @@ export function connection(): Connection {
 }
 
 /** A watch's latest frame and its failure; a new frame clears the failure. */
-export interface WatchState<T> {
+interface WatchState<T> {
   readonly value: T | undefined;
   readonly error: Error | undefined;
 }
 
 const UNSTARTED: WatchState<never> = { value: undefined, error: undefined };
 
-export class WatchStore<T> {
+class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
   private stop: (() => void) | undefined;

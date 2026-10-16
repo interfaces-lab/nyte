@@ -51,22 +51,22 @@ export const COMMIT_ACTIONS = [
   "pull-request",
 ] as const;
 
-export type CommitAction = (typeof COMMIT_ACTIONS)[number];
+type CommitAction = (typeof COMMIT_ACTIONS)[number];
 
 /** The default action before the user chooses one from the menu. */
-export const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
+const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
 
 const STORAGE_KEY = "nyte.desktop.changes-commit-action.v1";
 
 /** Which steps one action runs, in order. A pull request always pushes its branch first. */
-export interface CommitActionPlan {
+interface CommitActionPlan {
   readonly branch: boolean;
   readonly commit: boolean;
   readonly push: boolean;
   readonly pullRequest: boolean;
 }
 
-export function commitActionPlan(action: CommitAction): CommitActionPlan {
+function commitActionPlan(action: CommitAction): CommitActionPlan {
   const steps = { branch: false, commit: false, push: false, pullRequest: false };
 
   switch (action) {
@@ -105,7 +105,7 @@ function commitActionGroup(action: CommitAction): "branch" | "commit" | "push" {
   return plan.commit ? "commit" : "push";
 }
 
-export function commitActionLabel(action: CommitAction): string {
+function commitActionLabel(action: CommitAction): string {
   switch (action) {
     case "branch-commit":
       return "Create Branch and Commit Changes…";
@@ -131,7 +131,7 @@ export function readsWorkingTree(scope: WorkbenchChangesScope): boolean {
   return scope.kind === "uncommitted" || scope.kind === "staged" || scope.kind === "unstaged";
 }
 
-export interface CommitBarState {
+interface CommitBarState {
   readonly scope: WorkbenchChangesScope;
   /** Files in the scope on screen; nothing to commit while this is zero. */
   readonly fileCount: number;
@@ -144,7 +144,7 @@ export interface CommitBarState {
  * creates a branch first leaves a detached or unborn HEAD behind, so those
  * checks apply only to the actions that push or open a pull request as they stand.
  */
-export function commitActionDisabledReason(
+function commitActionDisabledReason(
   action: CommitAction,
   state: CommitBarState,
 ): string | undefined {
@@ -172,7 +172,7 @@ function commitActionDisabled(action: CommitAction, state: CommitBarState): bool
 }
 
 /** What a step left behind, as the bar reports it. */
-export interface CommitBarResult {
+interface CommitBarResult {
   readonly tone: "success" | "error";
   readonly text: string;
   /** Git's or `gh`'s own words, kept so nothing is lost to paraphrase. */
@@ -203,13 +203,13 @@ function refusedMessage(
   }
 }
 
-export function createBranchResultMessage(result: GitOutcome, name: string): CommitBarResult {
+function createBranchResultMessage(result: GitOutcome, name: string): CommitBarResult {
   return result.kind === "applied"
     ? { tone: "success", text: `Created branch ${name} and switched to it.` }
     : refusedMessage(result, `Creating ${name}`);
 }
 
-export function commitResultMessage(result: GitOutcome): CommitBarResult {
+function commitResultMessage(result: GitOutcome): CommitBarResult {
   return result.kind === "applied"
     ? { tone: "success", text: "Committed." }
     : result.kind === "unchanged"
@@ -217,7 +217,7 @@ export function commitResultMessage(result: GitOutcome): CommitBarResult {
       : refusedMessage(result, "The commit");
 }
 
-export function pushResultMessage(result: GitOutcome): CommitBarResult {
+function pushResultMessage(result: GitOutcome): CommitBarResult {
   return result.kind === "applied"
     ? { tone: "success", text: "Pushed." }
     : result.kind === "unchanged"
@@ -225,7 +225,7 @@ export function pushResultMessage(result: GitOutcome): CommitBarResult {
       : refusedMessage(result, "The push");
 }
 
-export function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarResult {
+function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarResult {
   switch (result.kind) {
     case "created":
       return { tone: "success", text: "Opened a pull request.", url: result.url };
@@ -258,7 +258,7 @@ export function pullRequestResultMessage(result: GitHubPullRequestOutcome): Comm
 /** A trust refusal crosses IPC as a `forbidden` failure, not as an outcome. */
 const trustRefusal = Type.Object({ cause: Type.Object({ code: Type.Literal("forbidden") }) });
 
-export function actionFailureMessage(cause: unknown): CommitBarResult {
+function actionFailureMessage(cause: unknown): CommitBarResult {
   if (Value.Check(trustRefusal, cause))
     return {
       tone: "error",
@@ -272,12 +272,12 @@ export function actionFailureMessage(cause: unknown): CommitBarResult {
  * What a commit covers. The staged scope commits the index as it stands;
  * every other working-tree scope commits each tracked change with it.
  */
-export function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
+function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
   return scope.kind === "staged" ? "staged" : "all";
 }
 
 /** A pull request needs a title; the message's first line is it, then the branch. */
-export function pullRequestTitle(message: string, branch: BranchReadout | undefined): string {
+function pullRequestTitle(message: string, branch: BranchReadout | undefined): string {
   const firstLine = message.split("\n")[0]?.trim() ?? "";
 
   if (firstLine !== "") return firstLine;
@@ -329,7 +329,7 @@ const styles = create({
   resultActions: { display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap" },
 });
 
-export interface ChangesCommitBarProps {
+interface ChangesCommitBarProps {
   readonly scope: WorkbenchChangesScope;
   readonly branch: BranchReadout | undefined;
   readonly revision: string;

@@ -12,7 +12,7 @@ import type { MessageFile } from "./message-content.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
 
-export interface ComposerContent {
+interface ComposerContent {
   readonly parts: readonly ContentPart[];
   readonly images: readonly ImageContent[];
   readonly files: readonly MessageFile[];
@@ -115,7 +115,7 @@ export async function sendComposerMessage(
 const NO_COMMANDS: readonly CommandInfo[] = [];
 
 /** What became of one submit. */
-export type DeliveryOutcome =
+type DeliveryOutcome =
   | { readonly kind: "empty" }
   /** Not sent: the draft stays as typed, and `message` says why. */
   | { readonly kind: "kept"; readonly message: string }
@@ -124,7 +124,7 @@ export type DeliveryOutcome =
   /** It left, and the host refused it: the draft comes back with `message`. */
   | { readonly kind: "refused"; readonly message: string };
 
-export interface ComposerDelivery {
+interface ComposerDelivery {
   readonly sessionId: SessionId;
   readonly submission: ComposerSubmission;
   readonly attachments: readonly { readonly content: ImageContent }[];

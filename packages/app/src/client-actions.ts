@@ -272,7 +272,7 @@ export function resolveClientAction(
   });
 }
 
-export type TabShortcut =
+type TabShortcut =
   | { readonly kind: "activate-index"; readonly index: number }
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 };
 

@@ -64,7 +64,7 @@ const COMMIT_PAGE_SIZE = 20;
 const MAX_COMMIT_PAGES = 10;
 
 /** The panel's own keyboard bindings, which is all the Changes panel claims. */
-export type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
+type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
 
 type ShortcutEvent = Pick<
   KeyboardEvent,
@@ -103,7 +103,7 @@ export function changesShortcutAction(
   return key === "r" ? "refresh" : undefined;
 }
 
-export function changesShortcutLabel(action: ChangesShortcutAction, mac: boolean): string {
+function changesShortcutLabel(action: ChangesShortcutAction, mac: boolean): string {
   switch (action) {
     case "filter-files":
       return mac ? "⌘F" : "Ctrl+F";
@@ -177,7 +177,7 @@ const styles = create({
   spacer: { flex: 1, minWidth: 0 },
 });
 
-export function ChangeStats({
+function ChangeStats({
   added,
   removed,
 }: {
@@ -367,7 +367,7 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
   );
 }
 
-export interface ChangesToolbarProps {
+interface ChangesToolbarProps {
   /** The scope the panel is showing, which is not always the stored one. */
   readonly scope: WorkbenchChangesScope;
   readonly scopeLabel: string;

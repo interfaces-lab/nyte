@@ -25,14 +25,14 @@ export interface PatchSource {
   readonly read: (paths: readonly string[]) => Promise<readonly HostPatch[]>;
 }
 
-export interface PatchSnapshot {
+interface PatchSnapshot {
   readonly key: string | undefined;
   readonly lineage: string | undefined;
   readonly fresh: ReadonlyMap<string, PatchEntry>;
   readonly stale: ReadonlyMap<string, PatchEntry>;
 }
 
-export type EnsuredPatches =
+type EnsuredPatches =
   | { readonly kind: "read"; readonly entries: ReadonlyMap<string, PatchEntry> }
   | { readonly kind: "superseded" };
 
@@ -329,5 +329,3 @@ export function createPatchLoader() {
     },
   };
 }
-
-export type PatchLoader = ReturnType<typeof createPatchLoader>;

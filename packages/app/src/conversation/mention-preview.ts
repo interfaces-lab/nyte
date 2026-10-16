@@ -9,7 +9,7 @@
 /** Folders that keep a row of their own; the ones above them share the first. */
 const MAX_FOLDER_ROWS = 4;
 
-export interface MentionPreviewRow {
+interface MentionPreviewRow {
   readonly kind: "folder" | "file";
   readonly label: string;
 }

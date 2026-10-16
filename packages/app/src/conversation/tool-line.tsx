@@ -28,7 +28,7 @@ import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./activity.stylex.ts";
 import { ToolOutputText, excerptText, outputExcerpt } from "./tool-output.tsx";
 
-export type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
+type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
 
 const COLOR_TRANSITION = {
   transitionProperty: "color",

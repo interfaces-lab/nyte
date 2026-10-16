@@ -22,34 +22,32 @@ const repositoryViewedSchema = Type.Object(
 
 const changesViewedSchema = Type.Record(Type.String(), repositoryViewedSchema);
 
-export type ViewedMark = Static<typeof viewedMarkSchema>;
+type ViewedMark = Static<typeof viewedMarkSchema>;
 
-export type RepositoryViewed = Static<typeof repositoryViewedSchema>;
-
-export type ChangesViewed = Static<typeof changesViewedSchema>;
+type ChangesViewed = Static<typeof changesViewedSchema>;
 
 export type ViewedState = "unviewed" | "viewed" | "changed" | "unknown";
 
-export type ViewedSummary = "none" | "some" | "all";
+type ViewedSummary = "none" | "some" | "all";
 
 /** A path with the digest of the patch shown for it right now. */
-export interface ViewedFile {
+interface ViewedFile {
   readonly path: string;
   readonly digest: string;
 }
 
 type ViewedStorage = Pick<Storage, "getItem" | "setItem">;
 
-export interface ChangesViewedOptions {
+interface ChangesViewedOptions {
   readonly storage?: ViewedStorage;
   readonly now?: () => number;
   readonly maxFilesPerRepository?: number;
   readonly repositoryRetentionMs?: number;
 }
 
-export const EMPTY_CHANGES_VIEWED: ChangesViewed = {};
+const EMPTY_CHANGES_VIEWED: ChangesViewed = {};
 
-export function decodeChangesViewed(serialized: string | null): ChangesViewed {
+function decodeChangesViewed(serialized: string | null): ChangesViewed {
   if (serialized === null) return EMPTY_CHANGES_VIEWED;
 
   try {
@@ -91,7 +89,7 @@ function markState(mark: ViewedMark | undefined, digest: string): ViewedState {
  * any edit in the workspace, so it must never appear in a key: marks would vanish on an
  * unrelated save.
  */
-export class ChangesViewedStore {
+class ChangesViewedStore {
   readonly #storage: ViewedStorage | undefined;
   readonly #now: () => number;
   readonly #maxFiles: number;

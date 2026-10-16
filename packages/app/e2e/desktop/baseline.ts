@@ -116,7 +116,7 @@ async function seed(home: string): Promise<Manifest> {
   }
 }
 
-export async function ensureBaseline(): Promise<string> {
+async function ensureBaseline(): Promise<string> {
   const published = join(CACHE_ROOT, await fingerprint());
   const manifest = join(published, "manifest.json");
 

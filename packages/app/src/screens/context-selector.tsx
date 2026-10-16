@@ -19,7 +19,7 @@ import { macPlatform } from "../platform.ts";
 import { useHostState } from "../queries.ts";
 import { contextStyles } from "./context-selector.stylex.ts";
 
-export function ContextHint({
+function ContextHint({
   label,
   value,
   keys = [],

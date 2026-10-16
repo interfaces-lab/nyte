@@ -19,7 +19,7 @@ import type { ConnectionStanding } from "./connection-list.tsx";
 
 export type LinkedView = Extract<ConnectView, { kind: "linked" }>;
 
-export interface LinkedStanding extends ConnectionStanding {
+interface LinkedStanding extends ConnectionStanding {
   readonly note: string | undefined;
 }
 

@@ -7,7 +7,7 @@ import { prepareHome } from "./baseline.ts";
 import type { PreparedHome } from "./baseline.ts";
 import { launchDesktop } from "./launch.ts";
 
-export interface Desktop extends PreparedHome {
+interface Desktop extends PreparedHome {
   readonly application: ElectronApplication;
   readonly page: Page;
   readonly downloads: string;

@@ -24,7 +24,7 @@ import { activityStyles } from "./activity.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
-export type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
+type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
 type ShellTokenType =
   | "whitespace"

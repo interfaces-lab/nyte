@@ -37,13 +37,13 @@ const KEPT_VARIABLES = new Set([
   "LOCALAPPDATA",
 ]);
 
-export interface LaunchOptions {
+interface LaunchOptions {
   readonly home: string;
   readonly parentDirectory: string;
   readonly downloadsDirectory?: string;
 }
 
-export interface LaunchedDesktop {
+interface LaunchedDesktop {
   readonly application: ElectronApplication;
   readonly page: Page;
   readonly home: string;
@@ -51,7 +51,7 @@ export interface LaunchedDesktop {
   close(): Promise<void>;
 }
 
-export async function assertBuilt(): Promise<void> {
+async function assertBuilt(): Promise<void> {
   const required = [
     [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
     [resolve(DESKTOP_ROOT, "out/renderer/index.html"), "pnpm --dir packages/desktop build"],

@@ -198,7 +198,3 @@ export function settingsSectionGroups(
 export function showsSettingsSection(value: string): value is SettingsSection {
   return namesSettingsPage(value) && available(SETTINGS_PAGES[value].needs);
 }
-
-export function settingsTitle(section: SettingsSection): string {
-  return SETTINGS_PAGES[section].title;
-}

@@ -3,7 +3,7 @@ import { errorMessage } from "../errors.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
 
-export interface FileSaveInput {
+interface FileSaveInput {
   readonly path: string;
   readonly contents: string;
   readonly version: FileVersion;

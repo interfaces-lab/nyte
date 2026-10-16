@@ -42,7 +42,7 @@ const OVERLAY_SELECTOR = [
 
 const WATCHED: MutationObserverInit = { childList: true, subtree: true, attributes: true };
 
-export interface OverlayRect {
+interface OverlayRect {
   readonly left: number;
   readonly top: number;
   readonly right: number;

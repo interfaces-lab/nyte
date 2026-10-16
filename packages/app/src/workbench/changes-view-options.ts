@@ -32,19 +32,19 @@ export type ChangesLayout = Static<typeof changesViewOptionsSchema>["layout"];
 
 export type ChangesViewOptions = Static<typeof changesViewOptionsSchema>;
 
-export type StoredChangesViewOptions = Static<typeof storedOptionsSchema>;
+type StoredChangesViewOptions = Static<typeof storedOptionsSchema>;
 
-export const EMPTY_CHANGES_VIEW_OPTIONS: StoredChangesViewOptions = {};
+const EMPTY_CHANGES_VIEW_OPTIONS: StoredChangesViewOptions = {};
 
 type OptionsStorage = Pick<Storage, "getItem" | "setItem">;
 
-export interface ChangesViewOptionsStoreOptions {
+interface ChangesViewOptionsStoreOptions {
   readonly storage?: OptionsStorage;
   readonly now?: () => number;
   readonly maxScopes?: number;
 }
 
-export function decodeChangesViewOptions(serialized: string | null): StoredChangesViewOptions {
+function decodeChangesViewOptions(serialized: string | null): StoredChangesViewOptions {
   if (serialized === null) return EMPTY_CHANGES_VIEW_OPTIONS;
 
   try {
@@ -60,7 +60,7 @@ export function decodeChangesViewOptions(serialized: string | null): StoredChang
  * Changes overflow-menu options per workspace or repository. A repository reviewed in
  * split mode keeps that view without forcing it on every other workspace.
  */
-export class ChangesViewOptionsStore {
+class ChangesViewOptionsStore {
   readonly #storage: OptionsStorage | undefined;
   readonly #now: () => number;
   readonly #maxScopes: number;

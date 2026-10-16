@@ -61,7 +61,7 @@ export function shareCentralIconBase(): Plugin {
 }
 
 /** A module the interface loads on first use, as an entry chunk of its own. */
-export interface DeferredEntry {
+interface DeferredEntry {
   /** File URL of the module that publishes the entry's runtime with `publishDeferred`. */
   readonly module: string;
   /** Paths under `node_modules/` that may load only through this entry. */

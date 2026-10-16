@@ -24,7 +24,7 @@ const styles = create({
 });
 
 /** A device as its row reads it. */
-export interface DeviceEntry {
+interface DeviceEntry {
   readonly id: string;
   readonly name: string;
   readonly detail: string;

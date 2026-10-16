@@ -13,20 +13,20 @@ export type ChangeStatus = FileStatus;
  * Viewed state lives in the panel's store, so the caller passes the lookup in
  * and this module stays a pure function of its inputs.
  */
-export type ChangeViewedFilter =
+type ChangeViewedFilter =
   | { readonly mode: "all" }
   | {
       readonly mode: "viewed" | "not-viewed";
       readonly isViewed: (path: string) => boolean;
     };
 
-export interface ChangeFilterEntry {
+interface ChangeFilterEntry {
   readonly path: string;
   /** Absent for rows with no working-tree status, such as per-turn changes. */
   readonly status?: ChangeStatus;
 }
 
-export interface ChangeFilter {
+interface ChangeFilter {
   /** Blank or whitespace-only keeps every path. */
   readonly query?: string;
   /** Empty or absent keeps every status; entries without a status drop when set. */
@@ -34,7 +34,7 @@ export interface ChangeFilter {
   readonly viewed?: ChangeViewedFilter;
 }
 
-export function matchesChangePathQuery(path: string, query: string): boolean {
+function matchesChangePathQuery(path: string, query: string): boolean {
   const needle = query.trim().toLowerCase();
 
   if (needle === "") return true;
@@ -78,7 +78,7 @@ export function filterChangePaths(
 }
 
 /** Master-checkbox state over a list of paths. An empty list reports `"none"`. */
-export type ChangeSelectionSummary = "none" | "some" | "all";
+type ChangeSelectionSummary = "none" | "some" | "all";
 
 export function changeSelectionSummary(
   paths: readonly string[],

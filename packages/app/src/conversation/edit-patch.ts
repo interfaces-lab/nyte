@@ -2,7 +2,7 @@ import { PatchEntryType } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 
-export interface EditPatch {
+interface EditPatch {
   readonly patch: string;
   readonly added: number;
   readonly removed: number;

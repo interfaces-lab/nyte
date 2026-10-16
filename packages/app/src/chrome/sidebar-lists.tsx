@@ -534,7 +534,7 @@ export function WorkspaceRow({
   );
 }
 
-export function Shelf({
+function Shelf({
   label,
   count,
   leading,

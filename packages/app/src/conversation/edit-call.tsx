@@ -22,7 +22,7 @@ import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./activity.stylex.ts";
 import { ToolOutcome } from "./tool-line.tsx";
 
-export type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
+type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
 
 const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
 

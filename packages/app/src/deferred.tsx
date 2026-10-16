@@ -10,8 +10,6 @@ import type { ReactElement, ReactNode } from "react";
 import type { DeferredRuntimes } from "./deferred-entries.ts";
 import deferredUrls from "./deferred-urls.ts";
 
-export type { DeferredRuntimes } from "./deferred-entries.ts";
-
 type DeferredName = keyof DeferredRuntimes;
 
 const published: { [Name in DeferredName]?: DeferredRuntimes[Name] } = {};
@@ -50,7 +48,7 @@ export function loadDeferred<Name extends DeferredName>(
 }
 
 /** The entry's runtime, suspending the component until its chunk has loaded. */
-export function useDeferred<Name extends DeferredName>(name: Name): DeferredRuntimes[Name] {
+function useDeferred<Name extends DeferredName>(name: Name): DeferredRuntimes[Name] {
   if (published[name] === undefined) use(loadEntry(name));
 
   return requirePublished(name);

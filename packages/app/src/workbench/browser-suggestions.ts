@@ -12,7 +12,7 @@ export interface BrowserCompletion {
   readonly url: string;
 }
 
-export interface BrowserSuggestions {
+interface BrowserSuggestions {
   readonly rows: readonly BrowserSuggestion[];
   readonly completion: BrowserCompletion | undefined;
 }

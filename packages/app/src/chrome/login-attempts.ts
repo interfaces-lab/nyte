@@ -20,7 +20,7 @@ interface LoginAttemptView {
   readonly cancelling: boolean;
 }
 
-export type LoginOutcome = { readonly kind: "connected" } | { readonly kind: "cancelled" };
+type LoginOutcome = { readonly kind: "connected" } | { readonly kind: "cancelled" };
 
 interface Running {
   readonly view: LoginAttemptView;

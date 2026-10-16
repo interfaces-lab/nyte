@@ -156,7 +156,7 @@ function plural(count: number, noun: string): string {
 }
 
 /** `YYYY-MM-DD` for a local day, matching the calendar the host folded with. */
-export function localDay(at: number): string {
+function localDay(at: number): string {
   const date = new Date(at);
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -165,7 +165,7 @@ export function localDay(at: number): string {
 }
 
 /** Local midnight, so the arithmetic below stays on calendar days across a DST shift. */
-export function dayStart(day: string): number {
+function dayStart(day: string): number {
   return new Date(
     Number(day.slice(0, 4)),
     Number(day.slice(5, 7)) - 1,
@@ -173,14 +173,14 @@ export function dayStart(day: string): number {
   ).getTime();
 }
 
-export function shiftDay(day: string, delta: number): string {
+function shiftDay(day: string, delta: number): string {
   const date = new Date(dayStart(day));
   date.setDate(date.getDate() + delta);
 
   return localDay(date.getTime());
 }
 
-export function dayLabel(day: string): string {
+function dayLabel(day: string): string {
   return new Date(dayStart(day)).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -681,7 +681,7 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
 }
 
 /** One window's meter: how much is gone, and when it comes back. */
-export interface LimitMeter {
+interface LimitMeter {
   readonly key: string;
   readonly label: string;
   /** Whole percent, which is the precision every provider reports in practice. */

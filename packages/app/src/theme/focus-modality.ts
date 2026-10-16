@@ -3,6 +3,12 @@
  * one that autofocuses its composer does not open ringed; the first Tab earns
  * the ring, and it survives until a pointer takes over. The listeners capture,
  * so the modality is settled before any handler moves focus.
+ *
+ * A keypress earns the ring back when it moves focus. Inside a field only Tab
+ * qualifies: Cmd+A, Cmd+V and every letter are edits, and popping a ring
+ * mid-sentence is the exact jolt this module exists to avoid. Everywhere else
+ * any real key is navigation: arrows walk a menu, Enter activates a row,
+ * Escape backs out.
  */
 import { applyFocusModality } from "./appearance.ts";
 
@@ -31,18 +37,6 @@ const MODIFIER_KEYS = new Set([
   "Shift",
 ]);
 
-/**
- * Whether a keypress moved focus, which is what earns the ring back.
- *
- * Inside a field only Tab qualifies: Cmd+A, Cmd+V and every letter are edits,
- * and popping a ring mid-sentence is the exact jolt this module exists to
- * avoid. Everywhere else any real key is navigation — arrows walk a menu,
- * Enter activates a row, Escape backs out.
- */
-export function keyboardNavigates(key: string, editing: boolean): boolean {
-  return editing ? key === "Tab" : !MODIFIER_KEYS.has(key);
-}
-
 /** True while the caret sits in a field, where every key but Tab is text entry. */
 function editingText(element: Element | null): boolean {
   if (!(element instanceof HTMLElement)) return false;
@@ -52,18 +46,18 @@ function editingText(element: Element | null): boolean {
   return element instanceof HTMLInputElement && !NON_TEXT_INPUT_TYPES.has(element.type);
 }
 
-function setModality(modality: "keyboard" | "pointer"): void {
-  applyFocusModality(modality);
-}
+applyFocusModality("pointer");
 
-setModality("pointer");
-
-window.addEventListener("pointerdown", () => setModality("pointer"), { capture: true });
+window.addEventListener("pointerdown", () => applyFocusModality("pointer"), { capture: true });
 
 window.addEventListener(
   "keydown",
   (event) => {
-    if (keyboardNavigates(event.key, editingText(document.activeElement))) setModality("keyboard");
+    const navigates = editingText(document.activeElement)
+      ? event.key === "Tab"
+      : !MODIFIER_KEYS.has(event.key);
+
+    if (navigates) applyFocusModality("keyboard");
   },
   { capture: true },
 );

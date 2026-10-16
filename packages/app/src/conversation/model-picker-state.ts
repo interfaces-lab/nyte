@@ -73,23 +73,6 @@ export const THINKING_LABELS: Readonly<Record<ModelThinkingLevel, string>> = {
   max: "Max",
 };
 
-/** 1,050,000 is "1M", not "1.1M": the label never promises more than the model has. */
-export function formatContextWindow(tokens: number): string {
-  if (tokens >= 1_000_000) return `${String(Math.floor(tokens / 100_000) / 10)}M`;
-
-  return `${String(Math.round(tokens / 1_000))}K`;
-}
-
-/** "Free", or input and output dollars per million tokens: "$2.50 / $15". */
-export function formatPricing(cost: DesktopModelOption["cost"]): string {
-  if (cost.input === 0 && cost.output === 0) return "Free";
-
-  const rate = (dollars: number): string =>
-    Number.isInteger(dollars) ? `$${String(dollars)}` : `$${dollars.toFixed(2)}`;
-
-  return `${rate(cost.input)} / ${rate(cost.output)}`;
-}
-
 export function thinkingLevelsFor(
   option: DesktopModelOption | undefined,
 ): readonly ModelThinkingLevel[] {

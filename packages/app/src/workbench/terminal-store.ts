@@ -140,22 +140,8 @@ export function useTerminalRuntime(): ReadonlyMap<WorkbenchTabId, TerminalTab> {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).tabs;
 }
 
-export function useJobTerminals(sessionId: SessionId): readonly TerminalTab[] {
-  const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-  return [...current.tabs.values()].filter(
-    (tab) => tab.kind === "job" && tab.sessionId === sessionId,
-  );
-}
-
 export function getTerminal(id: WorkbenchTabId): TerminalTab | undefined {
   return snapshot.tabs.get(id);
-}
-
-export function getJobTerminal(jobId: JobView["id"]): JobTerminalTab | undefined {
-  return [...snapshot.tabs.values()].find(
-    (tab): tab is JobTerminalTab => tab.kind === "job" && tab.jobId === jobId,
-  );
 }
 
 /** What the tab's job printed while the tab showed it, at most the last 64 Ki characters. */

@@ -36,7 +36,7 @@ import { keys } from "./query-keys.ts";
 import { missingAsNull } from "./route-session.ts";
 import { SessionActions } from "./session-actions.ts";
 import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
-import type { ConfigureSessionPatch, PendingConfiguration } from "./session-configuration.ts";
+import type { PendingConfiguration } from "./session-configuration.ts";
 import type {
   HostState,
   SelectedWorkspace,
@@ -128,7 +128,7 @@ function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalo
     : queryClient.getQueryData<ModelCatalogView>(recent.queryKey);
 }
 
-export function selectedWorkspaceId(): WorkspaceId | undefined {
+function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
@@ -268,7 +268,7 @@ export function useForgetWorkspace() {
   });
 }
 
-export function useRootSessions(): readonly SessionInfo[] | undefined {
+function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
   const all = useWatch(directoryWatch("all")).value;
 
@@ -434,18 +434,6 @@ export function useVcsLog(
         limit: input.limit,
         ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
       }),
-    enabled: enabled && workspace !== undefined,
-    staleTime: 0,
-  });
-}
-
-export function useVcsRefs(enabled: boolean) {
-  const host = useHostState();
-  const workspace = host.data?.workspace?.id;
-
-  return useQuery({
-    queryKey: keys.gitRefs(workspace),
-    queryFn: async () => (await workspaceGit()).refs(),
     enabled: enabled && workspace !== undefined,
     staleTime: 0,
   });
@@ -672,16 +660,6 @@ export function useCatalog(_sessionId?: SessionId) {
   });
 }
 
-export function useModelCatalog() {
-  const generation = useCatalogGeneration();
-
-  return useQuery<ModelCatalogView>({
-    queryKey: keys.modelCatalog(generation),
-    queryFn: readModelCatalog,
-    placeholderData: cachedModelCatalog,
-  });
-}
-
 /**
  * Registered desktop history has no usage watch. Refresh on each visit or
  * manually, not on a timer: the host walks stored commits for every read.
@@ -724,7 +702,7 @@ export function useUsageReport(untilDay: string): UsageQueryView {
   };
 }
 
-export function accountLimitsOptions(generation: string) {
+function accountLimitsOptions(generation: string) {
   return {
     queryKey: keys.accountLimits(generation),
     queryFn: async () => (await connected()).models.usage(),
@@ -851,14 +829,6 @@ export async function loadLocalResources(): Promise<void> {
   queryClient.setQueryData(keys.workspaces, workspaces);
   queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
   queryClient.setQueryData(keys.host, state);
-}
-
-/** Share pending configuration with the draft-to-session handoff. */
-export function configureSession(sessionId: SessionId, patch: ConfigureSessionPatch) {
-  return queryClient
-    .getMutationCache()
-    .build(queryClient, sessionConfigurationOptions({ sessionId }))
-    .execute(patch);
 }
 
 export function useConfigureSession(sessionId: SessionId) {

@@ -104,7 +104,7 @@ const styles = create({
   },
 });
 
-export type ReviewCheckboxState = "unviewed" | "viewed" | "changed" | "unknown" | "mixed";
+type ReviewCheckboxState = "unviewed" | "viewed" | "changed" | "unknown" | "mixed";
 
 export function ReviewCheckbox({
   state,
@@ -130,7 +130,7 @@ export function ReviewCheckbox({
   );
 }
 
-export function sidebarCountLabel(total: number, shown: number, filtered: boolean): string {
+function sidebarCountLabel(total: number, shown: number, filtered: boolean): string {
   if (!filtered || shown === total) return filesChangedLabel(total);
 
   return `${String(shown)} of ${filesChangedLabel(total)}`;

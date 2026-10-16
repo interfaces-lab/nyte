@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-export interface PageProblems {
+interface PageProblems {
   readonly pageErrors: readonly string[];
   readonly consoleErrors: readonly string[];
 }

@@ -46,7 +46,7 @@ import { callStatus, sessionStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
-export type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
+type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 const lineStyles = create({
   detailsRow: { display: "flex", alignItems: "center", gap: space.s1 },

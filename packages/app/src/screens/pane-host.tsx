@@ -56,7 +56,7 @@ function TypeToCompose({
   return null;
 }
 
-export type PanePosition =
+type PanePosition =
   | { readonly kind: "single" }
   | { readonly kind: "leading"; readonly ratio: number }
   | { readonly kind: "trailing" };

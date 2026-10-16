@@ -12,7 +12,7 @@ export interface ConversationTurn {
   readonly messages: readonly Message[];
 }
 
-export interface ConversationTurns {
+interface ConversationTurns {
   readonly turns: readonly ConversationTurn[];
   readonly loose: readonly Message[];
 }

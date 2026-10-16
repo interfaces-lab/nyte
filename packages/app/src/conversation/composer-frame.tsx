@@ -36,7 +36,7 @@ type ComposerSurface = "new-chat" | "follow-up";
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
 
 /** What the frame is editing instead of composing anew. */
-export type ComposerEditing =
+type ComposerEditing =
   | {
       readonly kind: "queued";
       /** The queued item's delivery: Enter keeps it, the modifier swaps it for the other role. */

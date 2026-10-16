@@ -10,7 +10,7 @@ import { formatRunDuration } from "./transcript-presentation.ts";
 import { reasoningHeading } from "./reasoning-heading.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
-export interface StepGroupPresentationInput {
+interface StepGroupPresentationInput {
   readonly messages: readonly StepMessage[];
   readonly durationMs: number;
   readonly added: number;
@@ -18,7 +18,7 @@ export interface StepGroupPresentationInput {
   readonly running: boolean;
 }
 
-export type DurableStepGroupPresentation =
+type DurableStepGroupPresentation =
   | {
       readonly active: false;
       readonly summary: {
