@@ -1,10 +1,14 @@
 import { asId } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
+import { owedCalls } from "../src/agent/tool-runner.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import { decodeCallRecord } from "../src/contract/records.ts";
 import { runStep } from "../src/engine/durable.ts";
-import { migrateStore, STORE_VERSION } from "../src/store.ts";
+import { migrateStore } from "../src/store.ts";
 import type { StoredRecord } from "../src/store.ts";
-import { liveRef } from "../src/store/refs.ts";
+import type { StoreChange } from "../src/store/migrations.ts";
+import { callRef, liveRef, partRef } from "../src/store/refs.ts";
 import { configuration, main, setup, startRun } from "../src/harness.ts";
 
 it("gives an older store's unstopped runs their live ref and its parked calls their wait index", async () => {
@@ -52,7 +56,7 @@ it("gives an older store's unstopped runs their live ref and its parked calls th
 
   await migrateStore({
     dialect: "sqlite",
-    stamp: async () => ({ version: STORE_VERSION - 2, empty: false }),
+    stamp: async () => ({ version: 8, empty: false }),
     records: async () => records,
     logs: async function* () {},
     commit: async (change) => {
@@ -66,4 +70,116 @@ it("gives an older store's unstopped runs their live ref and its parked calls th
   expect(index).toHaveLength(1);
   expect(moved).toEqual([]);
   expect(created.toSorted()).toEqual([live, ...index].toSorted());
+});
+
+/** Every record under `sessions/` as the migration reads it. */
+async function storedRecords(kernel: Kernel): Promise<StoredRecord[]> {
+  const records: StoredRecord[] = [];
+
+  for (const ref of await kernel.store.refs.list("sessions/"))
+    if (ref.target !== null)
+      records.push({
+        name: ref.name,
+        target: ref.target,
+        revision: ref.revision,
+        body: JSON.stringify(await kernel.store.objects.get(ref.target)),
+      });
+
+  return records;
+}
+
+/** Lands a migration's repoints in the kernel's store, as a store's own commit does. */
+async function landChange(kernel: Kernel, change: StoreChange): Promise<"committed"> {
+  for (const repoint of change.repoints) {
+    const id = await kernel.store.objects.put(JSON.parse(repoint.body));
+
+    expect(id).toBe(repoint.id);
+    await kernel.store.refs.set([
+      { name: repoint.name, target: id, expect: asId<"revision">(repoint.expect) },
+    ]);
+  }
+
+  return "committed";
+}
+
+it("moves a tool call's name and args to its part alone, which recovery then replays", async () => {
+  const { kernel, host } = await setup();
+  const session = await host.sessions.create();
+
+  const run = await startRun(
+    kernel,
+    session.id,
+    main,
+    { kind: "continuation", from: "wake" },
+    configuration,
+  );
+
+  const call = asId<"call">(`${run.id}:7:toolu_01`);
+  const args = { command: "sed -n 100,112p open.ts", description: "Read the wiring" };
+  const intent = { name: "bash", args, principal: "local" };
+
+  const callBody = {
+    id: call,
+    kind: "tool",
+    run: run.id,
+    head: "main",
+    part: call,
+    intent,
+    memos: {},
+    clock: [],
+    waits: [],
+    waiting: null,
+    partial: [],
+    nested: {},
+    acquisitions: {},
+    result: null,
+    replay: "never",
+    reran: null,
+  };
+
+  const partBody = {
+    id: call,
+    partKind: "tool",
+    placement: { kind: "transcript", role: "step" },
+    state: {
+      call,
+      name: "bash",
+      args,
+      class: { kind: "shell", command: args.command, description: args.description },
+      phase: "running",
+      progress: null,
+    },
+    version: 2,
+    owner: null,
+    run: run.id,
+    status: { kind: "live", run: run.id },
+  };
+
+  for (const [name, kind, body] of [
+    [callRef(session.id, call), "call", callBody],
+    [partRef(session.id, asId<"part">(call)), "part", partBody],
+  ] as const) {
+    const target = await kernel.store.objects.put({ kind, parent: null, at: 1, body });
+
+    await kernel.store.refs.set([{ name, target, expect: "absent" }]);
+  }
+
+  await migrateStore({
+    dialect: "sqlite",
+    stamp: async () => ({ version: 10, empty: false }),
+    records: async () => storedRecords(kernel),
+    logs: async function* () {},
+    commit: async (change) => landChange(kernel, change),
+  });
+
+  const ref = await kernel.store.refs.get(callRef(session.id, call));
+
+  const migrated = decodeCallRecord(
+    ref?.target ? await kernel.store.objects.get(ref.target) : null,
+  );
+
+  expect(migrated).toEqual({ ...callBody, intent: { principal: "local" } });
+  expect(await owedCalls(kernel.store, session.id, run.id)).toEqual([
+    { call, intent, parked: false },
+  ]);
 });

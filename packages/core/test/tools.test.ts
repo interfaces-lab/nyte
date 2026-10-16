@@ -68,7 +68,7 @@ describe("tool calls", () => {
       kind: "tool",
       run,
       head: main,
-      intent: { name: "watched", args: { text: "hi" }, principal: LOCAL },
+      intent: { principal: LOCAL },
       result: ok,
       replay: "safe",
     });
@@ -243,7 +243,7 @@ describe("tool calls", () => {
       output: null,
       parts: [],
     });
-    expect((await readCall(kernel, session.id, "p1:second")).intent).toMatchObject({
+    expect((await toolPart(session, "p1:second")).state).toMatchObject({
       name: "echo",
       args: { text: "b" },
     });

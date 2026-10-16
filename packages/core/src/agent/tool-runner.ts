@@ -55,16 +55,34 @@ import {
   STALE,
 } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
+import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-const ToolIntentType = Type.Object({
-  name: Type.String(),
-  args: JsonType,
+/** A `tool` call record's intent: who called it, and why the model's arguments text could not be read. Its name and args are its part's. */
+const ToolCallerType = Type.Object({
   principal: idSchema<"principal">(),
   argumentsError: Type.Optional(Type.String()),
 });
 
+type ToolCaller = Static<typeof ToolCallerType>;
+
+/** An `intent` call record's intent: the model's call as its response asked for it, held until the step opens the call's part. */
+const ToolIntentType = Type.Object({
+  ...ToolCallerType.properties,
+  name: Type.String(),
+  args: JsonType,
+});
+
 export type ToolIntent = Static<typeof ToolIntentType>;
+
+/** A call a run still owes: never opened, or opened and not settled. */
+export interface OwedCall {
+  readonly call: CallId;
+  readonly intent: ToolIntent;
+  readonly parked: boolean;
+}
+
+const toolCallers = compile(withJson(ToolCallerType));
 
 const toolIntents = compile(withJson(ToolIntentType));
 
@@ -113,10 +131,6 @@ const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
 const outcomes = compile(withJson(ToolOutcomeType));
 
-function decodeToolIntent(value: Json): ToolIntent | null {
-  return toolIntents.Check(value) ? value : null;
-}
-
 export async function executeCall(
   kernel: Kernel,
   input: Where & { readonly args: Json; readonly runtime: PluginRuntime },
@@ -148,38 +162,73 @@ export async function executeCall(
   }
 }
 
+/** The tool calls `run` owes, each with the input to replay it from: an unopened call's intent, or an opened call's caller with its part's name and args. Calls nested in another are left to their parent's replay. */
 export async function owedCalls(
   store: StoreConnection,
   session: SessionId,
   run: RunId,
-): Promise<
-  readonly { readonly call: CallId; readonly intent: ToolIntent; readonly parked: boolean }[]
-> {
+): Promise<readonly OwedCall[]> {
   const records = (await readCalls(store, session)).filter(
     (record) => record.run === run && record.kind !== "action",
   );
 
-  const ids = [...new Set(records.map(stripHookPrefix))];
+  const ids = new Set(records.map(stripHookPrefix));
 
-  return ids.flatMap((id) => {
-    if (ids.some((other) => id.startsWith(`${other}:`))) return [];
-    const own = records.filter((record) => stripHookPrefix(record) === id);
-    const step = own.find((record) => record.kind === "tool" || record.kind === "intent");
+  const owed = await Promise.all(
+    records.map(async (record): Promise<readonly OwedCall[]> => {
+      if (
+        (record.kind !== "tool" && record.kind !== "intent") ||
+        record.result !== null ||
+        nestedIn(ids, record.id)
+      )
+        return [];
+      const intent = await readToolIntent(store, session, record);
 
-    if (step !== undefined && step.result !== null) return [];
-    const intent = decodeToolIntent((step ?? own[0]).intent);
+      if (intent === null) return [];
 
-    if (intent === null) return [];
+      const parked = records.some(
+        (other) =>
+          other.waiting !== null &&
+          other.result === null &&
+          (stripHookPrefix(other) === record.id ||
+            stripHookPrefix(other).startsWith(`${record.id}:`)),
+      );
 
-    const parked = records.some(
-      (record) =>
-        record.waiting !== null &&
-        record.result === null &&
-        (stripHookPrefix(record) === id || stripHookPrefix(record).startsWith(`${id}:`)),
-    );
+      return [{ call: record.id, intent, parked }];
+    }),
+  );
 
-    return [{ call: asId<"call">(id), intent, parked }];
-  });
+  return owed.flat();
+}
+
+async function readToolIntent(
+  store: StoreConnection,
+  session: SessionId,
+  record: CallRecord,
+): Promise<ToolIntent | null> {
+  if (record.kind === "intent") return toolIntents.Check(record.intent) ? record.intent : null;
+
+  if (record.part === null || !toolCallers.Check(record.intent)) return null;
+  const caller: ToolCaller = record.intent;
+
+  const found = await load(
+    store,
+    await store.refs.get(partRef(session, record.part)),
+    decodePartRecord,
+  );
+
+  const checked = found === null ? null : await check(tool.state, found.record.state);
+
+  return checked === null || checked.kind === "invalid"
+    ? null
+    : { ...caller, name: checked.value.name, args: checked.value.args };
+}
+
+/** Whether `id` names a call nested in another of `ids`: one whose id is a `:`-separated prefix of it. */
+function nestedIn(ids: ReadonlySet<string>, id: string): boolean {
+  const segments = id.split(":");
+
+  return segments.some((_segment, at) => at > 0 && ids.has(segments.slice(0, at).join(":")));
 }
 
 export function stoppableTool(kernel: Kernel): typeof tool {
@@ -217,9 +266,7 @@ async function perform(
 ): Promise<ToolOutcome | typeof PARKED> {
   const { session, head, run, call, signal } = where;
 
-  const intent: ToolIntent = {
-    name: where.name,
-    args: where.args,
+  const intent: ToolCaller = {
     principal: where.context.principal,
     ...(where.argumentsError !== undefined && { argumentsError: where.argumentsError }),
   };
@@ -270,7 +317,7 @@ async function perform(
 async function plan(
   kernel: Kernel,
   where: Where & { readonly args: Json; readonly runtime: PluginRuntime },
-  intent: ToolIntent,
+  intent: ToolCaller,
 ): Promise<Plan | typeof PARKED> {
   const { session, head, run, call, name } = where;
   const custom: ToolClass = { kind: "custom", label: name };

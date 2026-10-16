@@ -388,6 +388,34 @@ const parkedWaitIndex: RewriteStep = {
   },
 };
 
+/**
+ * A `tool` call's intent repeated the name and args of its part, written in
+ * the same step. The intent keeps its caller (principal, arguments error); a
+ * recovering host reads the name and args from the part. A before_tool gate
+ * that changed the args kept the model's call in its hook call's intent.
+ */
+const toolArgsInPart: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-tool-args-in-part",
+  rewrite(object) {
+    if (!isJsonObject(object) || object.kind !== "call") return null;
+
+    return patched(object, (body) => {
+      const intent = body.intent;
+
+      if (body.kind !== "tool" || !isJsonObject(intent) || !("name" in intent || "args" in intent))
+        return body;
+
+      return {
+        ...body,
+        intent: Object.fromEntries(
+          Object.entries(intent).filter(([key]) => key !== "name" && key !== "args"),
+        ),
+      };
+    });
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -399,6 +427,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   callIntentOnce,
   liveRefs,
   parkedWaitIndex,
+  toolArgsInPart,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
