@@ -31,7 +31,9 @@ function every(limit: number): Readonly<Record<StartupCase, number>> {
  * by scenario; `null` reports without gating. Set from main c7094f5c against daniel/audit with
  * the host in its utility process (macOS arm64, packaged, 7 runs): each budget is the branch's
  * p95 plus 15% (memory plus 5%), and in the fresh scenario, the only one main can run, typed
- * input, composer, first paint, splash and long tasks are capped at main's median.
+ * input, composer, first paint, splash and long-task count are capped at main's median. Long-task
+ * time and the longest task are the branch's p95 plus 15% in every scenario, measured without
+ * strict execution order, where the entry's evaluation is one 60-94 ms task.
  */
 const metricFields = [
   {
@@ -64,13 +66,13 @@ const metricFields = [
     key: "longTaskMs",
     label: "Long-task time before composer",
     unit: "ms",
-    budget: { fresh: 88, restored: 135, heavy: 215 },
+    budget: { fresh: 110, restored: 165, heavy: 215 },
   },
   {
     key: "longestTaskMs",
     label: "Longest task before composer",
     unit: "ms",
-    budget: { fresh: 88, restored: 75, heavy: 90 },
+    budget: { fresh: 110, restored: 105, heavy: 90 },
   },
   { key: "ipcCalls", label: "IPC round trips before composer", unit: "count", budget: every(3) },
   {
