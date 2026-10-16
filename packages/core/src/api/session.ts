@@ -637,12 +637,11 @@ function execution(run: RunRecord): Execution {
 }
 
 function directoryCursor(cursor: Cursor): { readonly at: number; readonly id: SessionId } {
-  const separator = cursor.indexOf(":");
-  const at = Number(cursor.slice(0, separator));
-  const id = cursor.slice(separator + 1);
+  const [position = "", ...id] = cursor.split(":");
+  const at = Number(position);
 
-  if (separator < 0 || !Number.isFinite(at))
+  if (id.length === 0 || !Number.isFinite(at))
     throw new SdkError("invalid", `${cursor} is not a directory cursor`);
 
-  return { at, id: asId<"session">(id) };
+  return { at, id: asId<"session">(id.join(":")) };
 }

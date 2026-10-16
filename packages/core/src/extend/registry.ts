@@ -31,6 +31,7 @@ import type {
 } from "../contract/plugin.ts";
 import { sendNow } from "../engine/admission.ts";
 import { MAIN } from "../store/session.ts";
+import { callable } from "../util/callable.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
 import { stepPluginApi } from "./plugin-api.ts";
 import { settingInfos } from "./setting-layers.ts";
@@ -187,18 +188,32 @@ function createRegistry<T, Handle = Disposer>(input: {
     function add(item: T): Handle & Disposer;
     function add(derive: Derive<T>): Disposer;
     function add(value: T | Derive<T>): Disposer {
-      if (isDerive(value)) {
+      if (callable(value)) {
         const entry = { derive: value, owner };
         derives.push(entry);
         input.onChange();
 
-        return removal(() => derives.splice(derives.indexOf(entry), 1), signal);
+        return removal(
+          () =>
+            derives.splice(
+              derives.findIndex((candidate) => candidate === entry),
+              1,
+            ),
+          signal,
+        );
       }
 
       const entry: Entry<T> = { item: value, owner };
       statics.push(entry);
       input.onChange();
-      const dispose = removal(() => statics.splice(statics.indexOf(entry), 1), signal);
+      const dispose = removal(
+        () =>
+          statics.splice(
+            statics.findIndex((candidate) => candidate === entry),
+            1,
+          ),
+        signal,
+      );
 
       return Object.assign(dispose, input.handle?.(value, owner));
     }
@@ -283,10 +298,6 @@ function createRegistryDraft<T>(draft: Map<string, Entry<T>>, owner: string): Re
       if (current !== undefined) draft.set(id, { item: wrap(current.item), owner: current.owner });
     },
   };
-}
-
-function isDerive<T>(value: T | Derive<T>): value is Derive<T> {
-  return typeof value === "function";
 }
 
 async function sessionCatalog(

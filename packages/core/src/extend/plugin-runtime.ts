@@ -33,11 +33,12 @@ import type {
 } from "../contract/plugin.ts";
 import type { Resources } from "../contract/workspace.ts";
 import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
-import { isCovered, requireSession } from "../store/session.ts";
+import { coveredHere, requireSession } from "../store/session.ts";
+import { callable } from "../util/callable.ts";
 import { dev } from "../util/dev-log.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
 import { activateSession } from "./activation.ts";
-import { createHookDispatch, isCoreHook } from "./hooks.ts";
+import { createHookDispatch, namesCoreHook } from "./hooks.ts";
 import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
@@ -248,7 +249,7 @@ export function createPluginRuntime(
 
   const resolve = (): Promise<Resolved> =>
     (resolving ??= (async (): Promise<Resolved> => {
-      if (!(await isCovered(kernel, session))) {
+      if (!(await coveredHere(kernel, session))) {
         resolvedUncovered = true;
 
         return UNRESOLVED;
@@ -738,7 +739,7 @@ function install(plugin: Plugin<"core">, api: PluginApi<"core">): void {
   for (const item of declared?.settings ?? []) contribute.settings.add(item);
 
   for (const name of Object.keys(plugin.hooks ?? {}))
-    if (isCoreHook(name)) installHook(api, plugin.hooks, name);
+    if (namesCoreHook(name)) installHook(api, plugin.hooks, name);
 }
 
 function installHook<N extends HookName<"core">>(
@@ -836,7 +837,7 @@ function createInstance(
       return register((to, signal) => {
         const target = pick(to.registries).owned(owner, signal);
 
-        return isDerive(value) ? target.add(value) : target.add(value);
+        return callable(value) ? target.add(value) : target.add(value);
       });
     }
 
@@ -927,8 +928,4 @@ function untilAborted(signal: AbortSignal, dispose: Disposer): Disposer {
     signal.removeEventListener("abort", dispose);
     dispose();
   };
-}
-
-function isDerive<T>(value: T | Derive<T>): value is Derive<T> {
-  return typeof value === "function";
 }

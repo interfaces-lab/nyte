@@ -29,7 +29,7 @@ import {
   attempt,
   guard,
   inboxWithout,
-  isCovered,
+  coveredHere,
   liveRun,
   put,
   readInbox,
@@ -276,7 +276,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
     replace: null,
   });
 
-  const covered = await isCovered(kernel, session);
+  const covered = await coveredHere(kernel, session);
 
   return attempt(`Admitting ${id}`, async () => {
     const [inbox, run, configuration] = await Promise.all([
@@ -336,7 +336,7 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
       ? previous.configuration
       : resolve(sending, submission.configuration);
 
-  const covered = await isCovered(kernel, session);
+  const covered = await coveredHere(kernel, session);
 
   const revised = await attempt(`Revising ${target}`, async () => {
     const [inbox, run, configuration] = await Promise.all([
@@ -345,7 +345,7 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
       configured(),
     ]);
 
-    const current = inbox.messages.indexOf(target);
+    const current = inbox.messages.findIndex((message) => message === target);
 
     if (current < 0) return null;
     const rest = inbox.messages.filter((message) => message !== target);
@@ -440,7 +440,7 @@ async function editGated(
 ): Promise<SendReceipt> {
   const { kernel, session, head, options } = sending;
   const { id, digest, submission, configured } = gated;
-  const covered = await isCovered(kernel, session);
+  const covered = await coveredHere(kernel, session);
   const abandoned = options.abandoned;
   const running = options.running ?? "stop";
 
@@ -779,7 +779,7 @@ function findInsertionIndex(
   if (position === undefined) return Math.min(current, rest.length);
 
   if (position.kind === "last") return rest.length;
-  const before = rest.indexOf(position.message);
+  const before = rest.findIndex((message) => message === position.message);
 
   return before < 0 ? Math.min(current, rest.length) : before;
 }

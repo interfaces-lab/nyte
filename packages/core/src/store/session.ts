@@ -340,7 +340,7 @@ export async function coveredSessions(
   return records.filter((record) => included.has(record.id));
 }
 
-export async function isCovered(kernel: Kernel, session: SessionId): Promise<boolean> {
+export async function coveredHere(kernel: Kernel, session: SessionId): Promise<boolean> {
   if (kernel.execution.kind === "dispatch") return true;
 
   if (

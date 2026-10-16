@@ -32,7 +32,7 @@ import { leaseRef, runRef } from "../store/refs.ts";
 import {
   coveredSessions,
   covers,
-  isCovered,
+  coveredHere,
   liveRun,
   load,
   put,
@@ -324,7 +324,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
     const task = (async () => {
       await covering;
 
-      if (!(await isCovered(kernel, session))) return;
+      if (!(await coveredHere(kernel, session))) return;
 
       for (;;) {
         if (closed) return;

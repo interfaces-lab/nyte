@@ -38,7 +38,7 @@ import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { CallRecord, PartRecord } from "../contract/records.ts";
 import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import type { ExecutionEnv } from "../contract/workspace.ts";
-import { isParked, parkStep, runStep } from "../engine/durable.ts";
+import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
@@ -443,7 +443,7 @@ async function execute(
 
     return signal.aborted ? STOPPED : await validateToolResult(planned.definition, result);
   } catch (error) {
-    if (isParked(error)) throw error;
+    if (signalsPark(error)) throw error;
 
     return signal.aborted
       ? STOPPED

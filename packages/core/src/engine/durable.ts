@@ -51,7 +51,7 @@ class Parked extends Error {
   }
 }
 
-export function isParked(error: unknown): boolean {
+export function signalsPark(error: unknown): boolean {
   return error instanceof Parked;
 }
 
@@ -159,7 +159,7 @@ export async function runStep<T>(
   if (parkedExecutions.has(durable)) return { kind: "parked" };
 
   if ("error" in ran) {
-    if (isParked(ran.error)) return { kind: "parked" };
+    if (signalsPark(ran.error)) return { kind: "parked" };
 
     throw ran.error;
   }
@@ -216,7 +216,7 @@ export async function runAction(
               try {
                 return { output: await input.body(durable), failed: null };
               } catch (error) {
-                if (isParked(error)) throw error;
+                if (signalsPark(error)) throw error;
                 thrown.push({ error });
 
                 return {

@@ -368,7 +368,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
   const relative = (path: string): string =>
     path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
 
-  const isDirectory = (path: string): boolean =>
+  const hasDirectory = (path: string): boolean =>
     disk.directories.has(path) ||
     [...disk.files.keys()].some((file) => file.startsWith(`${path}/`));
 
@@ -408,7 +408,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
           version: file.version,
         };
 
-      return isDirectory(resolve(path))
+      return hasDirectory(resolve(path))
         ? { kind: "directory", size: 0, version: asId<"file-version">("directory") }
         : null;
     },
@@ -427,7 +427,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
         return { kind: "stale", current };
       const parent = target.slice(0, target.lastIndexOf("/")) || "/";
 
-      if (!options?.parents && !isDirectory(parent)) return { kind: "missing-parent" };
+      if (!options?.parents && !hasDirectory(parent)) return { kind: "missing-parent" };
       disk.put(target, contents);
       const written = disk.files.get(target);
 

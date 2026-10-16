@@ -183,14 +183,8 @@ async function loaded(
   plugins: readonly (Plugin<"core"> | PluginFile)[],
 ): Promise<readonly Plugin<"core">[]> {
   const each = await Promise.all(
-    plugins.map(async (plugin) =>
-      isPluginFile(plugin) ? kernel.plugins.load([plugin.path]) : [plugin],
-    ),
+    plugins.map(async (plugin) => ("id" in plugin ? [plugin] : kernel.plugins.load([plugin.path]))),
   );
 
   return each.flat();
-}
-
-function isPluginFile(plugin: Plugin<"core"> | PluginFile): plugin is PluginFile {
-  return "path" in plugin && !("id" in plugin);
 }

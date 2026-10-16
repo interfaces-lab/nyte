@@ -4,7 +4,7 @@ import type { Plugin } from "../contract/plugin.ts";
 import { readWorkspace, UnavailableError } from "../env/environment.ts";
 import { projectTrust } from "../env/trust.ts";
 import { settle } from "../env/workspaces.ts";
-import { isCovered, requireSession } from "../store/session.ts";
+import { coveredHere, requireSession } from "../store/session.ts";
 
 const ACTIVE: Activation = { kind: "active" };
 
@@ -17,7 +17,7 @@ export async function activateSession(
 ): Promise<void> {
   const workspace = (await requireSession(kernel.store, session)).record.workspace;
 
-  const attached = (await isCovered(kernel, session))
+  const attached = (await coveredHere(kernel, session))
     ? kernel.environments.attach(session).then(
         () => ACTIVE,
         (error: unknown) => classifyActivationFailure(workspace, error),

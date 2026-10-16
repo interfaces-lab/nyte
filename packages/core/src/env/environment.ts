@@ -197,7 +197,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
       slot.version += 1;
 
       return () => {
-        const index = slot.wraps.indexOf(entry);
+        const index = slot.wraps.findIndex((candidate) => candidate === entry);
 
         if (index < 0) return;
         slot.wraps.splice(index, 1);

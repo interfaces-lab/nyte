@@ -8,7 +8,7 @@ import { pollStore } from "../src/fold/watch.ts";
 import { envelope, headRef, inboxRef, leaseRef, memoryStore } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { Durable, StoreConnection } from "../src/index.ts";
-import { isCovered } from "../src/store/session.ts";
+import { coveredHere } from "../src/store/session.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import { completed, configuration, main, setup, startRun, until } from "./harness.ts";
 
@@ -430,7 +430,7 @@ describe("dispatch (§42p, §42s)", () => {
     const session = await host.sessions.create();
     await session.send("Go.");
 
-    expect(await isCovered(kernel, session.id)).toBe(true);
+    expect(await coveredHere(kernel, session.id)).toBe(true);
     gate.resolve();
   });
 });

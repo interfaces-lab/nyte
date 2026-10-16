@@ -144,16 +144,22 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
     const { contents } = document;
 
     const spans = args.edits.map((change, index) => {
-      const found = count(contents, change.oldText);
+      const starts =
+        change.oldText === ""
+          ? []
+          : Array.from(
+              contents.matchAll(new RegExp(`(?=${RegExp.escape(change.oldText)})`, "g")),
+              (match) => match.index,
+            );
+      const [start] = starts;
 
-      if (change.oldText === "" || found === 0)
+      if (start === undefined)
         throw new Error(`Edit ${index + 1}: no match for oldText in ${args.path}.`);
 
-      if (found > 1)
+      if (starts.length > 1)
         throw new Error(
-          `Edit ${index + 1}: oldText occurs ${found} times in ${args.path}; make it unique.`,
+          `Edit ${index + 1}: oldText occurs ${starts.length} times in ${args.path}; make it unique.`,
         );
-      const start = contents.indexOf(change.oldText);
 
       return { start, end: start + change.oldText.length, newText: change.newText, index };
     });
@@ -319,7 +325,9 @@ function decodeOutputTail(chunks: readonly Uint8Array[], limit: number): string 
 
   const text = new TextDecoder().decode(joinBytes(tail).subarray(Math.max(0, size - limit)));
 
-  return (size > limit ? text.slice(text.indexOf("\n") + 1) : text).trimEnd();
+  const [, ...whole] = text.split("\n");
+
+  return (size > limit && whole.length > 0 ? whole.join("\n") : text).trimEnd();
 }
 
 export const environmentPlugin: Plugin<"core"> = {
@@ -420,17 +428,4 @@ async function upload(files: FilesApi, path: string): Promise<ToolContent> {
   } finally {
     await reader.close();
   }
-}
-
-function count(haystack: string, needle: string): number {
-  if (needle === "") return 0;
-  let found = 0;
-  let from = haystack.indexOf(needle);
-
-  while (from >= 0) {
-    found += 1;
-    from = haystack.indexOf(needle, from + 1);
-  }
-
-  return found;
 }

@@ -41,6 +41,7 @@ import {
   STALE,
   toCommitObjectId,
 } from "../store/session.ts";
+import { callable } from "../util/callable.ts";
 import { objectId } from "../util/content.ts";
 import { check, convertJsonSchema, matchesOutput } from "../util/json-schema.ts";
 
@@ -392,7 +393,7 @@ function partHandleFor<K extends PartDefinition>(
             };
       const output = performed.output;
 
-      if (!isPartActionOutput(kind, definition, action, output, handler !== null))
+      if (!fitsActionOutput(kind, definition, action, output, handler !== null))
         return {
           kind: "failed",
           message: `${record.partKind}'s ${named} returned output its schema rejects.`,
@@ -405,7 +406,7 @@ function partHandleFor<K extends PartDefinition>(
     async answer(options) {
       const settled = await firstAnswer(kernel, session, name, options?.signal);
 
-      return settled !== null && isPartAnswer(kind, settled) ? settled : null;
+      return settled !== null && fitsAnswer(kind, settled) ? settled : null;
     },
     async close() {
       const closed = await attempt(`Closing part ${id}`, async () => {
@@ -666,23 +667,21 @@ function nextState<K extends PartDefinition>(
   next: PartState<K> | ((current: PartState<K>) => PartState<K>),
   current: Json,
 ): { readonly value: unknown } | null {
-  if (!isDerivation(next)) return { value: next };
+  if (!callable(next)) return { value: next };
 
-  return isPartState(kind, current) ? { value: next(current) } : null;
+  return fitsState(kind, current) ? { value: next(current) } : null;
 }
 
-function isDerivation<S>(next: S | ((current: S) => S)): next is (current: S) => S {
-  return typeof next === "function";
-}
-
-function isPartState<K extends PartDefinition>(
+/** Whether `value` fits `kind`'s state schema; a part opened without its definition takes any state. */
+// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- inlined, `kind === null ||` cannot narrow `value` to the generic `PartState<K>`
+function fitsState<K extends PartDefinition>(
   kind: K | null,
   value: Json,
 ): value is Json & PartState<K> {
   return kind === null || matchesOutput(kind.state, value);
 }
 
-function isPartAnswer<K extends PartDefinition>(
+function fitsAnswer<K extends PartDefinition>(
   kind: K | null,
   answer: Answered,
 ): answer is Answered & Answer<K> {
@@ -692,7 +691,7 @@ function isPartAnswer<K extends PartDefinition>(
   return spec !== undefined && matchesOutput(spec.input, answer.input);
 }
 
-function isPartActionOutput<K extends PartDefinition, A extends keyof PartActions<K>>(
+function fitsActionOutput<K extends PartDefinition, A extends keyof PartActions<K>>(
   kind: K | null,
   definition: Pick<PartDefinition, "actions"> | null,
   action: A,

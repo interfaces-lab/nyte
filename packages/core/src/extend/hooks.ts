@@ -24,7 +24,7 @@ import type {
 } from "../contract/kernel.ts";
 import type { HookHandler, HookName, PluginApi } from "../contract/plugin.ts";
 import type { Durable } from "../contract/tools.ts";
-import { isParked, runStep } from "../engine/durable.ts";
+import { signalsPark, runStep } from "../engine/durable.ts";
 import { commit } from "../fold/commit.ts";
 import { callRef } from "../store/refs.ts";
 import { readCall } from "../store/session.ts";
@@ -147,7 +147,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
 
       return () => {
         const list = handlers[name];
-        const index = list.indexOf(handler);
+        const index = list.findIndex((candidate) => candidate === handler);
 
         if (index >= 0) list.splice(index, 1);
       };
@@ -231,7 +231,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
                 step.signal,
               );
             } catch (error) {
-              if (isParked(error) || step.signal.aborted) throw error;
+              if (signalsPark(error) || step.signal.aborted) throw error;
 
               return { action: "error", message: failure(handler.plugin, name, error) };
             }
@@ -258,7 +258,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
   };
 }
 
-export function isCoreHook(name: string): name is HookName<"core"> {
+export function namesCoreHook(name: string): name is HookName<"core"> {
   return (
     Object.hasOwn(observers, name) ||
     Object.hasOwn(transformers, name) ||

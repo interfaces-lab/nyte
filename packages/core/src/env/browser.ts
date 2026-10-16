@@ -144,15 +144,18 @@ export function createPageTable(kernel: Kernel): PageTable {
     page: (id) => entries.get(id)?.page,
     holders: (id) => entries.get(id)?.holds ?? 0,
     async release(by) {
-      const matches = (holder: PageHolder | null): boolean =>
-        "client" in by
-          ? holder?.client === by.client
-          : "run" in by
-            ? holder?.origin?.run === by.run
-            : holder?.origin?.session === by.session;
-
       await Promise.allSettled(
-        [...held].flatMap(([release, holder]) => (matches(holder) ? [release()] : [])),
+        [...held].flatMap(([release, holder]) =>
+          (
+            "client" in by
+              ? holder?.client === by.client
+              : "run" in by
+                ? holder?.origin?.run === by.run
+                : holder?.origin?.session === by.session
+          )
+            ? [release()]
+            : [],
+        ),
       );
     },
     background: (session) =>
