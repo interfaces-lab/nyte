@@ -8,7 +8,7 @@ import type {
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { dev } from "@nyte-ai/core";
+import { dev, followTrace, traced } from "@nyte-ai/core";
 import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
 import type { Transport } from "@nyte-ai/protocol";
 import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";
@@ -166,15 +166,18 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       const { id, ...rest } = options ?? {};
       const receipt = id ?? asId<"receipt">(crypto.randomUUID());
       dev("sdk", "send", { session, head, receipt });
+      followTrace(session, receipt);
 
-      const sent = await journal.send({
-        id: receipt,
-        session,
-        head,
-        content,
-        options: rest,
-        at: Date.now(),
-      });
+      const sent = await traced("sdk.send", receipt, { session }, () =>
+        journal.send({
+          id: receipt,
+          session,
+          head,
+          content,
+          options: rest,
+          at: Date.now(),
+        }),
+      );
 
       return sendReceipt(rows, session, sent.receipt, sent.message);
     },

@@ -265,6 +265,20 @@ export type {
 
 export { dev } from "@nyte-ai/core";
 
+export {
+  clearSpans,
+  enableTracing,
+  followTrace,
+  followedTrace,
+  readSpans,
+  SPAN_NAMES,
+  startSpan,
+  traced,
+  tracing,
+} from "@nyte-ai/core";
+
+export type { EndSpan, Span, SpanDetail, SpanName } from "@nyte-ai/core";
+
 export { SdkError } from "@nyte-ai/schema";
 
 export { pagedViews } from "./history.ts";
