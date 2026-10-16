@@ -1,7 +1,7 @@
 import { watch } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { lstat, readFile, readdir } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import type { Disposer } from "@nyte-ai/schema";
 import ignore from "ignore";
 
@@ -252,6 +252,122 @@ export function watchTree(
     if (timer !== null) clearTimeout(timer);
 
     if (polling !== null) clearTimeout(polling);
+  };
+}
+
+/**
+ * Calls `changed` when what is at the absolute `target` moves, coalesced over
+ * `delay`: with `""` for the target itself (created, removed, replaced or, for
+ * a file, written) and the path below it for a change inside a directory,
+ * which is watched recursively. A file is watched itself and re-watched when
+ * it is replaced, a directory beside a watch on its parent for its own name;
+ * while the target is missing, the nearest directory above it that exists is
+ * watched for the next missing name, and the watch moves down as they appear.
+ * Nothing polls.
+ */
+export function watchPath(
+  target: string,
+  options: { readonly delay: number },
+  changed: (paths: ReadonlySet<string>) => void,
+): Disposer {
+  let pending = new Set<string>();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let watchers: FSWatcher[] = [];
+  let generation = 0;
+  let moved = false;
+  let stopped = false;
+
+  const flush = (): void => {
+    timer = null;
+    const paths = pending;
+    pending = new Set();
+
+    if (stopped) return;
+
+    if (moved) {
+      moved = false;
+      void arm();
+    }
+
+    if (paths.size > 0) changed(paths);
+  };
+
+  const note = (path: string, replaced: boolean): void => {
+    pending.add(path);
+    moved ||= replaced;
+    timer ??= setTimeout(flush, options.delay);
+  };
+
+  const listen = (
+    at: string,
+    recursive: boolean,
+    heard: (event: string, name: string | null) => void,
+  ): void => {
+    try {
+      const watcher = watch(at, { recursive, persistent: false }, (event, name) =>
+        heard(event, name === null ? null : name.split(sep).join("/")),
+      );
+
+      watcher.on("error", () => note("", true));
+      watchers.push(watcher);
+    } catch {}
+  };
+
+  const arm = async (): Promise<void> => {
+    generation += 1;
+    const armed = generation;
+
+    for (const watcher of watchers) watcher.close();
+    watchers = [];
+    let existing = target;
+    let missing: string | null = null;
+    let stats = await lstat(existing).catch(() => null);
+
+    while (stats === null) {
+      const parent = dirname(existing);
+
+      if (parent === existing) return;
+      missing = basename(existing);
+      existing = parent;
+      stats = await lstat(existing).catch(() => null);
+    }
+
+    if (stopped || armed !== generation) return;
+
+    if (missing !== null) {
+      const awaited = missing;
+
+      if (stats.isDirectory())
+        listen(existing, false, (_event, name) => {
+          if (name === null || name === awaited) note("", true);
+        });
+
+      return;
+    }
+
+    if (!stats.isDirectory()) {
+      listen(target, false, (event) => note("", event === "rename"));
+
+      return;
+    }
+
+    const own = basename(target);
+    listen(target, true, (_event, name) => note(name ?? "", false));
+    listen(dirname(target), false, (event, name) => {
+      if (name === null || name === own) note("", event === "rename");
+    });
+  };
+
+  void arm();
+
+  return () => {
+    stopped = true;
+    generation += 1;
+
+    for (const watcher of watchers) watcher.close();
+    watchers = [];
+
+    if (timer !== null) clearTimeout(timer);
   };
 }
 

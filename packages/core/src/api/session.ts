@@ -31,6 +31,7 @@ import { recordAcquisition } from "../engine/durable.ts";
 import { stopRun } from "../engine/fence.ts";
 import { receiptHandle, withdraw } from "../engine/receipts.ts";
 import { runHandle } from "../engine/runs.ts";
+import { dropScans } from "../extend/resources.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
 import { releaseParts } from "../store/parts.ts";
@@ -526,7 +527,7 @@ async function remove(
 
     if (outcome.kind === "stale") return STALE;
     kernel.pluginState.assigned.delete(session);
-    kernel.workspaceState.scans.delete(session);
+    dropScans(kernel, (key) => key === session);
     await kernel.closePlugins(session);
     kernel.forget(session);
     releaseParts(kernel.partTable, session);

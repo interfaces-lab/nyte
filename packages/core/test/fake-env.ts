@@ -35,6 +35,8 @@ export interface Disk {
     { readonly contents: string | Uint8Array; readonly version: FileVersion }
   >;
   readonly directories: Set<string>;
+  /** Hears every `put`, with the file's absolute path; an open `watch` is one listener. */
+  readonly watchers: Set<(path: string) => void>;
   put(path: string, contents: string | Uint8Array): void;
   text(path: string): string | undefined;
   pause(): () => void;
@@ -73,15 +75,19 @@ export function createDisk(): Disk {
   let held = 0;
   const files: Disk["files"] = new Map();
   const directories = new Set<string>(["/"]);
+  const watchers = new Set<(path: string) => void>();
 
   const disk: Disk = {
     files,
     directories,
+    watchers,
     put(path: string, contents: string | Uint8Array) {
       minted += 1;
       files.set(normalize(path), { contents, version: asId<"file-version">(`v${minted}`) });
 
       for (const parent of parentsOf(normalize(path))) directories.add(parent);
+
+      for (const heard of watchers) heard(normalize(path));
     },
     text(path: string) {
       const contents = files.get(normalize(path))?.contents;
@@ -475,7 +481,49 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
     async *search() {
       yield { kind: "complete" };
     },
-    async *watch() {},
+    watch(input) {
+      const prefixes = (input?.paths ?? [""]).map(resolve);
+      const heard: string[] = [];
+      let wake: (() => void) | null = null;
+
+      const listener = (path: string): void => {
+        if (!prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return;
+        heard.push(path);
+        wake?.();
+      };
+
+      disk.watchers.add(listener);
+      const done = { done: true, value: undefined } as const;
+
+      return {
+        [Symbol.asyncIterator]() {
+          return {
+            async next() {
+              while (heard.length === 0) {
+                if (!disk.watchers.has(listener)) return done;
+                await new Promise<void>((resolve) => {
+                  wake = resolve;
+                });
+              }
+
+              const events = heard.splice(0).map((path) => ({
+                kind: "created" as const,
+                path: relative(path),
+                version: disk.files.get(path)?.version ?? asId<"file-version">("gone"),
+              }));
+
+              return { done: false, value: events };
+            },
+            async return() {
+              disk.watchers.delete(listener);
+              wake?.();
+
+              return done;
+            },
+          };
+        },
+      };
+    },
     upload() {
       throw new Error("Core wraps upload.");
     },

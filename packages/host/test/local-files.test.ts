@@ -344,4 +344,24 @@ describe("localFiles", () => {
     controller.abort();
     expect(await iterator.next()).toEqual({ done: true, value: undefined });
   }, 20_000);
+
+  it("watches only the given paths, a missing one from when its directories appear", async () => {
+    const root = await folder();
+    const controller = new AbortController();
+    const files = localFiles(root, { signal: controller.signal });
+    const iterator = files.watch({ paths: [".agents/skills"] })[Symbol.asyncIterator]();
+    const seen: FileEvent[] = [];
+    const pending = iterator.next().then((next) => seen.push(...(next.value ?? [])));
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await writeFile(join(root, "outside.txt"), "x");
+    await mkdir(join(root, ".agents", "skills", "fresh"), { recursive: true });
+    await writeFile(join(root, ".agents", "skills", "fresh", "SKILL.md"), "fresh");
+    await pending;
+
+    expect(seen.map((event) => [event.kind, event.path])).toEqual([
+      ["created", ".agents/skills/fresh/SKILL.md"],
+    ]);
+    controller.abort();
+  }, 20_000);
 });

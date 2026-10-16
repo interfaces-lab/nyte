@@ -506,13 +506,18 @@ export type PatchSlot = {
 
 export type PatchCache = { readonly revision: SnapshotId; readonly slots: Map<string, PatchSlot> };
 
+/** A session's cached resource scan, with `stop` ending the watch on its skill files. */
+export type ScanEntry = {
+  readonly workspace: WorkspaceId;
+  readonly resources: Promise<Resources>;
+  readonly stop: Disposer;
+};
+
 export interface WorkspaceState {
   readonly listeners: Set<(id: WorkspaceId) => void>;
   readonly patches: Map<string, PatchCache>;
-  readonly scans: Map<
-    SessionId,
-    { readonly workspace: WorkspaceId; readonly resources: Promise<Resources> }
-  >;
+  /** Each session's cached scan; drop entries through `dropScans`, which stops their watches. */
+  readonly scans: Map<SessionId, ScanEntry>;
   home: Promise<FilesApi | null> | null;
   readonly batches: Map<ReceiptId, AbortController>;
   readonly held: Map<ReceiptId, HeldBatch>;

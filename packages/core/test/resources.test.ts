@@ -10,7 +10,7 @@ import {
 } from "../src/index.ts";
 import type { Plugin } from "../src/index.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
-import { env } from "./harness.ts";
+import { env, until } from "./harness.ts";
 
 function seeded() {
   const disk = createDisk();
@@ -144,6 +144,35 @@ describe("resources", () => {
     await expect(scanResources(kernel, session.id)).rejects.toThrow("Transient read failure.");
     failing = false;
     expect((await scanResources(kernel, session.id)).prompt.system).toBe("MUST REMAIN");
+  });
+
+  it("lists a SKILL.md added mid-session without a reload, and stops watching once the session's scan is dropped", async () => {
+    const disk = seeded();
+    const { kernel, host, workspace } = await world({
+      disk,
+      home: "/home/ada",
+      plugins: [resourcesPlugin],
+    });
+
+    const session = await host.sessions.create({ workspace });
+    await kernel.pluginsFor(session.id).ready;
+    const names = (): readonly string[] => kernel.catalog(session.id).skills.map((skill) => skill.name);
+
+    expect(names()).not.toContain("fresh");
+    await until(() => (disk.watchers.size === 2 ? true : undefined));
+
+    disk.put(
+      "/work/project/.agents/skills/fresh/SKILL.md",
+      '---\nname: fresh\ndescription: "Added later."\n---\n',
+    );
+    await until(() => (names().includes("fresh") ? true : undefined));
+    disk.put("/home/ada/.nyte/skills/late/SKILL.md", "---\nname: late\n---\n");
+    await until(() => (names().includes("late") ? true : undefined));
+
+    disk.put("/work/project/src/app.ts", "unrelated\n");
+    expect(disk.watchers.size).toBe(2);
+    expect(await session.remove()).toEqual({ kind: "removed" });
+    expect(disk.watchers.size).toBe(0);
   });
 
   it("keeps scans, the home's files and file batches on the kernel's state, in no module table (audit D4-D5 #6, D6 #2)", async () => {

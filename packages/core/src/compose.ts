@@ -62,7 +62,7 @@ import {
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
 import { bumpGeneration, runCommand, toolSource } from "./extend/registry.ts";
-import { resourcesPlugin, scanResources } from "./extend/resources.ts";
+import { dropScans, resourcesPlugin, scanResources } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-layers.ts";
 import { createSettingsApi } from "./extend/settings.ts";
 import { createBus } from "./fold/bus.ts";
@@ -581,6 +581,7 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   );
 
   for (const session of sessions) await kernel.closePlugins(session);
+  dropScans(kernel);
 
   for (const session of sessions) await kernel.environments.detach(session);
 

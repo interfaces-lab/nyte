@@ -18,7 +18,7 @@ import { attempt, EMPTY_REVISION, MAIN, put, requireSession, STALE } from "../st
 import { SdkError } from "../util/error.ts";
 import { check } from "../util/json-schema.ts";
 import { publishCatalog } from "./registry.ts";
-import { SKILL_PATHS } from "./resources.ts";
+import { dropScans, SKILL_PATHS } from "./resources.ts";
 import { findSettingDefinition, readSettingLayers, settingInfos } from "./setting-layers.ts";
 
 export function createSettingsApi(kernel: Kernel): SettingsApi {
@@ -134,7 +134,7 @@ async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<
   if (id === WORKSPACE_TRUST) void trustChanged(kernel).catch(() => undefined);
 
   if (id === SKILL_PATHS) {
-    kernel.workspaceState.scans.clear();
+    dropScans(kernel);
 
     for (const session of kernel.runtimes().keys())
       void kernel.reloadPlugins(session).catch(() => undefined);

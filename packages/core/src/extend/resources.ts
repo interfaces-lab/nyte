@@ -3,7 +3,7 @@ import type { SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin, PluginApi } from "../contract/plugin.ts";
-import type { FilesApi, Resources } from "../contract/workspace.ts";
+import type { FilesApi, Resources, ScanEntry } from "../contract/workspace.ts";
 import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
 import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
 import { kvRef } from "../store/refs.ts";
@@ -27,20 +27,61 @@ export const SKILL_PATHS = "skills.paths";
 
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
+/** Returns the session's resources, scanned once and cached until a skill file under a scanned skill directory or path moves, which drops the scan and reloads the session's plugins so the skill list follows the disk. */
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
   const workspace = (await requireSession(kernel.store, session)).record.workspace;
   const table = kernel.workspaceState.scans;
   const cached = table.get(session);
 
   if (cached !== undefined && cached.workspace === workspace) return cached.resources;
-  const entry = { workspace, resources: scan(kernel, session, workspace) };
+  dropScans(kernel, (key) => key === session);
+  const watching = new AbortController();
+
+  const entry: ScanEntry = {
+    workspace,
+    resources: scan(kernel, session, workspace),
+    stop: () => watching.abort(),
+  };
+
   table.set(session, entry);
 
-  entry.resources.catch(() => {
-    if (table.get(session) === entry) table.delete(session);
-  });
+  const moved = (): void => {
+    if (table.get(session) !== entry) return;
+    dropScans(kernel, (key) => key === session);
+    void kernel.reloadPlugins(session).catch(() => undefined);
+  };
+
+  entry.resources.then(
+    async (resources) => {
+      const paths = userSkillPaths(await skillPaths(kernel.store));
+
+      for (const [files, watched] of [
+        [resources.project, SKILL_DIRECTORIES],
+        [resources.user, [...SKILL_DIRECTORIES, ...paths]],
+      ] as const)
+        if (files !== null)
+          void skillsMoved(files, watched, watching.signal).then((changed) => {
+            if (changed) moved();
+          });
+    },
+    () => dropScans(kernel, (key, found) => key === session && found === entry),
+  );
 
   return entry.resources;
+}
+
+/** Drops the cached scans `chosen` picks (every one by default) and stops each one's watch. */
+export function dropScans(
+  kernel: Kernel,
+  chosen: (session: SessionId, entry: ScanEntry) => boolean = () => true,
+): void {
+  const table = kernel.workspaceState.scans;
+
+  for (const [session, entry] of table) {
+    if (!chosen(session, entry)) continue;
+    table.delete(session);
+    entry.stop();
+  }
 }
 
 export function resourceIssues(resources: Resources): readonly ValidationIssue[] {
@@ -255,6 +296,37 @@ function userFiles(kernel: Kernel): Promise<FilesApi | null> {
   return attached;
 }
 
+/** Resolves true once a file under one of `paths` moves in `files`, false when the watch ends, fails or `signal` aborts first. */
+async function skillsMoved(
+  files: FilesApi,
+  paths: readonly string[],
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (signal.aborted) return false;
+  const events = files.watch({ paths })[Symbol.asyncIterator]();
+  const stop = (): void => void events.return?.();
+  signal.addEventListener("abort", stop, { once: true });
+
+  try {
+    for (;;) {
+      const next = await events.next();
+
+      if (next.done === true || signal.aborted) return false;
+
+      if (next.value.length > 0) return true;
+    }
+  } catch {
+    return false;
+  } finally {
+    signal.removeEventListener("abort", stop);
+    stop();
+  }
+}
+
+function userSkillPaths(paths: readonly string[]): readonly string[] {
+  return paths.map((raw) => (raw.startsWith("~/") ? raw.slice(2) : raw).replace(/\/+$/, ""));
+}
+
 async function skillPaths(store: StoreConnection): Promise<readonly string[]> {
   const value = await readKv(store, kvRef("host", "settings", SKILL_PATHS));
 
@@ -290,10 +362,8 @@ async function skillsIn(
 
 async function skillsAt(files: FilesApi, paths: readonly string[]): Promise<readonly Skill[]> {
   const found = await Promise.all(
-    paths.map(async (raw): Promise<readonly Skill[]> => {
-      const path = raw.startsWith("~/") ? raw.slice(2) : raw;
-
-      if (!path.endsWith(".md")) return skillsIn(files, [path.replace(/\/+$/, "")], "path");
+    userSkillPaths(paths).map(async (path): Promise<readonly Skill[]> => {
+      if (!path.endsWith(".md")) return skillsIn(files, [path], "path");
       const content = await readText(files, path);
       const name = path.split("/").at(-1)?.slice(0, -".md".length) ?? path;
 

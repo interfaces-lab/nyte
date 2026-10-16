@@ -33,7 +33,7 @@ import { findExecutable, run } from "./command.ts";
 import type { Ran } from "./command.ts";
 import { feed } from "./feed.ts";
 import { decodeText } from "./text.ts";
-import { codeOf, createIgnores, walkTree, watchTree } from "./tree.ts";
+import { codeOf, createIgnores, walkTree, watchPath, watchTree } from "./tree.ts";
 
 /** Returns a byte reader that carries the version of the file it read, which the server answers as `X-Nyte-Version` (§40h, §40p). */
 export type VersionedReader = ByteReader & { readonly version: FileVersion };
@@ -64,7 +64,7 @@ const WATCH_POLL_MS = 1_000;
 
 const FORMATTERS = ["oxfmt", "prettier", "biome"] as const;
 
-/** Returns a folder's files over `node:fs`: a relative path resolves against `root`, an absolute one is taken as given (the ancestor context files are read through it, §37g). A version is the SHA-256 of what is there, never an mtime: a file's contents (through a symlink, its target's), a directory's sorted entry names, and, for `stat` of a symlink itself, its target path. `read` answers `text` for UTF-8 without NUL up to 1 MiB, `large` above, `binary` otherwise, `missing` when absent (`SdkError("invalid")` for a directory); `bytes` streams the file with its size, a null mime and its version (`SdkError("unknown")` when absent); `stat` uses `lstat` (a symlink with its `target`), null when absent. `write` compares `expect` with the current version first (`stale { current }`, `absent` needing no file), answers `missing-parent` unless `parents`, and writes through a temporary file renamed into place (through a symlink, at its target), keeping an existing file's mode; `remove` compares `expect` the same way (`stale { current: null }` when nothing is there) and answers `saved` with the version it removed. `batch()` returns a plan whose `apply` and `upload()` reject with `SdkError("unavailable")`: core lays its own over them (`wrapFiles`). `format` runs `formatter`, else the first of `oxfmt`, `prettier` and `biome` under `<root>/node_modules/.bin`, then on the `PATH`, with the contents on stdin and the path for its config, answering `unchanged` when equal and `unavailable { reason }` when there is none or it fails. `scan` walks `directory` (default the root; an absolute one is walked as its own root and answered with absolute paths) breadth-first in pages of 500 entries, skipping `.git` and, unless `ignored: "include"` or the directory is itself ignored, what `.gitignore` files and `.git/info/exclude` ignore (`ignore`), then `complete`, or `incomplete` with `limit` after 50,000 entries or `permission` after an unreadable directory; entries carry no version. `find` matches the query against the scanned file paths, case-insensitively: exact name, name prefix, name substring, path substring, then a fuzzy subsequence, shorter first, at most `limit` (default 20, capped at 50), the scan reused for 5 s. `search` runs `ripgrep` (else `rg` on the PATH; with neither, a scan of the text files up to 1 MiB) for the literal query with smart case, yielding a `match` per matching line (1-based line and column, the line cut at 500 characters), then `complete`, or `truncated` at `limit` (default 200). `watch` uses a recursive `fs.watch` on the root (a 1 s poll where there is none), narrowed to `paths` when given and without ignored paths or directories, coalescing changes over 100 ms into `created`, `modified` and `removed` events with the version after (null when removed), a path's last change winning while the reader is behind. `signal` ends every open `watch`. */
+/** Returns a folder's files over `node:fs`: a relative path resolves against `root`, an absolute one is taken as given (the ancestor context files are read through it, §37g). A version is the SHA-256 of what is there, never an mtime: a file's contents (through a symlink, its target's), a directory's sorted entry names, and, for `stat` of a symlink itself, its target path. `read` answers `text` for UTF-8 without NUL up to 1 MiB, `large` above, `binary` otherwise, `missing` when absent (`SdkError("invalid")` for a directory); `bytes` streams the file with its size, a null mime and its version (`SdkError("unknown")` when absent); `stat` uses `lstat` (a symlink with its `target`), null when absent. `write` compares `expect` with the current version first (`stale { current }`, `absent` needing no file), answers `missing-parent` unless `parents`, and writes through a temporary file renamed into place (through a symlink, at its target), keeping an existing file's mode; `remove` compares `expect` the same way (`stale { current: null }` when nothing is there) and answers `saved` with the version it removed. `batch()` returns a plan whose `apply` and `upload()` reject with `SdkError("unavailable")`: core lays its own over them (`wrapFiles`). `format` runs `formatter`, else the first of `oxfmt`, `prettier` and `biome` under `<root>/node_modules/.bin`, then on the `PATH`, with the contents on stdin and the path for its config, answering `unchanged` when equal and `unavailable { reason }` when there is none or it fails. `scan` walks `directory` (default the root; an absolute one is walked as its own root and answered with absolute paths) breadth-first in pages of 500 entries, skipping `.git` and, unless `ignored: "include"` or the directory is itself ignored, what `.gitignore` files and `.git/info/exclude` ignore (`ignore`), then `complete`, or `incomplete` with `limit` after 50,000 entries or `permission` after an unreadable directory; entries carry no version. `find` matches the query against the scanned file paths, case-insensitively: exact name, name prefix, name substring, path substring, then a fuzzy subsequence, shorter first, at most `limit` (default 20, capped at 50), the scan reused for 5 s. `search` runs `ripgrep` (else `rg` on the PATH; with neither, a scan of the text files up to 1 MiB) for the literal query with smart case, yielding a `match` per matching line (1-based line and column, the line cut at 500 characters), then `complete`, or `truncated` at `limit` (default 200). `watch` uses a recursive `fs.watch` on the root (a 1 s poll where there is none) or, given `paths`, a watch on each of them alone that waits for a missing one to appear and never polls, without ignored paths or directories, coalescing changes over 100 ms into `created`, `modified` and `removed` events with the version after (null when removed), a path's last change winning while the reader is behind. `signal` ends every open `watch`. */
 export function localFiles(
   root: string,
   options?: {
@@ -599,21 +599,17 @@ function watchFiles(
       const started = Date.now();
       let queue = Promise.resolve();
 
-      const wanted = (path: string): boolean =>
-        paths.length === 0 ||
-        paths.some((prefix) => prefix === "" || path === prefix || path.startsWith(`${prefix}/`));
-
-      const eventOf = async (path: string): Promise<FileEvent | null> => {
+      const readEvent = async (path: string): Promise<FileEvent | null> => {
         if (path.endsWith(".gitignore"))
           ignores.forget(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
 
-        if (!wanted(path) || (await ignores.ignored(path, false))) return null;
-        const stats = await lstat(join(root, path)).catch(() => null);
+        if (await ignores.ignored(path, false)) return null;
+        const at = isAbsolute(path) ? path : join(root, path);
+        const stats = await lstat(at).catch(() => null);
 
         if (stats?.isDirectory() === true) return null;
 
-        const version =
-          stats === null ? null : await currentVersion(join(root, path)).catch(() => null);
+        const version = stats === null ? null : await currentVersion(at).catch(() => null);
 
         const before = known.get(path);
         known.set(path, version);
@@ -630,20 +626,54 @@ function watchFiles(
         return { kind: created ? "created" : "modified", path, version };
       };
 
-      const dispose = watchTree(root, { delay: WATCH_DELAY_MS, poll: WATCH_POLL_MS }, (changed) => {
+      const listMoved = async (
+        prefix: string,
+        changed: ReadonlySet<string>,
+      ): Promise<readonly string[]> => {
+        const inside = [...changed].flatMap((path) => (path === "" ? [] : [`${prefix}/${path}`]));
+
+        if (!changed.has("")) return inside;
+        const below = [...known.keys()].filter((path) => path.startsWith(`${prefix}/`));
+
+        for await (const frame of walkTree(isAbsolute(prefix) ? prefix : join(root, prefix), {
+          ignored: "include",
+        }))
+          if (frame.kind === "entries")
+            for (const entry of frame.entries)
+              if (entry.kind === "file") below.push(`${prefix}/${entry.path}`);
+
+        return [prefix, ...below, ...inside];
+      };
+
+      const heard = (changed: Iterable<string> | Promise<Iterable<string>>): void => {
         queue = queue.then(async () => {
           const events: FileEvent[] = [];
 
-          for (const path of changed) {
+          for (const path of await changed) {
             if (path === "") continue;
-            const event = await eventOf(path).catch(() => null);
+            const event = await readEvent(path).catch(() => null);
 
             if (event !== null) events.push(event);
           }
 
           if (events.length > 0) sink.push(events);
         });
-      });
+      };
+
+      const watching =
+        paths.length === 0 || paths.includes("")
+          ? [watchTree(root, { delay: WATCH_DELAY_MS, poll: WATCH_POLL_MS }, heard)]
+          : paths.map((prefix) =>
+              watchPath(
+                isAbsolute(prefix) ? prefix : join(root, prefix),
+                { delay: WATCH_DELAY_MS },
+                (changed) => heard(listMoved(prefix, changed)),
+              ),
+            );
+
+      const dispose = (): void => {
+        for (const stop of watching) stop();
+      };
 
       const end = (): void => sink.end();
       signal?.addEventListener("abort", end, { once: true });

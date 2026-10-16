@@ -28,6 +28,7 @@ import type {
   WorkspaceState,
 } from "../contract/workspace.ts";
 import { createJobs, jobHandle } from "../engine/jobs.ts";
+import { dropScans } from "../extend/resources.ts";
 import { commit } from "../fold/commit.ts";
 import { runRef, workspaceRef } from "../store/refs.ts";
 import {
@@ -599,7 +600,7 @@ async function byIdentity(
  * and every live session reloads its plugins.
  */
 export async function trustChanged(kernel: Kernel): Promise<void> {
-  kernel.workspaceState.scans.clear();
+  dropScans(kernel);
 
   for (const record of await workspaceRecords(kernel.store)) changed(kernel, record.id);
 
@@ -613,7 +614,5 @@ function changed(kernel: Kernel, id: WorkspaceId): void {
 }
 
 function invalidateResources(kernel: Kernel, workspace: WorkspaceId): void {
-  const table = kernel.workspaceState.scans;
-
-  for (const [session, cached] of table) if (cached.workspace === workspace) table.delete(session);
+  dropScans(kernel, (_session, cached) => cached.workspace === workspace);
 }
