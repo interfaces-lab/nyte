@@ -478,10 +478,48 @@ function registerIpc(): void {
   });
 }
 
+interface OpeningFrame {
+  readonly bounds: Partial<Electron.Rectangle>;
+  readonly maximized: boolean;
+  readonly fullscreen: boolean;
+}
+
+/**
+ * The frame a new window opens in. The first window takes the last closed window's place,
+ * size, and maximized or fullscreen state, when a display's work area still shows that place;
+ * a window opened beside others takes only the size, and the system places it.
+ */
+function openingFrame(): OpeningFrame {
+  const saved = launchState.window();
+
+  if (saved === undefined)
+    return { bounds: { width: 1200, height: 800 }, maximized: false, fullscreen: false };
+  const { bounds } = saved;
+
+  const shown = screen
+    .getAllDisplays()
+    .some(
+      ({ workArea }) =>
+        bounds.x < workArea.x + workArea.width &&
+        bounds.x + bounds.width > workArea.x &&
+        bounds.y < workArea.y + workArea.height &&
+        bounds.y + bounds.height > workArea.y,
+    );
+
+  if (windows.size === 0 && shown) return saved;
+
+  return {
+    bounds: { width: bounds.width, height: bounds.height },
+    maximized: false,
+    fullscreen: false,
+  };
+}
+
 function createWindow(): NyteWindow {
+  const frame = openingFrame();
+
   const options: Electron.BrowserWindowConstructorOptions = {
-    width: 1200,
-    height: 800,
+    ...frame.bounds,
     minWidth: 560,
     minHeight: 480,
     show: false,
@@ -551,7 +589,11 @@ function createWindow(): NyteWindow {
 
   nativeTheme.on("updated", updateWindowBackground);
   created.once("ready-to-show", () => {
+    if (frame.maximized) created.maximize();
     created.show();
+
+    if (frame.fullscreen) created.setFullScreen(true);
+
     if (performance.getEntriesByName("nyte:window-shown").length === 0)
       performance.mark("nyte:window-shown");
     entry.shown = true;
@@ -585,6 +627,21 @@ function createWindow(): NyteWindow {
   });
 
   void created.loadURL(rendererUrl);
+
+  created.on("close", () => {
+    const bounds = created.getNormalBounds();
+
+    launchState.setWindow({
+      bounds: {
+        x: Math.round(bounds.x),
+        y: Math.round(bounds.y),
+        width: Math.round(bounds.width),
+        height: Math.round(bounds.height),
+      },
+      maximized: created.isMaximized(),
+      fullscreen: created.isFullScreen(),
+    });
+  });
 
   created.on("closed", () => {
     entry.menuCommands.reset();

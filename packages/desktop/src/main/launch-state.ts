@@ -1,6 +1,7 @@
 /**
  * What main needs before the first window exists, kept across launches: the theme the renderer
- * last chose, so the window and the startup shell open in it.
+ * last chose, so the window and the startup shell open in it, and the frame of the window that
+ * closed last, so the next one opens where it was.
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -15,11 +16,26 @@ export const themeSource = Type.Union([
   Type.Literal("dark"),
 ]);
 
-const stateSchema = Type.Object({ theme: themeSource });
+const rect = Type.Object({
+  x: Type.Integer(),
+  y: Type.Integer(),
+  width: Type.Integer({ minimum: 1 }),
+  height: Type.Integer({ minimum: 1 }),
+});
+
+const windowFrame = Type.Object({
+  bounds: rect,
+  maximized: Type.Boolean(),
+  fullscreen: Type.Boolean(),
+});
+
+const stateSchema = Type.Object({ theme: themeSource, window: Type.Optional(windowFrame) });
 
 const launchState = Compile(stateSchema);
 
 export type ThemeSource = Static<typeof themeSource>;
+
+export type WindowFrame = Static<typeof windowFrame>;
 
 type LaunchState = Static<typeof stateSchema>;
 
@@ -34,8 +50,9 @@ function readState(path: string): LaunchState {
 }
 
 /**
- * Reads once at construction and writes synchronously on change. The file is a few bytes
- * and changes only when the theme does, and it must be read before the first window.
+ * Reads once at construction and writes synchronously on change. The file is a few hundred
+ * bytes and changes when the theme does or a window closes, and a window that closes while the
+ * app quits must still be written before the process exits.
  */
 export class LaunchStateStore {
   readonly #path: string;
@@ -50,8 +67,16 @@ export class LaunchStateStore {
     return this.#state.theme;
   }
 
+  window(): WindowFrame | undefined {
+    return this.#state.window;
+  }
+
   setTheme(theme: ThemeSource): void {
     this.#write({ ...this.#state, theme });
+  }
+
+  setWindow(window: WindowFrame): void {
+    this.#write({ ...this.#state, window });
   }
 
   #write(next: LaunchState): void {
@@ -64,7 +89,7 @@ export class LaunchStateStore {
       writeFileSync(temporary, JSON.stringify(next), { mode: 0o600 });
       renameSync(temporary, this.#path);
     } catch (cause) {
-      process.emitWarning(`The theme could not be saved: ${String(cause)}`, {
+      process.emitWarning(`The launch state could not be saved: ${String(cause)}`, {
         code: "NYTE_LAUNCH_STATE",
       });
     }
