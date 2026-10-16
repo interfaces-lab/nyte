@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import type { Page } from "@playwright/test";
-import { APP_ORIGINS } from "../../src/web/origins.ts";
-import { collectErrors } from "../utils/errors.ts";
+import { collectErrors } from "@nyte-ai/app/e2e/errors";
+import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
 import { chatRow, sidebar } from "./ui.ts";
@@ -13,17 +13,17 @@ const CREATED = "Created in the browser";
 
 const WEB_ORIGIN = APP_ORIGINS[2];
 
-const DIST = join(import.meta.dirname, "../../dist");
+const DIST = join(import.meta.dirname, "../../app/dist");
 
-const TYPES: Readonly<Record<string, string>> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".woff2": "font/woff2",
-  ".json": "application/json",
-};
+const TYPES = new Map([
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript"],
+  [".css", "text/css"],
+  [".svg", "image/svg+xml"],
+  [".png", "image/png"],
+  [".woff2", "font/woff2"],
+  [".json", "application/json"],
+]);
 
 async function serveShell(page: Page): Promise<void> {
   await page.route(`${WEB_ORIGIN}/**`, async (route) => {
@@ -33,7 +33,7 @@ async function serveShell(page: Page): Promise<void> {
     try {
       await route.fulfill({
         body: await readFile(file),
-        contentType: TYPES[extname(file)] ?? "application/octet-stream",
+        contentType: TYPES.get(extname(file)) ?? "application/octet-stream",
       });
     } catch {
       await route.fulfill({ status: 404, body: "Not found" });

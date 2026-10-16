@@ -7,9 +7,9 @@ import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
-const APP_ROOT = resolve(import.meta.dirname, "../..");
+const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
 
-const DESKTOP_ROOT = resolve(APP_ROOT, "../desktop");
+const PACKAGES_ROOT = resolve(DESKTOP_ROOT, "..");
 
 const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out-e2e/main/index.js");
 
@@ -55,7 +55,7 @@ async function assertBuilt(): Promise<void> {
   const required = [
     [MAIN_ENTRY, "pnpm --dir packages/desktop build:e2e"],
     [resolve(DESKTOP_ROOT, "out/renderer/index.html"), "pnpm --dir packages/desktop build"],
-    [resolve(APP_ROOT, "dist/index.html"), "pnpm --dir packages/app build"],
+    [resolve(PACKAGES_ROOT, "app/dist/index.html"), "pnpm --dir packages/app build"],
   ] as const;
 
   for (const [path, command] of required) {
@@ -72,7 +72,7 @@ async function electronExecutable(): Promise<string> {
   return join(electronRoot, "dist", executable.trim());
 }
 
-function launchEnvironment(home: string): Record<string, string> {
+function launchEnvironment(home: string) {
   const kept = Object.entries(process.env).filter(
     (entry): entry is [string, string] => entry[1] !== undefined && KEPT_VARIABLES.has(entry[0]),
   );
@@ -85,11 +85,13 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
   const root = await mkdtemp(join(options.parentDirectory, "desktop-"));
   const appData = join(root, "app-data");
   await mkdir(appData, { recursive: true });
-  await symlink(APP_ROOT, join(options.parentDirectory, "app"), "junction").catch(
-    (cause: NodeJS.ErrnoException) => {
-      if (cause.code !== "EEXIST") throw cause;
-    },
-  );
+  await symlink(
+    join(PACKAGES_ROOT, "canvas"),
+    join(options.parentDirectory, "canvas"),
+    "junction",
+  ).catch((cause: NodeJS.ErrnoException) => {
+    if (cause.code !== "EEXIST") throw cause;
+  });
 
   const downloads =
     options.downloadsDirectory === undefined

@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { collectErrors } from "@nyte-ai/app/e2e/errors";
 import { launchDesktop } from "./launch.ts";
 import { chatPane, composer, openSettings, sidebar } from "./ui.ts";
-import { collectErrors } from "../utils/errors.ts";
 
 test("an empty home opens on a new chat with nothing listed", async () => {
   await using cleanup = new AsyncDisposableStack();

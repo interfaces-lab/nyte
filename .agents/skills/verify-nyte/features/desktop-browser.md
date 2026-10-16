@@ -15,7 +15,7 @@ Desktop shows web pages as native `WebContentsView`s above the app's DOM.
 
 Preconditions: `pnpm e2e:desktop` builds; read `.nyte/skills/integrated-browser/SKILL.md` first.
 
-- Use `packages/app/e2e/desktop/browser.spec.ts`. It starts a local HTTP fixture, opens the
+- Use `packages/desktop/e2e/browser.spec.ts`. It starts a local HTTP fixture, opens the
   workbench, focuses the `Address` combobox, navigates, and checks guest URL, title and loading
   state through Electron. It also covers downloads, shortcuts, authentication and crash recovery.
 - Overlay: open a floating surface over the page and observe guest visibility and actual window

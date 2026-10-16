@@ -7,14 +7,11 @@ import { dev } from "@nyte-ai/core";
 import { idSchema } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
-// oxlint-disable-next-line nyte-code/no-cross-package-relative-imports -- desktop depends on app, so app's desktop e2e suite cannot import desktop by name
-import { E2E_MODEL, e2eModels } from "../../../desktop/src/main/fixtures/e2e-models.ts";
+import { E2E_MODEL, e2eModels } from "../src/main/fixtures/e2e-models.ts";
 
-const APP_ROOT = resolve(import.meta.dirname, "../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
-const REPO_ROOT = resolve(APP_ROOT, "../..");
-
-const CACHE_ROOT = resolve(APP_ROOT, "e2e/.cache/desktop");
+const CACHE_ROOT = resolve(import.meta.dirname, ".cache");
 
 export const LONG_TURNS = 36;
 
@@ -61,7 +58,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
 
 async function fingerprint(): Promise<string> {
   const files = [
-    join(APP_ROOT, "e2e/desktop/baseline.ts"),
+    join(import.meta.dirname, "baseline.ts"),
     join(REPO_ROOT, "packages/desktop/src/main/fixtures/e2e-models.ts"),
     join(REPO_ROOT, "packages/host/src/sqlite.ts"),
     join(REPO_ROOT, "packages/host/src/store-rows.ts"),

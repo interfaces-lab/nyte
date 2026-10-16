@@ -10,8 +10,7 @@ import { Value } from "typebox/value";
 import { prepareStartupFixture, startupCases } from "./startup-fixture.ts";
 import type { StartupCase, StartupFixture } from "./startup-fixture.ts";
 import { chatTab, clearComposer, composer, messages, openChat } from "./ui.ts";
-// oxlint-disable-next-line nyte-code/no-cross-package-relative-imports -- desktop depends on app, so app's desktop e2e suite cannot import desktop by name
-import { CALL_CHANNEL } from "../../../desktop/src/shared/ipc.ts";
+import { CALL_CHANNEL } from "../src/shared/ipc.ts";
 
 const timeout = 30_000;
 
@@ -203,7 +202,7 @@ function readOptions(): Options | undefined {
     warmup,
     output:
       values.out === undefined
-        ? join(import.meta.dirname, "../test-results", `startup-${stamp}.json`)
+        ? join(import.meta.dirname, "test-results", `startup-${stamp}.json`)
         : resolve(invokedFrom, values.out),
     json: values.json,
   };

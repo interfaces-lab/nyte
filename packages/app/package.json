@@ -7,16 +7,14 @@
     ".": "./src/index.ts",
     "./vite": "./vite.ts",
     "./dist/*": "./dist/*",
+    "./e2e/errors": "./e2e/utils/errors.ts",
     "./*": "./src/*"
   },
   "scripts": {
     "build": "vite build",
     "clean": "rm -rf node_modules .turbo dist",
     "dev": "vite",
-    "e2e": "pnpm build && playwright test --config e2e/playwright.config.ts --project web",
-    "e2e:desktop": "pnpm build && pnpm --dir ../desktop build && pnpm --dir ../desktop build:e2e && playwright test --config e2e/playwright.config.ts --project desktop",
-    "e2e:all": "pnpm build && pnpm --dir ../desktop build && pnpm --dir ../desktop build:e2e && playwright test --config e2e/playwright.config.ts",
-    "bench:desktop": "node --conditions=nyte-source e2e/desktop/bench-startup.ts",
+    "e2e": "pnpm build && playwright test --config e2e/playwright.config.ts",
     "test": "vitest --run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e"
   },

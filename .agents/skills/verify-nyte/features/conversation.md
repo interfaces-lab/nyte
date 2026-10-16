@@ -16,8 +16,8 @@ A user opens a workspace, sends a prompt, watches the reply stream in, can stop 
 
 ## Driving it with Playwright
 
-Desktop uses `e2e/desktop/chat.spec.ts` and the offline scripted catalog. The shared
-`desktop/ui.ts` helpers find the composer by role `combobox` and name `Message`, and the
+Desktop uses `packages/desktop/e2e/chat.spec.ts` and the offline scripted catalog. The shared
+`packages/desktop/e2e/ui.ts` helpers find the composer by role `combobox` and name `Message`, and the
 transcript through region `Messages` and its `log`.
 
 - Send: `send(page, "Hello desktop")`; expect paragraphs `Hello desktop` and
