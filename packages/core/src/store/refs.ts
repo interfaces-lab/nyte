@@ -50,10 +50,6 @@ export function partRef(id: SessionId, part: PartId): string {
   return `sessions/${id}/parts/${part}`;
 }
 
-export function changesRef(id: SessionId): string {
-  return `sessions/${id}/changes`;
-}
-
 export function receiptRef(id: SessionId, receipt: ReceiptId): string {
   return `sessions/${id}/receipts/${receipt}`;
 }

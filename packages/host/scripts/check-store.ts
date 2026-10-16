@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   decodeCallRecord,
-  decodeChangesRecord,
   decodeCommitRecord,
   decodeHostIdentity,
   decodeInboxRecord,
@@ -30,7 +29,6 @@ const decoders = new Map<Json, { readonly kind: string; readonly decode: Decode 
     session: decodeSessionRecord,
     commit: decodeCommitRecord,
     inbox: decodeInboxRecord,
-    changes: decodeChangesRecord,
     run: decodeRunRecord,
     part: decodePartRecord,
     receipt: decodeReceiptRecord,

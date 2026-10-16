@@ -813,7 +813,7 @@ describe("tool calls", () => {
     expect((await session.view()).changes).toEqual([
       { path: "a.ts", status: "modified", added: 3, removed: 1 },
     ]);
-    expect(recorded.sets.at(-1)).toEqual(["call:settled", "part:settled", "commit", "changes"]);
+    expect(recorded.sets.at(-1)).toEqual(["call:settled", "changes", "part:settled", "commit"]);
 
     const call2: CallId = asId("e2");
 

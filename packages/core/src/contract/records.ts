@@ -5,7 +5,6 @@ import {
   compile,
   ConfigurationType,
   cyclicWithJson,
-  FileChangeType,
   HeadInfoType,
   idSchema,
   JsonObjectType,
@@ -26,7 +25,6 @@ import type {
   BatchOutcome,
   CommitBody,
   Configuration,
-  FileChange,
   HeadInfo,
   Json,
   MoveOutcome,
@@ -97,10 +95,6 @@ const InboxRecordType = record({
 });
 
 export type InboxRecord = Static<typeof InboxRecordType>;
-
-const ChangesRecordType = record({ files: list(typed<FileChange>()(FileChangeType)) });
-
-type ChangesRecord = Static<typeof ChangesRecordType>;
 
 const RunRecordType = record({
   view: typed<RunView>()(RunViewType),
@@ -269,7 +263,6 @@ export type RecordKind =
   | "session"
   | "commit"
   | "inbox"
-  | "changes"
   | "run"
   | "part"
   | "receipt"
@@ -286,7 +279,6 @@ export const STORED_RECORD_TYPES = {
   session: SessionRecordType,
   commit: CommitRecordType,
   inbox: InboxRecordType,
-  changes: ChangesRecordType,
   run: RunRecordType,
   part: PartRecordType,
   receipt: ReceiptRecordType,
@@ -313,8 +305,6 @@ export const decodeRunRecord: Decode<RunRecord> = decoder("run", RunRecordType);
 export const decodeSeenRecord: Decode<SeenRecord> = decoder("seen", SeenRecordType);
 
 export const decodeInboxRecord: Decode<InboxRecord> = decoder("inbox", InboxRecordType);
-
-export const decodeChangesRecord: Decode<ChangesRecord> = decoder("changes", ChangesRecordType);
 
 export const decodePartRecord: Decode<PartRecord> = decoder("part", PartRecordType);
 

@@ -93,7 +93,6 @@ export type {
 export {
   STORED_RECORD_TYPES,
   decodeCallRecord,
-  decodeChangesRecord,
   decodeCommitRecord,
   decodeHostIdentity,
   decodeInboxRecord,

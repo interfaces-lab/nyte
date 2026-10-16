@@ -22,7 +22,6 @@ it("keeps every stored shape until a store change is decided", () => {
     SessionEvent: "8dbc290bf0843cd9",
     WaitOutcome: "2164fa1f0aafd2a7",
     call: "6f82fa38020a43fc",
-    changes: "ae0727a92666a8d8",
     commit: "51596d4375535742",
     identity: "7a36a42575ab463a",
     inbox: "5441cda17aa278c8",

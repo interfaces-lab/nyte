@@ -34,7 +34,7 @@ import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel, PluginRuntime, StepEnd } from "../contract/kernel.ts";
 import { definePart, tool } from "../contract/parts.ts";
 import type { ActionContext, ActionOutput, PartState } from "../contract/parts.ts";
-import { decodeChangesRecord, decodePartRecord, decodeRunRecord } from "../contract/records.ts";
+import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { CallRecord, PartRecord } from "../contract/records.ts";
 import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import type { ExecutionEnv } from "../contract/workspace.ts";
@@ -43,7 +43,7 @@ import { abortHere, FENCED, unfenced } from "../engine/fence.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
-import { changesRef, partRef, runRef } from "../store/refs.ts";
+import { partRef, runRef } from "../store/refs.ts";
 import {
   attempt,
   load,
@@ -540,8 +540,7 @@ async function conclude(
     runtime: where.runtime,
   });
 
-  const snapshots =
-    snapshotted && ended.kind === "done" ? await kernel.snapshots(session) : null;
+  const snapshots = snapshotted && ended.kind === "done" ? await kernel.snapshots(session) : null;
 
   if (snapshots === null) return { outcome, changes: null, files: [], snapshot: null };
   const from = (await diffBase(kernel, session, run)) ?? (await snapshots.before(run));
@@ -598,33 +597,32 @@ async function settlement(
     changes: settled.changes,
   };
 
-  const merged =
-    settled.files.length === 0 ? [] : await mergeChanges(kernel, session, settled.files);
-
   const based =
     settled.snapshot === null ? [] : await nextBase(kernel, session, run, settled.snapshot);
 
   const record = { ...found.record, state, version: found.record.version + 1 };
 
-  const opened = (target: ObjectId): RefUpdate => ({
-    name,
-    target,
-    expect: found.ref.revision,
-    event: {
-      head,
-      kind: "call",
-      call,
-      part,
-      change: "settled",
-      outcome: settled.outcome,
-      changes: settled.changes,
+  const opened = (target: ObjectId): readonly RefUpdate[] => [
+    {
+      name,
+      target,
+      expect: found.ref.revision,
+      event: {
+        head,
+        kind: "call",
+        call,
+        part,
+        change: "settled",
+        outcome: settled.outcome,
+        changes: settled.changes,
+      },
     },
   });
 
   if (found.record.status.kind === "failed" || found.record.status.kind === "settled") {
     const target = await put(kernel, "part", record, at);
 
-    return [opened(target), ...based, ...merged];
+    return [...opened(target), ...based];
   }
 
   const landed = await settling(kernel, {
@@ -638,7 +636,7 @@ async function settlement(
     at,
   });
 
-  return [opened(landed.target), ...landed.updates, ...based, ...merged];
+  return [...opened(landed.target), ...landed.updates, ...based];
 }
 
 async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
@@ -702,30 +700,6 @@ async function nextBase(
       name: found.ref.name,
       target: await put(kernel, "run", { ...found.record, lastSnapshot: to }),
       expect: found.ref.revision,
-    },
-  ];
-}
-
-async function mergeChanges(
-  kernel: Kernel,
-  session: SessionId,
-  files: readonly FileChange[],
-): Promise<readonly RefUpdate[]> {
-  const name = changesRef(session);
-  const ref = await kernel.store.refs.get(name);
-  const kept = (await load(kernel, ref, decodeChangesRecord))?.record.files ?? [];
-
-  const merged = [
-    ...kept.map((file) => files.find((next) => next.path === file.path) ?? file),
-    ...files.filter((next) => !kept.some((file) => file.path === next.path)),
-  ];
-
-  return [
-    {
-      name,
-      target: await put(kernel, "changes", { files: merged }),
-      expect: readRefExpectation(ref),
-      event: { head: null, kind: "changes", files: merged },
     },
   ];
 }

@@ -5,6 +5,7 @@ import type {
   CommitId,
   Delivery,
   Execution,
+  FileChange,
   HeadInfo,
   HeadName,
   MessageId,
@@ -175,7 +176,7 @@ function apply(draft: Draft, event: SessionEvent): void {
     case "request":
       return eachHead(draft, event.head, (head) => ({ ...head, context: event.context }));
     case "changes":
-      draft.changes = event.files;
+      draft.changes = mergeChanges(draft.changes, event.files);
 
       return;
     case "session":
@@ -850,4 +851,17 @@ function sameTurnState(left: TurnInfo["state"], right: TurnInfo["state"]): boole
   if (left.kind === "waiting" && right.kind === "waiting") return left.on === right.on;
 
   return left === right;
+}
+
+/** Folds one call's changed files into the session's list: a path already listed takes the call's entry in place, a new path goes last. A `changes` event carries one call's files; logs written before that carried the whole merged list each time, which merges to the same list. */
+function mergeChanges(
+  kept: readonly FileChange[],
+  files: readonly FileChange[],
+): readonly FileChange[] {
+  if (kept.length === 0) return files;
+  const merged = new Map(kept.map((file) => [file.path, file]));
+
+  for (const file of files) merged.set(file.path, file);
+
+  return [...merged.values()];
 }
