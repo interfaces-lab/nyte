@@ -47,8 +47,8 @@ const styles = create({
 const BAR_THEME = {
   text: {
     fontFamily: type.fontSans,
-    fontSize: 11,
-    fill: role.contentTertiary,
+    fontSize: type.fontXs,
+    fill: role.contentSecondary,
     fontVariantNumeric: "tabular-nums",
   },
 } as const;
