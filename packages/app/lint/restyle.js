@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { restyleCategories, restyleContracts } from "../../ui/src/styles/contracts.ts";
+import { restyleCategories, restyleContracts } from "@nyte-ai/ui/styles/contracts";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 

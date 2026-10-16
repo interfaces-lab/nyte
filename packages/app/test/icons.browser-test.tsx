@@ -6,7 +6,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Toolbar } from "@nyte-ai/ui/toolbar";
-import { iconReferences } from "../../ui/test/icon-references.ts";
+import { iconReferences } from "@nyte-ai/ui/test/icon-references";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../src/theme/tokens.stylex.ts";
 

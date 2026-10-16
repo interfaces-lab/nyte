@@ -200,6 +200,8 @@
     "./styles/floating-surface.stylex": "./src/styles/floating-surface.stylex.ts",
     "./styles/a11y.stylex": "./src/styles/a11y.stylex.ts",
     "./styles/text.stylex": "./src/styles/text.stylex.ts",
+    "./styles/contracts": "./src/styles/contracts.ts",
+    "./test/icon-references": "./test/icon-references.ts",
     "./styles/base.css": "./src/styles/base.css",
     "./styles/tailwind.css": "./src/styles/tailwind.css",
     "./ui.css": "./dist/ui.css",
