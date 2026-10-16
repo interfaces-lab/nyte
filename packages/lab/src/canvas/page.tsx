@@ -3,7 +3,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { asId } from "@nyte-ai/schema";
 import { conversationTurns, isBusy } from "@nyte-ai/app/view-helpers.ts";
-import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
+import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import type {
   ComposerDocumentState,
   ComposerSubmission,

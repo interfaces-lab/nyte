@@ -17,7 +17,7 @@ import type {
   ComposerMentionFiles,
   ComposerSuggestionCatalog,
 } from "@nyte-ai/app/conversation/composer-suggestions.tsx";
-import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
+import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
