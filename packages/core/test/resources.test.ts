@@ -158,7 +158,12 @@ describe("resources", () => {
     expect(kernel.workspaceState.home).not.toBeNull();
     expect(kernel.workspaceState.held.get(receipt.id)?.receipt).toBe(receipt);
 
-    for (const file of ["workspaces.ts", "resources.ts", "files.ts"])
+    for (const file of [
+      "env/workspaces.ts",
+      "extend/resources.ts",
+      "engine/batches.ts",
+      "env/environment.ts",
+    ])
       expect(readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8")).not.toMatch(
         /new WeakMap<Kernel/,
       );

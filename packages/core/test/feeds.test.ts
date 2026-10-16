@@ -21,7 +21,8 @@ import {
   tree,
 } from "../src/index.ts";
 import type { Kernel, StoreConnection } from "../src/index.ts";
-import { commit, put, readTip } from "../src/session-state.ts";
+import { commit } from "../src/fold/commit.ts";
+import { put, readTip } from "../src/store/session.ts";
 import { configuration, livePart, main, setup, usage } from "./harness.ts";
 
 async function history(store: StoreConnection) {

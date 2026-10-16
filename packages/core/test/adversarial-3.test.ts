@@ -25,7 +25,7 @@ import type {
   ToolDefinition,
   ToolSource,
 } from "../src/index.ts";
-import { readInbox } from "../src/session-state.ts";
+import { readInbox } from "../src/store/session.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import { configuration, main, setup, startRun, until, usage } from "./harness.ts";
 

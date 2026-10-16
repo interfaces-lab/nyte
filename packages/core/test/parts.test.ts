@@ -27,7 +27,7 @@ import type {
   PartDefinition,
   StoreConnection,
 } from "../src/index.ts";
-import { settleAnswersFrom } from "../src/parts.ts";
+import { settleAnswersFrom } from "../src/store/parts.ts";
 import { label, main, recording, setup, until, usage } from "./harness.ts";
 
 const question = definePart({

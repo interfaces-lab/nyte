@@ -1,4 +1,3 @@
-import type { Models } from "@nyte-ai/ai";
 import { asId, asSeq } from "@nyte-ai/schema";
 import type {
   Activation,
@@ -12,67 +11,69 @@ import type {
   SessionId,
   ValidationIssue,
 } from "@nyte-ai/schema";
-import { createPageTable } from "./browser.ts";
-import type { PageTable } from "./browser.ts";
-import { createBus } from "./bus.ts";
-import { createCompactor, createSummarizer } from "./compaction.ts";
-import { createConnection, createHost } from "./connection.ts";
-import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
-import { dev } from "./dev-log.ts";
-import { runAction } from "./durable.ts";
-import { createEnvironmentRegistry } from "./environment.ts";
-import type { EnvironmentRegistry } from "./environment.ts";
-import { SdkError } from "./error.ts";
-import { createExecutionState, driveInProcess } from "./execution.ts";
-import { EMPTY_CATALOG } from "./fold.ts";
-import { gateSubmission } from "./hooks.ts";
-import { createHostState } from "./host.ts";
-import type { Host } from "./host.ts";
-import { createJobTable } from "./jobs.ts";
-import type { JobTable } from "./jobs.ts";
-import type { Kernel, RunTable, Wakes } from "./kernel.ts";
-import { readMcpWorkspace } from "./mcp.ts";
-import type { McpHub, McpHubFactory } from "./mcp.ts";
-import { createModelState } from "./model-state.ts";
-import { createConfigurationResolver, createModelsApi } from "./models.ts";
-import { createPartDefinitions } from "./part-definitions.ts";
-import type { PartDefinitions } from "./part-definitions.ts";
-import { createPart, partHandle, rerunAction } from "./part-handle.ts";
-import { createPartTable } from "./parts.ts";
+import type { Models } from "@nyte-ai/ai";
+import { createCompactor, createSummarizer } from "./agent/compaction.ts";
+import { createRequest } from "./agent/request.ts";
+import { stoppableTool } from "./agent/tool-runner.ts";
+import { createTurnDriver } from "./agent/turn.ts";
+import { createConnection, createHost } from "./api/connection.ts";
+import { createHostState } from "./api/host.ts";
+import { createPart, partHandle, rerunAction } from "./api/part.ts";
+import { activationSession, sessionHandle } from "./api/session.ts";
+import { delegationPlugin } from "./builtins/delegation.ts";
+import { environmentPlugin } from "./builtins/environment.ts";
+import { mcpPlugin } from "./builtins/mcp.ts";
+import { systemPromptPlugin } from "./builtins/system-prompt.ts";
+import type { Follow } from "./contract/fold.ts";
+import { CORE_CONTEXT } from "./contract/host.ts";
+import type { Host, ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
+import type { Kernel, PluginRuntime, RunTable, WaitRegistry, Wakes } from "./contract/kernel.ts";
+import type { PartDefinitions } from "./contract/parts.ts";
+import type { Plugin } from "./contract/plugin.ts";
+import { decodeHostIdentity, envelope } from "./contract/records.ts";
+import type { HostIdentity } from "./contract/records.ts";
+import type { StoreConnection } from "./contract/store.ts";
+import type {
+  EnvironmentRegistry,
+  JobTable,
+  McpHub,
+  McpHubFactory,
+  PageTable,
+  Workspaces,
+} from "./contract/workspace.ts";
+import { createExecutionState, dispatchHead, driveInProcess } from "./drive/execution.ts";
+import { runAction } from "./engine/durable.ts";
+import { createJobTable } from "./engine/jobs.ts";
+import { createPartDefinitions } from "./engine/part-definitions.ts";
+import { createConnectionRegistry, createPrincipals } from "./engine/principals.ts";
+import { createWaitRegistry } from "./engine/waits.ts";
+import { createPageTable } from "./env/browser.ts";
+import { createEnvironmentRegistry } from "./env/environment.ts";
+import { readMcpWorkspace } from "./env/mcp.ts";
+import { createWorkspaces, createWorkspaceState } from "./env/workspaces.ts";
+import { gateSubmission } from "./extend/hooks.ts";
+import { createConfigurationResolver, createModelsApi } from "./extend/models.ts";
+import { pluginSecrets } from "./extend/plugin-api.ts";
 import {
   checkPlugins,
   createPluginRuntime,
   createPluginState,
   hostPluginRows,
-  pluginSecrets,
-  readKv,
   replacePlugins,
-} from "./plugin-runtime.ts";
-import type { PluginRuntime } from "./plugin-runtime.ts";
-import type { Plugin } from "./plugin.ts";
-import { delegationPlugin } from "./plugins/delegation.ts";
-import { environmentPlugin } from "./plugins/environment.ts";
-import { mcpPlugin } from "./plugins/mcp.ts";
-import { systemPromptPlugin } from "./plugins/system-prompt.ts";
-import { CORE_CONTEXT, createConnectionRegistry, createPrincipals } from "./principals.ts";
-import { decodeHostIdentity, envelope } from "./records.ts";
-import type { HostIdentity } from "./records.ts";
-import { hostIdentityRef, kvRef } from "./refs.ts";
-import { bumpGeneration, runCommand, toolSource } from "./registry.ts";
-import { createRequest } from "./request.ts";
-import { resourcesPlugin, scanResources } from "./resources.ts";
-import { dispatchHead } from "./session-state.ts";
-import { activationSession, sessionHandle } from "./session.ts";
-import { createSettingsApi, settingInfos } from "./settings.ts";
-import type { StoreConnection } from "./store.ts";
-import { stoppableTool } from "./tool-runner.ts";
-import { createTurnDriver } from "./turn.ts";
-import { createWaitRegistry } from "./waits.ts";
-import type { WaitRegistry } from "./waits.ts";
-import { createFoldCache, pollStore, trackStreams } from "./watch.ts";
-import type { Follow } from "./watch.ts";
-import { createWorkspaceState, createWorkspaces } from "./workspaces.ts";
-import type { Workspaces } from "./workspaces.ts";
+} from "./extend/plugin-runtime.ts";
+import { bumpGeneration, runCommand, toolSource } from "./extend/registry.ts";
+import { resourcesPlugin, scanResources } from "./extend/resources.ts";
+import { settingInfos } from "./extend/setting-layers.ts";
+import { createSettingsApi } from "./extend/settings.ts";
+import { createBus } from "./fold/bus.ts";
+import { EMPTY_CATALOG } from "./fold/fold.ts";
+import { createFoldCache, pollStore, trackStreams } from "./fold/watch.ts";
+import { createModelState } from "./store/model-state.ts";
+import { createPartTable } from "./store/parts.ts";
+import { hostIdentityRef, kvRef } from "./store/refs.ts";
+import { readKv } from "./store/session.ts";
+import { dev } from "./util/dev-log.ts";
+import { SdkError } from "./util/error.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;

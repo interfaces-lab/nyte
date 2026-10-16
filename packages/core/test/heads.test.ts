@@ -3,13 +3,8 @@ import type { CommitId, HeadName, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { LOCAL, headRef, memoryStore, tree } from "../src/index.ts";
 import type { Head, Host, Kernel, StoreConnection } from "../src/index.ts";
-import {
-  commit,
-  readRefExpectation,
-  toCommitObjectId,
-  put,
-  readTip,
-} from "../src/session-state.ts";
+import { commit } from "../src/fold/commit.ts";
+import { readRefExpectation, toCommitObjectId, put, readTip } from "../src/store/session.ts";
 import { label, main, recording, setup, usage } from "./harness.ts";
 import type { Script } from "./harness.ts";
 

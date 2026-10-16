@@ -23,7 +23,7 @@ import {
   sessionEvents,
 } from "../src/index.ts";
 import type { Durable, Kernel, StoreConnection } from "../src/index.ts";
-import { isCovered } from "../src/session-state.ts";
+import { isCovered } from "../src/store/session.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import { completed, configuration, main, setup, startRun, until } from "./harness.ts";
 

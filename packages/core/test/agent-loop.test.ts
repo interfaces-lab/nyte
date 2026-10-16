@@ -4,7 +4,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ModelInfo, ToolOutcome, Usage } from "@nyte-ai/schema";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentLoop } from "../src/agent-loop.ts";
+import { agentLoop } from "../src/agent/agent-loop.ts";
 import type {
   LoopConfig,
   LoopEnd,
@@ -12,8 +12,8 @@ import type {
   LoopInput,
   LoopRequest,
   LoopResponse,
-} from "../src/agent-loop.ts";
-import { dev } from "../src/dev-log.ts";
+} from "../src/agent/agent-loop.ts";
+import { dev } from "../src/util/dev-log.ts";
 import { testModel } from "./fake-models.ts";
 
 type Reply = {

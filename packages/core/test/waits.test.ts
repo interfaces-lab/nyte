@@ -29,7 +29,8 @@ import type {
   ToolDefinition,
   ToolSource,
 } from "../src/index.ts";
-import { commit, put } from "../src/session-state.ts";
+import { commit } from "../src/fold/commit.ts";
+import { put } from "../src/store/session.ts";
 import { configuration, main, setup, startRun, until } from "./harness.ts";
 
 const question = definePart({

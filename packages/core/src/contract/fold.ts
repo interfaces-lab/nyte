@@ -1,0 +1,217 @@
+import type {
+  Activation,
+  BackgroundItem,
+  CallId,
+  CommitId,
+  Configuration,
+  ContextView,
+  Delivery,
+  Disposer,
+  FileChange,
+  HeadInfo,
+  HeadName,
+  Message,
+  MessageId,
+  MessageSource,
+  PartId,
+  PartView,
+  PatchEvent,
+  PrincipalId,
+  Revision,
+  RunId,
+  RunView,
+  Schedule,
+  Seq,
+  SessionCatalogView,
+  SessionEvent,
+  SessionId,
+  SessionView,
+  ToolClass,
+  ToolProgress,
+  TurnId,
+  TurnInfo,
+  UserContent,
+  WaitTarget,
+} from "@nyte-ai/schema";
+import type { CommitRecord, PartRecord } from "./records.ts";
+
+export interface FoldState {
+  readonly [INDEX]: Index;
+  readonly session: SessionId;
+
+  readonly principal: PrincipalId;
+
+  readonly seen: ReadonlyMap<PrincipalId, ReadonlyMap<HeadName, CommitId | null>>;
+
+  readonly seq: Seq;
+  readonly activation: Activation;
+  readonly catalog: SessionCatalogView;
+
+  readonly changes: readonly FileChange[];
+  readonly heads: ReadonlyMap<HeadName, FoldHead>;
+
+  readonly headInfos: readonly HeadInfo[];
+  readonly commits: ReadonlyMap<CommitId, CommitRecord>;
+
+  readonly siblings: ReadonlyMap<CommitId | null, readonly CommitId[]>;
+  readonly inputs: ReadonlyMap<MessageId, FoldInput>;
+  readonly parts: ReadonlyMap<PartId, PartRecord>;
+
+  readonly partViews: readonly PartView[];
+  readonly runs: ReadonlyMap<RunId, FoldRun>;
+  readonly calls: ReadonlyMap<CallId, FoldCall>;
+  readonly turns: ReadonlyMap<TurnId, FoldTurn>;
+
+  readonly messages: ReadonlyMap<MessageId, Message>;
+}
+
+export interface FoldHead {
+  readonly info: HeadInfo;
+
+  readonly revision: Revision | null;
+
+  readonly messages: readonly Message[];
+
+  readonly live: readonly PartId[];
+
+  readonly pending: readonly MessageId[];
+
+  readonly turns: readonly TurnInfo[];
+  readonly background: readonly BackgroundItem[];
+  readonly configuration: SessionView["configuration"];
+  readonly context: ContextView;
+}
+
+export interface FoldInput {
+  readonly id: MessageId;
+  readonly head: HeadName;
+  readonly at: number;
+  readonly content: UserContent;
+  readonly source: MessageSource;
+  readonly delivery: Delivery;
+  readonly schedule: Schedule;
+  readonly covered: boolean;
+  readonly configuration: Configuration;
+  readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
+  readonly landed: { readonly commit: CommitId; readonly run: RunId | null } | null;
+}
+
+export interface FoldRun {
+  readonly view: RunView;
+  readonly turn: TurnId;
+}
+
+export interface FoldCall {
+  readonly part: PartId;
+  readonly class: ToolClass;
+  readonly waiting: WaitTarget | null;
+  readonly settled: boolean;
+}
+
+export interface FoldTurn {
+  readonly info: TurnInfo;
+  readonly head: HeadName;
+
+  readonly live: readonly CallId[];
+}
+
+export type UserMessage = Extract<Message, { readonly kind: "user" }>;
+
+export type Logged<Kind extends SessionEvent["kind"]> = Extract<
+  SessionEvent,
+  { readonly kind: Kind }
+>;
+
+export interface Index {
+  readonly heads: Map<HeadName, FoldHead>;
+  readonly commits: Map<CommitId, CommitRecord>;
+  readonly siblings: Map<CommitId | null, readonly CommitId[]>;
+  readonly inputs: Map<MessageId, FoldInput>;
+  readonly parts: Map<PartId, PartRecord>;
+  readonly runs: Map<RunId, FoldRun>;
+  readonly calls: Map<CallId, FoldCall>;
+  readonly turns: Map<TurnId, FoldTurn>;
+  readonly messages: Map<MessageId, Message>;
+  readonly byRun: Map<RunId, PartId[]>;
+
+  readonly riders: Set<MessageId>;
+
+  readonly thinking: Map<TurnId, number>;
+  readonly paths: Map<HeadName, Path>;
+}
+
+export interface Path {
+  readonly messages: Message[];
+
+  committed: number;
+  readonly at: Map<MessageId, number>;
+  readonly turns: TurnInfo[];
+  readonly turnAt: Map<TurnId, number>;
+
+  readonly firstAt: number[];
+}
+
+export interface Draft extends Index {
+  seen: ReadonlyMap<PrincipalId, ReadonlyMap<HeadName, CommitId | null>>;
+  seq: Seq;
+  activation: Activation;
+  catalog: SessionCatalogView;
+  changes: readonly FileChange[];
+  partViews: readonly PartView[];
+
+  readonly walk: Set<HeadName>;
+  readonly appended: Map<HeadName, CommitId>;
+
+  readonly rebuild: Set<HeadName>;
+  readonly swapped: Set<MessageId>;
+  readonly retitled: Set<TurnId>;
+
+  readonly steps: Map<TurnId, { steps: number; thinking: number }>;
+}
+
+export const INDEX = Symbol("fold-index");
+
+export interface HeadPair {
+  readonly tip: CommitId | null;
+  readonly revision: Revision;
+}
+
+export interface FeedItem {
+  readonly event: SessionEvent | PatchEvent;
+  readonly head: HeadPair | null;
+}
+
+export interface SessionBus {
+  publish(session: SessionId, event: SessionEvent | PatchEvent, head?: HeadPair | null): void;
+  subscribe(
+    session: SessionId,
+    listener: (event: SessionEvent | PatchEvent, head: HeadPair | null) => void,
+  ): Disposer;
+  subscribeAll(listener: (session: SessionId, event: SessionEvent | PatchEvent) => void): Disposer;
+}
+
+export interface FoldCache {
+  acquire(
+    session: SessionId,
+    principal: PrincipalId,
+  ): {
+    ready(): Promise<void>;
+
+    state(): FoldState;
+    subscribe(listener: (state: FoldState) => void): Disposer;
+    release(): void;
+  };
+}
+
+export interface Follow {
+  feeds: number;
+  from: Seq | null;
+  published: Seq | null;
+  publishing: number;
+}
+
+export interface LiveStream {
+  readonly run: RunId | null;
+  readonly markdown: string | null;
+  readonly progress: ToolProgress | null;
+}
