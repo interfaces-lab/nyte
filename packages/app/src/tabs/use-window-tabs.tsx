@@ -10,10 +10,13 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
 import {
+  keys,
+  queryClient,
   sessionFolderPath,
   useWorkingSessionIds,
   useWorkspaceSessionDirectory,
 } from "../queries.ts";
+import { directoryWatch } from "../sdk.tsx";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
@@ -37,8 +40,10 @@ function sessionFolder(sessionId: SessionId): string | null | undefined {
  * route; a route reached on its own (a typed or restored URL, browser Back,
  * Settings opening Environments, the startup chat) becomes the tab's place.
  * The route's place on mount wins, so the web's URL opens what it names. The
- * focused chat's folder becomes current; switches run one at a time and only
- * the latest, so a fast ⌃Tab ends on its last folder.
+ * focused chat's folder becomes current, once the session directory and the
+ * workspaces it names have loaded (a chat restored at launch is focused before
+ * they land); switches run one at a time and only the latest, so a fast ⌃Tab
+ * ends on its last folder.
  */
 export function useWindowTabsSync(): void {
   const router = useRouter();
@@ -57,12 +62,17 @@ export function useWindowTabsSync(): void {
       const focus = `${tab.id}:${place.kind === "session" ? place.sessionId : place.kind}`;
 
       if (focus === followed) return;
-      followed = focus;
 
-      if (place.kind !== "session") return;
+      if (place.kind !== "session") {
+        followed = focus;
+
+        return;
+      }
+
       const folder = sessionFolder(place.sessionId);
 
       if (folder === undefined) return;
+      followed = focus;
       wanted = folder;
       switching = switching
         .then(() => (wanted === folder ? activateWorkspace(folder) : undefined))
@@ -93,10 +103,17 @@ export function useWindowTabsSync(): void {
     follow();
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
+    const unsubscribeDirectory = directoryWatch("all").subscribe(follow);
+
+    const unsubscribeWorkspaces = queryClient.getQueryCache().subscribe((event) => {
+      if (event.query.queryKey[0] === keys.workspaces[0]) follow();
+    });
 
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
+      unsubscribeDirectory();
+      unsubscribeWorkspaces();
     };
   });
 }
