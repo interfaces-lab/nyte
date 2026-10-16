@@ -28,7 +28,6 @@ export const keys = {
   ) => ["git", "changes", workspace, scope, ignoreWhitespace, revision] as const,
   gitLog: (workspace: WorkspaceId | undefined, limit: number, cursor: string | undefined) =>
     ["git", "log", workspace, limit, cursor] as const,
-  gitRefs: (workspace: WorkspaceId | undefined) => ["git", "refs", workspace] as const,
   runChanges: (workspace: WorkspaceId | undefined, run: RunId | undefined, live: boolean) =>
     ["git", "run", workspace, run, live ? "live" : "settled"] as const,
   mentionFiles: ["files", "mentions"] as const,
