@@ -100,6 +100,7 @@ function call(
     readonly call: string;
     readonly name: string;
     readonly args: Json;
+    readonly argumentsError?: string;
     readonly signal?: AbortSignal;
   },
 ) {
@@ -111,6 +112,7 @@ function call(
     call: asId(input.call),
     name: input.name,
     args: input.args,
+    argumentsError: input.argumentsError,
     context: caller,
     signal: input.signal ?? new AbortController().signal,
   });
@@ -268,6 +270,21 @@ describe("tool calls", () => {
     expect(
       await call(kernel, { session: session.id, run, call: "i1", name: "echo", args: { text: 1 } }),
     ).toMatchObject({ kind: "failed", message: expect.stringContaining("Invalid arguments") });
+    expect(
+      await call(kernel, {
+        session: session.id,
+        run,
+        call: "t1",
+        name: "echo",
+        args: {},
+        argumentsError:
+          'The response ended before this tool call finished\n\nReceived arguments:\n{"te',
+      }),
+    ).toEqual({
+      kind: "failed",
+      message:
+        'Invalid arguments for echo: The response ended before this tool call finished\n\nReceived arguments:\n{"te',
+    });
     expect(
       await call(kernel, {
         session: session.id,

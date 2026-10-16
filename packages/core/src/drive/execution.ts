@@ -564,6 +564,7 @@ async function resume(
         call: owed.call,
         name: owed.intent.name,
         args: owed.intent.args,
+        argumentsError: owed.intent.argumentsError,
         runtime,
         context: {
           principal: owed.intent.principal,

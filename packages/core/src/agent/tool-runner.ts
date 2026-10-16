@@ -1,4 +1,14 @@
-import { asId, compile, isJson, ToolOutcomeType, withJson } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import {
+  asId,
+  compile,
+  idSchema,
+  isJson,
+  JsonType,
+  ToolOutcomeType,
+  withJson,
+} from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -9,7 +19,6 @@ import type {
   Json,
   ObjectId,
   Placement,
-  PrincipalId,
   RefUpdate,
   RunId,
   SessionId,
@@ -47,13 +56,17 @@ import {
   STALE,
 } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 
-type ToolIntent = {
-  readonly name: string;
-  readonly args: Json;
-  readonly principal: PrincipalId;
-};
+const ToolIntentType = Type.Object({
+  name: Type.String(),
+  args: JsonType,
+  principal: idSchema<"principal">(),
+  argumentsError: Type.Optional(Type.String()),
+});
+
+type ToolIntent = Static<typeof ToolIntentType>;
+
+const toolIntents = compile(withJson(ToolIntentType));
 
 type Plan = { readonly args: Json; readonly class: ToolClass } & (
   | { readonly kind: "execute"; readonly definition: ToolDefinition; readonly input: unknown }
@@ -80,6 +93,8 @@ interface Where {
   readonly name: string;
   readonly context: ConnectionContext;
   readonly signal: AbortSignal;
+  /** Why the model's arguments text could not be read; the call then fails without running. */
+  readonly argumentsError?: string;
 }
 
 const HOOK = "hook:before_tool:";
@@ -97,12 +112,7 @@ const CONTINUE: Decision<ToolCall> = { action: "continue" };
 const outcomes = compile(withJson(ToolOutcomeType));
 
 function decodeToolIntent(value: Json): ToolIntent | null {
-  if (!isJsonObject(value) || !("args" in value)) return null;
-  const { name, args, principal } = value;
-
-  return typeof name === "string" && typeof principal === "string"
-    ? { name, args, principal: asId<"principal">(principal) }
-    : null;
+  return toolIntents.Check(value) ? value : null;
 }
 
 export async function executeCall(
@@ -230,6 +240,7 @@ async function perform(
     name: where.name,
     args: where.args,
     principal: where.context.principal,
+    ...(where.argumentsError !== undefined && { argumentsError: where.argumentsError }),
   };
 
   dev("tool", "call", { session, run, call, tool: where.name });
@@ -290,6 +301,14 @@ async function plan(
     return {
       kind: "settle",
       outcome: failed(`No tool is named ${name}.`),
+      args: where.args,
+      class: custom,
+    };
+
+  if (where.argumentsError !== undefined)
+    return {
+      kind: "settle",
+      outcome: failed(`Invalid arguments for ${name}: ${where.argumentsError}`),
       args: where.args,
       class: custom,
     };

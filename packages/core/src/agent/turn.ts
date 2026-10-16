@@ -306,6 +306,7 @@ async function turn(
           call: callIds.get(call) ?? asId<"call">(`${run}:${charged.requests}:${call.id}`),
           name: call.name,
           args: isJson(call.arguments) ? call.arguments : {},
+          argumentsError: call.argumentsError,
           context: CALLER,
           signal: called,
         }),
