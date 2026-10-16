@@ -32,7 +32,7 @@ export class ExpectedHostError extends Error {
   }
 }
 
-export function ipcFailure(cause: unknown): IpcFailure {
+function ipcFailure(cause: unknown): IpcFailure {
   if (cause instanceof ExpectedHostError) return cause.error;
   const correlationId = randomUUID();
   retainDiagnostic({ correlationId, cause });
