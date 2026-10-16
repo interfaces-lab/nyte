@@ -4,7 +4,6 @@
  */
 import type {
   ResponseCompactionItemParam,
-  ResponseInput,
   ResponseInputItem,
 } from "openai/resources/responses/responses.js";
 import { type Static, Type } from "typebox";
@@ -41,7 +40,8 @@ import {
 } from "./openai-codex-wire.ts";
 import type { OpenAICompactResult } from "./openai-compact.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
-import { withPriorityTier } from "./openai-responses-shared.ts";
+import type { ResponsesInput } from "./openai-responses-convert.ts";
+import { withPriorityTier } from "./openai-responses-stream.ts";
 
 export type OpenAICodexCompactResult = OpenAICompactResult;
 
@@ -266,7 +266,7 @@ export async function compactOpenAICodexContext(
     options,
     cacheSessionId,
   );
-  const input: ResponseInput = [
+  const input: ResponsesInput = [
     ...(request.input ?? []),
     { type: "compaction_trigger" } satisfies ResponseInputItem.CompactionTrigger,
   ];

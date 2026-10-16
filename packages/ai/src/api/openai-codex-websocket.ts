@@ -2,7 +2,6 @@
  * The Codex WebSocket transport: per-session connection reuse, frame decoding, and continuing
  * a cached connection's last response with `previous_response_id` and only the new input.
  */
-import type { ResponseInput } from "openai/resources/responses/responses.js";
 import { Value } from "typebox/value";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type { AssistantMessage, ProviderEnv } from "../types.ts";
@@ -35,12 +34,8 @@ import {
   resolveCodexWebSocketUrl,
   TERMINAL_RESPONSE_TYPES,
 } from "./openai-codex-wire.ts";
-import {
-  convertResponsesMessages,
-  processResponsesStream,
-  type ResponsesStreamEvent,
-  ResponsesUsageError,
-} from "./openai-responses-shared.ts";
+import { convertResponsesMessages, type ResponsesInput } from "./openai-responses-convert.ts";
+import { processResponsesStream, ResponsesUsageError } from "./openai-responses-stream.ts";
 
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
 
@@ -98,7 +93,7 @@ interface WebSocketLike {
 interface CachedWebSocketContinuationState {
   lastRequestBody: RequestBody;
   lastResponseId: string;
-  lastResponseItems: ResponseInput;
+  lastResponseItems: ResponsesInput;
 }
 
 interface CachedWebSocketConnection {
@@ -570,7 +565,7 @@ function requestBodyWithoutInput(body: RequestBody): RequestBody {
 function getCachedWebSocketInputDelta(
   body: RequestBody,
   continuation: CachedWebSocketContinuationState,
-): ResponseInput | undefined {
+): ResponsesInput | undefined {
   if (
     JSON.stringify(requestBodyWithoutInput(body)) !==
     JSON.stringify(requestBodyWithoutInput(continuation.lastRequestBody))
@@ -622,23 +617,30 @@ function buildCachedWebSocketRequestBody(
 }
 
 /**
- * Calls `onStart` before the first event. A failed terminal frame is yielded only to account
- * for usage, so it does not count: it must not turn a before-start API failure into an
- * after-start transport failure.
+ * Frames that never start the assistant output: rate-limit telemetry, error frames, and a
+ * failed terminal frame, which is processed only to account for usage and must not turn a
+ * before-start API failure into an after-start transport failure.
  */
+const NON_STARTING_FRAMES: ReadonlySet<string> = new Set([
+  "codex.rate_limits",
+  "error",
+  "response.failed",
+]);
+
+/** Calls `onStart` before the first frame that produces assistant output. */
 async function* startWebSocketOutputOnFirstEvent(
-  events: AsyncIterable<ResponsesStreamEvent>,
+  frames: AsyncIterable<CodexFrame>,
   onStart: () => void,
-): AsyncGenerator<ResponsesStreamEvent> {
+): AsyncGenerator<CodexFrame> {
   let started = false;
 
-  for await (const event of events) {
-    if (!started && !(event.type === "response.completed" && event.response.status === "failed")) {
+  for await (const frame of frames) {
+    if (!started && !NON_STARTING_FRAMES.has(frame.type)) {
       started = true;
       onStart();
     }
 
-    yield event;
+    yield frame;
   }
 }
 
@@ -676,15 +678,15 @@ async function processWebSocketStream(
   try {
     socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
     await processResponsesStream(
-      startWebSocketOutputOnFirstEvent(
-        mapCodexEvents(
+      mapCodexEvents(
+        startWebSocketOutputOnFirstEvent(
           parseWebSocket(socket, options?.signal, request.timeoutMs),
-          output,
-          options?.onAccountLimits === undefined
-            ? undefined
-            : (limits) => options.onAccountLimits?.(limits, model),
+          onStart,
         ),
-        onStart,
+        output,
+        options?.onAccountLimits === undefined
+          ? undefined
+          : (limits) => options.onAccountLimits?.(limits, model),
       ),
       output,
       stream,

@@ -40,7 +40,7 @@ import {
   resolveCodexUrl,
 } from "./openai-codex-wire.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
-import { processResponsesStream, withPriorityTier } from "./openai-responses-shared.ts";
+import { processResponsesStream, withPriorityTier } from "./openai-responses-stream.ts";
 import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
 /**

@@ -2,12 +2,7 @@
  * The Codex Responses protocol both transports and compaction share: request options and body,
  * error types, frame decoding and the mapping of Codex frames onto Responses stream events.
  */
-import type {
-  Tool as OpenAITool,
-  ResponseCreateParamsStreaming,
-  ResponseInput,
-  ResponseStreamEvent,
-} from "openai/resources/responses/responses.js";
+import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { applyServiceTierPricing } from "../model-pricing.ts";
@@ -41,9 +36,11 @@ import {
 import {
   convertResponsesMessages,
   convertResponsesTools,
-  type OpenAIResponsesStreamOptions,
-  type ResponsesStreamEvent,
-} from "./openai-responses-shared.ts";
+  type ResponsesInput,
+  type ResponsesTool,
+} from "./openai-responses-convert.ts";
+import type { ResponsesServiceTier } from "./openai-responses-events.ts";
+import type { OpenAIResponsesStreamOptions } from "./openai-responses-stream.ts";
 
 export interface OpenAICodexResponsesOptions extends StreamOptions {
   reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -59,8 +56,8 @@ export interface RequestBody {
   stream?: boolean;
   instructions?: string;
   previous_response_id?: string;
-  input?: ResponseInput;
-  tools?: OpenAITool[];
+  input?: ResponsesInput;
+  tools?: ResponsesTool[];
   tool_choice?: OpenAICodexResponsesOptions["toolChoice"];
   parallel_tool_calls?: boolean;
   temperature?: number;
@@ -241,9 +238,9 @@ export function buildRequestBody(
 
 /** Codex answers `default` for a flex or priority request it served at that tier. */
 export function resolveCodexServiceTier(
-  responseServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
+  responseServiceTier: ResponsesServiceTier | undefined,
   requestServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-): ResponseCreateParamsStreaming["service_tier"] | undefined {
+): ResponsesServiceTier | undefined {
   if (
     responseServiceTier === "default" &&
     (requestServiceTier === "flex" || requestServiceTier === "priority")
@@ -350,7 +347,7 @@ export async function* mapCodexEvents(
   events: AsyncIterable<CodexFrame>,
   output: AssistantMessage,
   onAccountLimits?: (limits: AccountLimits) => void | Promise<void>,
-): AsyncGenerator<ResponsesStreamEvent> {
+): AsyncGenerator<unknown> {
   for await (const event of events) {
     const { type } = event;
 
@@ -391,7 +388,7 @@ export async function* mapCodexEvents(
                 ? status
                 : undefined,
         },
-      } as ResponsesStreamEvent;
+      };
 
       if (type === "response.failed") {
         const failure = readRecord(response?.error);
@@ -404,7 +401,7 @@ export async function* mapCodexEvents(
       return;
     }
 
-    yield event as ResponseStreamEvent;
+    yield event;
   }
 }
 

@@ -2,7 +2,7 @@ import { normalizeContext } from "@nyte-ai/schema/model";
 import { describe, expect, it } from "vitest";
 import { Type } from "typebox";
 import { stream } from "../src/api/openai-responses.ts";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
+import { convertResponsesMessages } from "../src/api/openai-responses-convert.ts";
 import type { AssistantMessage, Context, JsonValue, Model } from "../src/types.ts";
 
 const model: Model<"openai-responses"> = {

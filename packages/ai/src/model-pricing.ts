@@ -21,7 +21,7 @@ export function getServiceTierCostMultiplier(
 
 export function applyServiceTierPricing(
   usage: Usage,
-  serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
+  serviceTier: ResponseCreateParamsStreaming["service_tier"] | "fast" | undefined,
   model: Pick<Model<Api>, "id">,
 ) {
   const multiplier = getServiceTierCostMultiplier(model, serviceTier ?? undefined);

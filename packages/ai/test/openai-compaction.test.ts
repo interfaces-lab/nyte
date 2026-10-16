@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { text } from "node:stream/consumers";
 import { afterEach, test } from "vitest";
 import { compactOpenAIResponsesContext } from "../src/api/openai-responses.ts";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
+import { convertResponsesMessages } from "../src/api/openai-responses-convert.ts";
 import type { Model } from "../src/types.ts";
 
 const servers: Server[] = [];
