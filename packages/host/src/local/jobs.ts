@@ -5,8 +5,15 @@ import { resolve } from "node:path";
 import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
-import { processEnvironment, closable, dev } from "@nyte-ai/core";
-import type { ExecutionEnv, Job } from "@nyte-ai/core";
+import {
+  processEnvironment,
+  closable,
+  dev,
+  readTraceparent,
+  startSpan,
+  tracing,
+} from "@nyte-ai/core";
+import type { EndSpan, ExecutionEnv, Job } from "@nyte-ai/core";
 
 type PtyModule = {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
@@ -72,7 +79,9 @@ export function localExec(
     const cwd = input?.cwd === undefined ? root : resolve(root, input.cwd);
     await processEnvironment();
     const env = { ...process.env, ...input?.env };
-    const log = createOutputLog(OUTPUT_LIMIT);
+    const trace = readTraceparent(input?.env?.TRACEPARENT);
+    const spawned = startSpan("pty.spawn", trace, { pty: input?.pty !== undefined });
+    const log = tracedOutput(createOutputLog(OUTPUT_LIMIT), trace);
     let settle: (end: JobEnd) => void = () => undefined;
 
     const ended = new Promise<JobEnd>((done) => {
@@ -99,6 +108,8 @@ export function localExec(
             log,
             finish,
           );
+
+    spawned();
 
     dev("jobs", "start", {
       program: typeof command === "string" ? command.split(/\s/, 1)[0] : (command[0] ?? null),
@@ -418,6 +429,26 @@ type OutputLog = {
   /** Pauses the source while the slowest reader is `PAUSE_BYTES` behind, until it is back within `RESUME_BYTES`. */
   throttle(source: { pause(): void; resume(): void }): void;
 };
+
+/** `log`, timing its output as the `pty.output` span of `trace` from the first byte to the exit while tracing is on. */
+function tracedOutput(log: OutputLog, trace: string | null): OutputLog {
+  if (!tracing.enabled) return log;
+  let ended: EndSpan | null = null;
+  let bytes = 0;
+
+  return {
+    ...log,
+    push(chunk) {
+      ended ??= startSpan("pty.output", trace);
+      bytes += chunk.byteLength;
+      log.push(chunk);
+    },
+    end(code) {
+      ended?.({ bytes, code });
+      log.end(code);
+    },
+  };
+}
 
 /** A process's output kept for its readers: the last `limit` bytes, a reader that falls further behind skipping to a gap. */
 function createOutputLog(limit: number): OutputLog {

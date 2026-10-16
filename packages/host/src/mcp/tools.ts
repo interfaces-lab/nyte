@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import type { CallToolResult, McpClient, ProgressNotification, Tool } from "@earendil-works/pi-mcp";
+import { McpClient } from "@earendil-works/pi-mcp";
+import type {
+  CallToolResult,
+  McpRequestOptions,
+  ProgressNotification,
+  Tool,
+} from "@earendil-works/pi-mcp";
+import { followedTrace, startSpan, traceparent } from "@nyte-ai/core";
 import type { ExecutionEnv, ToolDefinition } from "@nyte-ai/core";
 import { isJson, isJsonObject } from "@nyte-ai/schema";
 import type {
@@ -106,8 +113,34 @@ function draftKey(uri: string): string {
   return uri.replace(/^https?:\/\//, "").replace(/#$/, "");
 }
 
-/** Calls one of the server's tools over its live connection; throws when the server is not connected. */
-export type McpCall = McpClient["callTool"];
+/** Calls one of the server's tools over its live connection, its `traceparent` carried to the server; throws when the server is not connected. */
+export type McpCall = (
+  name: string,
+  args: Record<string, unknown>,
+  options: McpRequestOptions & { readonly traceparent?: string },
+) => Promise<CallToolResult>;
+
+/** An `McpClient` whose requests carry a `traceparent` given in their options to the server in `params._meta`, where MCP's trace-context convention puts it. */
+export class TracingMcpClient extends McpClient {
+  override request<Result = unknown>(
+    method: string,
+    params?: Record<string, unknown>,
+    options?: McpRequestOptions,
+  ): Promise<Result> {
+    const traceparent =
+      options !== undefined && "traceparent" in options && typeof options.traceparent === "string"
+        ? options.traceparent
+        : null;
+
+    return super.request(
+      method,
+      traceparent === null || params?._meta !== undefined
+        ? params
+        : { ...params, _meta: { traceparent } },
+      options,
+    );
+  }
+}
 
 /** Turns a server's listed tools into session tools named `mcp__<server>__<tool>`. */
 export function bridgeTools(
@@ -175,13 +208,24 @@ function bridge(
 
       let result: CallToolResult;
 
+      const trace = followedTrace(invocation.session.id);
+
+      const ended = startSpan("mcp.call", trace, {
+        session: invocation.session.id,
+        server: entry.name,
+        tool: tool.name,
+      });
+
       try {
         result = await call(tool.name, args, {
           signal: AbortSignal.any([invocation.signal, limit]),
           timeoutMs: entry.timeoutMs,
           onProgress: (update) => invocation.progress(toolProgress(update)),
+          traceparent: trace === null ? undefined : traceparent(trace),
         });
       } catch (error) {
+        ended({ failed: true });
+
         if (!limit.aborted || invocation.signal.aborted) throw error;
 
         throw new Error(
@@ -190,6 +234,7 @@ function bridge(
         );
       }
 
+      ended({ failed: result.isError === true });
       const content = await readToolContent(result, invocation.env, tool.name);
 
       if (result.isError === true)

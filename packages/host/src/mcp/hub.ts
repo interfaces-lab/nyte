@@ -1,9 +1,9 @@
 import { join } from "node:path";
-import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
-import type { Tool } from "@earendil-works/pi-mcp";
+import { StdioTransport } from "@earendil-works/pi-mcp";
+import type { McpClient, Tool } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import type { OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
-import { processEnvironment, closable, dev } from "@nyte-ai/core";
+import { processEnvironment, closable, dev, traced } from "@nyte-ai/core";
 import type { Login, PluginStorage, ToolDefinition } from "@nyte-ai/core";
 import type { McpHub, McpHubFactory, McpServerBrief, McpWorkspace } from "@nyte-ai/core/server";
 import { isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
@@ -22,7 +22,7 @@ import type { McpConfig, McpFile, McpFileContents, McpServerEntry } from "./conf
 import { connectServer, oauthSettings } from "./connect.ts";
 import type { McpConnector } from "./connect.ts";
 import { oauthKey, oauthStore, signIn } from "./oauth.ts";
-import { bridgeTools, checkToolSchemas, toolExposure } from "./tools.ts";
+import { bridgeTools, checkToolSchemas, toolExposure, TracingMcpClient } from "./tools.ts";
 import type { McpCall } from "./tools.ts";
 
 const STDERR_TAIL = 4000;
@@ -169,7 +169,7 @@ function hub(input: {
     const schedule = (wait: number): void => {
       clearTimeout(timer);
 
-      if (!ended) timer = setTimeout(() => void connect(), wait);
+      if (!ended) timer = setTimeout(() => void connectTraced(), wait);
     };
 
     const retry = (): void => {
@@ -193,7 +193,7 @@ function hub(input: {
 
       if (ended) return;
 
-      const next = new McpClient({
+      const next = new TracingMcpClient({
         name: "nyte",
         version: "0.1.0",
         requestTimeoutMs: link.entry.timeoutMs,
@@ -275,6 +275,9 @@ function hub(input: {
       }
     };
 
+    const connectTraced = (): Promise<void> =>
+      traced("mcp.connect", null, { server: entry.name }, connect);
+
     const call: McpCall = (name, args, options) => {
       if (client === null) throw new Error(notConnected(entry.name, state));
 
@@ -317,7 +320,7 @@ function hub(input: {
       },
     };
 
-    void connect();
+    void connectTraced();
 
     return link;
   };
