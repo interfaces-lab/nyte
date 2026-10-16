@@ -85,6 +85,10 @@ let page: Page;
 
 const pageErrors: string[] = [];
 
+/** Outside Electron the package resolves to the path of its executable. */
+const executablePath = Value.Parse(Type.String(), electronExecutable);
+
+/** The renderer half loads from file://, so its asset links must be relative. */
 async function buildHarness(outDir: string): Promise<void> {
   await build({
     configFile: false,
@@ -107,7 +111,6 @@ async function buildHarness(outDir: string): Promise<void> {
     envDir: false,
     logLevel: "silent",
     root: fixtures,
-    // Loaded from file://, so asset links must be relative.
     base: "./",
     plugins: [stylex.vite({ devMode: "off", useCSSLayers: true })],
     resolve: {
@@ -124,8 +127,6 @@ async function buildHarness(outDir: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  // Outside Electron the package resolves to the path of its executable.
-  const executablePath = Value.Parse(Type.String(), electronExecutable);
   const root = await mkdtemp(join(tmpdir(), "nyte-login-harness-"));
   directory = root;
   await Promise.all(["profile", "session", "home"].map((name) => mkdir(join(root, name))));

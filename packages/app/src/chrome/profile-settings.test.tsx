@@ -157,12 +157,11 @@ test("the GitHub CLI, the Nyte account, and this Mac each change only their own 
   assert.match(signedIn.get("Nyte account") ?? "", /owner@example\.test/);
   assert.doesNotMatch(signedIn.get("Nyte account") ?? "", /The Octocat|octocat/);
 
-  // Signing out of Nyte leaves the Mac linked and reachable.
-  const linked = groups(render(GITHUB.ready, NYTE.signedOutLinked));
-  assert.match(linked.get("Nyte account") ?? "", /Sign In…/);
-  assert.match(linked.get("This Mac") ?? "", /Reachable/);
-  assert.match(linked.get("GitHub") ?? "", /octocat/);
-  assert.doesNotMatch(linked.get("GitHub") ?? "", /The Octocat/);
+  const signedOutLinked = groups(render(GITHUB.ready, NYTE.signedOutLinked));
+  assert.match(signedOutLinked.get("Nyte account") ?? "", /Sign In…/);
+  assert.match(signedOutLinked.get("This Mac") ?? "", /Reachable/, "signing out unlinked the Mac");
+  assert.match(signedOutLinked.get("GitHub") ?? "", /octocat/);
+  assert.doesNotMatch(signedOutLinked.get("GitHub") ?? "", /The Octocat/);
 });
 
 test("Profile is listed on the desktop, which owns its environment, and not in the web app", () => {

@@ -48,6 +48,11 @@ function pending(id: string): RemoteDevice {
   };
 }
 
+/**
+ * A pairing code stays while the device list has not caught up with its
+ * device, and leaves once that device is claimed, removed elsewhere after it
+ * was listed, or never listed but out of time.
+ */
 export async function run() {
   let devices: readonly RemoteDevice[] = [];
   let connection: TunnelConnection = { kind: "connecting" };
@@ -125,7 +130,6 @@ export async function run() {
     await refresh();
     await until(() => nameField() !== null, "Add Device once connected");
 
-    // The list has not caught up with the new device: the code must stay.
     await addDevice();
     await wait(100);
     await refresh();
@@ -149,7 +153,6 @@ export async function run() {
     await until(() => code() === null, "a claimed code to leave");
     await until(() => nameField() !== null, "Add Device after a claim");
 
-    // Listed, then gone because it was removed elsewhere.
     await addDevice();
     devices = [devices[0] ?? pending("device-1"), pending("device-2")];
     await refresh();
@@ -158,7 +161,6 @@ export async function run() {
     await refresh();
     await until(() => code() === null, "a removed code to leave");
 
-    // Never listed, but its time ran out.
     expiresIn = 200;
     await addDevice();
     await until(() => code() === null, "an expired code to leave");

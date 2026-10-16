@@ -1,8 +1,8 @@
-import { glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
+import { glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -397,8 +397,10 @@ export const sidebarStyles = create({
     flexShrink: 0,
   },
   footerRow: { display: "flex", alignItems: "center", gap: space.s0_5, minWidth: 0 },
-  // The footer is the one row that is always on screen. It answers the pointer
-  // with its label and glyph alone, so a resting rail never carries a lit row.
+  /**
+   * The footer is the one row that is always on screen. It answers the pointer
+   * with its label and glyph alone, so a resting rail never carries a lit row.
+   */
   accountButton: {
     "--_row-fill": "transparent",
     width: "auto",
@@ -415,7 +417,7 @@ export const sidebarStyles = create({
   },
   accountLabel: { display: "flex", alignItems: "center", gap: space.s1_5 },
   accountName: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
-  /* Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
+  /** Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
   updateDot: {
     flexShrink: 0,
     width: 6,

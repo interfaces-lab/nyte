@@ -27,7 +27,11 @@ function usePendingAuth() {
   });
 }
 
-/** The account and repository behind the selected workspace. Nothing is read where the host has no GitHub. */
+/**
+ * The account and repository behind the selected workspace. Nothing is read
+ * where the host has no GitHub. A sign-in ends when the code is entered on
+ * GitHub, which nothing here hears, so a pending one polls.
+ */
 export function useGitHubState(github: GitHubBridge | undefined) {
   const host = useHostState();
   const pending = usePendingAuth();
@@ -38,13 +42,16 @@ export function useGitHubState(github: GitHubBridge | undefined) {
     staleTime: 30_000,
     refetchOnMount: true,
     refetchOnWindowFocus: pending.length === 0,
-    // A sign-in ends when the code is entered on GitHub, which nothing here hears.
     refetchInterval: (current) =>
       current.state.data?.kind === "signing_in" ? SIGNING_IN_POLL_MS : false,
   });
 }
 
-/** Account credentials are shared; repository details follow the selected workspace. */
+/**
+ * Account credentials are shared; repository details follow the selected
+ * workspace. Auth may finish after a workspace switch, so it settles by
+ * re-reading the current target instead of caching its result.
+ */
 export function useGitHubAccount(github: GitHubBridge) {
   const client = useQueryClient();
 
@@ -59,7 +66,6 @@ export function useGitHubAccount(github: GitHubBridge) {
       return state;
     },
     onMutate: () => client.cancelQueries({ queryKey: keys.github }),
-    // Auth may finish after a workspace switch. Re-read the current target instead of caching its result.
     onSettled: () => client.invalidateQueries({ queryKey: keys.github }),
   });
 

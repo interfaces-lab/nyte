@@ -118,10 +118,6 @@ function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
   };
 }
 
-// ---------------------------------------------------------------------------
-// formatting
-// ---------------------------------------------------------------------------
-
 function group(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
 }
@@ -261,10 +257,6 @@ export function describeTotals(totals: UsageTotals): string {
   return [`${cache.hit} cache hit`, cache.saved].filter((part) => part !== undefined).join(" · ");
 }
 
-// ---------------------------------------------------------------------------
-// the window
-// ---------------------------------------------------------------------------
-
 /** The window a range asks the host for. `all` cannot name its own start. */
 export function usageWindow(range: UsageRange, now: number): UsageWindow {
   const untilDay = localDay(now);
@@ -372,6 +364,10 @@ function addSpend(spend: Spend, totals: UsageTotals, bucket: number): void {
  * read. A window that reaches back before the first recorded day still spans
  * the days it asked for: the range is a question about a period, and an idle
  * stretch inside it is an answer, not an absence to be cropped away.
+ *
+ * Rows rank by cost while anything is priced; a free local model still ranks
+ * by tokens. Two checkouts can end in the same directory name, so a repeated
+ * leaf earns the segment above it; unique names stay short.
  */
 export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDerived {
   const to = window.untilDay;
@@ -437,7 +433,6 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     addSpend(overhead, entry.totals, bucket);
   }
 
-  // Rank by cost while anything is priced; a free local model still ranks by tokens.
   const measure: UsageMeasure = totals.cost > 0 ? "cost" : "tokens";
   const wholeAmount = measure === "cost" ? totals.cost : totals.tokens;
 
@@ -470,8 +465,6 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     };
   });
 
-  // Two checkouts can end in the same directory name, so a repeated leaf earns
-  // the segment above it. Unique names stay short.
   const leafCounts = new Map<string, number>();
 
   for (const folder of perFolder.values()) {
@@ -576,10 +569,6 @@ export function describeEmptyRange(
     offerAllTime: range !== "all",
   };
 }
-
-// ---------------------------------------------------------------------------
-// the other tools
-// ---------------------------------------------------------------------------
 
 /**
  * The tools whose local history the page reads, in the order their rows sit.
@@ -690,10 +679,6 @@ export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
     };
   });
 }
-
-// ---------------------------------------------------------------------------
-// subscription windows
-// ---------------------------------------------------------------------------
 
 /** One window's meter: how much is gone, and when it comes back. */
 export interface LimitMeter {

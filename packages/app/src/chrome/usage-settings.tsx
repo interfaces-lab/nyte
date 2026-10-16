@@ -455,8 +455,8 @@ function BreakdownTable({
   );
 }
 
+/** The heading and the query keep the day the panel opened on, even past midnight. */
 export function UsageSettings(): ReactElement {
-  // Keep the heading and the query on the same day if the panel stays open past midnight.
   const [openedAt] = useState(() => Date.now());
   const [range, setRange] = useUsageRange();
   const [axis, setAxis] = useChromeTab("usage", AXES);

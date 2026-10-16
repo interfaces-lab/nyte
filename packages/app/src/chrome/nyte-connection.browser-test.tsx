@@ -93,6 +93,16 @@ function linked(patch: Partial<Linked>): Linked {
   };
 }
 
+/**
+ * Walks Remote Access through every account and link state:
+ * - a build without the account service shows no row;
+ * - signed out, the tray signs in and links in one press;
+ * - a real failure says what happened, and signed in, the button only links;
+ * - linked, the tray stays for its last step, and access starts off;
+ * - a connected relay without a current lease admits no device;
+ * - when another instance takes the link over, only the user can take it back;
+ * - unlinking asks first and names what happens.
+ */
 export async function run() {
   let view: ConnectView = { kind: "unavailable", reason: "not_configured" };
   const calls: string[] = [];
@@ -136,8 +146,7 @@ export async function run() {
 
   const client = new QueryClient();
 
-  // What the shell does on `remote_access_changed`.
-  const changed = async (next: ConnectView) => {
+  const remoteAccessChanged = async (next: ConnectView) => {
     view = next;
     await client.invalidateQueries({ queryKey: keys.remoteAccess });
   };
@@ -157,13 +166,11 @@ export async function run() {
       ),
     );
 
-    // A build without the account service shows no row.
     await until(() => container.textContent?.includes("Manual setup") === true, "the page");
     await wait(100);
     check(!container.textContent.includes("Nyte account"), "An unconfigured build showed the row");
 
-    // Signed out: the tray signs in and links in one press.
-    await changed({
+    await remoteAccessChanged({
       kind: "unlinked",
       account: { kind: "signed_out" },
       linking: { kind: "idle" },
@@ -175,7 +182,7 @@ export async function run() {
     await press("Sign In and Link…", tray);
     await until(() => calls.includes("link"), "link() to be called");
 
-    await changed({
+    await remoteAccessChanged({
       kind: "unlinked",
       account: { kind: "signed_out" },
       linking: { kind: "waiting_for_account" },
@@ -185,7 +192,7 @@ export async function run() {
     await press("Cancel", tray);
     await until(() => calls.includes("cancel"), "cancel() to be called");
 
-    await changed({
+    await remoteAccessChanged({
       kind: "unlinked",
       account: { kind: "signed_out" },
       linking: { kind: "failed", reason: "cancelled" },
@@ -195,8 +202,7 @@ export async function run() {
     await until(() => button("Sign In and Link…", tray()) !== undefined, "linking again");
     check(tray()?.querySelector('[role="alert"]') === null, "A chosen cancel read as a failure");
 
-    // A real failure says what happened; signed in, the button only links.
-    await changed({
+    await remoteAccessChanged({
       kind: "unlinked",
       account: { kind: "signed_in", label: "someone-else@example.test" },
       linking: { kind: "failed", reason: "network" },
@@ -204,7 +210,7 @@ export async function run() {
     });
     await until(() => trayText().includes("Couldn’t reach Nyte."), "the network failure");
     await press("Link This Mac", tray);
-    await changed({
+    await remoteAccessChanged({
       kind: "unlinked",
       account: { kind: "signed_in", label: "someone-else@example.test" },
       linking: { kind: "linking" },
@@ -212,8 +218,7 @@ export async function run() {
     });
     await until(() => trayText().includes("Linking this Mac…"), "the linking step");
 
-    // Linked, the tray stays for its last step: access starts off.
-    await changed(linked({ connection: { kind: "connected" } }));
+    await remoteAccessChanged(linked({ connection: { kind: "connected" } }));
     finishLink?.();
     await until(() => trayText().includes("Studio Mac is linked"), "the linked step");
     check(trayText().includes("owner@example.test"), "The owner is missing");
@@ -223,9 +228,8 @@ export async function run() {
     await press("Done", tray);
     await until(() => statusMenu() !== undefined, "the linked row");
 
-    // A connected relay without a current lease admits no device.
     const phone = { id: "phone-1", name: "iPhone", createdAt: 0, authorized: false };
-    await changed(
+    await remoteAccessChanged(
       linked({
         enabled: true,
         connection: { kind: "connected" },
@@ -236,7 +240,7 @@ export async function run() {
     await until(() => statusMenu()?.textContent?.includes("Verifying…") === true, "pending");
     check(!container.textContent.includes("Reachable"), "A pending lease read as reachable");
 
-    await changed(
+    await remoteAccessChanged(
       linked({
         enabled: true,
         connection: { kind: "connected" },
@@ -247,8 +251,7 @@ export async function run() {
     await until(() => container.textContent.includes("devices are refused"), "the lapsed lease");
     check(!container.textContent.includes("Reachable"), "A lapsed lease read as reachable");
 
-    // Another instance took the link over; only the user can take it back.
-    await changed(
+    await remoteAccessChanged(
       linked({
         enabled: true,
         connection: { kind: "failed", reason: "replaced" },
@@ -263,7 +266,7 @@ export async function run() {
     check(statusMenu()?.textContent?.includes("Not reachable") === true, "Replaced read as live");
     check(!/tunnel|cloudflare|\/r\//i.test(statusMenu()?.textContent ?? ""), "The relay leaked");
 
-    await changed(
+    await remoteAccessChanged(
       linked({
         enabled: true,
         connection: { kind: "connected" },
@@ -290,7 +293,6 @@ export async function run() {
     await menuItem("Turn Off Remote Access");
     await until(() => calls.includes("setEnabled:false"), "setEnabled({ enabled: false })");
 
-    // Unlinking asks first and names what happens.
     await menuItem("Unlink This Mac…");
     await until(() => confirmation() !== undefined, "the unlink confirmation");
     check(

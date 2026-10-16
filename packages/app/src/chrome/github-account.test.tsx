@@ -54,13 +54,24 @@ function fixture(path: string | null = "/projects/one") {
   return client;
 }
 
-// SSR creates fresh observers, so these probes test cache visibility, not mounted
-// effects or preservation of one component's local mutation error across renders.
+/**
+ * SSR has no mounted subscriptions, so only an invalidated seed qualifies for
+ * this refetch, which runs the hook's actual query function.
+ */
+function refetchSeed(client: QueryClient, path: string | null): Promise<void> {
+  return client.refetchQueries({ queryKey: [...keys.github, path], exact: true, stale: true });
+}
+
+/**
+ * SSR creates fresh observers, so these probes test cache visibility, not mounted
+ * effects or preservation of one component's local mutation error across renders.
+ * SSR has no effects either, so the probe captures the real hook result for
+ * actions after rendering.
+ */
 function probe(client: QueryClient) {
   let account: ReturnType<typeof useGitHubAccount> | undefined;
 
   function Probe() {
-    // SSR has no effects; capture the real hook result for actions after rendering.
     // oxlint-disable-next-line react/globals
     account = useGitHubAccount(github);
 
@@ -206,9 +217,7 @@ test("auth finishing after a workspace switch refreshes all targets without cach
     selectWorkspace(client, path);
     const current = ready(path ?? "home");
     github.state.mockResolvedValueOnce(current);
-    // SSR has no mounted subscriptions. Only invalidated seeds qualify for this
-    // refetch, which runs the hook's actual query function.
-    await client.refetchQueries({ queryKey: [...keys.github, path], exact: true, stale: true });
+    await refetchSeed(client, path);
     assert.deepEqual(probe(client).query.data, current);
   }
 });

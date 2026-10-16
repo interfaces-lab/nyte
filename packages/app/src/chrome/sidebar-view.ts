@@ -68,12 +68,14 @@ export function sessionIsDraft(session: SessionInfo): boolean {
   return session.name === null && session.heads.every((head) => head.tip.kind === "start");
 }
 
+/**
+ * `sessionMark` reports `waiting` only for a run parked on a reply; one parked
+ * on background work arrives here as `working`.
+ */
 export function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
   const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
-    // `sessionMark` reports `waiting` only for a run parked on a reply; one
-    // parked on background work arrives here as `working`.
     case "waiting":
     case "failed":
       return "needs-attention";

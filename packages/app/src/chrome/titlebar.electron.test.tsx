@@ -26,8 +26,8 @@ beforeAll(async () => {
   await mkdir(join(root, "home"));
   await mkdir(join(root, "app-data"));
   await symlink(join(desktop, "resources"), join(root, "resources"), "dir");
-  // The renderer is served from the app path, which is this directory.
-  await symlink(join(desktop, "out"), join(root, "out"), "dir");
+  const rendererAtAppPath = join(root, "out");
+  await symlink(join(desktop, "out"), rendererAtAppPath, "dir");
   execFileSync("pnpm", ["exec", "electron-vite", "build"], {
     cwd: desktop,
     timeout: 180_000,

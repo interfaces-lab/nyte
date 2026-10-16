@@ -32,7 +32,10 @@ const FEEDBACK_URL = "https://github.com/interfaces-lab/nyte/issues/new/choose";
 
 const INSTALL_GITHUB_CLI_URL = "https://cli.github.com";
 
-/** The GitHub CLI's item: who is signed in, or the one step that gets there. */
+/**
+ * The GitHub CLI's item: who is signed in, or the one step that gets there.
+ * Signing in opens Profile, which shows the device code the sign-in waits on.
+ */
 function GitHubGroup({
   account: { query, auth, busy },
   onOpenProfile,
@@ -55,7 +58,6 @@ function GitHubGroup({
         ? item(state.account.login, onOpenProfile)
         : state?.kind === "signed_out"
           ? item("Sign In to GitHub…", () => {
-              // Profile shows the device code the sign-in waits on.
               auth.mutate("signIn");
               onOpenProfile();
             })
@@ -105,6 +107,7 @@ function NyteGroup({
   );
 }
 
+/** A workspace switch reads GitHub afresh; the label keeps the last answer meanwhile. */
 export function AccountFooterMenu({
   github,
   connect,
@@ -121,7 +124,6 @@ export function AccountFooterMenu({
   const update = useUpdateState().data ?? { kind: "idle" };
   const busy = update.kind === "downloading" || update.kind === "installing";
   const attention = update.kind !== "idle" && !busy;
-  // A workspace switch reads GitHub afresh; the label keeps the last answer meanwhile.
   const [last, setLast] = useState(account.query.data);
 
   if (account.query.data !== undefined && account.query.data !== last) setLast(account.query.data);
