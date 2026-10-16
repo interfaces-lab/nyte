@@ -1,4 +1,3 @@
-
 /** Mirrors the transcript's former `paddingTop`. */
 export const TRANSCRIPT_PADDING_START = 16;
 

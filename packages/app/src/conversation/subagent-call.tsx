@@ -40,12 +40,7 @@ import {
   useOpenSubagentTray,
   useSubagentChildren,
 } from "./subagent-sessions.ts";
-import {
-  callStatus,
-  DELEGATE_NOUNS,
-  DELEGATE_VERBS,
-  sessionStatus,
-} from "./subagent-status.ts";
+import { callStatus, DELEGATE_NOUNS, DELEGATE_VERBS, sessionStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
