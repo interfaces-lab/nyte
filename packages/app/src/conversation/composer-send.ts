@@ -212,27 +212,33 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
   }
 }
 
+/** Compacts the chat as `/compact` does; non-empty `instructions` steer the summary. */
+export async function compactSession(
+  session: Session,
+  instructions: string,
+): Promise<Extract<DeliveryOutcome, { readonly kind: "sent" | "refused" }>> {
+  const outcome = await session.compact(instructions === "" ? {} : { instructions });
+
+  switch (outcome.kind) {
+    case "started":
+      return { kind: "sent", note: undefined };
+    case "nothing-to-compact":
+      return { kind: "sent", note: "Nothing to compact" };
+    case "busy":
+      return { kind: "refused", message: "Wait for the current run before compacting." };
+    default: {
+      const _exhaustive: never = outcome;
+
+      return _exhaustive;
+    }
+  }
+}
+
 async function runCommand(
   session: Session,
   { name, argument }: ParsedPluginCommand,
 ): Promise<DeliveryOutcome> {
-  if (name === COMPACT_COMMAND.name) {
-    const outcome = await session.compact(argument === "" ? {} : { instructions: argument });
-
-    switch (outcome.kind) {
-      case "started":
-        return { kind: "sent", note: undefined };
-      case "nothing-to-compact":
-        return { kind: "sent", note: "Nothing to compact" };
-      case "busy":
-        return { kind: "refused", message: "Wait for the current run before compacting." };
-      default: {
-        const _exhaustive: never = outcome;
-
-        return _exhaustive;
-      }
-    }
-  }
+  if (name === COMPACT_COMMAND.name) return compactSession(session, argument);
 
   const outcome = await session.command(name, argument === "" ? undefined : argument);
 

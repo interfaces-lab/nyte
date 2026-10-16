@@ -23,6 +23,7 @@ type EditUserMessage = (
 
 /** The session's rows mapped onto the scroller's items and the row surfaces. */
 export function Timeline({
+  sessionId,
   ready,
   rows,
   working,
@@ -75,6 +76,7 @@ export function Timeline({
         case "turn":
           return (
             <TurnView
+              sessionId={sessionId}
               turn={row.turn}
               continuations={row.continuations}
               density={density}
@@ -139,6 +141,7 @@ export function Timeline({
       onOpenChanges,
       onRetry,
       rows,
+      sessionId,
       settledWork,
       working,
     ],

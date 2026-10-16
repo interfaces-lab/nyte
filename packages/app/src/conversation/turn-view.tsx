@@ -16,14 +16,14 @@ import { AttachmentGroup } from "@nyte-ai/ui/attachment";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { Message as ViewMessage, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
 import {
   failureNotice,
   showsText,
   showsThinking,
   showsTool,
 } from "@nyte-ai/plugin/client/presentation";
-import type { Recovery, TextMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { TextMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
@@ -63,6 +63,7 @@ import {
   turnStyles,
 } from "./turn.stylex.ts";
 import { StatusMarker } from "./row-surfaces.tsx";
+import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
@@ -607,6 +608,7 @@ const ResponseView = memo(function ResponseView({
 });
 
 interface TurnBodyProps {
+  sessionId: SessionId;
   density: ToolCallDensity;
   cwd: string | undefined;
   changes: SessionView["changes"];
@@ -639,15 +641,9 @@ function turnChanges(
   return changes.filter((change) => paths.has(change.path));
 }
 
-/** Where the desktop takes each recovery step a failure notice names. */
-const RECOVERY_STEPS: Readonly<Record<Recovery, string>> = {
-  compact: "Run /compact to summarize it.",
-  "sign-in": "Sign in again in Settings › Providers.",
-  "switch-model": "Choose another model or account.",
-};
-
 const TurnBody = memo(function TurnBody({
   turn,
+  sessionId,
   density,
   cwd,
   changes: sessionChanges,
@@ -727,9 +723,13 @@ const TurnBody = memo(function TurnBody({
           role={failure.tone === "danger" ? "alert" : "status"}
           variant={failure.tone === "danger" ? "destructive" : "default"}
         >
-          {failure.recovery === undefined
-            ? failure.text
-            : `${failure.text} ${RECOVERY_STEPS[failure.recovery]}`}
+          {failure.text}
+          {failure.recovery !== undefined && (
+            <>
+              {" "}
+              <RecoveryAction recovery={failure.recovery} sessionId={sessionId} />
+            </>
+          )}
         </StatusMarker>
       )}
       {!running && changes.length > 0 && (

@@ -57,6 +57,7 @@ test("a create call finds its child by the call that made it", () => {
     <QueryClientProvider client={client}>
       <SubagentSessionsProvider value={{ children: [childSession], open: () => {} }}>
         <TurnView
+          sessionId={parent}
           turn={turn}
           continuations={[]}
           density="compact"
