@@ -939,9 +939,7 @@ describe("plugin api", () => {
         contribute: {
           commands: [{ ...says("hello", "hi"), category: "Fun" }],
           agents: [{ id: "reviewer", description: "Reviews.", mode: "subagent" }],
-          skills: [
-            { name: "lint", description: "Lints.", location: "/skills/lint", load: async () => "" },
-          ],
+          skills: [{ name: "lint", description: "Lints.", location: "/skills/lint" }],
           tools: [{ ...echo, namespace: "demo", exposure: "deferred" }],
         },
       },

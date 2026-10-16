@@ -286,8 +286,10 @@ describe("resources", () => {
     const review = contributed.find((skill) => skill.name === "review");
 
     assert(shared !== undefined && review !== undefined);
-    expect(await shared.load()).toContain('description: "The project\'s."');
-    expect(await review.load()).toContain("Use review.");
+    expect([shared.location, review.location]).toEqual([
+      ".nyte/skills/shared/SKILL.md",
+      "/home/ada/.nyte/skills/review/SKILL.md",
+    ]);
     expect(kernel.host.current().plugins.find((row) => row.id === "resources")?.issues).toEqual([
       expect.objectContaining({ path: ["skills", "shared"], severity: "warning" }),
     ]);

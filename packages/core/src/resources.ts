@@ -123,7 +123,6 @@ export const resourcesPlugin: Plugin<"core"> = {
           name: skill.name,
           description: skill.description,
           location: skill.location,
-          load: () => loadSkill(inputs, skill),
         });
     });
   },
@@ -135,19 +134,6 @@ function tryReadResources(api: PluginApi<"core">): Resources | null {
   } catch {
     return null;
   }
-}
-
-async function loadSkill(inputs: Resources, skill: Resources["skills"][number]): Promise<string> {
-  const files = skill.scope === "project" ? inputs.project : inputs.user;
-
-  if (files === null)
-    throw new SdkError("unavailable", `The ${skill.scope} files of skill ${skill.name} are gone.`);
-  const document = await files.read(skill.location);
-
-  if (document.kind !== "text")
-    throw new SdkError("unknown", `Skill ${skill.name} has no text at ${skill.location}.`);
-
-  return document.contents;
 }
 
 async function scan(

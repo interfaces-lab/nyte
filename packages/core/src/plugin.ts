@@ -127,8 +127,6 @@ export interface Skill {
   readonly name: string;
   readonly description: string;
   readonly location: string;
-  readonly modelInvocable?: boolean;
-  load(): Promise<string>;
 }
 
 export interface Keybinding {
