@@ -435,7 +435,11 @@ describe("transcript system messages", () => {
       name: "Kimi K3",
       api: "openai-completions",
       provider: "moonshotai",
-      compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolAdditions: true },
+      compat: {
+        supportsDeveloperRole: false,
+        supportsMidConvoSystemMessages: true,
+        supportsMidConvoToolAdditions: true,
+      },
     };
     const payload = completionsPayload(
       (await captureRequest(openAICompletionsApi(), model, additionContext)).body,
@@ -461,7 +465,7 @@ describe("transcript system messages", () => {
       name: "Kimi K2.7 Code",
       api: "openai-completions",
       provider: "moonshotai",
-      compat: { supportsMidConvoSystemMessages: true },
+      compat: { supportsDeveloperRole: false, supportsMidConvoSystemMessages: true },
     };
     const payload = completionsPayload(
       (await captureRequest(openAICompletionsApi(), model, additionContext)).body,
