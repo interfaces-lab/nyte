@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
+/** What a running service writes to `~/.nyte/service.json`: where it listens, its token, pid and host id, and `version`, the build identity `serviceBuild` returns, which a client compares with its own. */
 export const Registration = Type.Object({
   url: Type.String(),
   token: Type.String({ minLength: 16 }),

@@ -12,7 +12,13 @@ import type { ConnectView } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ensureService, readRegistration, serviceConnect, stopService } from "../src/index.ts";
+import {
+  ensureService,
+  readRegistration,
+  serviceBuild,
+  serviceConnect,
+  stopService,
+} from "../src/index.ts";
 import type { Registration } from "../src/index.ts";
 import { alive, lockHolder } from "../src/registration.ts";
 import { SERVICE_ROUTES } from "../src/routes.ts";
@@ -21,8 +27,28 @@ const FAKE_SERVICE = fileURLToPath(new URL("fixtures/fake-service.ts", import.me
 
 const UNAVAILABLE: ConnectView = { kind: "unavailable", reason: "not_configured" };
 
-function fakeService(version: string, delay: number): readonly [string, ...string[]] {
-  return [process.execPath, FAKE_SERVICE, version, String(delay)];
+function fakeService(
+  build: string,
+  delay: number,
+  mode: "fresh" | "stale" | "stubborn" = "fresh",
+): readonly [string, ...string[]] {
+  return [process.execPath, FAKE_SERVICE, build, String(delay), mode];
+}
+
+/** Starts a fake service directly and waits until it registers. */
+async function runFake(
+  home: string,
+  command: readonly [string, ...string[]],
+): Promise<Registration> {
+  const [file, ...args] = command;
+  const child = spawn(file, args, { cwd: home, stdio: "ignore" });
+
+  for (;;) {
+    const registration = await readRegistration(home);
+
+    if (registration !== undefined && registration.pid === child.pid) return registration;
+    await sleep(10);
+  }
 }
 
 function failingService(message: string): readonly [string, ...string[]] {
@@ -31,27 +57,34 @@ function failingService(message: string): readonly [string, ...string[]] {
 
 describe("ensureService", () => {
   let home = "";
+  let v1 = "";
+  let v2 = "";
 
   beforeEach(async () => {
     home = await realpath(await mkdtemp(join(tmpdir(), "nyte-service-")));
+    v1 = await serviceBuild("v1");
+    v2 = await serviceBuild("v2");
   });
 
   afterEach(async () => {
+    const registered = await readRegistration(home);
+
+    if (registered !== undefined && alive(registered.pid)) process.kill(registered.pid, "SIGKILL");
     await stopService(home);
     await rm(home, { recursive: true, force: true });
   });
 
   it("starts the service and returns the registration it renames into place", async () => {
-    const started = await ensureService({ home, version: "v1", command: fakeService("v1", 300) });
+    const started = await ensureService({ home, version: "v1", command: fakeService(v1, 300) });
 
-    expect(started.version).toBe("v1");
+    expect(started.version).toBe(v1);
     expect(started.hostId).toBe(`host-${String(started.pid)}`);
     expect(alive(started.pid)).toBe(true);
     expect(await readRegistration(home)).toEqual(started);
   });
 
-  it("returns the running service of the same version without starting another", async () => {
-    const started = await ensureService({ home, version: "v1", command: fakeService("v1", 0) });
+  it("returns the running service of the same build without starting another", async () => {
+    const started = await ensureService({ home, version: "v1", command: fakeService(v1, 0) });
 
     const again = await ensureService({
       home,
@@ -63,22 +96,58 @@ describe("ensureService", () => {
   });
 
   it("replaces a running service of another version", async () => {
-    const old = await ensureService({ home, version: "v1", command: fakeService("v1", 0) });
+    const old = await ensureService({ home, version: "v1", command: fakeService(v1, 0) });
 
-    const replaced = await ensureService({ home, version: "v2", command: fakeService("v2", 0) });
+    const replaced = await ensureService({ home, version: "v2", command: fakeService(v2, 0) });
 
-    expect(replaced.version).toBe("v2");
+    expect(replaced.version).toBe(v2);
     expect(replaced.pid).not.toBe(old.pid);
     expect(alive(old.pid)).toBe(false);
   });
 
+  it("replaces a service of the same version built with other operations", async () => {
+    const stale = await runFake(home, fakeService("v1+0000000000000000", 0, "stale"));
+
+    const replaced = await ensureService({ home, version: "v1", command: fakeService(v1, 0) });
+
+    expect(replaced.version).toBe(v1);
+    expect(replaced.pid).not.toBe(stale.pid);
+    expect(alive(stale.pid)).toBe(false);
+    const answer = await fetch(new URL("/mcp.watch", replaced.url), { method: "POST" });
+    expect(await answer.text()).not.toContain("No operation answers");
+  });
+
+  it("replaces a service whose registration carries no operations digest", async () => {
+    const stale = await runFake(home, fakeService("v1", 0, "stale"));
+
+    const replaced = await ensureService({ home, version: "v1", command: fakeService(v1, 0) });
+
+    expect(replaced.version).toBe(v1);
+    expect(alive(stale.pid)).toBe(false);
+  });
+
+  it(
+    "names both builds and the fix when the other build won't stop",
+    { timeout: 15_000 },
+    async () => {
+      const stale = await runFake(home, fakeService("v1+0000000000000000", 0, "stubborn"));
+
+      const failed = ensureService({ home, version: "v1", command: fakeService(v1, 0) });
+
+      await expect(failed).rejects.toThrow(
+        `The Nyte service (pid ${String(stale.pid)}) runs build v1+0000000000000000 but this nyte is build ${v1}; stop it with \`nyte service stop\` and try again.`,
+      );
+      await expect(failed).rejects.not.toThrow("No operation answers");
+    },
+  );
+
   it("waits for the service that won the start race when its own child exits", async () => {
-    const [command, ...args] = fakeService("v1", 500);
+    const [command, ...args] = fakeService(v1, 500);
     const winner = spawn(command, args, { cwd: home, stdio: "ignore" });
 
     while ((await lockHolder(home)) === undefined) await sleep(10);
 
-    const found = await ensureService({ home, version: "v1", command: fakeService("v1", 0) });
+    const found = await ensureService({ home, version: "v1", command: fakeService(v1, 0) });
 
     expect(found.pid).toBe(winner.pid);
   });

@@ -4,8 +4,15 @@ import type { ConnectView } from "@nyte-ai/connect";
 import { asId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
-import { ensureService, findService, serviceConnect, stopService } from "@nyte-ai/service";
-import type { Registration } from "@nyte-ai/service";
+import {
+  ensureService,
+  findService,
+  serviceBuild,
+  serviceClients,
+  serviceConnect,
+  stopService,
+} from "@nyte-ai/service";
+import type { Registration, ServiceClient } from "@nyte-ai/service";
 import { compiled } from "./compiled.ts";
 import { HostFailure, startHostThread } from "./hosting.ts";
 import type { RemoteFacts } from "./model/state.ts";
@@ -75,10 +82,33 @@ export async function serviceCommandMain(
       if (rest.length > 0) throw new Error("Usage: nyte service status");
       const running = await findService(home);
 
+      if (running === undefined) {
+        output.write("Nyte service isn't running. Any nyte command starts it.\n");
+
+        return;
+      }
+
+      const header = `Nyte service ${running.version} at ${running.url} (pid ${String(running.pid)})`;
+      const build = await serviceBuild(VERSION);
+
+      if (running.version !== build) {
+        output.write(
+          `${header}\nThis nyte is build ${build}; its next command replaces the service.\n`,
+        );
+
+        return;
+      }
+
+      const clients = await serviceClients(running);
+
       output.write(
-        running === undefined
-          ? "Nyte service isn't running. Any nyte command starts it.\n"
-          : `Nyte service ${running.version} at ${running.url} (pid ${String(running.pid)})\n`,
+        [
+          header,
+          clients.length === 0
+            ? "No clients attached."
+            : `${String(clients.length)} ${clients.length === 1 ? "client" : "clients"} attached:`,
+          ...clients.map(describeClient),
+        ].join("\n") + "\n",
       );
 
       return;
@@ -127,6 +157,10 @@ async function runService(
 
   if (!signal.aborted) await Promise.race([stopped, service.ended]);
   await service.stop();
+}
+
+function describeClient(client: ServiceClient): string {
+  return `  pid ${String(client.pid)}, started ${new Date(client.startedAt).toLocaleString()}, ${client.tty ?? "no terminal"}, build ${client.build}`;
 }
 
 function parseRunPort(args: readonly string[]): number {
