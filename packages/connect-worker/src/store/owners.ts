@@ -115,7 +115,7 @@ export async function pendingSessionRevocation(
 }
 
 /** Clerk revocation attempts per denied session. Past this the denial is permanent. */
-export const SESSION_REVOKE_ATTEMPTS = 30;
+const SESSION_REVOKE_ATTEMPTS = 30;
 
 export async function pendingSessionRevocations(
   db: D1Database,

@@ -36,7 +36,7 @@ import { pendingSessionRevocation } from "./store/owners.ts";
 import type { Environment } from "./store/rows.ts";
 
 /** How long the broker waits for the desktop to record an enrollment. */
-export const ENROLL_TIMEOUT_MS = 10_000;
+const ENROLL_TIMEOUT_MS = 10_000;
 
 const RECEIPT_LIMIT = 16_384;
 

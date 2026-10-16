@@ -7,7 +7,7 @@ import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 /** Most bytes the broker reads from a request body. */
-export const REQUEST_BODY_LIMIT = 16_384;
+const REQUEST_BODY_LIMIT = 16_384;
 
 const STATUS = {
   unauthorized: 401,

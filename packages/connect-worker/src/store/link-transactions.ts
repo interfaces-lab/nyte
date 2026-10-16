@@ -3,7 +3,7 @@ import type { D1Database } from "../d1.ts";
 import { LinkTransactionRow, changed, one } from "./rows.ts";
 import type { LinkTransaction } from "./rows.ts";
 
-export const LINK_TRANSACTION_PENDING_LIMIT = 3;
+const LINK_TRANSACTION_PENDING_LIMIT = 3;
 
 export type OpenTransactionOutcome =
   | { readonly kind: "opened"; readonly transaction: LinkTransaction }

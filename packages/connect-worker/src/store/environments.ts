@@ -20,7 +20,7 @@ import {
 import type { Environment, LinkTransaction, RelayDevice } from "./rows.ts";
 
 /** Environments an owner may hold at once. */
-export const ENVIRONMENT_LIMIT = 3;
+const ENVIRONMENT_LIMIT = 3;
 
 export async function findEnvironment(
   db: D1Database,

@@ -25,7 +25,7 @@ const CLERK_TIMEOUT_MS = 3_000;
 const CLERK_REPLY_LIMIT = 65_536;
 
 /** How long a Backend API owner lookup stands before a lease asks again. */
-export const OWNER_RECHECK_MS = 15 * 60_000;
+const OWNER_RECHECK_MS = 15 * 60_000;
 
 /**
  * How long a lookup may serve leases while Clerk cannot be asked again. Past
