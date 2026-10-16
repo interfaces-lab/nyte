@@ -16,7 +16,12 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import type { AssistantMessageEventStream } from "@nyte-ai/ai";
-import { abortableSleep, isRetryableAssistantError, retryDelayMs } from "@nyte-ai/ai/utils/retry";
+import {
+  abortableSleep,
+  DEFAULT_MAX_AGENT_RETRY_DELAY_MS,
+  isRetryableAssistantError,
+  retryDelayMs,
+} from "@nyte-ai/ai/utils/retry";
 import type { RetryPolicy } from "@nyte-ai/ai/utils/retry";
 import { isContextOverflow, isRecoverableLength } from "@nyte-ai/ai/utils/overflow";
 import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
@@ -222,11 +227,13 @@ async function* run<P extends PreparedRequest>(
         const { failure } = outcome;
         const response = { usage: outcome.usage, prepared };
 
-        if (!outcome.retryable || retries >= config.retry.maxRetries)
+        const delay = outcome.retryable ? retryDelay(config.retry, retries + 1, failure) : null;
+
+        if (delay === null || retries >= config.retry.maxRetries)
           return yield* end({ reason: "failed", failure, response });
         retries += 1;
         attempt += 1;
-        const until = Date.now() + retryDelayMs(config.retry, retries);
+        const until = Date.now() + delay;
         yield { type: "turn_retry", attempt, until, failure, response };
 
         const slept = await abortableSleep(until - Date.now(), signal).then(
@@ -355,6 +362,15 @@ async function* end<P extends PreparedRequest>(
   yield { type: "loop_end", end: loopEnd };
 
   return loopEnd;
+}
+
+/** The backoff before retry `retry`, stretched to the provider's retry-after; null when the provider asks for longer than the policy waits, since an earlier retry meets the same limit. */
+function retryDelay(policy: RetryPolicy, retry: number, failure: Failure): number | null {
+  const asked = failure.retryAfterMs ?? 0;
+
+  if (asked > (policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS)) return null;
+
+  return Math.max(asked, retryDelayMs(policy, retry));
 }
 
 function buildContextOverflowFailure(message: AssistantMessage): Failure {

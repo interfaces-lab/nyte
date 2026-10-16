@@ -427,6 +427,43 @@ describe("agentLoop", () => {
     }
   });
 
+  it("waits out the provider's retry-after, and fails at once when it asks for longer than the policy waits", async () => {
+    const limited = "429 Too Many Requests: server requested 0.2s retry delay";
+
+    const within = scripted([{ error: limited }, { content: [said("Whole.")] }], {
+      retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 1_000 },
+    });
+
+    const started = Date.now();
+    const { events, end } = await collect(within.config);
+    const retry = events.find((event) => event.type === "turn_retry");
+
+    expect(retry).toMatchObject({ failure: { class: "rate_limit", retryAfterMs: 200 } });
+    expect(retry?.type === "turn_retry" ? retry.until - started : 0).toBeGreaterThanOrEqual(200);
+    expect(end.reason).toBe("done");
+
+    const beyond = scripted([{ error: limited }, { content: [said("Whole.")] }]);
+
+    expect((await collect(beyond.config)).end).toMatchObject({
+      reason: "failed",
+      failure: { class: "rate_limit", retryAfterMs: 200 },
+    });
+    expect(beyond.seen.requests).toHaveLength(1);
+  });
+
+  it("fails exhausted credit at once, though the provider answers it with 429", async () => {
+    const { config, seen } = scripted([
+      { error: '429 {"type":"error","error":{"type":"extra_usage_out_of_credits"}}' },
+      { content: [said("Whole.")] },
+    ]);
+
+    expect((await collect(config)).end).toMatchObject({
+      reason: "failed",
+      failure: { class: "quota" },
+    });
+    expect(seen.requests).toHaveLength(1);
+  });
+
   it("hands a context overflow to the next prepareRequest, then retries once it is prepared; a second overflow fails", async () => {
     const overflow = "prompt is too long: 213462 tokens > 200000 maximum";
 
