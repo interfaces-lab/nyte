@@ -68,7 +68,11 @@ const checkedUsageWindow: typeof usageWindow = {
   },
 };
 
-export const CALL_INPUT_SCHEMAS = {
+/** Each operation's input parser, keyed by its path. */
+type CallInputParsers = { readonly [P in CallPath]: Parser<CallInput<P>> };
+
+/** Each operation's input schema; the IPC boundary decodes a request's input with its path's parser. */
+export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.endpoint": compile(noInput),
   "host.state": compile(noInput),
   "host.fonts": compile(noInput),
@@ -233,7 +237,7 @@ export const CALL_INPUT_SCHEMAS = {
   ),
   "host.terminal.idle": compile(strict({ id: nonEmpty })),
   "host.terminal.close": compile(strict({ id: nonEmpty })),
-} satisfies { readonly [P in CallPath]: Parser<CallInput<P>> };
+};
 
 const callRequest = compile(
   strict({
@@ -275,9 +279,16 @@ const browserKey = compile(
   }),
 );
 
+/** The request envelope: a known operation path. Its input is decoded by `decodeCallInput`. */
 export function decodeCallRequest(input: CallRequest): CallRequest {
-  // DesktopHost's selected operation parser validates `input` exactly once.
   return checked(callRequest, input);
+}
+
+export function decodeCallInput<P extends CallPath>(
+  path: P,
+  input: CallRequest["input"],
+): CallInput<P> {
+  return CALL_INPUT_SCHEMAS[path].Parse(input);
 }
 
 export function decodeBrowserBounds(input: BrowserBoundsMessage): BrowserBoundsMessage {

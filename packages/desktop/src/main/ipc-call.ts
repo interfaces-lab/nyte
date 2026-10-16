@@ -1,7 +1,7 @@
 import type { CallReplyFor, CallRequest } from "../shared/ipc.ts";
 import { ipcResult } from "./errors.ts";
 import type { DesktopHost, HostWindow } from "./host.ts";
-import { decodeCallRequest } from "./ipc-inputs.ts";
+import { decodeCallInput, decodeCallRequest } from "./ipc-inputs.ts";
 
 /** Main-frame authorization happens before this request boundary. */
 export function callIpc<R extends CallRequest>(
@@ -15,9 +15,9 @@ export async function callIpc(
   request: CallRequest,
 ) {
   const result = await ipcResult(async () => {
-    const decoded = decodeCallRequest(request);
+    const { path, input } = decodeCallRequest(request);
 
-    return { path: decoded.path, value: await getHost().call(window, decoded.path, decoded.input) };
+    return { path, value: await getHost().call(window, path, decodeCallInput(path, input)) };
   });
 
   return result.ok ? { ok: true as const, ...result.value } : result;
