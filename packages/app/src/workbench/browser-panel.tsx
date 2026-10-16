@@ -1,5 +1,5 @@
 import { button, row, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { create, props } from "@stylexjs/stylex";
+import { create, keyframes, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -12,7 +12,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte";
 import { openExternal } from "../open-external.ts";
 import { macPlatform } from "../platform.ts";
@@ -40,6 +40,11 @@ import type { BrowserShortcut } from "./browser-shortcuts.ts";
 import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
 import { ShieldMenu } from "./browser-shield.tsx";
 
+const pageLoading = keyframes({
+  from: { transform: "translateX(-100%)" },
+  to: { transform: "translateX(340%)" },
+});
+
 const styles = create({
   panel: {
     display: "flex",
@@ -49,7 +54,25 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  toolbar: { gap: space.s2 },
+  toolbar: { position: "relative", gap: space.s2 },
+  /** A thin line over the toolbar's bottom edge while a page loads; the page's native view stays put. */
+  progress: {
+    position: "absolute",
+    insetInline: 0,
+    insetBlockEnd: 0,
+    height: space.s0_5,
+    overflow: "clip",
+    pointerEvents: "none",
+  },
+  progressBar: {
+    width: { default: "30%", "@media (prefers-reduced-motion: reduce)": "100%" },
+    height: "100%",
+    backgroundColor: role.bgInteractiveStrong,
+    animationName: { default: pageLoading, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationDuration: "1.2s",
+    animationTimingFunction: motion.easeOut,
+    animationIterationCount: "infinite",
+  },
   bookmarks: {
     display: "flex",
     alignItems: "center",
@@ -667,6 +690,11 @@ export function BrowserPanel({
           </span>
         )}
         {toolbarActions}
+        {loading && (
+          <div role="progressbar" aria-label="Loading page" {...props(styles.progress)}>
+            <div {...props(styles.progressBar)} />
+          </div>
+        )}
       </div>
       {failure !== undefined && (
         <div role="alert" {...props(styles.notice)}>
@@ -729,7 +757,7 @@ export function BrowserPanel({
           {covered && pageFrame !== undefined && <div {...props(styles.frozenVeil)} />}
           {!hasPage && failure === undefined && (
             <div {...props(styles.message)}>
-              <span {...props(styles.messageTitle)}>Nothing open</span>
+              <span {...props(styles.messageTitle)}>Type an address or a search</span>
             </div>
           )}
           {state?.error !== undefined && state.error.untrustedHost === undefined && (

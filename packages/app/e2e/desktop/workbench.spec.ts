@@ -120,7 +120,7 @@ test("the workbench journey", async ({ desktop }) => {
     await expect(browser.getByRole("button", { name: "Go forward" })).toBeDisabled();
     await expect(browser.getByRole("button", { name: "Reload page" })).toBeDisabled();
     await expect(browser.getByRole("combobox", { name: "Address" })).toBeVisible();
-    await expect(browser.getByText("Nothing open")).toBeVisible();
+    await expect(browser.getByText("Type an address or a search")).toBeVisible();
     await expect(workbenchTabs(page).getByRole("tab")).toHaveCount(4);
   });
 
