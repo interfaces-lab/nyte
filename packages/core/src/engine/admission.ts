@@ -707,17 +707,22 @@ async function decideBeforeSend(
     for (;;) {
       woken = Promise.withResolvers<void>();
 
-      const outcome = await kernel.plugins.runtime(session).hooks.decide(
-        "before_send",
-        submission,
-        {
-          session,
-          head: sending.head,
-          run: sending.context.origin?.run ?? null,
-          principal: sending.context.principal,
-        },
-        { call, run: null, head: null, part: null, signal },
-      );
+      const outcome = await kernel.plugins
+        .runtime(session)
+        .hooks.decide(
+          "before_send",
+          submission,
+          {
+            session,
+            head: sending.head,
+            run: sending.context.origin?.run ?? null,
+            principal: sending.context.principal,
+          },
+          { call, run: null, head: null, part: null, signal },
+        )
+        .catch((error: unknown) => {
+          throw signal.aborted ? undecided(closing) : error;
+        });
 
       if (outcome.kind === "done") return outcome.value;
 
@@ -726,15 +731,18 @@ async function decideBeforeSend(
         await woken.promise;
       }
 
-      if (signal.aborted)
-        throw closing.aborted
-          ? new SdkError("unavailable", "The kernel closed before before_send decided.")
-          : new SdkError("invalid", "The send was stopped before before_send decided.");
+      if (signal.aborted) throw undecided(closing);
     }
   } finally {
     signal.removeEventListener("abort", abort);
     dispose();
   }
+}
+
+function undecided(closing: AbortSignal): SdkError {
+  return closing.aborted
+    ? new SdkError("unavailable", "The kernel closed before before_send decided.")
+    : new SdkError("invalid", "The send was stopped before before_send decided.");
 }
 
 export async function resolve(
