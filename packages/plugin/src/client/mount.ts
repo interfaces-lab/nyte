@@ -205,8 +205,10 @@ function causeMessage(cause: unknown): string {
 }
 
 /**
- * Activates client plugins once per app: their registries, hooks and the
- * first renderer per part kind among the frameworks the client draws.
+ * Activates client plugins once per app, all at once: their registries, hooks
+ * and the first renderer per part kind, in plugin order, among the frameworks
+ * the client draws. A plugin whose activation fails is reported and the rest
+ * still mount.
  *
  * @category plugins
  */
@@ -331,13 +333,15 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
     apis.push({ plugin, api });
   }
 
-  for (const { plugin, api } of apis) {
-    try {
-      await plugin.activate?.(api);
-    } catch (cause) {
-      options.report(plugin.id, causeMessage(cause));
-    }
-  }
+  await Promise.all(
+    apis.map(async ({ plugin, api }) => {
+      try {
+        await plugin.activate?.(api);
+      } catch (cause) {
+        options.report(plugin.id, causeMessage(cause));
+      }
+    }),
+  );
 
   const renderers = new Map<string, Renderer>();
 
