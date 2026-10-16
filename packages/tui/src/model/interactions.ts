@@ -72,13 +72,13 @@ function composesMessage(
   return input.draft.kind === "message";
 }
 
-export function busyDelivery(followUp: "steer" | "queue", alternate: boolean): Delivery {
+function busyDelivery(followUp: "steer" | "queue", alternate: boolean): Delivery {
   if (!alternate) return followUp;
 
   return followUp === "steer" ? "queue" : "steer";
 }
 
-export function promotable(queue: readonly QueueRow[]): QueueRow | null {
+function promotable(queue: readonly QueueRow[]): QueueRow | null {
   return (
     queue.find(
       (row) => row.withdrawable && row.place.kind !== "joining" && row.place.kind !== "uncovered",
@@ -294,7 +294,7 @@ function clearOrQuit(input: TableInput): Interaction | null {
     : on({ kind: "clear-draft" }, "clear draft");
 }
 
-export const SITUATIONS: readonly Row[] = [
+const SITUATIONS: readonly Row[] = [
   {
     name: "blocked",
     active: (input) => input.blocked !== null,
@@ -567,7 +567,7 @@ function entries(decide: (command: ChatCommand) => Interaction): Interactions {
   };
 }
 
-export function otherInteraction(
+function otherInteraction(
   command: Exclude<ChatCommand, CoreCommand>,
   input: TableInput,
 ): Interaction {

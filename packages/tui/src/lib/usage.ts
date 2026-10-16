@@ -7,7 +7,7 @@ type ChatUsageCard =
   | { readonly kind: "message"; readonly message: string }
   | { readonly kind: "usage"; readonly total: string; readonly breakdown: readonly string[] };
 
-export interface UsageCard {
+interface UsageCard {
   readonly accounts: readonly ProviderUsage[];
   readonly chat: ChatUsageCard;
 }

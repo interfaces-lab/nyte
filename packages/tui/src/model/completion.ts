@@ -44,12 +44,12 @@ export interface CompletionItem {
   readonly kind: "action" | "setting" | "skill" | "plugin" | "file" | "directory";
 }
 
-export interface CompletionSources {
+interface CompletionSources {
   readonly commands: readonly SlashCommand[];
   readonly files: readonly MentionFile[] | null;
 }
 
-export type CompletionEdit =
+type CompletionEdit =
   | { readonly kind: "replace"; readonly from: number; readonly to: number; readonly text: string }
   | {
       readonly kind: "execute";

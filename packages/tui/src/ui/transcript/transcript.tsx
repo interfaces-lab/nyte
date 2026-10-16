@@ -20,7 +20,7 @@ import { Keyed, sameItems } from "./keyed.tsx";
 import { RowView } from "./row.tsx";
 import { TranscriptScopeProvider } from "./scope.tsx";
 
-export interface TranscriptProps {
+interface TranscriptProps {
   readonly model: Accessor<TranscriptModel>;
   readonly tasks?: Accessor<readonly Task[]>;
   readonly attach: (port: ScrollPort) => () => void;

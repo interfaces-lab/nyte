@@ -146,7 +146,7 @@ export function canStopTask(task: Task): boolean {
   return execution.kind !== "live" || !execution.stopping;
 }
 
-export interface ReportRow {
+interface ReportRow {
   readonly mark: StatusMark;
   readonly title: string;
   readonly task: Task | undefined;

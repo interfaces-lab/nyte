@@ -198,7 +198,7 @@ export async function refreshWorkspace(
   dispatch({ kind: "workspace", workspace: { ...latest, mentions } });
 }
 
-export async function each<T>(
+async function each<T>(
   source: AsyncIterable<T>,
   signal: AbortSignal,
   next: (value: T) => void,
@@ -259,11 +259,11 @@ export function fallbackSelection(
   return model === undefined ? null : toSelection({ model, thinkingLevel: effort }, catalog);
 }
 
-export function toRunChoice(selection: Selection): RunChoice {
+function toRunChoice(selection: Selection): RunChoice {
   return { model: selection.model, thinkingLevel: selection.effort };
 }
 
-export function toSelection(choice: RunChoice, catalog: ModelCatalogView | null): Selection {
+function toSelection(choice: RunChoice, catalog: ModelCatalogView | null): Selection {
   const fast =
     catalog !== null &&
     catalog.providers.some((provider) =>

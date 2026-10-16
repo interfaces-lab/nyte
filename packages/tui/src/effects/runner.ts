@@ -98,7 +98,7 @@ export function createRunner(context: RunnerContext): Runner {
   };
 }
 
-export function invoke<K extends Effect["kind"]>(
+function invoke<K extends Effect["kind"]>(
   handlers: Handlers,
   effect: Extract<Effect, { readonly kind: K }>,
   context: HandlerContext,
@@ -112,7 +112,7 @@ function shellsDone(scope: Scope): readonly Promise<void>[] {
   return [...scope.shells.values()].map((shell) => shell.done);
 }
 
-export const HANDLERS: Handlers = {
+const HANDLERS: Handlers = {
   follow: (effect, context) => follow(effect.target, effect.announce, context),
   "load-earlier": loadEarlier,
   send: (effect, context) => submit(effect.submission, effect.delivery, context),

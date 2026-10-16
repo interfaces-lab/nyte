@@ -36,7 +36,7 @@ const HostReportType = Type.Union([
 ]);
 
 /** Messages the CLI thread sends the host thread: a command, or stop. */
-export type HostMessage = Static<typeof HostMessageType>;
+type HostMessage = Static<typeof HostMessageType>;
 
 /** Messages the host thread sends back. */
 export type HostReport = Static<typeof HostReportType>;
@@ -58,7 +58,7 @@ export class HostFailure extends Error {
 }
 
 /** A host listening on its own thread. */
-export interface HostThread {
+interface HostThread {
   readonly address: string;
   /** Settles when the host closes; rejects when its thread fails or exits first. */
   readonly ended: Promise<void>;

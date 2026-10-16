@@ -95,7 +95,7 @@ export async function submit(
   }
 }
 
-export async function beforeSubmit(
+async function beforeSubmit(
   plugins: PluginsPort,
   draft: SubmitDraft,
 ): Promise<
@@ -109,12 +109,12 @@ export async function beforeSubmit(
   }
 }
 
-export interface PrepareDeps {
+interface PrepareDeps {
   readonly skills: ReadonlyMap<string, SkillInfo>;
   readonly upload: (bytes: Uint8Array) => Promise<BlobId>;
 }
 
-export async function prepare(snapshot: DraftSnapshot, deps: PrepareDeps): Promise<UserContent> {
+async function prepare(snapshot: DraftSnapshot, deps: PrepareDeps): Promise<UserContent> {
   const uploaded = await Promise.all(
     pendingUploads(snapshot).map(
       async (pending) => [pending.marker, await deps.upload(pending.bytes)] as const,
@@ -124,7 +124,7 @@ export async function prepare(snapshot: DraftSnapshot, deps: PrepareDeps): Promi
   return draftContent(snapshot, { uploads: new Map(uploaded), skills: deps.skills });
 }
 
-export function skillsOf(state: State): ReadonlyMap<string, SkillInfo> {
+function skillsOf(state: State): ReadonlyMap<string, SkillInfo> {
   const skills = state.facts.session?.view?.catalog.skills ?? [];
 
   return new Map(skills.map((skill) => [skill.name, skill]));

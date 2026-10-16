@@ -13,14 +13,14 @@ import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { Mermaid } from "./mermaid.tsx";
 
-export type Segment = MarkdownSegment | MermaidSegment;
+type Segment = MarkdownSegment | MermaidSegment;
 
-export interface MarkdownSegment {
+interface MarkdownSegment {
   readonly kind: "markdown";
   readonly text: string;
 }
 
-export interface MermaidSegment {
+interface MermaidSegment {
   readonly kind: "mermaid";
   readonly source: string;
 }

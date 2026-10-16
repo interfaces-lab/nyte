@@ -18,7 +18,7 @@ import { chatCommands } from "../model/interactions.ts";
 import { readDraft } from "../ui/composer/composer.tsx";
 import type { Store } from "./store.ts";
 
-export interface KeymapOptions {
+interface KeymapOptions {
   readonly renderer: CliRenderer;
   readonly store: Store;
   readonly fallen: Accessor<(() => void) | null>;

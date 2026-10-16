@@ -11,7 +11,7 @@ import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.t
 import type { SettingRow } from "./settings.ts";
 import type { State } from "./state.ts";
 
-export interface CommandEntry {
+interface CommandEntry {
   readonly name: string;
   readonly aliases: readonly string[];
   readonly description: string;
@@ -141,7 +141,7 @@ export function skillsOf(state: State): ReadonlyMap<string, SkillInfo> {
   );
 }
 
-export function pluginCommands(state: State): readonly CommandInfo[] {
+function pluginCommands(state: State): readonly CommandInfo[] {
   return state.facts.session?.view?.catalog.commands ?? [];
 }
 

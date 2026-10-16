@@ -24,7 +24,7 @@ export type Ignores = {
 
 export const WALK_LIMIT = 50_000;
 
-export const WALK_PAGE = 500;
+const WALK_PAGE = 500;
 
 type Matcher = ReturnType<typeof ignore>;
 

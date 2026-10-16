@@ -11,7 +11,7 @@ import { LabelSyntax } from "../services/label-syntax.ts";
 import type { Kit } from "./context.tsx";
 import type { Tickers } from "./ticker.ts";
 
-export interface KitOptions {
+interface KitOptions {
   readonly renderer: CliRenderer;
   readonly theme: Accessor<CliTheme>;
   readonly tickers: Tickers;
@@ -21,12 +21,12 @@ export interface KitOptions {
   readonly report: (origin: FailureReport["origin"], error: unknown) => void;
 }
 
-export interface SyntaxPair {
+interface SyntaxPair {
   readonly normal: SyntaxStyle;
   readonly subtle: SyntaxStyle;
 }
 
-export interface OwnedKit extends Kit {
+interface OwnedKit extends Kit {
   dispose(): void;
 }
 
@@ -88,7 +88,7 @@ function destroyPair(pair: SyntaxPair): void {
   pair.subtle.destroy();
 }
 
-export function syntaxPair(theme: CliTheme, owner: NativeResourceOwner): SyntaxPair {
+function syntaxPair(theme: CliTheme, owner: NativeResourceOwner): SyntaxPair {
   return { normal: syntaxStyle(theme, false, owner), subtle: syntaxStyle(theme, true, owner) };
 }
 

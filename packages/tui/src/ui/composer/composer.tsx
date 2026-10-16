@@ -48,7 +48,7 @@ function offsetIn(area: TextareaRenderable, text: string, index: number): number
   );
 }
 
-export function syncMarkers(
+function syncMarkers(
   area: TextareaRenderable,
   styleId: number,
   spans: readonly MarkerSpan[],

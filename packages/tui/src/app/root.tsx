@@ -8,7 +8,7 @@ import { AppProvider } from "./context.tsx";
 import type { Kit } from "./context.tsx";
 import type { Store } from "./store.ts";
 
-export interface RootProps {
+interface RootProps {
   readonly store: Store;
   readonly kit: Kit;
   readonly report: (origin: "render", error: unknown) => void;

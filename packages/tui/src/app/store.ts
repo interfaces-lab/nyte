@@ -18,7 +18,7 @@ export interface Store {
   dispose(): void;
 }
 
-export interface StoreOptions {
+interface StoreOptions {
   readonly initial: State;
   readonly now: () => number;
   readonly runner: (context: Omit<RunnerContext, "ports" | "signal">) => Runner;

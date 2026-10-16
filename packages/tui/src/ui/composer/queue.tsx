@@ -151,7 +151,7 @@ function Line(props: {
   );
 }
 
-export function QueueLine(props: {
+function QueueLine(props: {
   readonly row: QueueRow;
   readonly hint: string | null;
   readonly onPress: () => void;

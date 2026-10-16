@@ -79,7 +79,7 @@ export type ListPurpose =
       readonly sources: readonly string[];
     };
 
-export interface ListAction {
+interface ListAction {
   readonly command: ChatCommand;
   readonly label: string;
 }

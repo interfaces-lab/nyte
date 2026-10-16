@@ -42,7 +42,7 @@ import { createTickers } from "./ticker.ts";
 import { holdTypeahead } from "./typeahead.ts";
 import type { Typeahead } from "./typeahead.ts";
 
-export type TuiExit =
+type TuiExit =
   | { readonly kind: "quit" }
   | { readonly kind: "signal"; readonly signal: "SIGINT" | "SIGTERM" };
 

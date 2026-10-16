@@ -16,7 +16,7 @@ export interface ServiceSession {
   readonly connection: Connection;
 }
 
-export function servicePort(
+function servicePort(
   value: string | undefined = process.env["NYTE_SERVICE_PORT"],
   source = "NYTE_SERVICE_PORT",
 ): number {
@@ -149,7 +149,7 @@ export async function watchRemote(
     if (event.kind === "view") report(remoteFacts(event.view));
 }
 
-export function remoteFacts(view: ConnectView): RemoteFacts {
+function remoteFacts(view: ConnectView): RemoteFacts {
   if (view.kind !== "linked") return { kind: "off" };
 
   switch (view.connection.kind) {

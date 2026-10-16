@@ -254,7 +254,7 @@ function byColorFgBg(raw: string | undefined): ThemeMode | undefined {
   return background <= 15 ? "light" : undefined;
 }
 
-export function resolveThemeMode(
+function resolveThemeMode(
   choice: ThemeChoice,
   terminal: ThemeMode | null,
   env: NodeJS.ProcessEnv = process.env,

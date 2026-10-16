@@ -262,7 +262,7 @@ function settled(
   };
 }
 
-export function findChildTask(message: ToolMessage, tasks: readonly Task[]): Task | undefined {
+function findChildTask(message: ToolMessage, tasks: readonly Task[]): Task | undefined {
   const toolClass = message.state.class;
 
   if (toolClass.kind !== "delegate") return undefined;

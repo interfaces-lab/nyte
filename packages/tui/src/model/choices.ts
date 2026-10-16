@@ -44,7 +44,7 @@ const KEY_NAMES = new Map([
   ["kpenter", "enter"],
 ]);
 
-export function bindingKeycaps(command: ChatCommand): string {
+function bindingKeycaps(command: ChatCommand): string {
   const caps = CHAT_KEYBINDS[command]
     .split(",")
     .map((binding) => binding.replace(/[^+]+$/u, (name) => KEY_NAMES.get(name) ?? name));
@@ -268,7 +268,7 @@ export function resumeChoices(state: State, sessions: readonly SessionInfo[]): r
     );
 }
 
-export function liveList(state: State, dialog: ListDialog): ListDialog {
+function liveList(state: State, dialog: ListDialog): ListDialog {
   const items = liveChoices(state, dialog.purpose);
 
   if (items === null) return dialog;

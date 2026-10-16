@@ -53,7 +53,7 @@ function placeOf(message: UserMessage): Place {
   }
 }
 
-export function queuedText(message: UserMessage): string {
+function queuedText(message: UserMessage): string {
   const shown = shownContent(message);
 
   if (message.source.kind === "action") return message.source.label;

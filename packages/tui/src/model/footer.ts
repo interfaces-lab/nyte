@@ -16,24 +16,23 @@ export interface Hint {
   readonly tier: "primary" | "secondary";
 }
 
-export const HINT_ORDER: readonly { readonly command: ChatCommand; readonly tier: Hint["tier"] }[] =
-  [
-    { command: "completion.accept", tier: "primary" },
-    { command: "completion.fill", tier: "primary" },
-    { command: "completion.previous", tier: "primary" },
-    { command: "completion.close", tier: "primary" },
-    { command: "completion.next", tier: "secondary" },
-    { command: "completion.page.up", tier: "secondary" },
-    { command: "completion.page.down", tier: "secondary" },
-    { command: "chat.submit", tier: "primary" },
-    { command: "chat.queue.submit", tier: "secondary" },
-    { command: "chat.interrupt", tier: "primary" },
-    { command: "chat.quit", tier: "secondary" },
-    { command: "chat.commands.open", tier: "primary" },
-    { command: "chat.thinking.cycle", tier: "secondary" },
-    { command: "chat.model.next", tier: "secondary" },
-    { command: "chat.history.next", tier: "secondary" },
-  ];
+const HINT_ORDER: readonly { readonly command: ChatCommand; readonly tier: Hint["tier"] }[] = [
+  { command: "completion.accept", tier: "primary" },
+  { command: "completion.fill", tier: "primary" },
+  { command: "completion.previous", tier: "primary" },
+  { command: "completion.close", tier: "primary" },
+  { command: "completion.next", tier: "secondary" },
+  { command: "completion.page.up", tier: "secondary" },
+  { command: "completion.page.down", tier: "secondary" },
+  { command: "chat.submit", tier: "primary" },
+  { command: "chat.queue.submit", tier: "secondary" },
+  { command: "chat.interrupt", tier: "primary" },
+  { command: "chat.quit", tier: "secondary" },
+  { command: "chat.commands.open", tier: "primary" },
+  { command: "chat.thinking.cycle", tier: "secondary" },
+  { command: "chat.model.next", tier: "secondary" },
+  { command: "chat.history.next", tier: "secondary" },
+];
 
 function basename(path: string): string {
   return path.replace(/\/+$/u, "").split("/").at(-1) ?? path;

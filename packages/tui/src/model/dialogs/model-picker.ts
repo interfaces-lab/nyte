@@ -79,7 +79,7 @@ export function visibleModels(dialog: ModelDialog): readonly ModelRow[] {
   );
 }
 
-export interface RowDraft {
+interface RowDraft {
   readonly effort: Thinking;
   readonly fast: boolean;
 }

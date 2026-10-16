@@ -4,7 +4,7 @@ import { formatPatch, OMIT_HEADERS, parsePatch } from "diff";
 import type { StructuredPatch } from "diff";
 import { Value } from "typebox/value";
 
-export type TextPatch = Extract<PatchEntry, { readonly kind: "text" }>;
+type TextPatch = Extract<PatchEntry, { readonly kind: "text" }>;
 
 export interface ChangedLinePair {
   readonly removed: string;

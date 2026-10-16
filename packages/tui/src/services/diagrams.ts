@@ -23,7 +23,7 @@ const DiagramReplyType = Type.Union([
 ]);
 
 /** A mermaid source the diagram thread is asked to draw. */
-export type DiagramRequest = Static<typeof DiagramRequestType>;
+type DiagramRequest = Static<typeof DiagramRequestType>;
 
 /** The diagram thread's answer to one request. */
 export type DiagramReply = Static<typeof DiagramReplyType>;
@@ -34,7 +34,7 @@ export const diagramRequests = Compile(DiagramRequestType);
 const diagramReplies = Compile(DiagramReplyType);
 
 /** Draws mermaid diagrams as text on a thread of their own, started by the first diagram. */
-export interface Diagrams {
+interface Diagrams {
   /** Rejects when the source or its drawing is too large, or the source does not parse. */
   draw(source: string): Promise<string>;
   dispose(): void;

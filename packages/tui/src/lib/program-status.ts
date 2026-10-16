@@ -1,7 +1,7 @@
 import type { Execution, RunId } from "@nyte-ai/sdk";
 import { singleLine } from "./format.ts";
 
-export interface Activity {
+interface Activity {
   readonly busy: boolean;
   readonly execution: Execution | undefined;
   readonly question: string | undefined;

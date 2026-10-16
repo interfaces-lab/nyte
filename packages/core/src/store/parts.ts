@@ -53,7 +53,7 @@ export function releaseParts(table: PartTable, session: SessionId): void {
     if (parseSessionRef(name) === session) release(table, name);
 }
 
-export function dismiss(table: PartTable, name: string): void {
+function dismiss(table: PartTable, name: string): void {
   for (const resolve of table.waiters.get(name) ?? []) resolve(null);
   table.waiters.delete(name);
 }

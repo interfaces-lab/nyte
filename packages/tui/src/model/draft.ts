@@ -231,7 +231,7 @@ function markerFor(parts: DraftParts, part: DraftPart): string {
   }
 }
 
-export function fileUrl(path: string): string {
+function fileUrl(path: string): string {
   return `file://${encodeURI(path).replaceAll("?", "%3F").replaceAll("#", "%23")}`;
 }
 
@@ -267,7 +267,7 @@ function commandFromAttribute(command: string): string {
     .replaceAll("&amp;", "&");
 }
 
-export function shellBlock(command: string, output: string, exit: number): string {
+function shellBlock(command: string, output: string, exit: number): string {
   const closingBreak = output.endsWith("\n") ? "" : "\n";
 
   return `<shell command="${shellAttribute(command)}" exit="${String(exit)}">\n${output}${closingBreak}</shell>`;
@@ -337,7 +337,7 @@ export function pendingUploads(
   );
 }
 
-export interface ContentInputs {
+interface ContentInputs {
   readonly uploads: ReadonlyMap<string, BlobId>;
   readonly skills: ReadonlyMap<string, SkillInfo>;
 }

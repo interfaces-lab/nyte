@@ -271,7 +271,7 @@ export async function compact(effect: Of<"compact">, context: HandlerContext): P
     context.dispatch({ kind: "inform", tone: "info", text: "Nothing to compact" });
 }
 
-export function resolveDirectory(argument: string, cwd: string): string {
+function resolveDirectory(argument: string, cwd: string): string {
   if (argument === "~") return homedir();
 
   if (argument.startsWith("~/")) return resolve(homedir(), argument.slice(2));

@@ -1,10 +1,10 @@
 import type { UserContent } from "@nyte-ai/sdk";
 
-export interface PresentedFile {
+interface PresentedFile {
   readonly path: string;
 }
 
-export interface PresentedSkill {
+interface PresentedSkill {
   readonly name: string;
   readonly path: string;
 }
@@ -17,7 +17,7 @@ export interface PresentedShell {
 
 export type AttachedFile = Extract<Exclude<UserContent, string>[number], { readonly kind: "file" }>;
 
-export interface UserPresentation {
+interface UserPresentation {
   readonly text: string;
   readonly files: readonly PresentedFile[];
   readonly skills: readonly PresentedSkill[];

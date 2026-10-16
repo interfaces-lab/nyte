@@ -4,7 +4,7 @@ import type { Accessor } from "solid-js";
 import type { Task } from "../../lib/tasks.ts";
 import type { TranscriptModel } from "../../model/transcript.ts";
 
-export interface TranscriptScope {
+interface TranscriptScope {
   readonly model: Accessor<TranscriptModel>;
   readonly tasks: Accessor<readonly Task[]>;
 }

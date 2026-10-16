@@ -14,7 +14,7 @@ export interface LoginDriver {
   progress(message: string): void;
 }
 
-export interface ProviderChoice {
+interface ProviderChoice {
   readonly id: string;
   readonly label: string;
   readonly description: string;

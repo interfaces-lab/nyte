@@ -231,13 +231,13 @@ export interface Submission {
   readonly replace: MessageId | null;
 }
 
-export interface Bootstrap {
+interface Bootstrap {
   readonly cwd: string;
   readonly settings: ResolvedSettings;
   readonly terminal: TerminalFacts;
 }
 
-export const EMPTY_DRAFT: Draft = { text: "", cursor: 0, row: "only", parts: NO_PARTS };
+const EMPTY_DRAFT: Draft = { text: "", cursor: 0, row: "only", parts: NO_PARTS };
 
 export function initialState(bootstrap: Bootstrap): State {
   return {

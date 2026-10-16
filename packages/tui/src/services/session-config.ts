@@ -15,7 +15,7 @@ type ConfigureResult =
   | { readonly kind: "superseded" }
   | { readonly kind: "failed"; readonly message: string };
 
-export interface SubmissionSlot {
+interface SubmissionSlot {
   readonly configured: Promise<ConfigureResult | undefined>;
   release(): void;
 }

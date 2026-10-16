@@ -137,7 +137,7 @@ async function resolveTarget(
   }
 }
 
-export function flagSelection(
+function flagSelection(
   options: Pick<BootOptions, "model" | "effort">,
   catalog: ModelCatalogView,
 ): Selection | null {

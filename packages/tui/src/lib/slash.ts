@@ -2,12 +2,12 @@ import fuzzysort from "fuzzysort";
 import type { SkillInfo } from "@nyte-ai/sdk";
 import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 
-export interface ParsedSlashCommand {
+interface ParsedSlashCommand {
   readonly name: string;
   readonly argument: string;
 }
 
-export type ComposerSubmission =
+type ComposerSubmission =
   | { readonly kind: "empty" }
   | { readonly kind: "command"; readonly command: ParsedSlashCommand }
   | { readonly kind: "prompt"; readonly text: string }
@@ -95,7 +95,7 @@ function aliasesFor(command: SlashCommand): readonly string[] {
   return command.aliases ?? [];
 }
 
-export interface SlashSetting {
+interface SlashSetting {
   readonly id: string;
   readonly label: string;
 }

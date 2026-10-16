@@ -112,7 +112,7 @@ export function settingsPort(): SettingsPort {
   };
 }
 
-export async function resolvePaste(
+async function resolvePaste(
   text: string,
   bytes: Uint8Array | null,
   cwd: string,

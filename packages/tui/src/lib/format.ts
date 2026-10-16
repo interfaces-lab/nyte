@@ -125,10 +125,6 @@ export function userText(content: UserContent): string {
     .join("");
 }
 
-export function oneLine(text: string): string {
-  return text.replaceAll("\r", "").replaceAll("\n", "⏎").trim();
-}
-
 const MAX_RETRY_CAUSE_CHARS = 80;
 
 export function retryCause(reason: string): string {

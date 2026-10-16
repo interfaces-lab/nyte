@@ -7,7 +7,7 @@ import { themeFor } from "../lib/theme.ts";
 import type { CliTheme } from "../lib/theme.ts";
 import type { Store } from "./store.ts";
 
-export interface Sinks {
+interface Sinks {
   readonly theme: Accessor<CliTheme>;
   dispose(): void;
 }

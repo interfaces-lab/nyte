@@ -73,7 +73,7 @@ export interface TasksLine {
   readonly attention: boolean;
 }
 
-export function placeholderFor(
+function placeholderFor(
   screen: Pick<ScreenModel, "question" | "editing" | "shell" | "run" | "blocked" | "followUp">,
 ): string {
   const { question } = screen;

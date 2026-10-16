@@ -12,7 +12,7 @@ type MarkerProps =
 
 const SUMMARY_LINES = 40;
 
-export function markerProps(message: PartMessage): MarkerProps {
+function markerProps(message: PartMessage): MarkerProps {
   if (isPart(message, compaction))
     return message.status.kind === "live"
       ? { variant: "default", content: "compacting context…" }

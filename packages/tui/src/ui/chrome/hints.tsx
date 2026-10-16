@@ -7,7 +7,7 @@ import type { Hint } from "../../model/footer.ts";
 import { Spans } from "./spans.tsx";
 import type { Chunk } from "./spans.tsx";
 
-export function hintChunks(hints: readonly Hint[], theme: CliTheme, width: number): Chunk[] {
+function hintChunks(hints: readonly Hint[], theme: CliTheme, width: number): Chunk[] {
   const chunks: Chunk[] = [];
   let used = 0;
 
