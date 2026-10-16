@@ -192,12 +192,14 @@ export interface LoggedItem {
  * An event at or below the session's last published seq is dropped; one past the next seq first
  * publishes the gap from the log (another process's commits, or a concurrent publish not yet
  * here), and publishes anyway, leaving the gap to folds' own reads, when that read fails.
+ * A session's sequence is dropped once the bus has had no subscriber for it, and this process no
+ * event to publish, for a linger; a session logged again after that starts from that write's seqs.
  */
 export interface LogPublisher {
   /** Publishes `items`, ascending, after everything handed over for the session before them. */
   publish(session: SessionId, items: readonly LoggedItem[]): Promise<void>;
-  /** Notes that this process logged the session's events through `seq`, before they reach the bus. */
-  logged(session: SessionId, seq: number): void;
+  /** Notes that this process logged the session's events `from` through `through` in one write, before they reach the bus. */
+  logged(session: SessionId, from: number, through: number): void;
   /** The highest seq this process has logged for the session, or 0: a fold behind it has events to read even when no other process committed. */
   loggedThrough(session: SessionId): number;
 }
@@ -209,6 +211,10 @@ export interface SessionBus {
     listener: (event: SessionEvent | PatchEvent, head: HeadPair | null) => void,
   ): Disposer;
   subscribeAll(listener: (session: SessionId, event: SessionEvent | PatchEvent) => void): Disposer;
+  /** Whether any listener is subscribed to the session. */
+  watched(session: SessionId): boolean;
+  /** Calls `listener` each time a session's last listener unsubscribes. */
+  onUnwatched(listener: (session: SessionId) => void): Disposer;
 }
 
 export interface FoldCache {

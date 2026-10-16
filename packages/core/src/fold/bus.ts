@@ -10,6 +10,8 @@ export function createBus(): SessionBus {
 
   const everyone = new Set<(session: SessionId, event: SessionEvent | PatchEvent) => void>();
 
+  const unwatched = new Set<(session: SessionId) => void>();
+
   return {
     publish(session, event, head = null) {
       const deliver = (call: () => void) => {
@@ -32,7 +34,10 @@ export function createBus(): SessionBus {
       return () => {
         listeners.delete(listener);
 
-        if (listeners.size === 0 && sessions.get(session) === listeners) sessions.delete(session);
+        if (listeners.size > 0 || sessions.get(session) !== listeners) return;
+        sessions.delete(session);
+
+        for (const listener of unwatched) listener(session);
       };
     },
     subscribeAll(listener) {
@@ -40,6 +45,14 @@ export function createBus(): SessionBus {
 
       return () => {
         everyone.delete(listener);
+      };
+    },
+    watched: (session) => sessions.has(session),
+    onUnwatched(listener) {
+      unwatched.add(listener);
+
+      return () => {
+        unwatched.delete(listener);
       };
     },
   };

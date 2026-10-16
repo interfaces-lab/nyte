@@ -57,11 +57,19 @@ type Feeds = Pick<
 >;
 
 /** One session's publishing: the last seq on the bus, the highest this process logged, and the publishes in line. */
-type Sequence = { published: number | null; logged: number; queue: Promise<void> };
+type Sequence = {
+  published: number | null;
+  logged: number;
+  queue: Promise<void>;
+  linger: ReturnType<typeof setTimeout> | undefined;
+};
 
 const LOG_PAGE = 512;
 
 const FOLD_LINGER = 30_000;
+
+/** How long an unwatched session's publishing sequence outlives its last publish: long past any write of this process still on its way to the bus. */
+const PUBLISH_LINGER = 30_000;
 
 const NO_PAIRS: ReadonlyMap<HeadName, HeadPair> = new Map();
 
@@ -188,7 +196,11 @@ export async function publishSet(
   }
 
   for (const [session, events] of logged)
-    kernel.publisher.logged(session, Math.max(...events.map((event) => event.seq)));
+    kernel.publisher.logged(
+      session,
+      Math.min(...events.map((event) => event.seq)),
+      Math.max(...events.map((event) => event.seq)),
+    );
 
   for (const [session, events] of logged)
     await kernel.publisher.publish(
@@ -201,15 +213,41 @@ export async function publishSet(
 export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPublisher {
   const sessions = new Map<SessionId, Sequence>();
 
-  const sequence = (session: SessionId): Sequence => {
+  const sequence = (session: SessionId, published: number | null = null): Sequence => {
     const found = sessions.get(session);
 
     if (found !== undefined) return found;
-    const created: Sequence = { published: null, logged: 0, queue: Promise.resolve() };
+    const created: Sequence = {
+      published,
+      logged: 0,
+      queue: Promise.resolve(),
+      linger: undefined,
+    };
     sessions.set(session, created);
 
     return created;
   };
+
+  const idle = (session: SessionId, state: Sequence): boolean =>
+    sessions.get(session) === state &&
+    !kernel.bus.watched(session) &&
+    state.logged <= (state.published ?? 0);
+
+  const forget = (session: SessionId): void => {
+    const state = sessions.get(session);
+
+    if (state === undefined || !idle(session, state)) return;
+    const queue = state.queue;
+    clearTimeout(state.linger);
+
+    state.linger = setTimeout(() => {
+      if (state.queue === queue && idle(session, state)) sessions.delete(session);
+    }, PUBLISH_LINGER);
+
+    if (typeof state.linger === "object") state.linger.unref();
+  };
+
+  kernel.bus.onUnwatched(forget);
 
   const emit = (session: SessionId, state: Sequence, item: LoggedItem): void => {
     if (state.published !== null && item.event.seq <= state.published) return;
@@ -231,9 +269,9 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
   };
 
   return {
-    logged(session, seq) {
-      const state = sequence(session);
-      state.logged = Math.max(state.logged, seq);
+    logged(session, from, through) {
+      const state = sequence(session, from - 1);
+      state.logged = Math.max(state.logged, through);
     },
     loggedThrough: (session) => sessions.get(session)?.logged ?? 0,
     publish(session, items) {
@@ -251,6 +289,11 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
       });
 
       state.queue = published.catch(() => undefined);
+      const queued = state.queue;
+
+      void queued.then(() => {
+        if (state.queue === queued) forget(session);
+      });
 
       return published;
     },
