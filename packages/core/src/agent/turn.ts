@@ -54,6 +54,7 @@ import { calculateUsage, charge, providerContext, requestEvent, RETRY_POLICY } f
 import { executeCall } from "./tool-runner.ts";
 import type { ToolIntent } from "./tool-runner.ts";
 import { estimateTranscriptTokens, requestBody } from "./transcript.ts";
+import { followedTrace, startSpan, traced } from "../util/trace.ts";
 import { ZERO_USAGE } from "../util/usage.ts";
 
 type ThoughtSignature = {
@@ -185,6 +186,11 @@ async function turn(
       const runtime = kernel.plugins.runtime(session);
       context.holds.push({ runtime, release: runtime.hold() });
 
+      const ended = startSpan("turn.start", followedTrace(session), {
+        session,
+        attempt: asked.attempt,
+      });
+
       try {
         await runtime.ready;
         await awaitMcpServers(kernel, runtime, session, signal);
@@ -262,6 +268,8 @@ async function turn(
         };
       } catch (error) {
         return failedRequest(error instanceof Error ? error.message : String(error));
+      } finally {
+        ended();
       }
     },
 
@@ -279,6 +287,11 @@ async function turn(
 
       const thinkingLevel = prepared.request.thinking;
 
+      const streamed = startSpan("model.stream", followedTrace(session), {
+        session,
+        model: prepared.model.id,
+      });
+
       const events = models.streamSimple(prepared.model, prepared.context, {
         signal,
         reasoning: thinkingLevel === "off" ? undefined : thinkingLevel,
@@ -291,7 +304,11 @@ async function turn(
       return {
         events,
         settled: withLimits(kernel, models, prepared.model.provider, async () => {
-          await events.result();
+          try {
+            await events.result();
+          } finally {
+            streamed();
+          }
         }),
       };
     },
@@ -302,18 +319,20 @@ async function turn(
         if (id === undefined)
           throw new SdkError("internal", `Call ${call.id} ran before its response settled.`);
 
-        return executeCall(kernel, {
-          runtime: context.holds.at(-1)?.runtime ?? kernel.plugins.runtime(session),
-          session,
-          head,
-          run,
-          call: id,
-          name: call.name,
-          args: isJson(call.arguments) ? call.arguments : {},
-          argumentsError: call.argumentsError,
-          context: CALLER,
-          signal: called,
-        });
+        return traced("tool.run", followedTrace(session), { session, tool: call.name }, () =>
+          executeCall(kernel, {
+            runtime: context.holds.at(-1)?.runtime ?? kernel.plugins.runtime(session),
+            session,
+            head,
+            run,
+            call: id,
+            name: call.name,
+            args: isJson(call.arguments) ? call.arguments : {},
+            argumentsError: call.argumentsError,
+            context: CALLER,
+            signal: called,
+          }),
+        );
       },
     },
 

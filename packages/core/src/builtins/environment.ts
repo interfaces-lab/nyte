@@ -6,8 +6,12 @@ import type { ToolDefinition } from "../contract/tools.ts";
 import type { FilesApi } from "../contract/workspace.ts";
 import { textDigest } from "../util/content.ts";
 import { lineDiff } from "../util/line-diff.ts";
+import { followedTrace, traceparent, traced } from "../util/trace.ts";
 
 const READ_LINES = 2000;
+
+/** The file a skill's body lives in; reading one is how the model loads a skill. */
+const SKILL_FILE = "SKILL.md";
 
 const READ_CHARS = 50 * 1024;
 
@@ -86,7 +90,12 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
   replay: "safe",
   async execute(args, invocation) {
     const { files } = invocation.env;
-    const document = await files.read(args.path);
+
+    const document = args.path.endsWith(SKILL_FILE)
+      ? await traced("skill.load", followedTrace(invocation.session.id), { path: args.path }, () =>
+          files.read(args.path),
+        )
+      : await files.read(args.path);
 
     if (document.kind === "missing") return text(`${args.path} does not exist.`);
 
@@ -255,7 +264,14 @@ const bash: ToolDefinition<Infer<typeof bashParameters>> = {
   replay: "never",
   async execute(args, invocation) {
     const { env } = invocation;
-    const job = await env.exec(args.command, { cwd: env.cwd, signal: invocation.signal });
+    const trace = followedTrace(invocation.session.id);
+
+    const job = await env.exec(args.command, {
+      cwd: env.cwd,
+      signal: invocation.signal,
+      env: trace === null ? undefined : { TRACEPARENT: traceparent(trace) },
+    });
+
     const chunks: Uint8Array[] = [];
     let kept = 0;
     let dropped = 0;

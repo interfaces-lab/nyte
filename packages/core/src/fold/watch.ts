@@ -31,6 +31,7 @@ import { collectSessionEvents } from "../store/log.ts";
 import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
 import { EMPTY_REVISION, load } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
+import { followedTrace, startSpan, tracing } from "../util/trace.ts";
 import { emptyFold, fold } from "./fold.ts";
 import { withPair } from "./project.ts";
 
@@ -203,11 +204,24 @@ export async function publishSet(
       Math.max(...events.map((event) => event.seq)),
     );
 
-  for (const [session, events] of logged)
+  for (const [session, events] of logged) {
+    const created = tracing.enabled
+      ? events.flatMap((event) =>
+          event.kind === "part" && event.change === "created" ? [event.partKind] : [],
+        )
+      : [];
+
+    const ended =
+      created.length === 0
+        ? null
+        : startSpan("part.publish", followedTrace(session), { session, parts: created.join(",") });
+
     await kernel.publisher.publish(
       session,
       await paired(kernel, session, events, written.get(session) ?? NO_PAIRS),
     );
+    ended?.();
+  }
 }
 
 /** Returns the kernel's {@link LogPublisher} over `bus`, reading gaps from `store`'s log. */

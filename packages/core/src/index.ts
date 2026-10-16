@@ -105,6 +105,22 @@ export { dev } from "./util/dev-log.ts";
 
 export type { DevRow } from "./util/dev-log.ts";
 
+export {
+  clearSpans,
+  enableTracing,
+  followTrace,
+  followedTrace,
+  readSpans,
+  readTraceparent,
+  SPAN_NAMES,
+  startSpan,
+  traced,
+  traceparent,
+  tracing,
+} from "./util/trace.ts";
+
+export type { EndSpan, Span, SpanDetail, SpanName } from "./util/trace.ts";
+
 export { closable, coalesce } from "./util/iterable.ts";
 
 export { matchesOutput } from "./util/json-schema.ts";

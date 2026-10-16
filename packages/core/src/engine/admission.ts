@@ -51,6 +51,7 @@ import { collectContributions, refusalError } from "./contributions.ts";
 import { fence, finishFence } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
+import { followTrace, traced } from "../util/trace.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 interface Sending {
@@ -91,9 +92,14 @@ interface Keyed {
 }
 
 export async function send(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
-  await kernel.plugins.runtime(input.session).ready;
+  const id = input.options?.id ?? asId<"receipt">(crypto.randomUUID());
+  followTrace(input.session, id);
 
-  return sendNow(kernel, input);
+  return traced("host.admit", id, { session: input.session }, async () => {
+    await kernel.plugins.runtime(input.session).ready;
+
+    return sendNow(kernel, { ...input, options: { ...input.options, id } });
+  });
 }
 
 export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
