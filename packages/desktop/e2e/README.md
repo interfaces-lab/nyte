@@ -18,6 +18,7 @@ Playwright tests for the Electron e2e build (`out-e2e`), configured in `playwrig
 | `browser.spec.ts` | The integrated browser against a local HTTP server |
 | `remote-access.spec.ts` | Pairing a Chromium page with the desktop over Remote access |
 | `scenario-u.spec.ts` | Scenario U from the keyboard: skill, cold places MCP server, canvas, its link in the browser, an approved command, quit mid-answer, relaunch and resume; each hop's span against its budget |
+| `scenario-d.spec.ts` | Scenario D from the keyboard over a temp git repo and the CI MCP server: the skill's route, the 5 MiB log's tail, the canvas's file:line link in the editor and job link in the browser, a terminal rerun, commit and push, quit and resume with the frame compared, Changes from git and from the run's snapshots; each hop against its budget (`NYTE_WATERFALL_DIR` saves the waterfall) |
 
 The seeded home is built once by `baseline.ts` through `sdk.open` over the e2e catalog and cached under `e2e/.cache/<fingerprint>`. The fingerprint covers the baseline, the catalog, the store, core and the lockfile; a change to any of them rebuilds. Each chapter copies the cache into a temp `HOME`, so chapters never share state and run in any order. Closing a chapter's desktop fails if any process of its tree, the Nyte Host utility process or a child it spawned included, is still running 5 s after Electron quits.
 

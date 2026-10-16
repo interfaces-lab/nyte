@@ -1,7 +1,17 @@
 import { homedir } from "node:os";
+import { join } from "node:path";
 import process from "node:process";
-import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
-import type { Reply } from "@nyte-ai/host/bench";
+import {
+  CI_PROMPT,
+  ciScript,
+  fakeModels,
+  lastToolText,
+  lastUserText,
+  testModel,
+  titleReply,
+} from "@nyte-ai/host/bench";
+import type { Reply, Request, Script } from "@nyte-ai/host/bench";
+import { contentText, getCurrentTools } from "@nyte-ai/schema/model";
 import type { ToolResultMessage } from "@nyte-ai/schema/model";
 import type { ModelRef } from "@nyte-ai/schema";
 import { restaurantReplies, restaurantSkill } from "@nyte-ai/app/e2e/scenario-u-fixture";
@@ -129,7 +139,58 @@ function delegationStep(results: readonly ToolResultMessage[]): Reply {
   return { content: [{ type: "text", text: "Both agents are working in the background." }] };
 }
 
+/** Whether `request` belongs to a chat that opened with scenario D's message. */
+function ciChat(request: Request): boolean {
+  const first = request.context.messages.find((message) => message.role === "user");
+
+  return first?.role === "user" && contentText(first.content, "") === CI_PROMPT;
+}
+
+/**
+ * Answers scenario D ("why did CI fail on my PR, fix it") with the bench's
+ * script. The route follows the tools the first request lists, as the CI
+ * skill tells the model: the CI MCP server's when they are there, else `gh`.
+ * Each answered request prints a `NYTE_E2E_CI` line with what the model read
+ * last, so a test can check the model saw the failing tail of the job log.
+ */
+function ciAnswer(): (request: Request) => Reply | undefined {
+  let turns: Script | undefined;
+
+  return (request) => {
+    if (!ciChat(request)) return undefined;
+
+    if (request.context.messages.at(-1)?.role === "user") {
+      const listed = getCurrentTools(request.context.messages).some(
+        (tool) => tool.name === "mcp__ci__list_check_runs",
+      );
+
+      turns = ciScript({
+        skill: join(homedir(), ".agents", "skills", "ci-triage", "SKILL.md"),
+        route: listed ? "mcp" : "gh",
+      });
+    }
+
+    if (turns === undefined) return undefined;
+    const last = request.context.messages.at(-1);
+    const read = lastToolText(request);
+
+    console.log(
+      `NYTE_E2E_CI ${JSON.stringify({
+        tool: last?.role === "toolResult" ? last.toolName : (last?.role ?? null),
+        chars: read.length,
+        clipped: read.includes("characters cut from the middle"),
+        head: read.slice(0, 160),
+        tail: read.slice(-1_000),
+      })}`,
+    );
+
+    return turns.answer(request);
+  };
+}
+
 export function e2eModels() {
+  const ci = ciAnswer();
+
   const restaurant = restaurantReplies({
     skill: restaurantSkill(homedir()),
     origin: process.env.NYTE_E2E_PLACES_ORIGIN,
@@ -141,6 +202,9 @@ export function e2eModels() {
     name: "E2E",
     models: [testModel(E2E_MODEL.id, { name: "Scripted", provider: E2E_PROVIDER })],
     fallback: (request): Reply => {
+      const scripted = ci(request);
+
+      if (scripted !== undefined) return scripted;
       const pick = restaurant(request);
 
       if (pick !== null) return pick;
