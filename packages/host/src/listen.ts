@@ -160,6 +160,12 @@ function streamBody(incoming: IncomingMessage): ReadableStream<Uint8Array> {
 }
 
 async function write(response: Response, outgoing: ServerResponse): Promise<void> {
+  if (outgoing.destroyed) {
+    await response.body?.cancel().catch(() => undefined);
+
+    return;
+  }
+
   const headers: Record<string, string | string[]> = {};
 
   response.headers.forEach((value, name) => {
