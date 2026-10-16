@@ -159,6 +159,8 @@ export interface JobEntry {
 export interface JobOutput {
   open(): { next(): Promise<IteratorResult<OutputFrame>>; close(): void };
   push(bytes: Uint8Array): void;
+  /** Resolves once every reader of a flow-controlled output is within its queue limit; at once for a lossy one. */
+  drained(): Promise<void>;
   gap(): void;
   end(code: number | null): void;
   tail(): string;

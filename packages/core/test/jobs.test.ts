@@ -272,6 +272,37 @@ describe("jobs", () => {
     expect([tail?.length, tail?.endsWith("yend\n")]).toEqual([4096, true]);
   });
 
+  it("holds a user's shell for a slow reader instead of skipping its output", async () => {
+    const { host, provider, workspace } = await world();
+    const jobs = host.workspace(workspace).jobs;
+    const job = await jobs.start({ pty: { columns: 80, rows: 24 } });
+    const process = await started(provider.processes, 1);
+    const slow = job.output()[Symbol.asyncIterator]();
+    const first = slow.next();
+    const chunk = new Uint8Array(16 * 1024).fill(121);
+
+    process.emit("start\n");
+    assert(!(await first).done);
+
+    for (let index = 0; index < 8; index += 1) process.emit(chunk);
+    process.emit("end\n");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect((await jobs.list())[0]?.tail.endsWith("end\n")).toBe(false);
+
+    const sizes: number[] = [];
+
+    while (sizes.at(-1) !== 4) {
+      const next = await slow.next();
+      assert(!next.done && next.value.kind === "bytes");
+      sizes.push(next.value.data.byteLength);
+    }
+
+    expect(sizes).toEqual([...Array.from({ length: 8 }, () => 16 * 1024), 4]);
+    process.exit(0);
+    expect(await slow.next()).toEqual({ done: false, value: { kind: "exit", code: 0 } });
+  });
+
   it("recovers a pty job by key, writes, resizes and stops it; a pipe job answers not-pty", async () => {
     const { host, provider, workspace } = await world();
     const jobs = host.workspace(workspace).jobs;

@@ -388,7 +388,7 @@ async function spawn(
           startedBy: own ? origin.call : null,
         };
 
-  const output = createOutput();
+  const output = createOutput(input.pty !== undefined && input.session === undefined);
 
   kernel.jobs.add({
     view: {
@@ -442,7 +442,13 @@ export async function acquire<T extends { readonly id: string }>(
   return { kind: "recorded", id: winner };
 }
 
+/** Moves a job's process output into its readers, holding the next read while a flow-controlled output drains, until the process ends. */
 async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput): Promise<void> {
+  const exited = process.settled().then(
+    () => undefined,
+    () => undefined,
+  );
+
   try {
     for await (const frame of process.output()) {
       if (frame.kind === "exit") break;
@@ -455,6 +461,7 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
 
       output.push(frame.data);
       kernel.jobs.update(id, (view) => ({ ...view, tail: output.tail() }));
+      await Promise.race([output.drained(), exited]);
     }
   } catch {}
 
@@ -465,8 +472,15 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
   });
 }
 
-/** A job's output for its readers: each reader opens on the last 256 KiB (the scrollback a re-attached terminal shows) and then follows it live, a gap where it fell 64 KiB behind; the view's tail is the last 4 KiB as text. */
-function createOutput(): JobOutput {
+/**
+ * A job's output for its readers: each reader opens on the last 256 KiB (the
+ * scrollback a re-attached terminal shows) and then follows it live; the
+ * view's tail is the last 4 KiB as text. A reader 64 KiB behind gets a gap,
+ * unless the output is `flow`-controlled (a user's shell, which no session
+ * owns): then it misses nothing, and `drained` holds the job's pump, and so
+ * the pty, until the slowest reader is back under 64 KiB.
+ */
+function createOutput(flow: boolean): JobOutput {
   type Reader = {
     replay: OutputFrame[];
     frames: OutputFrame[];
@@ -480,6 +494,15 @@ function createOutput(): JobOutput {
   let cut = false;
   let exit: { readonly code: number | null } | null = null;
   const readers = new Set<Reader>();
+
+  const draining = new Set<() => void>();
+
+  const caughtUp = (): void => {
+    if ([...readers].some((reader) => reader.size > READER_BYTES)) return;
+
+    for (const resolve of draining) resolve();
+    draining.clear();
+  };
 
   const wake = (reader: Reader): void => {
     const resolve = reader.wake;
@@ -523,6 +546,7 @@ function createOutput(): JobOutput {
 
             if (frame !== undefined) {
               if (frame.kind === "bytes") reader.size -= frame.data.byteLength;
+              caughtUp();
 
               return { done: false, value: frame };
             }
@@ -538,6 +562,7 @@ function createOutput(): JobOutput {
           closed = true;
           readers.delete(reader);
           wake(reader);
+          caughtUp();
         },
       };
     },
@@ -562,7 +587,7 @@ function createOutput(): JobOutput {
       }
 
       for (const reader of readers) {
-        if (reader.size + bytes.byteLength > READER_BYTES) {
+        if (!flow && reader.size + bytes.byteLength > READER_BYTES) {
           reader.missed = true;
 
           continue;
@@ -574,6 +599,11 @@ function createOutput(): JobOutput {
         reader.size += bytes.byteLength;
         wake(reader);
       }
+    },
+    drained() {
+      if ([...readers].every((reader) => reader.size <= READER_BYTES)) return Promise.resolve();
+
+      return new Promise<void>((resolve) => draining.add(resolve));
     },
     gap() {
       cut = true;
@@ -595,6 +625,7 @@ function createOutput(): JobOutput {
       readers.clear();
 
       for (const reader of ended) wake(reader);
+      caughtUp();
     },
     tail() {
       const text = new TextDecoder().decode(last(TAIL_BYTES));

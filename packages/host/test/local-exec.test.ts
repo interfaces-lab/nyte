@@ -183,6 +183,47 @@ describe("localExec where the pty module does not load (§41a)", () => {
   });
 });
 
+describe("localExec over a pty module", () => {
+  it("pauses the pty while its slowest reader is 256 KiB behind and resumes it within 64 KiB", async () => {
+    const paced: string[] = [];
+    let data: (text: string) => void = () => undefined;
+
+    const loadPty = () => ({
+      spawn: () => ({
+        onData: (listener: (text: string) => void) => {
+          data = listener;
+        },
+        onExit: () => undefined,
+        pause: () => paced.push("pause"),
+        resume: () => paced.push("resume"),
+        write: () => undefined,
+        resize: () => undefined,
+        kill: () => undefined,
+      }),
+    });
+
+    const job = await localExec(await folder(), { loadPty })([], {
+      pty: { columns: 80, rows: 24 },
+    });
+    const reader = job.output()[Symbol.asyncIterator]();
+    const chunk = "y".repeat(32 * 1024);
+    data(chunk);
+    await reader.next();
+
+    for (let index = 0; index < 9; index += 1) data(chunk);
+
+    expect(paced).toEqual(["pause"]);
+
+    for (let index = 0; index < 7; index += 1) await reader.next();
+
+    expect(paced).toEqual(["pause"]);
+    await reader.next();
+
+    expect(paced).toEqual(["pause", "resume"]);
+    await reader.return?.();
+  });
+});
+
 describe.skipIf(!ptyLoads)("localExec in a pty", () => {
   it("runs a command in a terminal, resizes it, and reports its exit", async () => {
     const exec = localExec(await folder());
