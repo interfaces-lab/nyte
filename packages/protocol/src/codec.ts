@@ -1,34 +1,60 @@
-import { IsSchema } from "typebox";
-import type { TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
+import { Guard } from "typebox/guard";
 import { OPERATIONS } from "@nyte-ai/schema";
 import type { Declaration, Json, Schema, ValidationIssue } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import type { OperationInput, OperationName, OperationOutput } from "./declarations.ts";
-import { isRecord } from "./json.ts";
 
 type Node = { readonly [key: string]: unknown };
 
-type Member = TSchema & Node;
-
-type Definitions = Readonly<Record<string, Member>>;
+type Definitions = Readonly<Record<string, Node>>;
 
 type Path = readonly (string | number)[];
+
+/** A schema node compiled once into what the walks read: `inert` where no walk changes or rejects a valid value, `composite` for an object, array or record, `choice` for a union. */
+type Plan = Inert | Composite | Choice;
+
+type Inert = { readonly form: "inert" };
+
+type Composite = {
+  readonly form: "composite";
+  readonly properties: Map<string, Plan> | null;
+  rest: Plan | null;
+  items: Plan | null;
+  itemKinds: ReadonlySet<string> | null;
+  readonly nulled: string[];
+};
+
+type Choice = {
+  readonly form: "choice";
+  readonly members: Candidate[];
+  readonly kinded: Map<string, readonly Candidate[]>;
+  readonly unkinded: Candidate[];
+};
+
+type Candidate = {
+  readonly plan: Plan;
+  readonly kinds: ReadonlySet<string> | null;
+  readonly check: (value: unknown) => boolean;
+};
+
+const INERT: Inert = { form: "inert" };
+
+const PRIMITIVE_TYPES = new Set(["string", "number", "integer", "boolean", "null"]);
 
 const rows: {
   readonly [N in OperationName]: Declaration<OperationInput<N>, OperationOutput<N>>;
 } = OPERATIONS;
 
-const validators = new WeakMap<object, Validator>();
-
-const kinds = new WeakMap<Node, ReadonlySet<string> | null>();
+const plans = new WeakMap<Schema<unknown>, Plan>();
 
 /** Decodes an operation's input strictly: a value failing the row's input schema, or carrying a field the schema does not name, throws `SdkError("invalid")` with its issues. */
 export function decodeInput<N extends OperationName>(name: N, value: unknown): OperationInput<N> {
   const schema = rows[name].input;
   const input = validated(schema, value);
-  const unknown = unknownFields(schema, value);
+  const unknown: Path[] = [];
+  collect(plan(schema), value, [], unknown);
 
   if (unknown.length > 0)
     throw new SdkError("invalid", `${name} does not take ${unknown.map(pointer).join(", ")}.`, {
@@ -45,27 +71,17 @@ export function encodeInput<N extends OperationName>(_name: N, input: OperationI
 
 /** Encodes an operation's output, or one frame of it, as the JSON the wire carries: `Set`s become arrays, `Map`s objects and bytes base64; fields its schema does not name are stripped; an undefined field is omitted, or null where the schema requires it and accepts null (`part.act`'s output, §40f). */
 export function encodeOutput<N extends OperationName>(name: N, value: OperationOutput<N>): Json {
-  const json = toJson(value) ?? null;
-  const { node, definitions } = rootOf(rows[name].output);
-
-  return strip(node, definitions, json);
+  return encode(plan(rows[name].output), value) ?? null;
 }
 
 /** Decodes an operation's output, or one frame of it, leniently: unknown fields are ignored and array records of an unknown kind skipped; a value that still fails throws `SdkError("invalid")`, which a stream reader skips. Wire forms stay wire forms: the sdk rebuilds `Set`s and `Map`s. */
 export function decodeOutput<N extends OperationName>(name: N, value: unknown): OperationOutput<N> {
   const schema = rows[name].output;
-  const { node, definitions } = rootOf(schema);
+  const result = schema["~standard"].validate(value);
 
-  return validated(schema, known(node, definitions, value));
-}
+  if (!(result instanceof Promise) && result.issues === undefined) return result.value;
 
-/** Returns the paths of every field a value carries that its schema does not name, at every object level: what strict input rejects. The value is read along the union member it validates against. */
-export function unknownFields(schema: Schema<unknown>, value: unknown): readonly Path[] {
-  const { node, definitions } = rootOf(schema);
-  const found: Path[] = [];
-  collect(node, definitions, value, [], found);
-
-  return found;
+  return validated(schema, known(plan(schema), value));
 }
 
 function validated<T>(schema: Schema<T>, value: unknown): T {
@@ -88,131 +104,244 @@ function validated<T>(schema: Schema<T>, value: unknown): T {
   throw new SdkError(
     "invalid",
     issues.map((issue) => `${pointer(issue.path)}: ${issue.message}`).join("; "),
-    {
-      issues,
-    },
+    { issues },
   );
 }
 
-function rootOf(schema: Schema<unknown>): {
-  readonly node: Node;
-  readonly definitions: Definitions;
-} {
-  return {
-    node: schema["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
-    definitions: {},
-  };
+function plan(schema: Schema<unknown>): Plan {
+  const cached = plans.get(schema);
+
+  if (cached !== undefined) return cached;
+
+  const built = compilePlan(
+    schema["~standard"].jsonSchema.input({ target: "draft-2020-12" }),
+    {},
+    new Map(),
+  );
+
+  plans.set(schema, built);
+
+  return built;
 }
 
-function collect(start: Node, scope: Definitions, value: unknown, path: Path, found: Path[]): void {
+function compilePlan(start: Node, scope: Definitions, memo: Map<Node, Plan>): Plan {
   const resolved = resolve(start, scope);
 
-  if (resolved === null) return;
+  if (resolved === null) return INERT;
   const { node, definitions } = resolved;
-  const members = node.anyOf;
+  const cached = memo.get(node);
 
-  if (Array.isArray(members)) {
-    const member = memberOf(members, definitions, value);
+  if (cached !== undefined) return cached;
 
-    if (member !== null) collect(member, definitions, value, path, found);
+  if (Guard.IsArray(node.anyOf)) {
+    const choice: Choice = { form: "choice", members: [], kinded: new Map(), unkinded: [] };
+    memo.set(node, choice);
+
+    for (const entry of node.anyOf) {
+      const member = readNode(entry);
+
+      if (member === null) continue;
+      let validator: Validator | null = null;
+      choice.members.push({
+        plan: compilePlan(member, definitions, memo),
+        kinds: readKinds(member, definitions, new Map()),
+        check: (value) => (validator ??= Compile(definitions, member)).Check(value),
+      });
+    }
+
+    if (choice.members.every((candidate) => candidate.plan === INERT)) {
+      memo.set(node, INERT);
+
+      return INERT;
+    }
+
+    const kinds = new Set(choice.members.flatMap((candidate) => [...(candidate.kinds ?? [])]));
+
+    for (const kind of kinds)
+      choice.kinded.set(
+        kind,
+        choice.members.filter((candidate) => candidate.kinds?.has(kind) ?? true),
+      );
+    choice.unkinded.push(...choice.members.filter((candidate) => candidate.kinds === null));
+
+    return choice;
+  }
+
+  if (typeof node.type === "string" && PRIMITIVE_TYPES.has(node.type)) {
+    memo.set(node, INERT);
+
+    return INERT;
+  }
+
+  const declared = readNode(node.properties);
+  const properties = declared === null ? null : new Map<string, Plan>();
+
+  const composite: Composite = {
+    form: "composite",
+    properties,
+    rest: null,
+    items: null,
+    itemKinds: null,
+    nulled: [],
+  };
+
+  memo.set(node, composite);
+
+  for (const [key, property] of Object.entries(declared ?? {})) {
+    const child = readNode(property);
+
+    if (child !== null) properties?.set(key, compilePlan(child, definitions, memo));
+  }
+
+  const rest = readRest(node);
+  composite.rest = rest === null ? null : compilePlan(rest, definitions, memo);
+  const items = readNode(node.items);
+
+  if (items !== null) {
+    composite.items = compilePlan(items, definitions, memo);
+    composite.itemKinds = readKinds(items, definitions, new Map());
+  }
+
+  for (const key of Guard.IsArray(node.required) ? node.required : []) {
+    if (typeof key !== "string" || declared === null || !Object.hasOwn(declared, key)) continue;
+    const property = readNode(declared[key]);
+
+    if (property !== null && accepts(property, definitions)) composite.nulled.push(key);
+  }
+
+  return composite;
+}
+
+function collect(plan: Plan, value: unknown, path: Path, found: Path[]): void {
+  if (plan.form === "inert") return;
+
+  if (plan.form === "choice") {
+    const member = select(plan, value);
+
+    if (member !== null) collect(member, value, path, found);
 
     return;
   }
 
-  if (Array.isArray(value)) {
-    if (isNode(node.items))
-      for (const [index, item] of value.entries())
-        collect(node.items, definitions, item, [...path, index], found);
+  if (Guard.IsArray(value)) {
+    const { items } = plan;
+
+    if (items !== null)
+      for (const [index, item] of value.entries()) collect(items, item, [...path, index], found);
 
     return;
   }
 
   if (typeof value !== "object" || value === null) return;
-  const rest = restOf(node);
 
   for (const [key, field] of Object.entries(value)) {
-    const known = propertyOf(node, key);
+    const known = plan.properties?.get(key) ?? plan.rest;
 
-    if (known !== null) collect(known, definitions, field, [...path, key], found);
-    else if (rest !== null) collect(rest, definitions, field, [...path, key], found);
-    else found.push([...path, key]);
+    if (known === null) found.push([...path, key]);
+    else collect(known, field, [...path, key], found);
   }
 }
 
-function strip(start: Node, scope: Definitions, value: Json): Json {
-  const resolved = resolve(start, scope);
+function encode(plan: Plan, value: unknown): Json | undefined {
+  if (plan.form === "inert" || value instanceof Uint8Array) return toJson(value);
 
-  if (resolved === null) return value;
-  const { node, definitions } = resolved;
-  const members = node.anyOf;
+  if (plan.form === "choice") {
+    if (!(value instanceof Map)) {
+      const candidates = candidatesFor(plan, readKind(value));
+      const [only] = candidates;
 
-  if (Array.isArray(members)) {
-    const member = memberOf(members, definitions, value);
+      if (candidates.length === 0) return toJson(value);
 
-    return member === null ? value : strip(member, definitions, value);
+      if (candidates.length === 1 && only !== undefined) return encode(only.plan, value);
+    }
+
+    const json = toJson(value);
+
+    if (json === undefined) return undefined;
+    const member = select(plan, json);
+
+    return member === null ? json : encode(member, json);
   }
 
-  const items = node.items;
+  if (Guard.IsArray(value) || value instanceof Set) {
+    const { items } = plan;
 
-  if (Array.isArray(value))
-    return isNode(items) ? value.map((item) => strip(items, definitions, item)) : value;
+    return items === null
+      ? toJson(value)
+      : Array.from(value, (item: unknown) => encode(items, item) ?? null);
+  }
 
-  if (!isRecord(value)) return value;
-  const rest = restOf(node);
+  if (typeof value !== "object" || value === null) return toJson(value);
+  const { properties, rest } = plan;
 
-  if (!isNode(node.properties) && rest === null) return value;
+  if (properties === null && rest === null) return toJson(value);
+  const record: { [key: string]: Json } = {};
 
-  const kept = Object.entries(value).flatMap(([key, field]): [string, Json][] => {
-    const known = propertyOf(node, key) ?? rest;
+  const keep = (key: string, item: unknown) => {
+    const target = properties?.get(key) ?? rest;
+    const json = target === null ? undefined : encode(target, item);
 
-    return known === null ? [] : [[key, strip(known, definitions, field)]];
-  });
+    if (json !== undefined) put(record, key, json);
+  };
 
-  const required = Array.isArray(node.required) ? node.required : [];
+  if (value instanceof Map) for (const [key, item] of value) keep(String(key), item);
+  else if (Guard.IsObjectNotArray(value))
+    for (const key of Object.keys(value)) keep(key, value[key]);
 
-  const absent = required.flatMap((key): [string, Json][] => {
-    if (typeof key !== "string" || Object.hasOwn(value, key)) return [];
-    const known = propertyOf(node, key);
+  for (const key of plan.nulled) if (!Object.hasOwn(record, key)) put(record, key, null);
 
-    return known !== null && nullable(known, definitions) ? [[key, null]] : [];
-  });
-
-  return Object.fromEntries([...kept, ...absent]);
+  return record;
 }
 
-function known(start: Node, scope: Definitions, value: unknown): unknown {
-  const resolved = resolve(start, scope);
+function known(plan: Plan, value: unknown): unknown {
+  if (plan.form === "inert") return value;
 
-  if (resolved === null) return value;
-  const { node, definitions } = resolved;
-  const members = node.anyOf;
+  if (plan.form === "choice") {
+    const member = select(plan, value);
 
-  if (Array.isArray(members)) {
-    const member = memberOf(members, definitions, value);
-
-    return member === null ? value : known(member, definitions, value);
+    return member === null ? value : known(member, value);
   }
 
-  if (Array.isArray(value)) {
-    const items = node.items;
+  if (Guard.IsArray(value)) {
+    const { items, itemKinds } = plan;
 
-    if (!isNode(items)) return value;
-    const kinds = kindsOf(items, definitions);
+    if (items === null) return value;
 
     return value
-      .filter((item) => kinds === null || !isKinded(item) || kinds.has(item.kind))
-      .map((item) => known(items, definitions, item));
+      .filter((item) => {
+        const kind = readKind(item);
+
+        return itemKinds === null || kind === undefined || itemKinds.has(kind);
+      })
+      .map((item) => known(items, item));
   }
 
-  if (typeof value !== "object" || value === null || !isNode(node.properties)) return value;
+  const { properties } = plan;
+
+  if (typeof value !== "object" || value === null || properties === null) return value;
 
   return Object.fromEntries(
     Object.entries(value).map(([key, field]) => {
-      const property = propertyOf(node, key);
+      const property = properties.get(key);
 
-      return [key, property === null ? field : known(property, definitions, field)];
+      return [key, property === undefined ? field : known(property, field)];
     }),
   );
+}
+
+function select(choice: Choice, value: unknown): Plan | null {
+  const candidates = candidatesFor(choice, readKind(value));
+  const [only] = candidates;
+
+  if (candidates.length === 1 && only !== undefined) return only.plan;
+
+  return candidates.find((candidate) => candidate.check(value))?.plan ?? null;
+}
+
+function candidatesFor(choice: Choice, kind: string | undefined): readonly Candidate[] {
+  if (kind === undefined) return choice.members;
+
+  return choice.kinded.get(kind) ?? choice.unkinded;
 }
 
 function resolve(
@@ -223,15 +352,20 @@ function resolve(
   let definitions = scope;
 
   for (;;) {
-    if (isNode(node.$defs))
-      definitions = {
-        ...definitions,
-        ...Object.fromEntries(
-          Object.entries(node.$defs).flatMap(([key, entry]) =>
-            isMember(entry) ? [[key, entry]] : [],
-          ),
-        ),
-      };
+    const local = readNode(node.$defs);
+
+    if (local !== null) {
+      const merged: Record<string, Node> = Object.assign({}, definitions);
+
+      for (const [key, entry] of Object.entries(local)) {
+        const definition = readNode(entry);
+
+        if (definition !== null) merged[key] = definition;
+      }
+
+      definitions = merged;
+    }
+
     const ref = node.$ref;
 
     if (typeof ref !== "string") return { node, definitions };
@@ -244,69 +378,52 @@ function resolve(
   }
 }
 
-function memberOf(
-  members: readonly unknown[],
-  definitions: Definitions,
-  value: unknown,
-): Node | null {
-  const kind = isKinded(value) ? value.kind : undefined;
-
-  const candidates = members.filter(
-    (member): member is Member =>
-      isMember(member) && (kind === undefined || (kindsOf(member, definitions)?.has(kind) ?? true)),
-  );
-
-  if (candidates.length === 1) return candidates[0] ?? null;
-
-  return candidates.find((member) => validatorOf(member, definitions).Check(value)) ?? null;
-}
-
-function kindsOf(start: Node, scope: Definitions): ReadonlySet<string> | null {
-  const known = kinds.get(start);
-
-  if (known !== undefined) return known;
-  const found = kindsIn(start, scope);
-  kinds.set(start, found);
-
-  return found;
-}
-
-function kindsIn(start: Node, scope: Definitions): ReadonlySet<string> | null {
+function readKinds(
+  start: Node,
+  scope: Definitions,
+  seen: Map<Node, ReadonlySet<string> | null>,
+): ReadonlySet<string> | null {
   const resolved = resolve(start, scope);
 
   if (resolved === null) return null;
   const { node, definitions } = resolved;
 
-  if (Array.isArray(node.anyOf)) {
-    const sets = node.anyOf.map((member) => (isNode(member) ? kindsOf(member, definitions) : null));
+  if (seen.has(node)) return seen.get(node) ?? null;
+  seen.set(node, null);
 
-    return sets.every((set) => set !== null)
+  if (Guard.IsArray(node.anyOf)) {
+    const sets = node.anyOf.map((member) => {
+      const child = readNode(member);
+
+      return child === null ? null : readKinds(child, definitions, seen);
+    });
+
+    const kinds = sets.every((set) => set !== null)
       ? new Set(sets.flatMap((set) => [...(set ?? [])]))
       : null;
+
+    seen.set(node, kinds);
+
+    return kinds;
   }
 
-  const kind = isNode(node.properties) ? node.properties.kind : undefined;
+  const kind = readNode(readNode(node.properties)?.kind);
 
-  if (!isNode(kind)) return null;
+  if (kind === null) return null;
 
-  if (typeof kind.const === "string") return new Set([kind.const]);
+  const kinds =
+    typeof kind.const === "string"
+      ? new Set([kind.const])
+      : Guard.IsArray(kind.enum) && kind.enum.every((entry) => typeof entry === "string")
+        ? new Set(kind.enum)
+        : null;
 
-  return Array.isArray(kind.enum) && kind.enum.every((entry) => typeof entry === "string")
-    ? new Set(kind.enum)
-    : null;
+  seen.set(node, kinds);
+
+  return kinds;
 }
 
-function validatorOf(member: Member, definitions: Definitions): Validator {
-  const known = validators.get(member);
-
-  if (known !== undefined) return known;
-  const validator = Compile(definitions, member);
-  validators.set(member, validator);
-
-  return validator;
-}
-
-function nullable(start: Node, scope: Definitions): boolean {
+function accepts(start: Node, scope: Definitions): boolean {
   if (start.$ref === "Json") return true;
   const resolved = resolve(start, scope);
 
@@ -316,19 +433,25 @@ function nullable(start: Node, scope: Definitions): boolean {
   if (node.type === "null") return true;
 
   return (
-    Array.isArray(node.anyOf) &&
-    node.anyOf.some((member) => isNode(member) && nullable(member, definitions))
+    Guard.IsArray(node.anyOf) &&
+    node.anyOf.some((member) => {
+      const child = readNode(member);
+
+      return child !== null && accepts(child, definitions);
+    })
   );
 }
 
-function restOf(node: Node): Node | null {
-  if (isNode(node.additionalProperties)) return node.additionalProperties;
-  const patterns = node.patternProperties;
+function readRest(node: Node): Node | null {
+  const additional = readNode(node.additionalProperties);
 
-  if (!isNode(patterns)) return null;
+  if (additional !== null) return additional;
+  const patterns = readNode(node.patternProperties);
+
+  if (patterns === null) return null;
   const [first] = Object.values(patterns);
 
-  return isNode(first) ? first : null;
+  return readNode(first);
 }
 
 function toJson(value: unknown): Json | undefined {
@@ -339,47 +462,45 @@ function toJson(value: unknown): Json | undefined {
   if (value instanceof Uint8Array)
     return btoa(Array.from(value, (byte) => String.fromCharCode(byte)).join(""));
 
-  if (value instanceof Set) return [...value].map((item) => toJson(item) ?? null);
+  if (value instanceof Set) return Array.from(value, (item: unknown) => toJson(item) ?? null);
 
-  if (value instanceof Map)
-    return Object.fromEntries(
-      [...value].flatMap(([key, item]) => {
-        const json = toJson(item);
-
-        return json === undefined ? [] : [[String(key), json]];
-      }),
-    );
-
-  if (Array.isArray(value)) return value.map((item) => toJson(item) ?? null);
+  if (Guard.IsArray(value)) return value.map((item) => toJson(item) ?? null);
 
   if (typeof value !== "object") return undefined;
+  const record: { [key: string]: Json } = {};
 
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([key, item]) => {
-      const json = toJson(item);
+  const keep = (key: string, item: unknown) => {
+    const json = toJson(item);
 
-      return json === undefined ? [] : [[key, json]];
-    }),
-  );
+    if (json !== undefined) put(record, key, json);
+  };
+
+  if (value instanceof Map) for (const [key, item] of value) keep(String(key), item);
+  else if (Guard.IsObjectNotArray(value))
+    for (const key of Object.keys(value)) keep(key, value[key]);
+
+  return record;
 }
 
-function propertyOf(node: Node, key: string): Node | null {
-  const properties = node.properties;
-  const property = isNode(properties) && Object.hasOwn(properties, key) ? properties[key] : null;
-
-  return isNode(property) ? property : null;
+function put(record: { [key: string]: Json }, key: string, json: Json): void {
+  if (key === "__proto__")
+    Object.defineProperty(record, key, {
+      value: json,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  else record[key] = json;
 }
 
-function isNode(value: unknown): value is Node {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function readNode(value: unknown): Node | null {
+  return Guard.IsObjectNotArray(value) ? value : null;
 }
 
-function isMember(value: unknown): value is Member {
-  return IsSchema(value) && isNode(value);
-}
+function readKind(value: unknown): string | undefined {
+  const kind = Guard.IsObjectNotArray(value) ? value.kind : undefined;
 
-function isKinded(value: unknown): value is { readonly kind: string } {
-  return isNode(value) && typeof value.kind === "string";
+  return typeof kind === "string" ? kind : undefined;
 }
 
 function pointer(path: Path): string {
