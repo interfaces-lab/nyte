@@ -183,6 +183,7 @@ function view(
     messages: [...messages, ...extra],
     parts: [],
     turns: [...turns, ...extraTurns],
+    usage: USAGE,
     execution: { kind: "live", run: liveRun, phase: "responding", stopping: false },
     background: [],
     configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
@@ -446,7 +447,7 @@ async function firstPaintedRows(container: HTMLElement): Promise<Stage> {
   for (;;) {
     await painted();
     const viewport = container.querySelector<HTMLElement>("[aria-label='Messages']");
-    const log = container.querySelector<HTMLElement>("[role='log']");
+    const log = container.querySelector<HTMLElement>("[aria-label='Messages'] > div");
     const dock = container.querySelector<HTMLElement>(
       "[aria-label='Conversation input']",
     )?.parentElement;

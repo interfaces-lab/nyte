@@ -14,7 +14,7 @@ export function composer(page: Page): Locator {
 }
 
 export function messages(page: Page): Locator {
-  return page.getByRole("region", { name: "Messages" }).getByRole("log");
+  return page.getByRole("region", { name: "Messages" });
 }
 
 export function chatTab(page: Page, name: string): Locator {

@@ -371,11 +371,7 @@ function Stage({
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
           <PaneControllerProvider controller={panes}>
             <SessionDndProvider>
-              {layer === "composer" ? (
-                <LoneComposer state={state} />
-              ) : (
-                <ThreadScreen />
-              )}
+              {layer === "composer" ? <LoneComposer state={state} /> : <ThreadScreen />}
             </SessionDndProvider>
           </PaneControllerProvider>
         </TooltipProvider>
@@ -439,7 +435,8 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
   if (state.view !== undefined)
     await until(
       () =>
-        layer === "composer" || stage.querySelector("[role='log'] [data-message-id]") !== null
+        layer === "composer" ||
+        stage.querySelector("[aria-label='Messages'] [data-message-id]") !== null
           ? true
           : null,
       "the transcript",

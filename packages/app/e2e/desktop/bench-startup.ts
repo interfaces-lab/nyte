@@ -320,7 +320,7 @@ async function waitForComposer(page: Page, expected: StartupFixture["expected"])
       if (
         scenario.kind === "chat" &&
         !document
-          .querySelector('[aria-label="Messages"] [role="log"]')
+          .querySelector('[aria-label="Messages"]')
           ?.textContent?.includes(scenario.lastMessage)
       )
         return false;

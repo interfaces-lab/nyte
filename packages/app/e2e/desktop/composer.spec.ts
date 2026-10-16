@@ -27,7 +27,7 @@ test("the composer journey", async ({ desktop }) => {
     await page.keyboard.type("Second line");
     await expect(field.locator("br")).toHaveCount(1);
     await expect(field).toHaveText("First lineSecond line");
-    await expect(chatPane(page).getByRole("log")).toHaveCount(0);
+    await expect(chatPane(page).getByRole("region", { name: "Messages" })).toHaveCount(0);
     await clearComposer(page);
   });
 

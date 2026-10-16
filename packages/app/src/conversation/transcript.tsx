@@ -441,7 +441,6 @@ export const TranscriptContent = memo(function TranscriptContent({
           content.current = element;
           virtualizer.containerRef(element);
         }}
-        role="log"
         {...props(text.lg, messageScrollerStyles.content)}
       >
         {virtualizer.getVirtualItems().map((virtualItem) => {

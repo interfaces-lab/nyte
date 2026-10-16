@@ -11,7 +11,9 @@ test("the navigation journey", async ({ desktop }) => {
     await expect(chatRow(page, FIXTURES.alpha)).toHaveAccessibleName(/^Unread /u);
     await openChat(page, FIXTURES.alpha);
     await expect(chatRow(page, FIXTURES.alpha)).not.toHaveAccessibleName(/^Unread /u);
-    await expect(chatPane(page).getByRole("log")).toContainText("Echo: Hello from alpha");
+    await expect(chatPane(page).getByRole("region", { name: "Messages" })).toContainText(
+      "Echo: Hello from alpha",
+    );
   });
 
   await test.step("Go back and Go forward walk the tab's history", async () => {

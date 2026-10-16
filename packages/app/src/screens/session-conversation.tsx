@@ -7,6 +7,7 @@ import { threadStyles } from "./thread.stylex.ts";
 import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { Revision, SessionId, SessionInfo, SessionView, UserContent } from "@nyte-ai/sdk";
@@ -139,6 +140,26 @@ type SessionConversationProps =
       readonly sessionId: SessionId;
       readonly onOpenSubagentTray: (sessionId: SessionId) => void;
     };
+
+/**
+ * One stable, polite status line for the run. The transcript is virtualized,
+ * so its rows can't announce themselves: they would repeat as they remount.
+ */
+function RunAnnouncer({ working }: { readonly working: boolean }): ReactElement {
+  const [shown, setShown] = useState(working);
+  const [message, setMessage] = useState("");
+
+  if (working !== shown) {
+    setShown(working);
+    setMessage(working ? "Nyte is responding" : "Response finished");
+  }
+
+  return (
+    <div role="status" {...props(srOnly)}>
+      {message}
+    </div>
+  );
+}
 
 /**
  * From the composer, PageUp and PageDown page the transcript, as they do in
@@ -430,6 +451,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
           <div ref={setColumn} {...props(threadStyles.conversation)}>
             <TranscriptProvider paneId={paneId} sessionId={sessionId} viewportRef={setScroll}>
               {presentation === "full" && <ComposerPaging column={column} />}
+              {presentation === "full" && <RunAnnouncer working={working} />}
               <Timeline
                 sessionId={sessionId}
                 changes={view?.changes ?? NO_CHANGES}
