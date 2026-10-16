@@ -1,4 +1,3 @@
-import type { Json } from "@nyte-ai/sdk";
 import { keycap } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
 import type { PowerlineState } from "../lib/format.ts";
@@ -40,10 +39,6 @@ function basename(path: string): string {
   return path.replace(/\/+$/u, "").split("/").at(-1) ?? path;
 }
 
-function sameJson(left: Json, right: Json): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 export function footerFor(state: State, queued: number): FooterModel {
   const session = state.facts.session;
   const view = session?.view ?? null;
@@ -51,7 +46,9 @@ export function footerFor(state: State, queued: number): FooterModel {
   const context = view?.context;
 
   const badges = (view?.catalog.settings ?? []).flatMap((setting) => {
-    const badge = setting.choices?.find((choice) => sameJson(choice.value, setting.value))?.badge;
+    const badge = setting.choices?.find(
+      (choice) => JSON.stringify(choice.value) === JSON.stringify(setting.value),
+    )?.badge;
 
     return badge === undefined ? [] : [badge];
   });
@@ -81,7 +78,30 @@ function hintText(hint: Hint): string {
   return `${hint.keycap} ${hint.label}`;
 }
 
+/** The hints `hintsFor` last fitted, by the inputs they were fitted from. */
+let fitted: { readonly key: string; readonly hints: readonly Hint[] } | null = null;
+
+/**
+ * The footer hints for these interactions at this width. Fitting measures every hint, and the
+ * inputs rarely change between frames, so the last result is kept by what it was fitted from.
+ */
 export function hintsFor(interactions: Interactions, width: number): readonly Hint[] {
+  const key = HINT_ORDER.reduce((built, { command }) => {
+    const interaction = interactions[command];
+
+    return interaction.intent === null || interaction.hidden
+      ? `${built}\u0000`
+      : `${built}\u0000${interaction.label}\u0001`;
+  }, String(width));
+
+  if (fitted?.key === key) return fitted.hints;
+  const hints = fitHints(interactions, width);
+  fitted = { key, hints };
+
+  return hints;
+}
+
+function fitHints(interactions: Interactions, width: number): readonly Hint[] {
   const interruptShown =
     interactions["chat.interrupt"].intent !== null && !interactions["chat.interrupt"].hidden;
 
