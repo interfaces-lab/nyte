@@ -147,7 +147,18 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/core/src/**", "packages/sdk/src/**"],
+      files: [
+        "packages/canvas/**",
+        "packages/connect-worker/**",
+        "packages/core/src/**",
+        "packages/demo/**",
+        "packages/host/**",
+        "packages/lab/**",
+        "packages/mobile/**",
+        "packages/protocol/**",
+        "packages/sdk/**",
+        "packages/service/**",
+      ],
       rules: {
         "nyte-code/no-of-lookup-names": "error",
       },
