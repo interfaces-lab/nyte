@@ -32,6 +32,9 @@ import type { HostWindow } from "./host.ts";
  */
 const WARM_POOL_LIMIT = 6;
 
+/** JPEG quality of the still frame shown under an overlay. */
+const FRAME_QUALITY = 80;
+
 function readOwner(path: string | null): BrowserOwner {
   return path === null ? { kind: "home" } : { kind: "project", path };
 }
@@ -364,8 +367,10 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   }
 
   /**
-   * The page's current pixels as a data URL, captured without showing the view. `stayHidden`
-   * keeps a hidden page from flashing into view and lets an occluded page answer with its last pixels.
+   * The page's current pixels as a JPEG data URL at the view's size in points, captured without
+   * showing the view. The still frame sits under a scrim while an overlay covers the page, so device
+   * pixels and lossless encoding buy nothing there. `stayHidden` keeps a hidden page from flashing
+   * into view and lets an occluded page answer with its last pixels.
    */
   async captureFrame(input: { readonly surface: string }): Promise<string | undefined> {
     const surface = this.#surfaces.get(input.surface);
@@ -378,7 +383,11 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     try {
       const image = await contents.capturePage(undefined, { stayHidden: true });
 
-      return image.isEmpty() ? undefined : image.toDataURL();
+      if (image.isEmpty()) return undefined;
+      const width = Math.min(image.getSize().width, surface.view.getBounds().width);
+      const frame = image.resize({ width, quality: "good" }).toJPEG(FRAME_QUALITY);
+
+      return `data:image/jpeg;base64,${frame.toString("base64")}`;
     } catch {
       return undefined;
     }
