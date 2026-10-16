@@ -11,7 +11,7 @@ import { dev } from "@nyte-ai/core";
 import type { RequestJournal } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "./rows.ts";
-import { backoff, retryDelay, isLinkLoss } from "./rows.ts";
+import { backoff, retryDelay } from "./rows.ts";
 
 export interface JournalLoop {
   send(entry: JournalEntry): Promise<Sent>;
@@ -69,7 +69,10 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
       } catch (error) {
         const closing = rows.link.signal.aborted;
 
-        if (closing || !retried(error)) {
+        if (
+          closing ||
+          !(error instanceof SdkError && (error.code === "unavailable" || error.code === "stale"))
+        ) {
           if (!closing) await journal.remove(id);
           held.delete(id);
           changed();
@@ -206,10 +209,6 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
       };
     },
   };
-}
-
-function retried(error: unknown): error is SdkError {
-  return isLinkLoss(error) || (error instanceof SdkError && error.code === "stale");
 }
 
 function unsentMessage(id: Message["id"], { entry, attempts, retrying }: Held): Message {

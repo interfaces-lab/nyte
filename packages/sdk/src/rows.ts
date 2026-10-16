@@ -127,11 +127,11 @@ export function createRows(transport: Transport, link: Link): Rows {
 
       return answer;
     } catch (error) {
-      if (isHostGone(transport, error)) link.close("host-gone");
+      if (hostGone(transport, error)) link.close("host-gone");
 
       link.signal.throwIfAborted();
 
-      if (isLinkLoss(error)) link.lost();
+      if (linkLost(error)) link.lost();
 
       if (error instanceof SdkError && error.code === "unauthenticated") link.close("revoked");
 
@@ -156,7 +156,7 @@ export function createRows(transport: Transport, link: Link): Rows {
         try {
           return await call(name, input, options);
         } catch (error) {
-          if (!isLinkLoss(error) || link.signal.aborted || options?.signal?.aborted === true)
+          if (!linkLost(error) || link.signal.aborted || options?.signal?.aborted === true)
             throw error;
           dev("sdk", "wait retrying", { name, attempts });
           await backoff(
@@ -235,7 +235,7 @@ function resumable(
           try {
             next = await current.next();
           } catch (error) {
-            if (isHostGone(transport, error)) {
+            if (hostGone(transport, error)) {
               link.close("host-gone");
 
               return DONE;
@@ -247,7 +247,7 @@ function resumable(
               return DONE;
             }
 
-            if (!isLinkLoss(error)) throw error;
+            if (!linkLost(error)) throw error;
           }
 
           if (next.done !== true) {
@@ -336,7 +336,7 @@ function decoded<N extends OperationName>(
   }
 }
 
-function isHostGone(transport: Transport, error: unknown): boolean {
+function hostGone(transport: Transport, error: unknown): boolean {
   const pinned = transport.host();
 
   return (
@@ -348,7 +348,7 @@ function isHostGone(transport: Transport, error: unknown): boolean {
   );
 }
 
-export function isLinkLoss(error: unknown): error is SdkError {
+function linkLost(error: unknown): error is SdkError {
   return error instanceof SdkError && error.code === "unavailable";
 }
 
