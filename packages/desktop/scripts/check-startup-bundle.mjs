@@ -5,9 +5,10 @@ import { failure, formatSize, green, red, table } from "./terminal.mjs";
 const KIB = 1_024;
 
 /**
- * Grammars live in the worker, the terminal wasm is its own asset, and provider SDKs load on
- * first request. Clerk has a separate entry loaded by an account command. Each budget ratchets
- * about 2% above the build that set it so growth fails here; lower it when an entry shrinks.
+ * The renderer's deferred entries (workbench panels, diffs and code highlighting, usage charts,
+ * Clerk) and every grammar load on first use, the terminal wasm is its own asset, and provider
+ * SDKs load on first request. Each budget ratchets a little above the build that set it (the
+ * renderer 5%, the rest about 2%) so growth fails here; lower it when an entry shrinks.
  * `main` is every chunk main's entry loads before its first window, and `host` the same for the
  * host process, which loads beside it. `css` is the render-blocking stylesheet the startup HTML
  * links.
@@ -16,7 +17,7 @@ const budgets = {
   main: 99 * KIB,
   host: 1_020 * KIB,
   preload: 8 * KIB,
-  renderer: 4_900 * KIB,
+  renderer: 2_860 * KIB,
   css: 190 * KIB,
 };
 
