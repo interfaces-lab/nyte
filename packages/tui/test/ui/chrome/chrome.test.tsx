@@ -89,7 +89,7 @@ describe("notice line", () => {
     expect(frame).toContain("Already sent");
 
     const row = frame.split("\n").findIndex((line) => line.includes("retry"));
-    const column = frame.split("\n")[row]?.indexOf("retry") ?? -1;
+    const column = (frame.split("\n")[row] ?? "").split("retry")[0]?.length ?? -1;
     await app.mockMouse.click(column + 1, row);
 
     expect(app.dispatched).toContainEqual({ kind: "retry-watch" });

@@ -3,7 +3,9 @@ import { editField } from "../../src/model/dialogs/field.ts";
 import type { FieldMove } from "../../src/model/dialogs/field.ts";
 
 function at(marked: string) {
-  return { text: marked.replace("|", ""), caret: marked.indexOf("|") };
+  const [before = "", after = ""] = marked.split("|");
+
+  return { text: before + after, caret: before.length };
 }
 
 function shown(field: { readonly text: string; readonly caret: number }): string {

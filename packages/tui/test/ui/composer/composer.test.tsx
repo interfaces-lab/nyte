@@ -75,7 +75,8 @@ describe("composer", () => {
 
   test("markers draw as attachment extmarks", async () => {
     const text = "see [File a.ts] now";
-    const from = text.indexOf("[File");
+    const [before = ""] = text.split("[File");
+    const from = before.length;
     const marker = "[File a.ts]";
 
     await using app = await mount(ready(idle), () => (
