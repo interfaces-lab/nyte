@@ -28,6 +28,7 @@ const schemeIndependentRoles = new Map([
   ["buttonFill", "theme-80 capped in lightness so a white label reads at 4.5:1"],
   ["buttonFillHover", "shade(button-fill, 0.95, 0.95)"],
   ["buttonFillPressed", "shade(button-fill, 0.88, 0.88)"],
+  ["chartSeries", "theme-90: a data mark holds 3:1 on both bases at one step"],
 ]);
 
 const transparent = "rgba(0, 0, 0, 0)";
