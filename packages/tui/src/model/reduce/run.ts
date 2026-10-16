@@ -5,7 +5,7 @@ import type { Outcome } from "../msg.ts";
 import type { QuestionModel } from "../question.ts";
 import {
   collectQuestionAnswers,
-  createQuestionDraft,
+  editingQuestionDraft,
   readQuestionDraft,
   sameQuestion,
   selectQuestionAnswer,
@@ -44,10 +44,9 @@ export const runHandlers = {
     if (question === null || question.part !== msg.part || question.session !== msg.session)
       return stay(state);
 
-    const group =
-      readQuestionDraft(state.local.question, question) ?? createQuestionDraft(question.questions);
+    const group = editingQuestionDraft(state.local.question, question);
 
-    if (group.phase !== "editing") return stay(state);
+    if (group === null) return stay(state);
 
     const value = msg.value.trim();
 
@@ -232,9 +231,9 @@ export function advanceQuestion(
 ): Step {
   const local = state.local.question;
 
-  const group = readQuestionDraft(local, question) ?? createQuestionDraft(question.questions);
+  const group = editingQuestionDraft(local, question);
 
-  if (group.phase !== "editing") return stay(state);
+  if (group === null) return stay(state);
 
   if (group.active < question.questions.length - 1)
     return stay(

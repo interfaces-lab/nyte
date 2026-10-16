@@ -311,13 +311,7 @@ export const sessionHandlers = {
     effects: [{ kind: "login-answer", dialog: msg.dialog, answer: msg.answer }],
   }),
   "op-finished": (state, msg) => {
-    const next = withLocal(state, {
-      pending: state.local.pending.filter((op) => op.kind !== msg.op),
-      dialogs:
-        msg.op === "auth"
-          ? state.local.dialogs.filter((dialog) => dialog.kind !== "auth")
-          : state.local.dialogs,
-    });
+    const next = finished(state, msg.op);
 
     return stay(msg.notice === null ? next : withLocal(next, { notice: msg.notice }));
   },
@@ -378,8 +372,11 @@ function released(state: State, effect: string): State {
     });
   const kind = HELD_BY_EFFECT.get(effect);
 
-  if (kind === undefined) return state;
+  return kind === undefined ? state : finished(state, kind);
+}
 
+/** Ends a pending operation; an authentication also closes its dialog. */
+function finished(state: State, kind: PendingOp["kind"]): State {
   return withLocal(state, {
     pending: state.local.pending.filter((op) => op.kind !== kind),
     dialogs:

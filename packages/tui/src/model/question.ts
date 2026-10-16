@@ -48,8 +48,18 @@ function createFieldDraft(field: QuestionInfo): QuestionFieldDraft {
     : { kind: "single", selection: { kind: "empty" }, customText: "" };
 }
 
-export function createQuestionDraft(questions: readonly QuestionInfo[]): QuestionDraft {
-  return { active: 0, fields: questions.map(createFieldDraft), phase: "editing" };
+/** The draft of `question` while it is still being answered, or `null` once its answers are sent. */
+export function editingQuestionDraft(
+  local: QuestionLocal,
+  question: QuestionModel,
+): QuestionDraft | null {
+  const draft = readQuestionDraft(local, question) ?? {
+    active: 0,
+    fields: question.questions.map(createFieldDraft),
+    phase: "editing",
+  };
+
+  return draft.phase === "editing" ? draft : null;
 }
 
 export function selectQuestionAnswer(

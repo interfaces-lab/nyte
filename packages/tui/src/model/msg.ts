@@ -22,6 +22,7 @@ import type { DraftInsert, DraftSnapshot } from "./draft.ts";
 import type {
   FailureReport,
   Notice,
+  PendingOp,
   Phase,
   QuestionRequest,
   QuestionTypedDraft,
@@ -230,7 +231,7 @@ export type Outcome =
   | { readonly kind: "editor-closed"; readonly text: string | null }
   | {
       readonly kind: "op-finished";
-      readonly op: "switch" | "cd" | "auth" | "reload" | "editor";
+      readonly op: PendingOp["kind"];
       readonly notice: Notice | null;
     }
   | { readonly kind: "effect-failed"; readonly effect: string; readonly message: string }

@@ -3,12 +3,7 @@ import type { ListPurpose } from "../dialogs/list.ts";
 import { NO_PARTS } from "../draft.ts";
 import { chatCommands, interactionsFor } from "../interactions.ts";
 import type { Intent } from "../msg.ts";
-import {
-  createQuestionDraft,
-  readQuestionDraft,
-  sameQuestion,
-  storeQuestionDraft,
-} from "../question.ts";
+import { editingQuestionDraft, sameQuestion, storeQuestionDraft } from "../question.ts";
 import { queueRows } from "../queue.ts";
 import { tableInputFor } from "../table-input.ts";
 import { applyChoice, settingRows } from "../settings.ts";
@@ -53,10 +48,6 @@ function choosePurpose<K extends ListPurpose["kind"]>(
   return CHOOSERS[kind](state, purpose, msg, now, reduce);
 }
 
-function closing(state: State, msg: Choose): State {
-  return withoutDialog(state, msg.dialog);
-}
-
 const CHOOSERS: Choosers = {
   question: (state, purpose, msg, now, reduce) => {
     const choice = msg.choice;
@@ -64,10 +55,9 @@ const CHOOSERS: Choosers = {
 
     if (question === null || !sameQuestion(question, purpose)) return stay(state);
 
-    const group =
-      readQuestionDraft(state.local.question, question) ?? createQuestionDraft(question.questions);
+    const group = editingQuestionDraft(state.local.question, question);
 
-    if (group.phase !== "editing") return stay(state);
+    if (group === null) return stay(state);
 
     if (choice === "next") return advanceQuestion(state, question, null);
 
@@ -140,7 +130,7 @@ const CHOOSERS: Choosers = {
   },
   resume: (state, purpose, msg, now, reduce) => {
     const { choice } = msg;
-    const closed = closing(state, msg);
+    const closed = withoutDialog(state, msg.dialog);
 
     if (choice === null) return stay(state);
 
@@ -154,7 +144,7 @@ const CHOOSERS: Choosers = {
   },
   palette: (state, _purpose, msg, now, reduce) => {
     const { choice } = msg;
-    const closed = closing(state, msg);
+    const closed = withoutDialog(state, msg.dialog);
 
     if (choice === null || choice === "cmd:help") return stay(closed);
 
@@ -180,11 +170,11 @@ const CHOOSERS: Choosers = {
   },
   skills: (state, _purpose, msg, now, reduce) =>
     msg.choice === null
-      ? stay(closing(state, msg))
-      : reduce(closing(state, msg), { kind: "prefill", text: `/${msg.choice} ` }, now),
+      ? stay(withoutDialog(state, msg.dialog))
+      : reduce(withoutDialog(state, msg.dialog), { kind: "prefill", text: `/${msg.choice} ` }, now),
   queue: (state, _purpose, msg, now, reduce) => {
     const { choice } = msg;
-    const closed = closing(state, msg);
+    const closed = withoutDialog(state, msg.dialog);
 
     if (choice === null) return stay(state);
     const rows = queueRows(state.facts.session, state.local.editing);
@@ -240,7 +230,7 @@ const CHOOSERS: Choosers = {
         ),
   "mcp-server": (state, purpose, msg, now, reduce) => {
     const { workspace, server } = purpose;
-    const closed = closing(state, msg);
+    const closed = withoutDialog(state, msg.dialog);
     const parent = closed.local.dialogs.at(-1);
 
     const done =
@@ -264,9 +254,9 @@ const CHOOSERS: Choosers = {
   },
   trust: (state, purpose, msg, now, reduce) =>
     msg.choice === null
-      ? stay(closing(state, msg))
+      ? stay(withoutDialog(state, msg.dialog))
       : reduce(
-          closing(state, msg),
+          withoutDialog(state, msg.dialog),
           {
             kind: "set-trust",
             workspace: purpose.workspace,
@@ -275,7 +265,7 @@ const CHOOSERS: Choosers = {
           now,
         ),
   setting: (state, purpose, msg, now, reduce) => {
-    const closed = closing(state, msg);
+    const closed = withoutDialog(state, msg.dialog);
     const row = settingRows(state).find((candidate) => candidate.id === purpose.key);
     const option = row?.choices.find((candidate) => candidate.id === msg.choice);
 
@@ -284,7 +274,7 @@ const CHOOSERS: Choosers = {
     return reduce(closed, applyChoice(state, row, option), now);
   },
   summary: (state, purpose, msg, now, reduce) => {
-    const closed = closing(state, msg);
+    const closed = withoutDialog(state, msg.dialog);
     const tree = closed.local.dialogs.at(-1);
     const withoutTree = tree?.kind === "tree" ? withoutDialog(closed, tree.id) : closed;
 
@@ -310,7 +300,7 @@ const CHOOSERS: Choosers = {
     const { choice } = msg;
 
     if (choice === "section:finished" || choice === "section:active") {
-      const closed = closing(state, msg);
+      const closed = withoutDialog(state, msg.dialog);
       const section = choice === "section:finished" ? "finished" : "active";
       const replaced = listDialog(closed, msg.dialog, { kind: "tasks", section });
 
@@ -326,9 +316,9 @@ const CHOOSERS: Choosers = {
   },
   provider: (state, purpose, msg, now, reduce) =>
     msg.choice === null
-      ? stay(closing(state, msg))
+      ? stay(withoutDialog(state, msg.dialog))
       : openDialog(
-          closing(state, msg),
+          withoutDialog(state, msg.dialog),
           { kind: "auth", mode: purpose.mode, provider: msg.choice },
           now,
           reduce,
@@ -339,7 +329,7 @@ const CHOOSERS: Choosers = {
     );
 
     if (account === undefined) return stay(state);
-    const closed = closing(state, msg);
+    const closed = withoutDialog(state, msg.dialog);
 
     if (account.active) return stay(closed);
 

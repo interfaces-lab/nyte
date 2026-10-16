@@ -9,7 +9,7 @@ import {
 import { resolveCommand } from "../commands.ts";
 import { withPrompt } from "../dialogs/auth.ts";
 import { dialogText, reduceDialog } from "../dialogs/dialog.ts";
-import type { Dialog, DialogInput, DialogRequest } from "../dialogs/dialog.ts";
+import type { Dialog, DialogInput, DialogRequest, LoadRequest } from "../dialogs/dialog.ts";
 import { typedLabel } from "../dialogs/list.ts";
 import type { ListDialog, ListPurpose } from "../dialogs/list.ts";
 import { modelList, withModels } from "../dialogs/model-picker.ts";
@@ -105,32 +105,18 @@ export function listDialog(state: State, id: string, purpose: ListPurpose): List
   };
 }
 
-function listLoad(id: string, purpose: ListPurpose): readonly Effect[] {
+function listRequest(purpose: ListPurpose): LoadRequest | null {
   switch (purpose.kind) {
     case "resume":
-      return [{ kind: "load", dialog: id, request: { kind: "sessions" } }];
+      return { kind: "sessions" };
     case "mcp":
-      return [
-        {
-          kind: "load",
-          dialog: id,
-          request: { kind: "mcp-servers", workspace: purpose.workspace },
-        },
-      ];
+      return { kind: "mcp-servers", workspace: purpose.workspace };
     case "mcp-server":
-      return [
-        {
-          kind: "load",
-          dialog: id,
-          request: { kind: "mcp-server", workspace: purpose.workspace, server: purpose.server },
-        },
-      ];
+      return { kind: "mcp-server", workspace: purpose.workspace, server: purpose.server };
     case "accounts":
-      return [
-        { kind: "load", dialog: id, request: { kind: "accounts", provider: purpose.provider } },
-      ];
+      return { kind: "accounts", provider: purpose.provider };
     default:
-      return [];
+      return null;
   }
 }
 
@@ -156,7 +142,13 @@ export function openDialog(
       if (purpose.kind === "queue" && liveChoices(state, purpose)?.length === 0)
         return refuse(state, "Nothing is queued", now, "info");
 
-      return push(minted.state, listDialog(minted.state, id, purpose), listLoad(id, purpose));
+      const load = listRequest(purpose);
+
+      return push(
+        minted.state,
+        listDialog(minted.state, id, purpose),
+        load === null ? [] : [{ kind: "load", dialog: id, request: load }],
+      );
     }
 
     case "model": {
