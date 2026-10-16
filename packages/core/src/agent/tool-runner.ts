@@ -384,9 +384,6 @@ async function partOpening(
     status: { kind: "live", run },
   });
 
-  const opened: RefUpdate[] = [
-    {
-      name,
   const running = await put(
     kernel,
     "part",
@@ -394,6 +391,9 @@ async function partOpening(
     at,
   );
 
+  const opened: RefUpdate[] = [
+    {
+      name,
       target: running,
       expect: "absent",
       event: {
