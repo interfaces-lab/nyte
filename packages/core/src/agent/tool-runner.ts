@@ -231,9 +231,7 @@ async function perform(
   let concluded: Promise<Settled> | undefined;
 
   const snapshotted =
-    planned.kind === "execute" &&
-    where.covered !== true &&
-    planned.definition.effects !== "none";
+    planned.kind === "execute" && where.covered !== true && planned.definition.effects !== "none";
 
   const step = await runStep<ToolOutcome>(kernel, {
     session,
@@ -617,7 +615,10 @@ async function settlement(
         changes: settled.changes,
       },
     },
-  });
+    ...(settled.files.length === 0
+      ? []
+      : [{ name, target, event: { head: null, kind: "changes", files: settled.files } } as const]),
+  ];
 
   if (found.record.status.kind === "failed" || found.record.status.kind === "settled") {
     const target = await put(kernel, "part", record, at);
