@@ -90,7 +90,30 @@ export default defineConfig({
   options: {
     typeAware: true,
   },
+  settings: {
+    shadcn: { ui: "@nyte-ai/ui" },
+    tailwindcss: { callees: ["clsx", "cva", "cn"] },
+  },
   overrides: [
+    {
+      files: ["packages/docs/**"],
+      jsPlugins: ["@shadcn/lint"],
+      rules: {
+        "shadcn/no-unknown-classes": ["warn", { allow: ["doc", "doc-*", "docs-*", "cloud-*"] }],
+        "shadcn/no-arbitrary-values": "warn",
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-restyle": ["warn", { allow: ["layout"] }],
+      },
+    },
+    {
+      files: [
+        "packages/docs/src/routes/opengraph-image[.]png.tsx",
+        "packages/docs/src/routes/og/**",
+      ],
+      rules: { "shadcn/no-inline-styles": "off" },
+    },
     {
       // CommonJS configs, tests, and scripts run from the repository and never ship in a bundle.
       files: ["**/*.cjs", "**/*.test.{ts,tsx}", "scripts/**"],
