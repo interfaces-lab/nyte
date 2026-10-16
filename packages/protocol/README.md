@@ -19,5 +19,4 @@ framed bytes), which the client rethrows. The sdk binds its typed client to the
 same table through `createTransport` (`fetch` and `ReadableStream` only, so it
 runs in browsers and React Native), decodes outputs with `decodeOutput` (an
 unknown field ignored, an array record of an unknown kind skipped) and rebuilds
-`Set`s and `Map`s from their wire forms; `operations()` serves the table as JSON
-Schemas on `HostView.operations` for a client that is not TypeScript.
+`Set`s and `Map`s from their wire forms.
