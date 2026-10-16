@@ -38,7 +38,7 @@ import {
   useSessionChoice,
   useSessionState,
 } from "../queries.ts";
-import { connection } from "../sdk.tsx";
+import { connection, loadEarlierMessages } from "../sdk.tsx";
 import type { DesktopModelOption } from "../catalog.ts";
 import { conversationTurns } from "../view-helpers.ts";
 import type { ConversationTurn } from "../view-helpers.ts";
@@ -63,6 +63,9 @@ const EMPTY_CHILDREN: readonly SessionInfo[] = [];
 const NO_CHANGES: SessionView["changes"] = [];
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
+
+/** How many older messages one scroll to the top pages in, as the TUI does. */
+const HISTORY_PAGE = 200;
 
 type SessionDeletionState =
   | { readonly kind: "closed" }
@@ -263,6 +266,12 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
     );
 
   const cwd = host.data?.workspace?.path;
+
+  const loadEarlier = useCallback(
+    () => void loadEarlierMessages(sessionId, HISTORY_PAGE),
+    [sessionId],
+  );
+
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
 
@@ -449,7 +458,12 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
 
         <div {...props(threadStyles.body)}>
           <div ref={setColumn} {...props(threadStyles.conversation)}>
-            <TranscriptProvider paneId={paneId} sessionId={sessionId} viewportRef={setScroll}>
+            <TranscriptProvider
+              paneId={paneId}
+              sessionId={sessionId}
+              viewportRef={setScroll}
+              onReachStart={loadEarlier}
+            >
               {presentation === "full" && <ComposerPaging column={column} />}
               {presentation === "full" && <RunAnnouncer working={working} />}
               <Timeline

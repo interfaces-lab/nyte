@@ -1,4 +1,4 @@
-import { foldJobs, sdk, SdkError } from "@nyte-ai/sdk";
+import { foldJobs, pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
 import type {
   ConnectOptions,
   Connection,
@@ -7,6 +7,7 @@ import type {
   HostId,
   HostView,
   JobView,
+  PagedViews,
   SessionId,
   SessionInfo,
   SessionView,
@@ -352,9 +353,39 @@ export const childrenWatch = watchFamily(
     current.sessions.watch({ parents: { kind: "children", session } }),
 );
 
-export const sessionWatch = watchFamily((current, session: SessionId): AsyncIterable<SessionView> =>
-  current.session(session).watch(),
+/** Each session watch's pager. */
+const pagers = new Map<SessionId, PagedViews>();
+
+/** The oldest message a session showed when its pager last came back empty. */
+const exhausted = new Map<SessionId, string>();
+
+/** A session's views, with its older messages paged in by `loadEarlierMessages`. */
+export const sessionWatch = watchFamily(
+  (current, session: SessionId): AsyncIterable<SessionView> => {
+    const views = pagedViews(current.session(session));
+    pagers.set(session, views);
+    exhausted.delete(session);
+
+    return views;
+  },
 );
+
+/**
+ * Page up to `limit` older messages into a session's watch, resolving how many
+ * came. Once a page comes back empty the host is not asked again until the
+ * oldest message shown changes, so scrolling at the top stays quiet.
+ */
+export async function loadEarlierMessages(session: SessionId, limit: number): Promise<number> {
+  const pager = pagers.get(session);
+  const oldest = sessionWatch(session).value?.messages[0]?.id;
+
+  if (pager === undefined || oldest === undefined || exhausted.get(session) === oldest) return 0;
+  const loaded = await pager.earlier(limit);
+
+  if (loaded === 0) exhausted.set(session, oldest);
+
+  return loaded;
+}
 
 export const jobsWatch = watchFamily(
   (current, workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>

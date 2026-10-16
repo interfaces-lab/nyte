@@ -58,6 +58,8 @@ interface TranscriptOptions {
   readonly paneId: PaneId;
   readonly sessionId: SessionId;
   readonly viewportRef?: (viewport: HTMLDivElement | null) => void;
+  /** The first loaded row is near the top: page in older messages. */
+  readonly onReachStart?: () => void;
 }
 
 interface TranscriptState extends TranscriptOptions {
@@ -107,6 +109,7 @@ export function TranscriptProvider({
   paneId,
   sessionId,
   viewportRef,
+  onReachStart,
   children,
 }: TranscriptOptions & { readonly children: ReactNode }): ReactElement {
   const viewStore = usePaneViewStateStore();
@@ -123,13 +126,14 @@ export function TranscriptProvider({
       paneId,
       sessionId,
       viewportRef,
+      onReachStart,
       viewStore,
       initialPosition,
       dock,
       setDock,
       controlsRef,
     }),
-    [dock, initialPosition, paneId, sessionId, viewportRef, viewStore],
+    [dock, initialPosition, onReachStart, paneId, sessionId, viewportRef, viewStore],
   );
 
   return <TranscriptContext value={transcript}>{children}</TranscriptContext>;
@@ -146,8 +150,16 @@ export const TranscriptContent = memo(function TranscriptContent({
   readonly estimateSize: (index: number) => number;
   readonly renderItem: (index: number) => ReactNode;
 }): ReactElement {
-  const { paneId, sessionId, viewportRef, viewStore, initialPosition, dock, controlsRef } =
-    useTranscript();
+  const {
+    paneId,
+    sessionId,
+    viewportRef,
+    onReachStart,
+    viewStore,
+    initialPosition,
+    dock,
+    controlsRef,
+  } = useTranscript();
 
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [dockHeight, setDockHeight] = useState(0);
@@ -211,6 +223,13 @@ export const TranscriptContent = memo(function TranscriptContent({
     atEnd.current = heldRef.current === null && left <= 1;
     syncSticky(scroll, content.current, atEnd.current);
     showScrollButton(dock, left > SCROLL_EDGE_THRESHOLD);
+
+    if (
+      !opening.current &&
+      scroll.scrollTop < scroll.clientHeight &&
+      instance.range?.startIndex === 0
+    )
+      onReachStart?.();
   };
 
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
