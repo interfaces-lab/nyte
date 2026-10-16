@@ -939,12 +939,7 @@ export default function RepoGalaxy() {
               </Toggle>
             ))}
           </ToggleGroup>
-          <Stack direction="row" gap={1} align="center">
-            <Switch label="WebGL" checked={gpu} onCheckedChange={setGpu} />
-            <Text size="sm" tone="secondary">
-              WebGL
-            </Text>
-          </Stack>
+          <Switch label="WebGL" checked={gpu} onCheckedChange={setGpu} />
         </Stack>
         <Grid columns={2} gap={4}>
           <Grid columns={2} gap={3}>
@@ -953,25 +948,25 @@ export default function RepoGalaxy() {
                 label: "Modules",
                 value: FILES.length,
                 detail: `plus ${PACKAGES.length} packages`,
-                tone: "neutral",
+                tone: "neutral" as const,
               },
               {
                 label: "Imports",
                 value: GRAPH.imports.length,
                 detail: `${VALUE_IMPORTS.length} carry values`,
-                tone: "neutral",
+                tone: "neutral" as const,
               },
               {
                 label: "Runtime cycles",
                 value: GRAPH.runtimeCycles,
                 detail: `${GRAPH.typeCycles} modules cycle through types`,
-                tone: GRAPH.runtimeCycles > 0 ? "warning" : "success",
+                tone: GRAPH.runtimeCycles > 0 ? ("warning" as const) : ("success" as const),
               },
               {
                 label: "Most imported",
                 value: HUBS[0]?.importers.length ?? 0,
                 detail: HUBS[0]?.label,
-                tone: "neutral",
+                tone: "neutral" as const,
               },
             ].map((stat) => (
               <Stat key={stat.label} {...stat} />
