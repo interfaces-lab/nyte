@@ -43,7 +43,6 @@ import type {
 } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 
-
 /**
  * A plugin accepts Standard Schema validators. TypeBox crosses that boundary
  * through `standard`, and schema inference supplies the tool's arguments.
@@ -51,7 +50,6 @@ import { Type } from "typebox";
 export const labelSchema = standard(Type.Object({ label: Type.String({ minLength: 1 }) }));
 
 export type Label = NonNullable<(typeof labelSchema)["~standard"]["types"]>["output"];
-
 
 /**
  * Node composes a host with `sdk.open`. The host supplies local execution,
@@ -105,7 +103,6 @@ export async function readProviderUsage(connection: Connection, provider: string
 
   return connection.models.usage();
 }
-
 
 /**
  * A Session extends the main Head and adds management, heads, runs,
@@ -215,7 +212,6 @@ export function reacquire(session: Session, runId: string, receiptId: string) {
   };
 }
 
-
 /**
  * A part definition owns a state schema, action schemas and a fallback.
  * Built-in text, thinking and tool parts use the same view shape. isPart
@@ -249,7 +245,6 @@ export async function showNote(session: Session): Promise<Part<typeof note>> {
 
   return part;
 }
-
 
 /**
  * Workspaces register targets and return a WorkspaceId. Inspect reveals
@@ -326,7 +321,6 @@ export async function readBrowser(workspace: Workspace) {
   }
 }
 
-
 /**
  * Core scans resources once per workspace generation. Plugins receive
  * inputs with user/project files, skills, context files and prompt sources.
@@ -347,7 +341,6 @@ export type Environment = {
   readonly provider: EnvironmentProvider;
   readonly attached: ExecutionEnv;
 };
-
 
 /**
  * Tools declare Standard Schema parameters, an optional output schema, a
@@ -376,7 +369,6 @@ export const labelTool: ToolDefinition<Label> = {
 export async function durableLabel(invocation: ToolInvocation): Promise<Json> {
   return invocation.memo("label", () => ({ at: invocation.now(), label: "Review" }));
 }
-
 
 /**
  * A Plugin is a plain object checked with satisfies, with static contribute
@@ -428,7 +420,6 @@ export const noteRenderer: Renderer<typeof note, string> = {
   render: ({ state }) => state.label,
 };
 
-
 /**
  * schema owns records and validators. core owns handles, composition,
  * admission, execution, folds, stores and plugin contracts. host composes
@@ -441,7 +432,6 @@ export const noteRenderer: Renderer<typeof note, string> = {
  * its side-specific Plugin type from @nyte-ai/plugin/core or /client.
  */
 export type SdkRoot = typeof sdk;
-
 
 /**
  * A Store opens one StoreConnection with content-addressed objects, blobs
@@ -475,7 +465,6 @@ export async function inspectSession(
 
   return events;
 }
-
 
 /**
  * Durable events carry seq and at. The host's fold builds every view; a

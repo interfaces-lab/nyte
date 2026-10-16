@@ -122,7 +122,7 @@ export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenera
       buffer = read.done ? "" : (blocks.pop() ?? "");
 
       for (const block of blocks) {
-        const frame = frameOf(block);
+        const frame = parseEventBlock(block);
 
         if (frame !== null) yield frame.data;
       }
@@ -324,15 +324,14 @@ function isCode(code: string): code is SdkErrorCode {
   return Object.hasOwn(errorStatus, code);
 }
 
-function frameOf(block: string): { readonly data: Json } | null {
+function parseEventBlock(block: string): { readonly data: Json } | null {
   let event = "message";
   const data: string[] = [];
 
   for (const line of block.split("\n")) {
     if (line === "" || line.startsWith(":")) continue;
-    const colon = line.indexOf(":");
-    const field = colon < 0 ? line : line.slice(0, colon);
-    const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
+    const [field, ...rest] = line.split(":");
+    const value = rest.join(":").replace(/^ /, "");
 
     if (field === "event") event = value;
     else if (field === "data") data.push(value);
