@@ -319,6 +319,7 @@ export class DesktopHost {
   }
 
   async #open(): Promise<Opened> {
+    performance.mark("nyte:host-start");
     const { home } = this.#deps;
     void completeShellEnvironment().then(() => performance.mark("nyte:shell-environment-ready"));
 

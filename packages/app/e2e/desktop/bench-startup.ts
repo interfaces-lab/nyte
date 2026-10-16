@@ -28,64 +28,70 @@ function every(limit: number): Readonly<Record<StartupCase, number>> {
 
 /**
  * Every metric the bench reports. `budget` is the p95 ceiling the judged build must stay under,
- * by scenario; `null` reports without gating. Latency, splash, long-task, and fresh heap and
- * memory budgets hold the line at main 0.0.18 (macOS arm64, packaged, 7 runs); IPC, host
- * requests, and restored or heavy heap and memory ratchet at this branch until they shrink.
+ * by scenario; `null` reports without gating. Set from main c7094f5c against daniel/audit with
+ * the host in its utility process (macOS arm64, packaged, 7 runs): each budget is the branch's
+ * p95 plus 15% (memory plus 5%), and in the fresh scenario, the only one main can run, typed
+ * input, composer, first paint, splash and long tasks are capped at main's median.
  */
 const metricFields = [
   {
     key: "spawnToTypedInputMs",
     label: "Spawn to typed input",
     unit: "ms",
-    budget: { fresh: 1_000, restored: 1_100, heavy: 1_250 },
+    budget: { fresh: 875, restored: 875, heavy: 1_025 },
   },
   {
     key: "spawnToComposerMs",
     label: "Spawn to composer",
     unit: "ms",
-    budget: { fresh: 950, restored: 1_000, heavy: 1_150 },
+    budget: { fresh: 800, restored: 800, heavy: 975 },
   },
   {
     key: "spawnToFirstPaintMs",
     label: "Spawn to first paint (FCP)",
     unit: "ms",
-    budget: every(550),
+    budget: every(525),
   },
-  {
-    key: "splashMs",
-    label: "Splash visible",
-    unit: "ms",
-    budget: { fresh: 450, restored: 500, heavy: 600 },
-  },
+  { key: "splashMs", label: "Splash visible", unit: "ms", budget: every(225) },
   { key: "keystrokeToPaintMs", label: "Keystroke to paint", unit: "ms", budget: every(16.7) },
-  { key: "longTasks", label: "Long tasks before composer", unit: "count", budget: every(2) },
-  { key: "longTaskMs", label: "Long-task time before composer", unit: "ms", budget: every(150) },
-  { key: "longestTaskMs", label: "Longest task before composer", unit: "ms", budget: every(100) },
   {
-    key: "ipcCalls",
-    label: "IPC round trips before composer",
+    key: "longTasks",
+    label: "Long tasks before composer",
     unit: "count",
-    budget: { fresh: 3, restored: 4, heavy: 4 },
+    budget: { fresh: 1, restored: 2, heavy: 3 },
   },
+  {
+    key: "longTaskMs",
+    label: "Long-task time before composer",
+    unit: "ms",
+    budget: { fresh: 95, restored: 175, heavy: 225 },
+  },
+  {
+    key: "longestTaskMs",
+    label: "Longest task before composer",
+    unit: "ms",
+    budget: { fresh: 93, restored: 110, heavy: 110 },
+  },
+  { key: "ipcCalls", label: "IPC round trips before composer", unit: "count", budget: every(3) },
   {
     key: "hostRequests",
     label: "Host requests before composer",
     unit: "count",
-    budget: { fresh: 10, restored: 13, heavy: 13 },
+    budget: { fresh: 1, restored: 12, heavy: 12 },
   },
-  { key: "mainHeapBytes", label: "Main JS heap", unit: "bytes", budget: every(40 * MIB) },
+  { key: "mainHeapBytes", label: "Main JS heap", unit: "bytes", budget: every(20 * MIB) },
   {
     key: "rendererHeapBytes",
     label: "Renderer JS heap",
     unit: "bytes",
-    budget: { fresh: 24 * MIB, restored: 40 * MIB, heavy: 48 * MIB },
+    budget: { fresh: 24 * MIB, restored: 28 * MIB, heavy: 37 * MIB },
   },
-  { key: "processes", label: "Processes", unit: "count", budget: every(4) },
+  { key: "processes", label: "Processes", unit: "count", budget: every(5) },
   {
     key: "residentBytes",
     label: "Resident memory, all processes",
     unit: "bytes",
-    budget: { fresh: 720 * MIB, restored: 800 * MIB, heavy: 820 * MIB },
+    budget: { fresh: 785 * MIB, restored: 800 * MIB, heavy: 860 * MIB },
   },
   { key: "mainToWindowMs", label: "Main: entry to window shown", unit: "ms", budget: null },
   { key: "hostOpenMs", label: "Main: host opening", unit: "ms", budget: null },
@@ -677,7 +683,7 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
               ]
             : [processTree.reduce((total, row) => total + row.residentBytes, 0)],
         mainToWindowMs: phaseDuration(main.marks, "nyte:main-entry", "nyte:window-shown"),
-        hostOpenMs: phaseDuration(main.marks, "nyte:shell-environment-ready", "nyte:host-opened"),
+        hostOpenMs: phaseDuration(main.marks, "nyte:host-start", "nyte:host-opened"),
         listenerMs: phaseDuration(main.marks, "nyte:host-opened", "nyte:endpoint-ready"),
         sdkConnectMs: phaseDuration(renderer.marks, "nyte:startup", "nyte:sdk-connected"),
         dataLoadMs: phaseDuration(renderer.marks, "nyte:sdk-connected", "nyte:directory-ready"),
