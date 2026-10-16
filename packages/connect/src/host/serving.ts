@@ -30,7 +30,7 @@ import type { BrokerKeyring, LinkTrust } from "./tokens.ts";
  * turns an allowed device into its own principal; `principal` is a stable
  * name for a server that takes the decision as it is.
  */
-export type DeviceDecision =
+type DeviceDecision =
   | {
       readonly kind: "allow";
       readonly principal: string;
@@ -70,7 +70,7 @@ export interface ServingOwner {
   release(deviceId: string): Promise<void>;
 }
 
-export interface ServingSessionOptions {
+interface ServingSessionOptions {
   readonly epoch: number;
   readonly environmentId: string;
   readonly store: ConnectStore;

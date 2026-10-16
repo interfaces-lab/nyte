@@ -22,7 +22,7 @@ export interface HostConnectConfig {
   readonly origin: string;
 }
 
-export interface ConnectRuntimeOptions {
+interface ConnectRuntimeOptions {
   /** Absent in a build without the public connect configuration. */
   readonly config: HostConnectConfig | undefined;
   /** `~/.nyte`, where the store lives unless `storePath` says otherwise. */

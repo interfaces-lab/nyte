@@ -97,7 +97,7 @@ const LinkKey = Type.Union([
 
 export type LinkKey = Static<typeof LinkKey>;
 
-export type PendingUnlink = Static<typeof PendingUnlink>;
+type PendingUnlink = Static<typeof PendingUnlink>;
 
 const ConnectFileType = strict({
   version: Type.Literal(4),
@@ -119,7 +119,7 @@ export const EMPTY_CONNECT_FILE: ConnectFile = {
   unlinks: [],
 };
 
-export type ConnectRead =
+type ConnectRead =
   | { readonly kind: "ready"; readonly file: ConnectFile }
   | { readonly kind: "failed" };
 

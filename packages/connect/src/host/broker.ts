@@ -24,7 +24,7 @@ import type { PrivateJwk } from "../signing.ts";
 
 export type BrokerFetch = (input: string, init: RequestInit) => Promise<Response>;
 
-export interface DesktopBrokerOptions {
+interface DesktopBrokerOptions {
   readonly origin: string;
   readonly fetch?: BrokerFetch;
 }

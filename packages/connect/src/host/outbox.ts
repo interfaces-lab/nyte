@@ -5,7 +5,7 @@ import { refusedCode } from "./tokens.ts";
 /** Least time between two passes over the revocations a lease reminds this host of. */
 const REVOCATION_REMINDER_MS = 60_000;
 
-export interface ConnectOutboxOptions {
+interface ConnectOutboxOptions {
   readonly store: ConnectStore;
   readonly broker: DesktopBroker | undefined;
   readonly unlinkRetryMs: number;

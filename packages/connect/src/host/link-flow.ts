@@ -28,7 +28,7 @@ export type LinkAuthorizer =
       readonly onOpened: (opened: Extract<ConnectLinking, { kind: "awaiting_approval" }>) => void;
     };
 
-export interface LinkFlowOptions {
+interface LinkFlowOptions {
   readonly store: ConnectStore;
   readonly broker: DesktopBroker | undefined;
   readonly authorizer: LinkAuthorizer | undefined;

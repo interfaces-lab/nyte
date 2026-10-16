@@ -26,7 +26,7 @@ import type {
   LinkTransactionLookupRequest,
 } from "./schemas.ts";
 
-export type BrokerFailure =
+type BrokerFailure =
   /** No signed-in Clerk session to authenticate with. */
   | { readonly kind: "signed_out" }
   /** The broker or a session token could not be had in time, or the call was cancelled. */
@@ -47,7 +47,7 @@ export class BrokerError extends Error {
   }
 }
 
-export interface BrokerClientOptions {
+interface BrokerClientOptions {
   /** `CONNECT_ORIGIN`, a canonical `https://` origin such as `https://connect.example.com`. */
   readonly origin: string;
   /**

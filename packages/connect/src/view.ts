@@ -15,8 +15,6 @@ const ConnectAccountSchema = Type.Union([
   Type.Object({ kind: Type.Literal("signed_in"), label: Type.String() }),
 ]);
 
-export type ConnectAccount = Static<typeof ConnectAccountSchema>;
-
 export const ConnectLinkFailureSchema = Type.Union([
   Type.Literal("cancelled"),
   Type.Literal("network"),

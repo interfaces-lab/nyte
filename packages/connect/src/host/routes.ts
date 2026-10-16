@@ -10,7 +10,7 @@ export type RouteAnswer =
   | { readonly kind: "empty" }
   | { readonly kind: "refused"; readonly status: RefusalStatus; readonly code: ErrorCode };
 
-export interface ConnectRoutes {
+interface ConnectRoutes {
   /** `127.0.0.1:<port>` once the listener is bound; until then every request is refused. */
   readonly host: () => string | undefined;
   /** Verify a broker enrollment, record the device, and answer with a signed receipt. */

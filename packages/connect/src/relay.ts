@@ -454,7 +454,7 @@ export function relayResponseHeaders(headers: Headers): RelayResponseHeaders {
  * `discovery` is the host's identity or description and takes `GET`;
  * `release` is the phone dropping its own credential and takes `DELETE`.
  */
-export interface PublicRelayTarget {
+interface PublicRelayTarget {
   readonly kind: "api" | "discovery" | "release";
   readonly environmentId: string;
   /** Path and query as the desktop receives them. */
