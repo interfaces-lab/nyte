@@ -18,6 +18,7 @@ import {
   CLOUDFLARE_WORKERS_AI_BASE_URL,
 } from "../src/api/cloudflare.ts";
 import { done, fail, seconds } from "./terminal.ts";
+import { verifyNyteCatalogs } from "./verify-catalogs.ts";
 import type {
   AnthropicMessagesCompat,
   Api,
@@ -2263,8 +2264,18 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
   // - @ai-sdk/google → google-generative-ai
   // - null/undefined/@ai-sdk/openai-compatible → openai-completions
   const opencodeVariants = [
-    { key: "opencode", provider: "opencode", basePath: "https://opencode.ai/zen" },
-    { key: "opencode-go", provider: "opencode-go", basePath: "https://opencode.ai/zen/go" },
+    {
+      key: "opencode",
+      provider: "opencode",
+      basePath: "https://opencode.ai/zen",
+      servesGemini: true,
+    },
+    {
+      key: "opencode-go",
+      provider: "opencode-go",
+      basePath: "https://opencode.ai/zen/go",
+      servesGemini: false,
+    },
   ] as const;
 
   for (const variant of opencodeVariants) {
@@ -2291,6 +2302,7 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
         // Anthropic SDK appends /v1/messages to baseURL
         baseUrl = variant.basePath;
       } else if (npm === "@ai-sdk/google") {
+        if (!variant.servesGemini) continue;
         api = "google-generative-ai";
         baseUrl = `${variant.basePath}/v1`;
       } else if (npm === "@ai-sdk/alibaba") {
@@ -3362,6 +3374,8 @@ async function generateModels() {
 
     writeFileSync(join(catalogDir, `${providerId}.json`), `${JSON.stringify(models, null, 2)}\n`);
   }
+
+  await verifyNyteCatalogs(catalogDir);
 
   const counts = sortedProviderIds.map((providerId) => ({
     providerId,
