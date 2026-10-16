@@ -3,7 +3,7 @@ import { displayTranscriptParts } from "@nyte-ai/app/conversation/transcript-pre
 import { transcriptRows } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
-import type { Scene } from "./specimens";
+import type { Scene } from "./build";
 
 export interface Stage {
   readonly rows: readonly TranscriptRow[];

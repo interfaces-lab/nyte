@@ -1,0 +1,133 @@
+import {
+  BLOCKED,
+  LOG_OUTPUT,
+  RG_OUTPUT,
+  RUNNING,
+  type Section,
+  call,
+  created,
+  custom,
+  editSpec,
+  edited,
+  list,
+  lone,
+  ok,
+  read,
+  shell,
+  writeSpec,
+} from "../build";
+
+export const toolsSection: Section = {
+  id: "tools",
+  title: "Tool kinds",
+  detail:
+    "ToolPartState.class is typed per tool by the runner. ToolCallView switches on class.kind; shell and file edits have their own cards in detailed.",
+  specimens: [
+    lone(
+      "tool-read",
+      "Read a file",
+      'class.kind = "read"',
+      call(read("packages/app/src/live.ts"), ok(), 0),
+    ),
+    lone(
+      "tool-list",
+      "List a directory",
+      'class.kind = "list"',
+      call(list("packages/sdk/src"), ok(), 0),
+    ),
+    lone(
+      "tool-shell",
+      "Shell command",
+      'class.kind = "shell"',
+      call(
+        shell('rg -n "useSetting\\(preferences.toolCalls\\)" packages/app/src'),
+        ok(),
+        0,
+        RG_OUTPUT,
+      ),
+    ),
+    lone(
+      "tool-shell-described",
+      "Shell with description and facts",
+      "class.description · duration from status.endedAt",
+      call(shell("git log --oneline -200", "show recent commits", 4_200), ok(), 0, LOG_OUTPUT),
+    ),
+    lone(
+      "tool-patch-edit",
+      "Edited a file",
+      'class.kind = "edit" · name = "edit"',
+      call(edited, ok(), 0),
+    ),
+    lone(
+      "tool-patch-write",
+      "Created a file",
+      'class.kind = "edit" · name = "write"',
+      call(created, ok(), 0),
+    ),
+    lone(
+      "tool-edit-running",
+      "Editing (no result yet)",
+      'class.kind = "edit" · phase = "running"',
+      call(editSpec("packages/app/src/conversation/turn-view.tsx"), RUNNING, 0),
+    ),
+    lone(
+      "tool-write-running",
+      "Writing (no result yet)",
+      'class.kind = "edit" · name = "write" · phase = "running"',
+      call(writeSpec("packages/lab/src/messages/page.tsx"), RUNNING, 0),
+    ),
+    lone(
+      "tool-edit-denied",
+      "Edit that was blocked",
+      'class.kind = "edit" · outcome = "rejected"',
+      call(editSpec(".env"), BLOCKED, 0),
+    ),
+    lone(
+      "tool-custom-named",
+      "Named tool",
+      'class.kind = "custom" · label = "websearch"',
+      call(
+        custom("websearch"),
+        ok(),
+        0,
+        "1. StyleX defineConsts — stylexjs.com/docs/api/javascript/defineConsts",
+      ),
+    ),
+    lone(
+      "tool-custom-browser",
+      "Browser tool",
+      'custom · label = "browser_snapshot"',
+      call(custom("browser_snapshot"), ok(), 0, '- main\n  - heading "Chat messages" [level=1]'),
+    ),
+    lone(
+      "tool-custom-search",
+      "Tool search",
+      'custom · label = "tool_search"',
+      call(custom("tool_search"), ok(), 0),
+    ),
+    lone(
+      "tool-custom-mcp",
+      "MCP tool",
+      'custom · label = "github: create_issue"',
+      call(custom("github: create_issue"), ok(), 0, "Created issue #412"),
+    ),
+    lone(
+      "tool-custom-mcp-name",
+      "MCP tool by wire name",
+      'custom · label = "mcp__linear__list_issues"',
+      call(custom("mcp__linear__list_issues"), ok(), 0),
+    ),
+    lone(
+      "tool-custom-phrase",
+      "Tool labelled with a phrase",
+      'custom · label = "Generate image"',
+      call(custom("Generate image"), ok(), 0),
+    ),
+    lone(
+      "tool-custom-plain",
+      "Unknown tool",
+      'custom · label = "fetch_metrics"',
+      call(custom("fetch_metrics"), ok(), 0, '{ "p95": 412 }'),
+    ),
+  ],
+};
