@@ -1,12 +1,17 @@
 /**
- * Reviews over real core and real git. One core session per review; one head
- * per call site, named for the git commit it is about:
+ * Reviews over real core and real git. One core session per review, started
+ * by its first guide; one head per call site, named for the git commit it is
+ * about:
  *
- *   brief-<head>   the head's guide: written from the patch, or cut from the
- *                  brief of an earlier head on the same base and sent only the
- *                  interdiff, so everything before it comes from the prompt cache
+ *   main           the first guide, the message that started the session
+ *   brief-<head>   a later head's guide: written from the patch, or cut from
+ *                  the brief of an earlier head on the same base and sent only
+ *                  the interdiff, so everything before it comes from the prompt
+ *                  cache. A retry is a new `brief-<head>-retry-<n>`.
  *   side-<head>-<thread>  one side chat thread about that head: a fork of its
  *                  brief, so a question starts from everything the guide read
+ *
+ * The registry records which head holds each revision's brief.
  *
  * A review stores refs, not commits. Reading one resolves its head ref, so a
  * branch that gained commits shows up as a new head. Reading never calls the
@@ -17,7 +22,7 @@
  *
  * Nyte codes on the branch in a second session, `author <id>`, whose
  * workspace is a git worktree with only that branch checked out. A task
- * starts there on a new branch; a change request opens it the first time. Its
+ * starts it on a new branch; otherwise the first change request starts it. Its
  * commits move the branch, which the review then reads like any other push.
  */
 import { randomUUID } from "node:crypto";
@@ -28,9 +33,11 @@ import type {
   ConfigurationPatch,
   HeadInfo,
   Message,
+  Position,
   SessionEvent,
   SessionId,
 } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/sdk";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -68,6 +75,10 @@ const DRAWN_PATCH = 400_000;
 class BadRequest extends Error {}
 
 const briefName = (head: string): string => `brief-${head.slice(0, 12)}`;
+
+/** A review's session, named for the reviewer version so a new reviewer starts afresh. */
+const reviewSessionId = (record: ReviewRecord): SessionId =>
+  asId<"session">(`lab-review:${record.id}:${REVIEWER_VERSION}`);
 
 /** One side chat thread about a head: a fork of that head's brief. */
 const threadPrefix = (head: string): string => `side-${head.slice(0, 12)}-`;
@@ -255,7 +266,6 @@ class Reviews {
   readonly #log: (message: string) => void;
   readonly #sdk: ReviewHost["sdk"];
   readonly #defaultBase: string;
-  readonly #sessions = new Map<string, Promise<SessionId>>();
   readonly #reported = new Set<string>();
   /** Runs that settled before this server opened were reported, and paid for, by an earlier one. */
   readonly #openedAt = Date.now();
@@ -298,27 +308,15 @@ class Reviews {
     return revision;
   }
 
-  #openSession(record: ReviewRecord): Promise<SessionId> {
-    const known = this.#sessions.get(record.id);
+  /** The review session's heads; none before its first guide starts it. */
+  async #readHeads(sessionId: SessionId): Promise<readonly HeadInfo[]> {
+    try {
+      return (await this.#sdk.session(sessionId).info()).heads;
+    } catch (cause) {
+      if (cause instanceof SdkError && cause.code === "unknown") return [];
 
-    if (known !== undefined) return known;
-
-    const name = `review ${record.id} · reviewer ${REVIEWER_VERSION}`;
-
-    const opened = (async () => {
-      return (
-        await this.#sdk.sessions.create({
-          id: asId<"session">(`lab-review:${record.id}:${REVIEWER_VERSION}`),
-          name,
-          configuration: { ...this.#host.config, agent: REVIEW_AGENT },
-        })
-      ).id;
-    })();
-
-    this.#sessions.set(record.id, opened);
-    opened.catch(() => this.#sessions.delete(record.id));
-
-    return opened;
+      throw cause;
+    }
   }
 
   async #report(
@@ -345,12 +343,13 @@ class Reviews {
   }
 
   async #coreState(record: ReviewRecord, sessionId: SessionId): Promise<CoreState> {
-    const { heads } = await this.#sdk.session(sessionId).info();
+    const heads = await this.#readHeads(sessionId);
     const briefs: Brief[] = [];
     const threads: Thread[] = [];
 
     for (const revision of record.revisions) {
-      const brief = heads.find((head) => head.name === briefName(revision.head));
+      const briefHead = record.briefHeads?.[revision.head];
+      const brief = heads.find((head) => head.name === briefHead);
 
       if (brief !== undefined && !briefs.some((entry) => entry.head === revision.head)) {
         const read = await readHead(this.#sdk, sessionId, brief);
@@ -366,7 +365,7 @@ class Reviews {
             : undefined;
 
         const from = record.revisions.find(
-          (entry) => parent !== undefined && briefName(entry.head) === parent,
+          (entry) => parent !== undefined && record.briefHeads?.[entry.head] === parent,
         )?.head;
 
         const failure =
@@ -423,22 +422,22 @@ class Reviews {
     );
   }
 
+  async #readTip(sessionId: SessionId, head: string): Promise<Position> {
+    return (await this.#sdk.session(sessionId).head(asId<"head">(head)).tree()).tip;
+  }
+
   async #fork(input: {
     readonly sessionId: SessionId;
     readonly head: string;
-    readonly from: string;
+    readonly from: Position;
     readonly config: ConfigurationPatch | undefined;
     readonly key: string;
     readonly content: string;
   }): Promise<void> {
     const session = this.#sdk.session(input.sessionId);
-    const from = session.head(asId<"head">(input.from));
+    const created = await session.heads.create(asId<"head">(input.head), { from: input.from });
 
-    const created = await session.heads.create(asId<"head">(input.head), {
-      from: (await from.tree()).tip,
-    });
-
-    if (created.kind === "missing-source") throw new BadRequest(`${input.from} is gone`);
+    if (created.kind === "missing-source") throw new BadRequest(`${input.head}'s source is gone`);
     const head = session.head(asId<"head">(input.head));
 
     if (created.kind === "created") {
@@ -455,9 +454,9 @@ class Reviews {
    * Ask for the current head's guide unless it exists. An earlier head on the
    * same base that the current one descends from lends its brief, so only the
    * interdiff is new; while that brief is still running, wait for it. A
-   * branch with no commits past its base has nothing to guide yet. A fresh
-   * brief is cut from the unborn `main` so the runner lists it before its
-   * message lands.
+   * branch with no commits past its base has nothing to guide yet. The first
+   * guide starts the session on `main`; a later one is cut from its lender or
+   * from the start, and a retry cuts a new head beside the failed one.
    */
   async #ensureBrief(
     record: ReviewRecord,
@@ -468,16 +467,9 @@ class Reviews {
   ): Promise<void> {
     if (revision.head === revision.base) return;
 
-    const name = briefName(revision.head);
     const existing = state.briefs.find((entry) => entry.head === revision.head);
 
     if (existing !== undefined && !(retry && existing.status === "failed")) return;
-
-    if (existing !== undefined) {
-      const outcome = await this.#sdk.session(sessionId).heads.remove(asId<"head">(name));
-
-      if (outcome.kind === "busy") throw new BadRequest(`${name} is still running`);
-    }
 
     const earlier = [...record.revisions]
       .reverse()
@@ -485,7 +477,6 @@ class Reviews {
 
     const lenders = await Promise.all(
       earlier.map(async (entry) => ({
-        entry,
         brief: state.briefs.find((brief) => brief.head === entry.head),
         descends: await this.#repo.descends(entry.head, revision.head),
       })),
@@ -498,26 +489,50 @@ class Reviews {
         candidate.descends &&
         candidate.brief?.status === "done" &&
         candidate.brief.guide !== undefined,
-    )?.entry;
+    )?.brief;
 
-    await this.#fork({
-      sessionId,
-      head: name,
-      from: lender === undefined ? "main" : briefName(lender.head),
-      config:
-        lender === undefined
-          ? this.#host.config
-          : await this.#pinned(sessionId, briefName(lender.head)),
-      key: retry ? `${name}-retry-${Date.now()}` : name,
-      content:
-        lender === undefined
-          ? await briefPrompt(this.#reads, record, revision)
-          : await updatePrompt(this.#reads, record, lender.head, revision),
-    });
+    const content =
+      lender === undefined
+        ? await briefPrompt(this.#reads, record, revision)
+        : await updatePrompt(this.#reads, record, lender.head, revision);
+
+    const prefix = `${briefName(revision.head)}-retry-`;
+    const retries = state.heads.filter((head) => head.name.startsWith(prefix)).length;
+
+    const name =
+      state.heads.length === 0
+        ? "main"
+        : existing === undefined
+          ? briefName(revision.head)
+          : `${prefix}${retries + 1}`;
+
+    this.#registry.update(record.id, (current) => ({
+      ...current,
+      briefHeads: { ...current.briefHeads, [revision.head]: name },
+    }));
+
+    if (state.heads.length === 0)
+      await this.#sdk.sessions.start({
+        id: sessionId,
+        name: `review ${record.id} · reviewer ${REVIEWER_VERSION}`,
+        configuration: { ...this.#host.config, agent: REVIEW_AGENT },
+        content,
+      });
+    else
+      await this.#fork({
+        sessionId,
+        head: name,
+        from:
+          lender === undefined ? { kind: "start" } : await this.#readTip(sessionId, lender.name),
+        config:
+          lender === undefined ? this.#host.config : await this.#pinned(sessionId, lender.name),
+        key: name,
+        content,
+      });
     this.#log(
       lender === undefined
         ? `${name}: writing the guide for ${record.title} from the patch`
-        : `${name}: cut from ${briefName(lender.head)}, sending the interdiff`,
+        : `${name}: cut from ${lender.name}, sending the interdiff`,
     );
   }
 
@@ -525,20 +540,22 @@ class Reviews {
     return join(CACHE_DIR, "worktrees", id);
   }
 
-  async #openAuthor(id: string, worktree: string): Promise<SessionId> {
+  /** Start Nyte's session in the worktree with its first request. */
+  async #startAuthor(id: string, worktree: string, content: string): Promise<SessionId> {
     const workspace = await this.#sdk.workspaces.add({ kind: "local", path: worktree });
 
     if (workspace.kind !== "added" && workspace.kind !== "exists")
       throw new BadRequest(`The worktree is unavailable: ${workspace.kind}`);
 
-    return (
-      await this.#sdk.sessions.create({
-        id: asId<"session">(`lab-author:${id}`),
-        name: `${AUTHOR_PREFIX}${id}`,
-        workspace: workspace.workspace,
-        configuration: { ...this.#host.config, agent: AUTHOR_AGENT },
-      })
-    ).id;
+    const started = await this.#sdk.sessions.start({
+      id: asId<"session">(`lab-author:${id}`),
+      name: `${AUTHOR_PREFIX}${id}`,
+      workspace: workspace.workspace,
+      configuration: { ...this.#host.config, agent: AUTHOR_AGENT },
+      content,
+    });
+
+    return started.session.id;
   }
 
   /** Why Nyte cannot code on this review's branch, or undefined when it can. */
@@ -555,14 +572,8 @@ class Reviews {
       : `${record.headRef} is checked out at ${taken.path}. Nyte codes in a worktree of its own, so it leaves a branch checked out elsewhere alone.`;
   }
 
-  /** Nyte's session on the branch, opened in a new worktree the first time it is asked for. */
-  #openReviewAuthor(record: ReviewRecord): Promise<AuthorRecord> {
-    if (record.author !== undefined) return Promise.resolve(record.author);
-
-    const known = this.#opening.get(record.id);
-
-    if (known !== undefined) return known;
-
+  /** Nyte's session on the branch, started in a new worktree with the first change it is asked for. */
+  #startReviewAuthor(record: ReviewRecord, content: string): Promise<AuthorRecord> {
     const opened = (async () => {
       const blocked = await this.#checkAuthorBlock(record);
 
@@ -573,7 +584,10 @@ class Reviews {
       if (!(await this.#repo.worktrees()).some((tree) => tree.path === worktree))
         await this.#repo.addWorktree(worktree, record.headRef);
 
-      const author = { sessionId: await this.#openAuthor(record.id, worktree), worktree };
+      const author = {
+        sessionId: await this.#startAuthor(record.id, worktree, content),
+        worktree,
+      };
 
       this.#registry.update(record.id, (current) => ({ ...current, author }));
       this.#log(`${record.headRef}: Nyte opened a worktree at ${worktree}`);
@@ -620,7 +634,7 @@ class Reviews {
   async #detail(id: string): Promise<ReviewDetail> {
     const revision = await this.#resolveRevision(this.#find(id));
     const record = this.#find(id);
-    const sessionId = await this.#openSession(record);
+    const sessionId = reviewSessionId(record);
     const state = await this.#coreState(record, sessionId);
 
     const [list, files] = await Promise.all([
@@ -659,13 +673,12 @@ class Reviews {
   async #summary(record: ReviewRecord): Promise<ReviewSummary> {
     const revision = await this.#resolveRevision(record);
 
-    const [list, files, sessionId] = await Promise.all([
+    const [list, files] = await Promise.all([
       this.#reads.commits(revision.base, revision.head),
       this.#reads.changes(revision.base, revision.head),
-      this.#openSession(record),
     ]);
 
-    const state = await this.#coreState(this.#find(record.id), sessionId);
+    const state = await this.#coreState(this.#find(record.id), reviewSessionId(record));
     const current = state.briefs.find((brief) => brief.head === revision.head);
     const latest = [...state.briefs].reverse().find((brief) => brief.guide !== undefined);
     const sum = totals(files);
@@ -722,8 +735,6 @@ class Reviews {
       revision: { head: compared.head, base: compared.base, at: Date.now() },
     });
 
-    await this.#openSession(record);
-
     return { id: record.id };
   }
 
@@ -738,7 +749,7 @@ class Reviews {
     if (revision.head !== head)
       throw new BadRequest(`The branch moved to ${revision.head.slice(0, 7)}; reload the review`);
 
-    const sessionId = await this.#openSession(record);
+    const sessionId = reviewSessionId(record);
 
     await this.#ensureBrief(
       record,
@@ -777,7 +788,7 @@ class Reviews {
   /** A thread's first question cuts it from the brief; later ones land on the same fork. */
   async #ask(id: string, input: Ask): Promise<void> {
     const record = this.#find(id);
-    const sessionId = await this.#openSession(record);
+    const sessionId = reviewSessionId(record);
     const state = await this.#coreState(record, sessionId);
     const brief = state.briefs.find((entry) => entry.head === input.head);
 
@@ -787,7 +798,7 @@ class Reviews {
     await this.#fork({
       sessionId,
       head: `${threadPrefix(input.head)}${input.thread}`,
-      from: brief.name,
+      from: await this.#readTip(sessionId, brief.name),
       config: await this.#pinned(sessionId, brief.name),
       key: input.key,
       content: input.text,
@@ -807,7 +818,7 @@ class Reviews {
 
     await this.#repo.addWorktree(worktree, branch, baseTip);
 
-    const authorSession = await this.#openAuthor(id, worktree);
+    const authorSession = await this.#startAuthor(id, worktree, input.task);
 
     this.#registry.create({
       id,
@@ -818,16 +829,25 @@ class Reviews {
       task: input.task,
       author: { sessionId: authorSession, worktree },
     });
-    await this.#sdk.session(authorSession).send(input.task, { id: asId<"receipt">(`task-${id}`) });
     this.#log(`${branch}: Nyte started "${title}" in ${worktree}`);
 
     return { id };
   }
 
+  /** The first change starts Nyte's session with it; a change while it starts waits, then sends. */
   async #change(id: string, input: Change): Promise<void> {
-    const author = await this.#openReviewAuthor(this.#find(id));
+    const record = this.#find(id);
+    const author = record.author ?? this.#opening.get(record.id);
 
-    await this.#sdk.session(author.sessionId).send(input.text, { id: asId<"receipt">(input.key) });
+    if (author === undefined) {
+      await this.#startReviewAuthor(record, input.text);
+
+      return;
+    }
+
+    const { sessionId } = await author;
+
+    await this.#sdk.session(sessionId).send(input.text, { id: asId<"receipt">(input.key) });
   }
 
   /** Approve the head the branch is at; a later push leaves the approval behind. */
@@ -845,7 +865,10 @@ class Reviews {
 
   async #readSessions(id: string): Promise<Sessions> {
     const record = this.#find(id);
-    const reply: Sessions = { sessionId: await this.#openSession(record) };
+    const sessionId = reviewSessionId(record);
+    const reply: Sessions = {};
+
+    if ((await this.#readHeads(sessionId)).length > 0) reply.sessionId = sessionId;
 
     if (record.author !== undefined) reply.authorSessionId = record.author.sessionId;
 

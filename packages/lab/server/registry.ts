@@ -1,7 +1,8 @@
 /**
  * The reviews someone created in the lab: a title, the base and head refs to
- * compare, every head the review has seen, the task and the worktree Nyte
- * codes in when it has one, and which heads you approved. Kept as one JSON
+ * compare, every head the review has seen, the core head holding each guide,
+ * the task and the worktree Nyte codes in when it has one, and which heads you
+ * approved. Kept as one JSON
  * file beside the core store. Guides, answers and Nyte's work live in core;
  * this file only remembers what to compare and where.
  */
@@ -36,6 +37,8 @@ const RecordSchema = Type.Object({
   author: Type.Optional(AuthorSchema),
   /** Oldest first; an approval counts only while the head it names is current. */
   approvals: Type.Optional(Type.Array(ApprovalSchema)),
+  /** The core head holding each revision's brief, by revision head; absent means none yet. */
+  briefHeads: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 
 export type ReviewRecord = Static<typeof RecordSchema>;

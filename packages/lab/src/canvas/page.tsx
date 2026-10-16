@@ -12,7 +12,7 @@ import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { canvasClient, compileDemo, openCanvasSession, useCanvasSession } from "./api";
+import { canvasClient, compileDemo, startCanvasSession, useCanvasSession } from "./api";
 import { demoSources, demoTurns, revealDemo } from "./demo";
 import { CanvasTurn } from "./turn";
 
@@ -124,7 +124,7 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
     selectionEnd: 0,
   });
 
-  const session = useMutation({ mutationFn: openCanvasSession });
+  const session = useMutation({ mutationFn: startCanvasSession });
 
   const sessionId =
     session.data === undefined ? undefined : asId<"session">(session.data.sessionId);
@@ -133,9 +133,14 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
 
   const send = useMutation({
     mutationFn: async (text: string) => {
-      const current = session.data ?? (await session.mutateAsync());
+      if (session.data === undefined) {
+        await session.mutateAsync(text);
+
+        return;
+      }
+
       const connection = await canvasClient();
-      await connection.session(asId<"session">(current.sessionId)).send(text);
+      await connection.session(asId<"session">(session.data.sessionId)).send(text);
     },
   });
 

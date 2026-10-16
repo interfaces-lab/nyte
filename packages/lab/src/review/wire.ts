@@ -235,9 +235,12 @@ export type CreateReview = Static<typeof CreateReviewSchema>;
 
 export const CreatedSchema = Type.Object({ id: Type.String() });
 
-/** The review's core sessions: never changing once they exist, so a page can watch them. */
+/**
+ * The review's core sessions: never changing once they exist, so a page can
+ * watch them. Each is absent until its first message starts it.
+ */
 export const SessionSchema = Type.Object({
-  sessionId: Type.String(),
+  sessionId: Type.Optional(Type.String()),
   authorSessionId: Type.Optional(Type.String()),
 });
 
