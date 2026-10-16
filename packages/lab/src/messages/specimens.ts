@@ -17,10 +17,6 @@ import type {
   TurnInfo,
   UserContent,
 } from "@nyte-ai/sdk";
-import type {
-  ProvisionalSubagentSession,
-  SubagentSession,
-} from "@nyte-ai/app/conversation/subagent-sessions.ts";
 import { isToolMessage } from "@nyte-ai/app/view-helpers.ts";
 import type { ConversationTurn, UserMessage } from "@nyte-ai/app/view-helpers.ts";
 
@@ -124,6 +120,7 @@ const thought = (markdown: string, seconds: number, status?: PartStatus): Messag
   part("thinking", "step", { markdown, merged: 1, signature: null }, seconds, status);
 
 interface ToolSpec {
+  readonly call?: string;
   readonly name: string;
   readonly args: Json;
   readonly class: ToolClass;
@@ -139,7 +136,7 @@ type CallState =
 
 function call(spec: ToolSpec, state: CallState, seconds: number, output?: string): Message {
   const id = oid("call");
-  const base = { call: asId<"call">(id), name: spec.name, args: spec.args, class: spec.class };
+  const base = { call: asId<"call">(spec.call ?? id), name: spec.name, args: spec.args, class: spec.class };
 
   const toolState: ToolPartState =
     "phase" in state
@@ -450,6 +447,7 @@ function child(id: string, name: string, execution: Execution): SessionInfo {
     id: asId<"session">(id),
     name,
     parent: asId<"session">("lab-messages"),
+    call: asId<"call">(`${id}-create`),
     workspace: asId<"workspace">("fixture"),
     pinned: false,
     archived: false,
@@ -461,13 +459,6 @@ function child(id: string, name: string, execution: Execution): SessionInfo {
     lastActivityAt: T0 + 60_000,
   };
 }
-
-const starting: ProvisionalSubagentSession = {
-  kind: "provisional",
-  id: asId<"session">("lab-agent-starting"),
-  title: "Map translucent tints to tokens",
-  startedAt: T0,
-};
 
 const finished = child("lab-agent-done", "Review titlebar alignment", {
   kind: "idle",
@@ -492,18 +483,15 @@ const broken = child("lab-agent-failed", "Audit floating surface shadows", {
   },
 });
 
-export const UNSTARTED = asId<"session">("lab-agent-unstarted");
+export const SUBAGENTS: readonly SessionInfo[] = [finished, asking, broken];
 
-export const SUBAGENTS: ReadonlyMap<SessionId, SubagentSession> = new Map(
-  [starting, finished, asking, broken].map((session) => [session.id, session]),
-);
-
-function create(title: string, session: SessionId, state: CallState, seconds: number) {
+function create(title: string, session: SessionInfo | null, state: CallState, seconds: number) {
   return call(
     {
+      call: session?.call ?? oid("call"),
       name: "task",
       args: { title },
-      class: { kind: "delegate", child: session, role: "create", title },
+      class: { kind: "delegate", child: session?.id ?? null, role: "create", title },
     },
     state,
     seconds,
@@ -907,32 +895,32 @@ export const SECTIONS: readonly Section[] = [
       lone(
         "agent-starting",
         "Starting",
-        'delegate · role = "create" · child provisional',
-        create(starting.title, starting.id, RUNNING, 0),
+        'delegate · role = "create" · no child yet · status from the call',
+        create("Map translucent tints to tokens", null, RUNNING, 0),
       ),
       lone(
         "agent-done",
         "Completed",
         "create · child idle, last run completed",
-        create("Review titlebar alignment", finished.id, ok(), 0),
+        create("Review titlebar alignment", finished, ok(), 0),
       ),
       lone(
         "agent-asking",
         "Waiting for a reply",
         "create · child waiting on a part",
-        create("Confirm workspace trust copy", asking.id, ok(), 0),
+        create("Confirm workspace trust copy", asking, ok(), 0),
       ),
       lone(
         "agent-failed",
         "Failed",
         "create · child idle, last run failed",
-        create("Audit floating surface shadows", broken.id, ok(), 0),
+        create("Audit floating surface shadows", broken, ok(), 0),
       ),
       lone(
         "agent-unstarted",
         "Never started",
-        "create · session reads null · status from the call",
-        create("Profile the transcript", UNSTARTED, failed("The subagent could not start."), 0),
+        "create · no child · status from the call",
+        create("Profile the transcript", null, failed("The subagent could not start."), 0),
       ),
       lone(
         "agent-send",

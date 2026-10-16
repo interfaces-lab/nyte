@@ -29,6 +29,7 @@ export function stage(scene: Scene): Stage {
     failed: scene.failed === true,
     turns: scene.turns,
     landing,
+    held: scene.execution?.kind === "idle" && scene.execution.lastRun?.end.kind !== "completed",
     retrying: scene.execution?.kind === "retrying" ? scene.execution.reason : undefined,
     working,
     running,
@@ -89,6 +90,8 @@ export function trail({ rows, working }: Stage): readonly string[] {
                   return `  ${message.partKind}${isToolMessage(message) ? `:${message.state.class.kind}` : ""}${message.status.kind === "live" ? " · live" : ""}`;
                 }
 
+                case "agents":
+                  return `  agents ×${String(item.messages.length)}`;
                 case "response":
                   return `  response ×${String(item.messages.length)}${item.messages.some((message) => isTextMessage(message) && message.status.kind === "live") ? " · live" : ""}`;
                 case "step": {
