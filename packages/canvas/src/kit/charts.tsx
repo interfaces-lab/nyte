@@ -352,9 +352,7 @@ export function LineChart({
   );
 }
 
-type BarKey =
-  | string
-  | { readonly key: string; readonly label?: string; readonly tint?: Tint };
+type BarKey = string | { readonly key: string; readonly label?: string; readonly tint?: Tint };
 
 export function BarChart({
   data,
