@@ -6,7 +6,7 @@ import type { Host, Store } from "@nyte-ai/core";
 import type { HostView } from "@nyte-ai/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
-import { storedAccounts } from "../../ai/test/credential-fixture.ts";
+import { storedAccounts } from "./stored-accounts.ts";
 import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, localProvider, openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";

@@ -1,10 +1,11 @@
-import type { ByteReader, ExecutionCoverage, Owned } from "@nyte-ai/schema";
+import type { ExecutionCoverage, Owned } from "@nyte-ai/schema";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Listener, Store } from "@nyte-ai/core";
 import { decodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { listenFetch } from "../src/listen-fetch.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
+import { endless } from "./endless.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 
@@ -22,26 +23,6 @@ function post(listener: Listener, name: string, authorization: string): Promise<
       body: "{}",
     }),
   );
-}
-
-function endless(): ByteReader & { closes(): number } {
-  let closes = 0;
-  const closed = Promise.withResolvers<void>();
-
-  return {
-    size: null,
-    mime: null,
-    async *chunks() {
-      yield Uint8Array.of(7);
-      await closed.promise;
-    },
-    close: async () => {
-      closes += 1;
-      closed.resolve();
-    },
-    closes: () => closes,
-    [Symbol.asyncDispose]: async () => undefined,
-  };
 }
 
 describe("listenFetch", () => {

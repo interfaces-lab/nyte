@@ -14,7 +14,7 @@ import {
   withInputHeader,
 } from "@nyte-ai/protocol";
 import { parseJson } from "@nyte-ai/protocol";
-import { endless } from "../../../protocol/test/endless.ts";
+import { endless } from "../endless.ts";
 import { post, served } from "./fakes.ts";
 
 const main: HeadName = asId("main");

@@ -2,7 +2,7 @@ import { SdkError } from "@nyte-ai/schema";
 import { envelope, kvRef, memoryStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
-import { storedAccounts } from "../../ai/test/credential-fixture.ts";
+import { storedAccounts } from "./stored-accounts.ts";
 import { credentialStore, openSecret, sealSecret } from "../src/credentials.ts";
 
 const key = (fill: number) => ({ key: async () => new Uint8Array(32).fill(fill) });
