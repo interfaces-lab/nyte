@@ -13,8 +13,8 @@ import {
   modelInput,
   modelsDevCost,
   modelsDevModel,
-  recordModelsDevMetadata,
   type ModelsDevCatalog,
+  type ModelsDevMetadata,
   type ModelsDevModel,
 } from "./models-dev.ts";
 
@@ -92,7 +92,7 @@ function bedrockBaseUrl(modelId: string): string {
 }
 
 /** Amazon Bedrock models, without AI21 Jamba (no tool use in streaming mode) and Mistral 7B Instruct v0 (no system messages). */
-export function bedrockModels(data: ModelsDevCatalog): Model<Api>[] {
+export function bedrockModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const models: Model<Api>[] = [];
 
   for (const [id, m] of Object.entries(data["amazon-bedrock"]?.models ?? {})) {
@@ -108,14 +108,14 @@ export function bedrockModels(data: ModelsDevCatalog): Model<Api>[] {
       ...modelsDevModel(id, m, "bedrock-converse-stream", "amazon-bedrock", bedrockBaseUrl(id)),
       ...(m.structured_output === true && { compat: { supportsStrictMode: true } }),
     });
-    recordModelsDevMetadata("amazon-bedrock", id, m);
+    metadata.record("amazon-bedrock", id, m);
   }
 
   return models;
 }
 
 /** Anthropic models, adding Claude Haiku 5.5 until models.dev lists it and correcting Sonnet 5.5's cache-read price. */
-export function anthropicModels(data: ModelsDevCatalog): Model<Api>[] {
+export function anthropicModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const anthropic = data.anthropic?.models;
 
   if (!anthropic) return [];
@@ -167,7 +167,7 @@ export function anthropicModels(data: ModelsDevCatalog): Model<Api>[] {
       contextWindow: m.limit?.context || 4096,
       maxTokens: m.limit?.output || 4096,
     });
-    recordModelsDevMetadata("anthropic", modelId, m);
+    metadata.record("anthropic", modelId, m);
   }
 
   return models;
@@ -187,7 +187,7 @@ function geminiAliasSource(
 }
 
 /** Gemini API models; the `-latest` aliases take their target's capabilities and prices. */
-export function googleModels(data: ModelsDevCatalog): Model<Api>[] {
+export function googleModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const google = data.google?.models;
   const models: Model<Api>[] = [];
 
@@ -207,7 +207,7 @@ export function googleModels(data: ModelsDevCatalog): Model<Api>[] {
       contextWindow: source.limit?.context || 4096,
       maxTokens: source.limit?.output || 4096,
     });
-    recordModelsDevMetadata("google", modelId, source);
+    metadata.record("google", modelId, source);
   }
 
   return models;
@@ -220,7 +220,7 @@ export function googleModels(data: ModelsDevCatalog): Model<Api>[] {
  * Flash that do not match the official Gemini API standard pricing table; only
  * cachedContentTokenCount counts as cacheRead.
  */
-export function vertexModels(data: ModelsDevCatalog): Model<Api>[] {
+export function vertexModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const vertex = data["google-vertex"]?.models;
   const models: Model<Api>[] = [];
 
@@ -250,7 +250,7 @@ export function vertexModels(data: ModelsDevCatalog): Model<Api>[] {
       contextWindow: source.limit?.context || 4096,
       maxTokens: source.limit?.output || 4096,
     });
-    recordModelsDevMetadata("google-vertex", modelId, source);
+    metadata.record("google-vertex", modelId, source);
   }
 
   return models;
@@ -262,6 +262,7 @@ export function plainModels(
   source: string,
   api: Api,
   baseUrl: string,
+  metadata: ModelsDevMetadata,
   excluded: ReadonlySet<string> = new Set(),
 ): Model<Api>[] {
   const models: Model<Api>[] = [];
@@ -272,24 +273,25 @@ export function plainModels(
     if (excluded.has(modelId)) continue;
 
     models.push(modelsDevModel(modelId, m, api, source, baseUrl));
-    recordModelsDevMetadata(source, modelId, m);
+    metadata.record(source, modelId, m);
   }
 
   return models;
 }
 
 /** OpenAI models over the Responses API. */
-export function openAiModels(data: ModelsDevCatalog): Model<Api>[] {
+export function openAiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   return plainModels(
     data,
     "openai",
     "openai-responses",
     "https://api.openai.com/v1",
+    metadata,
     MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS,
   );
 }
 
-export function xaiModels(data: ModelsDevCatalog): Model<Api>[] {
+export function xaiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const models: Model<Api>[] = [];
 
   for (const [modelId, m] of Object.entries(data.xai?.models ?? {})) {
@@ -308,14 +310,14 @@ export function xaiModels(data: ModelsDevCatalog): Model<Api>[] {
       contextWindow: m.limit?.context || 4096,
       maxTokens: m.limit?.output || 4096,
     });
-    recordModelsDevMetadata("xai", modelId, m);
+    metadata.record("xai", modelId, m);
   }
 
   return models;
 }
 
 /** Z.ai's international and China coding plans, priced at Z.ai's API rates when models.dev lists them. */
-export function zaiModels(data: ModelsDevCatalog): Model<Api>[] {
+export function zaiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     {
       source: "zai-coding-plan",
@@ -371,7 +373,7 @@ export function zaiModels(data: ModelsDevCatalog): Model<Api>[] {
 
       if (thinkingLevelMap) zaiModel.thinkingLevelMap = thinkingLevelMap;
       models.push(zaiModel);
-      recordModelsDevMetadata(provider, modelId, m);
+      metadata.record(provider, modelId, m);
     }
   }
 
@@ -379,7 +381,7 @@ export function zaiModels(data: ModelsDevCatalog): Model<Api>[] {
 }
 
 /** Mistral models; a missing cache-read price defaults to a tenth of the input price. */
-export function mistralModels(data: ModelsDevCatalog): Model<Api>[] {
+export function mistralModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const models: Model<Api>[] = [];
 
   for (const [modelId, m] of Object.entries(data.mistral?.models ?? {})) {
@@ -402,14 +404,14 @@ export function mistralModels(data: ModelsDevCatalog): Model<Api>[] {
       contextWindow: m.limit?.context || 4096,
       maxTokens: m.limit?.output || 4096,
     });
-    recordModelsDevMetadata("mistral", modelId, m);
+    metadata.record("mistral", modelId, m);
   }
 
   return models;
 }
 
 /** MiniMax's international and China Anthropic-compatible APIs; the SDK appends /v1/messages. */
-export function minimaxModels(data: ModelsDevCatalog): Model<Api>[] {
+export function minimaxModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     { key: "minimax", provider: "minimax", baseUrl: "https://api.minimax.io/anthropic" },
     { key: "minimax-cn", provider: "minimax-cn", baseUrl: "https://api.minimaxi.com/anthropic" },
@@ -422,7 +424,7 @@ export function minimaxModels(data: ModelsDevCatalog): Model<Api>[] {
       if (m.tool_call !== true) continue;
 
       models.push(modelsDevModel(modelId, m, "anthropic-messages", provider, baseUrl));
-      recordModelsDevMetadata(provider, modelId, m);
+      metadata.record(provider, modelId, m);
     }
   }
 
@@ -434,7 +436,10 @@ export function minimaxModels(data: ModelsDevCatalog): Model<Api>[] {
  * may expose versioned aliases (k2p5, k2p6, k2p7): they become kimi-for-coding, and are dropped
  * when that id is listed itself. Zero prices fall back to the implied Moonshot API rates.
  */
-export function kimiCodingModels(data: ModelsDevCatalog): Model<Api>[] {
+export function kimiCodingModels(
+  data: ModelsDevCatalog,
+  metadata: ModelsDevMetadata,
+): Model<Api>[] {
   const kimiModels = data["kimi-for-coding"]?.models;
 
   if (!kimiModels) return [];
@@ -478,14 +483,14 @@ export function kimiCodingModels(data: ModelsDevCatalog): Model<Api>[] {
       contextWindow: m.limit?.context || 4096,
       maxTokens: m.limit?.output || 4096,
     });
-    recordModelsDevMetadata("kimi-coding", normalizedId, m);
+    metadata.record("kimi-coding", normalizedId, m);
   }
 
   return models;
 }
 
 /** Moonshot's international and China APIs; Kimi K3 reasons, takes effort, and falls back to its list prices. */
-export function moonshotModels(data: ModelsDevCatalog): Model<Api>[] {
+export function moonshotModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     { key: "moonshotai", provider: "moonshotai", baseUrl: "https://api.moonshot.ai/v1" },
     { key: "moonshotai-cn", provider: "moonshotai-cn", baseUrl: "https://api.moonshot.cn/v1" },
@@ -534,7 +539,7 @@ export function moonshotModels(data: ModelsDevCatalog): Model<Api>[] {
         maxTokens: m.limit?.output || 4096,
         compat,
       });
-      recordModelsDevMetadata(provider, modelId, m);
+      metadata.record(provider, modelId, m);
     }
   }
 
@@ -546,7 +551,7 @@ export function moonshotModels(data: ModelsDevCatalog): Model<Api>[] {
  * keys from platform.xiaomimimo.com). The three `xiaomi-token-plan-*` providers cover prepaid
  * Token Plan endpoints in cn / ams / sgp.
  */
-export function xiaomiModels(data: ModelsDevCatalog): Model<Api>[] {
+export function xiaomiModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const xiaomiCompat: OpenAICompletionsCompat = {
     requiresReasoningContentOnAssistantMessages: true,
     thinkingFormat: "deepseek",
@@ -592,7 +597,7 @@ export function xiaomiModels(data: ModelsDevCatalog): Model<Api>[] {
         contextWindow: m.limit?.context || 4096,
         maxTokens: m.limit?.output || 4096,
       });
-      recordModelsDevMetadata(provider, modelId, m);
+      metadata.record(provider, modelId, m);
     }
   }
 
@@ -606,7 +611,10 @@ export function xiaomiModels(data: ModelsDevCatalog): Model<Api>[] {
  * models. models.dev keys are "alibaba-token-plan[-cn]"; Nyte exposes them as
  * "qwen-token-plan[-cn]" plus the Individual catalog view.
  */
-export function qwenTokenPlanModels(data: ModelsDevCatalog): Model<Api>[] {
+export function qwenTokenPlanModels(
+  data: ModelsDevCatalog,
+  metadata: ModelsDevMetadata,
+): Model<Api>[] {
   const qwenTokenPlanCompat: OpenAICompletionsCompat = {
     thinkingFormat: "qwen",
     supportsDeveloperRole: false,
@@ -676,7 +684,7 @@ export function qwenTokenPlanModels(data: ModelsDevCatalog): Model<Api>[] {
 
       models.push(qwenModel);
       emittedModelIds?.add(modelId);
-      recordModelsDevMetadata(provider, modelId, m);
+      metadata.record(provider, modelId, m);
     }
 
     if (modelIds && emittedModelIds && emittedModelIds.size !== modelIds.size) {

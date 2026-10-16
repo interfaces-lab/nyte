@@ -56,7 +56,7 @@ import {
   opencodeModels,
   togetherModels,
 } from "./catalog/hosted-providers.ts";
-import { fetchModelsDevCatalog, recordModelsDevMetadata } from "./catalog/models-dev.ts";
+import { fetchModelsDevCatalog, ModelsDevMetadata } from "./catalog/models-dev.ts";
 import {
   fetchAiGatewayModels,
   fetchNvidiaNimModelIds,
@@ -72,17 +72,24 @@ import { verifyNyteCatalogs } from "./verify-catalogs.ts";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Every provider's models from models.dev, in a fixed order; OpenRouter's and Vercel's entries only record metadata. */
-async function loadModelsDevData(): Promise<Model<Api>[]> {
+/**
+ * Every provider's models from models.dev, in a fixed order, and the metadata the loaders recorded from their
+ * source models; OpenRouter's and Vercel's entries only record metadata.
+ */
+async function loadModelsDevData(): Promise<{
+  readonly models: Model<Api>[];
+  readonly metadata: ModelsDevMetadata;
+}> {
   const startedAt = performance.now();
   const data = await fetchModelsDevCatalog();
+  const metadata = new ModelsDevMetadata();
 
   for (const [modelId, model] of Object.entries(data.openrouter?.models ?? {})) {
-    recordModelsDevMetadata("openrouter", modelId, model);
+    metadata.record("openrouter", modelId, model);
   }
 
   for (const [modelId, model] of Object.entries(data.vercel?.models ?? {})) {
-    recordModelsDevMetadata("vercel-ai-gateway", modelId, model);
+    metadata.record("vercel-ai-gateway", modelId, model);
   }
 
   const nvidiaNimModelIds = data.nvidia?.models
@@ -90,44 +97,44 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
     : new Map<string, string>();
 
   const models = [
-    ...bedrockModels(data),
-    ...anthropicModels(data),
-    ...googleModels(data),
-    ...vertexModels(data),
-    ...openAiModels(data),
-    ...plainModels(data, "groq", "openai-completions", "https://api.groq.com/openai/v1"),
-    ...plainModels(data, "cerebras", "openai-completions", "https://api.cerebras.ai/v1"),
-    ...cloudflareWorkersAiModels(data),
-    ...cloudflareAiGatewayModels(data),
-    ...xaiModels(data),
-    ...zaiModels(data),
-    ...mistralModels(data),
-    ...huggingFaceModels(data),
-    ...fireworksModels(data["fireworks-ai"]),
-    ...nvidiaModels(data, nvidiaNimModelIds),
-    ...togetherModels(data),
+    ...bedrockModels(data, metadata),
+    ...anthropicModels(data, metadata),
+    ...googleModels(data, metadata),
+    ...vertexModels(data, metadata),
+    ...openAiModels(data, metadata),
+    ...plainModels(data, "groq", "openai-completions", "https://api.groq.com/openai/v1", metadata),
+    ...plainModels(data, "cerebras", "openai-completions", "https://api.cerebras.ai/v1", metadata),
+    ...cloudflareWorkersAiModels(data, metadata),
+    ...cloudflareAiGatewayModels(data, metadata),
+    ...xaiModels(data, metadata),
+    ...zaiModels(data, metadata),
+    ...mistralModels(data, metadata),
+    ...huggingFaceModels(data, metadata),
+    ...fireworksModels(data["fireworks-ai"], metadata),
+    ...nvidiaModels(data, nvidiaNimModelIds, metadata),
+    ...togetherModels(data, metadata),
     ...basetenModels(data.baseten),
-    ...opencodeModels(data),
-    ...githubCopilotModels(data),
-    ...minimaxModels(data),
-    ...kimiCodingModels(data),
-    ...moonshotModels(data),
-    ...xiaomiModels(data),
-    ...qwenTokenPlanModels(data),
+    ...opencodeModels(data, metadata),
+    ...githubCopilotModels(data, metadata),
+    ...minimaxModels(data, metadata),
+    ...kimiCodingModels(data, metadata),
+    ...moonshotModels(data, metadata),
+    ...xiaomiModels(data, metadata),
+    ...qwenTokenPlanModels(data, metadata),
   ];
 
   done("models.dev", `${models.length} models · ${seconds(startedAt)}`, SOURCE_WIDTH);
 
-  return models;
+  return { models, metadata };
 }
 
 /** Derives each model's compatibility, thinking and cache metadata, in the order later passes depend on. */
-function applyMetadata(models: readonly Model<Api>[]): void {
+function applyMetadata(models: readonly Model<Api>[], metadata: ModelsDevMetadata): void {
   for (const model of models) {
-    applyModelsDevModeMetadata(model);
+    applyModelsDevModeMetadata(model, metadata);
     applyOpenAICompletionsCompatMetadata(model);
     applyAnthropicMessagesCompatMetadata(model);
-    applyModelsDevReasoningOptionMetadata(model);
+    applyModelsDevReasoningOptionMetadata(model, metadata);
     applyThinkingLevelMetadata(model);
     applyStrictToolCompatMetadata(model);
     applyOpenAIGrammarToolCompatMetadata(model);
@@ -162,19 +169,19 @@ function groupByProvider(
 
 async function generateModels() {
   const startedAt = performance.now();
-  const modelsDevModels = await loadModelsDevData();
+  const modelsDev = await loadModelsDevData();
   const openRouterModels = await fetchOpenRouterModels();
   const aiGatewayModels = await fetchAiGatewayModels();
 
   const allModels = withoutUnservedModels([
-    ...modelsDevModels,
+    ...modelsDev.models,
     ...openRouterModels,
     ...aiGatewayModels,
   ]);
 
   applyUpstreamCorrections(allModels);
   addCuratedModels(allModels);
-  applyMetadata(allModels);
+  applyMetadata(allModels, modelsDev.metadata);
 
   const providers = groupByProvider(allModels);
   const sortedProviderIds = Object.keys(providers).sort();

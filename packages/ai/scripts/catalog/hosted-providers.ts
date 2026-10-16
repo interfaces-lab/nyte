@@ -20,8 +20,8 @@ import {
   modelInput,
   modelsDevCost,
   modelsDevModel,
-  recordModelsDevMetadata,
   type ModelsDevCatalog,
+  type ModelsDevMetadata,
   type ModelsDevProvider,
 } from "./models-dev.ts";
 import { NVIDIA_BASE_URL, normalizeNvidiaModelId } from "./remote-catalogs.ts";
@@ -127,7 +127,10 @@ const OPENCODE_OPENAI_COMPLETIONS_LONG_CACHE_RETENTION_UNSUPPORTED_MODELS = new 
 ]);
 
 /** Cloudflare Workers AI models, which use session affinity headers. */
-export function cloudflareWorkersAiModels(data: ModelsDevCatalog): Model<Api>[] {
+export function cloudflareWorkersAiModels(
+  data: ModelsDevCatalog,
+  metadata: ModelsDevMetadata,
+): Model<Api>[] {
   const models: Model<Api>[] = [];
 
   for (const [modelId, m] of Object.entries(data["cloudflare-workers-ai"]?.models ?? {})) {
@@ -143,7 +146,7 @@ export function cloudflareWorkersAiModels(data: ModelsDevCatalog): Model<Api>[] 
       ),
       compat: { sendSessionAffinityHeaders: true },
     });
-    recordModelsDevMetadata("cloudflare-workers-ai", modelId, m);
+    metadata.record("cloudflare-workers-ai", modelId, m);
   }
 
   return models;
@@ -154,7 +157,10 @@ export function cloudflareWorkersAiModels(data: ModelsDevCatalog): Model<Api>[] 
  * in models.dev. The Anthropic and Workers AI passthroughs forward session affinity headers to
  * upstreams that use them for cache and routing affinity.
  */
-export function cloudflareAiGatewayModels(data: ModelsDevCatalog): Model<Api>[] {
+export function cloudflareAiGatewayModels(
+  data: ModelsDevCatalog,
+  metadata: ModelsDevMetadata,
+): Model<Api>[] {
   const models: Model<Api>[] = [];
 
   for (const [prefixedId, m] of Object.entries(data["cloudflare-ai-gateway"]?.models ?? {})) {
@@ -192,14 +198,17 @@ export function cloudflareAiGatewayModels(data: ModelsDevCatalog): Model<Api>[] 
     }
 
     models.push(gatewayModel);
-    recordModelsDevMetadata("cloudflare-ai-gateway", id, m);
+    metadata.record("cloudflare-ai-gateway", id, m);
   }
 
   return models;
 }
 
 /** Hugging Face Inference Providers models, which reject the developer role. */
-export function huggingFaceModels(data: ModelsDevCatalog): Model<Api>[] {
+export function huggingFaceModels(
+  data: ModelsDevCatalog,
+  metadata: ModelsDevMetadata,
+): Model<Api>[] {
   const models: Model<Api>[] = [];
 
   for (const [modelId, m] of Object.entries(data.huggingface?.models ?? {})) {
@@ -220,7 +229,7 @@ export function huggingFaceModels(data: ModelsDevCatalog): Model<Api>[] {
       contextWindow: m.limit?.context || 4096,
       maxTokens: m.limit?.output || 4096,
     });
-    recordModelsDevMetadata("huggingface", modelId, m);
+    metadata.record("huggingface", modelId, m);
   }
 
   return models;
@@ -233,7 +242,10 @@ export function huggingFaceModels(data: ModelsDevCatalog): Model<Api>[] {
  * same replica for cache hits, and cache_control on tools and eager_input_streaming are not
  * supported. See https://docs.fireworks.ai/tools-sdks/anthropic-compatibility
  */
-export function fireworksModels(provider: ModelsDevProvider | undefined): Model<Api>[] {
+export function fireworksModels(
+  provider: ModelsDevProvider | undefined,
+  metadata: ModelsDevMetadata,
+): Model<Api>[] {
   if (!provider?.models) return [];
 
   const anthropicCompat: AnthropicMessagesCompat = {
@@ -296,7 +308,7 @@ export function fireworksModels(provider: ModelsDevProvider | undefined): Model<
       });
     }
 
-    recordModelsDevMetadata("fireworks", modelId, model);
+    metadata.record("fireworks", modelId, model);
   }
 
   return models;
@@ -306,6 +318,7 @@ export function fireworksModels(provider: ModelsDevProvider | undefined): Model<
 export function nvidiaModels(
   data: ModelsDevCatalog,
   nimModelIds: ReadonlyMap<string, string>,
+  metadata: ModelsDevMetadata,
 ): Model<Api>[] {
   const models: Model<Api>[] = [];
 
@@ -337,7 +350,7 @@ export function nvidiaModels(
       contextWindow: m.limit?.context || 4096,
       maxTokens: m.limit?.output || 4096,
     });
-    recordModelsDevMetadata("nvidia", liveModelId, m);
+    metadata.record("nvidia", liveModelId, m);
   }
 
   return models;
@@ -374,7 +387,7 @@ function getTogetherThinkingLevelMap(
 }
 
 /** Together AI's current models, under whichever key models.dev lists them. */
-export function togetherModels(data: ModelsDevCatalog): Model<Api>[] {
+export function togetherModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const togetherProvider = data.together ?? data.togetherai ?? data["together-ai"];
   const models: Model<Api>[] = [];
 
@@ -402,7 +415,7 @@ export function togetherModels(data: ModelsDevCatalog): Model<Api>[] {
 
     if (thinkingLevelMap) togetherModel.thinkingLevelMap = thinkingLevelMap;
     models.push(togetherModel);
-    recordModelsDevMetadata("together", modelId, m);
+    metadata.record("together", modelId, m);
   }
 
   return models;
@@ -521,7 +534,7 @@ export function basetenModels(provider: ModelsDevProvider | undefined): Model<Ap
  *   through the OpenAI-compatible /v1/chat/completions path (Qwen), so they use
  *   openai-completions with Bearer auth. Qwen/DashScope reads enable_thinking at the top level.
  */
-export function opencodeModels(data: ModelsDevCatalog): Model<Api>[] {
+export function opencodeModels(data: ModelsDevCatalog, metadata: ModelsDevMetadata): Model<Api>[] {
   const variants = [
     {
       key: "opencode",
@@ -629,7 +642,7 @@ export function opencodeModels(data: ModelsDevCatalog): Model<Api>[] {
 
       if (compat) opencodeModel.compat = compat;
       models.push(opencodeModel);
-      recordModelsDevMetadata(variant.provider, modelId, m);
+      metadata.record(variant.provider, modelId, m);
     }
   }
 
@@ -641,7 +654,10 @@ export function opencodeModels(data: ModelsDevCatalog): Model<Api>[] {
  * OSWE, and MAI-Code models are only served through the Copilot /responses endpoint; the rest
  * use Chat Completions.
  */
-export function githubCopilotModels(data: ModelsDevCatalog): Model<Api>[] {
+export function githubCopilotModels(
+  data: ModelsDevCatalog,
+  metadata: ModelsDevMetadata,
+): Model<Api>[] {
   const models: Model<Api>[] = [];
 
   for (const [modelId, m] of Object.entries(data["github-copilot"]?.models ?? {})) {
@@ -693,7 +709,7 @@ export function githubCopilotModels(data: ModelsDevCatalog): Model<Api>[] {
     }
 
     models.push(copilotModel);
-    recordModelsDevMetadata("github-copilot", modelId, m);
+    metadata.record("github-copilot", modelId, m);
   }
 
   return models;

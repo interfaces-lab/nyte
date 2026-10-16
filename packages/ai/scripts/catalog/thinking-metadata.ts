@@ -6,7 +6,7 @@ import {
   mergeAnthropicMessagesCompat,
   namesDaybreakBlue,
 } from "./compat-metadata.ts";
-import { findReasoningOptions } from "./models-dev.ts";
+import type { ModelsDevMetadata } from "./models-dev.ts";
 
 type ThinkingLevelMap = NonNullable<Model<Api>["thinkingLevelMap"]>;
 
@@ -133,10 +133,13 @@ function supportsDirectReasoningEffort(model: Model<Api>): boolean {
 }
 
 /** Maps models.dev's recorded effort options onto a model, a batch model reading its base model's. */
-export function applyModelsDevReasoningOptionMetadata(model: Model<Api>): void {
+export function applyModelsDevReasoningOptionMetadata(
+  model: Model<Api>,
+  metadata: ModelsDevMetadata,
+): void {
   const key = `${model.provider}:${model.id}`;
   const reasoningOptions =
-    findReasoningOptions(key) ?? findReasoningOptions(key.replace(/:batch$/, ""));
+    metadata.findReasoningOptions(key) ?? metadata.findReasoningOptions(key.replace(/:batch$/, ""));
   const isModelsDevAnthropicModel =
     /(?:^|[./])claude-/.test(model.id) &&
     (model.api === "anthropic-messages" ||

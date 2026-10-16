@@ -142,31 +142,32 @@ export function modelsDevModel(
   };
 }
 
-const recordedReasoningOptions = new Map<string, ModelsDevReasoningOption[]>();
+/**
+ * models.dev's reasoning options and fast mode for each catalog model, under `provider:id`. The loaders record
+ * them from the source models they read; the thinking and compat passes read them back.
+ */
+export class ModelsDevMetadata {
+  readonly #reasoningOptions = new Map<string, ModelsDevReasoningOption[]>();
+  readonly #modes = new Map<string, NonNullable<Model<Api>["modes"]>>();
 
-const recordedModes = new Map<string, NonNullable<Model<Api>["modes"]>>();
+  /** Keeps a source model's reasoning options and fast mode under `provider:id`. */
+  record(provider: string, id: string, sourceModel: ModelsDevModel): void {
+    const key = `${provider}:${id}`;
 
-/** Keeps a source model's reasoning options and fast mode under `provider:id` for the metadata passes. */
-export function recordModelsDevMetadata(
-  provider: string,
-  id: string,
-  sourceModel: ModelsDevModel,
-): void {
-  const key = `${provider}:${id}`;
+    if (sourceModel.reasoning_options !== undefined) {
+      this.#reasoningOptions.set(key, sourceModel.reasoning_options);
+    }
 
-  if (sourceModel.reasoning_options !== undefined) {
-    recordedReasoningOptions.set(key, sourceModel.reasoning_options);
+    if (sourceModel.experimental?.modes?.fast !== undefined) this.#modes.set(key, ["fast"]);
   }
 
-  if (sourceModel.experimental?.modes?.fast !== undefined) recordedModes.set(key, ["fast"]);
-}
+  /** The reasoning options recorded under `provider:id`. */
+  findReasoningOptions(key: string): ModelsDevReasoningOption[] | undefined {
+    return this.#reasoningOptions.get(key);
+  }
 
-/** The reasoning options recorded under `provider:id`. */
-export function findReasoningOptions(key: string): ModelsDevReasoningOption[] | undefined {
-  return recordedReasoningOptions.get(key);
-}
-
-/** The modes recorded under `provider:id`. */
-export function findModes(key: string): NonNullable<Model<Api>["modes"]> | undefined {
-  return recordedModes.get(key);
+  /** The modes recorded under `provider:id`. */
+  findModes(key: string): NonNullable<Model<Api>["modes"]> | undefined {
+    return this.#modes.get(key);
+  }
 }

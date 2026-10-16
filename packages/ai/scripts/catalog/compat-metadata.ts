@@ -8,7 +8,7 @@ import type {
   OpenAICompletionsCompat,
   OpenAIResponsesCompat,
 } from "../../src/types.ts";
-import { findModes } from "./models-dev.ts";
+import type { ModelsDevMetadata } from "./models-dev.ts";
 
 export const OPENAI_DAYBREAK_BLUE_MODEL_ID = "gpt-daybreak-blue-latest";
 
@@ -529,11 +529,11 @@ export function applyPromptCacheMetadata(model: Model<Api>): void {
 }
 
 /** Copies models.dev's fast mode onto direct Anthropic and OpenAI models, Codex reading OpenAI's. */
-export function applyModelsDevModeMetadata(model: Model<Api>): void {
+export function applyModelsDevModeMetadata(model: Model<Api>, metadata: ModelsDevMetadata): void {
   const provider = model.provider === "openai-codex" ? "openai" : model.provider;
 
   if (provider !== "anthropic" && provider !== "openai") return;
-  const modes = findModes(`${provider}:${model.id}`);
+  const modes = metadata.findModes(`${provider}:${model.id}`);
 
   if (modes) model.modes = [...modes];
 }
