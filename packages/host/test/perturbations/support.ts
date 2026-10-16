@@ -133,8 +133,9 @@ export function watchViews(session: Session): Watched {
  * Checks what a user sees once a run ends: the watch's views move forward
  * (seq never goes back, no message twice in a view, no part's version goes
  * back), the last watched view matches a fresh `view()` (a client resuming
- * now sees what the watcher sees), nothing is left working, and no tool
- * part is left calling or running.
+ * now sees what the watcher sees), the head is idle with every run's turn
+ * ended (a pending message's turn has no run, which clients draw as
+ * unanswered), and no tool part is left calling or running.
  */
 export async function expectSettledViews(session: Session, watched: Watched): Promise<SessionView> {
   const final = await session.view();
@@ -166,8 +167,10 @@ export async function expectSettledViews(session: Session, watched: Watched): Pr
   assert(last !== undefined);
   expect(projection(last)).toEqual(projection(final));
   expect(final.execution.kind).toBe("idle");
-  expect(final.turns.map((turn) => turn.state.kind)).not.toContain("working");
-  expect(final.turns.map((turn) => turn.state.kind)).not.toContain("waiting");
+  expect(
+    final.turns.flatMap((turn) => (turn.run === null ? [] : [turn.state.kind])),
+    "a run's turn is still working or waiting",
+  ).toEqual(final.turns.flatMap((turn) => (turn.run === null ? [] : ["ended"])));
   expect(
     toolStates(final.messages).filter((state) => state.phase !== "settled"),
     "a tool part is still calling or running",

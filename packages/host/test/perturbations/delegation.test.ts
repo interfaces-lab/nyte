@@ -149,3 +149,105 @@ it("delegates scenario D's log reading to a subagent that calls the CI server, a
   expect(childTraces).toEqual([trace]);
   expect(served.map((span) => span.trace)).toEqual([trace]);
 });
+
+it("stops a waiting subagent's run when the user stops the parent", async () => {
+  await using repo = await ciRepo();
+  await using home = await ciHome({ route: "mcp", env: { CI_DELAY_MS: "5000" } });
+
+  const turns = script([
+    {
+      name: "delegate the log",
+      when: afterUser,
+      reply: {
+        content: [
+          {
+            type: "toolCall",
+            id: "task",
+            name: "task",
+            arguments: { prompt: BRIEF, title: "Log reader" },
+          },
+        ],
+      },
+    },
+    {
+      name: "subagent reads the log",
+      when: afterUser,
+      reply: {
+        content: [
+          {
+            type: "toolCall",
+            id: "log",
+            name: "mcp__ci__get_job_logs",
+            arguments: { job_id: 2 },
+          },
+        ],
+      },
+    },
+  ]);
+
+  const fake = fakeModels({ fallback: turns.answer });
+  await using host = await openScenario({ fake, home: home.home, workspace: repo.root });
+  const parent = await host.sessions.create();
+  const watched = watchViews(parent);
+  const started = performance.now();
+  const { trace, receipt } = await submit(parent, CI_PROMPT);
+
+  const child = await until(
+    async () => {
+      const [found] = (
+        await host.sessions.list({ parents: { kind: "children", session: parent.id } })
+      ).items;
+
+      if (found === undefined) return undefined;
+      const view = await host.session(found.id).view();
+
+      return view.messages.some(
+        (message) =>
+          message.kind === "part" &&
+          message.partKind === "tool" &&
+          JSON.stringify(message.state).includes('"phase":"running"'),
+      )
+        ? found
+        : undefined;
+    },
+    10_000,
+    "the subagent's log call to run",
+  );
+
+  await parent.stop();
+  const end = await receipt.settled();
+  const wall = Math.round(performance.now() - started);
+
+  const childView = await until(
+    async () => {
+      const view = await host.session(child.id).view();
+
+      return view.execution.kind === "idle" ? view : undefined;
+    },
+    3_000,
+    "the subagent to stop",
+  );
+
+  const final = await expectSettledViews(parent, watched);
+
+  expect(end.kind).toBe("stopped");
+  expect(settledTool(final.messages, "task").outcome.kind).toBe("stopped");
+  expect(childView.execution).toMatchObject({ lastRun: { end: { kind: "stopped" } } });
+  expect(settledTool(childView.messages, "mcp__ci__get_job_logs").outcome.kind).toBe("stopped");
+  expect(wall).toBeLessThan(5_000);
+  expect(final.messages.at(-1)).toMatchObject({
+    kind: "user",
+    source: { kind: "child", session: child.id, end: "stopped" },
+    delivery: "attach",
+    status: { kind: "pending" },
+  });
+
+  await savePerturbation("subagent-stop", [waterfall(trace)], {
+    perturbation:
+      "Subagent delegation stopped: the user stops the parent while its subagent's get_job_logs call takes 5 s",
+    expected:
+      "Stopping the parent stops the subagent's run and its MCP call; neither is left working.",
+    observed: `parent ${end.kind}; task ${settledTool(final.messages, "task").outcome.kind}; child run ${childView.execution.kind === "idle" ? childView.execution.lastRun?.end.kind : childView.execution.kind}; child call ${settledTool(childView.messages, "mcp__ci__get_job_logs").outcome.kind}; the child's stopped report waits in the parent as an attached message`,
+    wallMs: wall,
+  });
+});
