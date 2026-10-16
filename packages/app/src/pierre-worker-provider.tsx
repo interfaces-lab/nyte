@@ -23,10 +23,12 @@ const POOL_SIZE = Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurre
  * One pool slot, whose worker starts with the slot's first render request.
  * Pierre's pool creates every slot up front and waits for each to initialize,
  * so a slot without a worker answers setup requests itself and replays them,
- * in order, to the worker it starts; the worker's own answers to those are
- * dropped. The pool hands a task to its first idle slot, so a second worker
- * starts only while the first is busy: one diff costs one worker, and a review
- * of many grows the pool up to `POOL_SIZE`.
+ * in order, to each worker it starts; the worker's successful answers to
+ * those are dropped. A replayed request that fails means the worker cannot
+ * render: the render in flight fails with that error, and the next render
+ * starts a new worker. The pool hands a task to its first idle slot, so a
+ * second worker starts only while the first is busy: one diff costs one
+ * worker, and a review of many grows the pool up to `POOL_SIZE`.
  */
 class OnDemandWorker extends EventTarget implements Worker {
   onmessage: ((this: Worker, event: MessageEvent<WorkerResponse>) => void) | null = null;
@@ -41,21 +43,26 @@ class OnDemandWorker extends EventTarget implements Worker {
 
   readonly #replayed = new Set<string>();
 
+  #rendering: string | undefined;
+
   postMessage(request: WorkerRequest): void {
+    const render = request.type === "file" || request.type === "diff";
+
+    if (render) this.#rendering = request.id;
+    else this.#setup.push(request);
+
     if (this.#worker !== undefined) {
       this.#worker.postMessage(request);
 
       return;
     }
 
-    if (request.type === "file" || request.type === "diff") {
+    if (render) {
       this.#start().postMessage(request);
 
       return;
     }
 
-    this.#setup.push(request);
-    this.#replayed.add(request.id);
     queueMicrotask(() =>
       this.#deliver({
         type: "success",
@@ -75,7 +82,23 @@ class OnDemandWorker extends EventTarget implements Worker {
     const worker = new Worker(PierreDiffWorkerUrl, { type: "module" });
 
     worker.addEventListener("message", (event: MessageEvent<WorkerResponse>) => {
-      if (!this.#replayed.delete(event.data.id)) this.#deliver(event.data);
+      const response = event.data;
+
+      if (!this.#replayed.delete(response.id)) {
+        if (response.id === this.#rendering) this.#rendering = undefined;
+        this.#deliver(response);
+
+        return;
+      }
+
+      if (response.type !== "error" || this.#worker !== worker) return;
+      worker.terminate();
+      this.#worker = undefined;
+      this.#replayed.clear();
+      const rendering = this.#rendering;
+      this.#rendering = undefined;
+
+      if (rendering !== undefined) this.#deliver({ ...response, id: rendering });
     });
 
     worker.addEventListener("error", (event) => {
@@ -85,7 +108,11 @@ class OnDemandWorker extends EventTarget implements Worker {
       this.onerror?.call(this, copy);
     });
 
-    for (const request of this.#setup.splice(0)) worker.postMessage(request);
+    for (const request of this.#setup) {
+      this.#replayed.add(request.id);
+      worker.postMessage(request);
+    }
+
     this.#worker = worker;
 
     return worker;
