@@ -16,13 +16,8 @@ import { createRoot, createSignal } from "solid-js";
 import type { BootOptions } from "../effects/boot.ts";
 import { createReporter, installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { hostPort, pluginsPort } from "../effects/host-port.ts";
-import {
-  createHandle,
-  filesPort,
-  settingsPort,
-  shellPort,
-} from "../effects/local-ports.ts";
-import type { HostPort, Ports } from "../effects/ports.ts";
+import { createHandle, filesPort, settingsPort, shellPort } from "../effects/local-ports.ts";
+import type { CrashLog, HostPort, PluginsPort, Ports, TerminalPort } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
 import { terminalPort } from "../effects/terminal-port.ts";
 import { sessionRecovery } from "../flags.ts";
@@ -32,6 +27,7 @@ import type { ServiceSession } from "../service.ts";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import { resolveThemeMode } from "../lib/theme.ts";
 import type { PartMessage } from "../lib/view-helpers.ts";
+import type { Msg } from "../model/msg.ts";
 import { initialState } from "../model/state.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
@@ -57,11 +53,24 @@ const STARTUP_SETTINGS: ResolvedSettings = {
   followUp: "steer",
 };
 
+/** Ports that work before the host opens. The app adds the host, its plugins and the renderer's clock. */
+export type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
+
+/** The host once it is reachable, and what the app closes with it. */
+export interface OpenedHost {
+  readonly host: HostPort;
+  readonly plugins: PluginsPort;
+  readonly drawPart: (message: PartMessage) => Renderable | null;
+  close(): Promise<void>;
+}
+
 export interface AppOptions {
   readonly renderer: CliRenderer;
-  readonly ports: Ports;
+  readonly ports: LocalPorts;
   readonly cwd: string;
-  readonly drawPart: (message: PartMessage) => Renderable | null;
+  readonly boot: BootOptions;
+  /** Opens the host. The app paints and takes typing at once, and boots when this resolves. */
+  readonly open: (dispatch: (msg: Msg) => void) => Promise<OpenedHost>;
   readonly kit?: (kit: Kit) => Kit;
 }
 
@@ -69,17 +78,39 @@ export interface MountedApp {
   readonly store: Store;
   readonly closing: Promise<number>;
   readonly report: ReturnType<typeof createReporter>;
-  boot(options: BootOptions): void;
   startupError(): string | null;
   close(): Promise<void>;
 }
 
+/**
+ * Mounts the app on `renderer` and focuses the composer before the host exists, so input
+ * paints at once; opens the host alongside and boots once it is reachable. Every timer
+ * runs on `renderer.clock`.
+ */
 export async function mountApp(options: AppOptions): Promise<MountedApp> {
-  const { renderer, ports } = options;
+  const { renderer } = options;
   const controller = new AbortController();
   const closing = Promise.withResolvers<number>();
   const [fallen, setFallen] = createSignal<(() => void) | null>(null);
   let startupError: string | null = null;
+  let opened: OpenedHost | null = null;
+
+  const reachable = (): OpenedHost => {
+    if (opened === null) throw new Error("The host is still opening.");
+
+    return opened;
+  };
+
+  const ports: Ports = {
+    ...options.ports,
+    clock: renderer.clock,
+    get host() {
+      return reachable().host;
+    },
+    get plugins() {
+      return reachable().plugins;
+    },
+  };
 
   const report = createReporter(ports.log, (failure) =>
     root.store.dispatch({ kind: "failure", failure }),
@@ -94,7 +125,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
         settings: STARTUP_SETTINGS,
         terminal: terminalFacts(renderer),
       }),
-      now: () => ports.clock.now(),
+      now: () => renderer.clock.now(),
       report,
       runner: (context) =>
         createRunner({
@@ -113,15 +144,14 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     });
 
     const sinks = installSinks(store, ports.terminal);
-
-    const tickers = createTickers(ports.clock);
+    const tickers = createTickers(renderer.clock);
 
     const kit = createKit({
       renderer,
       theme: sinks.theme,
       tickers,
       blob: (id) => ports.host.blob(id),
-      drawPart: options.drawPart,
+      drawPart: (message) => opened?.drawPart(message) ?? null,
       attach: {
         composer: (port) => ports.composer.attach(port),
         scroll: (port) => ports.scroll.attach(port),
@@ -134,6 +164,14 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 
   const { store } = root;
   void store.runner.exited.then(({ code }) => closing.resolve(code));
+
+  const opening = options.open(store.dispatch).then((host) => {
+    opened = host;
+
+    return host;
+  });
+
+  opening.catch(() => undefined);
   const uninstallKeymap = installKeymap({ renderer, store, fallen, quit });
 
   const syncTerminal = (): void => {
@@ -165,7 +203,9 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   renderer.root.onMouseDown = (event) => {
     if (store.state().facts.settings.copyOnSelect || event.button !== Number(MouseButton.RIGHT))
       return;
+
     const selection = renderer.getSelection();
+
     const text =
       selection === null || (selection.isStart && selection.behavior === "cell")
         ? ""
@@ -205,22 +245,36 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     renderer,
   );
 
+  store.runner.boot(
+    options.boot,
+    opening.then(() => undefined),
+  );
+
   return {
     store,
     closing: closing.promise,
     report,
-    boot: (boot) => store.runner.boot(boot),
     startupError: () => startupError,
     async close() {
       controller.abort();
       await store.runner.dispose();
       root.sinks.dispose();
       uninstallKeymap();
+      const host = await opening.catch(() => null);
+      await host?.close();
     },
   };
 }
 
+/**
+ * Runs the interactive TUI: connects to the service from the first instruction, and prints
+ * the resume command on exit. The exit text waits
+ * for `renderer.closed`, because OpenTUI restores and clears the terminal after `destroy`
+ * returns and would wipe anything written before.
+ */
 export async function runTui(flags: RunFlags): Promise<TuiExit> {
+  const connecting = connectLocalService();
+  connecting.catch(() => undefined);
   const cwd = process.cwd();
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
   const log = openCrashLog(home);
@@ -238,11 +292,11 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
 
-  const cleanup = async (resource: string, dispose: () => unknown): Promise<void> => {
+  const cleanup = async (resource: string, dispose: () => Promise<void>): Promise<void> => {
     try {
       await dispose();
     } catch (cause) {
-      failures.push(`${resource} cleanup failed: ${messageOf(cause)}`);
+      failures.push(`${resource} cleanup failed: ${failureText(cause)}`);
     }
   };
 
@@ -262,93 +316,34 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   const encoder = new TextEncoder();
   const terminal = terminalPort(renderer, { write: (text) => native.write(encoder.encode(text)) });
 
-  let opened: {
-    readonly port: HostPort;
-    readonly plugins: Awaited<ReturnType<typeof pluginsPort>>;
-  } | null = null;
-
-  const reachable = (): NonNullable<typeof opened> => {
-    if (opened === null) throw new Error("The host is still opening.");
-
-    return opened;
-  };
-
-  const ports: Ports = {
-    get host() {
-      return reachable().port;
-    },
-    get plugins() {
-      return reachable().plugins;
-    },
-    terminal,
-    composer: createHandle(),
-    scroll: createHandle(),
-    settings: settingsPort(),
-    shell: shellPort(),
-    files: filesPort(),
-    clock: renderer.clock,
-    log,
-  };
-
   const app = await mountApp({
     renderer,
-    ports,
     cwd,
-    drawPart: (message) => maybeMakeRenderable(renderer, opened?.plugins.draw(message)),
+    ports: {
+      terminal,
+      composer: createHandle(),
+      scroll: createHandle(),
+      settings: settingsPort(),
+      shell: shellPort(),
+      files: filesPort(),
+      log,
+    },
+    boot: { home, cwd, target: bootTarget(flags), ...flagSelection(flags) },
+    open: (dispatch) => openService({ connecting, renderer, terminal, log, cwd, dispatch }),
   });
 
   const unhook = installProcessHooks(app.report);
-  let host: ServiceSession | null = null;
-  let closed = false;
-  const remote = new AbortController();
-
-  const opening = (async (): Promise<void> => {
-    await terminal.painted();
-    host = await connectLocalService();
-    const { connection, registration } = host;
-
-    void watchRemote(registration, remote.signal, (facts) =>
-      app.store.dispatch({ kind: "remote", remote: facts }),
-    ).catch((error: unknown) => {
-      if (!remote.signal.aborted) log.write("watch", error);
-    });
-
-    const plugins = await pluginsPort(connection, {
-      notify: (title, body, sound) => terminal.notify(title, body, sound),
-      report: (plugin, message) =>
-        app.store.dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
-    });
-
-    opened = { port: hostPort(connection, cwd), plugins };
-
-    if (!closed) app.boot({ home, cwd, target: bootTarget(flags), ...flagSelection(flags) });
-  })().catch((cause: unknown) => {
-    failures.unshift(`error: ${messageOf(cause)}`);
-  });
-
-  const code = await Promise.race([
-    app.closing,
-    signalled.promise.then(() => 0),
-    opening.then(() => (failures.length > 0 ? 1 : new Promise<number>(() => undefined))),
-  ]);
-
-  closed = true;
-  remote.abort();
-  await opening;
+  const code = await Promise.race([app.closing, signalled.promise.then(() => 0)]);
   const session = app.store.state().facts.session?.id ?? null;
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 
   if (startupError !== null) failures.unshift(`error: ${startupError}`);
-  await cleanup("Plugins", () => opened?.plugins.dispose());
   await cleanup("Clipboard", () => terminal.dispose());
-  // OpenTUI 0.6 restores (and clears) the terminal after destroy returns; output written
-  // before `closed` settles would be wiped by that restore.
   await cleanup("Terminal", async () => {
     renderer.destroy();
     await renderer.closed;
   });
-  await cleanup("Host", () => host?.connection.close());
   unhook();
   process.off("SIGINT", onSigint);
   process.off("SIGTERM", onSigterm);
@@ -358,6 +353,53 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   if ((code !== 0 || failures.length > 0) && exit.kind === "quit") process.exit(1);
 
   return exit;
+}
+
+/** Opens the background service's host for the TUI: its plugins, and the Nyte Connect status. */
+async function openService(input: {
+  readonly connecting: Promise<ServiceSession>;
+  readonly renderer: CliRenderer;
+  readonly terminal: TerminalPort;
+  readonly log: CrashLog;
+  readonly cwd: string;
+  readonly dispatch: (msg: Msg) => void;
+}): Promise<OpenedHost> {
+  const { connection, registration } = await input.connecting;
+  const remote = new AbortController();
+
+  const close = async (): Promise<void> => {
+    remote.abort();
+    await connection.close();
+  };
+
+  void watchRemote(registration, remote.signal, (facts) =>
+    input.dispatch({ kind: "remote", remote: facts }),
+  ).catch((cause: unknown) => {
+    if (!remote.signal.aborted) input.log.write("watch", cause);
+  });
+
+  const plugins = await pluginsPort(connection, {
+    notify: (title, body, sound) => input.terminal.notify(title, body, sound),
+    report: (plugin, message) =>
+      input.dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
+  }).catch(async (cause: unknown) => {
+    await close();
+
+    throw cause;
+  });
+
+  return {
+    host: hostPort(connection, input.cwd),
+    plugins,
+    drawPart: (message) => maybeMakeRenderable(input.renderer, plugins.draw(message)),
+    async close() {
+      try {
+        await plugins.dispose();
+      } finally {
+        await close();
+      }
+    },
+  };
 }
 
 export function exitText(input: {
@@ -405,6 +447,6 @@ function flagSelection(flags: RunFlags): Pick<BootOptions, "model" | "effort"> {
   return { model, effort: flags.effort ?? null };
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function failureText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

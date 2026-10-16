@@ -150,7 +150,6 @@ export interface TerminalPort {
   >;
   suspended<T>(work: () => Promise<T>): Promise<T>;
   open(target: string): void;
-  painted(): Promise<void>;
 }
 
 export interface SettingsPort {

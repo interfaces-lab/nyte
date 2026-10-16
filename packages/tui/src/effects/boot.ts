@@ -18,19 +18,27 @@ export interface BootOptions {
   readonly effort: Thinking | null;
 }
 
-export async function boot(options: BootOptions, context: HandlerContext): Promise<void> {
+/**
+ * Starts the app: reads settings at once, then lists models as soon as `opened` says the
+ * host is reachable, resolves the session and follows it. A failed `opened` fails boot.
+ */
+export async function boot(
+  options: BootOptions,
+  opened: Promise<void>,
+  context: HandlerContext,
+): Promise<void> {
   const { dispatch, ports, scope } = context;
-  dispatch({ kind: "phase", phase: { kind: "starting", step: "workspace" } });
-  await ports.terminal.painted();
 
-  if (context.signal.aborted) return;
-  dispatch({ kind: "phase", phase: { kind: "starting", step: "settings" } });
-  const settings = await ports.settings.read(options.cwd);
-  dispatch({ kind: "settings", settings });
+  const reading = ports.settings.read(options.cwd).then((settings) => {
+    if (!context.signal.aborted) dispatch({ kind: "settings", settings });
 
-  if (context.signal.aborted) return;
-  dispatch({ kind: "phase", phase: { kind: "starting", step: "providers" } });
-  const catalog = await ports.host.listModels();
+    return settings;
+  });
+
+  reading.catch(() => undefined);
+
+  if (!(await reachable(opened, context.signal))) return;
+  const [settings, catalog] = await Promise.all([reading, ports.host.listModels()]);
   dispatch({ kind: "catalog", generation: (scope.catalogGeneration += 1), catalog });
 
   if (context.signal.aborted) return;
@@ -46,8 +54,8 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   }
 
   const watching: Promise<void> = watchHost(context)
-    .catch((error: unknown) => {
-      ports.log.write("watch", error);
+    .catch((cause: unknown) => {
+      ports.log.write("watch", cause);
     })
     .finally(() => scope.watches.delete(watching));
 
@@ -64,8 +72,9 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
         kind: "configure",
         session: target.id,
         selection: {
-          ...(options.model === null ? {} : { model: flagged.model, fast: flagged.fast }),
-          ...(options.effort === null ? {} : { effort: flagged.effort }),
+          model: options.model === null ? undefined : flagged.model,
+          fast: options.model === null ? undefined : flagged.fast,
+          effort: options.effort === null ? undefined : flagged.effort,
         },
       },
       context,
@@ -83,6 +92,14 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
     });
 
   await checkUpdate(settings.autoUpdate, context);
+}
+
+function reachable(opened: Promise<void>, signal: AbortSignal): Promise<boolean> {
+  const aborted = new Promise<boolean>((resolve) =>
+    signal.addEventListener("abort", () => resolve(false), { once: true }),
+  );
+
+  return signal.aborted ? Promise.resolve(false) : Promise.race([opened.then(() => true), aborted]);
 }
 
 async function resolveTarget(
@@ -128,10 +145,10 @@ export function flagSelection(
   const effort = options.effort ?? "medium";
 
   if (options.model === null) return fallbackSelection(catalog, effort);
-  const slash = options.model.indexOf("/");
+  const [provider, ...rest] = options.model.split("/");
 
-  if (slash !== -1) {
-    const model = { provider: options.model.slice(0, slash), id: options.model.slice(slash + 1) };
+  if (rest.length > 0) {
+    const model = { provider, id: rest.join("/") };
 
     return { model, effort, fast: false };
   }

@@ -387,7 +387,6 @@ export function fakePorts(host: FakeHost): FakePorts {
     open(target) {
       terminal.opened.push(target);
     },
-    painted: async () => undefined,
   };
 
   const shell: FakeShell = {

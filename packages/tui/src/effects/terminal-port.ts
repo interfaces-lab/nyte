@@ -72,11 +72,6 @@ export function terminalPort(
     open(target) {
       void open(target).catch(() => undefined);
     },
-    painted() {
-      renderer.requestRender();
-
-      return renderer.idle();
-    },
     dispose: () => clipboard.dispose(),
   };
 }

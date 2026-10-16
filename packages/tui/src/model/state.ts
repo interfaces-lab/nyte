@@ -43,7 +43,7 @@ export type RemoteFacts =
   | { readonly kind: "interrupted" };
 
 export type Phase =
-  | { readonly kind: "starting"; readonly step: "workspace" | "settings" | "providers" }
+  | { readonly kind: "starting" }
   | { readonly kind: "ready" }
   | { readonly kind: "closing" };
 
@@ -240,7 +240,7 @@ export const EMPTY_DRAFT: Draft = { text: "", cursor: 0, row: "only", parts: NO_
 export function initialState(bootstrap: Bootstrap): State {
   return {
     facts: {
-      phase: { kind: "starting", step: "workspace" },
+      phase: { kind: "starting" },
       session: null,
       catalog: { generation: -1, catalog: null },
       settings: bootstrap.settings,

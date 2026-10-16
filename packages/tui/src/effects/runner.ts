@@ -49,7 +49,8 @@ import { submit } from "./submit.ts";
 
 export interface Runner {
   run(effect: Effect): void;
-  boot(options: BootOptions): void;
+  /** Boots once; `opened` settles when the host is reachable, or rejects when it can't open. */
+  boot(options: BootOptions, opened: Promise<void>): void;
   readonly exited: Promise<{ readonly code: number }>;
   settled(): Promise<void>;
   dispose(): Promise<void>;
@@ -93,7 +94,7 @@ export function createRunner(context: RunnerContext): Runner {
 
   return {
     run: (effect) => track(effect.kind, () => invoke(HANDLERS, effect, handlerContext)),
-    boot: (options) => track("boot", () => boot(options, handlerContext)),
+    boot: (options, opened) => track("boot", () => boot(options, opened, handlerContext)),
     exited: scope.exit.promise,
     async settled() {
       while (inFlight.size > 0) await Promise.allSettled(inFlight);

@@ -483,13 +483,16 @@ test("at boot --effort wins over the remembered level, and a resumed session kee
 
   for (const boot of boots) {
     const app = harness(remembering("low"));
-    app.runner.boot({
-      home: "/tmp",
-      cwd: "/tmp",
-      target: boot.target,
-      model: null,
-      effort: boot.effort,
-    });
+    app.runner.boot(
+      {
+        home: "/tmp",
+        cwd: "/tmp",
+        target: boot.target,
+        model: null,
+        effort: boot.effort,
+      },
+      Promise.resolve(),
+    );
     await app.runner.settled();
     expect(await app.received("session-opened")).toMatchObject({ session: asId(boot.session) });
     expect(app.ports.host.sessions.get(boot.session)?.calls.configure).toEqual([...boot.configure]);
@@ -589,13 +592,16 @@ test("a rename of the followed chat in the session directory reaches its info, s
   const app = harness(state);
   const info = state.facts.session?.info;
 
-  app.runner.boot({
-    home: "/tmp",
-    cwd: "/tmp",
-    target: { kind: "session", id: asId("s1") },
-    model: null,
-    effort: null,
-  });
+  app.runner.boot(
+    {
+      home: "/tmp",
+      cwd: "/tmp",
+      target: { kind: "session", id: asId("s1") },
+      model: null,
+      effort: null,
+    },
+    Promise.resolve(),
+  );
 
   if (info === undefined) throw new Error("The fixture follows s1.");
   app.ports.host.publishSessions([info]);
