@@ -4,7 +4,6 @@ import type {
   Decision,
   Disposer,
   HeadName,
-  ModelContext,
   ModelRef,
   ModelRequest,
   ModelRequestInput,
@@ -266,8 +265,6 @@ export type HookTable = {
   before_send: Decide<Submission, "core">;
 
   run_started: Observe<RunView, "core">;
-
-  transform_context: Transform<ModelContext, "core">;
 
   transform_transcript: Transform<Transcript, "core">;
 

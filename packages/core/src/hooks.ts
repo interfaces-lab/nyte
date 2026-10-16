@@ -140,7 +140,6 @@ const observers: Observers = {
 };
 
 const transformers: Transformers = {
-  transform_context: (run, value, context) => run(value, context),
   transform_transcript: (run, value, context) => run(value, context),
   before_compaction: (run, value, context) => run(value, context),
   before_request: (run, value, context) => run(value, context),
@@ -431,7 +430,6 @@ function emptyHandlers(): Handlers {
     session_activated: [],
     before_send: [],
     run_started: [],
-    transform_context: [],
     transform_transcript: [],
     before_compaction: [],
     before_request: [],

@@ -8,7 +8,6 @@ import type {
   HeadName,
   Json,
   MessageSource,
-  ModelContext,
   ModelRef,
   ObjectId,
   PartId,
@@ -120,11 +119,11 @@ export async function requestBody(
       ? undefined
       : runtime.registries.agents.list().find((entry) => entry.id === configuration.agent);
 
-  const context = await runtime.hooks.transform(
-    "transform_context",
-    await buildContext(kernel, models, runtime, { ...input, run, agent: agent?.prompt ?? null }),
-    where,
-  );
+  const messages = await buildContext(kernel, models, runtime, {
+    ...input,
+    run,
+    agent: agent?.prompt ?? null,
+  });
 
   const source = kernel.tools(runtime);
   const named = agent?.tools;
@@ -135,15 +134,8 @@ export async function requestBody(
       (info) => info.exposure === "model" && (named === undefined || named.includes(info.name)),
     );
 
-  const system: readonly Message[] =
-    context.system === "" ? [] : [{ role: "system", content: context.system, timestamp: 0 }];
-
   return {
-    transcript: await runtime.hooks.transform(
-      "transform_transcript",
-      { messages: [...system, ...context.messages], tools },
-      where,
-    ),
+    transcript: await runtime.hooks.transform("transform_transcript", { messages, tools }, where),
     source,
   };
 }
@@ -316,26 +308,29 @@ async function buildContext(
     readonly configuration: Configuration;
     readonly agent: PromptOverride | null;
   },
-): Promise<ModelContext> {
+): Promise<readonly Message[]> {
   const { session, configuration } = input;
   const found = await requireSession(kernel, session);
   const resources = await kernel.resources(session);
   const model = models.getModel(configuration.model.provider, configuration.model.id);
 
-  return {
-    system: buildSystemPrompt(
-      found.record.prompt,
-      input.agent,
-      resources,
-      runtime.registries.prompt.list(),
-    ),
-    messages: await conversation(kernel, models, {
-      session,
-      head: input.head,
-      run: input.run,
-      images: model?.input.includes("image") === true,
-    }),
-  };
+  const system = buildSystemPrompt(
+    found.record.prompt,
+    input.agent,
+    resources,
+    runtime.registries.prompt.list(),
+  );
+
+  const messages = await conversation(kernel, models, {
+    session,
+    head: input.head,
+    run: input.run,
+    images: model?.input.includes("image") === true,
+  });
+
+  return system === ""
+    ? messages
+    : [{ role: "system", content: system, timestamp: 0 }, ...messages];
 }
 
 function buildSystemPrompt(
