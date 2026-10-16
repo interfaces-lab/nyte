@@ -1,4 +1,4 @@
-import { compile, SdkError, SubmissionType, ToolCallType, withJson } from "@nyte-ai/schema";
+import { compile, JsonType, SdkError, SubmissionType, withJson } from "@nyte-ai/schema";
 import type {
   Awaitable,
   Decision,
@@ -51,7 +51,7 @@ interface Decider<N extends CoreHook<"decide">> {
   ): Awaitable<Decision<HookEvent<N>>>;
   intent(event: HookEvent<N>, principal: PrincipalId): Json;
   encode(decision: Decision<HookEvent<N>>): Json;
-  decode(result: Json): Decision<HookEvent<N>> | null;
+  decode(result: Json, event: HookEvent<N>): Decision<HookEvent<N>> | null;
 }
 
 const CONTINUE = { action: "continue" } as const;
@@ -60,7 +60,8 @@ const NEVER = new AbortController().signal;
 
 const submissions = compile(withJson(decisionType(SubmissionType)));
 
-const toolCalls = compile(withJson(decisionType(ToolCallType)));
+/** A before_tool decision as its hook call stores it: a `modify` keeps the changed args alone, since the call's part holds the rest of the tool call. */
+const toolDecisions = compile(withJson(decisionType(JsonType)));
 
 type Observers = {
   readonly [N in CoreHook<"observe">]: (
@@ -105,9 +106,17 @@ const deciders: Deciders = {
   },
   before_tool: {
     invoke: (run, event, context) => run(event, context),
-    intent: (event, principal) => ({ ...event, principal }),
-    encode: (decision) => decision,
-    decode: (result) => (toolCalls.Check(result) ? toolCalls.Decode(result) : null),
+    intent: (_event, principal) => ({ principal }),
+    encode: (decision) =>
+      decision.action === "modify" ? { action: "modify", value: decision.value.args } : decision,
+    decode(result, event) {
+      if (!toolDecisions.Check(result)) return null;
+      const decision = toolDecisions.Decode(result);
+
+      return decision.action === "modify"
+        ? { action: "modify", value: { ...event, args: decision.value } }
+        : decision;
+    },
   },
 };
 
@@ -248,7 +257,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
           result: decider.encode(ended.kind === "done" ? ended.value : CONTINUE),
           updates: [],
         }),
-        decode: (result) => decider.decode(result),
+        decode: (result) => decider.decode(result, value),
       });
     },
   };

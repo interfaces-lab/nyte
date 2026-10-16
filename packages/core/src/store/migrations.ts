@@ -453,6 +453,34 @@ const wokenCalls: RewriteStep = {
   },
 };
 
+const BeforeToolHookType = Type.Object({
+  kind: Type.Literal("hook"),
+  id: Type.String({ pattern: "^hook:before_tool:" }),
+});
+
+/** A before_tool hook call's intent repeated the tool call its part holds, and a gate's `modify` result the whole changed call. The intent keeps its principal, and the result the changed args alone. */
+const hookToolArgs: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-hook-tool-args",
+  rewrite(object) {
+    if (!isJsonObject(object) || object.kind !== "call") return null;
+
+    return patched(object, (body) => {
+      if (!Value.Check(BeforeToolHookType, { kind: body.kind, id: body.id })) return body;
+      const { intent, result } = body;
+      let next = body;
+
+      if (isJsonObject(intent) && "args" in intent)
+        next = { ...next, intent: { principal: intent.principal ?? null } };
+
+      if (isJsonObject(result) && result.action === "modify" && isJsonObject(result.value))
+        next = { ...next, result: { action: "modify", value: result.value.args ?? null } };
+
+      return next;
+    });
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -467,6 +495,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   toolArgsInPart,
   intentPosition,
   wokenCalls,
+  hookToolArgs,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

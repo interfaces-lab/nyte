@@ -92,7 +92,7 @@ describe("hooks", () => {
     expect(calls).toEqual(["first", 'second:{"text":"changed"}']);
     expect(await readCall(kernel, session.id, "hook:before_tool:c1")).toMatchObject({
       kind: "hook",
-      intent: { name: "echo", args: { text: "hi" }, principal: LOCAL },
+      intent: { principal: LOCAL },
       result: { action: "reject", reason: "Not today." },
     });
 
