@@ -66,6 +66,7 @@ import { check, isJsonObject } from "../util/json-schema.ts";
 import { extractUserText } from "../util/text.ts";
 import { charge, complete, requestEvent, rideRef, ZERO_USAGE } from "./request.ts";
 import { estimateTranscriptTokens, projectedCommit, requestBody } from "./transcript.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 type Answer =
   | { readonly kind: "ok"; readonly text: string; readonly usage: Usage; readonly info: ModelInfo }
@@ -293,7 +294,7 @@ async function openCompaction(
 
   if (split === null) return null;
   const { session, head, run, tokensBefore } = input;
-  const tip = await readTip(kernel, session, head);
+  const tip = await readTip(kernel.store, session, head);
   const part = asId<"part">(crypto.randomUUID());
   const state: Json = { summary: null, material: null, tokensBefore, usage: null };
 
@@ -308,10 +309,10 @@ async function openCompaction(
     status: { kind: "live", run },
   };
 
-  const target = await put(kernel, "part", record);
+  const target = await put(kernel.store, "part", record);
 
   const opened = await attempt(`Opening compaction ${part}`, async () => {
-    const held = run === null ? null : await unfenced(kernel, session, run);
+    const held = run === null ? null : await unfenced(kernel.store, session, run);
 
     if (run !== null && held === null) return false;
 
@@ -408,7 +409,7 @@ async function finishCompaction(
   }
 
   await attempt(`Failing compaction ${part}`, async () => {
-    const updates = await failedParts(kernel, session, head, [part], failure);
+    const updates = await failedParts(kernel.store, session, head, [part], failure);
 
     return updates.length === 0 || (await commit(kernel, updates)).kind === "set"
       ? undefined
@@ -440,7 +441,7 @@ export async function failLeftoverCompactions(
   if (leftover.length === 0) return;
 
   await attempt(`Failing compactions ${leftover.join(", ")}`, async () => {
-    const updates = await failedParts(kernel, session, head, leftover, ORPHANED);
+    const updates = await failedParts(kernel.store, session, head, leftover, ORPHANED);
 
     return updates.length === 0 || (await commit(kernel, updates)).kind === "set"
       ? undefined
@@ -461,9 +462,9 @@ async function writeCompaction(
   const name = partRef(session, part);
 
   const [live, tip, fence] = await Promise.all([
-    kernel.store.refs.get(name).then((ref) => load(kernel, ref, decodePartRecord)),
-    readTip(kernel, session, head),
-    run === null ? null : chargeRun(kernel, session, run, written),
+    kernel.store.refs.get(name).then((ref) => load(kernel.store, ref, decodePartRecord)),
+    readTip(kernel.store, session, head),
+    run === null ? null : chargeRun(kernel.store, session, run, written),
   ]);
 
   const replaces =
@@ -476,7 +477,7 @@ async function writeCompaction(
       live?.record.status.kind === "live" && fence?.stopping !== true ? MOVED : STOPPED;
 
     const outcome = await commit(kernel, [
-      ...(await failedParts(kernel, session, head, [part], failure)),
+      ...(await failedParts(kernel.store, session, head, [part], failure)),
       ...(fence === null
         ? []
         : [{ ...fence.update, events: written.event === null ? [] : [written.event] }]),
@@ -493,7 +494,7 @@ async function writeCompaction(
   const at = Date.now();
   const version = live.record.version + 1;
 
-  const landed = await settling(kernel, {
+  const landed = await settling(kernel.store, {
     session,
     head,
     run,
@@ -539,21 +540,21 @@ async function writeCompaction(
 }
 
 async function chargeRun(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
   written: Extract<Written, { readonly kind: "ok" }>,
 ): Promise<{ readonly update: RefUpdate; readonly stopping: boolean }> {
   const { usage, event } = written;
   const name = runRef(session, run);
-  const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
+  const found = await load(store, await store.refs.get(name), decodeRunRecord);
 
   if (found === null) throw new SdkError("internal", `Run ${run} has no record.`);
 
   return {
     update: {
       name,
-      target: await put(kernel, "run", charge(found.record, usage, event !== null)),
+      target: await put(store, "run", charge(found.record, usage, event !== null)),
       expect: found.ref.revision,
     },
     stopping: found.record.stopping,
@@ -767,7 +768,7 @@ async function resolveHeadConfiguration(
   session: SessionId,
   head: HeadName,
 ): Promise<Configuration> {
-  const found = await requireSession(kernel, session);
+  const found = await requireSession(kernel.store, session);
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);

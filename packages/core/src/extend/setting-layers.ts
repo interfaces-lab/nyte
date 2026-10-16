@@ -5,6 +5,7 @@ import type { SettingDefinition } from "../contract/plugin.ts";
 import { kvRef } from "../store/refs.ts";
 import { MAIN, readKv, readSession } from "../store/session.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 interface Defined {
   readonly definition: SettingDefinition;
@@ -41,7 +42,7 @@ export async function settingInfos(
         return null;
       }
 
-      const [layer] = await readSettingLayers(kernel, definition, session);
+      const [layer] = await readSettingLayers(kernel.store, definition, session);
 
       return {
         id: definition.id,
@@ -65,15 +66,15 @@ export async function settingInfos(
 }
 
 export async function readSettingLayers(
-  kernel: Kernel,
+  store: StoreConnection,
   definition: Pick<SettingDefinition, "id" | "scope">,
   session: SessionId | null,
 ): Promise<readonly Layer[]> {
   const [own, host] = await Promise.all([
     definition.scope === "session" && session !== null
-      ? sessionValue(kernel, session, definition.id)
+      ? sessionValue(store, session, definition.id)
       : undefined,
-    readKv(kernel, kvRef("host", "settings", definition.id)),
+    readKv(store, kvRef("host", "settings", definition.id)),
   ]);
 
   return [
@@ -83,11 +84,11 @@ export async function readSettingLayers(
 }
 
 async function sessionValue(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   id: string,
 ): Promise<Json | undefined> {
-  const found = await readSession(kernel, session);
+  const found = await readSession(store, session);
   const settings = found?.record.heads.find((head) => head.name === MAIN)?.selected?.settings;
 
   return settings !== undefined && Object.hasOwn(settings, id) ? settings[id] : undefined;

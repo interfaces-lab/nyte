@@ -16,6 +16,7 @@ import { blobId, objectId } from "../util/content.ts";
 import { SdkError } from "../util/error.ts";
 import { settleReceipt, typedReceipt } from "./receipts.ts";
 import { waitFor } from "./waits.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 export const EMPTY_SNAPSHOT: SnapshotId = asId<"snapshot">("");
 
@@ -45,7 +46,7 @@ export async function applyBatch(
 
       return record.outcome;
     });
-    const known = await readReceipt(kernel, session, id);
+    const known = await readReceipt(kernel.store, session, id);
 
     if (known !== null) {
       if (known.record.kind !== "batch" || known.record.digest !== digest)
@@ -154,7 +155,7 @@ async function execute(
       outcome =
         entry.kind === "remove"
           ? await files.remove(entry.path, { expect: entry.expect })
-          : await files.write(entry.path, await resolveFileContents(kernel, entry.contents), {
+          : await files.write(entry.path, await resolveFileContents(kernel.store, entry.contents), {
               expect: entry.expect,
               parents: true,
             });
@@ -205,11 +206,11 @@ async function captureFileSnapshot(
 }
 
 async function resolveFileContents(
-  kernel: Kernel,
+  store: StoreConnection,
   contents: string | Uint8Array | { readonly blob: BlobId },
 ): Promise<string | Uint8Array> {
   if (typeof contents === "string" || contents instanceof Uint8Array) return contents;
-  const reader = await kernel.store.objects.blob(contents.blob);
+  const reader = await store.objects.blob(contents.blob);
 
   if (reader === null) throw new SdkError("unknown", `No blob has the id ${contents.blob}.`);
 

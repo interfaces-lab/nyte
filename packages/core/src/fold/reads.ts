@@ -39,7 +39,7 @@ export async function readRunEnd(
   session: SessionId,
   run: RunId,
 ): Promise<RunEnd | null> {
-  const found = await readSession(kernel, session);
+  const found = await readSession(kernel.store, session);
   const last = found?.record.heads.find((head) => head.lastRun?.id === run)?.lastRun;
 
   if (last !== undefined && last !== null) return last.end;

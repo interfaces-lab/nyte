@@ -352,7 +352,11 @@ async function turn(
 
                 return {
                   name: callRef(session, id),
-                  target: await put(kernel, "call", intendedCall({ call: id, run, head, intent })),
+                  target: await put(
+                    kernel.store,
+                    "call",
+                    intendedCall({ call: id, run, head, intent }),
+                  ),
                   expect: "absent",
                 };
               }),
@@ -408,7 +412,7 @@ async function turn(
     case "parked":
       return { kind: "parked" };
     case "stopped": {
-      const stopping = await stopRequested(kernel, session, run);
+      const stopping = await stopRequested(kernel.store, session, run);
 
       if (stopping || end.response !== null)
         await failOpen(context, run, stopping ? state.opened : [], ABORTED, end.response);
@@ -613,7 +617,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   };
 
   const live = await attempt(`Opening part ${part}`, async () => {
-    const held = await unfenced(kernel, session, run);
+    const held = await unfenced(kernel.store, session, run);
 
     if (held === null) return false;
 
@@ -621,7 +625,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
       held,
       {
         name: partRef(session, part),
-        target: await put(kernel, "part", record),
+        target: await put(kernel.store, "part", record),
         expect: "absent",
         events: [
           {
@@ -669,7 +673,7 @@ async function settledParts(
 
   const [found, tip] = await Promise.all([
     Promise.all(opened.map(async (entry) => ({ entry, found: await readPart(context, entry) }))),
-    readTip(kernel, session, head),
+    readTip(kernel.store, session, head),
   ]);
 
   const at = Date.now();
@@ -688,7 +692,7 @@ async function settledParts(
     const state = buildPartState(entry);
     const version = part.record.version + 1;
 
-    const landed = await settling(kernel, {
+    const landed = await settling(kernel.store, {
       session,
       head,
       run: part.record.run,
@@ -751,7 +755,11 @@ function buildPartState(entry: OpenPart): Json {
 async function readPart(context: Turn, entry: OpenPart): Promise<Found<PartRecord> | null> {
   const { kernel, session } = context;
 
-  return load(kernel, await kernel.store.refs.get(partRef(session, entry.part)), decodePartRecord);
+  return load(
+    kernel.store,
+    await kernel.store.refs.get(partRef(session, entry.part)),
+    decodePartRecord,
+  );
 }
 
 async function keep(
@@ -768,7 +776,7 @@ async function keep(
   const version = record.version + 1;
   const live = record.status.kind === "live" || record.status.kind === "waiting";
   const status = live ? { kind: "failed", run: record.run, failure } : record.status;
-  const target = await put(kernel, "part", { ...record, state, version, status });
+  const target = await put(kernel.store, "part", { ...record, state, version, status });
 
   return [
     {
@@ -845,7 +853,7 @@ async function retry(
       ],
       updates: [
         ...(await keepOpen(context, state.opened, failure)),
-        ...(await failedParts(kernel, session, head, extra, failure)),
+        ...(await failedParts(kernel.store, session, head, extra, failure)),
       ],
     };
   });
@@ -891,7 +899,7 @@ async function changeRun(
 
   return attempt(`Changing run ${run}`, async () => {
     const found = await load(
-      kernel,
+      kernel.store,
       await kernel.store.refs.get(runRef(session, run)),
       decodeRunRecord,
     );
@@ -900,7 +908,7 @@ async function changeRun(
     const next = await change(found.record);
 
     if (next === null) return undefined;
-    const target = await put(kernel, "run", next.record);
+    const target = await put(kernel.store, "run", next.record);
     const outcome = await commit(kernel, [
       ...(next.updates ?? []),
       { name: found.ref.name, target, expect: found.ref.revision, events: next.events },

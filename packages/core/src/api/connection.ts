@@ -165,7 +165,7 @@ export function createHost(
         kernel.plugins.replace(await loaded(kernel, plugins), scope),
       check: async (plugins) => kernel.plugins.check(await loaded(kernel, plugins)),
     },
-    inspect: (session) => inspect(kernel, session),
+    inspect: (session) => inspect(kernel.store, session),
     execution: {
       cover: (coverage) => cover(kernel, coverage),
       advance: (step) => advance(kernel, step),

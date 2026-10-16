@@ -34,6 +34,7 @@ import type { Resources } from "../contract/workspace.ts";
 import { withFold } from "../fold/reads.ts";
 import { readPositionCommit, requireSession, START, walkCommitPath } from "../store/session.ts";
 import { check, isJsonObject } from "../util/json-schema.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 interface Step {
   readonly commit: CommitId;
@@ -167,7 +168,7 @@ async function buildContext(
   },
 ): Promise<readonly Message[]> {
   const { session, configuration } = input;
-  const found = await requireSession(kernel, session);
+  const found = await requireSession(kernel.store, session);
   const resources = await kernel.resources(session);
   const model = models.getModel(configuration.model.provider, configuration.model.id);
 
@@ -618,7 +619,7 @@ async function userContent(
         case "file":
           return fileContent(kernel, item, images);
         case "reference":
-          return mentionContent(kernel, item);
+          return mentionContent(kernel.store, item);
         case "skill":
           return Promise.resolve({
             type: "text",
@@ -688,10 +689,10 @@ async function fileContent(
 }
 
 async function mentionContent(
-  kernel: Kernel,
+  store: StoreConnection,
   mention: { readonly path: string; readonly blob?: BlobId },
 ): Promise<TextContent> {
-  const reader = mention.blob === undefined ? null : await kernel.store.objects.blob(mention.blob);
+  const reader = mention.blob === undefined ? null : await store.objects.blob(mention.blob);
 
   if (reader === null) return { type: "text", text: `[Reference: ${mention.path}]` };
 

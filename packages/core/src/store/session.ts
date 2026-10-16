@@ -39,6 +39,7 @@ import type {
 import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
 import { callRef, headRef, inboxRef, receiptRef, sessionRef } from "./refs.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 export const MAIN: HeadName = asId<"head">("main");
 
@@ -72,12 +73,12 @@ export type MoveFailure = Exclude<MoveOutcome, { readonly kind: "moved" }>;
 const SESSION_PAGE = 100;
 
 export async function load<T>(
-  kernel: Kernel,
+  store: StoreConnection,
   ref: Ref | null,
   decode: (object: Json | null) => T | null,
 ): Promise<Found<T> | null> {
   if (ref === null || ref.target === null) return null;
-  const record = decode(await kernel.store.objects.get(ref.target));
+  const record = decode(await store.objects.get(ref.target));
 
   if (record === null)
     throw new SdkError("internal", `${ref.name} does not hold the record its name says.`);
@@ -86,17 +87,17 @@ export async function load<T>(
 }
 
 export async function readSession(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
 ): Promise<Found<SessionRecord> | null> {
-  return load(kernel, await kernel.store.refs.get(sessionRef(session)), decodeSessionRecord);
+  return load(store, await store.refs.get(sessionRef(session)), decodeSessionRecord);
 }
 
 export async function requireSession(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
 ): Promise<Found<SessionRecord>> {
-  const found = await readSession(kernel, session);
+  const found = await readSession(store, session);
 
   if (found === null) throw new SdkError("unknown", `No session has the id ${session}.`);
 
@@ -104,35 +105,39 @@ export async function requireSession(
 }
 
 export async function readReceipt(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   id: string,
 ): Promise<Found<ReceiptRecord> | null> {
   return load(
-    kernel,
-    await kernel.store.refs.get(receiptRef(session, asId<"receipt">(id))),
+    store,
+    await store.refs.get(receiptRef(session, asId<"receipt">(id))),
     decodeReceiptRecord,
   );
 }
 
-export async function readTip(kernel: Kernel, session: SessionId, head: HeadName): Promise<Tip> {
-  const ref = await kernel.store.refs.get(headRef(session, head));
+export async function readTip(
+  store: StoreConnection,
+  session: SessionId,
+  head: HeadName,
+): Promise<Tip> {
+  const ref = await store.refs.get(headRef(session, head));
 
   return {
     ref,
     id: ref === null || ref.target === null ? null : asId<"commit">(ref.target),
-    commit: (await load(kernel, ref, decodeCommitRecord))?.record ?? null,
+    commit: (await load(store, ref, decodeCommitRecord))?.record ?? null,
   };
 }
 
 export async function readInbox(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
 ): Promise<Inbox> {
-  const ref = await kernel.store.refs.get(inboxRef(session, head));
+  const ref = await store.refs.get(inboxRef(session, head));
 
-  const record = (await load(kernel, ref, decodeInboxRecord))?.record;
+  const record = (await load(store, ref, decodeInboxRecord))?.record;
 
   return { ref, messages: record?.messages ?? [], pendingInput: record?.pendingInput ?? [] };
 }
@@ -145,21 +150,21 @@ export function inboxWithout(inbox: Inbox, ids: readonly MessageId[]): InboxReco
 }
 
 export async function liveRuns(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
 ): Promise<readonly Found<RunRecord>[]> {
-  const refs = await kernel.store.refs.list(`${sessionRef(session)}/runs/`);
-  const runs = await Promise.all(refs.map((ref) => load(kernel, ref, decodeRunRecord)));
+  const refs = await store.refs.list(`${sessionRef(session)}/runs/`);
+  const runs = await Promise.all(refs.map((ref) => load(store, ref, decodeRunRecord)));
 
   return runs.flatMap((run) => (run === null ? [] : [run]));
 }
 
 export async function liveRun(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
 ): Promise<Found<RunRecord> | null> {
-  return (await liveRuns(kernel, session)).find((run) => run.record.view.head === head) ?? null;
+  return (await liveRuns(store, session)).find((run) => run.record.view.head === head) ?? null;
 }
 
 export function readRefExpectation(ref: Ref | null): Revision | "absent" {
@@ -171,24 +176,24 @@ export function sameRevision(expect: Revision, ref: Ref | null): boolean {
 }
 
 export async function staleHead(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
 ): Promise<MoveFailure> {
   return {
     kind: "stale",
-    revision: (await readTip(kernel, session, head)).ref?.revision ?? EMPTY_REVISION,
+    revision: (await readTip(store, session, head)).ref?.revision ?? EMPTY_REVISION,
   };
 }
 
 export async function put(
-  kernel: Kernel,
+  store: StoreConnection,
   kind: RecordKind,
   body: Json,
   at = Date.now(),
 ): Promise<ObjectId> {
   const object = envelope(kind, body, at);
-  const id = await kernel.store.objects.put(object);
+  const id = await store.objects.put(object);
   dev("store", "objects.put", () => ({
     id,
     kind,
@@ -245,58 +250,63 @@ export function toCommitObjectId(commit: CommitId): ObjectId {
   return asId<"object">(commit);
 }
 
-export async function readCommit(kernel: Kernel, commit: CommitId): Promise<CommitRecord | null> {
-  return decodeCommitRecord(await kernel.store.objects.get(toCommitObjectId(commit)));
+export async function readCommit(
+  store: StoreConnection,
+  commit: CommitId,
+): Promise<CommitRecord | null> {
+  return decodeCommitRecord(await store.objects.get(toCommitObjectId(commit)));
 }
 
 export async function readCall(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   call: CallId,
 ): Promise<Found<CallRecord> | null> {
-  return load(kernel, await kernel.store.refs.get(callRef(session, call)), decodeCallRecord);
+  return load(store, await store.refs.get(callRef(session, call)), decodeCallRecord);
 }
 
 export async function readCalls(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
 ): Promise<readonly CallRecord[]> {
-  const refs = await kernel.store.refs.list(`${sessionRef(session)}/calls/`);
-  const calls = await Promise.all(refs.map((ref) => load(kernel, ref, decodeCallRecord)));
+  const refs = await store.refs.list(`${sessionRef(session)}/calls/`);
+  const calls = await Promise.all(refs.map((ref) => load(store, ref, decodeCallRecord)));
 
   return calls.flatMap((call) => (call === null ? [] : [call.record]));
 }
 
 export async function covers(
-  kernel: Kernel,
+  store: StoreConnection,
   coverage: ExecutionCoverage,
   session: SessionId,
 ): Promise<boolean> {
   if (coverage.kind === "all") return true;
-  let current = await readSession(kernel, session);
+  let current = await readSession(store, session);
 
   if (coverage.kind === "workspace") return current?.record.workspace === coverage.workspace;
   while (current !== null) {
     if (coverage.sessions.includes(current.record.id)) return true;
     const parent = current.record.parent;
-    current = parent === null ? null : await readSession(kernel, parent);
+    current = parent === null ? null : await readSession(store, parent);
   }
 
   return false;
 }
 
 /** Every session record, most recently active first. Paged, not a snapshot: a session that becomes active mid-scan sorts ahead of the cursor and can be missed. */
-export async function listSessionRecords(kernel: Kernel): Promise<readonly SessionRecord[]> {
+export async function listSessionRecords(
+  store: StoreConnection,
+): Promise<readonly SessionRecord[]> {
   const records: SessionRecord[] = [];
   let after: { readonly at: number; readonly id: SessionId } | undefined;
 
   for (;;) {
-    const refs = await kernel.store.sessions.list({
+    const refs = await store.sessions.list({
       parents: { kind: "all" },
       after,
       limit: SESSION_PAGE,
     });
-    const found = await Promise.all(refs.map(({ ref }) => load(kernel, ref, decodeSessionRecord)));
+    const found = await Promise.all(refs.map(({ ref }) => load(store, ref, decodeSessionRecord)));
     const page = found.flatMap((entry) => (entry === null ? [] : [entry.record]));
     records.push(...page);
     const last = page.at(-1);
@@ -307,11 +317,11 @@ export async function listSessionRecords(kernel: Kernel): Promise<readonly Sessi
 }
 
 export async function coveredSessions(
-  kernel: Kernel,
+  store: StoreConnection,
   coverage: Exclude<ExecutionCoverage, { readonly kind: "all" }>,
 ): Promise<readonly SessionRecord[]> {
   if (coverage.kind === "sessions" && coverage.sessions.length === 0) return [];
-  const records = await listSessionRecords(kernel);
+  const records = await listSessionRecords(store);
 
   if (coverage.kind === "workspace")
     return records.filter((record) => record.workspace === coverage.workspace);
@@ -334,11 +344,14 @@ export async function coveredSessions(
 export async function isCovered(kernel: Kernel, session: SessionId): Promise<boolean> {
   if (kernel.execution.kind === "dispatch") return true;
 
-  if (kernel.execution.kind === "run" && (await covers(kernel, kernel.execution.coverage, session)))
+  if (
+    kernel.execution.kind === "run" &&
+    (await covers(kernel.store, kernel.execution.coverage, session))
+  )
     return true;
 
   for (const coverage of kernel.executionState.covers.values())
-    if (await covers(kernel, coverage, session)) return true;
+    if (await covers(kernel.store, coverage, session)) return true;
 
   return false;
 }
@@ -383,16 +396,16 @@ interface Guarded {
 }
 
 export async function guard(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
   expect: Revision | undefined,
   running: "refuse" | "stop",
 ): Promise<MoveFailure | Guarded> {
   const [tip, inbox, run] = await Promise.all([
-    readTip(kernel, session, head),
-    readInbox(kernel, session, head),
-    liveRun(kernel, session, head),
+    readTip(store, session, head),
+    readInbox(store, session, head),
+    liveRun(store, session, head),
   ]);
 
   if (expect !== undefined && !sameRevision(expect, tip.ref))
@@ -407,10 +420,10 @@ export async function guard(
   return { tip, inbox, run: run?.record.view.id ?? null };
 }
 
-export async function readKv(kernel: Kernel, name: string): Promise<Json | undefined> {
-  const ref = await kernel.store.refs.get(name);
+export async function readKv(store: StoreConnection, name: string): Promise<Json | undefined> {
+  const ref = await store.refs.get(name);
 
   return ref === null || ref.target === null
     ? undefined
-    : decodeKvValue(await kernel.store.objects.get(ref.target));
+    : decodeKvValue(await store.objects.get(ref.target));
 }

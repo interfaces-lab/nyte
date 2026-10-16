@@ -581,7 +581,7 @@ async function rereadFences(kernel: Kernel): Promise<void> {
     if (kernel.runs.signal(run)?.aborted === true) continue;
 
     const found = await load(
-      kernel,
+      kernel.store,
       await kernel.store.refs.get(runRef(session, run)),
       decodeRunRecord,
     );

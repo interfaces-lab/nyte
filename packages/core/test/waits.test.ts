@@ -419,7 +419,7 @@ describe("waits as store facts", () => {
 
     const pending = failed.answer();
 
-    const updates = await failedParts(kernel, session.id, main, [failed.id], {
+    const updates = await failedParts(kernel.store, session.id, main, [failed.id], {
       class: "aborted",
       message: "Stopped.",
     });
@@ -451,7 +451,7 @@ describe("waits as store facts", () => {
     await commit(kernel, [
       {
         name: partRef(session.id, part.id),
-        target: await put(kernel, "part", { ...record, run, status: { kind: "live", run } }),
+        target: await put(kernel.store, "part", { ...record, run, status: { kind: "live", run } }),
         events: [
           {
             head: main,

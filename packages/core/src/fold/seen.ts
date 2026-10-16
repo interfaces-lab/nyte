@@ -33,7 +33,7 @@ async function advanceSeen(
 
   await attempt(`Marking ${input.head} seen`, async () => {
     const ref = await kernel.store.refs.get(name);
-    const mark = (await load(kernel, ref, decodeSeenRecord))?.record.commit ?? null;
+    const mark = (await load(kernel.store, ref, decodeSeenRecord))?.record.commit ?? null;
 
     if (ref !== null && mark === input.commit) return true;
 
@@ -53,7 +53,7 @@ async function advanceSeen(
     const outcome = await commit(kernel, [
       {
         name,
-        target: await put(kernel, "seen", record),
+        target: await put(kernel.store, "seen", record),
         expect: readRefExpectation(ref),
         events: [
           {

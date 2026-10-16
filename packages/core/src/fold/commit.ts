@@ -27,7 +27,7 @@ export async function writeReceipt(
   const outcome = await commit(kernel, [
     {
       name: receiptRef(session, record.id),
-      target: await put(kernel, "receipt", record),
+      target: await put(kernel.store, "receipt", record),
       expect: "absent",
     },
   ]);
@@ -76,7 +76,7 @@ export function changeCall(
 
   const done = (queues.get(name) ?? Promise.resolve()).then(async () => {
     for (let tries = 0; tries < CALL_TRIES; tries += 1) {
-      const found = await readCall(kernel, session, call);
+      const found = await readCall(kernel.store, session, call);
       const next = await change(found?.record ?? null);
 
       if (next === null) return { record: found?.record ?? null, wrote: false };
@@ -84,7 +84,7 @@ export function changeCall(
       const outcome = await commit(kernel, [
         {
           name,
-          target: await put(kernel, "call", next.record),
+          target: await put(kernel.store, "call", next.record),
           expect: readRefExpectation(found?.ref ?? null),
           events: next.events,
         },

@@ -24,6 +24,7 @@ import { SdkError } from "../util/error.ts";
 import { isJsonObject } from "../util/json-schema.ts";
 import { holdLease } from "./lease.ts";
 import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 export type ActionIntent = {
   readonly part: PartId;
@@ -349,13 +350,12 @@ export async function recordAcquisition(
 }
 
 export async function recordedAcquisition(
-  kernel: Kernel,
+  store: StoreConnection,
   step: { readonly session: SessionId; readonly call: CallId },
   key: string,
 ): Promise<Json | null> {
   return (
-    readOwnEntry((await readCall(kernel, step.session, step.call))?.record.acquisitions, key) ??
-    null
+    readOwnEntry((await readCall(store, step.session, step.call))?.record.acquisitions, key) ?? null
   );
 }
 
@@ -448,12 +448,13 @@ async function takeAnswer(
   index: number,
 ): Promise<WaitOutcome | null> {
   const found = await load(
-    kernel,
+    kernel.store,
     await kernel.store.refs.get(partRef(place.session, part)),
     decodePartRecord,
   );
 
-  const answer = found === null ? null : await storedAnswer(kernel, place.session, found.record);
+  const answer =
+    found === null ? null : await storedAnswer(kernel.store, place.session, found.record);
 
   if (answer === null) return null;
 
@@ -505,14 +506,14 @@ async function park(
       updates: [
         ...(place.run === null
           ? []
-          : await runWait(kernel, place.session, place.run, async (record) => ({
+          : await runWait(kernel.store, place.session, place.run, async (record) => ({
               parked: record.parked.includes(place.call)
                 ? record.parked
                 : [...record.parked, place.call],
               waiting: on ?? record.waiting,
             }))),
-        ...(await modalsWaiting(kernel, place.session, place.call, target)),
-        ...(await runsWaited(kernel, place, target)),
+        ...(await modalsWaiting(kernel.store, place.session, place.call, target)),
+        ...(await runsWaited(kernel.store, place, target)),
       ],
     };
   });
@@ -523,7 +524,7 @@ async function park(
 }
 
 async function runsWaited(
-  kernel: Kernel,
+  store: StoreConnection,
   place: Place,
   target: NonNullable<CallRecord["waiting"]>,
 ): Promise<readonly RefUpdate[]> {
@@ -534,7 +535,7 @@ async function runsWaited(
     if (waited.kind !== "run" || (waited.session === place.session && waited.run === place.run))
       continue;
     const name = runRef(waited.session, waited.run);
-    const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
+    const found = await load(store, await store.refs.get(name), decodeRunRecord);
 
     if (found === null || updates.some((update) => update.name === name)) continue;
     const listed = found.record.waitedBy;
@@ -544,7 +545,7 @@ async function runsWaited(
 
     updates.push({
       name,
-      target: await put(kernel, "run", { ...found.record, waitedBy: [...listed, waiter] }),
+      target: await put(store, "run", { ...found.record, waitedBy: [...listed, waiter] }),
       expect: found.ref.revision,
     });
   }
@@ -553,7 +554,7 @@ async function runsWaited(
 }
 
 async function modalsWaiting(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   call: CallId,
   target: NonNullable<CallRecord["waiting"]>,
@@ -566,7 +567,7 @@ async function modalsWaiting(
 
   for (const part of new Set(parts)) {
     const name = partRef(session, part);
-    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const found = await load(store, await store.refs.get(name), decodePartRecord);
     const status = found?.record.status;
 
     if (
@@ -579,7 +580,7 @@ async function modalsWaiting(
 
     updates.push({
       name,
-      target: await put(kernel, "part", { ...found.record, status: { ...status, waiting: call } }),
+      target: await put(store, "part", { ...found.record, status: { ...status, waiting: call } }),
       expect: found.ref.revision,
       events: [{ head: null, kind: "part", part, change: "waiting", call }],
     });

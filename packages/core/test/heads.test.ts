@@ -24,7 +24,7 @@ async function exchange(
 }
 
 async function land(kernel: Kernel, session: SessionId, content: string): Promise<CommitId> {
-  const tip = await readTip(kernel, session, main);
+  const tip = await readTip(kernel.store, session, main);
   const body = {
     kind: "user",
     message: asId<"message">(crypto.randomUUID()),
@@ -34,7 +34,7 @@ async function land(kernel: Kernel, session: SessionId, content: string): Promis
     siblings: [],
   } as const;
   const record = { parent: tip.id, at: Date.now(), run: null, body };
-  const id = asId<"commit">(await put(kernel, "commit", record, record.at));
+  const id = asId<"commit">(await put(kernel.store, "commit", record, record.at));
 
   const outcome = await commit(kernel, [
     {

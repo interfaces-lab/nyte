@@ -50,7 +50,7 @@ export function settingHandle<T>(
   const { id } = definition;
 
   const get = async (): Promise<T> => {
-    for (const layer of await readSettingLayers(kernel, definition, session)) {
+    for (const layer of await readSettingLayers(kernel.store, definition, session)) {
       const checked = await check(definition.schema, layer.value);
 
       if (checked.kind === "valid") return checked.value;
@@ -127,7 +127,7 @@ export async function publishSettings(kernel: Kernel): Promise<void> {
 
 async function storeHostValue(kernel: Kernel, id: string, value: Json): Promise<void> {
   await commit(kernel, [
-    { name: kvRef("host", "settings", id), target: await put(kernel, "kv", value) },
+    { name: kvRef("host", "settings", id), target: await put(kernel.store, "kv", value) },
   ]);
   changed(kernel, id, null);
 
@@ -166,7 +166,7 @@ export async function configure(
   patch: ConfigurationPatch,
   activation = false,
 ): Promise<ConfigureOutcome> {
-  const found = await requireSession(kernel, session);
+  const found = await requireSession(kernel.store, session);
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
@@ -185,7 +185,7 @@ export async function configure(
   if (selected.kind !== "exact") return selected;
 
   await attempt(`Configuring ${head}`, async () => {
-    const current = await requireSession(kernel, session);
+    const current = await requireSession(kernel.store, session);
 
     const record = {
       ...current.record,
@@ -197,7 +197,7 @@ export async function configure(
     const outcome = await commit(kernel, [
       {
         name: sessionRef(session),
-        target: await put(kernel, "session", record),
+        target: await put(kernel.store, "session", record),
         expect: current.ref.revision,
         events: [{ head, kind: "configured", selected, effective: selected }],
       },

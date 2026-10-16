@@ -245,7 +245,7 @@ async function chargeFailed(
 
   await attempt(`Charging run ${run}`, async () => {
     const found = await load(
-      kernel,
+      kernel.store,
       await kernel.store.refs.get(runRef(session, run)),
       decodeRunRecord,
     );
@@ -255,7 +255,7 @@ async function chargeFailed(
     const outcome = await commit(kernel, [
       {
         name: found.ref.name,
-        target: await put(kernel, "run", charge(found.record, usage, true)),
+        target: await put(kernel.store, "run", charge(found.record, usage, true)),
         expect: found.ref.revision,
         events: [event],
       },
@@ -276,7 +276,7 @@ export function createRequest(kernel: Kernel, models: Models): Kernel["request"]
     session: SessionId,
     input: ModelRequestInput<unknown>,
   ): Promise<ModelRequestOutcome<unknown>> {
-    await requireSession(kernel, session);
+    await requireSession(kernel.store, session);
     const thinking = input.thinking ?? "off";
     const output = input.output;
 

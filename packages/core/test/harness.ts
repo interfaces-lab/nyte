@@ -212,7 +212,7 @@ export async function startRun(
   origin: RunView["origin"],
   runConfiguration: Configuration,
 ): Promise<RunView> {
-  const started = await newRun(kernel, session, head, origin, runConfiguration);
+  const started = await newRun(kernel.store, session, head, origin, runConfiguration);
   const outcome = await kernel.store.refs.set([started.update]);
 
   if (outcome.kind === "stale") throw new Error(`Run ${started.view.id} already exists.`);

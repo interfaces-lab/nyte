@@ -9,6 +9,7 @@ import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
 import { kvRef } from "../store/refs.ts";
 import { readKv, requireSession } from "../store/session.ts";
 import { SdkError } from "../util/error.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 type Skill = Resources["skills"][number];
 
@@ -27,7 +28,7 @@ export const SKILL_PATHS = "skills.paths";
 const scanIssues = new WeakMap<Resources, readonly ValidationIssue[]>();
 
 export async function scanResources(kernel: Kernel, session: SessionId): Promise<Resources> {
-  const workspace = (await requireSession(kernel, session)).record.workspace;
+  const workspace = (await requireSession(kernel.store, session)).record.workspace;
   const table = kernel.workspaceState.scans;
   const cached = table.get(session);
 
@@ -136,7 +137,7 @@ async function scan(
   session: SessionId,
   workspace: WorkspaceId,
 ): Promise<Resources> {
-  const record = await readWorkspace(kernel, workspace);
+  const record = await readWorkspace(kernel.store, workspace);
   const user = await userFiles(kernel);
 
   const trusted = record !== null && (await projectTrust(kernel, record)) === true;
@@ -157,7 +158,7 @@ async function scan(
   const [projectSkills, userSkills, pathSkills] = await Promise.all([
     project === null ? [] : skillsIn(project, SKILL_DIRECTORIES, "project"),
     user === null ? [] : skillsIn(user, SKILL_DIRECTORIES, "user"),
-    user === null ? [] : skillsAt(user, await skillPaths(kernel)),
+    user === null ? [] : skillsAt(user, await skillPaths(kernel.store)),
   ]);
 
   const { kept: skills, dropped } = byName([
@@ -254,8 +255,8 @@ function userFiles(kernel: Kernel): Promise<FilesApi | null> {
   return attached;
 }
 
-async function skillPaths(kernel: Kernel): Promise<readonly string[]> {
-  const value = await readKv(kernel, kvRef("host", "settings", SKILL_PATHS));
+async function skillPaths(store: StoreConnection): Promise<readonly string[]> {
+  const value = await readKv(store, kvRef("host", "settings", SKILL_PATHS));
 
   return Array.isArray(value)
     ? value.flatMap((entry) => (typeof entry === "string" ? [entry] : []))

@@ -422,7 +422,7 @@ describe("ADV F-3", () => {
 
     expect(await edit.settled()).toEqual({ kind: "pending-input", messages: [queued.message] });
 
-    const inbox = await readInbox(kernel, session.id, main);
+    const inbox = await readInbox(kernel.store, session.id, main);
 
     expect(inbox.messages).toEqual([queued.message]);
     expect(await kernel.store.refs.get(headRef(session.id, main))).toEqual(old);

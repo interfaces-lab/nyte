@@ -91,7 +91,7 @@ export async function createPart<K extends PartDefinition>(
 
   if (registered === undefined && kind.onAction !== undefined)
     throw new SdkError("invalid", "a definition with onAction must be contributed");
-  await requireSession(kernel, session);
+  await requireSession(kernel.store, session);
 
   const owner = registered?.owner ?? null;
   const definition =
@@ -123,7 +123,7 @@ export async function createPart<K extends PartDefinition>(
   const name = partRef(session, id);
 
   await attempt(`Creating part ${id}`, async () => {
-    const existing = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const existing = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
 
     if (existing !== null) {
       if (
@@ -162,7 +162,7 @@ export async function createPart<K extends PartDefinition>(
         status: { kind: "live", run },
       };
 
-      const held = run === null ? null : await unfenced(kernel, session, run);
+      const held = run === null ? null : await unfenced(kernel.store, session, run);
 
       if (run !== null && held === null) return;
 
@@ -171,7 +171,7 @@ export async function createPart<K extends PartDefinition>(
         {
           name,
           target: await put(
-            kernel,
+            kernel.store,
             "part",
             definition === undefined ? stored : { ...stored, definition },
             at,
@@ -185,7 +185,7 @@ export async function createPart<K extends PartDefinition>(
     }
 
     const head = from?.head ?? MAIN;
-    const tip = await readTip(kernel, session, head);
+    const tip = await readTip(kernel.store, session, head);
 
     const record: CommitRecord = {
       parent: tip.id,
@@ -194,7 +194,7 @@ export async function createPart<K extends PartDefinition>(
       body: { kind: "part", part: id },
     };
 
-    const landed = asId<"commit">(await put(kernel, "commit", record, record.at));
+    const landed = asId<"commit">(await put(kernel.store, "commit", record, record.at));
 
     const stored: PartRecord = {
       id,
@@ -208,7 +208,7 @@ export async function createPart<K extends PartDefinition>(
     };
 
     const target = await put(
-      kernel,
+      kernel.store,
       "part",
       definition === undefined ? stored : { ...stored, definition },
       at,
@@ -299,7 +299,7 @@ function partHandleFor<K extends PartDefinition>(
     id,
     async update(next, options) {
       return attempt<PartUpdateOutcome>(`Updating part ${id}`, async () => {
-        const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+        const found = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
 
         if (found === null) return { kind: "missing" };
         const { ref, record } = found;
@@ -331,7 +331,7 @@ function partHandleFor<K extends PartDefinition>(
         const outcome = await commit(kernel, [
           {
             name,
-            target: await put(kernel, "part", { ...record, state, version }),
+            target: await put(kernel.store, "part", { ...record, state, version }),
             expect: ref.revision,
             events: [{ head: null, kind: "part", part: id, change: "updated", state, version }],
           },
@@ -341,7 +341,7 @@ function partHandleFor<K extends PartDefinition>(
       });
     },
     async act(action, input) {
-      const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+      const found = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
 
       if (found === null) throw new SdkError("unknown", `No part has the id ${id}.`);
 
@@ -412,7 +412,7 @@ function partHandleFor<K extends PartDefinition>(
     },
     async close() {
       const closed = await attempt(`Closing part ${id}`, async () => {
-        const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+        const found = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
 
         if (found === null) return null;
 
@@ -451,7 +451,7 @@ async function answered(
   const name = partRef(session, id);
 
   const kept = await attempt(`Answering part ${id}`, async () => {
-    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const found = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
     const status = found?.record.status;
 
     if (found === null || status?.kind !== "live") return null;
@@ -462,7 +462,7 @@ async function answered(
     const outcome = await commit(kernel, [
       {
         name,
-        target: await put(kernel, "part", { ...found.record, status: { ...status, answer } }),
+        target: await put(kernel.store, "part", { ...found.record, status: { ...status, answer } }),
         expect: found.ref.revision,
         events: [{ head: null, kind: "part", part: id, change: "answered", answer }],
       },
@@ -479,7 +479,7 @@ async function answered(
 }
 
 export async function rerunAction(kernel: Kernel, session: SessionId, call: CallId): Promise<void> {
-  const step = (await readCall(kernel, session, call))?.record;
+  const step = (await readCall(kernel.store, session, call))?.record;
 
   const intent =
     step?.kind === "action" && step.result === null ? decodeActionIntent(step.intent) : null;
@@ -487,7 +487,7 @@ export async function rerunAction(kernel: Kernel, session: SessionId, call: Call
   if (intent === null || !(await reserveRerun(kernel, session, call))) return;
 
   const found = await load(
-    kernel,
+    kernel.store,
     await kernel.store.refs.get(partRef(session, intent.part)),
     decodePartRecord,
   );
@@ -606,7 +606,7 @@ async function firstAnswer(
   signal?.addEventListener("abort", abort, { once: true });
 
   try {
-    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const found = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
 
     if (
       found === null ||
@@ -615,7 +615,7 @@ async function firstAnswer(
     )
       return null;
 
-    const stored = await storedAnswer(kernel, session, found.record);
+    const stored = await storedAnswer(kernel.store, session, found.record);
 
     if (stored !== null) settle(table, name, stored);
 

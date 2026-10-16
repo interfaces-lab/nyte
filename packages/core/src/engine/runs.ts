@@ -38,11 +38,12 @@ import { isJsonObject } from "../util/json-schema.ts";
 import { send } from "./admission.ts";
 import { FENCED, stopRun } from "./fence.ts";
 import { notifyReceipt, waitFor } from "./waits.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const REPORT_LIMIT = 4096;
 
 export async function newRun(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
   origin: RunView["origin"],
@@ -70,7 +71,7 @@ export async function newRun(
     view,
     update: {
       name: runRef(session, id),
-      target: await put(kernel, "run", record, startedAt),
+      target: await put(store, "run", record, startedAt),
       expect: "absent",
       events: [{ head, kind: "run", run: id, change: "started", view }],
     },
@@ -95,14 +96,16 @@ export async function endRun(
 ): Promise<void> {
   const ended = await attempt(`Ending run ${run}`, async () => {
     const [found, current] = await Promise.all([
-      kernel.store.refs.get(runRef(session, run)).then((ref) => load(kernel, ref, decodeRunRecord)),
-      readSession(kernel, session),
+      kernel.store.refs
+        .get(runRef(session, run))
+        .then((ref) => load(kernel.store, ref, decodeRunRecord)),
+      readSession(kernel.store, session),
     ]);
 
     if (found === null || current === null) return null;
     const head = found.record.view.head;
     const final: RunEnd = found.record.stopping ? { kind: "stopped" } : end;
-    const inbox = await readInbox(kernel, session, head);
+    const inbox = await readInbox(kernel.store, session, head);
     const endedAt = Date.now();
     const lastRun = { id: run, end: final, endedAt };
 
@@ -126,14 +129,14 @@ export async function endRun(
 
     const receipts = await Promise.all(
       landed.map(async (id): Promise<readonly RefUpdate[]> => {
-        const receipt = await readReceipt(kernel, session, id);
+        const receipt = await readReceipt(kernel.store, session, id);
 
         if (receipt === null || receipt.record.outcome !== null) return [];
 
         return [
           {
             name: receipt.ref.name,
-            target: await put(kernel, "receipt", { ...receipt.record, outcome: final }),
+            target: await put(kernel.store, "receipt", { ...receipt.record, outcome: final }),
             expect: receipt.ref.revision,
           },
         ];
@@ -149,26 +152,26 @@ export async function endRun(
       },
       {
         name: sessionRef(session),
-        target: await put(kernel, "session", record, endedAt),
+        target: await put(kernel.store, "session", record, endedAt),
         expect: current.ref.revision,
         events: [await sessionEvent(kernel, record, rows)],
       },
       {
         name: inboxRef(session, head),
-        target: await put(kernel, "inbox", inboxWithout(inbox, [])),
+        target: await put(kernel.store, "inbox", inboxWithout(inbox, [])),
         expect: readRefExpectation(inbox.ref),
       },
       ...(final.kind === "completed"
         ? []
         : await failedParts(
-            kernel,
+            kernel.store,
             session,
             head,
             await liveParts(kernel, session, run),
             final.kind === "failed" ? final.failure : FENCED,
           )),
       ...receipts.flat(),
-      ...(await unopenedCalls(kernel, session, run)),
+      ...(await unopenedCalls(kernel.store, session, run)),
     ]);
 
     return outcome.kind === "set"
@@ -205,14 +208,14 @@ export async function endRun(
 
 /** Deletes the calls an ended run recorded but never opened: nothing owes them once the run is over. */
 async function unopenedCalls(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
 ): Promise<readonly RefUpdate[]> {
-  const refs = await kernel.store.sessions.pending({ kind: "call", sessions: [session] });
+  const refs = await store.sessions.pending({ kind: "call", sessions: [session] });
 
   const found = await Promise.all(
-    refs.map(async (ref) => ({ ref, call: await load(kernel, ref, decodeCallRecord) })),
+    refs.map(async (ref) => ({ ref, call: await load(store, ref, decodeCallRecord) })),
   );
 
   return found.flatMap(({ ref, call }) =>
@@ -261,11 +264,11 @@ async function deliverChildReport(
   run: RunId,
   end: RunEnd,
 ): Promise<void> {
-  const found = await readSession(kernel, child);
+  const found = await readSession(kernel.store, child);
   const parent = found?.record.parent ?? null;
 
   if (found === null || parent === null) return;
-  const target = await readSession(kernel, parent);
+  const target = await readSession(kernel.store, parent);
 
   if (target === null) return;
   const origin = found.record.origin?.head ?? MAIN;

@@ -21,6 +21,7 @@ import { check } from "../util/json-schema.ts";
 import { headRef, parseSessionRef, partRef } from "./refs.ts";
 import { load, put, readCall, readRefExpectation, toCommitObjectId } from "./session.ts";
 import type { Tip } from "./session.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 /** The host's part waiters and actions; a waiter on a part that fails is answered null, from the bus, wherever the failure was written. */
 export function createPartTable(bus: SessionBus): PartTable {
@@ -72,7 +73,7 @@ function partAnswers(outcomes: readonly (WaitOutcome | null)[]): readonly {
 }
 
 export async function storedAnswer(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   record: PartRecord,
 ): Promise<Answered | null> {
@@ -83,7 +84,7 @@ export async function storedAnswer(
   if (status.answer !== undefined) return status.answer;
 
   if (status.waiting === undefined) return null;
-  const call = (await readCall(kernel, session, status.waiting))?.record;
+  const call = (await readCall(store, session, status.waiting))?.record;
   const outcomes = call === undefined ? [] : [...call.waits, ...call.partial];
 
   return partAnswers(outcomes).find((entry) => entry.part === record.id)?.answer ?? null;
@@ -94,7 +95,7 @@ export async function settleAnswersFrom(kernel: Kernel): Promise<void> {
 
   for (const name of Array.from(table.waiters.keys())) {
     const session = parseSessionRef(name);
-    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const found = await load(kernel.store, await kernel.store.refs.get(name), decodePartRecord);
 
     if (
       session === null ||
@@ -106,14 +107,14 @@ export async function settleAnswersFrom(kernel: Kernel): Promise<void> {
       continue;
     }
 
-    const answer = await storedAnswer(kernel, session, found.record);
+    const answer = await storedAnswer(kernel.store, session, found.record);
 
     if (answer !== null) settle(table, name, answer);
   }
 }
 
 export async function settling(
-  kernel: Kernel,
+  store: StoreConnection,
   input: {
     readonly session: SessionId;
     readonly head: HeadName;
@@ -130,9 +131,9 @@ export async function settling(
   readonly updates: RefUpdate[];
 }> {
   const { session, head, run, parent, record, body, at } = input;
-  const landed = asId<"commit">(await put(kernel, "commit", { parent, at, run, body }, at));
+  const landed = asId<"commit">(await put(store, "commit", { parent, at, run, body }, at));
   const status = { kind: "settled", commit: landed, endedAt: at } as const;
-  const target = await put(kernel, "part", { ...record, status }, at);
+  const target = await put(store, "part", { ...record, status }, at);
   const part = record.id;
 
   return {
@@ -155,7 +156,7 @@ export async function settling(
 }
 
 export async function stoppedParts(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
   tip: Tip,
@@ -169,7 +170,7 @@ export async function stoppedParts(
 
   for (const part of new Set(parts)) {
     const name = partRef(session, part);
-    const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+    const found = await load(store, await store.refs.get(name), decodePartRecord);
 
     if (found === null || found.record.status.kind !== "live") continue;
 
@@ -196,7 +197,7 @@ export async function stoppedParts(
     const version = found.record.version + 1;
     const record = { ...found.record, state, version };
 
-    const landed = await settling(kernel, {
+    const landed = await settling(store, {
       session,
       head,
       run: found.record.run,
@@ -210,7 +211,7 @@ export async function stoppedParts(
     committed.push(
       {
         name,
-        target: await put(kernel, "part", record, at),
+        target: await put(store, "part", record, at),
         expect: found.ref.revision,
         events: [{ head, kind: "part", part, change: "updated", state, version }],
       },
@@ -219,11 +220,11 @@ export async function stoppedParts(
     parent = landed.landed;
   }
 
-  return [...committed, ...(await failedParts(kernel, session, head, failing, failure))];
+  return [...committed, ...(await failedParts(store, session, head, failing, failure))];
 }
 
 export async function failedParts(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
   parts: readonly PartId[],
@@ -232,14 +233,14 @@ export async function failedParts(
   const updates = await Promise.all(
     [...new Set(parts)].map(async (part): Promise<readonly RefUpdate[]> => {
       const name = partRef(session, part);
-      const found = await load(kernel, await kernel.store.refs.get(name), decodePartRecord);
+      const found = await load(store, await store.refs.get(name), decodePartRecord);
 
       if (found === null || found.record.status.kind !== "live") return [];
 
       return [
         {
           name,
-          target: await put(kernel, "part", {
+          target: await put(store, "part", {
             ...found.record,
             status: { kind: "failed", run: found.record.run, failure },
           }),

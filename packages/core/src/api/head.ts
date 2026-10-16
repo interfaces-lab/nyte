@@ -75,7 +75,7 @@ export function headHandle(
     tree: () => tree(kernel, session, head),
     move: (position, options) => move(kernel, session, head, position, options),
     async compact(input) {
-      const run = await liveRun(kernel, session, head);
+      const run = await liveRun(kernel.store, session, head);
 
       if (run !== null) return { kind: "busy", run: run.record.view.id };
 
@@ -91,14 +91,14 @@ export async function createHead(
   input?: { readonly from?: Position },
 ): Promise<CreateHeadOutcome> {
   return attempt<CreateHeadOutcome>(`Creating head ${head}`, async () => {
-    const found = await requireSession(kernel, session);
+    const found = await requireSession(kernel.store, session);
 
     if (found.record.heads.some((entry) => entry.name === head)) return { kind: "exists" };
-    const main = await readTip(kernel, session, MAIN);
+    const main = await readTip(kernel.store, session, MAIN);
     const from = input?.from ?? createPosition(main.id);
     const source = readPositionCommit(from);
 
-    if (source !== null && (await readCommit(kernel, source)) === null)
+    if (source !== null && (await readCommit(kernel.store, source)) === null)
       return { kind: "missing-source" };
     const at = Date.now();
 
@@ -132,7 +132,7 @@ export async function createHead(
     const outcome = await commit(kernel, [
       {
         name: sessionRef(session),
-        target: await put(kernel, "session", record, at),
+        target: await put(kernel.store, "session", record, at),
         expect: found.ref.revision,
         events: [await sessionEvent(kernel, record, rows)],
       },
@@ -149,7 +149,7 @@ export async function mergeHead(
   head: HeadName,
   options?: { readonly expect?: Revision },
 ): Promise<MergeOutcome> {
-  const found = await requireSession(kernel, session);
+  const found = await requireSession(kernel.store, session);
   const entry = found.record.heads.find((current) => current.name === head);
 
   if (entry === undefined) throw new SdkError("unknown", `Session ${session} has no head ${head}.`);
@@ -158,9 +158,9 @@ export async function mergeHead(
   if (head === MAIN || stack === null) return { kind: "is-main" };
 
   const [own, parent, running] = await Promise.all([
-    readTip(kernel, session, head),
-    readTip(kernel, session, stack.parent),
-    liveRun(kernel, session, stack.parent),
+    readTip(kernel.store, session, head),
+    readTip(kernel.store, session, stack.parent),
+    liveRun(kernel.store, session, stack.parent),
   ]);
 
   if (options?.expect !== undefined && !sameRevision(options.expect, own.ref))
@@ -197,7 +197,7 @@ export async function mergeHead(
     },
     {
       name: sessionRef(session),
-      target: await put(kernel, "session", record),
+      target: await put(kernel.store, "session", record),
       expect: found.ref.revision,
       events: [await sessionEvent(kernel, record)],
     },
@@ -206,7 +206,7 @@ export async function mergeHead(
   if (outcome.kind === "stale")
     return {
       kind: "stale",
-      revision: (await readTip(kernel, session, head)).ref?.revision ?? EMPTY_REVISION,
+      revision: (await readTip(kernel.store, session, head)).ref?.revision ?? EMPTY_REVISION,
     };
 
   return { kind: "merged", revision: own.ref === null ? EMPTY_REVISION : outcome.revisions[0] };
@@ -221,13 +221,13 @@ export async function removeHead(
   if (head === MAIN) return { kind: "is-main" };
 
   return attempt<RemoveHeadOutcome>(`Removing head ${head}`, async () => {
-    const found = await requireSession(kernel, session);
+    const found = await requireSession(kernel.store, session);
 
     if (!found.record.heads.some((entry) => entry.name === head)) return { kind: "missing" };
-    const run = await liveRun(kernel, session, head);
+    const run = await liveRun(kernel.store, session, head);
 
     if (run !== null) return { kind: "busy", run: run.record.view.id };
-    const tip = await readTip(kernel, session, head);
+    const tip = await readTip(kernel.store, session, head);
 
     if (options?.expect !== undefined && !sameRevision(options.expect, tip.ref))
       throw new SdkError("stale", `Head ${head} moved since ${options.expect}.`);
@@ -253,7 +253,7 @@ export async function removeHead(
       ...removed,
       {
         name: sessionRef(session),
-        target: await put(kernel, "session", record),
+        target: await put(kernel.store, "session", record),
         expect: found.ref.revision,
         events: [await sessionEvent(kernel, record)],
       },

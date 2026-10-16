@@ -316,7 +316,7 @@ async function spawn(
   digest: string,
 ): Promise<void> {
   const on = async (session: SessionId): Promise<boolean> =>
-    (await readSession(kernel, session))?.record.workspace === workspace;
+    (await readSession(kernel.store, session))?.record.workspace === workspace;
 
   if (input.session !== undefined && !(await on(input.session)))
     throw new SdkError("invalid", `Session ${input.session} is not on workspace ${workspace}.`);
@@ -383,7 +383,7 @@ export async function acquire<T extends { readonly id: string }>(
   if (step === null || step.call === null) return { kind: "created", value: await create() };
   const at = { session: step.session, call: step.call };
   const name = key ?? `acq:${step.sequence.next()}`;
-  const recorded = await recordedAcquisition(kernel, at, name);
+  const recorded = await recordedAcquisition(kernel.store, at, name);
 
   if (typeof recorded === "string") return { kind: "recorded", id: recorded };
   const value = await create();

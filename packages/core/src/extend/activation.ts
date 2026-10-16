@@ -15,7 +15,7 @@ export async function activateSession(
   session: SessionId,
   runtime: PluginRuntime,
 ): Promise<void> {
-  const workspace = (await requireSession(kernel, session)).record.workspace;
+  const workspace = (await requireSession(kernel.store, session)).record.workspace;
 
   const attached = (await isCovered(kernel, session))
     ? kernel.env(session).then(
@@ -41,7 +41,7 @@ async function projectPlugins(
   kernel: Kernel,
   workspace: WorkspaceId,
 ): Promise<readonly Plugin<"core">[]> {
-  const record = await readWorkspace(kernel, workspace);
+  const record = await readWorkspace(kernel.store, workspace);
 
   if (
     record === null ||

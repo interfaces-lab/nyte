@@ -102,7 +102,7 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
   };
 
   try {
-    const records = coverage.kind === "all" ? null : await coveredSessions(kernel, coverage);
+    const records = coverage.kind === "all" ? null : await coveredSessions(kernel.store, coverage);
     await loadWaits(
       kernel,
       records?.map((record) => record.id),
@@ -144,7 +144,7 @@ export async function advance(
   let report: AdvanceReport | null = null;
 
   try {
-    const found = await readSession(kernel, session);
+    const found = await readSession(kernel.store, session);
 
     if (found === null || !found.record.heads.some((entry) => entry.name === head))
       return { kind: "idle" };
@@ -156,7 +156,7 @@ export async function advance(
     const owners = state.held.get(name)?.owners;
 
     for (const [handle, coverage] of state.covers)
-      if (await covers(kernel, coverage, session)) owners?.add(handle);
+      if (await covers(kernel.store, coverage, session)) owners?.add(handle);
 
     report = await step(kernel, session, head).catch((error) =>
       failStep(kernel, session, head, error),
@@ -180,7 +180,7 @@ export async function advance(
 }
 
 async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise<AdvanceReport> {
-  const live = await liveRun(kernel, session, head);
+  const live = await liveRun(kernel.store, session, head);
   const report = live === null ? null : await settleLive(kernel, session, head, live);
 
   if (report !== null) return report;
@@ -188,7 +188,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   if (due === null) return { kind: "idle" };
 
-  const run = await newRun(kernel, session, head, due.origin, due.input.configuration);
+  const run = await newRun(kernel.store, session, head, due.origin, due.input.configuration);
 
   if ((await landing(kernel, session, head, due.ids, run.view.id, run.update)).length === 0)
     return next(kernel, session, head);
@@ -205,7 +205,7 @@ async function failStep(
   cause: unknown,
 ): Promise<AdvanceReport> {
   dev("execution", "step failed", { session, head, error: formatError(cause) });
-  const live = await liveRun(kernel, session, head);
+  const live = await liveRun(kernel.store, session, head);
 
   if (live === null || kernel.driving.has(live.record.view.id)) throw cause;
   await endRun(kernel, session, live.record.view.id, failed(cause));
@@ -235,7 +235,7 @@ export async function repair(
   const runnable: { readonly session: SessionId; readonly head: HeadName }[] = [];
 
   for (const session of sessions) {
-    const found = await readSession(kernel, session);
+    const found = await readSession(kernel.store, session);
 
     if (found !== null)
       for (const head of await recover(kernel, session, found.record.heads))
@@ -267,7 +267,7 @@ async function recover(
 }
 
 async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise<boolean> {
-  const live = await liveRun(kernel, session, head);
+  const live = await liveRun(kernel.store, session, head);
 
   if (live === null) return (await dueInputs(kernel, session, head)) !== null;
 
@@ -275,7 +275,7 @@ async function owed(kernel: Kernel, session: SessionId, head: HeadName): Promise
     !kernel.driving.has(live.record.view.id) &&
     (live.record.stopping ||
       live.record.waiting === null ||
-      (await owedCalls(kernel, session, live.record.view.id)).some((call) => !call.parked))
+      (await owedCalls(kernel.store, session, live.record.view.id)).some((call) => !call.parked))
   );
 }
 
@@ -478,7 +478,7 @@ async function claimNow(
     {
       name,
       target: await put(
-        kernel,
+        kernel.store,
         "lease",
         { holder: kernel.hostId, instance: kernel.instance, expiresAt: now + LEASE_MS },
         now,
@@ -544,7 +544,7 @@ async function settleLive(
   if (refused !== null) return refused;
 
   const record = (
-    await load(kernel, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord)
+    await load(kernel.store, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord)
   )?.record;
 
   if (record === undefined) return null;
@@ -584,7 +584,7 @@ async function resume(
   try {
     await runtime.ready;
 
-    for (const owed of await owedCalls(kernel, session, run)) {
+    for (const owed of await owedCalls(kernel.store, session, run)) {
       if (renewal.lease.signal.aborted) break;
 
       if (owed.parked) continue;
@@ -682,7 +682,7 @@ async function drive(
   });
 
   const ended = await Promise.race([turned, closed]);
-  const stopping = await stopRequested(kernel, session, run.id);
+  const stopping = await stopRequested(kernel.store, session, run.id);
   const refused = renewal.refused();
 
   if (refused !== null) {
@@ -711,7 +711,7 @@ async function boundary(
   head: HeadName,
   run: RunView,
 ): Promise<readonly LandedInput[]> {
-  const inbox = await readInbox(kernel, session, head);
+  const inbox = await readInbox(kernel.store, session, head);
 
   const inputs = await withFold(kernel, session, (state) =>
     inbox.messages.flatMap((id) => state.inputs.get(id) ?? []),
@@ -750,7 +750,7 @@ async function dueInputs(
   readonly input: FoldInput;
   readonly ids: readonly MessageId[];
 } | null> {
-  const inbox = await readInbox(kernel, session, head);
+  const inbox = await readInbox(kernel.store, session, head);
 
   if (inbox.messages.length === 0) return null;
 
@@ -778,7 +778,7 @@ async function dueInputs(
 }
 
 async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise<AdvanceReport> {
-  const live = await liveRun(kernel, session, head);
+  const live = await liveRun(kernel.store, session, head);
 
   if (live === null)
     return (await dueInputs(kernel, session, head)) === null
@@ -788,7 +788,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
   const run = record.view.id;
 
   if (kernel.driving.has(run)) return { kind: "idle" };
-  const calls = await owedCalls(kernel, session, run);
+  const calls = await owedCalls(kernel.store, session, run);
 
   if (record.stopping || calls.some((call) => !call.parked)) return { kind: "continue" };
 

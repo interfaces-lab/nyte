@@ -22,6 +22,7 @@ import { workspaceRef } from "../store/refs.ts";
 import { load, requireSession } from "../store/session.ts";
 import { SdkError } from "../util/error.ts";
 import { wrapBrowser } from "./browser.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 export class UnavailableError extends SdkError {
   readonly reason: Extract<Availability, { readonly kind: "unavailable" }>["reason"];
@@ -86,7 +87,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     scope: FileScope,
     slot: Slot | null,
   ): Promise<Attachment> => {
-    const record = await requireWorkspace(kernel, workspace);
+    const record = await requireWorkspace(kernel.store, workspace);
     const serving = provider(record.target.kind);
 
     if (serving === undefined)
@@ -128,7 +129,7 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
   const attaching = (session: SessionId): Promise<Attachment> => {
     const slot = ensureSessionSlot(session);
 
-    slot.attaching ??= requireSession(kernel, session).then((found) =>
+    slot.attaching ??= requireSession(kernel.store, session).then((found) =>
       open(found.record.workspace, { session }, slot),
     );
 
@@ -258,23 +259,20 @@ export async function inspectWorkspaceAvailability(
 }
 
 export async function readWorkspace(
-  kernel: Kernel,
+  store: StoreConnection,
   workspace: WorkspaceId,
 ): Promise<WorkspaceRecord | null> {
   return (
-    (
-      await load(
-        kernel,
-        await kernel.store.refs.get(workspaceRef(workspace)),
-        decodeWorkspaceRecord,
-      )
-    )?.record ?? null
+    (await load(store, await store.refs.get(workspaceRef(workspace)), decodeWorkspaceRecord))
+      ?.record ?? null
   );
 }
 
-export async function workspaceRecords(kernel: Kernel): Promise<readonly WorkspaceRecord[]> {
-  const refs = await kernel.store.refs.list("workspaces/");
-  const found = await Promise.all(refs.map((ref) => load(kernel, ref, decodeWorkspaceRecord)));
+export async function workspaceRecords(
+  store: StoreConnection,
+): Promise<readonly WorkspaceRecord[]> {
+  const refs = await store.refs.list("workspaces/");
+  const found = await Promise.all(refs.map((ref) => load(store, ref, decodeWorkspaceRecord)));
 
   return found.flatMap((entry) => (entry === null ? [] : [entry.record]));
 }
@@ -283,8 +281,11 @@ function formatErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function requireWorkspace(kernel: Kernel, workspace: WorkspaceId): Promise<WorkspaceRecord> {
-  const record = await readWorkspace(kernel, workspace);
+async function requireWorkspace(
+  store: StoreConnection,
+  workspace: WorkspaceId,
+): Promise<WorkspaceRecord> {
+  const record = await readWorkspace(store, workspace);
 
   if (record === null)
     throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);

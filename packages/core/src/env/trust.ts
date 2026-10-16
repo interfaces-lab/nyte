@@ -26,8 +26,8 @@ export type TrustResolver = (
  */
 export async function readTrustResolver(kernel: Kernel): Promise<TrustResolver> {
   const [records, mode] = await Promise.all([
-    workspaceRecords(kernel),
-    readKv(kernel, kvRef("host", "settings", WORKSPACE_TRUST)),
+    workspaceRecords(kernel.store),
+    readKv(kernel.store, kvRef("host", "settings", WORKSPACE_TRUST)),
   ]);
 
   const home = kernel.home?.replace(/\/+$/u, "") ?? null;

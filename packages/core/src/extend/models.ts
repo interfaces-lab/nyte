@@ -117,7 +117,7 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
       await commit(kernel, [
         {
           name: MODEL_PREFERENCE,
-          target: await put(kernel, "kv", { provider: ref.provider, id: ref.id }),
+          target: await put(kernel.store, "kv", { provider: ref.provider, id: ref.id }),
         },
       ]);
       bumpGeneration(kernel);

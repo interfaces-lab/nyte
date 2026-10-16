@@ -28,6 +28,7 @@ import {
 import { SdkError } from "../util/error.ts";
 import { stopRun } from "./fence.ts";
 import { notifyReceipt, onReceipt, waitFor } from "./waits.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 type Landing = Awaited<ReturnType<SendReceipt["landed"]>>;
 
@@ -65,12 +66,12 @@ export async function settleReceipt(
   settlement: Settlement,
 ): Promise<void> {
   const settled = await attempt(`Settling receipt ${id}`, async () => {
-    const found = await readReceipt(kernel, session, id);
+    const found = await readReceipt(kernel.store, session, id);
 
     if (found === null || found.record.outcome !== null) return false;
     if (found.record.kind !== settlement.kind)
       throw new SdkError("internal", `Receipt ${id} is not a ${settlement.kind}.`);
-    const target = await put(kernel, "receipt", { ...found.record, ...settlement });
+    const target = await put(kernel.store, "receipt", { ...found.record, ...settlement });
 
     const result = await commit(kernel, [
       { name: receiptRef(session, id), target, expect: found.ref.revision },
@@ -90,7 +91,7 @@ export async function reserve(
   const outcome = await commit(kernel, [
     {
       name: receiptRef(session, record.id),
-      target: await put(kernel, "receipt", record),
+      target: await put(kernel.store, "receipt", record),
       expect: "absent",
     },
   ]);
@@ -99,13 +100,13 @@ export async function reserve(
 }
 
 export async function known(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   id: ReceiptId,
   kind: ReceiptRecord["kind"],
   digest: string,
 ): Promise<boolean> {
-  const found = await readReceipt(kernel, session, id);
+  const found = await readReceipt(store, session, id);
 
   if (found === null) return false;
 
@@ -122,12 +123,12 @@ export function typedReceipt<O extends Json>(
   readOutcome: (record: ReceiptRecord) => O | null,
 ): Receipt<O> {
   const named = async (): Promise<ReceiptId> =>
-    (await readReceipt(kernel, session, id))?.record.id ?? id;
+    (await readReceipt(kernel.store, session, id))?.record.id ?? id;
 
   return {
     id,
     async status() {
-      const found = await readReceipt(kernel, session, await named());
+      const found = await readReceipt(kernel.store, session, await named());
 
       if (found === null) return { kind: "missing" };
       const outcome = readOutcome(found.record);
@@ -140,7 +141,7 @@ export function typedReceipt<O extends Json>(
       return waitFor({
         options,
         async check() {
-          const found = await readReceipt(kernel, session, target);
+          const found = await readReceipt(kernel.store, session, target);
 
           if (found === null) throw new SdkError("unknown", `No receipt has the id ${id}.`);
           const outcome = readOutcome(found.record);
@@ -177,7 +178,7 @@ async function landed(
 
         if (current?.kind === "user" && current.status.kind === "landed")
           return { value: current.status };
-        const found = await readReceipt(kernel, session, id);
+        const found = await readReceipt(kernel.store, session, id);
 
         if (found === null) throw new SdkError("unknown", `No receipt has the id ${id}.`);
         if (found.record.kind !== "send")
@@ -223,23 +224,23 @@ export async function withdraw(
   ids: readonly MessageId[],
 ): Promise<readonly MessageId[]> {
   const withdrawn = await attempt("Withdrawing inputs", async () => {
-    const inbox = await readInbox(kernel, session, head);
+    const inbox = await readInbox(kernel.store, session, head);
     const due = inbox.messages.filter((message) => ids.includes(message));
 
     if (due.length === 0) return [];
 
-    const target = await put(kernel, "inbox", inboxWithout(inbox, due));
+    const target = await put(kernel.store, "inbox", inboxWithout(inbox, due));
 
     const receipts = await Promise.all(
       due.map(async (message): Promise<readonly RefUpdate[]> => {
-        const found = await readReceipt(kernel, session, message);
+        const found = await readReceipt(kernel.store, session, message);
 
         if (found === null || found.record.outcome !== null) return [];
 
         return [
           {
             name: found.ref.name,
-            target: await put(kernel, "receipt", {
+            target: await put(kernel.store, "receipt", {
               ...found.record,
               outcome: { kind: "withdrawn" },
             }),
@@ -275,7 +276,7 @@ async function stopReceipt<O extends Json>(
   id: ReceiptId,
   readOutcome: (record: ReceiptRecord) => O | null,
 ): Promise<StopOutcome<O>> {
-  const found = await readReceipt(kernel, session, id);
+  const found = await readReceipt(kernel.store, session, id);
 
   if (found === null) return { kind: "missing" };
 

@@ -117,7 +117,7 @@ export function build(
 export function pluginSecrets(kernel: Kernel, owner: string): PluginStorage["secrets"] {
   return {
     async get(key) {
-      const sealed = await readKv(kernel, kvRef("secret", owner, validateStorageKey(key)));
+      const sealed = await readKv(kernel.store, kvRef("secret", owner, validateStorageKey(key)));
 
       if (sealed === undefined || !isJsonObject(sealed)) return undefined;
       const { iv, ciphertext } = sealed;
@@ -153,7 +153,10 @@ export function pluginSecrets(kernel: Kernel, owner: string): PluginStorage["sec
       await commit(kernel, [
         {
           name,
-          target: await put(kernel, "kv", { iv: iv.toBase64(), ciphertext: sealed.toBase64() }),
+          target: await put(kernel.store, "kv", {
+            iv: iv.toBase64(),
+            ciphertext: sealed.toBase64(),
+          }),
         },
       ]);
     },
@@ -177,16 +180,18 @@ function createPluginStorage(
 
       if (scope === "session") return `session:${session}`;
 
-      return `workspace:${(await requireSession(kernel, session)).record.workspace}`;
+      return `workspace:${(await requireSession(kernel.store, session)).record.workspace}`;
     };
 
     const name = async (key: string): Promise<string> =>
       kvRef(await prefix(), owner, validateStorageKey(key));
 
     return {
-      get: async (key) => readKv(kernel, await name(key)),
+      get: async (key) => readKv(kernel.store, await name(key)),
       async set(key, value) {
-        await commit(kernel, [{ name: await name(key), target: await put(kernel, "kv", value) }]);
+        await commit(kernel, [
+          { name: await name(key), target: await put(kernel.store, "kv", value) },
+        ]);
       },
       async delete(key) {
         await commit(kernel, [{ name: await name(key), target: null }]);

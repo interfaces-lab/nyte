@@ -50,6 +50,7 @@ import {
 import { SdkError } from "../util/error.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const DEFAULT_LIMIT = 50;
 
@@ -161,7 +162,7 @@ export async function sessionInfo(
   id: SessionId,
   principal: PrincipalId,
 ): Promise<SessionInfo | null> {
-  const found = await readSession(kernel, id);
+  const found = await readSession(kernel.store, id);
 
   if (found === null) return null;
   return describeSession(kernel, found.record, principal);
@@ -173,12 +174,12 @@ async function describeSession(
   principal: PrincipalId,
 ): Promise<SessionInfo> {
   const id = record.id;
-  const runs = await liveRuns(kernel, id);
+  const runs = await liveRuns(kernel.store, id);
 
   const heads = await Promise.all(
     record.heads.map((head) =>
       headInfo(
-        kernel,
+        kernel.store,
         id,
         principal,
         head,
@@ -215,7 +216,7 @@ async function listSessions(
   });
   const infos = await Promise.all(
     rows.slice(0, limit).map(async ({ ref }) => {
-      const found = await load(kernel, ref, decodeSessionRecord);
+      const found = await load(kernel.store, ref, decodeSessionRecord);
 
       return found === null ? null : describeSession(kernel, found.record, principal);
     }),
@@ -284,7 +285,7 @@ export function watchSessions(
 
                 return previous.info;
               }
-              const found = await load(kernel, ref, decodeSessionRecord);
+              const found = await load(kernel.store, ref, decodeSessionRecord);
 
               if (found === null) return null;
               const current = await describeSession(kernel, found.record, principal);
@@ -338,8 +339,9 @@ async function create(
 
   const id = typeof acquired === "string" ? asId<"session">(acquired) : minted;
 
-  if ((await readSession(kernel, id)) !== null) return id;
-  const parent = input.parent === undefined ? null : await requireSession(kernel, input.parent);
+  if ((await readSession(kernel.store, id)) !== null) return id;
+  const parent =
+    input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
   const workspace = input.workspace ?? parent?.record.workspace ?? kernel.defaultWorkspace;
 
   if (workspace === null)
@@ -368,7 +370,7 @@ async function create(
     prompt: input.prompt ?? null,
   };
 
-  const target = await put(kernel, "session", record, at);
+  const target = await put(kernel.store, "session", record, at);
   const effective = selected ?? (await defaults(kernel, id));
 
   const configured: readonly RefUpdate[] =
@@ -440,12 +442,12 @@ async function update(
     readonly outcome: UpdateOutcome;
     readonly moved: boolean;
   }>(`Updating ${session}`, async () => {
-    const found = await requireSession(kernel, session);
+    const found = await requireSession(kernel.store, session);
     const workspace = patch.workspace ?? found.record.workspace;
     const moving = workspace !== found.record.workspace;
 
     if (moving) {
-      const runs = await liveRuns(kernel, session);
+      const runs = await liveRuns(kernel.store, session);
 
       if (runs.length > 0)
         return {
@@ -476,7 +478,7 @@ async function update(
     const written = await commit(kernel, [
       {
         name: sessionRef(session),
-        target: await put(kernel, "session", record),
+        target: await put(kernel.store, "session", record),
         expect: found.ref.revision,
         events: [await sessionEvent(kernel, record)],
       },
@@ -499,8 +501,8 @@ async function remove(
   session: SessionId,
 ): Promise<RemoveSessionOutcome> {
   return attempt<RemoveSessionOutcome>(`Removing ${session}`, async () => {
-    const found = await requireSession(kernel, session);
-    const runs = await liveRuns(kernel, session);
+    const found = await requireSession(kernel.store, session);
+    const runs = await liveRuns(kernel.store, session);
 
     if (runs.length > 0) return { kind: "busy", runs: runs.map((run) => run.record.view.id) };
     const children = await listChildSessionIds(kernel, context, session);
@@ -550,11 +552,11 @@ async function stop(
   kernel: Kernel,
   session: SessionId,
 ): Promise<{ readonly stopped: readonly RunId[]; readonly withdrawn: readonly MessageId[] }> {
-  const found = await requireSession(kernel, session);
+  const found = await requireSession(kernel.store, session);
   const stopped: RunId[] = [];
   const withdrawn: MessageId[] = [];
 
-  for (const run of await liveRuns(kernel, session)) {
+  for (const run of await liveRuns(kernel.store, session)) {
     const id = run.record.view.id;
 
     if ((await stopRun(kernel, session, id)).kind === "requested") stopped.push(id);
@@ -564,7 +566,7 @@ async function stop(
 
   for (const ref of await kernel.store.refs.list(prefix)) {
     const head = asId<"head">(ref.name.slice(prefix.length));
-    const inbox = await readInbox(kernel, session, head);
+    const inbox = await readInbox(kernel.store, session, head);
     withdrawn.push(...(await withdraw(kernel, session, head, inbox.messages)));
   }
 
@@ -596,17 +598,17 @@ async function listChildSessionIds(
 }
 
 async function headInfo(
-  kernel: Kernel,
+  store: StoreConnection,
   id: SessionId,
   principal: PrincipalId,
   head: HeadRecord,
   run: RunRecord | undefined,
 ): Promise<HeadInfo> {
-  const { refs } = kernel.store;
+  const { refs } = store;
 
   const [ref, seen] = await Promise.all([
     refs.get(headRef(id, head.name)),
-    refs.get(seenRef(id, principal, head.name)).then((ref) => load(kernel, ref, decodeSeenRecord)),
+    refs.get(seenRef(id, principal, head.name)).then((ref) => load(store, ref, decodeSeenRecord)),
   ]);
 
   const commit = ref === null || ref.target === null ? null : asId<"commit">(ref.target);

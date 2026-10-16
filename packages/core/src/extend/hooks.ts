@@ -197,7 +197,7 @@ export function createHookDispatch(kernel: Kernel, session: SessionId): HookDisp
       const decider = deciders[name];
       const chain = ordered(name);
 
-      if (chain.length === 0 && (await readCall(kernel, context.session, step.call)) === null)
+      if (chain.length === 0 && (await readCall(kernel.store, context.session, step.call)) === null)
         return { kind: "done", value: CONTINUE };
 
       return runStep<Decision<HookEvent<typeof name>>>(kernel, {
@@ -276,7 +276,7 @@ export async function gateSubmission(
   const call = asId<"call">(`hook:before_send:${context.message}`);
 
   if (submission.replace === context.message) {
-    const found = await readCall(kernel, session, call);
+    const found = await readCall(kernel.store, session, call);
 
     if (found !== null && found.record.result !== null)
       await commit(kernel, [

@@ -16,6 +16,7 @@ import {
   readTip,
   STALE,
 } from "../store/session.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 export const FENCED: Failure = { class: "aborted", message: "Stopped." };
 
@@ -57,7 +58,7 @@ export async function stopRun(
 
 export async function fence(kernel: Kernel, session: SessionId, run: RunId): Promise<Fence> {
   const found = await load(
-    kernel,
+    kernel.store,
     await kernel.store.refs.get(runRef(session, run)),
     decodeRunRecord,
   );
@@ -69,14 +70,14 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
 
   const [live, inbox, tip] = await Promise.all([
     liveParts(kernel, session, run),
-    readInbox(kernel, session, head),
-    readTip(kernel, session, head),
+    readInbox(kernel.store, session, head),
+    readTip(kernel.store, session, head),
   ]);
 
   const [stopping, stopped, rewritten] = await Promise.all([
-    put(kernel, "run", { ...found.record, stopping: true }),
-    stoppedParts(kernel, session, head, tip, live, FENCED),
-    put(kernel, "inbox", inboxWithout(inbox, [])),
+    put(kernel.store, "run", { ...found.record, stopping: true }),
+    stoppedParts(kernel.store, session, head, tip, live, FENCED),
+    put(kernel.store, "inbox", inboxWithout(inbox, [])),
   ]);
 
   return {
@@ -96,15 +97,11 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
 }
 
 export async function unfenced(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
 ): Promise<RefUpdate | null> {
-  const found = await load(
-    kernel,
-    await kernel.store.refs.get(runRef(session, run)),
-    decodeRunRecord,
-  );
+  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
   return found === null || found.record.stopping
     ? null
@@ -113,15 +110,11 @@ export async function unfenced(
 
 /** Whether the run's stop fence is set in the store, the one record of a stop; a run whose record is gone has ended and is not stopping. */
 export async function stopRequested(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
 ): Promise<boolean> {
-  const found = await load(
-    kernel,
-    await kernel.store.refs.get(runRef(session, run)),
-    decodeRunRecord,
-  );
+  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
   return found?.record.stopping === true;
 }

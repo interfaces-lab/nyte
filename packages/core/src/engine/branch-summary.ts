@@ -29,6 +29,7 @@ import {
 } from "../store/session.ts";
 import type { Found, Inbox, MoveFailure, Tip } from "../store/session.ts";
 import { fence } from "./fence.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const NOTE: Placement = { kind: "transcript", role: "note" };
 
@@ -93,7 +94,7 @@ export async function summarizedMove(
   if (summary.kind === "failed")
     return { kind: "failed", outcome: { kind: "summary-failed", reason: summary.reason } };
 
-  const written = await summaryUpdates(kernel, {
+  const written = await summaryUpdates(kernel.store, {
     session,
     head,
     tip,
@@ -103,10 +104,10 @@ export async function summarizedMove(
   });
 
   return attempt<Summarized>(`Moving ${head}`, async () => {
-    const checked = await guard(kernel, session, head, undefined, input.running);
+    const checked = await guard(kernel.store, session, head, undefined, input.running);
 
     if ("kind" in checked) return { kind: "failed", outcome: checked };
-    const receipt = await readReceipt(kernel, session, input.receipt);
+    const receipt = await readReceipt(kernel.store, session, input.receipt);
 
     if (receipt === null || receipt.record.outcome !== null) return { kind: "settled" };
     const fenced = checked.run === null ? null : await fence(kernel, session, checked.run);
@@ -126,7 +127,7 @@ export async function summarizedMove(
 
     if (outcome.kind === "stale")
       return outcome.name === headRef(session, head)
-        ? { kind: "failed", outcome: await staleHead(kernel, session, head) }
+        ? { kind: "failed", outcome: await staleHead(kernel.store, session, head) }
         : STALE;
 
     return {
@@ -151,7 +152,7 @@ async function summarize(
 }
 
 async function summaryUpdates(
-  kernel: Kernel,
+  store: StoreConnection,
   input: {
     readonly session: SessionId;
     readonly head: HeadName;
@@ -177,7 +178,7 @@ async function summaryUpdates(
     body: { kind: "branchSummary", part, replaces: input.abandoned },
   };
 
-  const commit = asId<"commit">(await put(kernel, "commit", record, record.at));
+  const commit = asId<"commit">(await put(store, "commit", record, record.at));
 
   const stored: PartRecord = {
     id: part,
@@ -190,7 +191,7 @@ async function summaryUpdates(
     status: { kind: "settled", commit, endedAt: at },
   };
 
-  const target = await put(kernel, "part", stored, at);
+  const target = await put(store, "part", stored, at);
 
   return {
     commit,

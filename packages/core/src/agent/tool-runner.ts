@@ -57,6 +57,7 @@ import {
   STALE,
 } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const ToolIntentType = Type.Object({
   name: Type.String(),
@@ -130,8 +131,8 @@ export async function executeCall(
   live.set(call, controllers);
 
   const steps = await Promise.all([
-    readCall(kernel, session, call),
-    readCall(kernel, session, asId<"call">(`${HOOK}${call}`)),
+    readCall(kernel.store, session, call),
+    readCall(kernel.store, session, asId<"call">(`${HOOK}${call}`)),
   ]);
 
   if (steps.some((found) => found?.record.waits.some((outcome) => outcome.kind === "stopped")))
@@ -150,13 +151,13 @@ export async function executeCall(
 }
 
 export async function owedCalls(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
 ): Promise<
   readonly { readonly call: CallId; readonly intent: ToolIntent; readonly parked: boolean }[]
 > {
-  const records = (await readCalls(kernel, session)).filter(
+  const records = (await readCalls(store, session)).filter(
     (record) => record.run === run && record.kind !== "action",
   );
 
@@ -255,7 +256,7 @@ async function perform(
 
       return {
         result: settled.outcome,
-        updates: await settlement(kernel, where, planned, settled),
+        updates: await settlement(kernel.store, where, planned, settled),
       };
     },
     decode: (value) => (outcomes.Check(value) ? outcomes.Decode(value) : null),
@@ -312,7 +313,7 @@ async function plan(
   if (gated.kind === "parked") return PARKED;
   const gate = gated.kind === "done" ? gated.value : CONTINUE;
 
-  if (where.signal.aborted && (await readCall(kernel, session, call))?.record.kind !== "tool")
+  if (where.signal.aborted && (await readCall(kernel.store, session, call))?.record.kind !== "tool")
     return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
 
   if (gate.action === "reject")
@@ -366,7 +367,7 @@ async function partOpening(
 
   const [existing, held] = await Promise.all([
     kernel.store.refs.get(name),
-    unfenced(kernel, session, run),
+    unfenced(kernel.store, session, run),
   ]);
 
   if (existing !== null) return { updates: [], result: null };
@@ -412,7 +413,7 @@ async function partOpening(
 
   if (held !== null) {
     const running = await put(
-      kernel,
+      kernel.store,
       "part",
       record({ ...fields, phase: "running", progress: null }, 2),
       at,
@@ -432,7 +433,7 @@ async function partOpening(
     updates: [
       {
         name,
-        target: await put(kernel, "part", { ...settled, status }, at),
+        target: await put(kernel.store, "part", { ...settled, status }, at),
         expect: "absent",
         events: [
           ...opening,
@@ -465,7 +466,10 @@ async function execute(
   try {
     if (snapshotted) await baseline(kernel, session, run);
 
-    const [env, found] = await Promise.all([kernel.env(session), requireSession(kernel, session)]);
+    const [env, found] = await Promise.all([
+      kernel.env(session),
+      requireSession(kernel.store, session),
+    ]);
 
     const invocation = createInvocation(kernel, {
       session,
@@ -540,7 +544,7 @@ async function conclude(
   const snapshots = snapshotted && ended.kind === "done" ? await kernel.snapshots(session) : null;
 
   if (snapshots === null) return { outcome, changes: null, files: [], snapshot: null };
-  const from = (await diffBase(kernel, session, run)) ?? (await snapshots.before(run));
+  const from = (await diffBase(kernel.store, session, run)) ?? (await snapshots.before(run));
   const to = await snapshots.after(run);
 
   const files = (await snapshots.diff(from, to)).files.map((file): FileChange => {
@@ -567,7 +571,7 @@ async function conclude(
 }
 
 async function settlement(
-  kernel: Kernel,
+  store: StoreConnection,
   where: Where,
   planned: Plan,
   settled: Settled,
@@ -577,8 +581,8 @@ async function settlement(
   const name = partRef(session, part);
 
   const [found, tip] = await Promise.all([
-    kernel.store.refs.get(name).then((ref) => load(kernel, ref, decodePartRecord)),
-    readTip(kernel, session, head),
+    store.refs.get(name).then((ref) => load(store, ref, decodePartRecord)),
+    readTip(store, session, head),
   ]);
 
   if (found === null) return [];
@@ -595,7 +599,7 @@ async function settlement(
   };
 
   const based =
-    settled.snapshot === null ? [] : await nextBase(kernel, session, run, settled.snapshot);
+    settled.snapshot === null ? [] : await nextBase(store, session, run, settled.snapshot);
 
   const record = { ...found.record, state, version: found.record.version + 1 };
 
@@ -622,12 +626,12 @@ async function settlement(
   ];
 
   if (found.record.status.kind === "failed" || found.record.status.kind === "settled") {
-    const target = await put(kernel, "part", record, at);
+    const target = await put(store, "part", record, at);
 
     return [...opened(target), ...based];
   }
 
-  const landed = await settling(kernel, {
+  const landed = await settling(store, {
     session,
     head,
     run,
@@ -642,7 +646,7 @@ async function settlement(
 }
 
 async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
-  if ((await diffBase(kernel, session, run)) !== null) return;
+  if ((await diffBase(kernel.store, session, run)) !== null) return;
   const snapshots = await kernel.snapshots(session);
 
   if (snapshots === null) return;
@@ -650,7 +654,7 @@ async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise
 
   await attempt(`Recording run ${run}'s snapshot`, async () => {
     const found = await load(
-      kernel,
+      kernel.store,
       await kernel.store.refs.get(runRef(session, run)),
       decodeRunRecord,
     );
@@ -660,7 +664,7 @@ async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise
     const outcome = await commit(kernel, [
       {
         name: found.ref.name,
-        target: await put(kernel, "run", { ...found.record, snapshot: before }),
+        target: await put(kernel.store, "run", { ...found.record, snapshot: before }),
         expect: found.ref.revision,
       },
     ]);
@@ -670,37 +674,29 @@ async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise
 }
 
 async function diffBase(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
 ): Promise<SnapshotId | null> {
-  const found = await load(
-    kernel,
-    await kernel.store.refs.get(runRef(session, run)),
-    decodeRunRecord,
-  );
+  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
   return found?.record.lastSnapshot ?? found?.record.snapshot ?? null;
 }
 
 async function nextBase(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
   to: SnapshotId,
 ): Promise<readonly RefUpdate[]> {
-  const found = await load(
-    kernel,
-    await kernel.store.refs.get(runRef(session, run)),
-    decodeRunRecord,
-  );
+  const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
   if (found === null || found.record.lastSnapshot === to) return [];
 
   return [
     {
       name: found.ref.name,
-      target: await put(kernel, "run", { ...found.record, lastSnapshot: to }),
+      target: await put(store, "run", { ...found.record, lastSnapshot: to }),
       expect: found.ref.revision,
     },
   ];

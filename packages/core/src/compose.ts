@@ -233,7 +233,7 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
   );
 
   for (const [id, value] of Object.entries(seed.settings)) {
-    if ((await readKv(kernel, kvRef("host", "settings", id))) !== undefined) continue;
+    if ((await readKv(kernel.store, kvRef("host", "settings", id))) !== undefined) continue;
     const outcome = await kernel.settings.apply(id, value);
 
     if (outcome.kind === "applied") applied += 1;

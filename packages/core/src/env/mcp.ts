@@ -15,7 +15,7 @@ import { projectTrust } from "./trust.ts";
  * @since 0.1.0
  */
 export async function readMcpWorkspace(kernel: Kernel, id: WorkspaceId): Promise<McpWorkspace> {
-  const record = await readWorkspace(kernel, id);
+  const record = await readWorkspace(kernel.store, id);
 
   if (record === null) throw new SdkError("unknown", `Workspace ${id} is not registered.`);
   const { target } = record;
@@ -42,7 +42,7 @@ export async function awaitMcpServers(
   signal: AbortSignal,
 ): Promise<void> {
   if (kernel.mcp === null) return;
-  const { workspace } = (await requireSession(kernel, session)).record;
+  const { workspace } = (await requireSession(kernel.store, session)).record;
 
   if (await kernel.mcp.ready(workspace, AbortSignal.any([signal, AbortSignal.timeout(READY_MS)])))
     await runtime.registries.materialize();

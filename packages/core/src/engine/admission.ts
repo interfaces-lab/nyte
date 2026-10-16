@@ -50,6 +50,7 @@ import { collectContributions, refusalError } from "./contributions.ts";
 import { abortHere, fence, unfenced } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 interface Sending {
   readonly kernel: Kernel;
@@ -95,7 +96,7 @@ export async function send(kernel: Kernel, input: SendInput): Promise<SendReceip
 }
 
 export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendReceipt> {
-  const found = await requireSession(kernel, input.session);
+  const found = await requireSession(kernel.store, input.session);
   const head = found.record.heads.find((entry) => entry.name === input.head);
 
   if (head === undefined)
@@ -122,7 +123,7 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
   const replayed = await readReplayReceipt(kernel, input.session, keyed);
 
   if (replayed !== null) return replayed;
-  const inbox = await readInbox(kernel, input.session, input.head);
+  const inbox = await readInbox(kernel.store, input.session, input.head);
 
   return inbox.messages.includes(target)
     ? revise(sending, target, keyed)
@@ -162,15 +163,15 @@ export async function landing(
 ): Promise<readonly MessageId[]> {
   const landed = await attempt(`Landing on ${head}`, async () => {
     const [tip, inbox] = await Promise.all([
-      readTip(kernel, session, head),
-      readInbox(kernel, session, head),
+      readTip(kernel.store, session, head),
+      readInbox(kernel.store, session, head),
     ]);
 
     const due = inbox.messages.filter((message) => ids.includes(message));
 
     if (due.length === 0) return [];
 
-    const held = start ?? (run === null ? null : await unfenced(kernel, session, run));
+    const held = start ?? (run === null ? null : await unfenced(kernel.store, session, run));
 
     if (run !== null && held === null) return [];
 
@@ -213,10 +214,10 @@ export async function landing(
         },
       };
 
-      records.push({ id: asId<"commit">(await put(kernel, "commit", record, at)), record });
+      records.push({ id: asId<"commit">(await put(kernel.store, "commit", record, at)), record });
     }
 
-    const remaining = await put(kernel, "inbox", inboxWithout(inbox, due));
+    const remaining = await put(kernel.store, "inbox", inboxWithout(inbox, due));
 
     const updates = records.flatMap(({ id, record }, index): readonly RefUpdate[] => [
       {
@@ -264,7 +265,8 @@ async function admit(sending: Sending): Promise<SendReceipt> {
   const id = options.id ?? asId<"receipt">(crypto.randomUUID());
   const digest = await hashSendRequest(sending);
 
-  if (await known(kernel, session, id, "send", digest)) return sendReceipt(kernel, session, id);
+  if (await known(kernel.store, session, id, "send", digest))
+    return sendReceipt(kernel, session, id);
   dev("admission", "send", { session, head, receipt: id });
 
   const submission = await gate(sending, asId<"message">(id), {
@@ -279,8 +281,8 @@ async function admit(sending: Sending): Promise<SendReceipt> {
 
   return attempt(`Admitting ${id}`, async () => {
     const [inbox, run, configuration] = await Promise.all([
-      readInbox(kernel, session, head),
-      liveRun(kernel, session, head),
+      readInbox(kernel.store, session, head),
+      liveRun(kernel.store, session, head),
       resolve(sending, submission.configuration),
     ]);
 
@@ -298,13 +300,13 @@ async function admit(sending: Sending): Promise<SendReceipt> {
     };
 
     const outcome = await commit(kernel, [
-      await admitted(kernel, session, head, inbox, [...inbox.messages, message.id], message),
-      await pendingReceipt(kernel, session, id, digest, "absent"),
+      await admitted(kernel.store, session, head, inbox, [...inbox.messages, message.id], message),
+      await pendingReceipt(kernel.store, session, id, digest, "absent"),
     ]);
 
     if (outcome.kind === "stale")
       return outcome.name === receiptRef(session, id) &&
-        (await known(kernel, session, id, "send", digest))
+        (await known(kernel.store, session, id, "send", digest))
         ? sendReceipt(kernel, session, id)
         : STALE;
 
@@ -340,8 +342,8 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
 
   const revised = await attempt(`Revising ${target}`, async () => {
     const [inbox, run, configuration] = await Promise.all([
-      readInbox(kernel, session, head),
-      liveRun(kernel, session, head),
+      readInbox(kernel.store, session, head),
+      liveRun(kernel.store, session, head),
       configured(),
     ]);
 
@@ -366,7 +368,7 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
 
     const outcome = await commit(kernel, [
       await admitted(
-        kernel,
+        kernel.store,
         session,
         head,
         inbox,
@@ -375,7 +377,7 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
       ),
       {
         name: receiptRef(session, id),
-        target: await put(kernel, "receipt", {
+        target: await put(kernel.store, "receipt", {
           id: asId<"receipt">(target),
           kind: "send",
           digest,
@@ -475,7 +477,7 @@ async function editGated(
     | { readonly kind: "edited"; readonly stopped: RunId | null }
     | { readonly kind: "replayed"; readonly receipt: SendReceipt }
   >(`Editing ${target}`, async () => {
-    const checked = await guard(kernel, session, head, options.expect, running);
+    const checked = await guard(kernel.store, session, head, options.expect, running);
 
     if ("kind" in checked) return { kind: "failed", outcome: checked };
     const parent = await locate(kernel, session, checked.tip, target);
@@ -502,14 +504,14 @@ async function editGated(
         events: [{ head, kind: "head", from: checked.tip.id, to: parent, reason: "moved" }],
       },
       await admitted(
-        kernel,
+        kernel.store,
         session,
         head,
         checked.inbox,
         [...checked.inbox.messages, record.id],
         record,
       ),
-      await pendingReceipt(kernel, session, id, digest, "absent"),
+      await pendingReceipt(kernel.store, session, id, digest, "absent"),
     ]);
 
     dev("admission", "edit", { session, head, target, outcome: outcome.kind });
@@ -558,7 +560,14 @@ async function editGated(
           const record = await message(stopped, inbox.messages.length);
 
           return [
-            await admitted(kernel, session, head, inbox, [...inbox.messages, record.id], record),
+            await admitted(
+              kernel.store,
+              session,
+              head,
+              inbox,
+              [...inbox.messages, record.id],
+              record,
+            ),
             { name: receipt.ref.name, target: receipt.ref.target, expect: receipt.ref.revision },
           ];
         },
@@ -602,7 +611,7 @@ async function readReplayReceipt(
   session: SessionId,
   { id, digest }: Keyed,
 ): Promise<SendReceipt | null> {
-  const found = await readReceipt(kernel, session, id);
+  const found = await readReceipt(kernel.store, session, id);
 
   if (found === null) return null;
 
@@ -664,7 +673,7 @@ async function resolve(
   sending: Sending,
   patch: Configuration | ConfigurationPatch | null,
 ): Promise<Configuration> {
-  const found = await requireSession(sending.kernel, sending.session);
+  const found = await requireSession(sending.kernel.store, sending.session);
 
   const result = await sending.kernel.resolveConfiguration({
     session: sending.session,
@@ -697,7 +706,7 @@ async function chooseSendSchedule(
 }
 
 async function admitted(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   head: HeadName,
   inbox: Inbox,
@@ -713,7 +722,7 @@ async function admitted(
 
   return {
     name: inboxRef(session, head),
-    target: await put(kernel, "inbox", { messages, pendingInput }),
+    target: await put(store, "inbox", { messages, pendingInput }),
     expect: readRefExpectation(inbox.ref),
     events: [
       {
@@ -734,7 +743,7 @@ async function admitted(
 }
 
 async function pendingReceipt(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   id: ReceiptId,
   digest: string,
@@ -742,7 +751,7 @@ async function pendingReceipt(
 ): Promise<RefUpdate> {
   return {
     name: receiptRef(session, id),
-    target: await put(kernel, "receipt", { id, kind: "send", digest, outcome: null }),
+    target: await put(store, "receipt", { id, kind: "send", digest, outcome: null }),
     expect,
   };
 }

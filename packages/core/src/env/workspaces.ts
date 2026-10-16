@@ -47,6 +47,7 @@ import { inspectWorkspaceAvailability, readWorkspace, workspaceRecords } from ".
 import { mcpApi } from "./mcp.ts";
 import { readTrustResolver } from "./trust.ts";
 import type { TrustResolver } from "./trust.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const PATCH_READ_MAX = 32;
 
@@ -73,7 +74,7 @@ export function createWorkspaces(
 ): Workspaces {
   return {
     async list() {
-      const records = await workspaceRecords(kernel);
+      const records = await workspaceRecords(kernel.store);
       const trust = await readTrustResolver(kernel);
       const infos = await Promise.all(
         records.map((record) => workspaceInfo(kernel, record.id, trust)),
@@ -88,7 +89,7 @@ export function createWorkspaces(
         throw new SdkError("unavailable", `No environment provider serves ${target.kind}.`);
       const inspected = await provider.inspect(target);
 
-      const registered = await byIdentity(kernel, {
+      const registered = await byIdentity(kernel.store, {
         kind: target.kind,
         identity: inspected.identity,
       });
@@ -118,7 +119,7 @@ export function createWorkspaces(
       const id = asId<"workspace">(await objectId(identity));
 
       return attempt<AddOutcome>(`Registering ${target.kind} workspace`, async () => {
-        const existing = await byIdentity(kernel, identity);
+        const existing = await byIdentity(kernel.store, identity);
 
         if (existing !== null) return { kind: "exists", workspace: existing.id };
 
@@ -135,7 +136,7 @@ export function createWorkspaces(
         const outcome = await commit(kernel, [
           {
             name: workspaceRef(id),
-            target: await put(kernel, "workspace", record),
+            target: await put(kernel.store, "workspace", record),
             expect: "absent",
           },
         ]);
@@ -151,7 +152,7 @@ export function createWorkspaces(
         const ref = await kernel.store.refs.get(workspaceRef(id));
 
         if (ref === null) return { kind: "missing" };
-        const sessions = await sessionsOn(kernel, id);
+        const sessions = await sessionsOn(kernel.store, id);
 
         if (sessions.length > 0) return { kind: "busy", sessions };
 
@@ -181,7 +182,7 @@ export function workspaceHandle(
 
     if (origin === null) return null;
 
-    return (await readSession(kernel, origin.session))?.record.workspace === id
+    return (await readSession(kernel.store, origin.session))?.record.workspace === id
       ? origin.session
       : null;
   };
@@ -230,7 +231,7 @@ export function workspaceHandle(
   const rewrite = (what: string, change: (record: WorkspaceRecord) => WorkspaceRecord) =>
     attempt<{ readonly kind: "updated" } | { readonly kind: "missing" }>(what, async () => {
       const found = await load(
-        kernel,
+        kernel.store,
         await kernel.store.refs.get(workspaceRef(id)),
         decodeWorkspaceRecord,
       );
@@ -240,7 +241,7 @@ export function workspaceHandle(
       const outcome = await commit(kernel, [
         {
           name: workspaceRef(id),
-          target: await put(kernel, "workspace", change(found.record)),
+          target: await put(kernel.store, "workspace", change(found.record)),
           expect: found.ref.revision,
         },
       ]);
@@ -323,11 +324,11 @@ export function workspaceHandle(
       return outcome;
     },
     async reload() {
-      if ((await readWorkspace(kernel, id)) === null) return { kind: "missing" };
+      if ((await readWorkspace(kernel.store, id)) === null) return { kind: "missing" };
       invalidateResources(kernel, id);
       await kernel.environments.detachWorkspace(id);
 
-      for (const session of await sessionsOn(kernel, id)) {
+      for (const session of await sessionsOn(kernel.store, id)) {
         if (kernel.activation(session).kind !== "active") await kernel.environments.detach(session);
 
         if (
@@ -346,7 +347,7 @@ export function workspaceHandle(
     job: (job) => jobHandle(kernel, job),
     async changes(run) {
       const found = await snapshots();
-      const from = (await runStart(kernel, id, run)) ?? (await found.before(run));
+      const from = (await runStart(kernel.store, id, run)) ?? (await found.before(run));
 
       return found.diff(from, await found.after(run));
     },
@@ -364,16 +365,16 @@ async function workspaceInfo(
   id: WorkspaceId,
   trust?: TrustResolver,
 ): Promise<WorkspaceInfo | null> {
-  const record = await readWorkspace(kernel, id);
+  const record = await readWorkspace(kernel.store, id);
 
   if (record === null) return null;
 
   const [availability, sessions] = await Promise.all([
     inspectWorkspaceAvailability(kernel, record),
-    sessionsOn(kernel, id),
+    sessionsOn(kernel.store, id),
   ]);
 
-  const runs = await Promise.all(sessions.map((session) => liveRuns(kernel, session)));
+  const runs = await Promise.all(sessions.map((session) => liveRuns(kernel.store, session)));
 
   return {
     id,
@@ -389,8 +390,11 @@ async function workspaceInfo(
   };
 }
 
-async function sessionsOn(kernel: Kernel, workspace: WorkspaceId): Promise<readonly SessionId[]> {
-  return (await listSessionRecords(kernel)).flatMap((record) =>
+async function sessionsOn(
+  store: StoreConnection,
+  workspace: WorkspaceId,
+): Promise<readonly SessionId[]> {
+  return (await listSessionRecords(store)).flatMap((record) =>
     record.workspace === workspace ? [record.id] : [],
   );
 }
@@ -418,7 +422,8 @@ async function* streamWorkspacePatches(
 ): AsyncGenerator<PatchSet> {
   const { run, options } = input;
   const snapshots = await input.snapshots();
-  const from = (await runStart(kernel, input.workspace, run)) ?? (await snapshots.before(run));
+  const from =
+    (await runStart(kernel.store, input.workspace, run)) ?? (await snapshots.before(run));
   const to = await snapshots.after(run);
   let statuses: Promise<ReadonlyMap<string, FileStatus> | null> | null = null;
 
@@ -563,16 +568,12 @@ function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
 }
 
 async function runStart(
-  kernel: Kernel,
+  store: StoreConnection,
   workspace: WorkspaceId,
   run: RunId,
 ): Promise<SnapshotId | null> {
-  for (const session of await sessionsOn(kernel, workspace)) {
-    const found = await load(
-      kernel,
-      await kernel.store.refs.get(runRef(session, run)),
-      decodeRunRecord,
-    );
+  for (const session of await sessionsOn(store, workspace)) {
+    const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
     if (found !== null) return found.record.snapshot;
   }
@@ -581,11 +582,11 @@ async function runStart(
 }
 
 async function byIdentity(
-  kernel: Kernel,
+  store: StoreConnection,
   input: { readonly kind: string; readonly identity: EnvironmentIdentity },
 ): Promise<WorkspaceRecord | null> {
   return (
-    (await workspaceRecords(kernel)).find(
+    (await workspaceRecords(store)).find(
       (record) => record.target.kind === input.kind && record.identity === input.identity,
     ) ?? null
   );
@@ -600,7 +601,7 @@ async function byIdentity(
 export async function trustChanged(kernel: Kernel): Promise<void> {
   kernel.workspaceState.scans.clear();
 
-  for (const record of await workspaceRecords(kernel)) changed(kernel, record.id);
+  for (const record of await workspaceRecords(kernel.store)) changed(kernel, record.id);
 
   await Promise.allSettled(
     [...kernel.runtimes().keys()].map((session) => kernel.reloadPlugins(session)),

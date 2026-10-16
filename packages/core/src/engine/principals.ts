@@ -8,6 +8,7 @@ import { commit } from "../fold/commit.ts";
 import { hostPrincipalsRef } from "../store/refs.ts";
 import { load, put, readRefExpectation } from "../store/session.ts";
 import { SdkError } from "../util/error.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const PAIRING_TTL = 10 * 60 * 1000;
 
@@ -62,7 +63,7 @@ export function gated<T extends object>(
 export function createPrincipals(kernel: Kernel): Host["principals"] {
   return {
     async list() {
-      const { record } = await readPrincipals(kernel);
+      const { record } = await readPrincipals(kernel.store);
 
       return record.principals.map((principal) => ({
         id: principal.id,
@@ -151,7 +152,7 @@ export async function authenticateToken(
   token: string,
 ): Promise<{ readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> } | null> {
   const digest = await sha256(token);
-  const { record } = await readPrincipals(kernel);
+  const { record } = await readPrincipals(kernel.store);
   const found = record.principals.find((principal) => principal.tokenDigest === digest);
 
   return found === undefined ? null : { principal: found.id, authority: new Set(found.authority) };
@@ -188,10 +189,10 @@ export function createConnectionRegistry(): ConnectionRegistry {
   };
 }
 
-async function readPrincipals(kernel: Kernel) {
-  const ref = await kernel.store.refs.get(hostPrincipalsRef());
+async function readPrincipals(store: StoreConnection) {
+  const ref = await store.refs.get(hostPrincipalsRef());
 
-  return { ref, record: (await load(kernel, ref, decodePrincipalRecord))?.record ?? EMPTY };
+  return { ref, record: (await load(store, ref, decodePrincipalRecord))?.record ?? EMPTY };
 }
 
 async function writePrincipals(
@@ -199,7 +200,7 @@ async function writePrincipals(
   change: (record: PrincipalRecord) => PrincipalRecord | null,
 ): Promise<PrincipalRecord | null> {
   for (;;) {
-    const { ref, record } = await readPrincipals(kernel);
+    const { ref, record } = await readPrincipals(kernel.store);
     const next = change(record);
 
     if (next === null) return null;
@@ -207,7 +208,7 @@ async function writePrincipals(
     const outcome = await commit(kernel, [
       {
         name: hostPrincipalsRef(),
-        target: await put(kernel, "principals", next),
+        target: await put(kernel.store, "principals", next),
         expect: readRefExpectation(ref),
       },
     ]);

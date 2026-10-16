@@ -443,7 +443,7 @@ export async function replacePlugins(
   const builtins = kernel.builtins.length;
 
   if (scope !== undefined) {
-    await requireSession(kernel, scope.session);
+    await requireSession(kernel.store, scope.session);
     assigned.set(scope.session, plugins);
     const outcomes = await reloadSession(kernel, scope.session);
 

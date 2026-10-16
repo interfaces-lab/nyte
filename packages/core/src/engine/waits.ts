@@ -23,6 +23,7 @@ import { callRef, partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 interface Slot {
   readonly entry: ParkedWait;
@@ -43,13 +44,13 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   const resumed = async (entry: ParkedWait): Promise<readonly RefUpdate[]> =>
     entry.run === null
       ? []
-      : runWait(kernel, entry.session, entry.run, async (record) => {
+      : runWait(kernel.store, entry.session, entry.run, async (record) => {
           if (!record.parked.includes(entry.call) && record.waiting === null) return null;
 
           const others = await Promise.all(
             record.parked
               .filter((call) => call !== entry.call)
-              .map((call) => readCall(kernel, entry.session, call)),
+              .map((call) => readCall(kernel.store, entry.session, call)),
           );
 
           const still = others.flatMap((found) => {
@@ -149,7 +150,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         updates:
           on === null || entry.run === null
             ? []
-            : await runWait(kernel, entry.session, entry.run, async (record) => ({
+            : await runWait(kernel.store, entry.session, entry.run, async (record) => ({
                 parked: record.parked,
                 waiting: on,
               })),
@@ -208,13 +209,13 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
       case "part": {
         const found = await load(
-          kernel,
+          kernel.store,
           await kernel.store.refs.get(partRef(session, target.part)),
           decodePartRecord,
         );
 
         if (found === null) return { kind: "part", part: target.part, answer: null };
-        const answer = await storedAnswer(kernel, session, found.record);
+        const answer = await storedAnswer(kernel.store, session, found.record);
 
         return answer === null ? null : { kind: "part", part: target.part, answer };
       }
@@ -253,7 +254,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   };
 
   const storedWait = async (session: SessionId, call: CallId): Promise<ParkedWait | null> =>
-    readParkedWait(session, (await readCall(kernel, session, call))?.record ?? null);
+    readParkedWait(session, (await readCall(kernel.store, session, call))?.record ?? null);
 
   const offerCold = async (
     session: SessionId,
@@ -366,8 +367,8 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       const nested = await kernel.store.refs.list(`${callRef(session, call)}:`);
 
       const records = await Promise.all([
-        readCall(kernel, session, call),
-        ...nested.map((ref) => load(kernel, ref, decodeCallRecord)),
+        readCall(kernel.store, session, call),
+        ...nested.map((ref) => load(kernel.store, ref, decodeCallRecord)),
       ]);
 
       await Promise.all(
@@ -387,7 +388,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
         [...slots.values()].map(async (slot) => {
           const { entry } = slot;
           const key = formatWaitKey(entry.session, entry.call);
-          const record = (await readCall(kernel, entry.session, entry.call))?.record ?? null;
+          const record = (await readCall(kernel.store, entry.session, entry.call))?.record ?? null;
           const stored = readParkedWait(entry.session, record);
 
           if (stored !== null) {
@@ -409,7 +410,7 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       await Promise.all(
         [...resumers].map(async ([key, resumer]) => {
           if (slots.has(key)) return;
-          const found = await readCall(kernel, resumer.session, resumer.call);
+          const found = await readCall(kernel.store, resumer.session, resumer.call);
 
           if (found !== null && (found.record.result !== null || lapsed(kernel, found.record)))
             resumer.resume();
@@ -463,7 +464,7 @@ export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[])
     const [root, session, kind] = ref.name.split("/");
 
     if (root !== "sessions" || session === undefined || kind !== "calls") continue;
-    const found = await load(kernel, ref, decodeCallRecord);
+    const found = await load(kernel.store, ref, decodeCallRecord);
     const entry = readParkedWait(asId<"session">(session), found?.record ?? null);
 
     if (entry !== null) await kernel.waits.park(entry);
@@ -569,13 +570,13 @@ export function waitFor<T>(input: {
 }
 
 export async function runWait(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   run: RunId,
   change: (record: RunRecord) => Promise<Pick<RunRecord, "parked" | "waiting"> | null>,
 ): Promise<readonly RefUpdate[]> {
   const name = runRef(session, run);
-  const found = await load(kernel, await kernel.store.refs.get(name), decodeRunRecord);
+  const found = await load(store, await store.refs.get(name), decodeRunRecord);
   const next = found === null ? null : await change(found.record);
 
   if (found === null || next === null) return [];
@@ -586,7 +587,7 @@ export async function runWait(
   return [
     {
       name,
-      target: await put(kernel, "run", {
+      target: await put(store, "run", {
         ...record,
         ...next,
         phase: resumed ? "executing" : record.phase,

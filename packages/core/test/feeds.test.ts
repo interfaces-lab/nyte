@@ -21,7 +21,7 @@ import { put, readTip } from "../src/store/session.ts";
 import { configuration, main, setup, usage } from "./harness.ts";
 
 async function land(kernel: Kernel, session: SessionId, text: string): Promise<void> {
-  const tip = await readTip(kernel, session, main);
+  const tip = await readTip(kernel.store, session, main);
   const body = {
     kind: "user",
     message: asId<"message">(crypto.randomUUID()),
@@ -32,7 +32,7 @@ async function land(kernel: Kernel, session: SessionId, text: string): Promise<v
   } as const;
 
   const record = { parent: tip.id, at: Date.now(), run: null, body };
-  const id = asId<"commit">(await put(kernel, "commit", record, record.at));
+  const id = asId<"commit">(await put(kernel.store, "commit", record, record.at));
 
   await commit(kernel, [
     {
@@ -90,7 +90,7 @@ describe("the store is the truth", () => {
     await landing(b.kernel, session.id, main, [original.message], null);
     hold.release();
 
-    const tip = await readTip(b.kernel, session.id, main);
+    const tip = await readTip(b.kernel.store, session.id, main);
 
     expect(tip.commit?.body).toMatchObject({ kind: "user", content: "Steer v2." });
   });

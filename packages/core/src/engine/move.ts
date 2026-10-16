@@ -61,7 +61,7 @@ export async function move(
   position: Position,
   options?: MoveOptions & { readonly id?: ReceiptId },
 ): Promise<Receipt<MoveOutcome>> {
-  await requireSession(kernel, session);
+  await requireSession(kernel.store, session);
   const id = options?.id ?? asId<"receipt">(crypto.randomUUID());
 
   const digest = await objectId({
@@ -78,7 +78,7 @@ export async function move(
     return record.outcome;
   });
 
-  if (await known(kernel, session, id, "move", digest)) {
+  if (await known(kernel.store, session, id, "move", digest)) {
     await recover(kernel, session, id);
 
     return receipt;
@@ -92,7 +92,7 @@ export async function move(
 
     case "failed":
       if (!(await reserve(kernel, session, { id, kind: "move", digest, outcome: decided.outcome })))
-        await known(kernel, session, id, "move", digest);
+        await known(kernel.store, session, id, "move", digest);
 
       return receipt;
 
@@ -111,7 +111,7 @@ export async function move(
 
       if (!(await reserve(kernel, session, { id, kind: "move", digest, outcome: null }))) {
         release();
-        await known(kernel, session, id, "move", digest);
+        await known(kernel.store, session, id, "move", digest);
 
         return receipt;
       }
@@ -132,7 +132,7 @@ export async function move(
           },
           {
             name: pending.ref.name,
-            target: await put(kernel, "receipt", {
+            target: await put(kernel.store, "receipt", {
               ...pending.record,
               move: { head, position: { kind: "commit", id: commit } },
             }),
@@ -184,7 +184,13 @@ async function decide(
   digest: string,
 ): Promise<Decided> {
   return attempt<Decided>(`Moving ${head}`, async () => {
-    const checked = await guard(kernel, session, head, options.expect, options.running ?? "refuse");
+    const checked = await guard(
+      kernel.store,
+      session,
+      head,
+      options.expect,
+      options.running ?? "refuse",
+    );
 
     if ("kind" in checked) return { kind: "failed", outcome: checked };
 
@@ -214,7 +220,7 @@ async function decide(
       },
       {
         name: receiptRef(session, id),
-        target: await put(kernel, "receipt", {
+        target: await put(kernel.store, "receipt", {
           id,
           kind: "move",
           digest,
@@ -233,7 +239,7 @@ async function decide(
 
     if (outcome.kind === "stale")
       return outcome.name === receiptRef(session, id) &&
-        (await known(kernel, session, id, "move", digest))
+        (await known(kernel.store, session, id, "move", digest))
         ? { kind: "replayed" }
         : STALE;
 
@@ -285,7 +291,7 @@ export async function recoverMoves(kernel: Kernel, session: SessionId): Promise<
 }
 
 async function recover(kernel: Kernel, session: SessionId, id: ReceiptId): Promise<void> {
-  const found = await readReceipt(kernel, session, id);
+  const found = await readReceipt(kernel.store, session, id);
 
   if (found === null || found.record.outcome !== null || summaryHeld(kernel, session, id)) return;
   const moved = found.record.kind === "move" ? found.record.move : undefined;
@@ -305,7 +311,7 @@ async function recover(kernel: Kernel, session: SessionId, id: ReceiptId): Promi
 
     return;
   }
-  const tip = await readTip(kernel, session, moved.head);
+  const tip = await readTip(kernel.store, session, moved.head);
 
   const plan = await withFold(kernel, session, (state) =>
     planHistoryMove(state.commits, tip.id, moved.position),

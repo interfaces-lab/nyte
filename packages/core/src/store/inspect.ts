@@ -10,12 +10,13 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import type { Host } from "../contract/host.ts";
-import type { Kernel } from "../contract/kernel.ts";
+
 import { decodeCommitRecord } from "../contract/records.ts";
 import type { CommitRecord } from "../contract/records.ts";
 import { isJsonObject } from "../util/json-schema.ts";
 import { sessionRef } from "./refs.ts";
 import { readCommit, toCommitObjectId } from "./session.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const PAGE = 100;
 
@@ -35,13 +36,13 @@ const RECORDS: ReadonlyMap<string, string> = new Map([
 
 type Issue = IntegrityReport["issues"][number];
 
-export function inspect(kernel: Kernel, session: SessionId): ReturnType<Host["inspect"]> {
+export function inspect(store: StoreConnection, session: SessionId): ReturnType<Host["inspect"]> {
   return {
-    refs: () => listSessionRefs(kernel, session),
+    refs: () => listSessionRefs(store, session),
     async objects(input) {
       const cursor: string | undefined = input?.cursor;
 
-      const objects = [...(await reachable(kernel, session)).values()].sort((left, right) =>
+      const objects = [...(await reachable(store, session)).values()].sort((left, right) =>
         left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
       );
 
@@ -60,7 +61,7 @@ export function inspect(kernel: Kernel, session: SessionId): ReturnType<Host["in
         let after = input.after;
 
         for (;;) {
-          const events = await kernel.store.refs.log(session, after, LOG_PAGE);
+          const events = await store.refs.log(session, after, LOG_PAGE);
 
           for (const event of events) {
             after = event.seq;
@@ -71,34 +72,37 @@ export function inspect(kernel: Kernel, session: SessionId): ReturnType<Host["in
         }
       },
     }),
-    verify: () => verify(kernel, session),
+    verify: () => verify(store, session),
   };
 }
 
-async function listSessionRefs(kernel: Kernel, session: SessionId): Promise<readonly Ref[]> {
+async function listSessionRefs(
+  store: StoreConnection,
+  session: SessionId,
+): Promise<readonly Ref[]> {
   const [root, rest] = await Promise.all([
-    kernel.store.refs.get(sessionRef(session)),
-    kernel.store.refs.list(`${sessionRef(session)}/`),
+    store.refs.get(sessionRef(session)),
+    store.refs.list(`${sessionRef(session)}/`),
   ]);
 
   return root === null ? rest : [root, ...rest];
 }
 
 async function reachable(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
 ): Promise<ReadonlyMap<ObjectId, DecodedObjectView>> {
-  const refs = await listSessionRefs(kernel, session);
+  const refs = await listSessionRefs(store, session);
   const ids = new Set(refs.flatMap((ref) => (ref.target === null ? [] : [ref.target])));
 
-  for (const [commit, record] of await ancestry(kernel, session, refs)) {
+  for (const [commit, record] of await ancestry(store, session, refs)) {
     if (record !== null) ids.add(toCommitObjectId(commit));
   }
 
   const views = new Map<ObjectId, DecodedObjectView>();
 
   for (const id of ids) {
-    const view = decodeView(id, await kernel.store.objects.get(id));
+    const view = decodeView(id, await store.objects.get(id));
 
     if (view !== null) views.set(id, view);
   }
@@ -106,13 +110,13 @@ async function reachable(
   return views;
 }
 
-async function verify(kernel: Kernel, session: SessionId): Promise<IntegrityReport> {
+async function verify(store: StoreConnection, session: SessionId): Promise<IntegrityReport> {
   const issues: Issue[] = [];
-  const refs = await listSessionRefs(kernel, session);
+  const refs = await listSessionRefs(store, session);
 
   for (const ref of refs) {
     if (ref.target === null) continue;
-    const object = await kernel.store.objects.get(ref.target);
+    const object = await store.objects.get(ref.target);
 
     if (object === null) {
       issues.push({
@@ -134,7 +138,7 @@ async function verify(kernel: Kernel, session: SessionId): Promise<IntegrityRepo
       });
   }
 
-  const commits = await ancestry(kernel, session, refs);
+  const commits = await ancestry(store, session, refs);
 
   for (const [commit, record] of commits) {
     const parent = record?.parent ?? null;
@@ -151,7 +155,7 @@ async function verify(kernel: Kernel, session: SessionId): Promise<IntegrityRepo
 }
 
 async function ancestry(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   refs: readonly Ref[],
 ): Promise<ReadonlyMap<CommitId, CommitRecord | null>> {
@@ -165,7 +169,7 @@ async function ancestry(
 
   for (let commit = pending.pop(); commit !== undefined; commit = pending.pop()) {
     if (found.has(commit)) continue;
-    const record = await readCommit(kernel, commit);
+    const record = await readCommit(store, commit);
     const parent = record?.parent ?? null;
     found.set(commit, record);
 
