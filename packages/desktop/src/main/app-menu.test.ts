@@ -96,10 +96,10 @@ test("off macOS the primary W closes a tab and closing the window takes Shift", 
   const all = items(template);
   const primaryW = all.filter((item) => item.accelerator === "CommandOrControl+W");
   expect(primaryW).toHaveLength(1);
-  const click = primaryW[0]?.click;
+  const click: ((...args: never[]) => void) | undefined = primaryW[0]?.click;
 
   if (click === undefined) throw new Error("The primary W item has no click handler");
-  Reflect.apply(click, undefined, []);
+  click();
   expect(dispatched).toEqual([{ kind: "action", action: "close-tab" }]);
   expect(all.filter((item) => item.role === "close").map((item) => item.accelerator)).toEqual([
     "Shift+CommandOrControl+W",

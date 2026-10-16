@@ -107,5 +107,4 @@ test("safe bridge failure is plain cloneable data with a wire cause, not a local
   assert.equal(copied instanceof Error, false);
   assert.deepEqual(copied.cause, result.error);
   assert.equal(errorMessage(copied), result.error.message);
-  // This tests data cloning, not Electron's contextBridge implementation.
 });

@@ -229,9 +229,12 @@ test("a relayed request reaches only the listener's port, and only allowlisted h
     },
   });
 
-  // A redirect is never followed or passed on: the exchange is reset.
-  assert.equal((await relay.exchange({ method: "POST", path: "/sessions.create" })).status, 503);
-  assert.equal(relay.resets, 1);
+  assert.equal(
+    (await relay.exchange({ method: "POST", path: "/sessions.create" })).status,
+    503,
+    "a redirect is never followed or passed on",
+  );
+  assert.equal(relay.resets, 1, "the redirected exchange is reset");
 
   for (const [status, path] of [
     [204, "/session.remove"],
@@ -416,11 +419,13 @@ test("a frame that breaks the contract closes the socket, and it comes back with
           path: "/files.upload",
           body: new Uint8Array(RELAY_BODY_LIMIT_BYTES),
         });
-        // Stalled on credit: less than a chunk of room is left.
         await vi.waitFor(async () => {
           const before = relay.uploaded;
           await sleep(200);
-          assert.ok(before > 0 && relay.uploaded === before);
+          assert.ok(
+            before > 0 && relay.uploaded === before,
+            "stalled on credit: less than a chunk of room is left",
+          );
         });
         relay.send(
           JSON.stringify({
@@ -445,13 +450,12 @@ test("a frame that breaks the contract closes the socket, and it comes back with
 
   local.uploadGate?.resolve();
 
-  // Frames for a channel that is already over are expected and ignored.
   const auths = relay.auths;
   relay.send(JSON.stringify({ t: "reset", ch: randomId() }));
   relay.send(JSON.stringify({ t: "credit", ch: randomId(), bytes: 1 }));
   const response = await relay.exchange({ method: "POST", path: "/session.remove" });
   assert.equal(response.status, 204);
-  assert.equal(relay.auths, auths);
+  assert.equal(relay.auths, auths, "frames for a channel that is already over are ignored");
   assert.deepEqual(relay.violations, []);
 }, 60_000);
 
@@ -466,12 +470,15 @@ test("a replaced relay stays stopped, even on wake; a revoked one asks first and
   assert.equal(events.revoked, 1);
   await connected(connection);
 
-  // Another instance proves itself for the same environment and takes over.
   const other = open();
   other.start();
   await connected(other);
   await vi.waitFor(() =>
-    assert.deepEqual(connection.status(), { kind: "failed", reason: "replaced" }),
+    assert.deepEqual(
+      connection.status(),
+      { kind: "failed", reason: "replaced" },
+      "another instance proved itself for the same environment and took over",
+    ),
   );
   connection.reconnect();
   await sleep(200);
@@ -516,17 +523,15 @@ test("a proof or dial that lands after a close or a newer dial opens nothing", a
     },
   });
 
-  // Closed while its proof was being signed.
   const closed = open();
   closed.start();
   await vi.waitFor(() => assert.equal(proofs.length, 1));
   closed.close();
   proofs[0]?.resolve(PROOF);
   await sleep(100);
-  assert.equal(dials, 0);
+  assert.equal(dials, 0, "closed while its proof was being signed");
   assert.deepEqual(closed.status(), { kind: "stopped" });
 
-  // Woken while its proof was being signed: only the newer dial goes out, and a failed dial retries.
   const woken = open();
   woken.start();
   await vi.waitFor(() => assert.equal(proofs.length, 2));
@@ -539,7 +544,11 @@ test("a proof or dial that lands after a close or a newer dial opens nothing", a
   await connected(woken);
   proofs[1]?.resolve(PROOF);
   await sleep(100);
-  assert.equal(dials, 2);
+  assert.equal(
+    dials,
+    2,
+    "woken while its proof was being signed: only the newer dial goes out, and a failed dial retries",
+  );
   assert.equal(relay.auths, 1);
   assert.deepEqual(relay.closes, []);
 });

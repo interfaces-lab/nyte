@@ -70,6 +70,9 @@ const ROUTED = routes([
 
 const REGISTERED = line({ message: "Registered tunnel connection", connIndex: 0 });
 
+/** A line past the buffer limit, dropped whole; the next record still counts. */
+const OVERLONG: Step = { kind: "emit", line: "x".repeat(200_000) };
+
 /** A stand-in that logs its start to `starts`, plays `steps`, then idles until signalled. */
 async function standIn(
   options: { readonly steps: readonly Step[]; readonly ignoreTerm?: boolean } = { steps: [] },
@@ -228,8 +231,7 @@ test("connected waits for verified routes and follows connections as they drop",
     steps: [
       REGISTERED,
       { kind: "await", file: "routes" },
-      // A line past the buffer limit is dropped whole; the next record still counts.
-      { kind: "emit", line: "x".repeat(200_000) },
+      OVERLONG,
       ROUTED,
       { kind: "await", file: "drop" },
       line({ message: "Connection terminated", connIndex: 0 }),
@@ -352,8 +354,7 @@ test.skipIf(process.platform === "win32")(
   async () => {
     const fixture = await standIn();
 
-    // A stand-in for the desktop's main process, killed without any chance to clean up.
-    const parent = spawn(
+    const desktopMain = spawn(
       process.execPath,
       [
         "-e",
@@ -364,12 +365,12 @@ setInterval(() => {}, 1000);`,
     );
 
     cleanups.push(() => {
-      parent.kill("SIGKILL");
+      desktopMain.kill("SIGKILL");
     });
     const { pid } = await firstStart(fixture.root);
     assert.equal(alive(pid), true);
 
-    parent.kill("SIGKILL");
+    desktopMain.kill("SIGKILL");
     await vi.waitFor(() => assert.equal(alive(pid), false), { timeout: 3_000 });
   },
 );
