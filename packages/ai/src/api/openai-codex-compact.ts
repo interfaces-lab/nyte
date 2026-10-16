@@ -11,6 +11,7 @@ import { Value } from "typebox/value";
 import { applyServiceTierPricing } from "../model-pricing.ts";
 import { calculateCost } from "../model-capabilities.ts";
 import type { Context, JsonValue, Model, Usage } from "../types.ts";
+import { reportsQuotaExhaustion } from "../utils/failure.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { RetryDelayExceededError, retryProviderRequest } from "../utils/provider-retry.ts";
 import { normalizeContext, resolveTranscript } from "../utils/transcript.ts";
@@ -25,7 +26,6 @@ import {
   extractCodexEventError,
   type OpenAICodexResponsesOptions,
   parseSSE,
-  reportsUsageLimit,
   resolveCodexServiceTier,
   retryableCodexRequest,
 } from "./openai-codex-protocol.ts";
@@ -341,7 +341,7 @@ export async function compactOpenAICodexContext(
             timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
 
           try {
-            retryable = !reportsUsageLimit(await response.text());
+            retryable = !reportsQuotaExhaustion(await response.text());
           } finally {
             clearTimeout(bodyTimer);
           }

@@ -112,15 +112,6 @@ export const CODEX_TOOL_CALL_PROVIDERS: ReadonlySet<string> = new Set([
   "opencode",
 ]);
 
-/** A 429 whose body says the plan's quota is spent; waiting does not lift it. */
-const USAGE_LIMIT_PATTERN =
-  /GoUsageLimitError|FreeUsageLimitError|Monthly usage limit reached|available balance|insufficient_quota|out of budget|quota exceeded|billing/i;
-
-/** Whether a 429 body reports quota exhaustion rather than a passing rate limit. */
-export function reportsUsageLimit(errorText: string): boolean {
-  return USAGE_LIMIT_PATTERN.test(errorText);
-}
-
 /** `bodyJson` as zstd, or null outside Node and Bun, where `node:zlib` is unavailable. */
 export function compressRequestBodyZstd(bodyJson: string): Uint8Array<ArrayBuffer> | null {
   if (typeof process === "undefined" || !(process.versions?.node || process.versions?.bun)) {

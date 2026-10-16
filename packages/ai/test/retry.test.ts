@@ -67,6 +67,12 @@ describe("provider retry classification", () => {
 
   test("does not retry quota exhaustion or a message that did not fail", () => {
     assert.equal(isRetryableAssistantError(errorMessage("429 quota exceeded")), false);
+    assert.equal(
+      isRetryableAssistantError(
+        errorMessage('429 {"type":"error","error":{"type":"extra_usage_out_of_credits"}}'),
+      ),
+      false,
+    );
     assert.equal(isRetryableAssistantError(fauxAssistantMessage("not an error")), false);
   });
 });

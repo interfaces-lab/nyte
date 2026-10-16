@@ -12,6 +12,7 @@ import type {
 } from "../types.ts";
 import { formatThrownValue } from "../utils/diagnostics.ts";
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { reportsQuotaExhaustion } from "../utils/failure.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { getDeclaredTools, resolveTranscript } from "../utils/transcript.ts";
@@ -28,7 +29,6 @@ import {
   type OpenAICodexResponsesOptions,
   parseErrorResponse,
   parseSSE,
-  reportsUsageLimit,
   retryableCodexRequest,
 } from "./openai-codex-protocol.ts";
 import { streamOverWebSocket } from "./openai-codex-websocket.ts";
@@ -107,7 +107,7 @@ async function openCodexSse(
     info.friendlyMessage || info.message,
     response.status,
     response.headers,
-    !(response.status === 429 && reportsUsageLimit(errorText)),
+    !(response.status === 429 && reportsQuotaExhaustion(errorText)),
   );
 }
 

@@ -80,10 +80,20 @@ const QUOTA_PATTERN = pattern([
   "Monthly usage limit reached",
   "available balance",
   "insufficient[_ -]?quota",
+  "out[_ ]of[_ ]credits",
   "out of budget",
   "quota exceeded",
   "billing",
 ]);
+
+/**
+ * Whether provider error text reports spent quota or credit, which waiting does not lift. It
+ * outranks a 429 status: providers answer exhausted credit with 429, e.g. Anthropic's
+ * `extra_usage_out_of_credits`.
+ */
+export function reportsQuotaExhaustion(text: string): boolean {
+  return QUOTA_PATTERN.test(text);
+}
 
 const AUTH_PATTERN = pattern([
   "\\b401\\b",
@@ -190,7 +200,7 @@ function classOf(text: string, provider: string): FailureClass {
     return "context_window";
   }
 
-  if (QUOTA_PATTERN.test(text)) return "quota";
+  if (reportsQuotaExhaustion(text)) return "quota";
 
   if (RATE_LIMIT_PATTERN.test(text)) return "rate_limit";
 
@@ -259,7 +269,9 @@ export function classifyAssistantFailure(
 
   const text = message.errorMessage ?? "Unknown error";
   const failure: Failure = {
-    class: structuredClass(message) ?? classOf(text, message.provider),
+    class: reportsQuotaExhaustion(text)
+      ? "quota"
+      : (structuredClass(message) ?? classOf(text, message.provider)),
     message: text,
   };
   const delay = retryAfterMs(message);
