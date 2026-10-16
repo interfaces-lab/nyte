@@ -3,7 +3,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, input, radius, row } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -868,7 +868,7 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    height: 28,
+    height: button.heightMd,
     paddingInline: 8,
     borderStyle: "none",
     borderRadius: radius.pill,
@@ -914,7 +914,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    minHeight: 32,
+    minHeight: input.heightLg,
     paddingInline: "10px 4px",
     borderRadius: radius.control,
     backgroundColor: role.bgElevated,
@@ -937,7 +937,7 @@ const styles = create({
   },
   split: { display: "flex", gap: 1 },
   primary: {
-    height: 30,
+    height: button.heightLg,
     borderStyle: "none",
     backgroundColor: {
       default: role.buttonFill,
@@ -957,7 +957,7 @@ const styles = create({
   primaryMenu: {
     display: "grid",
     placeItems: "center",
-    width: 32,
+    width: button.heightLg,
     borderStartEndRadius: radius.control,
     borderEndEndRadius: radius.control,
   },
@@ -967,7 +967,7 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 2,
-    height: 24,
+    height: button.heightSm,
     paddingInline: 6,
     borderStyle: "none",
     borderRadius: radius.indicator,
@@ -980,8 +980,8 @@ const styles = create({
   send: {
     display: "grid",
     placeItems: "center",
-    width: 24,
-    height: 24,
+    width: button.heightSm,
+    height: button.heightSm,
     borderStyle: "none",
     borderRadius: radius.pill,
     backgroundColor: role.bgMuted,
@@ -1005,13 +1005,13 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    height: 30,
+    height: row.heightMd,
     paddingInline: "6px 4px",
     borderRadius: radius.indicator,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     position: "relative",
   },
-  leading: { display: "grid", placeItems: "center", width: 16, flexShrink: 0 },
+  leading: { display: "grid", placeItems: "center", width: glyph.md, flexShrink: 0 },
   fileIcon: { color: role.contentTertiary },
   name: {
     display: "flex",
@@ -1042,7 +1042,7 @@ const styles = create({
   revealCheck: { display: "inline-flex" },
   revealOnHover: { opacity: { default: 0, [when.ancestor(":hover")]: 1 } },
   letter: {
-    width: 16,
+    width: glyph.md,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontXs,
@@ -1070,7 +1070,7 @@ const styles = create({
     paddingInline: 12,
     flexShrink: 0,
   },
-  quietTitle: { display: "flex", alignItems: "center", height: 28 },
+  quietTitle: { display: "flex", alignItems: "center", height: row.heightMd },
   plainTrigger: {
     display: "inline-flex",
     alignItems: "center",
@@ -1096,7 +1096,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    height: 28,
+    height: row.heightMd,
     paddingInline: 8,
   },
   sectionTitle: {
@@ -1143,7 +1143,7 @@ const styles = create({
   },
   segment: {
     flex: 1,
-    height: 26,
+    height: button.heightSm,
     borderStyle: "none",
     borderRadius: radius.indicator,
     backgroundColor: "transparent",
@@ -1186,7 +1186,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    height: 26,
+    height: row.heightMd,
     paddingInline: 6,
     color: role.contentTertiary,
     fontSize: type.fontSm,
@@ -1198,7 +1198,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    height: 32,
+    height: button.heightLg,
     paddingInline: 10,
     borderStyle: "none",
     borderRadius: radius.control,
@@ -1263,7 +1263,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    height: 28,
+    height: row.heightMd,
     paddingInline: "6px 4px",
   },
 
@@ -1271,7 +1271,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    height: 36,
+    height: button.heightXl,
     paddingInline: "12px 6px",
     flexShrink: 0,
   },
