@@ -9,10 +9,8 @@ import codemode from "@nyte-ai/plugin/core/codemode";
 import type { McpView } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it, vi } from "vitest";
 import { createMcpHub, openHost } from "../src/index.ts";
-import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
-import type { FakeModels, Request } from "../src/bench/fake-models.ts";
-
-const FIXTURE = join(import.meta.dirname, "fixtures", "places-mcp.mjs");
+import { chatOnly, fakeModels, PLACES_SERVER } from "../src/bench/index.ts";
+import type { FakeModels, Request } from "../src/bench/index.ts";
 
 const SEARCH = "mcp__places__search_places";
 
@@ -32,7 +30,7 @@ async function placesHome(
   await writeFile(
     join(made, ".nyte", "mcp.json"),
     JSON.stringify({
-      mcpServers: { places: { command: process.execPath, args: [FIXTURE], env, exposure } },
+      mcpServers: { places: { command: process.execPath, args: [PLACES_SERVER], env, exposure } },
     }),
   );
 
