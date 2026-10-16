@@ -93,7 +93,7 @@ describe("delegation", () => {
     });
   });
 
-  it("creates a child with a role, sends to it, and awaits its answer", async () => {
+  it("creates a child with a role and a first message, awaits its answer, and sends to it", async () => {
     const fake = fakeModels();
     let release = () => {};
 
@@ -112,27 +112,27 @@ describe("delegation", () => {
             type: "toolCall",
             id: "call-create",
             name: "create",
-            arguments: { title: "Counter", role: "You count." },
+            arguments: { title: "Counter", role: "You count.", prompt: "Count to two." },
           },
         ],
       }),
       (request) => {
-        child = /Created subagent (\S+)\./.exec(lastResult(request))?.[1] ?? "";
+        child = /Started subagent (\S+)\./.exec(lastResult(request))?.[1] ?? "";
 
         return {
           content: [
-            {
-              type: "toolCall",
-              id: "call-send",
-              name: "send",
-              arguments: { session: child, prompt: "Count to two." },
-            },
+            { type: "toolCall", id: "call-await", name: "await", arguments: { session: child } },
           ],
         };
       },
       () => ({
         content: [
-          { type: "toolCall", id: "call-await", name: "await", arguments: { session: child } },
+          {
+            type: "toolCall",
+            id: "call-send",
+            name: "send",
+            arguments: { session: child, prompt: "Count to three." },
+          },
         ],
       }),
       () => ({ content: [{ type: "text", text: "It counted." }] }),
@@ -140,6 +140,7 @@ describe("delegation", () => {
 
     const childScript: readonly ((request: Request) => Reply)[] = [
       () => ({ content: [{ type: "text", text: "One, two." }], until: gate }),
+      () => ({ content: [{ type: "text", text: "One, two, three." }] }),
     ];
 
     let parentTurn = 0;
@@ -152,7 +153,7 @@ describe("delegation", () => {
       return script[index]?.(request) ?? { error: "Nothing more was scripted." };
     };
 
-    fake.reply(dispatch, dispatch, dispatch, dispatch, dispatch);
+    fake.reply(dispatch, dispatch, dispatch, dispatch, dispatch, dispatch);
     const receipt = await parent.send("Get it counted.");
 
     await until(async () => {
