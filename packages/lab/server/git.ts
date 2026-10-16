@@ -10,8 +10,8 @@ import { execFile } from "node:child_process";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** One ref or object a reviewer may name: a branch, a tag, `origin/main`, or a hex id. */
-const REF = /^(?![-.])[\w./@^~-]{1,200}$/;
+/** One ref or object a reviewer may name: a branch, a tag, `origin/main`, or a hex id; never a `..` range. */
+const REF = /^(?![-.])(?!.*\.\.)[\w./@^~-]{1,200}$/;
 
 const FIELD = "\u001f";
 
@@ -68,66 +68,50 @@ export class GitError extends Error {
   }
 }
 
-export function isRef(value: string): boolean {
-  return REF.test(value) && !value.includes("..");
-}
+/**
+ * The repository the lab runs in. Every method is one `git` process at the
+ * checkout's root.
+ */
+export class Repo {
+  readonly root: string;
 
-function run(
-  cwd: string,
-  args: readonly string[],
-  options: { readonly maxBuffer?: number; readonly quiet?: readonly number[] } = {},
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      "git",
-      ["-C", cwd, "-c", "core.quotepath=off", ...args],
-      { maxBuffer: options.maxBuffer ?? 64 * 1024 * 1024, encoding: "utf8" },
-      (error, stdout, stderr) => {
-        if (error === null) return resolve(stdout);
+  constructor(root: string) {
+    this.root = root;
+  }
 
-        const code = Number(error.code);
-        const exit = Number.isInteger(code) ? code : undefined;
-
-        // Some commands report "nothing found" with an exit code rather than empty output.
-        if (exit !== undefined && options.quiet?.includes(exit)) return resolve(stdout);
-
-        reject(new GitError(stderr.trim() || error.message, exit));
-      },
-    );
-  });
-}
-
-export async function openRepo() {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const root = (await run(here, ["rev-parse", "--show-toplevel"])).trim();
-
-  const git = (
+  #git(
     args: readonly string[],
     options?: { readonly maxBuffer?: number; readonly quiet?: readonly number[] },
-  ): Promise<string> => run(root, args, options);
+  ): Promise<string> {
+    return run(this.root, args, options);
+  }
 
-  const resolve = async (ref: string): Promise<string | undefined> => {
-    if (!isRef(ref)) return undefined;
+  /** The commit a ref names, or undefined when it names none. */
+  async resolve(ref: string): Promise<string | undefined> {
+    if (!REF.test(ref)) return undefined;
 
-    return git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])
+    return this.#git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])
       .then((out) => out.trim() || undefined)
       .catch(() => undefined);
-  };
+  }
 
-  const mergeBase = async (left: string, right: string): Promise<string | undefined> =>
-    git(["merge-base", left, right])
+  async mergeBase(left: string, right: string): Promise<string | undefined> {
+    return this.#git(["merge-base", left, right])
       .then((out) => out.trim() || undefined)
       .catch(() => undefined);
+  }
 
-  const isAncestor = (ancestor: string, descendant: string): Promise<boolean> =>
-    git(["merge-base", "--is-ancestor", ancestor, descendant]).then(
+  /** Whether `descendant` contains `ancestor`. */
+  descends(ancestor: string, descendant: string): Promise<boolean> {
+    return this.#git(["merge-base", "--is-ancestor", ancestor, descendant]).then(
       () => true,
       () => false,
     );
+  }
 
   /** Commits in `base..head`, newest first. */
-  const log = async (base: string, head: string, limit = 500): Promise<readonly CommitInfo[]> => {
-    const out = await git([
+  async log(base: string, head: string, limit = 500): Promise<readonly CommitInfo[]> {
+    const out = await this.#git([
       "log",
       `--max-count=${limit}`,
       `--format=%H${FIELD}%h${FIELD}%s${FIELD}%an${FIELD}%at${FIELD}%P${FIELD}%b${RECORD}`,
@@ -155,13 +139,18 @@ export async function openRepo() {
           },
         ];
       });
-  };
+  }
 
-  /** Files changed between two commits, with rename detection and line counts. */
-  const changes = async (base: string, head: string): Promise<readonly FileChange[]> => {
+  /**
+   * Files changed between two commits, with rename detection and line counts.
+   * `--numstat -z` prints a rename as an empty path followed by the old and
+   * new paths as their own fields; `--raw -z` prints `:oldmode newmode oldblob
+   * newblob status`, then the path, or both paths for a rename or copy.
+   */
+  async changes(base: string, head: string): Promise<readonly FileChange[]> {
     const [numstat, raw] = await Promise.all([
-      git(["diff", "--numstat", "-z", "-M", base, head]),
-      git(["diff", "--raw", "--no-abbrev", "-z", "-M", base, head]),
+      this.#git(["diff", "--numstat", "-z", "-M", base, head]),
+      this.#git(["diff", "--raw", "--no-abbrev", "-z", "-M", base, head]),
     ]);
 
     const counts = new Map<string, { readonly added: number; readonly removed: number }>();
@@ -174,7 +163,6 @@ export async function openRepo() {
       if (entry === undefined || entry === "") continue;
 
       const [added, removed, path] = entry.split("\t");
-      // A rename prints an empty path, then the old and new paths as their own fields.
       const target = path === "" ? numbers[(index += 2)] : path;
 
       if (target === undefined) continue;
@@ -188,7 +176,6 @@ export async function openRepo() {
     const found: FileChange[] = [];
 
     for (let index = 0; index < fields.length; index++) {
-      // `:oldmode newmode oldblob newblob status`, then the path, or both paths for a rename.
       const [, , before, after, code] = (fields[index] ?? "").slice(1).split(" ");
 
       if (before === undefined || after === undefined || code === undefined) continue;
@@ -222,25 +209,28 @@ export async function openRepo() {
     }
 
     return found;
-  };
+  }
 
   /** One file's patch between two commits, or every file's when `paths` is empty. */
-  const patch = (base: string, head: string, paths: readonly string[] = []): Promise<string> =>
-    git(["diff", "--no-color", "--no-ext-diff", "-M", base, head, "--", ...paths]);
+  patch(base: string, head: string, paths: readonly string[] = []): Promise<string> {
+    return this.#git(["diff", "--no-color", "--no-ext-diff", "-M", base, head, "--", ...paths]);
+  }
 
   /** A file at a commit, or undefined where it does not exist there. */
-  const show = (revision: string, path: string): Promise<string | undefined> =>
-    git(["show", `${revision}:${path}`], { maxBuffer: 8 * 1024 * 1024 }).catch(() => undefined);
+  show(revision: string, path: string): Promise<string | undefined> {
+    return this.#git(["show", `${revision}:${path}`], { maxBuffer: 8 * 1024 * 1024 }).catch(
+      () => undefined,
+    );
+  }
 
-  /** `git grep` at a commit: `path:line:text`, at most `limit` lines. */
-  const grep = async (
+  /** `git grep` at a commit: `path:line:text`, at most `limit` lines. Exit 1 means no match. */
+  async grep(
     revision: string,
     pattern: string,
     path: string | undefined,
     limit: number,
-  ): Promise<readonly string[]> => {
-    // git grep exits 1 when nothing matches.
-    const out = await git(
+  ): Promise<readonly string[]> {
+    const out = await this.#git(
       [
         "grep",
         "-n",
@@ -263,11 +253,11 @@ export async function openRepo() {
       .filter((line) => line !== "")
       .slice(0, limit)
       .map((line) => (line.startsWith(prefix) ? line.slice(prefix.length) : line));
-  };
+  }
 
   /** Local branches with commits the base lacks, most recently committed first. */
-  const branches = async (base: string): Promise<readonly BranchInfo[]> => {
-    const out = await git([
+  async branches(base: string): Promise<readonly BranchInfo[]> {
+    const out = await this.#git([
       "for-each-ref",
       "--sort=-committerdate",
       `--format=%(refname:short)${FIELD}%(objectname)${FIELD}%(subject)${FIELD}%(committerdate:unix)`,
@@ -283,7 +273,7 @@ export async function openRepo() {
       rows.map(async ([name, oid, subject, at]) => {
         if (name === undefined || oid === undefined) return undefined;
 
-        const counts = await git(["rev-list", "--left-right", "--count", `${base}...${oid}`]);
+        const counts = await this.#git(["rev-list", "--left-right", "--count", `${base}...${oid}`]);
         const [behind, ahead] = counts.trim().split(/\s+/).map(Number);
 
         return {
@@ -298,19 +288,21 @@ export async function openRepo() {
     );
 
     return listed.filter((entry): entry is BranchInfo => entry !== undefined && entry.ahead > 0);
-  };
+  }
 
-  const isBranch = (name: string): Promise<boolean> =>
-    isRef(name)
-      ? git(["show-ref", "--verify", "--quiet", `refs/heads/${name}`]).then(
-          () => true,
-          () => false,
-        )
-      : Promise.resolve(false);
+  /** Whether `name` is a local branch. */
+  hasBranch(name: string): Promise<boolean> {
+    if (!REF.test(name)) return Promise.resolve(false);
+
+    return this.#git(["show-ref", "--verify", "--quiet", `refs/heads/${name}`]).then(
+      () => true,
+      () => false,
+    );
+  }
 
   /** Every worktree of the repository, and the branch each has checked out. */
-  const worktrees = async (): Promise<readonly Worktree[]> => {
-    const out = await git(["worktree", "list", "--porcelain"]);
+  async worktrees(): Promise<readonly Worktree[]> {
+    const out = await this.#git(["worktree", "list", "--porcelain"]);
 
     return out
       .split("\n\n")
@@ -323,42 +315,59 @@ export async function openRepo() {
 
         return [branch === undefined ? { path } : { path, branch }];
       });
-  };
+  }
 
   /** Check `branch` out at `path`, creating it at `from` when given. */
-  const addWorktree = async (path: string, branch: string, from?: string): Promise<void> => {
-    if (!isRef(branch)) throw new GitError(`${branch} is not a branch name`, undefined);
+  async addWorktree(path: string, branch: string, from?: string): Promise<void> {
+    if (!REF.test(branch)) throw new GitError(`${branch} is not a branch name`, undefined);
 
-    await git(
+    await this.#git(
       from === undefined
         ? ["worktree", "add", path, branch]
         : ["worktree", "add", "-b", branch, path, from],
     );
-  };
+  }
 
   /** The branch your checkout is on, if any. */
-  const current = (): Promise<string | undefined> =>
-    git(["symbolic-ref", "--quiet", "--short", "HEAD"]).then(
+  current(): Promise<string | undefined> {
+    return this.#git(["symbolic-ref", "--quiet", "--short", "HEAD"]).then(
       (out) => out.trim() || undefined,
       () => undefined,
     );
-
-  return {
-    root,
-    resolve,
-    mergeBase,
-    isAncestor,
-    log,
-    changes,
-    patch,
-    show,
-    grep,
-    branches,
-    isBranch,
-    worktrees,
-    addWorktree,
-    current,
-  };
+  }
 }
 
-export type Repo = Awaited<ReturnType<typeof openRepo>>;
+/**
+ * Some commands report "nothing found" with an exit code rather than empty
+ * output; `quiet` lists the codes that resolve with stdout instead of failing.
+ */
+function run(
+  cwd: string,
+  args: readonly string[],
+  options: { readonly maxBuffer?: number; readonly quiet?: readonly number[] } = {},
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "git",
+      ["-C", cwd, "-c", "core.quotepath=off", ...args],
+      { maxBuffer: options.maxBuffer ?? 64 * 1024 * 1024, encoding: "utf8" },
+      (error, stdout, stderr) => {
+        if (error === null) return resolve(stdout);
+
+        const code = Number(error.code);
+        const exit = Number.isInteger(code) ? code : undefined;
+
+        if (exit !== undefined && options.quiet?.includes(exit)) return resolve(stdout);
+
+        reject(new GitError(stderr.trim() || error.message, exit));
+      },
+    );
+  });
+}
+
+/** The repository that contains this file. */
+export async function openRepo(): Promise<Repo> {
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  return new Repo((await run(here, ["rev-parse", "--show-toplevel"])).trim());
+}
