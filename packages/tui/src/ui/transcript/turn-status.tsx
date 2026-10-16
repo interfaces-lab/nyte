@@ -12,8 +12,8 @@ import {
   GLYPHS,
   RECOVERY_STEPS,
 } from "../../lib/constants.ts";
-import { formatDuration } from "@nyte-ai/plugin/client/presentation";
-import { clockDuration, retryCause } from "../../lib/format.ts";
+import { formatDuration, formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
+import { retryCause } from "../../lib/format.ts";
 import type { CliTheme } from "../../lib/theme.ts";
 import type { TurnStatus } from "../../model/transcript.ts";
 import { Spinner } from "../chrome/spinner.tsx";
@@ -46,7 +46,7 @@ function statusLine(status: TurnStatus, theme: CliTheme, now: number): Line {
       };
     case "retrying":
       return {
-        text: `${ACTIVITY_RETRY_LABEL} in ${clockDuration(status.until - now)} (attempt ${String(status.attempt)}) · ${retryCause(status.reason)}`,
+        text: `${ACTIVITY_RETRY_LABEL} in ${formatWholeDuration(status.until - now)} (attempt ${String(status.attempt)}) · ${retryCause(status.reason)}`,
         color: theme.warning,
         spinner: theme.warning,
       };

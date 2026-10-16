@@ -86,19 +86,3 @@ export function userDisplayText(source: string): string {
     .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
     .join("");
 }
-
-export function formatRunDuration(durationMs: number): string | undefined {
-  const totalSeconds = Math.max(0, Math.round(durationMs / 1_000));
-
-  if (totalSeconds === 0) return undefined;
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) return minutes > 0 ? `${String(hours)}h ${String(minutes)}m` : `${String(hours)}h`;
-
-  if (minutes > 0)
-    return seconds > 0 ? `${String(minutes)}m ${String(seconds)}s` : `${String(minutes)}m`;
-
-  return `${String(seconds)}s`;
-}

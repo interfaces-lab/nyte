@@ -567,6 +567,28 @@ export function formatDuration(ms: number): string {
 }
 
 /**
+ * A span in whole seconds, as a settled turn's thinking or a retry countdown
+ * shows it: 42s, 5m, 5m 3s, 1h, 1h 12m. A negative span reads as zero.
+ *
+ * @category presentation
+ */
+export function formatWholeDuration(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+
+  if (hours > 0)
+    return minutes % 60 === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(minutes % 60)}m`;
+
+  if (minutes > 0)
+    return seconds % 60 === 0
+      ? `${String(minutes)}m`
+      : `${String(minutes)}m ${String(seconds % 60)}s`;
+
+  return `${String(seconds)}s`;
+}
+
+/**
  * A subject short enough for a narrow line, with the full one as `title`
  * when they differ.
  *

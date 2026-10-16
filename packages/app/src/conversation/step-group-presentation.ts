@@ -1,12 +1,12 @@
 import type { ToolClass } from "@nyte-ai/sdk";
 import {
+  formatWholeDuration,
   showsThinking,
   showsTool,
   toolStatus,
   toolTitle,
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
-import { formatRunDuration } from "./transcript-presentation.ts";
 import { reasoningHeading } from "./reasoning-heading.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
@@ -133,7 +133,10 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
         .join("\n\n"),
     );
 
-    return { verb: title ?? "Thought", detail: formatRunDuration(durationMs) };
+    return {
+      verb: title ?? "Thought",
+      detail: durationMs < 500 ? undefined : formatWholeDuration(durationMs),
+    };
   }
 
   const trouble: (readonly [what: string, n: number])[] = [];

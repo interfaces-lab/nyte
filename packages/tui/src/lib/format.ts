@@ -158,26 +158,6 @@ function usageLevel(pct: number): UsageLevel {
 
   return "ok";
 }
-export function clockDuration(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-
-  if (seconds < 60) return `${String(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const restSeconds = seconds % 60;
-
-  if (minutes < 60) {
-    return restSeconds === 0
-      ? `${String(minutes)}m`
-      : `${String(minutes)}m${String(restSeconds).padStart(2, "0")}s`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const restMinutes = minutes % 60;
-
-  return restMinutes === 0
-    ? `${String(hours)}h`
-    : `${String(hours)}h${String(restMinutes).padStart(2, "0")}m`;
-}
 
 export function shortId(id: string): string {
   return id.length > 12 ? id.slice(0, 12) : id;
