@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
-import { holdChildEnvironment } from "@nyte-ai/core";
+import { holdProcessEnvironment } from "@nyte-ai/core";
 
 const TIMEOUT_MS = 10_000;
 
@@ -13,14 +13,15 @@ let shared: (() => Promise<void>) | undefined;
 
 /**
  * Starts reading the login shell's environment into `process.env`, once per process, and holds
- * every child spawn (`childEnvironment()`) until it lands. The process itself goes on: a desktop
- * app opened from the Dock inherits launchd's bare PATH, and only what it spawns needs the
- * shell's. The read gives up after 10 s and keeps the inherited environment.
+ * every child spawn and provider auth env read (`processEnvironment()`) until it lands. The
+ * process itself goes on: a desktop app opened from the Dock inherits launchd's bare PATH and
+ * none of the rc files' API keys, and only what it spawns and what auth reads need the shell's.
+ * The read gives up after 10 s and keeps the inherited environment.
  */
 export function completeShellEnvironment(): Promise<void> {
   if (shared === undefined) {
     shared = createShellEnvironmentRepair();
-    holdChildEnvironment(shared());
+    holdProcessEnvironment(shared());
   }
 
   return shared();

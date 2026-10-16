@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
 import { asId } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
-import { SdkError, childEnvironment, closable, dev } from "@nyte-ai/core";
+import { SdkError, processEnvironment, closable, dev } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 
 type PtyModule = {
@@ -65,7 +65,7 @@ export function localExec(
     if (typeof command !== "string" && command.length === 0 && input?.pty === undefined)
       throw new SdkError("invalid", "An empty command runs only in a pty, as the login shell.");
     const cwd = input?.cwd === undefined ? root : resolve(root, input.cwd);
-    await childEnvironment();
+    await processEnvironment();
     const env = { ...process.env, ...input?.env };
     const log = createOutputLog(OUTPUT_LIMIT);
     let settle: (end: JobEnd) => void = () => undefined;

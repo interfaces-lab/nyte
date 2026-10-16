@@ -4,7 +4,7 @@ import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
 import type { Tool } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import type { OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
-import { SdkError, childEnvironment, closable, dev, isJsonObject } from "@nyte-ai/core";
+import { SdkError, processEnvironment, closable, dev, isJsonObject } from "@nyte-ai/core";
 import type {
   Login,
   McpHub,
@@ -186,7 +186,7 @@ function hub(input: {
     };
 
     const connect = async (): Promise<void> => {
-      if (link.entry.transport.kind === "stdio") await childEnvironment();
+      if (link.entry.transport.kind === "stdio") await processEnvironment();
 
       if (ended) return;
 

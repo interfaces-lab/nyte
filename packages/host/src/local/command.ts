@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
-import { SdkError, childEnvironment } from "@nyte-ai/core";
+import { SdkError, processEnvironment } from "@nyte-ai/core";
 
 export type Ran = {
   readonly code: number | null;
@@ -21,7 +21,7 @@ export async function run(
     readonly limit?: number;
   },
 ): Promise<Ran> {
-  await childEnvironment();
+  await processEnvironment();
 
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, {
@@ -73,7 +73,7 @@ export async function findExecutable(
   directories: readonly string[] = [],
 ): Promise<string | null> {
   if (isAbsolute(name)) return (await executable(name)) ? name : null;
-  await childEnvironment();
+  await processEnvironment();
   const path = (process.env.PATH ?? "").split(delimiter).filter((entry) => entry !== "");
 
   const extensions =

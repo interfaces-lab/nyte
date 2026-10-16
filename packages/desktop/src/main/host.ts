@@ -4,7 +4,7 @@ import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { childEnvironment } from "@nyte-ai/core";
+import { processEnvironment } from "@nyte-ai/core";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Host, HostView, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
@@ -464,7 +464,7 @@ export class DesktopHost {
     "host.connect.signOut": () => this.#connect().signOut(),
     "host.terminal.create": async (window, { id, workspacePath }) => {
       const terminals = this.#windowTerminals(window);
-      await childEnvironment();
+      await processEnvironment();
 
       if (this.#closing !== undefined || this.#terminals.get(window) !== terminals)
         throw new ExpectedHostError({ code: "unavailable", message: "Terminal window closed" });

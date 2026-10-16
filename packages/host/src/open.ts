@@ -16,7 +16,7 @@ import type {
   ValidationIssue,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
-import { composeHost, dev, readModelSelection } from "@nyte-ai/core";
+import { composeHost, dev, processEnvironment, readModelSelection } from "@nyte-ai/core";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
@@ -264,11 +264,19 @@ async function nyteModels(input: {
   readonly providers: readonly Provider[];
 }): Promise<Models> {
   const credentials = credentialStore(input.store, input.secrets);
+  const auth = defaultProviderAuthContext();
 
   const models = createModels({
     credentials,
     modelsStore: new FileModelsStore(join(input.home, ".nyte", "models-store.json")),
-    authContext: defaultProviderAuthContext(),
+    authContext: {
+      ...auth,
+      env: async (name) => {
+        await processEnvironment();
+
+        return auth.env(name);
+      },
+    },
     catalog: { url: process.env.NYTE_MODELS_URL },
   });
 
