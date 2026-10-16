@@ -801,9 +801,12 @@ export async function loadHostState(): Promise<void> {
 }
 
 /**
- * Refill the workspace caches after a host transition, committing host state
- * last. Every read waits for the connection on its own and runs alongside
- * the others.
+ * Refill the workspace caches after a host transition. Every read waits for
+ * the connection on its own and runs alongside the others. The workspace
+ * queries are reset after the host state is committed, not removed: a removed
+ * query cancels its fetch silently and strands the components still
+ * observing it on a pending result, while a reset one refetches for its
+ * mounted observers against the new workspace.
  */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
@@ -822,12 +825,12 @@ export async function loadLocalResources(): Promise<void> {
 
   if (version !== localLoadVersion) return;
   const workspaceScopes = new Set(["git", "files", "github", "customize"]);
-  queryClient.removeQueries({
-    predicate: (query) => workspaceScopes.has(String(query.queryKey[0])),
-  });
   queryClient.setQueryData(keys.workspaces, workspaces);
   queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
   queryClient.setQueryData(keys.host, state);
+  void queryClient.resetQueries({
+    predicate: (query) => workspaceScopes.has(String(query.queryKey[0])),
+  });
 }
 
 export function useConfigureSession(sessionId: SessionId) {
