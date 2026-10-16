@@ -1175,6 +1175,9 @@ importers:
       babel-preset-expo:
         specifier: 57.0.13
         version: 57.0.13(@babel/core@7.29.7(supports-color@10.2.2))(@babel/runtime@7.29.7)(expo@57.0.26)(react-refresh@0.18.0)(supports-color@10.2.2)
+      central-icons:
+        specifier: npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.10
+        version: '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.2.10(react@19.2.3)'
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -14840,6 +14843,10 @@ snapshots:
   '@central-icons-react/round-outlined-radius-1-stroke-1.5@1.2.10(react@19.3.0)':
     dependencies:
       react: 19.3.0
+
+  '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.2.10(react@19.2.3)':
+    dependencies:
+      react: 19.2.3
 
   '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.2.10(react@19.3.0)':
     dependencies:

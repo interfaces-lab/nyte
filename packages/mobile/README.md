@@ -314,8 +314,8 @@ SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install
 ### Completion icons
 
 The `@` and `/` menus draw the desktop's file, folder, command, and skill glyphs.
-`pnpm icons:sync` renders them from the installed `central-icons` package in
-`packages/ui` to `build/completion-icons.json`. `typecheck` and `metro.config.cjs`
+`pnpm icons:sync` renders them from the `central-icons` set `packages/ui` uses,
+a dev dependency here, to `build/completion-icons.json`. `typecheck` and `metro.config.cjs`
 run it first, so the generated file exists before TypeScript or Metro reads it. The
 output stays under the ignored `build/` directory, and no web rendering code enters
 the app bundle.
