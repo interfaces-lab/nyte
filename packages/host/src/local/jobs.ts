@@ -38,11 +38,11 @@ const PROMPT_MARKER = `${ESC}]133;`;
 
 let loaded: PtyModule | null | undefined;
 
-/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell`, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped (the process never stalls), and `exit { code }` last. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` answers whether a pty's shell sits at a prompt: by its OSC 133 prompt markers once it sent one, else when it has printed nothing for 300 ms and the cursor's line holds text after the last newline, as a prompt does (false for a pipe); `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s, and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
+/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped (the process never stalls), and `exit { code }` last. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` answers whether a pty's shell sits at a prompt: by its OSC 133 prompt markers once it sent one, else when it has printed nothing for 300 ms and the cursor's line holds text after the last newline, as a prompt does (false for a pipe); `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s, and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
 export function localExec(
   root: string,
   options?: {
-    readonly shell?: string;
+    readonly shell?: () => string | null;
     readonly signal?: AbortSignal;
     readonly loadPty?: () => unknown;
   },
@@ -90,7 +90,7 @@ export function localExec(
         ? await pipe(command, { cwd, env }, log, finish)
         : await terminal(
             command,
-            { cwd, env, size: input.pty, shell: options?.shell, load },
+            { cwd, env, size: input.pty, shell: options?.shell?.() ?? undefined, load },
             log,
             finish,
           );
@@ -225,6 +225,13 @@ async function pipe(
   };
 }
 
+/** The environment a pty starts with: the process's, as a terminal emulator announces itself, without the variables that would make a child Node or Electron run as the host does. */
+function terminalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const { ELECTRON_RUN_AS_NODE: _electron, NODE_OPTIONS: _node, ...rest } = env;
+
+  return { ...rest, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Nyte" };
+}
+
 async function terminal(
   command: string | readonly string[],
   options: {
@@ -269,7 +276,7 @@ async function terminal(
       cols: options.size.columns,
       rows: options.size.rows,
       cwd: options.cwd,
-      env: { ...options.env, TERM: "xterm-256color" },
+      env: terminalEnv(options.env),
     });
   } catch (error) {
     throw new SdkError(

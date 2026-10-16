@@ -186,18 +186,20 @@ describe("localExec where the pty module does not load (§41a)", () => {
 describe.skipIf(!ptyLoads)("localExec in a pty", () => {
   it("runs a command in a terminal, resizes it, and reports its exit", async () => {
     const exec = localExec(await folder());
-    const job = await exec('printf "%s" "$TERM"; sleep 0.2', { pty: { columns: 80, rows: 24 } });
+    const job = await exec('printf "%s %s" "$TERM" "$COLORTERM"; sleep 0.2', {
+      pty: { columns: 80, rows: 24 },
+    });
 
     expect(await job.resize({ columns: 100, rows: 30 })).toEqual({ kind: "resized" });
     const { text, frames } = await read(job);
 
-    expect(text).toContain("xterm-256color");
+    expect(text).toContain("xterm-256color truecolor");
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 0 });
     expect(await job.resize({ columns: 80, rows: 24 })).toEqual({ kind: "missing" });
   });
 
   it("runs the login shell for an empty command, takes keystrokes, and reads a prompt as idle", async () => {
-    const exec = localExec(await folder(), { shell: "/bin/sh" });
+    const exec = localExec(await folder(), { shell: () => "/bin/sh" });
     const job = await exec([], { pty: { columns: 80, rows: 24 } });
     const reader = job.output()[Symbol.asyncIterator]();
     let text = "";

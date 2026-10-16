@@ -23,6 +23,8 @@ export function localProvider(options?: {
   readonly git?: string;
   readonly ripgrep?: string;
   readonly formatter?: string;
+  /** The login shell a pty job without a command runs, read at each start; null or absent is `$SHELL`. */
+  readonly shell?: () => string | null;
 }): EnvironmentProvider {
   const home = options?.home ?? homedir();
   const store = join(home, ".nyte", "snapshots");
@@ -73,7 +75,7 @@ export function localProvider(options?: {
           formatter: options?.formatter,
           signal: detached.signal,
         }),
-        exec: localExec(real, { signal: detached.signal }),
+        exec: localExec(real, { shell: options?.shell, signal: detached.signal }),
         close: async () => detached.abort(),
       };
 
