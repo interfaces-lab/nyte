@@ -15,6 +15,8 @@ import {
 } from "@nyte-ai/plugin/canvas/protocol";
 import type { CanvasHostContext, CanvasHostInfo } from "@nyte-ai/plugin/canvas/protocol";
 import type { Plugin } from "@nyte-ai/plugin/client";
+import { followedTrace, startSpan } from "@nyte-ai/sdk";
+import type { EndSpan } from "@nyte-ai/sdk";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
@@ -181,6 +183,7 @@ export function CanvasFrame({
   const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<CanvasError>();
   const shell = useRef({ initialized: false, reported: new Set<string>() });
+  const painted = useRef<EndSpan>(undefined);
   const opener = useReferenceOpener();
   const files = useCitableFiles(opener !== undefined);
   const citable = files.data;
@@ -209,6 +212,7 @@ export function CanvasFrame({
             setInitialized(true);
             break;
           case "height":
+            painted.current?.({ height: effect.height });
             rememberHeight(heightKey, effect.height);
             setReported({ key: heightKey, height: effect.height });
             break;
@@ -243,6 +247,13 @@ export function CanvasFrame({
     if (shell.current.initialized)
       post(frameRef.current, renderNotification({ runtime, code, title }));
   }, [runtime, code, title]);
+
+  useMountEffect(() => {
+    const ended = startSpan("canvas.paint", followedTrace(), { title });
+    painted.current = ended;
+
+    return () => ended({ unmounted: true });
+  });
 
   useMountEffect(() =>
     subscribeCanvasTheme(() => {

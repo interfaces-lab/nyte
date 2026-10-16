@@ -1,4 +1,4 @@
-import { pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
+import { pagedViews, sdk, SdkError, tracing } from "@nyte-ai/sdk";
 import type {
   ConnectOptions,
   Connection,
@@ -14,6 +14,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { useSyncExternalStore } from "react";
+import { tracePaints } from "./paint-spans.ts";
 
 export interface HostEndpoint {
   readonly url: string;
@@ -366,7 +367,7 @@ export const sessionWatch = watchFamily(
     pagers.set(session, views);
     exhausted.delete(session);
 
-    return views;
+    return tracing.enabled ? tracePaints(views, session) : views;
   },
 );
 

@@ -1,4 +1,6 @@
+import { followTrace, traced } from "@nyte-ai/sdk";
 import type { CommandInfo, Delivery, Session, SessionId, UserContent } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { admitDraft } from "../client-plugins.tsx";
@@ -98,17 +100,23 @@ export async function sendComposerMessage(
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
   replacing?: UserMessage,
 ): Promise<void> {
-  const content = await uploadComposerContent(
-    replacing === undefined
-      ? plan.content
-      : { ...plan.content, files: messageFiles(replacing.content) },
-  );
+  const id = asId<"receipt">(crypto.randomUUID());
+  followTrace(session.id, id);
 
-  const draft = await admitDraft({ content, delivery: plan.delivery, session: session.id });
+  await traced("composer.submit", id, { session: session.id }, async () => {
+    const content = await uploadComposerContent(
+      replacing === undefined
+        ? plan.content
+        : { ...plan.content, files: messageFiles(replacing.content) },
+    );
 
-  await session.send(draft.content, {
-    delivery: draft.delivery,
-    ...(replacing !== undefined && { replace: replacing.id }),
+    const draft = await admitDraft({ content, delivery: plan.delivery, session: session.id });
+
+    await session.send(draft.content, {
+      id,
+      delivery: draft.delivery,
+      ...(replacing !== undefined && { replace: replacing.id }),
+    });
   });
 }
 
