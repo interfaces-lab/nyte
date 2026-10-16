@@ -2,18 +2,20 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import type { Connection } from "@nyte-ai/sdk";
 import { createTestRenderer, ManualClock, TestRecorder } from "@opentui/core/testing";
-import type { TestRendererSetup } from "@opentui/core/testing";
+import type { TestRendererOptions, TestRendererSetup } from "@opentui/core/testing";
 import type { Kit } from "../../src/app/context.tsx";
-import { mountApp } from "../../src/app/main.tsx";
+import { drawnPart, mountApp, nextFrame } from "../../src/app/main.tsx";
 import type { AppOptions, MountedApp } from "../../src/app/main.tsx";
 import type { Store } from "../../src/app/store.ts";
 import { holdTypeahead } from "../../src/app/typeahead.ts";
 import type { BootOptions } from "../../src/effects/boot.ts";
+import type { ShellPort } from "../../src/effects/ports.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
 import { keyStrokes } from "../../src/lib/constants.ts";
 import type { ChatCommand } from "../../src/lib/constants.ts";
-import { hostPort } from "../../src/effects/host-port.ts";
+import { hostPort, pluginsPort } from "../../src/effects/host-port.ts";
 import { openTestHost } from "../fixture/host.ts";
 import type { TestHost } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
@@ -26,14 +28,23 @@ const MAX_TURNS = 3_000;
 
 export interface TuiOptions {
   readonly size?: { readonly width: number; readonly height: number };
+  /** Renderer options beside the size, clock and keyboard the harness sets, such as a recording `stdout` and its `environment`. */
+  readonly renderer?: Omit<TestRendererOptions, "width" | "height" | "clock" | "kittyKeyboard">;
   /** The in-process host; the harness opens and closes its own when omitted. */
   readonly fixture?: TestHost;
+  /**
+   * A host to drive in place of the fixture's, such as a bench scenario's `openHost`, with the
+   * TUI's own client plugins drawing its parts as `nyte` does. The caller closes it.
+   */
+  readonly host?: Connection;
   /** `false` keeps the host closed until `openHost()`, as a slow service would. */
   readonly opened?: boolean;
   readonly target?: BootOptions["target"];
   /** Keys typed after the renderer starts reading input but before the app mounts. */
   readonly typed?: string;
   readonly kit?: (kit: Kit) => Kit;
+  /** Local ports in place of the fakes, such as a real `shell` running `!` commands; `cwd` is the TUI's folder (default its temp home). */
+  readonly local?: { readonly shell?: ShellPort; readonly cwd?: string };
   /** Starts `recorder` just before the app mounts, so frame timestamps count from mount. */
   readonly record?: boolean;
 }
@@ -68,6 +79,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
   clock.setTime(Date.now());
 
   const setup = await createTestRenderer({
+    ...options.renderer,
     width: options.size?.width ?? 100,
     height: options.size?.height ?? 32,
     kittyKeyboard: true,
@@ -80,6 +92,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
   const fixture = options.fixture ?? (await openTestHost());
   const home = mkdtempSync(join(tmpdir(), "nyte-tui-app-"));
   const fakes = fakePorts(fakeHost());
+  const cwd = options.local?.cwd ?? home;
   const opening = Promise.withResolvers<void>();
 
   if (options.opened !== false) opening.resolve();
@@ -89,18 +102,34 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
 
   const mounting: AppOptions = {
     renderer: setup.renderer,
-    ports: { ...fakes, log: openCrashLog(home) },
-    cwd: home,
+    ports: { ...fakes, shell: options.local?.shell ?? fakes.shell, log: openCrashLog(home) },
+    cwd,
     typeahead,
-    boot: { home, cwd: home, target: options.target ?? { kind: "new" }, model: null, effort: null },
-    async open() {
+    boot: { home, cwd, target: options.target ?? { kind: "new" }, model: null, effort: null },
+    async open(dispatch) {
       await opening.promise;
 
+      if (options.host === undefined)
+        return {
+          host: hostPort(fixture.host, null, () => nextFrame(setup.renderer)),
+          plugins: fakes.plugins,
+          drawPart: () => null,
+          close: async () => undefined,
+        };
+
+      const connection = options.host;
+
+      const plugins = await pluginsPort(connection, {
+        notify: () => undefined,
+        report: (plugin, message) =>
+          dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
+      });
+
       return {
-        host: hostPort(fixture.host, null),
-        plugins: fakes.plugins,
-        drawPart: () => null,
-        close: async () => undefined,
+        host: hostPort(connection, null, () => nextFrame(setup.renderer)),
+        plugins,
+        drawPart: (message) => drawnPart(setup.renderer, plugins.draw(message)),
+        close: () => plugins.dispose(),
       };
     },
   };

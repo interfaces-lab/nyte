@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { testModel } from "@nyte-ai/host/bench";
 import { exitText } from "../../src/app/main.tsx";
@@ -45,7 +48,7 @@ test("/quit names the resume command; --session reopens the transcript, model an
   expect(JSON.stringify(fixture.requests[1]?.context.messages)).toContain("hi nyte");
 });
 
-test("a 2,000-message session's first screen paints within 100 ms of mount", async () => {
+test("a 2,000-message session's first screen paints within 100 ms of mount, and the same frame after quitting and resuming again", async () => {
   await using fixture = await openTestHost();
   const { id } = await fixture.host.sessions.create({});
 
@@ -55,8 +58,40 @@ test("a 2,000-message session's first screen paints within 100 ms of mount", asy
   }
 
   const last = `answer ${String(TURNS - 1)}`;
-  await using tui = await startTui({ fixture, target: { kind: "session", id }, record: true });
+  const cwd = mkdtempSync(join(tmpdir(), "nyte-tui-resume-"));
+  const local = { cwd };
+
+  await using tui = await startTui({
+    fixture,
+    target: { kind: "session", id },
+    record: true,
+    local,
+  });
+
   await tui.frame((frame) => frame.includes(last));
 
   expect(shownAt(tui, last)).toBeLessThanOrEqual(100);
+  await tui.state((store) => store.screen().blocked === null);
+  await tui.renderOnce();
+  const before = tui.captureCharFrame();
+  const beforeSpans = tui.captureSpans();
+  await tui.send("/quit");
+  expect(await tui.app.closing).toBe(0);
+  await tui.dispose();
+
+  await using resumed = await startTui({
+    fixture,
+    target: { kind: "session", id },
+    record: true,
+    local,
+  });
+
+  await resumed.frame((frame) => frame.includes(last));
+
+  expect(shownAt(resumed, last)).toBeLessThanOrEqual(100);
+  await resumed.state((store) => store.screen().blocked === null);
+  await resumed.renderOnce();
+  expect(resumed.captureCharFrame()).toBe(before);
+  expect(resumed.captureSpans()).toEqual(beforeSpans);
+  rmSync(cwd, { recursive: true, force: true });
 }, 30_000);
