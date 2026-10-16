@@ -417,19 +417,22 @@ function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent
   return entry;
 }
 
-function syncMacWindowChrome(entry: NyteWindow): void {
-  if (process.platform !== "darwin" || entry.window.isDestroyed()) return;
+/** Re-centres the macOS traffic lights on the titlebar for the window's zoom factor. */
+function placeWindowButtons(window: BrowserWindow): void {
+  if (process.platform !== "darwin" || window.isDestroyed()) return;
+  window.setWindowButtonPosition(macOSTrafficLightPosition(window.webContents.getZoomFactor()));
+}
 
-  const zoomFactor = entry.window.webContents.getZoomFactor();
-
-  entry.window.setWindowButtonPosition(macOSTrafficLightPosition(zoomFactor));
-  entry.window.webContents.send(WINDOW_FULLSCREEN_CHANNEL, entry.window.isFullScreen());
+/** Tells the renderer whether the window is fullscreen, which moves its macOS titlebar inset. */
+function sendFullscreen(window: BrowserWindow): void {
+  if (process.platform !== "darwin" || window.isDestroyed()) return;
+  window.webContents.send(WINDOW_FULLSCREEN_CHANNEL, window.isFullScreen());
 }
 
 function registerIpc(): void {
   if (process.platform === "darwin") {
     ipcMain.on(WINDOW_ZOOM_CHANNEL, (event) => {
-      syncMacWindowChrome(senderWindow(event));
+      placeWindowButtons(senderWindow(event).window);
     });
   }
 
@@ -512,14 +515,20 @@ function createWindow(): NyteWindow {
   };
 
   created.webContents.on("render-process-gone", releaseRendererWork);
-  const syncWindowChrome = (): void => syncMacWindowChrome(entry);
-  created.webContents.on("did-finish-load", syncWindowChrome);
-  created.webContents.on("zoom-changed", syncWindowChrome);
-  created.on("move", syncWindowChrome);
-  created.on("resize", syncWindowChrome);
-  created.on("enter-full-screen", syncWindowChrome);
-  created.on("leave-full-screen", syncWindowChrome);
-  screen.on("display-metrics-changed", syncWindowChrome);
+  const placeButtons = (): void => placeWindowButtons(created);
+
+  const fullscreenChanged = (): void => {
+    placeWindowButtons(created);
+    sendFullscreen(created);
+  };
+
+  created.webContents.on("did-finish-load", fullscreenChanged);
+  created.webContents.on("zoom-changed", placeButtons);
+  created.on("move", placeButtons);
+  created.on("resize", placeButtons);
+  created.on("enter-full-screen", fullscreenChanged);
+  created.on("leave-full-screen", fullscreenChanged);
+  screen.on("display-metrics-changed", placeButtons);
   // Only a committed main-frame navigation has left the document behind. The
   // start event fires before `will-navigate` can cancel, and would tear down
   // under a renderer that stays.
@@ -576,7 +585,7 @@ function createWindow(): NyteWindow {
   created.on("closed", () => {
     entry.menuCommands.reset();
     nativeTheme.off("updated", updateWindowBackground);
-    screen.off("display-metrics-changed", syncWindowChrome);
+    screen.off("display-metrics-changed", placeButtons);
     windows.delete(id);
     browserSurfaces.releaseWindow(id);
     desktopHost?.releaseWindow(id);
