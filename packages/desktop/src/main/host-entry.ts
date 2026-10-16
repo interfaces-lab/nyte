@@ -10,7 +10,6 @@ import { ConnectRuntime } from "@nyte-ai/connect/host";
 import { dev } from "@nyte-ai/core";
 import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { defaultSecrets } from "@nyte-ai/host/secrets";
-import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { readConnectConfig } from "./connect-config.ts";
@@ -35,8 +34,6 @@ const port = process.parentPort;
 const post = (message: HostMessage): void => port.postMessage(message);
 
 registerBunOAuthFlows();
-
-void completeShellEnvironment().then(() => performance.mark("nyte:shell-environment-ready"));
 
 if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "desktop");
 
