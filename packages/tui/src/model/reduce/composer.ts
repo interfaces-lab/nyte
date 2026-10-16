@@ -27,7 +27,6 @@ import type { DraftSnapshot } from "../draft.ts";
 import { promptEntries } from "../history.ts";
 import type { Intent, Outcome } from "../msg.ts";
 import { rowMessage } from "../queue.ts";
-import { reduce } from "../reduce.ts";
 import { keyboardDialog } from "../screen.ts";
 import type { State } from "../state.ts";
 import {
@@ -44,12 +43,12 @@ import {
   withLocal,
   withNotice,
 } from "../step.ts";
-import type { SomeHandlers, Step } from "../step.ts";
+import type { Reduce, SomeHandlers, Step } from "../step.ts";
 import { dialogCommand } from "./dialogs.ts";
 import { completionLookup, stageHandback } from "./facts.ts";
 
 export const composerHandlers = {
-  send: (state, msg, now) => send(state, msg.delivery, msg.warning ?? null, now),
+  send: (state, msg, now, reduce) => send(state, msg.delivery, msg.warning ?? null, now, reduce),
   "save-edit": (state, msg, now) => saveEdit(state, msg.delivery, now),
   "cancel-edit": (state) => {
     const { editing } = state.local;
@@ -87,7 +86,7 @@ export const composerHandlers = {
       : { state, effects: [{ kind: "shell-stop", id: running.id }] };
   },
   history: (state, msg) => history(state, msg.direction),
-  paste: (state, msg, now) => {
+  paste: (state, msg, now, reduce) => {
     const dialog = keyboardDialog(state);
 
     if (dialog !== null) {
@@ -104,7 +103,7 @@ export const composerHandlers = {
               },
             ],
           }
-        : dialogCommand(state, { kind: "paste", text: msg.source.text }, now);
+        : dialogCommand(state, { kind: "paste", text: msg.source.text }, now, reduce);
     }
 
     const generation = state.local.pasteGeneration;
@@ -162,7 +161,7 @@ export const composerHandlers = {
   },
   "close-preview": (state) => stay(withLocal(state, { preview: null })),
   "focus-composer": (state) => ({ state, effects: [{ kind: "composer", op: { kind: "focus" } }] }),
-  completion: (state, msg, now) => completion(state, msg.action, now),
+  completion: (state, msg, now, reduce) => completion(state, msg.action, now, reduce),
   prefill: (state, msg) => insertText(state, msg.text, "start"),
   sent: (state, msg, now) => {
     const submission = state.local.submissions.find((candidate) => candidate.id === msg.submission);
@@ -198,7 +197,7 @@ export const composerHandlers = {
       now,
     );
   },
-  "paste-resolved": (state, msg, now) => pasted(state, msg, now),
+  "paste-resolved": (state, msg, now, reduce) => pasted(state, msg, now, reduce),
   "editor-closed": (state, msg) => {
     const next = withLocal(state, {
       pending: state.local.pending.filter((op) => op.kind !== "editor"),
@@ -255,7 +254,13 @@ export const composerHandlers = {
     ),
 } satisfies SomeHandlers;
 
-function send(state: State, delivery: Delivery, warning: string | null, now: number): Step {
+function send(
+  state: State,
+  delivery: Delivery,
+  warning: string | null,
+  now: number,
+  reduce: Reduce,
+): Step {
   const followed = state.facts.session;
 
   if (followed === null) return refuse(state, "Wait for the session to open", now);
@@ -374,6 +379,7 @@ function completion(
   state: State,
   action: Extract<Intent, { kind: "completion" }>["action"],
   now: number,
+  reduce: Reduce,
 ): Step {
   const model = completionModel(state.local.completion, state.local.draft, {
     commands: slashNamespace(state),
@@ -390,11 +396,19 @@ function completion(
         withLocal(state, { completion: moveCompletion(state.local.completion, model, action.by) }),
       );
     case "pick":
-      return acceptCompletion(state, model, action.index, "return", null, now);
+      return acceptCompletion(state, model, action.index, "return", null, now, reduce);
     case "fill":
-      return acceptCompletion(state, model, model.highlighted, "tab", null, now);
+      return acceptCompletion(state, model, model.highlighted, "tab", null, now, reduce);
     case "accept":
-      return acceptCompletion(state, model, model.highlighted, "return", action.alternate, now);
+      return acceptCompletion(
+        state,
+        model,
+        model.highlighted,
+        "return",
+        action.alternate,
+        now,
+        reduce,
+      );
     default: {
       const _exhaustive: never = action;
 
@@ -419,6 +433,7 @@ function acceptCompletion(
   via: "return" | "tab",
   alternate: Delivery | null,
   now: number,
+  reduce: Reduce,
 ): Step {
   const item = model.items[index];
 
@@ -442,7 +457,7 @@ function acceptCompletion(
 
       return alternate === null
         ? replaced
-        : andThen(replaced, (current) => send(current, alternate, null, now));
+        : andThen(replaced, (current) => send(current, alternate, null, now, reduce));
     }
 
     case "file": {
@@ -482,6 +497,7 @@ function pasted(
   state: State,
   msg: Extract<Outcome, { kind: "paste-resolved" }>,
   now: number,
+  reduce: Reduce,
 ): Step {
   const pasting = Math.max(0, state.local.pasting - 1);
   const held = state.local.sendAfterPaste;
@@ -497,7 +513,7 @@ function pasted(
 
   return held === null || pasting > 0 || refused
     ? step
-    : andThen(step, (current) => send(current, held.delivery, held.warning, now));
+    : andThen(step, (current) => send(current, held.delivery, held.warning, now, reduce));
 }
 
 function insertPaste(

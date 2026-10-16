@@ -18,16 +18,15 @@ import { withTree } from "../dialogs/tree.ts";
 import type { Effect } from "../effect.ts";
 import type { Intent, Outcome } from "../msg.ts";
 import { readQuestionDraft } from "../question.ts";
-import { reduce } from "../reduce.ts";
 import { keyboardDialog } from "../screen.ts";
 import type { PendingOp, State } from "../state.ts";
 import { andThen, busy, insertText, mint, refuse, stay, withLocal, withNotice } from "../step.ts";
-import type { SomeHandlers, Step } from "../step.ts";
+import type { Reduce, SomeHandlers, Step } from "../step.ts";
 
 export const dialogHandlers = {
-  open: (state, msg, now) => openDialog(state, msg.dialog, now),
-  dialog: (state, msg, now) => dialogCommand(state, msg.command, now),
-  "run-command": (state, msg, now) => {
+  open: (state, msg, now, reduce) => openDialog(state, msg.dialog, now, reduce),
+  dialog: (state, msg, now, reduce) => dialogCommand(state, msg.command, now, reduce),
+  "run-command": (state, msg, now, reduce) => {
     const entry = resolveCommand(state, msg.name);
 
     if (entry === null) return refuse(state, `Unknown command /${msg.name}`, now);
@@ -70,7 +69,7 @@ export const dialogHandlers = {
         }),
       }),
     ),
-  "dialog-pasted": (state, msg, now) => {
+  "dialog-pasted": (state, msg, now, reduce) => {
     const dialog = keyboardDialog(state);
 
     if (
@@ -82,7 +81,7 @@ export const dialogHandlers = {
 
     return msg.text === null
       ? stay(state)
-      : dialogCommand(state, { kind: "paste", text: msg.text }, now);
+      : dialogCommand(state, { kind: "paste", text: msg.text }, now, reduce);
   },
 } satisfies SomeHandlers;
 
@@ -135,7 +134,12 @@ function listLoad(id: string, purpose: ListPurpose): readonly Effect[] {
   }
 }
 
-export function openDialog(state: State, request: DialogRequest, now: number): Step {
+export function openDialog(
+  state: State,
+  request: DialogRequest,
+  now: number,
+  reduce: Reduce,
+): Step {
   const followed = state.facts.session;
   const minted = mint(state, "dialog");
   const { id } = minted;
@@ -242,6 +246,7 @@ export function openDialog(state: State, request: DialogRequest, now: number): S
         state,
         { kind: "list", purpose: { kind: "mcp", workspace: followed.info.workspace } },
         now,
+        reduce,
       );
 
     case "mcp-details":
@@ -266,6 +271,7 @@ export function openDialog(state: State, request: DialogRequest, now: number): S
           state,
           { kind: "list", purpose: { kind: "provider", mode: request.mode } },
           now,
+          reduce,
         );
       const pending: PendingOp = { kind: "auth", provider: request.provider, link: null };
 
@@ -302,7 +308,7 @@ export function openDialog(state: State, request: DialogRequest, now: number): S
   }
 }
 
-export function dialogCommand(state: State, input: DialogInput, now: number): Step {
+export function dialogCommand(state: State, input: DialogInput, now: number, reduce: Reduce): Step {
   const dialog = keyboardDialog(state);
 
   if (dialog === null) return stay(state);
@@ -370,10 +376,10 @@ export function dialogCommand(state: State, input: DialogInput, now: number): St
     });
   } else next = state;
 
-  return all(next, result.intents, now);
+  return all(next, result.intents, now, reduce);
 }
 
-function all(state: State, intents: readonly Intent[], now: number): Step {
+function all(state: State, intents: readonly Intent[], now: number, reduce: Reduce): Step {
   return intents.reduce<Step>(
     (step, intent) => andThen(step, (current) => reduce(current, intent, now)),
     stay(state),

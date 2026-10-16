@@ -27,5 +27,5 @@ export function reduce(state: State, msg: Msg, now: number): Step {
 }
 
 function handle<K extends Msg["kind"]>(kind: K, msg: MsgOf<K>, state: State, now: number): Step {
-  return HANDLERS[kind](state, msg, now);
+  return HANDLERS[kind](state, msg, now, reduce);
 }

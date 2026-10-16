@@ -83,7 +83,7 @@ export const runHandlers = {
         question: { ...state.local.question, dismissed: null, highlighted: 0 },
       }),
     ),
-  "escape-tree": (state, _msg, now) => {
+  "escape-tree": (state, _msg, now, reduce) => {
     const armed = state.local.escapeArmedAt;
 
     if (armed === null || now - armed > ESCAPE_WINDOW_MS)
@@ -93,6 +93,7 @@ export const runHandlers = {
       withLocal(state, { escapeArmedAt: null }),
       { kind: "tree", filter: "default" },
       now,
+      reduce,
     );
   },
   "move-to": (state, msg, now) => {

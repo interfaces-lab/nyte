@@ -324,7 +324,7 @@ export const sessionHandlers = {
   "effect-failed": (state, msg, now) =>
     stay(withNotice(released(state, msg.effect), `error: ${msg.message}`, "error", now)),
   inform: (state, msg, now) => stay(withNotice(state, msg.text, msg.tone, now)),
-  "trust-loaded": (state, msg, now) => {
+  "trust-loaded": (state, msg, now, reduce) => {
     if (msg.home)
       return msg.ask === "always"
         ? stay(
@@ -350,6 +350,7 @@ export const sessionHandlers = {
       state,
       { kind: "list", purpose: { kind: "trust", workspace, path, decision, sources } },
       now,
+      reduce,
     );
   },
 } satisfies SomeHandlers;

@@ -14,8 +14,16 @@ export interface Step {
 /** The message variant whose `kind` is `K`. */
 export type MsgOf<K extends Msg["kind"]> = Extract<Msg, { readonly kind: K }>;
 
+/** Applies one message to the state; a handler gets it to apply the messages its own leads to. */
+export type Reduce = (state: State, msg: Msg, now: number) => Step;
+
 /** Handles one message kind. */
-export type Handler<K extends Msg["kind"]> = (state: State, msg: MsgOf<K>, now: number) => Step;
+export type Handler<K extends Msg["kind"]> = (
+  state: State,
+  msg: MsgOf<K>,
+  now: number,
+  reduce: Reduce,
+) => Step;
 
 /** One handler per message kind in `K`. */
 export type Handlers<K extends Msg["kind"]> = { readonly [P in K]: Handler<P> };
