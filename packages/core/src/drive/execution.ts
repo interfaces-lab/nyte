@@ -13,7 +13,7 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import { retryDelayMs } from "@nyte-ai/ai/utils/retry";
-import { executeCall, owedCalls } from "../agent/tool-runner.ts";
+import { executeCall, owedCalls, readToolInput } from "../agent/tool-runner.ts";
 import type { FoldInput } from "../contract/fold.ts";
 import { PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ExecutionState, Kernel, LandedInput } from "../contract/kernel.ts";
@@ -575,18 +575,21 @@ async function resume(
       if (renewal.lease.signal.aborted) break;
 
       if (owed.parked) continue;
+      const input = await readToolInput(kernel.store, session, owed.record);
+
+      if (input === null) continue;
 
       await executeCall(kernel, {
         session,
         head,
         run,
-        call: owed.call,
-        name: owed.intent.name,
-        args: owed.intent.args,
-        argumentsError: owed.intent.argumentsError,
+        call: owed.record.id,
+        name: input.name,
+        args: input.args,
+        argumentsError: input.argumentsError,
         runtime,
         context: {
-          principal: owed.intent.principal,
+          principal: input.principal,
           authority: PARTICIPANT_AUTHORITY,
           credential: { kind: "token", token: "" },
           origin: null,

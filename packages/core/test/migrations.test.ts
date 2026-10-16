@@ -1,7 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
-import { owedCalls } from "../src/agent/tool-runner.ts";
+import { owedCalls, readToolInput } from "../src/agent/tool-runner.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import { decodeCallRecord } from "../src/contract/records.ts";
 import { intendedCall, runStep } from "../src/engine/durable.ts";
@@ -180,9 +180,14 @@ it("moves a tool call's name and args to its part alone, which recovery then rep
   );
 
   expect(migrated).toEqual({ ...callBody, intent: { principal: "local" } });
-  expect(await owedCalls(kernel.store, session.id, run.id)).toEqual([
-    { call, intent, parked: false },
+  const owed = await owedCalls(kernel.store, session.id, run.id);
+
+  expect(owed.map(({ record, parked }) => ({ call: record.id, parked }))).toEqual([
+    { call, parked: false },
   ]);
+  expect(
+    await Promise.all(owed.map(({ record }) => readToolInput(kernel.store, session.id, record))),
+  ).toEqual([intent]);
 });
 
 it("gives an older Nyte's unopened tool call position 0, so recovery still owes it", async () => {
@@ -218,9 +223,14 @@ it("gives an older Nyte's unopened tool call position 0, so recovery still owes 
     commit: async (change) => landChange(kernel, change),
   });
 
-  expect(await owedCalls(kernel.store, session.id, run.id)).toEqual([
-    { call, intent, parked: false },
+  const owed = await owedCalls(kernel.store, session.id, run.id);
+
+  expect(owed.map(({ record, parked }) => ({ call: record.id, parked }))).toEqual([
+    { call, parked: false },
   ]);
+  expect(
+    await Promise.all(owed.map(({ record }) => readToolInput(kernel.store, session.id, record))),
+  ).toEqual([intent]);
 });
 
 it("indexes as woken a call an older Nyte woke and had not stepped since", async () => {

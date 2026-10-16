@@ -82,8 +82,7 @@ export type ToolIntent = Static<typeof ToolIntentType>;
 
 /** A call a run still owes: never opened, or opened and not settled. */
 export interface OwedCall {
-  readonly call: CallId;
-  readonly intent: ToolInput;
+  readonly record: CallRecord;
   readonly parked: boolean;
 }
 
@@ -167,7 +166,7 @@ export async function executeCall(
   }
 }
 
-/** The tool calls `run` owes, in the order they run: opened calls first, since a run opens its calls one at a time in response order, then unopened ones in response order. Each comes with the input to replay it from: an unopened call's intent, or an opened call's caller with its part's name and args. Calls nested in another are left to their parent's replay. */
+/** The tool calls `run` owes, in the order they run: opened calls first, since a run opens its calls one at a time in response order, then unopened ones by their position in the response. A call is parked while it or a call nested in it waits; calls nested in another are left to their parent's replay. */
 export async function owedCalls(
   store: StoreConnection,
   session: SessionId,
@@ -178,50 +177,42 @@ export async function owedCalls(
   );
 
   const ids = new Set(records.map(stripHookPrefix));
+  const parked = new Set<string>();
 
-  const owed = await Promise.all(
-    records.map(
-      async (record): Promise<readonly { readonly owed: OwedCall; readonly order: number }[]> => {
-        if (
-          (record.kind !== "tool" && record.kind !== "intent") ||
-          record.result !== null ||
-          nestedIn(ids, record.id)
-        )
-          return [];
-        const read = await readToolInput(store, session, record);
+  for (const record of records)
+    if (record.waiting !== null && record.result === null)
+      for (const prefix of callPrefixes(stripHookPrefix(record))) parked.add(prefix);
 
-        if (read === null) return [];
+  const owes = (record: CallRecord): boolean =>
+    record.result === null && !callPrefixes(record.id).slice(0, -1).some((id) => ids.has(id));
 
-        const parked = records.some(
-          (other) =>
-            other.waiting !== null &&
-            other.result === null &&
-            (stripHookPrefix(other) === record.id ||
-              stripHookPrefix(other).startsWith(`${record.id}:`)),
-        );
+  const opened = records.filter((record) => record.kind === "tool" && owes(record));
 
-        return [{ owed: { call: record.id, intent: read.input, parked }, order: read.order }];
-      },
-    ),
-  );
+  const unopened = records
+    .flatMap((record) =>
+      record.kind === "intent" && owes(record) && toolIntents.Check(record.intent)
+        ? [{ record, position: record.intent.position }]
+        : [],
+    )
+    .toSorted((left, right) => left.position - right.position);
 
-  return owed
-    .flat()
-    .toSorted((left, right) => left.order - right.order)
-    .map((entry) => entry.owed);
+  return [...opened, ...unopened.map((entry) => entry.record)].map((record) => ({
+    record,
+    parked: parked.has(record.id),
+  }));
 }
 
-/** A call's replay input, and where it runs among its run's owed calls: an opened call before any unopened one, which runs at its position in the response. */
-async function readToolInput(
+/** What an owed call replays from: an unopened call's intent, or an opened call's caller with its part's name and args; null when the record or its part cannot be read. */
+export async function readToolInput(
   store: StoreConnection,
   session: SessionId,
   record: CallRecord,
-): Promise<{ readonly input: ToolInput; readonly order: number } | null> {
+): Promise<ToolInput | null> {
   if (record.kind === "intent") {
     if (!toolIntents.Check(record.intent)) return null;
-    const { position, ...input } = record.intent;
+    const { position: _position, ...input } = record.intent;
 
-    return { input, order: position };
+    return input;
   }
 
   if (record.part === null || !toolCallers.Check(record.intent)) return null;
@@ -237,14 +228,14 @@ async function readToolInput(
 
   return checked === null || checked.kind === "invalid"
     ? null
-    : { input: { ...caller, name: checked.value.name, args: checked.value.args }, order: -1 };
+    : { ...caller, name: checked.value.name, args: checked.value.args };
 }
 
-/** Whether `id` names a call nested in another of `ids`: one whose id is a `:`-separated prefix of it. */
-function nestedIn(ids: ReadonlySet<string>, id: string): boolean {
+/** `id` and each call id it is nested under: its `:`-separated prefixes, shortest first. */
+function callPrefixes(id: string): readonly string[] {
   const segments = id.split(":");
 
-  return segments.some((_segment, at) => at > 0 && ids.has(segments.slice(0, at).join(":")));
+  return segments.map((_segment, at) => segments.slice(0, at + 1).join(":"));
 }
 
 export function stoppableTool(kernel: Kernel): typeof tool {
