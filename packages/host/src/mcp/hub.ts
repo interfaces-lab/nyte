@@ -140,11 +140,13 @@ function hub(input: {
   const openLink = (entry: McpServerEntry, pool: Pool): Link => {
     let state: LinkState = { kind: "connecting" };
     let listed: Listing | null = null;
+
     let bridged: {
       readonly entry: McpServerEntry;
       readonly listed: Listing;
       readonly tools: readonly ToolDefinition[];
     } | null = null;
+
     let client: McpClient | null = null;
     let stderr: () => string | null = () => null;
     let challenge: OAuthChallenge | null = null;
@@ -241,10 +243,12 @@ function hub(input: {
 
         client = next;
         delay = 1000;
-        next.onNotification("notifications/tools/list_changed", () => {
-          void refresh().catch((error: unknown) => {
+        next.onNotification("notifications/tools/list_changed", async () => {
+          try {
+            await refresh();
+          } catch (error) {
             if (client === next) drop(errorMessage(error));
-          });
+          }
         });
         await refresh();
       } catch (error) {
@@ -387,7 +391,8 @@ function hub(input: {
         ? [{ path: join(workspace.root, ".nyte", "mcp.json"), scope: "project" as const }]
         : []),
     ];
-    const unread = files.filter((file) => !watched.has(file.path)).map((file) => file.path);
+
+    const unread = files.flatMap((file) => (watched.has(file.path) ? [] : [file.path]));
 
     for (const path of unread) {
       watched.add(path);
@@ -570,6 +575,7 @@ function hub(input: {
             : [],
         ),
       );
+
       const aborted = Promise.withResolvers<void>();
 
       signal.addEventListener("abort", () => aborted.resolve(), { once: true });
@@ -685,6 +691,7 @@ function hub(input: {
             contents: { kind: "text", text: JSON.stringify({ mcpServers: { [server]: config } }) },
           },
         ]);
+
         const [problem] = checked.issues;
 
         if (problem !== undefined) return { kind: "invalid", message: problem.message };

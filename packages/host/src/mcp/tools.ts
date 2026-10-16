@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { CallToolResult, McpClient, ProgressNotification, Tool } from "@earendil-works/pi-mcp";
+import { isJsonObject } from "@nyte-ai/core";
 import type { ExecutionEnv, ToolDefinition } from "@nyte-ai/core";
 import { isJson } from "@nyte-ai/schema";
 import type {
@@ -12,6 +13,8 @@ import type {
 } from "@nyte-ai/schema";
 import { Errors, Meta } from "typebox/schema";
 import type { McpServerEntry } from "./config.ts";
+
+type JsonObject = { readonly [key: string]: Json };
 
 const NAME_LIMIT = 64;
 
@@ -128,15 +131,19 @@ function globMatches(pattern: string, value: string): boolean {
   return new RegExp(`^${source}$`).test(value);
 }
 
-function bridge(entry: McpServerEntry, tool: Tool, call: McpCall, name: string): ToolDefinition {
+function bridge(
+  entry: McpServerEntry,
+  tool: Tool,
+  call: McpCall,
+  name: string,
+): ToolDefinition<JsonObject> {
   const output = tool.outputSchema;
 
-  return {
+  const definition: ToolDefinition<JsonObject> = {
     name,
     namespace: `mcp/${entry.name}`,
     description: tool.description ?? tool.title ?? tool.name,
     parameters: passthrough(tool.inputSchema),
-    ...(output === undefined ? {} : { output: passthrough(output) }),
     exposure: toolExposure(entry, tool.name),
     class: () => ({ kind: "custom", label: `${entry.name}: ${tool.title ?? tool.name}` }),
     effects: tool.annotations?.readOnlyHint === true ? "none" : "workspace",
@@ -151,7 +158,7 @@ function bridge(entry: McpServerEntry, tool: Tool, call: McpCall, name: string):
       let result: CallToolResult;
 
       try {
-        result = await call(tool.name, isObject(args) ? args : {}, {
+        result = await call(tool.name, args, {
           signal: AbortSignal.any([invocation.signal, limit]),
           timeoutMs: entry.timeoutMs,
           onProgress: (update) => invocation.progress(toolProgress(update)),
@@ -185,11 +192,14 @@ function bridge(entry: McpServerEntry, tool: Tool, call: McpCall, name: string):
       return { content, output: structured };
     },
   };
+
+  return output === undefined ? definition : { ...definition, output: passthrough(output) };
 }
 
 function toolProgress(update: ProgressNotification): ToolProgress {
   const step =
     update.total === undefined ? `${update.progress}` : `${update.progress} of ${update.total}`;
+
   const text = update.message ?? step;
 
   return update.total === undefined || update.total <= 0
@@ -241,20 +251,18 @@ async function readToolContent(
   ];
 }
 
-function passthrough(json: Record<string, unknown>): Schema<Json> {
+function passthrough(json: Tool["inputSchema"]): Schema<JsonObject> {
   return {
     "~standard": {
       version: 1,
       vendor: "mcp",
       validate: (value) =>
-        isObject(value) ? { value } : { issues: [{ message: "Expected a JSON object." }] },
+        isJson(value) && isJsonObject(value)
+          ? { value }
+          : { issues: [{ message: "Expected a JSON object." }] },
       jsonSchema: { input: () => json, output: () => json },
     },
   };
-}
-
-function isObject(value: unknown): value is { readonly [key: string]: Json } {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && isJson(value);
 }
 
 async function* once(bytes: Uint8Array): AsyncIterable<Uint8Array> {
