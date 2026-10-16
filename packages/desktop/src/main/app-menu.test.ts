@@ -87,6 +87,7 @@ test("off macOS the primary W closes a tab and closing the window takes Shift", 
     },
     newWindow: () => {},
     view: () => {},
+    developer: true,
   });
 
   const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
@@ -168,6 +169,7 @@ test("held keys repeat only zoom", () => {
     dispatch: () => {},
     newWindow: () => {},
     view: () => {},
+    developer: true,
   });
 
   const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>

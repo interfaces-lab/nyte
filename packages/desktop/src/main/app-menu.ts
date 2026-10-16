@@ -21,6 +21,8 @@ export function applicationMenuTemplate(options: {
   dispatch: (command: AppMenuCommand) => void;
   newWindow: () => void;
   view: (command: ViewCommand, window: BaseWindow | undefined) => void;
+  /** Development builds add Reload, Force Reload and the window's developer tools to View. */
+  developer: boolean;
 }): MenuItemConstructorOptions[] {
   const about = {
     label: `About ${options.name}`,
@@ -130,14 +132,18 @@ export function applicationMenuTemplate(options: {
     {
       label: "View",
       submenu: [
-        view("Reload", "CommandOrControl+R", "reload"),
-        view("Force Reload", "Shift+CommandOrControl+R", "hard-reload"),
-        view(
-          "Toggle Developer Tools",
-          options.platform === "darwin" ? "Alt+Command+I" : "Control+Shift+I",
-          "toggle-devtools",
-        ),
-        { type: "separator" },
+        ...(options.developer
+          ? [
+              view("Reload", "CommandOrControl+R", "reload"),
+              view("Force Reload", "Shift+CommandOrControl+R", "hard-reload"),
+              view(
+                "Toggle Developer Tools",
+                options.platform === "darwin" ? "Alt+Command+I" : "Control+Shift+I",
+                "toggle-devtools",
+              ),
+              { type: "separator" } satisfies MenuItemConstructorOptions,
+            ]
+          : []),
         view("Actual Size", "CommandOrControl+0", "zoom-reset"),
         view("Zoom In", "CommandOrControl+Plus", "zoom-in"),
         view("Zoom Out", "CommandOrControl+-", "zoom-out"),

@@ -725,6 +725,7 @@ if (!hasSingleInstanceLock) {
         // A command with no window open reopens one, as the single window did.
         dispatch: (command) => (currentWindow() ?? createWindow()).menuCommands.dispatch(command),
         newWindow: createWindow,
+        developer: !app.isPackaged,
         view: (command, window) => {
           const host = [...windows].find(([, entry]) => entry.window === window)?.[0];
           const surface = forwardingSurface ?? browserSurfaces.focused(host);
