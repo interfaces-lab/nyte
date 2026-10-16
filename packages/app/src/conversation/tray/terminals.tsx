@@ -5,7 +5,6 @@ import { useMutation } from "@tanstack/react-query";
 import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { nyte } from "../../nyte.ts";
 import { useSession, useWorkspaceJobs } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -44,7 +43,7 @@ interface BackgroundWorkProps {
   readonly viewport: HTMLElement | null;
 }
 
-function AvailableBackgroundWork({
+export function BackgroundWork({
   sessionId,
   open,
   onOpenChange,
@@ -213,8 +212,4 @@ function AvailableBackgroundWork({
       </Tray>
     </div>
   );
-}
-
-export function BackgroundWork(props: BackgroundWorkProps) {
-  return nyte.host.terminal === undefined ? null : <AvailableBackgroundWork {...props} />;
 }

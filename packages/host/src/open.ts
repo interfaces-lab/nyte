@@ -65,6 +65,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly plugins?: readonly Plugin<"core">[];
   /** The directory whose `.nyte` holds the store, settings, plugins, secrets key and identity key; default `os.homedir()`. */
   readonly home?: string;
+  /** The login shell the default local provider's pty jobs run, read at each start; absent or null is `$SHELL`. */
+  readonly shell?: () => string | null;
 };
 
 /**
@@ -146,7 +148,9 @@ async function composeOpen(
   ];
 
   const plugins = [
-    ...(usesLocalProvider ? [{ id: "local", environment: localProvider({ home }) }] : []),
+    ...(usesLocalProvider
+      ? [{ id: "local", environment: localProvider({ home, shell: options.shell }) }]
+      : []),
     ...builtins.filter((builtin) => !given.some((plugin) => plugin.id === builtin.id)),
     ...given,
   ];

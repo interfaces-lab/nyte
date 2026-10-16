@@ -4,7 +4,6 @@ import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
-import { processEnvironment } from "@nyte-ai/core";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Host, HostView, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
@@ -42,7 +41,6 @@ import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { SavedServer } from "./server-settings.ts";
 import { findTailnetAddress } from "./tailnet.ts";
-import { TerminalSessions } from "./terminals.ts";
 
 export type DesktopUpdateActivity =
   | { readonly kind: "idle" }
@@ -124,6 +122,25 @@ async function listSessions(host: Host): Promise<readonly SessionInfo[]> {
   }
 
   return rows;
+}
+
+/** Counts the host's running pty jobs whose shell is not sitting at a prompt: the terminal commands a relaunch would stop. */
+async function busyTerminals(host: Host): Promise<number> {
+  const busy = await Promise.all(
+    (await host.workspaces.list()).map(async ({ id }) => {
+      const workspace = host.workspace(id);
+
+      const running = (await workspace.jobs.list()).filter(
+        (job) => job.pty !== null && job.state.kind === "running",
+      );
+
+      const idle = await Promise.all(running.map((job) => workspace.job(job.id).idle()));
+
+      return idle.filter((at) => !at).length;
+    }),
+  );
+
+  return busy.reduce((total, count) => total + count, 0);
 }
 
 /** The first wait before a host watch that ended or failed is opened again; it doubles up to the cap. */
@@ -290,7 +307,6 @@ export class DesktopHost {
   readonly #opened: Promise<Opened>;
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
-  readonly #terminals = new Map<HostWindow, TerminalSessions>();
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #rows: readonly SessionInfo[] = [];
@@ -327,6 +343,7 @@ export class DesktopHost {
       models: this.#deps.models,
       home,
       workspace: { kind: "local", path: home },
+      shell: () => this.#settings.terminalShell,
       plugins: [
         desktopSettingsPlugin,
         desktopBrowserPlugin(this.#deps.agent, home),
@@ -463,36 +480,15 @@ export class DesktopHost {
     "host.connect.revokeDevice": (_window, input) => this.#connect().revokeDevice(input),
     "host.connect.openAccount": () => this.#connect().openAccount(),
     "host.connect.signOut": () => this.#connect().signOut(),
-    "host.terminal.create": async (window, { id, workspacePath }) => {
-      const terminals = this.#windowTerminals(window);
-      await processEnvironment();
-
-      if (this.#closing !== undefined || this.#terminals.get(window) !== terminals)
-        throw new ExpectedHostError({ code: "unavailable", message: "Terminal window closed" });
-
-      return terminals.create({ id, cwd: workspacePath ?? this.#deps.home });
-    },
-    "host.terminal.write": async (window, input) => this.#windowTerminals(window).write(input),
-    "host.terminal.resize": async (window, input) => this.#windowTerminals(window).resize(input),
-    "host.terminal.acknowledge": async (window, input) =>
-      this.#windowTerminals(window).acknowledge(input),
-    "host.terminal.idle": async (window, input) => this.#windowTerminals(window).idle(input),
-    "host.terminal.close": async (window, input) => this.#windowTerminals(window).close(input),
   } satisfies HostCalls;
 
   releaseWindow(window: HostWindow): void {
     this.#selections.delete(window);
-    const terminals = this.#terminals.get(window);
-    this.#terminals.delete(window);
-    terminals?.dispose();
   }
 
   close(): Promise<void> {
     this.#closing ??= (async () => {
       this.#watching.abort();
-
-      for (const terminals of this.#terminals.values()) terminals.dispose();
-      this.#terminals.clear();
       this.#holdAwake();
       await this.#deps.connect?.close().catch(() => undefined);
       await this.#remoteSerial(() => this.#stopRemote()).catch(() => undefined);
@@ -506,13 +502,9 @@ export class DesktopHost {
 
   /** Asks the host when called, so a relaunch is never gated on a watch that went quiet. */
   async updateActivity(): Promise<DesktopUpdateActivity> {
-    const terminalCommandCount = [...this.#terminals.values()].reduce(
-      (total, terminals) => total + terminals.busyCount(),
-      0,
-    );
-
     const opened = await this.#opened.catch(() => undefined);
     const rows = opened === undefined ? [] : await listSessions(opened.host);
+    const terminalCommandCount = opened === undefined ? 0 : await busyTerminals(opened.host);
 
     const taskCount = rows.filter((row) =>
       row.heads.some((head) => head.execution.kind !== "idle"),
@@ -525,21 +517,6 @@ export class DesktopHost {
 
   async autostartConnect(): Promise<void> {
     await this.#deps.connect?.autostart(this.#connectShare);
-  }
-
-  #windowTerminals(window: HostWindow): TerminalSessions {
-    const existing = this.#terminals.get(window);
-
-    if (existing !== undefined) return existing;
-
-    const terminals = new TerminalSessions(
-      (event) => this.#deps.emitHostEvent(event, window),
-      () => this.#settings.terminalShell,
-    );
-
-    this.#terminals.set(window, terminals);
-
-    return terminals;
   }
 
   async #openWorkspace(

@@ -14,11 +14,11 @@ test("a paired browser reads, edits, blames, searches, and mentions workspace fi
   const readme = files.getByRole("treeitem", { name: /README\.md/u });
   await pair(page);
 
-  await test.step("the web workbench offers Files without native terminal or browser tabs", async () => {
+  await test.step("the web workbench offers Files and a terminal, without a native browser tab", async () => {
     const workbench = page.getByRole("navigation", { name: "Workbench navigation" });
     const filesAction = workbench.getByRole("button", { name: "Files", exact: true });
     await expect(filesAction).toBeVisible();
-    await expect(workbench.getByRole("button", { name: "Terminal", exact: true })).toHaveCount(0);
+    await expect(workbench.getByRole("button", { name: "Terminal", exact: true })).toBeVisible();
     await expect(workbench.getByRole("button", { name: "Browser", exact: true })).toHaveCount(0);
     await filesAction.click();
     await expect(page.getByRole("tab", { name: "Files", exact: true })).toBeVisible();

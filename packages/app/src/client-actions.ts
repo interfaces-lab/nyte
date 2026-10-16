@@ -13,11 +13,9 @@ export interface ClientCapabilities {
   readonly browser: boolean;
 }
 
-export function clientCapabilities(host: {
-  readonly terminal?: unknown;
-  readonly browser?: unknown;
-}): ClientCapabilities {
-  return { terminal: host.terminal !== undefined, browser: host.browser !== undefined };
+/** What the client can show: a terminal on every host (a pty job there), a browser only where the desktop gives it a native view. */
+export function clientCapabilities(host: { readonly browser?: unknown }): ClientCapabilities {
+  return { terminal: true, browser: host.browser !== undefined };
 }
 
 interface ActionDetails {

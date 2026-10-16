@@ -611,12 +611,6 @@ export interface BrowserFocusMessage {
   readonly focused: boolean;
 }
 
-export interface TerminalInfo {
-  readonly id: string;
-  readonly title: string;
-  readonly cwd: string;
-}
-
 /** A found release downloads at once; the renderer only ever hears about the download. */
 export type UpdateState =
   | { readonly kind: "idle" }
@@ -629,8 +623,6 @@ export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   /** settings.json changed: from any window, the terminal UI, or a hand edit. */
   | { kind: "settings_changed"; settings: HostSettings }
-  | { kind: "terminal_data"; id: string; data: string }
-  | { kind: "terminal_exit"; id: string; exitCode: number }
   | { kind: "workspace_opened"; workspace: SelectedWorkspace }
   /** A host mutation (file save, terminal) was refused. Sessions report trust through their activation. */
   | { kind: "workspace_trust_required"; path: string }
@@ -661,16 +653,6 @@ export type HostEvent =
       owner: string | null;
       url: string;
     };
-
-export interface TerminalBridge {
-  create(input: { id: string; workspacePath: string | null }): Promise<TerminalInfo>;
-  write(input: { id: string; data: string }): Promise<void>;
-  resize(input: { id: string; cols: number; rows: number }): Promise<void>;
-  acknowledge(input: { id: string; length: number }): Promise<void>;
-  /** True only when the host can see the shell prompt idle, so closing needs no confirmation. */
-  idle(input: { id: string }): Promise<boolean>;
-  close(input: { id: string }): Promise<void>;
-}
 
 export interface GitHubBridge {
   state(): Promise<GitHubProviderState>;
@@ -828,7 +810,6 @@ export interface HostBridge {
     x: number;
     y: number;
   }) => Promise<number | undefined>;
-  readonly terminal?: TerminalBridge;
   readonly browser?: BrowserBridge;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }

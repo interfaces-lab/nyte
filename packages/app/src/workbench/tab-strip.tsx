@@ -20,7 +20,6 @@ import {
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
-import { nyte } from "../nyte.ts";
 import { useSession } from "../queries.ts";
 import { button, glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -44,7 +43,7 @@ import type {
   WorkbenchViewState,
 } from "./controller.ts";
 import { readDeferred } from "../deferred.tsx";
-import { isJobTerminal, terminalActions, useTerminalRuntime } from "./terminal-store.ts";
+import { terminalActions, useTerminalRuntime } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 
@@ -184,8 +183,6 @@ type TerminalCloseState =
   | { readonly kind: "closing"; readonly tab: WorkbenchTab; readonly terminal: TerminalTab };
 
 function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void {
-  if (nyte.host.terminal === undefined) return;
-
   const id = workbenchController.actions.openTab({
     view,
     tab: { kind: "terminal", owner: { kind: "user" } },
@@ -254,19 +251,15 @@ export function WorkbenchTabStrip({
   };
 
   const requestTerminalClose = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
-    if (isJobTerminal(terminal)) {
+    if (terminal.kind === "job") {
       await closeTerminal(tab, terminal);
 
       return;
     }
 
-    const terminalBridge = nyte.host.terminal;
-
-    if (terminalBridge === undefined) return;
-
     const idle =
       terminal.state.kind === "running"
-        ? await terminalBridge.idle({ id: terminal.id }).catch(() => false)
+        ? await terminalActions.idle(terminal.id).catch(() => false)
         : true;
 
     if (idle) await closeTerminal(tab, terminal);
@@ -360,7 +353,7 @@ export function WorkbenchTabStrip({
               const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
               const label = terminal?.title ?? workbenchTabLabel(tab);
 
-              const agentTerminal = terminal !== undefined && isJobTerminal(terminal);
+              const agentTerminal = terminal !== undefined && terminal.kind === "job";
               const running = agentTerminal && terminal.state.kind === "running";
 
               const trigger = (

@@ -2,10 +2,8 @@ import { FitAddon, Ghostty, Terminal } from "ghostty-web";
 import type { ITheme } from "ghostty-web";
 import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
 import { toast } from "@nyte-ai/ui/toast";
-import { nyte } from "../nyte.ts";
 import { preferences } from "../preferences/index.ts";
 import { errorMessage } from "../errors.ts";
-import type { TerminalBridge } from "../bridge.ts";
 import { props } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
@@ -13,8 +11,8 @@ import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   attachTerminalOutput,
   getTerminal,
-  isShellTerminal,
   terminalActions,
+  terminalPrinted,
 } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 
@@ -27,14 +25,6 @@ interface TerminalView {
 let ghostty: Promise<Ghostty> | undefined;
 
 const views = new Map<string, TerminalView>();
-
-function terminalBridge(): TerminalBridge {
-  const terminal = nyte.host.terminal;
-
-  if (terminal === undefined) throw new Error("This host does not provide terminals");
-
-  return terminal;
-}
 
 function loadGhostty(): Promise<Ghostty> {
   ghostty ??= Ghostty.load(wasmUrl).catch((cause: unknown) => {
@@ -124,25 +114,14 @@ function terminalAppearance() {
 function sendInput(id: string, data: string): Promise<void> {
   const tab = getTerminal(id);
 
-  if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") {
+  if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running") {
     return Promise.resolve();
   }
 
-  const write = async (): Promise<void> => {
-    for (let start = 0; start < data.length;) {
-      let end = Math.min(start + 65536, data.length);
-      const last = data.charCodeAt(end - 1);
-
-      if (end < data.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
-      await terminalBridge().write({ id, data: data.slice(start, end) });
-      start = end;
-    }
-  };
-
-  return write().catch((cause: unknown) => {
+  return terminalActions.write(id, data).catch((cause: unknown) => {
     const current = getTerminal(id);
 
-    if (current !== undefined && isShellTerminal(current) && current.state.kind === "running") {
+    if (current !== undefined && current.kind === "shell" && current.state.kind === "running") {
       toast.add({
         type: "error",
         title: "Couldn't write to terminal",
@@ -161,7 +140,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const initialTab = getTerminal(id);
 
   if (initialTab === undefined) return undefined;
-  const commandOutput = !isShellTerminal(initialTab);
+  const commandOutput = initialTab.kind !== "shell";
   const root = document.documentElement;
   const initialAppearance = terminalAppearance();
   const element = document.createElement("div");
@@ -205,12 +184,18 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   if (commandOutput) terminal.textarea?.setAttribute("readonly", "");
 
-  if (!isShellTerminal(initialTab) && terminal.textarea !== undefined) {
-    terminal.textarea.value = initialTab.source.output;
-  }
+  let mirrorFrame = 0;
+
+  const mirrorOutput = (): void => {
+    cancelAnimationFrame(mirrorFrame);
+    mirrorFrame = requestAnimationFrame(() => {
+      if (terminal.textarea !== undefined) terminal.textarea.value = terminalPrinted(id);
+    });
+  };
+
+  if (commandOutput) mirrorOutput();
 
   terminal.textarea?.setAttribute("spellcheck", "false");
-  let disposed = false;
   let resizeFrame = 0;
   let lastSize = "";
 
@@ -223,19 +208,19 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     if (
       size === lastSize ||
       tab === undefined ||
-      !isShellTerminal(tab) ||
+      tab.kind !== "shell" ||
       tab.state.kind !== "running"
     ) {
       return;
     }
 
     lastSize = size;
-    void terminalBridge()
-      .resize({
+    void terminalActions
+      .resize(
         id,
-        cols: Math.min(1000, Math.max(2, terminal.cols)),
-        rows: Math.min(1000, Math.max(1, terminal.rows)),
-      })
+        Math.min(1000, Math.max(2, terminal.cols)),
+        Math.min(1000, Math.max(1, terminal.rows)),
+      )
       .catch((cause: unknown) => {
         toast.add({
           type: "error",
@@ -260,12 +245,9 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   };
 
   const update = (tab: TerminalTab): void => {
-    terminal.options.disableStdin = !isShellTerminal(tab) || tab.state.kind !== "running";
+    terminal.options.disableStdin = tab.kind !== "shell" || tab.state.kind !== "running";
 
-    if (!isShellTerminal(tab) && terminal.textarea !== undefined) {
-      terminal.textarea.value = tab.source.output;
-    }
-
+    if (commandOutput) mirrorOutput();
     scheduleFit();
   };
 
@@ -323,7 +305,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     event.stopPropagation();
     const tab = getTerminal(id);
 
-    if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") return;
+    if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running") return;
     terminal.paste(text);
   };
 
@@ -344,26 +326,14 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   views.set(id, view);
   attachTerminalOutput(id, {
     write(value) {
-      terminal.write(commandOutput ? value + "\u001b[?25l" : value, () => {
-        const tab = getTerminal(id);
+      terminal.write(commandOutput ? value + "\u001b[?25l" : value);
 
-        if (!disposed && tab !== undefined && isShellTerminal(tab)) {
-          void terminalBridge()
-            .acknowledge({ id, length: value.length })
-            .catch(() => undefined);
-        }
-      });
-    },
-    replace(value) {
-      // Clear through VT sequences: Ghostty.reset replaces WASM still held by its selection manager.
-      terminal.clearSelection();
-      terminal.scrollToBottom();
-      terminal.write("\u001b[3J\u001b[2J\u001b[H" + value + "\u001b[?25l");
+      if (commandOutput) mirrorOutput();
     },
     update,
     dispose() {
-      disposed = true;
       cancelAnimationFrame(resizeFrame);
+      cancelAnimationFrame(mirrorFrame);
       resize.disconnect();
       appearance.disconnect();
       stopBlink();

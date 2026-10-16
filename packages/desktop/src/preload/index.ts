@@ -139,14 +139,6 @@ const bridge = {
     openPluginsFolder: none("host.openPluginsFolder"),
     pathForFile: (file: File) => webUtils.getPathForFile(file),
     contextMenu: object("host.contextMenu"),
-    terminal: {
-      create: object("host.terminal.create"),
-      write: object("host.terminal.write"),
-      resize: object("host.terminal.resize"),
-      acknowledge: object("host.terminal.acknowledge"),
-      idle: object("host.terminal.idle"),
-      close: object("host.terminal.close"),
-    },
     browser: {
       open: object("host.browser.open"),
       navigate: object("host.browser.navigate"),

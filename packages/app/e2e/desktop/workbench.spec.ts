@@ -103,6 +103,10 @@ test("the workbench journey", async ({ desktop }) => {
       .getByRole("region", { name: "Terminal" });
 
     await expect(terminal.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
+    await expect(terminal.getByRole("status")).toHaveCount(0);
+    await terminal.getByRole("textbox", { name: "Terminal input" }).focus();
+    await page.keyboard.type("exit\r");
+    await expect(terminal.getByRole("status")).toHaveText(/Shell exited/u);
   });
 
   await test.step("Browser opens empty with its navigation disabled", async () => {

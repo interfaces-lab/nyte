@@ -222,22 +222,6 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
     strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
   ),
   "host.browser.focusPage": compile(strict({ surface: nonEmpty })),
-  "host.terminal.create": compile(
-    strict({ id: nonEmpty, workspacePath: Type.Union([nonEmpty, Type.Null()]) }),
-  ),
-  "host.terminal.write": compile(strict({ id: nonEmpty, data: Type.String({ maxLength: 65536 }) })),
-  "host.terminal.resize": compile(
-    strict({
-      id: nonEmpty,
-      cols: Type.Integer({ minimum: 2, maximum: 1000 }),
-      rows: Type.Integer({ minimum: 1, maximum: 1000 }),
-    }),
-  ),
-  "host.terminal.acknowledge": compile(
-    strict({ id: nonEmpty, length: Type.Integer({ minimum: 0, maximum: 1048576 }) }),
-  ),
-  "host.terminal.idle": compile(strict({ id: nonEmpty })),
-  "host.terminal.close": compile(strict({ id: nonEmpty })),
 };
 
 const callRequest = compile(

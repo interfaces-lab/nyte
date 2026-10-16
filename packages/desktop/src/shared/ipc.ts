@@ -42,7 +42,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.focusPage",
 ] as const;
 
-/** Operations the host process answers: the Nyte host, its listeners, remote access and terminals. */
+/** Operations the host process answers: the Nyte host, its listeners and remote access. */
 export const HOST_PROCESS_PATHS = [
   "host.endpoint",
   "host.state",
@@ -68,12 +68,6 @@ export const HOST_PROCESS_PATHS = [
   "host.connect.revokeDevice",
   "host.connect.openAccount",
   "host.connect.signOut",
-  "host.terminal.create",
-  "host.terminal.write",
-  "host.terminal.resize",
-  "host.terminal.acknowledge",
-  "host.terminal.idle",
-  "host.terminal.close",
 ] as const;
 
 export const HOST_OPERATION_PATHS = [...MAIN_OPERATION_PATHS, ...HOST_PROCESS_PATHS] as const;
@@ -116,7 +110,6 @@ export type DesktopBridge = {
         | "revealPath"
         | "openPluginsFolder"
         | "contextMenu"
-        | "terminal"
         | "browser"
       >
     >;

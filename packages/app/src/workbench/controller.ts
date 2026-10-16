@@ -309,11 +309,22 @@ const persistedBrowserTab = Type.Object(
 
 const persistedFilesTab = Type.Object({ id: nonEmpty, kind: Type.Literal("files") }, strict);
 
+/** A user's shell tab; the terminal store keeps its job and output under the same id. */
+const persistedTerminalTab = Type.Object(
+  {
+    id: nonEmpty,
+    kind: Type.Literal("terminal"),
+    owner: Type.Object({ kind: Type.Literal("user") }, strict),
+  },
+  strict,
+);
+
 const persistedTab = Type.Union([
   persistedFileTab,
   persistedChangesTab,
   persistedBrowserTab,
   persistedFilesTab,
+  persistedTerminalTab,
 ]);
 
 const persistedWorkbenchView = Type.Object(
@@ -345,7 +356,9 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
     case "changes":
       return tab;
     case "terminal":
-      return undefined;
+      return tab.owner.kind === "user"
+        ? { id: tab.id, kind: "terminal", owner: { kind: "user" } }
+        : undefined;
     default: {
       const _exhaustive: never = tab;
 

@@ -11,9 +11,10 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { useSession, useWorkspaceJobs } from "../queries.ts";
 import { connection } from "../sdk.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import type { WorkbenchTabId } from "./controller.ts";
 import { mountTerminal } from "./terminal-runtime";
-import { isJobTerminal, terminalActions, useTerminal } from "./terminal-store";
+import { getTerminal, terminalActions, useTerminal } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles } from "./terminal.stylex";
 
@@ -58,7 +59,7 @@ function TerminalStatus({
   readonly stop: () => void;
   readonly stopping: boolean;
 }): ReactElement | null {
-  if (isJobTerminal(tab)) {
+  if (tab.kind === "job") {
     if (tab.rendering.kind === "failed") {
       return (
         <div
@@ -139,7 +140,7 @@ function TerminalStatus({
       return (
         <div role="status" {...props(text.sm, terminalStyles.state)}>
           <span>
-            {tab.state.exitCode === 0
+            {tab.state.exitCode === 0 || tab.state.exitCode === null
               ? "Shell exited"
               : "Shell exited with code " + String(tab.state.exitCode)}
           </span>
@@ -166,16 +167,22 @@ export function TerminalPanel({
   readonly visible: boolean;
 }): ReactElement {
   const tab = useTerminal(tabId);
-  const jobSessionId = tab !== undefined && isJobTerminal(tab) ? tab.source.sessionId : undefined;
+
+  useMountEffect(() => {
+    if (getTerminal(tabId) === undefined)
+      void terminalActions.restore({ id: tabId, workspacePath });
+  });
+
+  const jobSessionId = tab !== undefined && tab.kind === "job" ? tab.sessionId : undefined;
   const workspace = useSession(jobSessionId).data?.workspace;
   const jobs = useWorkspaceJobs(jobSessionId === undefined ? undefined : workspace);
 
   const cancellation = useMutation({
     mutationFn: (current: TerminalTab) => {
-      if (!isJobTerminal(current) || workspace === undefined)
+      if (current.kind !== "job" || workspace === undefined)
         throw new Error("Only agent commands can be stopped here");
 
-      return connection().workspace(workspace).job(current.source.jobId).stop();
+      return connection().workspace(workspace).job(current.jobId).stop();
     },
   });
 
@@ -217,7 +224,7 @@ export function TerminalPanel({
                 void restart(tab);
               }}
             />
-            {(isJobTerminal(tab)
+            {(tab.kind === "job"
               ? tab.rendering.kind !== "failed"
               : tab.state.kind !== "failed") && <TerminalCanvas id={tab.id} visible={visible} />}
           </div>

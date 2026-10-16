@@ -95,7 +95,7 @@ export class HostProcess {
     return this.#secret(false, sealed);
   }
 
-  /** The window closed or left its document: its terminals end and its workspace is forgotten. */
+  /** The window closed or left its document: its workspace is forgotten. */
   release(window: HostWindow): void {
     this.#post({ kind: "release", window });
   }
