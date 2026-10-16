@@ -4,7 +4,7 @@
  */
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { sleep } from "./abort.ts";
-import { classifyAssistantFailure, isRetryableFailureClass } from "./failure.ts";
+import { classifyAssistantFailure, retryCanHelp } from "./failure.ts";
 
 /**
  * Bounded retries with exponential backoff. `maxAgentDelayMs` defaults to 60 seconds.
@@ -73,7 +73,7 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> 
  *   retried, but reported as unsuccessful if they happen after a retry was scheduled.
  *   Aborts during the backoff sleep are normalized to an aborted `AssistantMessage`
  *   too, so callers do not need to care when cancellation happened.
- * - A non-retryable error (per {@link isRetryableAssistantError}, including quota/
+ * - A non-retryable error (per {@link failedTransiently}, including quota/
  *   billing exhaustion) is returned immediately so deterministic errors fail fast.
  * - Otherwise retries up to `maxRetries` times with exponential backoff, emitting
  *   `onRetryScheduled` before each sleep, `onRetryAttemptStart` after each sleep before
@@ -109,7 +109,7 @@ export async function retryAssistantCall(
       return response;
     }
 
-    if (attempt >= maxAttempts || !isRetryableAssistantError(response)) {
+    if (attempt >= maxAttempts || !failedTransiently(response)) {
       if (lastRetry)
         await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
 
@@ -146,9 +146,6 @@ export async function retryAssistantCall(
  * transport error, as a function of its failure class. Callers handle context
  * overflow first and own their retry budget, backoff, and reporting.
  */
-export function isRetryableAssistantError(message: AssistantMessage): boolean {
-  return (
-    message.stopReason === "error" &&
-    isRetryableFailureClass(classifyAssistantFailure(message).class)
-  );
+export function failedTransiently(message: AssistantMessage): boolean {
+  return message.stopReason === "error" && retryCanHelp(classifyAssistantFailure(message).class);
 }

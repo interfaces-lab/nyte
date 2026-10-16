@@ -9,7 +9,7 @@ import {
 } from "../api/github-copilot-headers.ts";
 import {
   githubCopilotOAuth,
-  isGitHubCopilotCredential,
+  matchesCopilotCredential,
   type GitHubCopilotOAuthOptions,
 } from "../auth/oauth/github-copilot.ts";
 import { createProvider } from "../provider.ts";
@@ -31,7 +31,7 @@ export function githubCopilotProvider(options: GitHubCopilotOAuthOptions = {}) {
       filterModels: (models, credential) => {
         if (credential?.type !== "oauth") return models;
 
-        if (!isGitHubCopilotCredential(credential)) return [];
+        if (!matchesCopilotCredential(credential)) return [];
         const available = new Set(credential.availableModelIds);
 
         return models.filter((model) => available.has(model.id));

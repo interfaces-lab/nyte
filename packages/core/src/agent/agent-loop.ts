@@ -19,11 +19,11 @@ import type { AssistantMessageEventStream } from "@nyte-ai/ai";
 import {
   abortableSleep,
   DEFAULT_MAX_AGENT_RETRY_DELAY_MS,
-  isRetryableAssistantError,
+  failedTransiently,
   retryDelayMs,
 } from "@nyte-ai/ai/utils/retry";
 import type { RetryPolicy } from "@nyte-ai/ai/utils/retry";
-import { isContextOverflow, isRecoverableLength } from "@nyte-ai/ai/utils/overflow";
+import { overflowsContext, stoppedShort } from "@nyte-ai/ai/utils/overflow";
 import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
 
 export interface LoopRequest {
@@ -326,16 +326,16 @@ async function* respond<P extends PreparedRequest>(
   if (final.stopReason === "aborted") return { kind: "stopped", usage };
 
   if (final.stopReason === "error")
-    return isContextOverflow(final)
+    return overflowsContext(final)
       ? { kind: "overflow", failure: buildContextOverflowFailure(final), usage }
       : {
           kind: "failed",
           failure: classifyAssistantFailure(final),
-          retryable: isRetryableAssistantError(final),
+          retryable: failedTransiently(final),
           usage,
         };
 
-  if (final.stopReason === "length" && isRecoverableLength(final, prepared.info.maxOutput))
+  if (final.stopReason === "length" && stoppedShort(final, prepared.info.maxOutput))
     return { kind: "overflow", failure: buildContextOverflowFailure(final), usage };
   const message = final.stopReason === "length" ? failCutOffCalls(final) : final;
 

@@ -46,7 +46,7 @@ function schemaTypes(schema: XSchemaObject): readonly string[] {
   return IsType(schema) ? [schema.type].flat() : [];
 }
 
-function isStructuredSchema(schema: XSchema): boolean {
+function describesObjectOrArray(schema: XSchema): boolean {
   if (!IsSchemaObject(schema)) return false;
 
   const types = schemaTypes(schema);
@@ -100,7 +100,7 @@ function makeJsonSchemaNodeStrict(
     }
 
     for (const variant of schema.anyOf) {
-      if (isStructuredSchema(variant)) {
+      if (describesObjectOrArray(variant)) {
         throw new UnsupportedStrictJsonSchemaError("object and array unions are unsupported");
       }
 

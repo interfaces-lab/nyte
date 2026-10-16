@@ -10,7 +10,7 @@ import { classifyAssistantFailure } from "./failure.ts";
  * that says so, or, with `contextWindow`, a silent overflow the provider accepted
  * or truncated. The error text patterns live in `failure.ts`.
  */
-export function isContextOverflow(message: AssistantMessage, contextWindow?: number): boolean {
+export function overflowsContext(message: AssistantMessage, contextWindow?: number): boolean {
   return (
     classifyAssistantFailure(message, contextWindow === undefined ? undefined : { contextWindow })
       .class === "context_window"
@@ -23,7 +23,7 @@ export function isContextOverflow(message: AssistantMessage, contextWindow?: num
  * can make one bounded compact-and-retry attempt. `desiredMaxOutput` must be the original
  * limit before any context-based clamping.
  */
-export function isRecoverableLength(message: AssistantMessage, desiredMaxOutput: number): boolean {
+export function stoppedShort(message: AssistantMessage, desiredMaxOutput: number): boolean {
   return (
     message.stopReason === "length" &&
     desiredMaxOutput > 0 &&

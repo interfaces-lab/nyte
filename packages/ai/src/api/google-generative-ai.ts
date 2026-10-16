@@ -63,6 +63,10 @@ export interface GoogleOptions extends StreamOptions {
 
 let toolCallCounter = 0;
 
+/**
+ * Streams a Gemini response. Only `thought: true` marks a thought summary: a thought signature
+ * preserves reasoning context, but it can appear on any part and does not make that part a thought.
+ */
 export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
   model: Model<"google-generative-ai">,
   context: TranscriptContext,
@@ -104,7 +108,7 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
       if (candidate?.content?.parts) {
         for (const part of candidate.content.parts) {
           if (part.text !== undefined) {
-            const isThinking = isThinkingPart(part);
+            const isThinking = part.thought === true;
 
             if (
               !currentBlock ||
@@ -376,7 +380,7 @@ function buildParams(
     generationConfig.maxOutputTokens = options.maxTokens;
   }
 
-  const supportsStrictMode = isGemini3OrLater(model.id);
+  const supportsStrictMode = atLeastGemini3(model.id);
 
   const functionCallingMode =
     currentTools.length > 0
@@ -528,14 +532,6 @@ function resolveGoogleThinkingLevel(
   }
 }
 
-/**
- * `thought` marks a thought summary. A thought signature preserves reasoning context, but it can
- * appear on any part and does not make that part a thought summary.
- */
-function isThinkingPart(part: Pick<Part, "thought" | "thoughtSignature">): boolean {
-  return part.thought === true;
-}
-
 /** Preserve a signature when later streaming deltas omit it. */
 function retainThoughtSignature(
   existing: string | undefined,
@@ -546,20 +542,18 @@ function retainThoughtSignature(
 
 const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
 
-function isValidThoughtSignature(signature: string | undefined): boolean {
-  return (
-    signature !== undefined &&
-    signature.length > 0 &&
-    signature.length % 4 === 0 &&
-    base64SignaturePattern.test(signature)
-  );
-}
-
+/** Keeps a signature from the same provider and model when it is well-formed base64. */
 function resolveThoughtSignature(
   isSameProviderAndModel: boolean,
   signature: string | undefined,
 ): string | undefined {
-  return isSameProviderAndModel && isValidThoughtSignature(signature) ? signature : undefined;
+  return isSameProviderAndModel &&
+    signature !== undefined &&
+    signature.length > 0 &&
+    signature.length % 4 === 0 &&
+    base64SignaturePattern.test(signature)
+    ? signature
+    : undefined;
 }
 
 function getGeminiMajorVersion(modelId: string): number | undefined {
@@ -569,7 +563,7 @@ function getGeminiMajorVersion(modelId: string): number | undefined {
 }
 
 /** Gemini 3+ requires tool call ids and supports strict tool sampling. */
-function isGemini3OrLater(modelId: string): boolean {
+function atLeastGemini3(modelId: string): boolean {
   const majorVersion = getGeminiMajorVersion(modelId);
 
   return majorVersion !== undefined && majorVersion >= 3;
@@ -590,7 +584,7 @@ function convertMessages(
   const contents: Content[] = [];
 
   const normalizeToolCallId = (id: string): string => {
-    if (!isGemini3OrLater(model.id)) return id;
+    if (!atLeastGemini3(model.id)) return id;
 
     return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
   };
@@ -671,7 +665,7 @@ function convertMessages(
           functionCall: {
             name: block.name,
             args: block.arguments ?? {},
-            ...(isGemini3OrLater(model.id) && { id: block.id }),
+            ...(atLeastGemini3(model.id) && { id: block.id }),
           },
           ...(thoughtSignature && { thoughtSignature }),
         });
@@ -712,7 +706,7 @@ function convertMessages(
         name: message.toolName,
         response: message.isError ? { error: responseValue } : { output: responseValue },
         ...(hasImages && supportsMultimodalResponse && { parts: imageParts }),
-        ...(isGemini3OrLater(model.id) && { id: message.toolCallId }),
+        ...(atLeastGemini3(model.id) && { id: message.toolCallId }),
       },
     };
 

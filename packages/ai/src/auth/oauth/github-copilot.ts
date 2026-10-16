@@ -65,7 +65,7 @@ export interface GitHubCopilotOAuthOptions {
 }
 
 /** Credential storage is an external boundary, including provider-specific metadata. */
-export function isGitHubCopilotCredential(
+export function matchesCopilotCredential(
   value: unknown,
 ): value is Static<typeof CopilotCredential> {
   return Value.Check(CopilotCredential, value);
@@ -390,7 +390,7 @@ export function githubCopilotOAuth(
       return result.credential;
     },
     refresh: async (previous, signal) => {
-      if (!isGitHubCopilotCredential(previous)) throw new Error(CREDENTIAL_ERROR);
+      if (!matchesCopilotCredential(previous)) throw new Error(CREDENTIAL_ERROR);
 
       const result = await loadCopilotCredential({
         fetch: options.fetch,
@@ -402,7 +402,7 @@ export function githubCopilotOAuth(
       return result.credential;
     },
     async toAuth(credential) {
-      if (!isGitHubCopilotCredential(credential)) throw new Error(CREDENTIAL_ERROR);
+      if (!matchesCopilotCredential(credential)) throw new Error(CREDENTIAL_ERROR);
 
       return {
         apiKey: credential.access,

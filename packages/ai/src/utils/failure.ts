@@ -281,7 +281,7 @@ export function classifyAssistantFailure(
 }
 
 /** Whether another attempt can change the answer: load, limits that lift, and transport. */
-export function isRetryableFailureClass(failureClass: FailureClass): boolean {
+export function retryCanHelp(failureClass: FailureClass): boolean {
   switch (failureClass) {
     case "rate_limit":
     case "overloaded":

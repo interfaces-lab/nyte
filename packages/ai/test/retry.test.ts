@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, vi, test } from "vitest";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import {
-  isRetryableAssistantError,
+  failedTransiently,
   type RetryPolicy,
   retryAssistantCall,
   retryDelayMs,
@@ -51,29 +51,29 @@ function errorMessage(text: string): AssistantMessage {
 
 describe("provider retry classification", () => {
   test("retries provider overload, rate limiting, and explicit retry guidance", () => {
-    assert.equal(isRetryableAssistantError(errorMessage(openAIExplicitRetryMessage)), true);
-    assert.equal(isRetryableAssistantError(errorMessage(nvidiaNIMResourceExhaustedMessage)), true);
+    assert.equal(failedTransiently(errorMessage(openAIExplicitRetryMessage)), true);
+    assert.equal(failedTransiently(errorMessage(nvidiaNIMResourceExhaustedMessage)), true);
     // Regression for #9669.
-    assert.equal(isRetryableAssistantError(errorMessage(azurePeakLoadError)), true);
+    assert.equal(failedTransiently(errorMessage(azurePeakLoadError)), true);
     // Regression for #9627.
-    assert.equal(isRetryableAssistantError(errorMessage("520 status code (no body)")), true);
+    assert.equal(failedTransiently(errorMessage("520 status code (no body)")), true);
   });
 
   test("retries DNS failures, socket drops, and streams that end before a terminal event", () => {
-    assert.equal(isRetryableAssistantError(errorMessage(wrappedDnsLookupError)), true);
-    assert.equal(isRetryableAssistantError(errorMessage(bunFetchSocketClosedMessage)), true);
-    assert.equal(isRetryableAssistantError(errorMessage(openAIResponsesEarlyEofMessage)), true);
+    assert.equal(failedTransiently(errorMessage(wrappedDnsLookupError)), true);
+    assert.equal(failedTransiently(errorMessage(bunFetchSocketClosedMessage)), true);
+    assert.equal(failedTransiently(errorMessage(openAIResponsesEarlyEofMessage)), true);
   });
 
   test("does not retry quota exhaustion or a message that did not fail", () => {
-    assert.equal(isRetryableAssistantError(errorMessage("429 quota exceeded")), false);
+    assert.equal(failedTransiently(errorMessage("429 quota exceeded")), false);
     assert.equal(
-      isRetryableAssistantError(
+      failedTransiently(
         errorMessage('429 {"type":"error","error":{"type":"extra_usage_out_of_credits"}}'),
       ),
       false,
     );
-    assert.equal(isRetryableAssistantError(fauxAssistantMessage("not an error")), false);
+    assert.equal(failedTransiently(fauxAssistantMessage("not an error")), false);
   });
 });
 

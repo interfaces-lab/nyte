@@ -156,16 +156,10 @@ function estimateToolsTokens(tools: readonly (Tool | ToolReference)[] | undefine
   return estimateTextTokens(safeJsonStringify(tools));
 }
 
-function isMessageArray(
-  value: Context | TranscriptContext | readonly Message[],
-): value is readonly Message[] {
-  return Array.isArray(value);
-}
-
 export function estimateContextTokens(
   context: Context | TranscriptContext | readonly Message[],
 ): ContextUsageEstimate {
-  if (isMessageArray(context)) return estimateMessages(context);
+  if (!("messages" in context)) return estimateMessages(context);
 
   const estimate = estimateMessages(context.messages);
 

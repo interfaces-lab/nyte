@@ -81,7 +81,7 @@ function localOwnerPid(owner: string | undefined): number | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function isRunning(pid: number): boolean {
+function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
 
@@ -102,10 +102,10 @@ function ageMs(path: string): number | undefined {
 }
 
 /** Abandoned when the owning process is gone, and unconditionally once the lock ages out. */
-function isAbandoned(lockPath: string): boolean {
+function lockAbandoned(lockPath: string): boolean {
   const pid = localOwnerPid(readOwner(lockPath));
 
-  if (pid !== undefined && !isRunning(pid)) return true;
+  if (pid !== undefined && !processAlive(pid)) return true;
   const age = ageMs(lockPath);
 
   return age !== undefined && age > LOCK_ABANDONED_MS;
@@ -161,7 +161,7 @@ function reclaimAbandonedLock(lockPath: string, owner: string): void {
   }
 
   try {
-    if (isAbandoned(lockPath)) rmSync(lockPath, { force: true });
+    if (lockAbandoned(lockPath)) rmSync(lockPath, { force: true });
   } finally {
     rmSync(recoveryPath, { force: true });
   }
@@ -200,7 +200,7 @@ async function acquireLock(
       throw new Error(`Timed out waiting for the credential lock at ${lockPath}`);
     }
 
-    if (isAbandoned(lockPath)) reclaimAbandonedLock(lockPath, owner);
+    if (lockAbandoned(lockPath)) reclaimAbandonedLock(lockPath, owner);
     await new Promise<void>((resolve) => {
       setTimeout(resolve, LOCK_RETRY_MS);
     });
