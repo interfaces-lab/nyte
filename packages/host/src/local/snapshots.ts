@@ -210,7 +210,9 @@ export function localSnapshots(
     const legacy = refs.filter((ref) => ref.name.startsWith(LEGACY_REFS));
     const known =
       current === null ? { id: "", root: [], last: null } : await readKept(repo, current);
+
     const open = known.last !== null && known.last.trees.length < GENERATION ? known.last : null;
+
     const openTrees = open?.trees ?? [];
 
     const adding = [...new Set([...legacy.map((ref) => ref.id), ...taken])].filter(
