@@ -180,7 +180,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     credential: { kind: "token", token: "scripted-token-0000" },
     sessions: {
       watch: () => replay([rows]),
-      create: refuse,
+      start: refuse,
       list: async () => ({ items: rows, next: null }),
     },
     workspaces: {

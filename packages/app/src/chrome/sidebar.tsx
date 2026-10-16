@@ -33,6 +33,7 @@ import {
   hideFromPanes,
   usePaneActions,
   usePaneControllerSnapshot,
+  usePaneViewStateStore,
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
@@ -171,6 +172,7 @@ export function Sidebar(): ReactElement {
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
+  const viewStore = usePaneViewStateStore();
   const workingSessions = useWorkingSessionIds();
   const page = useStagePage();
   const paletteOpen = useOverlays().search;
@@ -211,12 +213,16 @@ export function Sidebar(): ReactElement {
           .find((session) => session.id === paneSessionId);
 
   if (hold?.sessionId !== paneSession?.id) {
+    if (hold !== undefined) viewStore.forgetStart(hold.sessionId);
+
     setHold(
       paneSession === undefined
         ? undefined
         : {
             sessionId: paneSession.id,
-            shelf: deriveShelf(paneSession, workingSessions, undefined),
+            shelf: viewStore.startedFromDraft(paneSession.id)
+              ? "inbox"
+              : deriveShelf(paneSession, workingSessions, undefined),
           },
     );
   }

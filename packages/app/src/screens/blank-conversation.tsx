@@ -13,7 +13,9 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ReactElement } from "react";
+import { SdkError } from "@nyte-ai/sdk";
 import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { ComposerFrame } from "../conversation/composer-frame.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
@@ -23,7 +25,7 @@ import type {
   ComposerSubmission,
 } from "../conversation/composer-document.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
-import { composerSendPlan, sendComposerMessage } from "../conversation/composer-send.ts";
+import { composerSendPlan, startComposerChat } from "../conversation/composer-send.ts";
 import { ModelPicker } from "../conversation/model-picker.tsx";
 import { WorkspaceContext } from "./workspace-context.tsx";
 import {
@@ -35,7 +37,7 @@ import { activePane } from "../layout/pane-layout.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
 import { useCatalog, useHostState, useMentionFiles, useSetPreference } from "../queries.ts";
-import { connected } from "../sdk.tsx";
+import { connected, sessionWatch } from "../sdk.tsx";
 
 import { errorMessage } from "../errors.ts";
 import { pickerDefaults } from "../preference-projection.ts";
@@ -79,9 +81,9 @@ function useBlankViewBinding(
 }
 
 /**
- * A new chat: the draft composer until the first message creates the chat
- * and the pane moves to it. A failed start's raw cause is diagnostic only: it
- * rides in `title`, never in body copy.
+ * A new chat: the draft composer until the first message starts the chat
+ * and the pane moves to it once its first view arrived. A failed start's raw
+ * cause is diagnostic only: it rides in `title`, never in body copy.
  */
 export function BlankConversation({
   paneId,
@@ -146,26 +148,40 @@ export function BlankConversation({
       selectionEnd: document.selectionEnd,
     });
 
+    const id = asId<"session">(submitted.id);
+
     try {
       const connection = await connected();
-      const scope = workspace === undefined ? {} : { workspace: workspace.id };
 
-      const session = await connection.sessions.create(
-        defaults === undefined
-          ? scope
-          : { ...scope, configuration: modelConfiguration(defaults.model, defaults.thinkingLevel) },
+      await startComposerChat(
+        connection,
+        {
+          id,
+          ...(workspace !== undefined && { workspace: workspace.id }),
+          ...(defaults !== undefined && {
+            configuration: modelConfiguration(defaults.model, defaults.thinkingLevel),
+          }),
+        },
+        plan,
       );
 
-      await sendComposerMessage(connection.session(session.id), plan);
+      await sessionWatch(id)
+        .next()
+        .catch(() => undefined);
       setAttachmentError(undefined);
       setSending(false);
-      actions.openSessionInPane(paneId, session.id);
+      actions.openSessionInPane(paneId, id);
 
       return true;
     } catch (cause: unknown) {
       viewStore.restoreBlank(paneId, submitted);
       setSending(false);
-      setStartFailure({ kind: "start", cause: errorMessage(cause) });
+
+      setStartFailure(
+        cause instanceof SdkError && cause.code === "invalid"
+          ? { kind: "refused", message: cause.message }
+          : { kind: "start", cause: errorMessage(cause) },
+      );
 
       return false;
     }

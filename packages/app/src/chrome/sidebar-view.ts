@@ -64,15 +64,15 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
-export function sessionIsDraft(session: SessionInfo): boolean {
-  return session.name === null && session.heads.every((head) => head.tip.kind === "start");
-}
-
 /**
  * `sessionMark` reports `waiting` only for a run parked on a reply; one parked
- * on background work arrives here as `working`.
+ * on background work arrives here as `working`. A session is never a draft:
+ * `draft` is the client's chats that have not started.
  */
-function deriveSessionStatus(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
+function deriveSessionStatus(
+  session: SessionInfo,
+  working: ReadonlySet<SessionId>,
+): Exclude<SessionStatus, "draft"> {
   const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
@@ -83,11 +83,7 @@ function deriveSessionStatus(session: SessionInfo, working: ReadonlySet<SessionI
     case "working":
       return "working";
     case "idle":
-      if (sessionHasUnreadCompletion(session)) return "unread";
-
-      if (sessionIsDraft(session)) return "draft";
-
-      return "done";
+      return sessionHasUnreadCompletion(session) ? "unread" : "done";
     default: {
       const _exhaustive: never = mark;
 
@@ -117,7 +113,6 @@ export function deriveShelf(
   switch (status) {
     case "needs-attention":
     case "unread":
-    case "draft":
       return "inbox";
     case "working":
       return "working";
@@ -140,9 +135,9 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
 }
 
 /**
- * Needs a decision, then running, then finished and waiting on a look, then
- * drafts. Read state takes no part: opening a chat never moves it. A chat
- * leaves the ranking only when it is archived.
+ * Needs a decision, then running, then finished and waiting on a look. Read
+ * state takes no part: opening a chat never moves it. A chat leaves the
+ * ranking only when it is archived.
  */
 function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): number {
   const mark = sessionActivityMark(session, working.has(session.id));
@@ -155,7 +150,7 @@ function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): numbe
     case "working":
       return 1;
     case "idle":
-      return sessionIsDraft(session) ? 3 : 2;
+      return 2;
     default: {
       const _exhaustive: never = mark;
 

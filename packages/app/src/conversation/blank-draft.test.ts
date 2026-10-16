@@ -95,7 +95,7 @@ test("active draft removal does not depend on the sidebar content index", () => 
 test("taking a draft owns the live editor document and clears the pane immediately", () => {
   const controller = new PaneController({ storageKey: "take-live-draft" });
   writeDraft(controller, "Stale parent text");
-  const composer = controller.viewState.readBlank("primary").composer;
+  const { id, composer } = controller.viewState.readBlank("primary");
   const text = "Pasted reference\n\nFirst request";
   const published: string[] = [];
 
@@ -110,12 +110,15 @@ test("taking a draft owns the live editor document and clears the pane immediate
     selectionEnd: text.length,
   });
 
+  assert.equal(submitted.id, id);
   assert.equal(submitted.composer.draft, text);
+  assert.notEqual(controller.viewState.readBlank("primary").id, id);
   assert.equal(controller.viewState.readBlank("primary").composer.draft, "");
   assert.deepEqual(controller.viewState.drafts(), []);
   assert.deepEqual(published, [""]);
 
   controller.viewState.restoreBlank("primary", submitted);
+  assert.equal(controller.viewState.readBlank("primary").id, id);
   assert.equal(controller.viewState.readBlank("primary").composer.draft, text);
   unsubscribe();
 });
@@ -140,6 +143,11 @@ test("restoring a failed send parks it instead of replacing a newer draft", () =
       .map((draft) => draft.composer.draft)
       .sort(),
     ["First request", "Second request"],
+  );
+
+  assert.equal(
+    controller.viewState.drafts().find((draft) => draft.composer.draft === "First request")?.id,
+    submitted.id,
   );
 });
 
