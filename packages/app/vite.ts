@@ -29,6 +29,37 @@ export function dropInlinedGhosttyWasm(): Plugin {
   };
 }
 
+/**
+ * Each Central glyph module (`Icon*\/index.mjs`) is bundled standalone and
+ * inlines its own copy of the icon base component, about 1.3 KB per glyph.
+ * The import resolves every glyph against the package's one `CentralIconBase`
+ * module instead, so the base ships once. A glyph module that no longer has
+ * the bundled shape fails the build rather than shipping its copy.
+ */
+export function shareCentralIconBase(): Plugin {
+  const inlinedBase =
+    /^(import \w+ from"react";)import \w+ from"react";.*?;(\w+)\.displayName="CentralIconBase";.*?;(var \w+=\w+\.memo\()/su;
+
+  return {
+    name: "nyte:share-central-icon-base",
+    transform: {
+      filter: { id: /\/@central-icons-react\/[^/]+\/Icon[^/]+\/index\.mjs(?:\?|$)/u },
+      handler(code, id) {
+        const match = inlinedBase.exec(code);
+
+        if (match === null) this.error(`${id} no longer inlines CentralIconBase as expected`);
+
+        const [inlined, react, base, glyph] = match;
+
+        return {
+          code: `${react}import{CentralIconBase as ${base}}from"../CentralIconBase/index.mjs";${glyph}${code.slice(inlined.length)}`,
+          map: null,
+        };
+      },
+    },
+  };
+}
+
 /** A module the interface loads on first use, as an entry chunk of its own. */
 export interface DeferredEntry {
   /** File URL of the module that publishes the entry's runtime with `publishDeferred`. */

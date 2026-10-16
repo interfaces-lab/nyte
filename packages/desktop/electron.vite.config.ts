@@ -5,7 +5,13 @@ import { resolve } from "node:path";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/deferred-entries.ts";
-import { deferredChunks, dropInlinedGhosttyWasm, stylex, withoutKatex } from "@nyte-ai/app/vite";
+import {
+  deferredChunks,
+  dropInlinedGhosttyWasm,
+  shareCentralIconBase,
+  stylex,
+  withoutKatex,
+} from "@nyte-ai/app/vite";
 
 const offlineModels: Plugin = {
   name: "nyte:e2e-models",
@@ -32,6 +38,7 @@ const renderer = {
       },
     }),
     withoutKatex(),
+    shareCentralIconBase(),
     dropInlinedGhosttyWasm(),
     stylex.vite({
       useCSSLayers: true,
