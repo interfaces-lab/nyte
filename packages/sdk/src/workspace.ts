@@ -24,7 +24,7 @@ import type {
 } from "@nyte-ai/core";
 import type { OperationInput } from "@nyte-ai/protocol";
 import { resolveCapability } from "./capability.ts";
-import { loginHandle } from "./client.ts";
+import { loginHandle } from "./login.ts";
 import { batchOutcome, receiptHandle } from "./receipts.ts";
 import type { Rows } from "./rows.ts";
 
