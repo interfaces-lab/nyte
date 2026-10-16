@@ -45,10 +45,21 @@ export interface BlankViewState {
   readonly composer: ComposerViewState;
 }
 
+/**
+ * Whether a draft takes edits, or holds a first message waiting to start its
+ * chat. Each send gets its own `sending` object: the start goes ahead only
+ * while the draft still holds that one, so a cancel, a park or a newer send
+ * withdraws it. Never persisted; a relaunch shows the draft editable.
+ */
+export type DraftStatus = { readonly kind: "editing" } | { readonly kind: "sending" };
+
 export interface ChatDraft extends BlankViewState {
   readonly id: string;
   readonly updatedAt: number;
+  readonly status: DraftStatus;
 }
+
+const EDITING: DraftStatus = { kind: "editing" };
 
 export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
   draft: "",
@@ -194,7 +205,13 @@ function hydrateDraft(draft: PersistedChatDraft, images: PersistedImages | undef
     id: draft.id,
     updatedAt: draft.updatedAt,
     composer: composerView(draft.composer, images?.drafts[draft.id]),
+    status: EDITING,
   };
+}
+
+/** A parked draft takes edits: parking it withdraws a send it was waiting on. */
+function parkedDraft(draft: ChatDraft): ChatDraft {
+  return draft.status.kind === "editing" ? draft : { ...draft, status: EDITING };
 }
 
 function persistablePane(state: PaneDraftState): Static<typeof paneDraftsSchema> {
@@ -316,6 +333,7 @@ export class SessionViewStateStore {
       ...state,
       id: current.id,
       updatedAt: contentChanged ? Date.now() : current.updatedAt,
+      status: current.status,
     };
 
     drafts.active = next;
@@ -346,7 +364,7 @@ export class SessionViewStateStore {
     const current = drafts.active;
 
     if (!draftHasContent(current)) return;
-    drafts.parked.set(current.id, current);
+    drafts.parked.set(current.id, parkedDraft(current));
     drafts.active = this.#createDraft();
     this.#emit();
   }
@@ -361,7 +379,7 @@ export class SessionViewStateStore {
     const target = this.#draftState(paneId);
 
     if (draftHasContent(target.active)) {
-      target.parked.set(target.active.id, target.active);
+      target.parked.set(target.active.id, parkedDraft(target.active));
     }
 
     if (located.kind === "active") {
@@ -393,35 +411,44 @@ export class SessionViewStateStore {
     return true;
   }
 
-  /** Claims the pane's draft for its start; its id becomes the chat's, and the pane gets a fresh draft. */
-  takeBlank(paneId: PaneId, composer: ComposerViewState): ChatDraft {
+  /** A draft wherever it is, active or parked. */
+  readDraft(draftId: string): ChatDraft | undefined {
+    return this.#findDraft(draftId)?.draft;
+  }
+
+  /**
+   * Holds the pane's draft, as sent, for the start of its chat; the draft
+   * stays on screen under its id until the chat opens. Refused while the
+   * draft already waits on a send.
+   */
+  beginSend(paneId: PaneId, composer: ComposerViewState): DraftStatus | undefined {
     const drafts = this.#draftState(paneId);
     const current = drafts.active;
 
-    const submitted: ChatDraft = {
+    if (current.status.kind === "sending") return undefined;
+    const status: DraftStatus = { kind: "sending" };
+
+    drafts.active = {
       ...current,
       composer,
+      status,
       updatedAt: current.composer.draft === composer.draft ? current.updatedAt : Date.now(),
     };
 
-    drafts.active = this.#createDraft();
     this.#emit();
 
-    return submitted;
+    return status;
   }
 
-  /** Puts a failed start's draft back under its own id, so a retry is the same start. */
-  restoreBlank(paneId: PaneId, submitted: ChatDraft): void {
-    const drafts = this.#draftState(paneId);
-    const restored = { ...submitted, updatedAt: Date.now() };
+  /** The send did not start a chat, or was withdrawn: the draft takes edits again, as it was sent. */
+  cancelSend(draftId: string): void {
+    for (const drafts of this.#drafts.values()) {
+      if (drafts.active.id !== draftId || drafts.active.status.kind === "editing") continue;
+      drafts.active = { ...drafts.active, status: EDITING };
+      this.#emit();
 
-    if (!draftHasContent(drafts.active)) {
-      drafts.active = restored;
-    } else if (draftHasContent(submitted)) {
-      drafts.parked.set(restored.id, restored);
+      return;
     }
-
-    this.#emit();
   }
 
   #draftState(paneId: PaneId): PaneDraftState {
@@ -453,6 +480,7 @@ export class SessionViewStateStore {
       composer: DEFAULT_COMPOSER_VIEW_STATE,
       id: crypto.randomUUID(),
       updatedAt: Date.now(),
+      status: EDITING,
     };
   }
 

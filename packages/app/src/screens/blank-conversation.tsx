@@ -16,6 +16,8 @@ import type { ReactElement } from "react";
 import { SdkError } from "@nyte-ai/sdk";
 import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import { Button } from "@nyte-ai/ui/button";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { ComposerFrame } from "../conversation/composer-frame.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
@@ -36,7 +38,13 @@ import {
 import { activePane } from "../layout/pane-layout.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
-import { useCatalog, useHostState, useMentionFiles, useSetPreference } from "../queries.ts";
+import {
+  useCatalog,
+  useHostLink,
+  useHostState,
+  useMentionFiles,
+  useSetPreference,
+} from "../queries.ts";
 import { connected, sessionWatch } from "../sdk.tsx";
 
 import { errorMessage } from "../errors.ts";
@@ -108,8 +116,8 @@ export function BlankConversation({
     | { readonly kind: "refused"; readonly message: string }
   >();
 
-  const [sending, setSending] = useState(false);
-
+  const sending = viewState.status.kind === "sending";
+  const hostAnswered = useHostLink() !== undefined;
   const attachments = viewState.composer.attachments;
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
@@ -135,69 +143,67 @@ export function BlankConversation({
     delivery: Delivery,
     document: ComposerDocumentState,
   ): Promise<boolean> => {
-    if (sending || attachmentReads !== 0) return false;
+    if (attachmentReads !== 0) return false;
 
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
     if (plan.kind !== "message") return false;
-    setSending(true);
-    setStartFailure(undefined);
+    const draft = viewStore.readBlank(paneId);
 
-    const submitted = viewStore.takeBlank(paneId, {
-      ...viewStore.readBlank(paneId).composer,
+    const composer = {
+      ...draft.composer,
       draft: document.text,
       selectionStart: document.selectionStart,
       selectionEnd: document.selectionEnd,
-    });
+    };
 
-    const id = asId<"session">(submitted.id);
+    const status = viewStore.beginSend(paneId, composer);
+
+    if (status === undefined) return false;
+    setStartFailure(undefined);
+    const id = asId<"session">(draft.id);
+
+    const input = {
+      id,
+      ...(workspace !== undefined && { workspace: workspace.id }),
+      ...(defaults !== undefined && {
+        configuration: modelConfiguration(defaults.model, defaults.thinkingLevel),
+      }),
+    };
+
+    const connection = await connected();
+
+    if (viewStore.readDraft(draft.id)?.status !== status) return false;
 
     try {
-      const connection = await connected();
-
-      await startComposerChat(
-        connection,
-        {
-          id,
-          ...(workspace !== undefined && { workspace: workspace.id }),
-          ...(defaults !== undefined && {
-            configuration: modelConfiguration(defaults.model, defaults.thinkingLevel),
-          }),
-        },
-        plan,
-      );
-
+      await startComposerChat(connection, input, plan);
       await sessionWatch(id)
         .next()
         .catch(() => undefined);
       setAttachmentError(undefined);
-      setSending(false);
       actions.openSessionInPane(paneId, id);
+      viewStore.removeDraft(draft.id);
 
       return true;
     } catch (cause: unknown) {
-      const started = await connected()
-        .then((connection) => connection.session(id).info())
+      const started = await connection
+        .session(id)
+        .info()
         .then(
           () => true,
           () => false,
         );
 
-      setSending(false);
-
       if (started) {
         if (cause instanceof SdkError && cause.code === "invalid")
-          viewStore.updateSession(id, paneId, (state) => ({
-            ...state,
-            composer: submitted.composer,
-          }));
+          viewStore.updateSession(id, paneId, (state) => ({ ...state, composer }));
         actions.openSessionInPane(paneId, id);
+        viewStore.removeDraft(draft.id);
 
         return true;
       }
 
-      viewStore.restoreBlank(paneId, submitted);
-
+      viewStore.cancelSend(draft.id);
       setStartFailure(
         cause instanceof SdkError && cause.code === "invalid"
           ? { kind: "refused", message: cause.message }
@@ -324,6 +330,14 @@ export function BlankConversation({
               />
             }
           />
+          {sending && !hostAnswered && (
+            <div role="status" {...props(text.base, threadStyles.pendingStart)}>
+              Sends when Nyte connects
+              <Button variant="ghost" size="xs" onClick={() => viewStore.cancelSend(viewState.id)}>
+                Cancel
+              </Button>
+            </div>
+          )}
           {startFailure !== undefined && (
             <div
               role="alert"
