@@ -575,6 +575,19 @@ export function useWorkspaceFile(path: string | undefined) {
   });
 }
 
+async function searchWorkspace(input: { readonly query: string; readonly limit?: number }) {
+  const matches: Extract<SearchFrame, { readonly kind: "match" }>[] = [];
+  let truncated = false;
+
+  for await (const frame of (await workspaceFiles()).search(input)) {
+    if (frame.kind === "match") matches.push(frame);
+
+    if (frame.kind === "truncated") truncated = true;
+  }
+
+  return { matches, truncated };
+}
+
 export function useWorkspaceSearch(
   input: { readonly query: string; readonly limit?: number } | undefined,
   enabled = true,
@@ -584,18 +597,10 @@ export function useWorkspaceSearch(
 
   return useQuery({
     queryKey: keys.workspaceSearch(workspace ?? "", input),
-    queryFn: async () => {
+    queryFn: () => {
       if (input === undefined) throw new Error("Type to search");
-      const matches: Extract<SearchFrame, { readonly kind: "match" }>[] = [];
-      let truncated = false;
 
-      for await (const frame of (await workspaceFiles()).search(input)) {
-        if (frame.kind === "match") matches.push(frame);
-
-        if (frame.kind === "truncated") truncated = true;
-      }
-
-      return { matches, truncated };
+      return searchWorkspace(input);
     },
     enabled: enabled && workspace !== undefined && input !== undefined && input.query.length > 0,
     staleTime: 0,

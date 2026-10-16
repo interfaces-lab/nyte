@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { ComposerFrame } from "./composer.tsx";
+import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerDocumentState } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 
@@ -140,8 +140,9 @@ export async function run(): Promise<string> {
         await paint();
         const editor = editorRef.current;
 
-        if (editor === null || editor.element === null) throw new Error("Editor unavailable");
-        const area = editor.element;
+        const area = editor?.readElement() ?? null;
+
+        if (editor === null || area === null) throw new Error("Editor unavailable");
         const selection = document.getSelection();
 
         if (selection === null) throw new Error("Selection unavailable");

@@ -42,17 +42,19 @@ export function messageFiles(content: UserContent): readonly MessageFile[] {
   return content.flatMap((part) => (part.kind === "file" ? [part] : []));
 }
 
+async function readBlobUrl(blob: BlobId): Promise<string> {
+  const reader = await connection().blob(blob);
+  const chunks: Uint8Array<ArrayBuffer>[] = [];
+
+  for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
+
+  return URL.createObjectURL(new Blob(chunks, { type: reader.mime ?? "" }));
+}
+
 export function useBlobUrl(blob: BlobId): string | undefined {
   const read = useQuery({
     queryKey: ["blob", blob],
-    queryFn: async () => {
-      const reader = await connection().blob(blob);
-      const chunks: Uint8Array<ArrayBuffer>[] = [];
-
-      for await (const chunk of reader.chunks()) chunks.push(new Uint8Array(chunk));
-
-      return URL.createObjectURL(new Blob(chunks, { type: reader.mime ?? "" }));
-    },
+    queryFn: () => readBlobUrl(blob),
     staleTime: Infinity,
     gcTime: Infinity,
   });

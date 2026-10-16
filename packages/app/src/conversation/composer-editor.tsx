@@ -31,7 +31,8 @@ import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./styles.stylex.ts";
 
 export interface ComposerEditorHandle {
-  readonly element: HTMLDivElement | null;
+  /** The editable root, or null once the editor is destroyed. */
+  readElement(): HTMLDivElement | null;
   focus(options?: FocusOptions): void;
   read(): ComposerSubmission;
   readDocument(): ComposerDocumentState;
@@ -174,7 +175,7 @@ export function ComposerEditor({
 
   const handle = useMemo<ComposerEditorHandle>(
     () => ({
-      get element() {
+      readElement: () => {
         const root = editor.isDestroyed ? null : editor.view.dom;
 
         return root instanceof HTMLDivElement ? root : null;
