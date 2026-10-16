@@ -159,7 +159,7 @@ export const proseStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
-    textAlign: "left",
+    textAlign: "start",
     verticalAlign: "top",
   },
   headerCell: { backgroundColor: role.bgMutedTranslucent, fontWeight: type.weightSemibold },
