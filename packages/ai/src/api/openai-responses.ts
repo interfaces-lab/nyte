@@ -47,20 +47,11 @@ const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"
 // OpenAI Responses rejects max_output_tokens below 16.
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
-function detectSessionAffinityFormat(
-  model: Pick<Model<"openai-responses">, "provider" | "baseUrl">,
-) {
-  return model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai")
-    ? "openrouter"
-    : "openai";
-}
-
 function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCompat> {
   return {
     supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
     supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
-    sessionAffinityFormat:
-      model.compat?.sessionAffinityFormat ?? detectSessionAffinityFormat(model),
+    sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? "openai",
     supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
     supportsStrictMode: model.compat?.supportsStrictMode ?? false,
     supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,
