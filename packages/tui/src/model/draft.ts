@@ -56,6 +56,9 @@ export const NO_PARTS: DraftParts = new Map();
 
 export const PASTE_COLLAPSE_LINES = 8;
 
+/** A paste longer than this many characters becomes a part even on one line. */
+export const PASTE_COLLAPSE_CHARS = 2_000;
+
 export function draftModel(draft: Draft): DraftModel {
   if (draft.text === "") return { kind: "empty" };
   const parsed = parseComposerSubmission(draft.text);
@@ -215,8 +218,12 @@ function markerFor(parts: DraftParts, part: DraftPart): string {
       );
     case "image":
       return `[Image ${String(nextNumber(parts, "image"))}]`;
-    case "paste":
-      return `[Paste #${String(nextNumber(parts, "paste"))} ${String(part.text.split("\n").length)} lines]`;
+    case "paste": {
+      const lines = part.text.split("\n").length;
+      const size = lines > 1 ? `${String(lines)} lines` : `${String(part.text.length)} chars`;
+
+      return `[Paste #${String(nextNumber(parts, "paste"))} ${size}]`;
+    }
     case "shell":
       return uniqueMarker(parts, `[Shell ${part.command.trim().replace(/\s+/gu, " ")}]`);
     default: {

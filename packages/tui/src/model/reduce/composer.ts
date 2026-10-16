@@ -18,6 +18,7 @@ import {
   liveMarkers,
   markerAt,
   NO_PARTS,
+  PASTE_COLLAPSE_CHARS,
   PASTE_COLLAPSE_LINES,
   sameSnapshot,
   snapshot,
@@ -519,7 +520,10 @@ function insertPaste(
     if (before !== undefined && part?.kind === "paste" && part.text === insert.text)
       return replaceRange(state, before.from, before.to, insert.text);
 
-    if (insert.text.split("\n").length <= PASTE_COLLAPSE_LINES)
+    if (
+      insert.text.length <= PASTE_COLLAPSE_CHARS &&
+      insert.text.split("\n").length <= PASTE_COLLAPSE_LINES
+    )
       return insertText(state, insert.text, "cursor");
     const added = addPart(draft.parts, { kind: "paste", text: insert.text });
 

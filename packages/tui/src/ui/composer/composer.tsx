@@ -126,7 +126,19 @@ export function Composer(props: { readonly markers: readonly MarkerSpan[] }): JS
     syncMarkers(area, attachment.id, props.markers);
   };
 
+  let reporting = false;
+
   const report = (): void => {
+    if (reporting) return;
+    reporting = true;
+
+    queueMicrotask(() => {
+      reporting = false;
+      flush();
+    });
+  };
+
+  const flush = (): void => {
     if (area === undefined || area.isDestroyed) return;
     const next = readDraft(area);
 

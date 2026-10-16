@@ -104,10 +104,10 @@ describe("markers", () => {
     const current = draft(`${b.marker} and ${b.marker}`, b.parts);
 
     expect(liveMarkers(current).map((span) => [span.marker, span.from])).toEqual([
-      ["[Paste #2 1 lines]", 0],
-      ["[Paste #2 1 lines]", 23],
+      ["[Paste #2 1 chars]", 0],
+      ["[Paste #2 1 chars]", 23],
     ]);
-    expect([...snapshot(current).parts.keys()]).toEqual(["[Paste #2 1 lines]"]);
+    expect([...snapshot(current).parts.keys()]).toEqual(["[Paste #2 1 chars]"]);
   });
 });
 

@@ -30,9 +30,7 @@ const queued = viewOf((v) =>
 const idle = viewOf((v) =>
   v
     .turn("t1", (t) => t.user("first prompt").text("ok").ended("completed"))
-    .turn("t2", (t) =>
-      t.report({ child: "s9" }, "report").text("noted").ended("completed"),
-    )
+    .turn("t2", (t) => t.report({ child: "s9" }, "report").text("noted").ended("completed"))
     .turn("t3", (t) => t.action("Fix lint", "long hidden prompt").text("done").ended("completed"))
     .turn("t4", (t) =>
       t.user('see <shell command="ls" exit="0">\nout\n</shell>').text("ok").ended("completed"),
@@ -626,6 +624,19 @@ describe("paste", () => {
         insert: { kind: "text", text: "x" },
       }).effects,
     ).toEqual([]);
+  });
+
+  test("a long single-line paste becomes a part, so typing after it stays cheap", () => {
+    const text = "x".repeat(5_000);
+
+    const pasted = play(ready(idle), {
+      kind: "paste-resolved",
+      generation: 0,
+      insert: { kind: "text", text },
+    });
+
+    expect(pasted.state.local.draft.text).toBe("[Paste #1 5000 chars] ");
+    expect([...pasted.state.local.draft.parts.values()]).toEqual([{ kind: "paste", text }]);
   });
 
   test("a pasted marker is followed by a space; the same image pasted twice goes in once", () => {
