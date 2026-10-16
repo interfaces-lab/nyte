@@ -14,6 +14,7 @@ import type {
 import { createHandle } from "../../src/effects/local-ports.ts";
 import type {
   FilesPort,
+  FirstFramePort,
   HostPort,
   PluginsPort,
   Ports,
@@ -25,6 +26,7 @@ import type {
 } from "../../src/effects/ports.ts";
 import type { Task } from "../../src/lib/tasks.ts";
 import type { DraftInsert } from "../../src/model/draft.ts";
+import type { Selection } from "../../src/model/state.ts";
 import { CATALOG, SETTINGS } from "./state.ts";
 import { CONFIGURATION } from "./view.ts";
 
@@ -359,12 +361,18 @@ export interface FakePorts extends Ports {
   readonly files: FakeFiles;
   readonly plugins: FakePlugins;
   readonly settings: SettingsPort;
+  readonly firstFrame: FakeFirstFrame;
   readonly clock: ManualClock;
   readonly log: {
     readonly path: string;
     readonly entries: { readonly origin: string; readonly error: unknown }[];
     write(origin: string, error: unknown): void;
   };
+}
+
+/** The first-frame record in memory: `saved` is what the next launch would read. */
+export interface FakeFirstFrame extends FirstFramePort {
+  saved: Selection | null;
 }
 
 export function fakePorts(host: FakeHost): FakePorts {
@@ -468,9 +476,18 @@ export function fakePorts(host: FakeHost): FakePorts {
     },
   };
 
+  const firstFrame: FakeFirstFrame = {
+    saved: null,
+    read: () => firstFrame.saved,
+    async write(selection) {
+      firstFrame.saved = selection;
+    },
+  };
+
   return {
     host,
     terminal,
+    firstFrame,
     composer: createHandle(),
     scroll: createHandle(),
     settings: {

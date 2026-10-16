@@ -128,10 +128,10 @@ async function configureBlank(
   const model = patch.model ?? current.model;
   const effort = patch.thinkingLevel ?? current.effort;
 
-  dispatch({
-    kind: "selection",
-    session: effect.session,
-    selection: toSelection({ model, thinkingLevel: effort }, catalog),
+  const selection = toSelection({ model, thinkingLevel: effort }, catalog);
+  dispatch({ kind: "selection", session: effect.session, selection });
+  await ports.firstFrame.write(selection).catch((error: unknown) => {
+    ports.log.write("effect", error);
   });
 
   if (patch.model !== undefined)
@@ -251,7 +251,10 @@ export async function changeDirectory(
     const { chat } = read().facts;
 
     if (chat?.kind === "blank" && chat.id === effect.session) {
-      await openBlank({ ...chat, workspace: await ports.host.openFolder(path) }, context);
+      await openBlank(
+        { ...chat, folder: { kind: "folder", id: await ports.host.openFolder(path) } },
+        context,
+      );
       finish(stampNotice(context, "ok", `Working directory: ${path}`));
 
       return;

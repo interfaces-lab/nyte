@@ -24,13 +24,15 @@ import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
 import { followedSession, followedShells } from "./state.ts";
 import type { FailureReport, Notice, ShellJob, State } from "./state.ts";
-import { tableInputFor } from "./table-input.ts";
+import { tableInputFor, waitingMessage } from "./table-input.ts";
 import type { Blocked, EditingModel, RunModel } from "./table-input.ts";
 import { deriveTranscript } from "./transcript.ts";
 import type { TranscriptModel } from "./transcript.ts";
 
 export interface ScreenModel {
   readonly opening: boolean;
+  /** The text of a new chat's first message while it waits for the host to open. */
+  readonly waiting: string | null;
   readonly watch: WatchModel | null;
   readonly run: RunModel;
   readonly question: QuestionModel | null;
@@ -148,6 +150,7 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const view = session?.view ?? null;
   const blank = state.facts.chat?.kind === "blank" ? state.facts.chat : null;
   const starting = state.local.submissions.some((sent) => sent.session === blank?.id);
+  const waiting = waitingMessage(state);
   const dialog = keyboardDialog(state);
   const input = tableInputFor(state, dialog);
   const queue = keepEqual(previous?.queue, input.queue, sameQueueRow);
@@ -164,7 +167,8 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const markers = keepEqual(previous?.markers, liveMarkers(state.local.draft), sameSpan);
 
   return {
-    opening: view === null && (blank === null || starting),
+    opening: view === null && (blank === null || (starting && waiting === null)),
+    waiting: waiting === null ? null : waiting.snapshot.text.replaceAll(/\s+/gu, " ").trim(),
     watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
     run: input.run,
     question,

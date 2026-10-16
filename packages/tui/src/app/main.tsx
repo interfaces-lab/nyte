@@ -14,6 +14,7 @@ import type { Renderable } from "@opentui/core";
 import { render } from "@opentui/solid";
 import { createRoot, createSignal } from "solid-js";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
+import { launchChat } from "../effects/boot.ts";
 import type { BootOptions } from "../effects/boot.ts";
 import { createReporter, installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { hostPort, pluginsPort } from "../effects/host-port.ts";
@@ -27,7 +28,9 @@ import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
 import type { Msg } from "../model/msg.ts";
 import { followedSession, initialState } from "../model/state.ts";
+import { waitingMessage } from "../model/table-input.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";
+import { firstFramePort } from "../services/first-frame.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
 import { registerSyntaxParsers } from "../services/syntax-parsers.ts";
 import type { Kit } from "./context.tsx";
@@ -114,6 +117,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 
   const quit = (): void => closing.resolve(0);
   const { settings, invalid } = options.ports.settings.read(options.cwd);
+  const chat = launchChat(options.boot, options.ports.firstFrame.read(), settings);
 
   const root = createRoot((dispose) => {
     const store = createStore({
@@ -121,6 +125,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
         cwd: options.cwd,
         settings,
         terminal: terminalFacts(renderer),
+        chat,
       }),
       now: () => renderer.clock.now(),
       report,
@@ -173,6 +178,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const opening = options.open(store.dispatch).then((host) => {
     opened = host;
     hostOpened.resolve();
+    store.dispatch({ kind: "host-opened" });
 
     return host;
   });
@@ -251,8 +257,9 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     renderer,
   );
 
-  options.typeahead?.release();
   store.runner.boot(options.boot);
+  store.runner.run({ kind: "refresh-workspace", cwd: options.cwd });
+  options.typeahead?.release();
 
   return {
     store,
@@ -344,6 +351,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
       composer: createHandle(),
       scroll: createHandle(),
       settings: settingsPort(),
+      firstFrame: firstFramePort(join(home, "tui-first-frame.json")),
       shell: shellPort(),
       files: filesPort(),
       log,
@@ -355,6 +363,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   const unhook = installProcessHooks(app.report);
   const code = await Promise.race([app.closing, signalled.promise.then(() => 0)]);
   const session = followedSession(app.store.state())?.id ?? null;
+  const unsent = waitingMessage(app.store.state())?.snapshot.text ?? null;
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 
@@ -368,7 +377,9 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   process.off("SIGINT", onSigint);
   process.off("SIGTERM", onSigterm);
 
-  process.stdout.write(exitText({ session, failures, crashes: app.store.state().local.failures }));
+  process.stdout.write(
+    exitText({ session, unsent, failures, crashes: app.store.state().local.failures }),
+  );
 
   if ((code !== 0 || failures.length > 0) && exit.kind === "quit") process.exit(1);
 
@@ -424,12 +435,15 @@ async function openService(input: {
 
 export function exitText(input: {
   readonly session: SessionId | null;
+  /** A new chat's first message that was still waiting for the host. */
+  readonly unsent: string | null;
   readonly failures: readonly string[];
   readonly crashes: readonly FailureReport[];
 }): string {
   const lines = [
     ...input.crashes.map((crash) => `error: ${crash.message} (details in ${crash.logPath})`),
     ...input.failures,
+    ...(input.unsent === null ? [] : [`Not sent: ${input.unsent}`]),
     ...(input.session === null
       ? []
       : ["To resume previous session", sessionRecovery(input.session).command]),

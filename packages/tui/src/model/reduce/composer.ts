@@ -59,6 +59,21 @@ export const composerHandlers = {
       : setDraft(withLocal(state, { editing: null }), editing.saved);
   },
   "clear-draft": (state) => clearDraft(state),
+  "recall-first-message": (state, _msg, now) => {
+    const { chat } = state.facts;
+    const waiting = state.local.submissions.find((sent) => sent.session === chat?.id);
+
+    if (chat?.kind !== "blank" || waiting === undefined) return stay(state);
+
+    return stageHandback(
+      withLocal(state, {
+        submissions: state.local.submissions.filter((sent) => sent !== waiting),
+      }),
+      chat.id,
+      { draft: waiting.snapshot, notice: null, unlessLanded: null },
+      now,
+    );
+  },
   "run-shell": (state, msg, now) => {
     if (state.facts.shells.some((job) => job.state.kind === "running"))
       return refuse(state, "A command is already running", now);

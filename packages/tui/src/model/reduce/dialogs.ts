@@ -19,7 +19,7 @@ import type { Effect } from "../effect.ts";
 import type { Intent, Outcome } from "../msg.ts";
 import { readQuestionDraft } from "../question.ts";
 import { keyboardDialog } from "../screen.ts";
-import { chatWorkspace, followedSession } from "../state.ts";
+import { chatFolder, followedSession } from "../state.ts";
 import type { PendingOp, State } from "../state.ts";
 import {
   andThen,
@@ -246,15 +246,18 @@ export function openDialog(
       ]);
     }
 
-    case "mcp":
-      if (followed === null) return refuse(state, "Wait for the chat to open", now);
+    case "mcp": {
+      const folder = followed === null ? null : chatFolder(followed);
+
+      if (folder?.kind !== "folder") return refuse(state, "Wait for the chat to open", now);
 
       return openDialog(
         state,
-        { kind: "list", purpose: { kind: "mcp", workspace: chatWorkspace(followed) } },
+        { kind: "list", purpose: { kind: "mcp", workspace: folder.id } },
         now,
         reduce,
       );
+    }
 
     case "mcp-details":
       return push(

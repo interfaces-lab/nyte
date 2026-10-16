@@ -12,6 +12,7 @@ import { holdTypeahead } from "../../src/app/typeahead.ts";
 import type { BootOptions } from "../../src/effects/boot.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
 import type { SettingsPort } from "../../src/effects/ports.ts";
+import type { Selection } from "../../src/model/state.ts";
 import { keyStrokes } from "../../src/lib/constants.ts";
 import type { ChatCommand } from "../../src/lib/constants.ts";
 import { hostPort } from "../../src/effects/host-port.ts";
@@ -35,8 +36,10 @@ export interface TuiOptions {
   /** Keys typed after the renderer starts reading input but before the app mounts. */
   readonly typed?: string;
   readonly kit?: (kit: Kit) => Kit;
-  /** Starts `recorder` just before the app mounts, so frame timestamps count from mount. */
+  /** Starts `recorder` as soon as the renderer exists, before keys are held or the app mounts, so frame timestamps count from launch. */
   readonly record?: boolean;
+  /** What the last launch recorded for the first frame; none when omitted. */
+  readonly firstFrame?: Selection;
   /** Replaces the fake settings, which read as `SETTINGS`. */
   readonly settings?: SettingsPort;
 }
@@ -67,6 +70,13 @@ export interface Tui extends TestRendererSetup {
 }
 
 export async function startTui(options: TuiOptions = {}): Promise<Tui> {
+  const fixture = options.fixture ?? (await openTestHost());
+  const home = mkdtempSync(join(tmpdir(), "nyte-tui-app-"));
+  const fakes = fakePorts(fakeHost());
+  fakes.firstFrame.saved = options.firstFrame ?? null;
+  const opening = Promise.withResolvers<void>();
+
+  if (options.opened !== false) opening.resolve();
   const clock = new ManualClock();
   clock.setTime(Date.now());
 
@@ -77,18 +87,12 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     clock,
   });
 
-  const typeahead = holdTypeahead(setup.renderer);
-
-  if (options.typed !== undefined) await setup.mockInput.typeText(options.typed);
-  const fixture = options.fixture ?? (await openTestHost());
-  const home = mkdtempSync(join(tmpdir(), "nyte-tui-app-"));
-  const fakes = fakePorts(fakeHost());
-  const opening = Promise.withResolvers<void>();
-
-  if (options.opened !== false) opening.resolve();
   const recorder = new TestRecorder(setup.renderer);
 
   if (options.record === true) recorder.rec();
+  const typeahead = holdTypeahead(setup.renderer);
+
+  if (options.typed !== undefined) await setup.mockInput.typeText(options.typed);
 
   const mounting: AppOptions = {
     renderer: setup.renderer,
@@ -187,7 +191,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     state,
     async ready() {
       await state(
-        (store) => store.state().facts.phase.kind === "ready" && store.screen().blocked === null,
+        (store) => store.state().facts.catalog.catalog !== null && store.screen().blocked === null,
       );
     },
     dispose,
@@ -235,7 +239,10 @@ export function cursorCell(
   return [column - 1, row - 1];
 }
 
-/** When the first recorded frame showing `text` was drawn, in ms since recording began. */
-export function shownAt(tui: Pick<Tui, "recorder">, text: string): number | undefined {
-  return tui.recorder.recordedFrames.find((recorded) => recorded.frame.includes(text))?.timestamp;
+/** When the first recorded frame that `shows` was drawn, in ms since recording began. */
+export function shownAt(
+  tui: Pick<Tui, "recorder">,
+  shows: (frame: string) => boolean,
+): number | undefined {
+  return tui.recorder.recordedFrames.find((recorded) => shows(recorded.frame))?.timestamp;
 }

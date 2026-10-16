@@ -29,7 +29,7 @@ function followedOnly<M extends { readonly session: SessionId }>(
 }
 
 export const factHandlers = {
-  phase: (state, msg) => stay(withFacts(state, { phase: msg.phase })),
+  "host-opened": (state) => stay(withFacts(state, { host: "open" })),
   "session-opened": (state, msg) => ({
     state: opened(state, msg),
     effects: [{ kind: "check-trust", workspace: msg.info.workspace, ask: "if-needed" }],
@@ -38,8 +38,22 @@ export const factHandlers = {
     state: withLocal(entered(withFacts(state, { chat: msg.chat, tasks: [] })), {
       pending: state.local.pending.filter((op) => op.kind !== "switch"),
     }),
-    effects: [{ kind: "check-trust", workspace: msg.chat.workspace, ask: "if-needed" }],
+    effects:
+      msg.chat.folder.kind === "folder"
+        ? [{ kind: "check-trust", workspace: msg.chat.folder.id, ask: "if-needed" }]
+        : [],
   }),
+  "blank-folder": (state, msg) => {
+    const { chat } = state.facts;
+
+    if (chat?.kind !== "blank" || chat.id !== msg.session || chat.folder.kind === "folder")
+      return stay(state);
+
+    return {
+      state: withFacts(state, { chat: { ...chat, folder: { kind: "folder", id: msg.workspace } } }),
+      effects: [{ kind: "check-trust", workspace: msg.workspace, ask: "if-needed" }],
+    };
+  },
   view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
     viewArrived(state, session, msg.view, now),
   ),

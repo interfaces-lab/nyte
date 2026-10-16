@@ -27,7 +27,7 @@ test("/quit names the resume command; --session reopens the transcript, model an
   if (session === undefined) throw new Error("No session was followed.");
   await first.send("/quit");
   expect(await first.app.closing).toBe(0);
-  expect(exitText({ session, failures: [], crashes: [] })).toBe(
+  expect(exitText({ session, unsent: null, failures: [], crashes: [] })).toBe(
     `\nTo resume previous session\nnyte --session=${session}\n`,
   );
   await first.dispose();
@@ -46,7 +46,7 @@ test("/quit names the resume command; --session reopens the transcript, model an
   expect(JSON.stringify(fixture.requests[1]?.context.messages)).toContain("hi nyte");
 });
 
-test("a 2,000-message session's first screen paints within 100 ms of mount", async () => {
+test("a 2,000-message session's first screen paints within 100 ms of launch", async () => {
   await using fixture = await openTestHost();
   fixture.reply({ content: [{ type: "text", text: "answer 0" }] });
   const { session, receipt } = await fixture.host.sessions.start({ content: "question 0" });
@@ -62,7 +62,7 @@ test("a 2,000-message session's first screen paints within 100 ms of mount", asy
   await using tui = await startTui({ fixture, target: { kind: "session", id }, record: true });
   await tui.frame((frame) => frame.includes(last));
 
-  expect(shownAt(tui, last)).toBeLessThanOrEqual(100);
+  expect(shownAt(tui, (frame) => frame.includes(last))).toBeLessThanOrEqual(100);
 }, 30_000);
 
 test("--resume opens the newest chat; /new opens a blank chat that only its first send starts", async () => {

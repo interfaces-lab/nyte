@@ -224,7 +224,7 @@ test("launching and quitting with Ctrl+C before a send creates no session and na
   expect(app.store.state().facts.chat?.kind).toBe("blank");
   expect((await fixture.host.sessions.list({ parents: { kind: "all" } })).items).toEqual([]);
   const session = followedSession(app.store.state())?.id ?? null;
-  expect(exitText({ session, failures: [], crashes: [] })).toBe("");
+  expect(exitText({ session, unsent: null, failures: [], crashes: [] })).toBe("");
 });
 
 test("a signal that destroys the renderer first still resets the terminal, and closing after it is quiet", async () => {

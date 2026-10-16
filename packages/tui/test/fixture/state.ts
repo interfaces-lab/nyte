@@ -64,12 +64,13 @@ export function buildState(
     cwd,
     settings: SETTINGS,
     terminal: { width: 100, height: 32, theme: "dark", selection: false, dragging: false },
+    chat: null,
   });
 
   return {
     facts: {
       ...base.facts,
-      phase: { kind: "ready" },
+      host: "open",
       chat: session,
       catalog: {
         generation: 1,

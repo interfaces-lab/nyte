@@ -4,7 +4,7 @@ import { landingMessages } from "../../lib/view-helpers.ts";
 import type { AuthDialog } from "../dialogs/auth.ts";
 import { snapshot } from "../draft.ts";
 import { queueRows } from "../queue.ts";
-import { chatWorkspace, followedSession } from "../state.ts";
+import { chatFolder, followedSession } from "../state.ts";
 import type { PendingOp, Selection, State } from "../state.ts";
 import {
   andThen,
@@ -173,14 +173,11 @@ export const sessionHandlers = {
     };
   },
   "review-trust": (state, _msg, now) => {
-    const followed = state.facts.chat;
+    const folder = state.facts.chat === null ? null : chatFolder(state.facts.chat);
 
-    if (followed === null) return refuse(state, "Wait for the chat to open", now);
+    if (folder?.kind !== "folder") return refuse(state, "Wait for the chat to open", now);
 
-    return {
-      state,
-      effects: [{ kind: "check-trust", workspace: chatWorkspace(followed), ask: "always" }],
-    };
+    return { state, effects: [{ kind: "check-trust", workspace: folder.id, ask: "always" }] };
   },
   "mcp-action": (state, msg) => ({
     state,
@@ -337,12 +334,14 @@ export const sessionHandlers = {
           )
         : stay(state);
 
+    const folder = state.facts.chat === null ? null : chatFolder(state.facts.chat);
+
     if (
       msg.ask === "if-needed" &&
       (msg.trusted !== null ||
         msg.sources.length === 0 ||
-        state.facts.chat === null ||
-        chatWorkspace(state.facts.chat) !== msg.workspace)
+        folder?.kind !== "folder" ||
+        folder.id !== msg.workspace)
     )
       return stay(state);
     const { workspace, path, decision, sources } = msg;

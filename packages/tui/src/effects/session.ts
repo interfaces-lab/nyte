@@ -6,11 +6,12 @@ import type {
   SessionId,
   SessionInfo,
   Thinking,
+  WorkspaceId,
 } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel } from "../lib/catalog.ts";
 import { errorMessage, shortId } from "../lib/format.ts";
 import { indexedMention } from "../model/completion.ts";
-import { chatWorkspace, followedSession } from "../model/state.ts";
+import { chatFolder, followedSession } from "../model/state.ts";
 import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state.ts";
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
@@ -25,17 +26,34 @@ const PLACEHOLDER_SELECTION: Selection = {
   fast: false,
 };
 
-/** Opens a blank chat: a draft that the first send starts under `chat.id`. Nothing reaches the host before then. */
+/** Opens a blank chat: a draft that the first send starts under `chat.id`. No session exists before then. */
 export async function openBlank(chat: BlankChat, context: HandlerContext): Promise<void> {
-  const { dispatch, ports, scope } = context;
+  const { dispatch, scope } = context;
   scope.followed?.controller.abort();
   scope.followed = null;
   dispatch({ kind: "blank-opened", chat });
-  const workspace = ports.host.workspace(chat.workspace);
+  await settleFolder(chat, context);
+}
+
+/** Registers a blank chat's launch folder with the host, then reads that workspace's branch and files. */
+export async function settleFolder(chat: BlankChat, context: HandlerContext): Promise<void> {
+  const workspace = context.ports.host.workspace(await blankWorkspace(chat, context));
   const cwd = await workspace.cwd();
 
   if (cwd !== null && !context.signal.aborted)
     await refreshWorkspace(context, cwd, { mentions: workspace, signal: context.signal });
+}
+
+/** The workspace a blank chat starts in; a chat still in its launch folder registers that folder first. */
+export async function blankWorkspace(
+  chat: BlankChat,
+  context: HandlerContext,
+): Promise<WorkspaceId> {
+  if (chat.folder.kind === "folder") return chat.folder.id;
+  const workspace = await context.ports.host.openFolder(null);
+  context.dispatch({ kind: "blank-folder", session: chat.id, workspace });
+
+  return workspace;
 }
 
 /** Opens a blank chat in the current chat's workspace, on the default model at the remembered thinking level. */
@@ -48,7 +66,7 @@ export async function openNew(context: HandlerContext): Promise<void> {
     {
       kind: "blank",
       id: asId(crypto.randomUUID()),
-      workspace: chat === null ? await context.ports.host.openFolder(null) : chatWorkspace(chat),
+      folder: chat === null ? { kind: "launch-folder" } : chatFolder(chat),
       selection:
         (catalog === null ? null : defaultSelection(catalog, state.facts.settings.thinkingLevel)) ??
         chat?.selection ??
@@ -131,13 +149,8 @@ export async function follow(
     if (selected !== null) configurator.observeSelected(selected);
     const shown = toSelection(configurator.selected, readCatalog(read()));
     const current = read().facts.chat;
-    const unchanged =
-      current !== null &&
-      sameRef(current.selection.model, shown.model) &&
-      current.selection.effort === shown.effort &&
-      current.selection.fast === shown.fast;
 
-    if (current?.id === id && !unchanged)
+    if (current?.id === id && !sameSelection(current.selection, shown))
       dispatch({ kind: "selection", session: id, selection: shown });
 
     if (!first) return;
@@ -379,6 +392,12 @@ function readCatalog(state: State): ModelCatalogView | null {
 
 function sameRef(left: ModelRef, right: ModelRef): boolean {
   return left.provider === right.provider && left.id === right.id;
+}
+
+export function sameSelection(left: Selection, right: Selection): boolean {
+  return (
+    sameRef(left.model, right.model) && left.effort === right.effort && left.fast === right.fast
+  );
 }
 
 function unavailable(

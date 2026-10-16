@@ -10,7 +10,7 @@ import type { QueueRow } from "./queue.ts";
 import { currentQuestion } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
 import { followedSession } from "./state.ts";
-import type { Draft, FollowedSession, ShellJob, State } from "./state.ts";
+import type { Draft, FollowedSession, ShellJob, State, Submission } from "./state.ts";
 
 /** What the interaction table decides each command from. */
 export interface TableInput {
@@ -23,6 +23,10 @@ export interface TableInput {
   readonly completion: CompletionModel | null;
   readonly dialog: Dialog | null;
   readonly blocked: Blocked | null;
+  /** A blank chat's first message waits for the host to open. */
+  readonly waiting: boolean;
+  /** The host's model catalog has arrived, so model and thinking choices can be offered. */
+  readonly models: boolean;
   readonly queue: readonly QueueRow[];
   readonly followUp: "steer" | "queue";
   readonly tasks: number;
@@ -53,7 +57,6 @@ export interface EditingModel {
 }
 
 export type Blocked =
-  | { readonly kind: "starting" }
   | { readonly kind: "no-session" }
   | { readonly kind: "switching" }
   | { readonly kind: "changing-directory" }
@@ -89,8 +92,6 @@ export function runModel(view: FollowedSession | null): RunModel {
 
 export function blockedBy(state: State): Blocked | null {
   const { pending } = state.local;
-
-  if (state.facts.phase.kind === "starting") return { kind: "starting" };
 
   if (pending.some((op) => op.kind === "switch")) return { kind: "switching" };
 
@@ -141,6 +142,8 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
         : null,
     dialog,
     blocked: blockedBy(state),
+    waiting: waitingMessage(state) !== null,
+    models: state.facts.catalog.catalog !== null,
     queue,
     followUp: state.facts.settings.followUp,
     tasks: state.facts.tasks.length,
@@ -152,6 +155,15 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
     },
     browsing: state.local.history !== null,
   };
+}
+
+/** The first message of the blank chat on screen while it waits for the host to open, or `null`. */
+export function waitingMessage(state: State): Submission | null {
+  const { chat } = state.facts;
+
+  if (chat?.kind !== "blank" || state.facts.host === "open") return null;
+
+  return state.local.submissions.find((sent) => sent.session === chat.id) ?? null;
 }
 
 function editingModel(state: State, queue: readonly QueueRow[]): EditingModel | null {

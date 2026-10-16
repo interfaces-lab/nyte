@@ -199,8 +199,21 @@ export function QueueRows(): JSX.Element {
       flexShrink={0}
       marginLeft={1}
       marginRight={1}
-      visible={queue().length > 0}
+      visible={queue().length > 0 || app.screen().waiting !== null}
     >
+      <Show when={app.screen().waiting}>
+        {(text: Accessor<string>) => (
+          <Line
+            id="waiting-row"
+            glyph={GLYPHS.sending}
+            tone={app.kit.theme().dim}
+            text={text()}
+            textTone={app.kit.theme().user}
+            label="sends when Nyte connects"
+            hint={null}
+          />
+        )}
+      </Show>
       <For each={queue()}>
         {(row, index) => (
           <QueueLine

@@ -3,11 +3,12 @@ import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import { indexSkills } from "../model/commands.ts";
 import type { BlankChat, Submission } from "../model/state.ts";
+import { findModel } from "../lib/catalog.ts";
 import { errorMessage } from "../lib/format.ts";
 import { rowStatus } from "./commands.ts";
 import type { PluginsPort } from "./ports.ts";
 import type { HandlerContext } from "./scope.ts";
-import { follow } from "./session.ts";
+import { blankWorkspace, follow } from "./session.ts";
 
 export async function submit(
   submission: Submission,
@@ -112,7 +113,7 @@ export async function submit(
   }
 }
 
-/** Starts a blank chat with the submission as its first message, then follows it, and resolves whether the chat started. A failed start leaves the chat blank, its id kept for the retry. When an earlier start already took the id, the TUI follows that chat and hands this message back to its composer. */
+/** Starts a blank chat with the submission as its first message, then follows it, and resolves whether the chat started. A message recalled while it waited for the host is not sent. A failed start leaves the chat blank, its id kept for the retry. When an earlier start already took the id, the TUI follows that chat and hands this message back to its composer. */
 async function start(
   chat: BlankChat,
   submission: Submission,
@@ -122,13 +123,16 @@ async function start(
   const { dispatch, ports, read, scope } = context;
   const refuse = (reason: string): void => refuseSubmission(submission, reason, context);
 
+  if (!read().local.submissions.some((sent) => sent.id === submission.id)) return false;
+
   try {
     await Promise.allSettled(scope.pastes);
-    const workspace = ports.host.workspace(chat.workspace);
+    const workspace = await blankWorkspace(chat, context);
+    const port = ports.host.workspace(workspace);
 
     const content = await prepare(submission.snapshot, {
       skills: indexSkills(read()),
-      upload: (bytes) => workspace.upload(bytes),
+      upload: (bytes) => port.upload(bytes),
     });
 
     const decision = await beforeSubmit(ports.plugins, { content, delivery, session: null });
@@ -147,9 +151,18 @@ async function start(
       return false;
     }
 
+    const catalog = read().facts.catalog.catalog ?? (await ports.host.listModels());
+    const models = catalog.providers.flatMap((provider) => provider.models);
+
+    if (findModel(models, current.selection.model) === undefined) {
+      refuse(`${current.selection.model.id} isn't available. ctrl+p picks another.`);
+
+      return false;
+    }
+
     const started = await ports.host.start({
       id: chat.id,
-      workspace: current.workspace,
+      workspace,
       selection: current.selection,
       content: decision.draft.content,
     });

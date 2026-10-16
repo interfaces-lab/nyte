@@ -47,6 +47,7 @@ export interface Ports {
   readonly composer: Handle<ComposerPort>;
   readonly scroll: Handle<ScrollPort>;
   readonly settings: SettingsPort;
+  readonly firstFrame: FirstFramePort;
   readonly plugins: PluginsPort;
   readonly shell: ShellPort;
   readonly files: FilesPort;
@@ -175,6 +176,13 @@ export interface SettingsPort {
   /** Reads synchronously, so the first frame draws with the user's settings; a file that fails to parse is left out and listed. */
   read(cwd: string): SettingsRead;
   write(cwd: string, patch: SettingsPatch): Promise<ResolvedSettings>;
+}
+
+/** What the first frame draws before the host answers: the model a new chat starts on. */
+export interface FirstFramePort {
+  /** Reads synchronously; `null` when no launch recorded one yet, or the record doesn't parse. */
+  read(): Selection | null;
+  write(selection: Selection): Promise<void>;
 }
 
 export interface PluginsPort {

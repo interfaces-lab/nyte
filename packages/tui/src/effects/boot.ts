@@ -1,12 +1,21 @@
 import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView, SessionId, Thinking } from "@nyte-ai/sdk";
 import { availableModels, clampThinking } from "../lib/catalog.ts";
-import type { Selection } from "../model/state.ts";
+import type { ResolvedSettings } from "../lib/settings-schema.ts";
+import type { BlankChat, Selection } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate } from "../update.ts";
 import { checkForUpdate } from "../version.ts";
 import { configure } from "./commands.ts";
 import type { HandlerContext } from "./scope.ts";
-import { defaultSelection, fallbackSelection, follow, openBlank, watchHost } from "./session.ts";
+import {
+  defaultSelection,
+  fallbackSelection,
+  follow,
+  openBlank,
+  sameSelection,
+  settleFolder,
+  watchHost,
+} from "./session.ts";
 
 export interface BootOptions {
   readonly home: string;
@@ -19,7 +28,30 @@ export interface BootOptions {
   readonly effort: Thinking | null;
 }
 
-/** Starts the app once the host opens: lists models, then follows the session to resume or opens a blank chat. */
+/**
+ * The chat a launch draws on its first frame, before the host answers: a blank chat on the
+ * model the last launch resolved, at the thinking level asked for or remembered. `null` when
+ * the launch resumes a session, names a model the catalog must resolve, or none was recorded.
+ */
+export function launchChat(
+  options: BootOptions,
+  recorded: Selection | null,
+  settings: ResolvedSettings,
+): BlankChat | null {
+  if (options.target.kind !== "new" || options.model !== null || recorded === null) return null;
+
+  return {
+    kind: "blank",
+    id: asId(crypto.randomUUID()),
+    folder: { kind: "launch-folder" },
+    selection: { ...recorded, effort: options.effort ?? settings.thinkingLevel ?? recorded.effort },
+  };
+}
+
+/**
+ * Starts the app once the host opens: lists models, then follows the session to resume, or
+ * settles the launch's blank chat on the default model and registers its folder.
+ */
 export async function boot(options: BootOptions, context: HandlerContext): Promise<void> {
   const { dispatch, ports, scope } = context;
   const catalog = await ports.host.listModels();
@@ -28,7 +60,14 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
 
   if (context.signal.aborted) return;
   const flagged = flagSelection(options, catalog, settings.thinkingLevel);
-  const selection = flagged ?? defaultSelection(catalog, settings.thinkingLevel);
+  const resolved = defaultSelection(catalog, settings.thinkingLevel);
+  const selection = flagged ?? resolved;
+  const launched = context.read().facts.chat;
+
+  if (resolved !== null && (launched === null || !sameSelection(launched.selection, resolved)))
+    void ports.firstFrame.write(resolved).catch((cause: unknown) => {
+      ports.log.write("effect", cause);
+    });
 
   if (selection === null) {
     scope.exit.resolve({ code: 1 });
@@ -48,14 +87,20 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   const target = await resolveTarget(options, context);
 
   if (context.signal.aborted) return;
-  dispatch({ kind: "phase", phase: { kind: "ready" } });
+  const { chat } = context.read().facts;
 
-  if (target === null)
+  if (target === null && chat?.kind === "blank") {
+    const sending = context.read().local.submissions.some((sent) => sent.session === chat.id);
+
+    if (!sending && !sameSelection(chat.selection, selection))
+      dispatch({ kind: "selection", session: chat.id, selection });
+    await settleFolder(chat, context);
+  } else if (target === null)
     await openBlank(
       {
         kind: "blank",
         id: asId(crypto.randomUUID()),
-        workspace: await ports.host.openFolder(null),
+        folder: { kind: "launch-folder" },
         selection,
       },
       context,

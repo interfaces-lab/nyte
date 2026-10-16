@@ -460,7 +460,11 @@ test("/new opens a blank chat at the remembered level, clamped to its model, and
 
   expect(app.dispatched[0]).toMatchObject({
     kind: "blank-opened",
-    chat: { kind: "blank", workspace: asId("workspace"), selection: { effort: "high" } },
+    chat: {
+      kind: "blank",
+      folder: { kind: "folder", id: asId("workspace") },
+      selection: { effort: "high" },
+    },
   });
   expect(app.ports.host.starts).toEqual([]);
 });
@@ -515,7 +519,7 @@ test("the first send from a blank chat starts it with that message, then follows
   const blank = {
     kind: "blank",
     id: asId<"session">("b1"),
-    workspace: asId<"workspace">("workspace"),
+    folder: { kind: "folder", id: asId<"workspace">("workspace") },
     selection: { model: CONFIGURATION.model, effort: "low", fast: false },
   } as const;
 
@@ -526,12 +530,18 @@ test("the first send from a blank chat starts it with that message, then follows
     snapshot: { text: "hello", parts: new Map() },
   };
 
-  const app = harness({ ...buildState(null), facts: { ...buildState(null).facts, chat: blank } });
+  const base = buildState(null);
+  const sending: State = {
+    facts: { ...base.facts, chat: blank },
+    local: { ...base.local, submissions: [first] },
+  };
+
+  const app = harness(sending);
   app.runner.run({ kind: "send", submission: first, delivery: "steer" });
   await app.runner.settled();
 
   expect(app.ports.host.starts).toEqual([
-    { id: blank.id, workspace: blank.workspace, selection: blank.selection, content: "hello" },
+    { id: blank.id, workspace: blank.folder.id, selection: blank.selection, content: "hello" },
   ]);
   expect(app.ports.plugins.submitted).toEqual([
     { content: "hello", delivery: "steer", session: null },
@@ -539,10 +549,7 @@ test("the first send from a blank chat starts it with that message, then follows
   expect(app.dispatched.map((msg) => msg.kind)).toContain("sent");
   expect(await app.received("session-opened")).toMatchObject({ session: blank.id });
 
-  const refused = harness({
-    ...buildState(null),
-    facts: { ...buildState(null).facts, chat: blank },
-  });
+  const refused = harness(sending);
 
   refused.ports.plugins.decision = { kind: "reject", reason: "Not today." };
   refused.runner.run({ kind: "send", submission: first, delivery: "steer" });
