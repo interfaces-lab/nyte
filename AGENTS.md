@@ -28,7 +28,7 @@ Add a body when the reason needs explaining. Breaking: `!` before the colon plus
 ## Verification
 
 - Package: `pnpm --dir packages/<package> test`.
-- Stored shapes (`packages/schema` wire types, `packages/core/src/records.ts`): `pnpm --dir packages/host check:store [path]` reads a real store (default `~/.nyte/nyte.db`) with the working-tree validators. Backfill what it reports before committing.
+- Stored shapes (`packages/schema` wire types, `packages/core/src/contract/records.ts`): `pnpm --dir packages/host check:store [path]` reads a real store (default `~/.nyte/nyte.db`) with the working-tree validators. Backfill what it reports before committing.
 - Workspace: `pnpm typecheck`, `pnpm lint`, `pnpm format` (`format:fix` to apply). Docs only: `pnpm exec turbo typecheck --filter=@nyte-ai/web`.
 - Report failures in unrelated files; don't fix them.
 - Turborepo varies by version: read the installed `turbo` package's `docs/` before changing its config.
