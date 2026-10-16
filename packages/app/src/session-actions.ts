@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { keyedSerial } from "@nyte-ai/schema";
 import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { ActionToasts } from "./action-toasts.ts";
@@ -47,7 +48,7 @@ export class SessionActions {
   readonly #connection: () => Pick<Connection, "session">;
   readonly #toasts: ActionToasts;
   readonly #listeners = new Set<() => void>();
-  readonly #queues = new Map<SessionId, Promise<boolean>>();
+  readonly #queues = keyedSerial<SessionId>();
   readonly #archiveVersions = new Map<SessionId, PendingChange>();
   readonly #archiveNotifications = new Map<SessionId, () => void>();
   #pending: readonly PendingChange[] = [];
@@ -222,13 +223,12 @@ export class SessionActions {
   }
 
   #run(pending: PendingChange): Promise<boolean> {
-    const previous = this.#queues.get(pending.sessionId) ?? Promise.resolve(true);
-
-    const work = previous.then(async () => {
+    return this.#queues.run(pending.sessionId, async () => {
       try {
         const { sessionId, change } = pending;
 
         const session = this.#connection().session(sessionId);
+
         const outcome =
           change.kind === "delete"
             ? await session.remove()
@@ -262,13 +262,6 @@ export class SessionActions {
         this.#remove(pending);
       }
     });
-
-    this.#queues.set(pending.sessionId, work);
-    void work.then(() => {
-      if (this.#queues.get(pending.sessionId) === work) this.#queues.delete(pending.sessionId);
-    });
-
-    return work;
   }
 
   #commit({ sessionId, change }: PendingChange): void {
