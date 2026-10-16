@@ -50,6 +50,7 @@ async function showActivityPreview(kind: "working" | "attention") {
     id: asId<"session">(PREVIEW_ACTIVITY),
     name: "Live Activity preview",
     parent: null,
+    call: null,
     workspace: asId<"workspace">("fixture"),
     activation: { kind: "active" },
     createdAt: startedAt,
