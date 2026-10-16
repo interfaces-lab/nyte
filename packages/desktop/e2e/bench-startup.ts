@@ -1,14 +1,14 @@
 import { _electron, expect } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { parseArgs, promisify } from "node:util";
+import { parseArgs } from "node:util";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { prepareStartupFixture, startupCases } from "./startup-fixture.ts";
 import type { StartupCase, StartupFixture } from "./startup-fixture.ts";
+import { inspectProcessTree } from "./process-tree.ts";
 import { chatTab, clearComposer, composer, messages, openChat } from "./ui.ts";
 import { CALL_CHANNEL } from "../src/shared/ipc.ts";
 
@@ -450,42 +450,6 @@ async function inspectRenderer(page: Page, composerReadyMs: number) {
     },
     [composerReadyMs, keystrokeMeasure] as const,
   );
-}
-
-/** Counts the Electron process and every descendant, with their resident memory, via ps. */
-async function inspectProcessTree(root: number | undefined) {
-  if (root === undefined || process.platform === "win32") return null;
-  const { stdout } = await promisify(execFile)("ps", ["-A", "-o", "pid=,ppid=,rss=,comm="]);
-
-  const rows = stdout.split("\n").flatMap((line) => {
-    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
-
-    return match === null
-      ? []
-      : [
-          {
-            pid: Number(match[1]),
-            parent: Number(match[2]),
-            residentBytes: Number(match[3]) * 1_024,
-            command: match[4] ?? "",
-          },
-        ];
-  });
-
-  const tree = new Set([root]);
-  let grew = true;
-
-  while (grew) {
-    grew = false;
-
-    for (const row of rows) {
-      if (tree.has(row.pid) || !tree.has(row.parent)) continue;
-      tree.add(row.pid);
-      grew = true;
-    }
-  }
-
-  return rows.filter((row) => tree.has(row.pid));
 }
 
 function phaseDuration(

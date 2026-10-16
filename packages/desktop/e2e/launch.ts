@@ -6,12 +6,16 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { inspectProcessTree, survivors } from "./process-tree.ts";
 
 const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
 
 const PACKAGES_ROOT = resolve(DESKTOP_ROOT, "..");
 
 const MAIN_ENTRY = resolve(DESKTOP_ROOT, "out-e2e/main/index.js");
+
+/** How long Electron has after `close()` to reap its helpers and the Nyte Host utility process. */
+const REAP_MS = 5_000;
 
 const KEPT_VARIABLES = new Set([
   "PATH",
@@ -52,6 +56,7 @@ interface LaunchedDesktop {
   readonly page: Page;
   readonly home: string;
   readonly output: readonly string[];
+  /** Quits the app and throws if any process of its tree, the Nyte Host utility process included, outlives it. */
   close(): Promise<void>;
 }
 
@@ -138,9 +143,20 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
     stream?.on("data", (chunk: string) => output.push(chunk));
   }
 
-  const close = async (): Promise<void> => {
+  const quit = async (): Promise<void> => {
     await application.close().catch(() => undefined);
     await rm(root, { recursive: true, force: true });
+  };
+
+  const close = async (): Promise<void> => {
+    const tree = await inspectProcessTree(child.pid);
+    await quit();
+    const left = tree === null ? [] : await survivors(tree, REAP_MS);
+
+    if (left.length > 0)
+      throw new Error(
+        `The desktop's processes outlived close(): ${left.map((row) => `${String(row.pid)} ${row.command}`).join(", ")}`,
+      );
   };
 
   try {
@@ -149,7 +165,7 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
 
     return { application, page, home: options.home, output, close };
   } catch (cause) {
-    await close();
+    await quit();
     throw cause;
   }
 }
