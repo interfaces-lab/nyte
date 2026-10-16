@@ -83,24 +83,20 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
     put: (input) => plan([...pending, { kind: "put", ...input }]),
     remove: (input) => plan([...pending, { kind: "remove", ...input }]),
     async apply() {
-      const entries: BatchEntry[] = [];
+      const entries = await Promise.all(
+        pending.map(async (entry): Promise<BatchEntry> => {
+          if (entry.kind === "remove") return entry;
+          const { contents, ...rest } = entry;
 
-      for (const entry of pending) {
-        if (entry.kind === "remove") {
-          entries.push(entry);
-          continue;
-        }
-
-        const { contents, ...rest } = entry;
-
-        entries.push({
-          ...rest,
-          contents:
-            typeof contents === "string" || !(contents instanceof Uint8Array)
-              ? contents
-              : { blob: await upload(once(contents)) },
-        });
-      }
+          return {
+            ...rest,
+            contents:
+              typeof contents === "string" || !(contents instanceof Uint8Array)
+                ? contents
+                : { blob: await upload(once(contents)) },
+          };
+        }),
+      );
 
       const { receipt } = await rows.call("files.batch", {
         workspace,
