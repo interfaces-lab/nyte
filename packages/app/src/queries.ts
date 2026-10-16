@@ -754,20 +754,6 @@ export function usePluginCatalog(sessionId?: SessionId) {
   return { data, isError: failed };
 }
 
-export function useSessionCommands(sessionId: SessionId) {
-  const commands = useWatchSelect(
-    sessionWatch(sessionId),
-    (state) => state.value?.catalog.commands,
-  );
-
-  const data = useMemo(
-    () => (commands === undefined ? undefined : [...commands, COMPACT_COMMAND]),
-    [commands],
-  );
-
-  return { data };
-}
-
 export function useSetPreference() {
   const client = useQueryClient();
 

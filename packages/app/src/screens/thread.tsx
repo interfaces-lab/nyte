@@ -20,7 +20,8 @@ import type {
   SessionView,
   UserContent,
 } from "@nyte-ai/sdk";
-import { Composer, ComposerFrame } from "../conversation/composer.tsx";
+import { Composer } from "../conversation/composer.tsx";
+import { ComposerFrame } from "../conversation/composer-frame.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../conversation/composer-file-drop.ts";

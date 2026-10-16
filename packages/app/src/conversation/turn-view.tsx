@@ -33,7 +33,7 @@ import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
 import { SubagentGroupView, SubagentReportLine } from "./subagent-call.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
-import { ComposerFrame } from "./composer.tsx";
+import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";

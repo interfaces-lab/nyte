@@ -15,7 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { ComposerFrame } from "./composer.tsx";
+import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerDocumentState } from "./composer-document.ts";
 import { Prose } from "./prose.tsx";
 
