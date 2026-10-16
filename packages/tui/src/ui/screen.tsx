@@ -44,19 +44,6 @@ export function Screen(): JSX.Element {
       flexDirection="column"
       backgroundColor={app.kit.theme().background}
     >
-      <Show when={dimensions().height >= 5 ? screen().loading : null}>
-        {(loading: Accessor<string>) => (
-          <text
-            id="session-loading"
-            fg={app.kit.theme().dim}
-            height={1}
-            flexShrink={0}
-            marginLeft={3}
-          >
-            {loading()}
-          </text>
-        )}
-      </Show>
       <Show when={where() === "screen"}>
         <box id="screen" flexGrow={1} minHeight={0} flexDirection="column">
           <DialogHost />

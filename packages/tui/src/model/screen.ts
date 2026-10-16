@@ -31,7 +31,6 @@ import { deriveTranscript } from "./transcript.ts";
 import type { TranscriptModel } from "./transcript.ts";
 
 export interface ScreenModel {
-  readonly loading: string | null;
   readonly opening: boolean;
   readonly watch: WatchModel | null;
   readonly run: RunModel;
@@ -176,12 +175,6 @@ function opening(state: State): boolean {
   return (state.facts.session?.view ?? null) === null;
 }
 
-function loadingLine(state: State): string | null {
-  if (opening(state)) return null;
-
-  return state.local.pending.some((op) => op.kind === "switch") ? "Loading session…" : null;
-}
-
 function tasksLine(state: State, question: QuestionModel | null): TasksLine | null {
   const active = state.facts.tasks.filter(unfinishedTask).length;
 
@@ -307,7 +300,6 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const markers = keepEqual(previous?.markers, liveMarkers(state.local.draft), sameSpan);
 
   return {
-    loading: loadingLine(state),
     opening: opening(state),
     watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
     run: input.run,

@@ -32,7 +32,7 @@ describe("blocked", () => {
   test("Ctrl+Enter refuses the same way", () => {
     expect(at({ blocked: "switching", draft: "hi" }, CTRL_ENTER).intent).toEqual({
       kind: "refuse",
-      reason: "Switching workspace. Your draft is saved here.",
+      reason: "Opening the chat. Your draft is saved here.",
     });
   });
 

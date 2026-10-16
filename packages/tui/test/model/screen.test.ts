@@ -52,8 +52,8 @@ describe("blocked", () => {
     ).toEqual({ kind: "authenticating", link: null });
   });
 
-  test("startup opens quietly until the first view arrives", () => {
-    expect(deriveScreen(blank(), null)).toMatchObject({ loading: null, opening: true });
+  test("startup opens quietly until the first view arrives; a switch says so in the composer", () => {
+    expect(deriveScreen(blank(), null)).toMatchObject({ opening: true });
 
     const session = followed(idle);
 
@@ -63,14 +63,17 @@ describe("blocked", () => {
       { kind: "session-opened", session: S1, info: session.info, selection: session.selection },
     ).state;
 
-    expect(deriveScreen(opened, null)).toMatchObject({ loading: null, opening: true });
-    expect(deriveScreen(ready(idle), null)).toMatchObject({ loading: null, opening: false });
+    expect(deriveScreen(opened, null)).toMatchObject({ opening: true });
+    expect(deriveScreen(ready(idle), null)).toMatchObject({ opening: false });
     expect(
       deriveScreen(
         play(ready(idle), { kind: "switch-session", session: "new", announce: false }).state,
         null,
       ),
-    ).toMatchObject({ loading: "Loading session…", opening: false });
+    ).toMatchObject({
+      opening: false,
+      placeholder: "Opening the chat. Your draft is saved here.",
+    });
   });
 });
 
