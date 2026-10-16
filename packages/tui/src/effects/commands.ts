@@ -296,8 +296,7 @@ export async function reload(effect: Of<"reload">, context: HandlerContext): Pro
 
     if (outcome === "missing") throw new Error("This chat's workspace is no longer registered.");
     const cwd = read().facts.workspace.cwd;
-    const settings = await ports.settings.read(cwd);
-    dispatch({ kind: "settings", settings });
+    dispatch({ kind: "settings", settings: ports.settings.read(cwd).settings });
     await refreshWorkspace(context, cwd);
     const skills = followedSession(read())?.view?.catalog.skills.length ?? 0;
 

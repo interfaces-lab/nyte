@@ -446,7 +446,7 @@ test("an acknowledged thinking level is saved as the default; a model-only choic
 
   const saved = await app.received("settings");
   expect(saved.settings.thinkingLevel).toBe("high");
-  expect(await app.ports.settings.read("/tmp")).toMatchObject({ thinkingLevel: "high" });
+  expect(app.ports.settings.read("/tmp").settings).toMatchObject({ thinkingLevel: "high" });
   expect(app.dispatched.filter((msg) => msg.kind === "settings")).toHaveLength(1);
 });
 

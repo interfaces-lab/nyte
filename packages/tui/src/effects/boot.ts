@@ -20,8 +20,7 @@ export interface BootOptions {
 }
 
 /**
- * Starts the app: reads settings at once, then lists models as soon as `opened` says the
- * host is reachable, and follows the session to resume or opens a blank chat. A failed
+ * Starts the app: lists models as soon as `opened` says the host is reachable, and follows the session to resume or opens a blank chat. A failed
  * `opened` fails boot.
  */
 export async function boot(
@@ -31,16 +30,9 @@ export async function boot(
 ): Promise<void> {
   const { dispatch, ports, scope } = context;
 
-  const reading = ports.settings.read(options.cwd).then((settings) => {
-    if (!context.signal.aborted) dispatch({ kind: "settings", settings });
-
-    return settings;
-  });
-
-  reading.catch(() => undefined);
-
   if (!(await reachable(opened, context.signal))) return;
-  const [settings, catalog] = await Promise.all([reading, ports.host.listModels()]);
+  const catalog = await ports.host.listModels();
+  const { settings } = context.read().facts;
   dispatch({ kind: "catalog", generation: (scope.catalogGeneration += 1), catalog });
 
   if (context.signal.aborted) return;

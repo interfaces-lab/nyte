@@ -11,6 +11,7 @@ import type { Store } from "../../src/app/store.ts";
 import { holdTypeahead } from "../../src/app/typeahead.ts";
 import type { BootOptions } from "../../src/effects/boot.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
+import type { SettingsPort } from "../../src/effects/ports.ts";
 import { keyStrokes } from "../../src/lib/constants.ts";
 import type { ChatCommand } from "../../src/lib/constants.ts";
 import { hostPort } from "../../src/effects/host-port.ts";
@@ -36,6 +37,8 @@ export interface TuiOptions {
   readonly kit?: (kit: Kit) => Kit;
   /** Starts `recorder` just before the app mounts, so frame timestamps count from mount. */
   readonly record?: boolean;
+  /** Replaces the fake settings, which read as `SETTINGS`. */
+  readonly settings?: SettingsPort;
 }
 
 /** The whole TUI on a test renderer, its timers on a `ManualClock`, over an in-process host. */
@@ -89,7 +92,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
 
   const mounting: AppOptions = {
     renderer: setup.renderer,
-    ports: { ...fakes, log: openCrashLog(home) },
+    ports: { ...fakes, settings: options.settings ?? fakes.settings, log: openCrashLog(home) },
     cwd: home,
     typeahead,
     boot: { home, cwd: home, target: options.target ?? { kind: "new" }, model: null, effort: null },

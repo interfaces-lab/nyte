@@ -37,6 +37,7 @@ import type { ComposerPort, ScrollPort } from "../model/native.ts";
 import type { Selection } from "../model/state.ts";
 import type { McpAction } from "../model/effect.ts";
 import type { LoginDriver } from "../services/auth.ts";
+import type { SettingsRead } from "../services/settings.ts";
 
 export type { ComposerPort, ScrollPort };
 
@@ -171,7 +172,8 @@ export interface TerminalPort {
 }
 
 export interface SettingsPort {
-  read(cwd: string): Promise<ResolvedSettings>;
+  /** Reads synchronously, so the first frame draws with the user's settings; a file that fails to parse is left out and listed. */
+  read(cwd: string): SettingsRead;
   write(cwd: string, patch: SettingsPatch): Promise<ResolvedSettings>;
 }
 

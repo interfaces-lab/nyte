@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -7,8 +7,25 @@ import type { Json } from "@nyte-ai/sdk";
 import { isJsonObject } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import { toJson } from "../json.ts";
+import { errorMessage } from "../lib/format.ts";
 import { parseSettingsFile } from "../lib/settings-schema.ts";
 import type { ResolvedSettings, SettingsFile, SettingsPatch } from "../lib/settings-schema.ts";
+
+/** A settings file left out of the merge, and why. */
+export interface SettingsProblem {
+  readonly path: string;
+  readonly reason: string;
+}
+
+/** The merged settings, and each file that failed to parse and was left out of them. */
+export interface SettingsRead {
+  readonly settings: ResolvedSettings;
+  readonly invalid: readonly SettingsProblem[];
+}
+
+type FileRead =
+  | { readonly kind: "read"; readonly file: SettingsFile }
+  | { readonly kind: "invalid"; readonly problem: SettingsProblem };
 
 function defaultSettingsPath(): string {
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
@@ -20,19 +37,23 @@ function projectSettingsPath(cwd: string): string {
   return join(cwd, ".nyte", "settings.json");
 }
 
-async function readSettings(path: string): Promise<SettingsFile> {
-  if (!existsSync(path)) return {};
-  const text = await readFile(path, "utf8");
-
-  let parsed: Json;
+function readSettings(path: string): FileRead {
+  if (!existsSync(path)) return { kind: "read", file: {} };
 
   try {
-    parsed = toJson(JSON.parse(text));
-  } catch (cause) {
-    throw new Error(`Invalid JSON in ${path}`, { cause });
-  }
+    const text = readFileSync(path, "utf8");
+    let parsed: Json;
 
-  return parseSettingsFile(parsed, path);
+    try {
+      parsed = toJson(JSON.parse(text));
+    } catch {
+      return { kind: "invalid", problem: { path, reason: "invalid JSON" } };
+    }
+
+    return { kind: "read", file: parseSettingsFile(parsed) };
+  } catch (cause) {
+    return { kind: "invalid", problem: { path, reason: errorMessage(cause) } };
+  }
 }
 
 function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSettings {
@@ -69,20 +90,27 @@ export class FileSettingsStore {
     this.globalPath = globalPath;
   }
 
-  async read(cwd: string): Promise<ResolvedSettings> {
-    await this.writes.settled();
+  /** Reads both files at once, so the first frame can draw with them; a file that fails to parse contributes nothing. Never throws. */
+  read(cwd: string): SettingsRead {
+    const global = readSettings(this.globalPath);
+    const project = readSettings(projectSettingsPath(cwd));
 
-    const [global, project] = await Promise.all([
-      readSettings(this.globalPath),
-      readSettings(projectSettingsPath(cwd)),
-    ]);
-
-    return mergeSettings(global, project);
+    return {
+      settings: mergeSettings(
+        global.kind === "read" ? global.file : {},
+        project.kind === "read" ? project.file : {},
+      ),
+      invalid: [global, project].flatMap((read) => (read.kind === "invalid" ? [read.problem] : [])),
+    };
   }
 
+  /** Writes `patch` into the global file; refuses while that file doesn't parse, so a fix by hand isn't overwritten. */
   updateGlobal(patch: SettingsPatch): Promise<void> {
     return this.writes.run(async () => {
-      await readSettings(this.globalPath);
+      const current = readSettings(this.globalPath);
+
+      if (current.kind === "invalid")
+        throw new Error(`Fix ${current.problem.path} first: ${current.problem.reason}`);
       await writeSettingsPatch(this.globalPath, patch);
     });
   }

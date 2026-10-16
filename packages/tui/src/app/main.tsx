@@ -25,7 +25,6 @@ import { sessionRecovery } from "../flags.ts";
 import type { RunFlags } from "../flags.ts";
 import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
-import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Msg } from "../model/msg.ts";
 import { followedSession, initialState } from "../model/state.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";
@@ -45,14 +44,6 @@ import type { Typeahead } from "./typeahead.ts";
 type TuiExit =
   | { readonly kind: "quit" }
   | { readonly kind: "signal"; readonly signal: "SIGINT" | "SIGTERM" };
-
-const STARTUP_SETTINGS: ResolvedSettings = {
-  autoUpdate: false,
-  theme: "auto",
-  copyOnSelect: false,
-  scrollAcceleration: false,
-  followUp: "steer",
-};
 
 /** Ports that work before the host opens. The app adds the host, its plugins and the renderer's clock. */
 export type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
@@ -120,12 +111,13 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   );
 
   const quit = (): void => closing.resolve(0);
+  const { settings, invalid } = options.ports.settings.read(options.cwd);
 
   const root = createRoot((dispose) => {
     const store = createStore({
       initial: initialState({
         cwd: options.cwd,
-        settings: STARTUP_SETTINGS,
+        settings,
         terminal: terminalFacts(renderer),
       }),
       now: () => renderer.clock.now(),
@@ -166,6 +158,13 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   });
 
   const { store } = root;
+
+  if (invalid.length > 0)
+    store.dispatch({
+      kind: "inform",
+      tone: "warning",
+      text: invalid.map((problem) => `Ignored ${problem.path}: ${problem.reason}`).join("\n"),
+    });
   void store.runner.exited.then(({ code }) => closing.resolve(code));
 
   const opening = options.open(store.dispatch).then((host) => {

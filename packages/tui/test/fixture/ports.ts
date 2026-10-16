@@ -474,7 +474,7 @@ export function fakePorts(host: FakeHost): FakePorts {
     composer: createHandle(),
     scroll: createHandle(),
     settings: {
-      read: async () => settings,
+      read: () => ({ settings, invalid: [] }),
       async write(_cwd, patch) {
         settings = { ...settings, ...patch };
 
