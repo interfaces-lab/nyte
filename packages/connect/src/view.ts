@@ -9,7 +9,7 @@ export const ConnectUnavailableSchema = Type.Union([
 
 export type ConnectUnavailable = Static<typeof ConnectUnavailableSchema>;
 
-export const ConnectAccountSchema = Type.Union([
+const ConnectAccountSchema = Type.Union([
   Type.Object({ kind: Type.Literal("unavailable") }),
   Type.Object({ kind: Type.Literal("signed_out") }),
   Type.Object({ kind: Type.Literal("signed_in"), label: Type.String() }),

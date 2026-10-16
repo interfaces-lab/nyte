@@ -253,7 +253,7 @@ export const RELAY_OPERATIONS = [
 ] as const;
 
 /** The host's discovery routes, each a `GET`; only `identity` takes a query, its `?nonce=`. */
-export const RELAY_DISCOVERY = {
+const RELAY_DISCOVERY = {
   identity: "/.nyte/identity",
   describe: "/.nyte/describe",
 } as const;
@@ -308,7 +308,7 @@ export const RelayResponseHeaders = strict({
 export type RelayResponseHeaders = Static<typeof RelayResponseHeaders>;
 
 /** Success or failure only: no informational or redirect status can be relayed. */
-export const RelayStatus = Type.Union([
+const RelayStatus = Type.Union([
   Type.Integer({ minimum: 200, maximum: 299 }),
   Type.Integer({ minimum: 400, maximum: 599 }),
 ]);

@@ -132,9 +132,9 @@ export const LINK_AUTHORIZATION_LIFETIME_SECONDS = 60;
 export const LINK_POLL_INTERVAL_SECONDS = 5;
 
 /** Crockford-style base32 without vowels, so a code is never a word. */
-export const USER_CODE_ALPHABET = "0123456789BCDFGHJKMNPQRSTVWXZ";
+const USER_CODE_ALPHABET = "0123456789BCDFGHJKMNPQRSTVWXZ";
 
-export const USER_CODE_LENGTH = 8;
+const USER_CODE_LENGTH = 8;
 
 /**
  * Where phones reach a desktop: `<CONNECT_ORIGIN>/r/<environmentId>`, under
@@ -265,12 +265,10 @@ export const LinkRequest = strict({ publicKey: PublicJwk, name: Name });
 export type LinkRequest = Static<typeof LinkRequest>;
 
 /** Its relay address is not sent: every client derives it with `relayAddress`. */
-export const LinkedEnvironment = Type.Object({
+const LinkedEnvironment = Type.Object({
   id: Uuid,
   name: Name,
 });
-
-export type LinkedEnvironment = Static<typeof LinkedEnvironment>;
 
 /** `XXXX-XXXX`, as typed; the broker normalizes case and the separator. */
 export const UserCode = Type.String({ pattern: "^[A-Za-z0-9]{4}[- ]?[A-Za-z0-9]{4}$" });

@@ -44,7 +44,7 @@ export type PrivateJwk = Static<typeof PrivateJwk>;
 export type TokenType = (typeof TOKEN_TYPES)[keyof typeof TOKEN_TYPES];
 
 /** A token that failed verification. The reason is for logs and tests, never for a client. */
-export class VerificationFailed extends Error {
+class VerificationFailed extends Error {
   constructor(reason: string) {
     super(reason);
     this.name = "VerificationFailed";
@@ -111,7 +111,7 @@ export async function signClaims(input: {
 }
 
 /** The `kid` a token names, read before its signature is checked so the key can be chosen. */
-export function tokenKeyId(token: string): string | undefined {
+function tokenKeyId(token: string): string | undefined {
   try {
     const header = decodeProtectedHeader(token);
 
