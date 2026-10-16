@@ -181,6 +181,23 @@ export interface FeedItem {
   readonly head: HeadPair | null;
 }
 
+/** A logged event with its head's ref pair when it moves a head. */
+export interface LoggedItem {
+  readonly event: SessionEvent;
+  readonly head: HeadPair | null;
+}
+
+/**
+ * Puts logged events on the bus once each and in seq order per session, for every subscriber.
+ * An event at or below the session's last published seq is dropped; one past the next seq first
+ * publishes the gap from the log (another process's commits, or a concurrent publish not yet
+ * here), and publishes anyway, leaving the gap to folds' own reads, when that read fails.
+ */
+export interface LogPublisher {
+  /** Publishes `items`, ascending, after everything handed over for the session before them. */
+  publish(session: SessionId, items: readonly LoggedItem[]): Promise<void>;
+}
+
 export interface SessionBus {
   publish(session: SessionId, event: SessionEvent | PatchEvent, head?: HeadPair | null): void;
   subscribe(

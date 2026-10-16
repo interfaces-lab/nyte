@@ -18,6 +18,8 @@ import type {
   FoldState,
   HeadPair,
   LiveStream,
+  LoggedItem,
+  LogPublisher,
   SessionBus,
 } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
@@ -51,10 +53,8 @@ interface FoldFeed {
 
 type Feeds = Pick<
   Kernel,
-  "store" | "bus" | "streams" | "activation" | "catalog" | "jobs" | "pages"
+  "store" | "bus" | "publisher" | "streams" | "activation" | "catalog" | "jobs" | "pages"
 >;
-
-type Paired = { readonly event: SessionEvent; readonly head: HeadPair | null };
 
 const LOG_PAGE = 512;
 
@@ -148,9 +148,9 @@ export function createFoldCache(kernel: Feeds): FoldCache {
   };
 }
 
-/** Publishes a set's events on the bus as the set logged them, from the updates in hand: each event at the seq and time the store gave it, each head-moving event with its head's ref pair (the one this set wrote, else read). A fold that sees a seq skip reads the gap from the log itself. */
+/** Publishes a set's events through the kernel's publisher as the set logged them, from the updates in hand: each event at the seq and time the store gave it, each head-moving event with its head's ref pair (the one this set wrote, else read). */
 export async function publishSet(
-  kernel: Pick<Kernel, "store" | "bus">,
+  kernel: Pick<Kernel, "store" | "publisher">,
   updates: readonly RefUpdate[],
   outcome: SetOutcome,
 ): Promise<void> {
@@ -185,13 +185,60 @@ export async function publishSet(
   }
 
   for (const [session, events] of logged)
-    for (const { event, head } of await paired(
-      kernel,
+    await kernel.publisher.publish(
       session,
-      events,
-      written.get(session) ?? NO_PAIRS,
-    ))
-      kernel.bus.publish(session, event, head);
+      await paired(kernel, session, events, written.get(session) ?? NO_PAIRS),
+    );
+}
+
+/** Returns the kernel's {@link LogPublisher} over `bus`, reading gaps from `store`'s log. */
+export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPublisher {
+  const sessions = new Map<SessionId, { published: number | null; queue: Promise<void> }>();
+
+  const emit = (session: SessionId, sequence: { published: number | null }, item: LoggedItem) => {
+    if (sequence.published !== null && item.event.seq <= sequence.published) return;
+    sequence.published = item.event.seq;
+    kernel.bus.publish(session, item.event, item.head);
+  };
+
+  const fill = async (
+    session: SessionId,
+    sequence: { published: number | null },
+    before: number,
+  ): Promise<void> => {
+    for (let from = sequence.published; from !== null && from + 1 < before;) {
+      const events = await kernel.store.refs.log(session, asSeq(from), LOG_PAGE);
+      const missing = events.filter((event) => event.seq < before);
+
+      for (const item of await paired(kernel, session, missing, NO_PAIRS))
+        emit(session, sequence, item);
+
+      if (missing.length < LOG_PAGE) return;
+      from = sequence.published;
+    }
+  };
+
+  return {
+    publish(session, items) {
+      const sequence = sessions.get(session) ?? { published: null, queue: Promise.resolve() };
+      sessions.set(session, sequence);
+
+      const published = sequence.queue.then(async () => {
+        for (const item of items) {
+          if (sequence.published !== null && item.event.seq > sequence.published + 1)
+            await fill(session, sequence, item.event.seq).catch((error) =>
+              dev("bus", "gap read failed", { session, error: String(error) }),
+            );
+
+          emit(session, sequence, item);
+        }
+      });
+
+      sequence.queue = published.catch(() => undefined);
+
+      return published;
+    },
+  };
 }
 
 export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveStream>> {
@@ -384,8 +431,15 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
 
         if (!open) return;
 
-        for (const { event, head } of await paired(kernel, session, events, NO_PAIRS))
-          if (event.seq > through) kernel.bus.publish(session, event, head);
+        await kernel.publisher.publish(
+          session,
+          await paired(
+            kernel,
+            session,
+            events.filter((event) => event.seq > through),
+            NO_PAIRS,
+          ),
+        );
         const last = events.at(-1);
 
         if (last === undefined || events.length < LOG_PAGE) {
@@ -409,7 +463,7 @@ async function paired(
   session: SessionId,
   events: readonly SessionEvent[],
   written: ReadonlyMap<HeadName, HeadPair>,
-): Promise<readonly Paired[]> {
+): Promise<readonly LoggedItem[]> {
   const unknown = new Set(
     events.flatMap((event) => {
       const head = movedHead(event);

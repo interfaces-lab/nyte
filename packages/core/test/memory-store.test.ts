@@ -1,7 +1,7 @@
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { DurableEvent, SessionId } from "@nyte-ai/schema";
+import type { DurableEvent, RefUpdate, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { dev, memoryStore, objectId, sessionRef } from "../src/index.ts";
+import { dev, memoryStore, objectId, publishSet, sessionRef } from "../src/index.ts";
 import { commit } from "../src/fold/commit.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { attempt, STALE } from "../src/store/session.ts";
@@ -304,5 +304,37 @@ describe("commit", () => {
     } finally {
       dev.sink = sink;
     }
+  });
+
+  it("puts each logged event on the bus once and in seq order, reading a gap from the log", async () => {
+    const { kernel, host } = await setup();
+    const created = await host.sessions.create();
+    const seqs: number[] = [];
+
+    kernel.bus.subscribe(created.id, (event) => {
+      if (event.kind === "head") seqs.push(event.seq);
+    });
+
+    const mark = (name: string): RefUpdate[] => [
+      {
+        name: `${sessionRef(created.id)}/marks/${name}`,
+        target: null,
+        event: { head: main, kind: "head", from: null, to: null, reason: "moved" },
+      },
+    ];
+
+    const first = mark("a");
+    const second = mark("b");
+    const landedFirst = await kernel.store.refs.set(first);
+    const landedSecond = await kernel.store.refs.set(second);
+    assert(landedFirst.kind === "set");
+
+    await publishSet(kernel, second, landedSecond);
+    await publishSet(kernel, first, landedFirst);
+    await publishSet(kernel, second, landedSecond);
+
+    const [seq = 0] = landedFirst.logged;
+
+    expect(seqs).toEqual([seq, seq + 1]);
   });
 });

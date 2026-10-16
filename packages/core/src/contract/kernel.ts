@@ -39,7 +39,7 @@ import type {
   ValidationIssue,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import type { FoldCache, LiveStream, SessionBus } from "./fold.ts";
+import type { FoldCache, LiveStream, LogPublisher, SessionBus } from "./fold.ts";
 import type {
   Connection,
   ConnectionContext,
@@ -96,6 +96,9 @@ export interface Kernel {
   readonly description: HostDescription;
 
   readonly bus: SessionBus;
+
+  /** The one way logged events reach the bus: once each, in seq order per session. */
+  readonly publisher: LogPublisher;
 
   readonly host: HostState;
 

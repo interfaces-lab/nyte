@@ -44,7 +44,7 @@ export async function commit(kernel: Kernel, updates: readonly RefUpdate[]): Pro
   return outcome;
 }
 
-/** A landed write's events reach watchers through the bus. The write already landed, so a failed publish is not the writer's failure: the same events are published again with backoff, and a fold that already has them skips them by seq. */
+/** A landed write's events reach watchers through the bus. The write already landed, so a failed publish is not the writer's failure: the same events are published again with backoff, and the publisher drops those already on the bus. */
 async function publish(
   kernel: Kernel,
   updates: readonly RefUpdate[],
