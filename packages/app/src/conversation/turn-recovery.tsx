@@ -10,15 +10,14 @@ import { connected } from "../sdk.tsx";
 import { showsSettingsSection } from "../settings/index.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
 import { compactSession } from "./composer-send.ts";
+import { useTranscriptScope } from "./transcript.tsx";
 
-/** The control that takes a failed turn's recovery step in its chat. */
-export function RecoveryAction({
-  recovery,
-  sessionId,
-}: {
-  readonly recovery: Recovery;
-  readonly sessionId: SessionId;
-}): ReactElement | null {
+/** The control that takes a failed turn's recovery step in its chat; nothing outside a chat's transcript. */
+export function RecoveryAction({ recovery }: { readonly recovery: Recovery }): ReactElement | null {
+  const sessionId = useTranscriptScope()?.sessionId;
+
+  if (sessionId === undefined) return null;
+
   switch (recovery) {
     case "compact":
       return <CompactButton sessionId={sessionId} />;

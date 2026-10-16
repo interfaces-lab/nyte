@@ -16,7 +16,7 @@ import { AttachmentGroup } from "@nyte-ai/ui/attachment";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
-import type { Message as ViewMessage, SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
 import {
   failureNotice,
   showsText,
@@ -608,7 +608,6 @@ const ResponseView = memo(function ResponseView({
 });
 
 interface TurnBodyProps {
-  sessionId: SessionId;
   density: ToolCallDensity;
   cwd: string | undefined;
   changes: SessionView["changes"];
@@ -643,7 +642,6 @@ function turnChanges(
 
 const TurnBody = memo(function TurnBody({
   turn,
-  sessionId,
   density,
   cwd,
   changes: sessionChanges,
@@ -727,7 +725,7 @@ const TurnBody = memo(function TurnBody({
           {failure.recovery !== undefined && (
             <>
               {" "}
-              <RecoveryAction recovery={failure.recovery} sessionId={sessionId} />
+              <RecoveryAction recovery={failure.recovery} />
             </>
           )}
         </StatusMarker>
