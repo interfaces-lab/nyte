@@ -221,6 +221,7 @@ function hostView(wire: HostViewWire, link: HostView["link"]): HostView {
     catalog: wire.catalog,
     plugins: wire.plugins,
     settings: wire.settings,
+    defaultWorkspace: wire.defaultWorkspace,
     authority: new Set(wire.authority),
   };
 }

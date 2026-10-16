@@ -404,6 +404,7 @@ describe("watch", () => {
       catalog: "g1",
       plugins: [],
       settings: [],
+      defaultWorkspace: null,
       authority,
     });
 

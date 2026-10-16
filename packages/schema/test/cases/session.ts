@@ -279,6 +279,7 @@ export const sessionCases = {
       catalog: generation,
       plugins: [{ id: "parts", source: "builtin", path: null, issues: [issue] }],
       settings: [settingInfo],
+      defaultWorkspace: null,
       authority: ["participant", "owner"],
       principal,
     },
