@@ -1,20 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
 import type { Json, ToolClass, ToolPartState } from "@nyte-ai/sdk";
+import { showsTool } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../../src/lib/tasks.ts";
 import { shellCard, toolCard } from "../../src/lib/tool-card.ts";
 import type { ToolCardModel } from "../../src/lib/tool-card.ts";
-import { isToolMessage } from "../../src/lib/view-helpers.ts";
-import type { ToolMessage } from "../../src/lib/view-helpers.ts";
 import type { ShellJob } from "../../src/model/state.ts";
 import { viewOf } from "../fixture/view.ts";
 import type { TurnBuilder } from "../fixture/view.ts";
 
 function toolOf(name: string, spec: Parameters<TurnBuilder["tool"]>[1]): ToolMessage {
   const view = viewOf((v) => v.turn("t1", (t) => t.user("go").tool(name, spec)));
-  const message = view.messages.find((candidate) => isToolMessage(candidate));
+  const message = view.messages.find((candidate) => showsTool(candidate));
 
-  if (message === undefined || !isToolMessage(message)) throw new Error("no tool message");
+  if (message === undefined || !showsTool(message)) throw new Error("no tool message");
 
   return message;
 }
@@ -71,7 +71,7 @@ describe("toolCard", () => {
       false,
     );
 
-    expect(text(card)).toBe("● search  scanning");
+    expect(text(card)).toBe("● running search  scanning");
     expect(card.heading[0]?.role).toBe("user");
     expect(card.body).toEqual({ kind: "none" });
   });
@@ -79,7 +79,7 @@ describe("toolCard", () => {
   test("a settled call with many lines says how many and previews head and tail", () => {
     const card = toolCard(toolOf("search", { output: "1\n2\n3\n4\n5\n6\n7\n8" }), [], false);
 
-    expect(text(card)).toBe("✓ search  8 lines");
+    expect(text(card)).toBe("✓ ran search  8 lines");
     expect(card.body).toMatchObject({ kind: "text", role: "dim" });
     expect(card.body.kind === "text" ? card.body.text : "").toContain(
       "… 2 more lines · ctrl+o expand",
@@ -146,7 +146,7 @@ describe("toolCard", () => {
   test("a unified diff in any output counts its hunks and draws them", () => {
     const card = toolCard(toolOf("git", { output: UNIFIED }), [], false);
 
-    expect(text(card)).toBe("✓ git  2 hunks");
+    expect(text(card)).toBe("✓ ran git  2 hunks");
     expect(card.body.kind).toBe("diff");
   });
 
@@ -213,7 +213,7 @@ describe("toolCard", () => {
     const card = toolCard(create, [task], false);
 
     expect(text(card)).toBe("● explorer  model · medium");
-    expect(card.body).toEqual({ kind: "activity", text: "grep" });
+    expect(card.body).toEqual({ kind: "activity", text: "running grep" });
     expect(text(toolCard(create, [{ ...task, info: { ...task.info, call: null } }], false))).toBe(
       "● explore",
     );
@@ -229,7 +229,7 @@ describe("toolCard", () => {
     const send = toolOf("send", { class: sendClass, output: "" });
     const card = toolCard(send, [], false);
 
-    expect(text(card)).toBe("✓ sent to subagent");
+    expect(text(card)).toBe("✓ messaged subagent");
     expect(card.body).toEqual({ kind: "none" });
   });
 });

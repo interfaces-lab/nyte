@@ -1,5 +1,6 @@
 import type { JSX } from "@opentui/solid";
 import { createMemo, Show } from "solid-js";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import {
   ACTIVITY_THOUGHT_LABEL,
@@ -8,7 +9,6 @@ import {
   RESULT_TAIL_LINES,
 } from "../../lib/constants.ts";
 import { toolOutputPreview } from "../../lib/tool-card.ts";
-import type { PartMessage } from "../../lib/view-helpers.ts";
 import { hasIncompleteHeadingPrefix } from "./assistant-text.tsx";
 import { Markdown } from "./markdown.tsx";
 

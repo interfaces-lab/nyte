@@ -1,6 +1,7 @@
 import type { Delivery, MessageId, RunId, Schedule } from "@nyte-ai/sdk";
-import { queuedMessages, shownContent } from "../lib/view-helpers.ts";
-import type { UserMessage } from "../lib/view-helpers.ts";
+import { shownContent } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
+import { queuedMessages } from "../lib/view-helpers.ts";
 import { draftFromContent } from "./draft.ts";
 import type { State } from "./state.ts";
 

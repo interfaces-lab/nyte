@@ -2,7 +2,7 @@ import type { Renderable, SyntaxStyle, TextChunk } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createContext, useContext } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { PartMessage } from "../lib/view-helpers.ts";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { CliTheme } from "../lib/theme.ts";
 import type { Msg } from "../model/msg.ts";
 import type { ComposerPort, ScrollPort } from "../model/native.ts";

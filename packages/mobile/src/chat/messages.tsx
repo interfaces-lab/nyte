@@ -5,7 +5,8 @@ import { setStringAsync } from "expo-clipboard";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { BlobId, Connection, Failure, PartId, SessionId } from "@nyte-ai/sdk";
+import type { BlobId, Connection, PartId, SessionId } from "@nyte-ai/sdk";
+import { failureNotice } from "@nyte-ai/plugin/client/presentation";
 import { useHost } from "../connection/host-context.tsx";
 import { controls, media, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
@@ -173,33 +174,6 @@ function CanvasRow({
   );
 }
 
-function failureLabel(failure: Failure): string {
-  switch (failure.class) {
-    case "aborted":
-      return "Stopped";
-    case "rate_limit":
-      return "Rate limited";
-    case "context_window":
-      return "Context window exceeded";
-    case "quota":
-      return "Quota reached";
-    case "auth":
-      return "Authentication failed";
-    case "overloaded":
-      return "Model unavailable";
-    case "network":
-      return "Connection lost";
-    case "provider":
-    case "runner":
-      return failure.message.replaceAll(/\s+/gu, " ").trim() || "Response failed";
-    default: {
-      const exhaustive: never = failure.class;
-
-      return exhaustive;
-    }
-  }
-}
-
 function RunStatus({
   execution,
 }: {
@@ -316,7 +290,7 @@ export const MessageRow = memo(function MessageRow({
           <html.span
             style={[textStyles.secondary, item.failure.class !== "aborted" && styles.failed]}
           >
-            {failureLabel(item.failure)}
+            {failureNotice(item.failure).text}
           </html.span>
         </html.div>
       )}

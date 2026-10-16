@@ -4,7 +4,7 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import "../theme/tokens.stylex.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { ToolCallView } from "./tool-call.tsx";
 
 function check(condition: boolean, message: string): void {

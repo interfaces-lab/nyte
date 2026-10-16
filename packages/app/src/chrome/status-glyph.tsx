@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 import type { SessionInfo } from "@nyte-ai/sdk";
-import type { SessionMark } from "../view-helpers.ts";
 import { Icon } from "@nyte-ai/ui/icon";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { StatusDot } from "../components/ui.tsx";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { sessionIsDraft } from "./sidebar-view.ts";

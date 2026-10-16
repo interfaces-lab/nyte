@@ -1,6 +1,6 @@
 import fuzzysort from "fuzzysort";
 import type { SkillInfo } from "@nyte-ai/sdk";
-import { completionTrigger } from "./view-helpers.ts";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 
 export interface ParsedSlashCommand {
   readonly name: string;

@@ -1,8 +1,8 @@
 import type { JSX } from "@opentui/solid";
 import { createMemo } from "solid-js";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../../lib/tasks.ts";
 import { toolCard } from "../../lib/tool-card.ts";
-import type { ToolMessage } from "../../lib/view-helpers.ts";
 import { CardView } from "./card.tsx";
 import { useTranscript } from "./scope.tsx";
 

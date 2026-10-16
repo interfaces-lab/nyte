@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { ReactElement, ReactNode } from "react";
 import type { Delivery, Execution, SessionId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -17,7 +18,6 @@ import {
   useSessionActivity,
 } from "../queries.ts";
 import { connection } from "../sdk.tsx";
-import type { UserMessage } from "../view-helpers.ts";
 import { macPlatform } from "../platform.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";

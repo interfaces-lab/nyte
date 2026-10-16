@@ -1,7 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
-import { toolOutput, toolStatus } from "../view-helpers.ts";
-import type { ToolMessage, ToolStatus, ToolTense } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -11,12 +9,24 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import {
+  customTool,
+  placeName,
+  toolNoun,
+  toolOutput,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type {
+  CustomTool,
+  ToolMessage,
+  ToolStatus,
+  ToolTense,
+} from "@nyte-ai/plugin/client/presentation";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./styles.stylex.ts";
-import { customTool, placeName, toolNoun, toolVerbs } from "./tool-copy.ts";
 import { ToolOutputText, excerptText, outputExcerpt } from "./tool-output.tsx";
-import type { CustomTool } from "./tool-copy.ts";
 
 export type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
 

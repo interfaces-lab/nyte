@@ -4,9 +4,9 @@ import type { Renderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createMemo, ErrorBoundary, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
-import type { PartMessage } from "../../lib/view-helpers.ts";
 
 function Mounted(props: { readonly node: Renderable }): JSX.Element {
   return (

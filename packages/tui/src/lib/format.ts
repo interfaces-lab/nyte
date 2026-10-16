@@ -1,7 +1,21 @@
-import type { Thinking, UserContent } from "@nyte-ai/sdk";
+import type { Thinking, ToolClass, UserContent } from "@nyte-ai/sdk";
+import { toolTitle } from "@nyte-ai/plugin/client/presentation";
+import type { ToolTense } from "@nyte-ai/plugin/client/presentation";
 import type { RemoteFacts } from "../model/state.ts";
 import { GLYPHS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
+
+/** Lower-cases a phrase's first letter: the terminal speaks tool verbs in lower case. */
+export function lowerFirst(phrase: string): string {
+  return `${phrase.charAt(0).toLowerCase()}${phrase.slice(1)}`;
+}
+
+/** A tool's title in the terminal's voice: "reading src/app.ts", or "src/app.ts read" without a verb. */
+export function toolLine(toolClass: ToolClass, tense: ToolTense): string {
+  const title = toolTitle(toolClass, tense);
+
+  return tense === "none" ? title : lowerFirst(title);
+}
 
 export function formatDuration(ms: number): string {
   const seconds = ms / 1000;

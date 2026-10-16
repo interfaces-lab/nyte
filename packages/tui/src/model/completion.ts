@@ -1,8 +1,8 @@
 import fuzzysort from "fuzzysort";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
 import type { SlashCommand } from "../lib/slash.ts";
-import { completionTrigger } from "../lib/view-helpers.ts";
 import type { Draft } from "./state.ts";
 
 export type CompletionState =

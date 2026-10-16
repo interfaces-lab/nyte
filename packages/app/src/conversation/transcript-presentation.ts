@@ -1,15 +1,11 @@
 import type { Message } from "@nyte-ai/sdk";
-import { isPart, text, thinking } from "@nyte-ai/plugin/client";
-import type { PartState } from "@nyte-ai/plugin/client";
-import { isToolMessage } from "../view-helpers.ts";
-import type { PartMessage, ToolMessage } from "../view-helpers.ts";
+import { showsText, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
+import type {
+  TextMessage,
+  ThinkingMessage,
+  ToolMessage,
+} from "@nyte-ai/plugin/client/presentation";
 import { messageParts, referenceLabel } from "./message-references.ts";
-
-export type TextMessage = PartMessage & { readonly state: PartState<typeof text> };
-
-export type ThinkingMessage = PartMessage & {
-  readonly state: PartState<typeof thinking>;
-};
 
 export type StepMessage = ThinkingMessage | ToolMessage;
 
@@ -19,16 +15,8 @@ type TranscriptDisplayPart =
   | { readonly kind: "agents"; readonly messages: readonly ToolMessage[] }
   | { readonly kind: "response"; readonly messages: readonly TextMessage[] };
 
-export function isTextMessage(message: Message): message is TextMessage {
-  return isPart(message, text);
-}
-
-export function isThinkingMessage(message: Message): message is ThinkingMessage {
-  return isPart(message, thinking);
-}
-
 function isStepMessage(message: Message): message is StepMessage {
-  return isToolMessage(message) || isThinkingMessage(message);
+  return showsTool(message) || showsThinking(message);
 }
 
 export function displayTranscriptParts(messages: readonly Message[]): TranscriptDisplayPart[] {
@@ -56,7 +44,7 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
   };
 
   for (const message of messages) {
-    if (isToolMessage(message) && message.state.class.kind === "delegate") {
+    if (showsTool(message) && message.state.class.kind === "delegate") {
       const { role } = message.state.class;
 
       if (role === "await") continue;
@@ -71,7 +59,7 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
 
     flushAgents();
 
-    if (isTextMessage(message)) {
+    if (showsText(message)) {
       if (message.state.markdown.trim() === "") continue;
       flushStep();
       response.push(message);

@@ -3,8 +3,9 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import { SymbolView } from "expo-symbols";
 import { ActivityIndicator, Pressable } from "react-native";
 import { css, html } from "react-strict-dom";
+import { sessionMark } from "@nyte-ai/plugin/client/presentation";
 import { controls, list, useTheme, radii, textStyles, tokens, typography } from "../theme.ts";
-import { liveRun, sessionMark } from "../view-helpers.ts";
+import { liveRun } from "../view-helpers.ts";
 import { elapsed, formatActivity, rowStatus } from "./sessions.ts";
 
 function Meta({

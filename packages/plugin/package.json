@@ -33,6 +33,7 @@
     "./core/web-search": "./src/web-search.ts",
     "./client": "./src/client.ts",
     "./client/notifications": "./src/client/notifications.ts",
+    "./client/presentation": "./src/client/presentation.ts",
     "./client/questions": "./src/question/client/questions.tsx",
     "./client/questions-tui": "./src/question/client/questions-tui.ts",
     "./client/transcript": "./src/client/transcript.tsx",

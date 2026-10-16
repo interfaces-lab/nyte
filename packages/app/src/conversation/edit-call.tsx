@@ -1,8 +1,8 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
-import { toolStatus } from "../view-helpers.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import { tidyPath, toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { editPatch } from "./edit-patch.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -20,7 +20,6 @@ import { diffView } from "../theme/schema.stylex.ts";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./styles.stylex.ts";
-import { tidyPath, toolNoun, toolVerbs } from "./tool-copy.ts";
 import { ToolOutcome } from "./tool-line.tsx";
 
 export type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;

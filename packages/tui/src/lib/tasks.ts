@@ -1,10 +1,9 @@
 import type { Execution, JobView, RunEnd, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
+import { showsText, showsTool, toolStatus } from "@nyte-ai/plugin/client/presentation";
+import type { ReportMessage, ToolTone } from "@nyte-ai/plugin/client/presentation";
 import { GLYPHS } from "./constants.ts";
-import { userText } from "./format.ts";
+import { toolLine, userText } from "./format.ts";
 import type { Timing } from "./format.ts";
-import { toolTitle } from "./tool-copy.ts";
-import { isTextMessage, isToolMessage, toolStatus } from "./view-helpers.ts";
-import type { ReportMessage, ToolTone } from "./view-helpers.ts";
 
 export type Task =
   | {
@@ -236,10 +235,10 @@ function taskSteps(view: SessionView): TaskStep[] {
   for (const message of view.messages) {
     if (message.kind !== "part") continue;
 
-    if (isToolMessage(message)) {
-      const status = toolStatus(message.state, message.status);
+    if (showsTool(message)) {
+      const status = toolStatus(message);
       const progress = message.state.phase === "running" ? message.state.progress?.text : undefined;
-      const title = toolTitle(message.state.class, status.tense);
+      const title = toolLine(message.state.class, status.tense);
 
       steps.push({
         status: toneStatus(status.tone),
@@ -251,7 +250,7 @@ function taskSteps(view: SessionView): TaskStep[] {
               : `${title} · ${status.word.toLowerCase()}`,
         ),
       });
-    } else if (isTextMessage(message) && message.state.markdown !== "") {
+    } else if (showsText(message) && message.state.markdown !== "") {
       steps.push({
         status: message.status.kind === "settled" ? "done" : "running",
         text: oneLine(message.state.markdown),

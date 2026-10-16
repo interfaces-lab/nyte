@@ -2,7 +2,7 @@ import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createMemo, Match, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { PartMessage, UserMessage } from "../../lib/view-helpers.ts";
+import type { PartMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ShellJob } from "../../model/state.ts";
 import type { Row, TurnModel } from "../../model/transcript.ts";
 import { Column } from "./block.tsx";

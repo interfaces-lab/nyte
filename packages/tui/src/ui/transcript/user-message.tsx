@@ -2,11 +2,11 @@ import { basename } from "node:path";
 import type { JSX } from "@opentui/solid";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import { shownContent } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { userPresentation } from "../../lib/presentation.ts";
 import type { AttachedFile, PresentedShell } from "../../lib/presentation.ts";
-import { shownContent } from "../../lib/view-helpers.ts";
-import type { UserMessage } from "../../lib/view-helpers.ts";
 import { PASTE_COLLAPSE_LINES } from "../../model/draft.ts";
 import { useTranscript } from "./scope.tsx";
 

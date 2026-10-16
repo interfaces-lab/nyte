@@ -11,18 +11,17 @@ import { props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
+import { showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { isToolMessage } from "../view-helpers.ts";
 import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Prose } from "./prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
-import { isThinkingMessage } from "./transcript-presentation.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 import {
   FOLLOW_INPUT_MS,
@@ -63,7 +62,7 @@ function StepEntryView({
 }): ReactElement | null {
   const { message } = entry;
 
-  if (isToolMessage(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
+  if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
   const streaming = message.status.kind === "live";
 
   if (thinkingOnly) {
@@ -116,7 +115,7 @@ export function StepGroupView({
 
   const { active, summary } = presentation;
 
-  const thinkingOnly = messages.every(isThinkingMessage);
+  const thinkingOnly = messages.every(showsThinking);
 
   const entries = useMemo(
     () =>
@@ -125,9 +124,9 @@ export function StepGroupView({
 
         if (
           !thinkingOnly &&
-          isThinkingMessage(message) &&
+          showsThinking(message) &&
           previous !== undefined &&
-          isThinkingMessage(previous.message)
+          showsThinking(previous.message)
         ) {
           merged[merged.length - 1] = {
             ...previous,
@@ -141,7 +140,7 @@ export function StepGroupView({
         merged.push({
           key: message.id,
           message,
-          markdown: isThinkingMessage(message) ? message.state.markdown : "",
+          markdown: showsThinking(message) ? message.state.markdown : "",
         });
 
         return merged;
@@ -160,7 +159,7 @@ export function StepGroupView({
     entries.length > 0 &&
     !(
       titled &&
-      isThinkingMessage(onlyThought) &&
+      showsThinking(onlyThought) &&
       reasoningHeading(onlyThought.state.markdown).body.trim() === ""
     );
 

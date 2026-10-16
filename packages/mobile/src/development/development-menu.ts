@@ -7,7 +7,7 @@ import { router, useGlobalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { Alert } from "react-native";
 import { appLink, workLiveActivityVariants } from "../activity/live-activity.tsx";
-import { sessionIdOf } from "../view-helpers.ts";
+import { parseSessionId } from "../view-helpers.ts";
 
 const PREVIEW_ACTIVITY = "nyte-dev-preview";
 
@@ -98,7 +98,7 @@ export function DevelopmentMenu({ client }: { client: Connection | undefined }) 
       const selected =
         currentId === undefined
           ? (await client.sessions.list({ parents: { kind: "roots" }, limit: 1 })).items[0]?.id
-          : sessionIdOf(currentId);
+          : parseSessionId(currentId);
 
       if (selected === undefined) throw new Error("There are no conversations on your Mac.");
 

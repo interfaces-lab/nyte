@@ -1,7 +1,7 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { ConfigurationPatch, RunEnd, Session, SessionId } from "@nyte-ai/sdk";
+import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { sessionRecovery } from "./flags.ts";
-import { isTextMessage, isToolMessage } from "./lib/view-helpers.ts";
 
 export interface PrintOutput {
   write(text: string): void;
@@ -92,7 +92,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
       for (const message of view.messages) {
         if (message.turn !== turn.id || message.kind !== "part") continue;
 
-        if (isTextMessage(message)) {
+        if (showsText(message)) {
           const before = written.get(message.id) ?? "";
 
           if (message.status.kind === "failed" && before !== "")
@@ -106,7 +106,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
             );
           writeText(message.state.markdown.slice(before.length));
           written.set(message.id, message.state.markdown);
-        } else if (isToolMessage(message) && !tools.has(message.id)) {
+        } else if (showsTool(message) && !tools.has(message.id)) {
           tools.add(message.id);
 
           if (options.quiet) continue;

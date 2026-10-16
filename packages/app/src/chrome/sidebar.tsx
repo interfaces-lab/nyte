@@ -17,8 +17,9 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
+import { failureNotice } from "@nyte-ai/plugin/client/presentation";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { draftPreviewText } from "../conversation/message-references.ts";
-import { failureNotice } from "../conversation/tool-copy.ts";
 import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
@@ -28,7 +29,6 @@ import type { Transition } from "motion/react";
 import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
-import type { SessionMark } from "../view-helpers.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";

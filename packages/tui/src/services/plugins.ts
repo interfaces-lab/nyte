@@ -23,8 +23,8 @@ import type {
   SubmitDraft,
   ValidationIssue,
 } from "@nyte-ai/sdk";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import { follow } from "../lib/view-helpers.ts";
-import type { PartMessage } from "../lib/view-helpers.ts";
 
 type Notification = Parameters<PluginApi["ui"]["notify"]>[0];
 

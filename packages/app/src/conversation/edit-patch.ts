@@ -1,6 +1,6 @@
 import { PatchEntryType } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
-import type { ToolMessage } from "../view-helpers.ts";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { formatPatch } from "../workbench/patch-text.ts";
 
 export interface EditPatch {

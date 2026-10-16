@@ -1,5 +1,5 @@
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
-import type { UserMessage } from "../../lib/view-helpers.ts";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { draftFromContent, snapshot } from "../draft.ts";
 import type { Intent } from "../msg.ts";
 import { queueRows, rowMessage } from "../queue.ts";

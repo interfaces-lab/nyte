@@ -1,8 +1,9 @@
 import type { Execution, Failure, Message, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
+import { showsTool } from "@nyte-ai/plugin/client/presentation";
+import type { PartMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
-import { isToolMessage, landingMessages, pendingReports } from "../lib/view-helpers.ts";
-import type { PartMessage, UserMessage } from "../lib/view-helpers.ts";
+import { landingMessages, pendingReports } from "../lib/view-helpers.ts";
 import type { ShellJob, TranscriptLocal } from "./state.ts";
 import { mountWindow } from "./window.ts";
 import type { MountWindow } from "./window.ts";
@@ -223,7 +224,7 @@ function awaitsDelegate(message: Message): boolean {
   if (known !== undefined) return known;
 
   const awaits =
-    isToolMessage(message) &&
+    showsTool(message) &&
     message.state.class.kind === "delegate" &&
     message.state.class.role === "await";
 

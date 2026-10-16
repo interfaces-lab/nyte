@@ -1,7 +1,11 @@
 import type { ToolClass } from "@nyte-ai/sdk";
-import { isToolMessage, toolStatus } from "../view-helpers.ts";
-import { formatRunDuration, isThinkingMessage } from "./transcript-presentation.ts";
-import { DELEGATE_VERBS } from "./subagent-status.ts";
+import {
+  showsThinking,
+  showsTool,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import { formatRunDuration } from "./transcript-presentation.ts";
 import { reasoningHeading } from "./reasoning-heading.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
@@ -44,7 +48,7 @@ function activityLabel(running: readonly ToolClass[]): string | undefined {
     case "edit":
       return "Editing";
     case "delegate":
-      return DELEGATE_VERBS[newest.role].running;
+      return toolVerbs(newest).running;
     case "custom":
       return `Running ${newest.label}`;
     default: {
@@ -74,7 +78,7 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   let stopped = 0;
 
   for (const message of messages) {
-    if (!isToolMessage(message)) continue;
+    if (!showsTool(message)) continue;
     const { tone } = toolStatus(message);
     const toolClass = message.state.class;
 
@@ -120,7 +124,7 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   if (did + failed + stopped === 0) {
     const { title } = reasoningHeading(
       messages
-        .map((message) => (isThinkingMessage(message) ? message.state.markdown : ""))
+        .map((message) => (showsThinking(message) ? message.state.markdown : ""))
         .join("\n\n"),
     );
 
@@ -210,7 +214,7 @@ export function durableStepGroupPresentation({
   const runningClasses: ToolClass[] = [];
 
   for (const message of messages) {
-    if (!isToolMessage(message)) continue;
+    if (!showsTool(message)) continue;
 
     if (toolStatus(message).tense === "running") runningClasses.push(message.state.class);
   }
@@ -237,7 +241,7 @@ export function liveStepGroupPresentation({
 
   const verb =
     activityLabel(durable.runningClasses) ??
-    (newest !== undefined && isThinkingMessage(newest) && newest.status.kind === "live"
+    (newest !== undefined && showsThinking(newest) && newest.status.kind === "live"
       ? "Thinking"
       : "Working");
 

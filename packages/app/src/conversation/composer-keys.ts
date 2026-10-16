@@ -1,6 +1,6 @@
 import type { Delivery } from "@nyte-ai/sdk";
-import type { UserMessage } from "../view-helpers.ts";
 
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { RunningMessagePreference } from "../preferences/index.ts";
 
 interface DeliveryChoices {

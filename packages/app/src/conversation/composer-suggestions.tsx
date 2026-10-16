@@ -11,7 +11,7 @@ import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { completionTrigger } from "../view-helpers.ts";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 import type { MentionFile } from "./message-references.ts";
 import type { CommandInfo } from "@nyte-ai/sdk";
 import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";

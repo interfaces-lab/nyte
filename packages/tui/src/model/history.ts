@@ -1,5 +1,5 @@
 import type { SessionView } from "@nyte-ai/sdk";
-import { isReport } from "../lib/view-helpers.ts";
+import { showsReport } from "@nyte-ai/plugin/client/presentation";
 import { draftFromContent } from "./draft.ts";
 import type { DraftSnapshot } from "./draft.ts";
 
@@ -12,7 +12,7 @@ export function promptEntries(view: SessionView | null): readonly DraftSnapshot[
     .flatMap((message) => {
       if (message.kind !== "user" || message.status.kind !== "landed") return [];
 
-      if (isReport(message) || message.source.kind === "action") return [];
+      if (showsReport(message) || message.source.kind === "action") return [];
       const draft = draftFromContent(message.content);
 
       return draft.text.trim() === "" ? [] : [draft];

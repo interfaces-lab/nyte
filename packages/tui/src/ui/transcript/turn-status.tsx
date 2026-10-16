@@ -1,6 +1,7 @@
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import { failureNotice } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import {
   ACTIVITY_RETRY_LABEL,
@@ -9,10 +10,10 @@ import {
   ACTIVITY_WORKED_LABEL,
   ACTIVITY_WORKING_LABEL,
   GLYPHS,
+  RECOVERY_STEPS,
 } from "../../lib/constants.ts";
 import { clockDuration, formatDuration, retryCause } from "../../lib/format.ts";
 import type { CliTheme } from "../../lib/theme.ts";
-import { failureNotice } from "../../lib/tool-copy.ts";
 import type { TurnStatus } from "../../model/transcript.ts";
 import { Spinner } from "../chrome/spinner.tsx";
 
@@ -51,8 +52,11 @@ function lineOf(status: TurnStatus, theme: CliTheme, now: number): Line {
     case "settled": {
       if (status.failure !== null) {
         const notice = failureNotice(status.failure);
+        const step = notice.recovery === undefined ? "" : ` ${RECOVERY_STEPS[notice.recovery]}`;
 
-        return { text: notice.text, color: theme[notice.tone], spinner: null };
+        return notice.tone === "danger"
+          ? { text: `${GLYPHS.cross} ${notice.text}${step}`, color: theme.error, spinner: null }
+          : { text: `! ${notice.text}`, color: theme.warning, spinner: null };
       }
 
       const duration =

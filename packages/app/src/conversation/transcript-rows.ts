@@ -4,11 +4,12 @@
  * those elements carried so React state (edits, folds) survives the move.
  */
 import type { SessionView } from "@nyte-ai/sdk";
+import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
-import { conversationTurns, isBusy, isToolMessage, sameItems } from "../view-helpers.ts";
-import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
-import { isTextMessage } from "./transcript-presentation.ts";
+import { conversationTurns, sameItems } from "../view-helpers.ts";
+import type { ConversationTurn } from "../view-helpers.ts";
 
 export type { ConversationTurn } from "../view-helpers.ts";
 
@@ -126,7 +127,7 @@ function present(messages: readonly UserMessage[]): readonly UserMessage[] {
 }
 
 export function conversationMessages(view: SessionView | undefined) {
-  const running = view !== undefined && isBusy(view.execution);
+  const running = view !== undefined && view.execution.kind !== "idle";
   const loose = view === undefined ? [] : conversationTurns(view).loose;
   const users = loose.filter((message): message is UserMessage => message.kind === "user");
 
@@ -318,14 +319,14 @@ function estimateTurnSize(turn: ConversationTurn, density: ToolCallDensity, scal
       continue;
     }
 
-    if (isTextMessage(message)) {
+    if (showsText(message)) {
       prose += message.state.markdown.length;
       continue;
     }
 
     if (message.role === "step") step = true;
 
-    if (isToolMessage(message) && message.state.phase === "settled")
+    if (showsTool(message) && message.state.phase === "settled")
       for (const path of message.state.changes?.paths ?? []) files.add(path);
   }
 

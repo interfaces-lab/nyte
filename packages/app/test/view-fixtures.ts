@@ -1,6 +1,7 @@
 import type { Execution, SessionInfo, ToolClass, TurnInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { ConversationTurn, ToolMessage } from "../src/view-helpers.ts";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import type { ConversationTurn } from "../src/view-helpers.ts";
 
 export const USAGE = {
   input: 1,

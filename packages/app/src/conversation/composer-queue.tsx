@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
 import type { UserContent } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
-import type { UserMessage } from "../view-helpers.ts";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { deliveryChoices } from "./composer-keys.ts";
 import { UserMessageText, messageImages } from "./message-content.tsx";

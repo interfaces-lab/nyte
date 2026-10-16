@@ -6,8 +6,8 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { EditorState, Plugin, TextSelection } from "@tiptap/pm/state";
 import type { Command, Transaction } from "@tiptap/pm/state";
 import { Value } from "typebox/value";
-import { completionTrigger } from "../view-helpers.ts";
-import type { CompletionTrigger } from "../view-helpers.ts";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
+import type { CompletionTrigger } from "@nyte-ai/plugin/client/presentation";
 import type { ContentPart, MentionFile } from "./message-references.ts";
 import {
   messageParts,

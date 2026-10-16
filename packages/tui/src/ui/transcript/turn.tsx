@@ -5,20 +5,20 @@ import type { BoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createMemo, Match, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
-import { useApp } from "../../app/context.tsx";
-import { agentStatus } from "../../lib/tool-card.ts";
 import {
-  isReport,
-  isTextMessage,
-  isThinkingMessage,
-  isToolMessage,
-} from "../../lib/view-helpers.ts";
+  showsReport,
+  showsText,
+  showsThinking,
+  showsTool,
+} from "@nyte-ai/plugin/client/presentation";
 import type {
   PartMessage,
   ReportMessage,
   ToolMessage,
   UserMessage,
-} from "../../lib/view-helpers.ts";
+} from "@nyte-ai/plugin/client/presentation";
+import { useApp } from "../../app/context.tsx";
+import { agentStatus } from "../../lib/tool-card.ts";
 import type { TurnModel, TurnStatus } from "../../model/transcript.ts";
 import { AssistantText } from "./assistant-text.tsx";
 import { Column } from "./block.tsx";
@@ -39,7 +39,7 @@ type Segment =
   | { readonly kind: "agents"; readonly key: string; readonly messages: readonly Message[] };
 
 function startsAgent(message: Message): boolean {
-  if (!isToolMessage(message)) return false;
+  if (!showsTool(message)) return false;
   const toolClass = message.state.class;
 
   return (
@@ -88,7 +88,7 @@ function AgentGroup(props: { readonly messages: readonly Message[] }): JSX.Eleme
 
   const header = createMemo(() => {
     const statuses = props.messages.flatMap((message) =>
-      isToolMessage(message) ? [agentStatus(message, scope.tasks())] : [],
+      showsTool(message) ? [agentStatus(message, scope.tasks())] : [],
     );
 
     const total = statuses.length;
@@ -171,23 +171,23 @@ export function TurnView(props: {
 }
 
 function readUser(message: Message): UserMessage | undefined {
-  return message.kind === "user" && !isReport(message) ? message : undefined;
+  return message.kind === "user" && !showsReport(message) ? message : undefined;
 }
 
 function readReport(message: Message): ReportMessage | undefined {
-  return message.kind === "user" && isReport(message) ? message : undefined;
+  return message.kind === "user" && showsReport(message) ? message : undefined;
 }
 
 function readTool(message: Message): ToolMessage | undefined {
-  return isToolMessage(message) ? message : undefined;
+  return showsTool(message) ? message : undefined;
 }
 
 function readProse(message: Message): Prose | undefined {
-  return isTextMessage(message) ? message : undefined;
+  return showsText(message) ? message : undefined;
 }
 
 function readThought(message: Message): Prose | undefined {
-  return isThinkingMessage(message) ? message : undefined;
+  return showsThinking(message) ? message : undefined;
 }
 
 function readMarker(message: Message): PartMessage | undefined {

@@ -56,12 +56,16 @@ function all(dirs: readonly string[]): readonly Import[] {
 
 const describe = (entry: Import): string => `${entry.file} → ${entry.spec}`;
 
-test("model imports only lib, model, fuzzysort and @nyte-ai types (question rule values)", () => {
+test("model imports only lib, model, fuzzysort and @nyte-ai types (question rule and presentation values)", () => {
   const offending = all(["model"]).filter((entry) => {
     if (entry.target !== null)
       return !(entry.target.startsWith("lib/") || entry.target.startsWith("model/"));
 
-    if (entry.spec === "@nyte-ai/plugin/question/schema" || entry.spec === "fuzzysort")
+    if (
+      entry.spec === "@nyte-ai/plugin/question/schema" ||
+      entry.spec === "@nyte-ai/plugin/client/presentation" ||
+      entry.spec === "fuzzysort"
+    )
       return false;
 
     return !entry.spec.startsWith("@nyte-ai/") || entry.value;

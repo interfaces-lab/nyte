@@ -10,8 +10,8 @@ import type {
   ToolClass,
   UserContent,
 } from "@nyte-ai/sdk";
-import { toolStatus } from "../view-helpers.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import { toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -40,7 +40,7 @@ import {
   useOpenSubagentTray,
   useSubagentChildren,
 } from "./subagent-sessions.ts";
-import { callStatus, DELEGATE_NOUNS, DELEGATE_VERBS, sessionStatus } from "./subagent-status.ts";
+import { callStatus, sessionStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
@@ -357,7 +357,7 @@ export function SubagentLineView({
   const tray = useOpenSubagentTray();
   const openTray = session === undefined ? undefined : tray;
   const label = child ?? toolClass.title ?? "agent";
-  const verb = status.tense === "none" ? undefined : DELEGATE_VERBS[toolClass.role][status.tense];
+  const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
   const expandable = output.trim() !== "";
 
   const agent = (
@@ -404,9 +404,7 @@ export function SubagentLineView({
           </Row.Primary>
         )}
       </span>
-      {verb === undefined && (
-        <span {...props(toolLineStyles.action)}>{DELEGATE_NOUNS[toolClass.role]}</span>
-      )}
+      {verb === undefined && <span {...props(toolLineStyles.action)}>{toolNoun(toolClass)}</span>}
       <ToolOutcome status={status} />
       {expandable && (
         <Collapsible.Trigger

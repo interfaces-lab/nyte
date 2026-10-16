@@ -6,7 +6,7 @@ import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import type { SessionMark } from "../view-helpers.ts";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 
 /** The spinner's disc at full: 5 cells across on a 3px pitch. */
 const MOON = Array.from({ length: 25 }, (_, index) => ({ x: index % 5, y: Math.floor(index / 5) }))

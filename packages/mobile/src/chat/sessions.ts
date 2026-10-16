@@ -1,9 +1,11 @@
 import type { Connection, SessionInfo } from "@nyte-ai/sdk";
 import { useMemo, useState } from "react";
+import { sessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { describeHostError } from "../connection/connection.ts";
 import { useWatch } from "../connection/use-watch.ts";
 import type { Theme } from "../theme.ts";
-import { hasRun, sessionMark, type SessionMark } from "../view-helpers.ts";
+import { hasRun } from "../view-helpers.ts";
 
 const PAGE = 50;
 

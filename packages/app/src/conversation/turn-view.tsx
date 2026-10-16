@@ -17,12 +17,18 @@ import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
+import {
+  failureNotice,
+  showsText,
+  showsThinking,
+  showsTool,
+} from "@nyte-ai/plugin/client/presentation";
+import type { Recovery, TextMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
-import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
-import { isToolMessage } from "../view-helpers.ts";
+import type { ConversationTurn } from "../view-helpers.ts";
 import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../workbench/change-tree.ts";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
@@ -60,14 +66,7 @@ import { StatusMarker } from "./row-surfaces.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { failureNotice } from "./tool-copy.ts";
-import {
-  displayTranscriptParts,
-  isTextMessage,
-  isThinkingMessage,
-  userDisplayText,
-} from "./transcript-presentation.ts";
-import type { TextMessage } from "./transcript-presentation.ts";
+import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
 import { errorMessage } from "../errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 
@@ -565,17 +564,17 @@ function TurnPartView({
     );
   }
 
-  if (isTextMessage(message))
+  if (showsText(message))
     return message.state.markdown.trim() === "" ? null : (
       <Prose markdown={message.state.markdown} />
     );
 
-  if (isThinkingMessage(message))
+  if (showsThinking(message))
     return (
       <ThinkingLine text={message.state.markdown} streaming={message.status.kind === "live"} />
     );
 
-  if (isToolMessage(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
+  if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
 
   return <NoteView message={message} />;
 }
@@ -618,7 +617,7 @@ function turnChanges(
 ): SessionView["changes"] {
   const paths = new Set(
     turn.messages.flatMap((message) =>
-      isToolMessage(message) && message.state.phase === "settled"
+      showsTool(message) && message.state.phase === "settled"
         ? (message.state.changes?.paths ?? [])
         : [],
     ),
@@ -626,6 +625,13 @@ function turnChanges(
 
   return changes.filter((change) => paths.has(change.path));
 }
+
+/** Where the desktop takes each recovery step a failure notice names. */
+const RECOVERY_STEPS: Readonly<Record<Recovery, string>> = {
+  compact: "Run /compact to summarize it.",
+  "sign-in": "Sign in again in Settings › Providers.",
+  "switch-model": "Choose another model or account.",
+};
 
 const TurnBody = memo(function TurnBody({
   turn,
@@ -655,12 +661,7 @@ const TurnBody = memo(function TurnBody({
           const trailing = index === display.length - 1;
           const active = running && trailing;
 
-          if (
-            !active &&
-            item.messages.length === 1 &&
-            first !== undefined &&
-            isToolMessage(first)
-          ) {
+          if (!active && item.messages.length === 1 && first !== undefined && showsTool(first)) {
             return <TurnPartView key={first.id} message={first} cwd={cwd} density={density} />;
           }
 
@@ -712,7 +713,9 @@ const TurnBody = memo(function TurnBody({
           role={failure.tone === "danger" ? "alert" : "status"}
           variant={failure.tone === "danger" ? "destructive" : "default"}
         >
-          {failure.text}
+          {failure.recovery === undefined
+            ? failure.text
+            : `${failure.text} ${RECOVERY_STEPS[failure.recovery]}`}
         </StatusMarker>
       )}
       {!running && changes.length > 0 && (

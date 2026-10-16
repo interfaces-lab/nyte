@@ -1,9 +1,9 @@
 import type { CommandInfo, Delivery, Session, SessionId, UserContent } from "@nyte-ai/sdk";
 import type { ImageContent } from "@nyte-ai/schema/model";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { errorMessage } from "../errors.ts";
 import { COMPACT_COMMAND, workspaceFiles } from "../queries.ts";
 import { connected, sessionWatch } from "../sdk.tsx";
-import type { UserMessage } from "../view-helpers.ts";
 import type { ComposerSubmission } from "./composer-document.ts";
 import type { ContentPart } from "./message-references.ts";
 import { messageFiles } from "./message-content.tsx";

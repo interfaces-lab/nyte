@@ -18,7 +18,7 @@ What Enter, Ctrl+Enter, Esc and Ctrl+C do is the situation table in `src/model/i
 
 Boundary rules, enforced by `test/boundaries.test.ts`:
 
-- `model/` imports no Solid, OpenTUI, `node:*`, effects, services, ui or app, and the SDK only as types (`@nyte-ai/plugin/question/schema` excepted).
+- `model/` imports no Solid, OpenTUI, `node:*`, effects, services, ui or app, and the SDK only as types (`@nyte-ai/plugin/question/schema` and `@nyte-ai/plugin/client/presentation` excepted).
 - `ui/` imports no effects or services, and the SDK only as types.
 - Only `effects/host-port.ts` imports SDK values.
 - No `setFrameCallback` and no raw `keyInput` listeners; keys go through `@opentui/keymap` layers.

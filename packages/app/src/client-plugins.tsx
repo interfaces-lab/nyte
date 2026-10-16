@@ -25,7 +25,7 @@ import type {
 import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./conversation/canvas-frame.tsx";
 import { connection } from "./sdk.tsx";
-import type { PartMessage } from "./view-helpers.ts";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 
 type ClientRegistries = PluginApi["contribute"];
 

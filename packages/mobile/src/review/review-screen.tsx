@@ -5,6 +5,7 @@ import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SessionId } from "@nyte-ai/sdk";
+import { executionMark } from "@nyte-ai/plugin/client/presentation";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -17,7 +18,7 @@ import { formatDuration, latestChangedTurn, turnAnswer } from "../chat/turn-chan
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
 import { Markdown } from "../chat/markdown.tsx";
-import { executionMark, openQuestion } from "../view-helpers.ts";
+import { openQuestion } from "../view-helpers.ts";
 import {
   controls,
   list,

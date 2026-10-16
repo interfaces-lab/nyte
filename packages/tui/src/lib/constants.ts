@@ -3,6 +3,7 @@ import { stringifyKeyStroke } from "@opentui/keymap";
 import type { KeyStrokeInput } from "@opentui/keymap";
 import { defaultBindingParser } from "@opentui/keymap/addons";
 import type { Thinking } from "@nyte-ai/sdk";
+import type { Recovery } from "@nyte-ai/plugin/client/presentation";
 
 export const THINKING_LEVELS = [
   "off",
@@ -172,10 +173,6 @@ export const ACTIVITY_THOUGHT_LABEL = " Thought";
 
 export const ACTIVITY_WORKED_LABEL = "Worked";
 
-export const ACTIVITY_STOPPED_LABEL = "! Stopped";
-
-export const ACTIVITY_FAILED_LABEL = " Failed";
-
 export const ACTIVITY_WAITING_LABEL = " Waiting for your answer";
 
 export const ACTIVITY_RETRY_LABEL = " Retrying";
@@ -248,3 +245,10 @@ export function pendingHint(hidden: number): string {
 
   return hidden > 0 ? `+${String(hidden)} more · ${open}` : open;
 }
+
+/** The terminal's way to take each recovery step a failure notice names. */
+export const RECOVERY_STEPS: Readonly<Record<Recovery, string>> = {
+  compact: "Run /compact to summarize it.",
+  "sign-in": "Run /login to sign in again.",
+  "switch-model": `Press ${keycap("chat.model.next")} for another model.`,
+};

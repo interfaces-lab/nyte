@@ -13,6 +13,7 @@ import {
 import type { Renderable } from "@opentui/core";
 import { render } from "@opentui/solid";
 import { createRoot, createSignal } from "solid-js";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { BootOptions } from "../effects/boot.ts";
 import { createReporter, installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { hostPort, pluginsPort } from "../effects/host-port.ts";
@@ -25,7 +26,6 @@ import type { RunFlags } from "../flags.ts";
 import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
-import type { PartMessage } from "../lib/view-helpers.ts";
 import type { Msg } from "../model/msg.ts";
 import { initialState } from "../model/state.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";

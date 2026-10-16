@@ -1,8 +1,14 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
-import { formatToolDuration, toolOutput, toolStatus } from "../view-helpers.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import {
+  condensedCommand,
+  toolOutput,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import { formatToolDuration } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -16,7 +22,6 @@ import type { ReactElement, ReactNode } from "react";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { activityStyles } from "./styles.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
-import { condensedCommand, toolVerbs } from "./tool-copy.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
 export type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;

@@ -1,6 +1,6 @@
 import type { SessionInfo } from "@nyte-ai/sdk";
-import { sessionMark } from "./view-helpers.ts";
-import type { SessionMark } from "./view-helpers.ts";
+import { sessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 
 export function sessionActivityMark(
   session: Pick<SessionInfo, "heads">,

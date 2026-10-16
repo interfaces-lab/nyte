@@ -1,5 +1,13 @@
 import { pathToFiletype } from "@opentui/core";
 import type { ToolClass } from "@nyte-ai/sdk";
+import {
+  delegateSubject,
+  toolNoun,
+  toolOutput,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage, ToolStatus } from "@nyte-ai/plugin/client/presentation";
 import type { ShellJob } from "../model/state.ts";
 import {
   keycap,
@@ -11,9 +19,11 @@ import {
 import {
   earlierLinesLabel,
   formatDuration,
+  lowerFirst,
   omittedLabel,
   previewLines,
   resultSummary,
+  toolLine,
 } from "./format.ts";
 import type { PreviewCut } from "./format.ts";
 import { diffFromOutput, patchDiff, textPatch } from "./output-diff.ts";
@@ -27,9 +37,6 @@ import {
   toneStatus,
 } from "./tasks.ts";
 import type { Task, TaskStatus } from "./tasks.ts";
-import { delegateSubject, toolLabel, toolNoun, toolSubject } from "./tool-copy.ts";
-import { toolOutput, toolStatus } from "./view-helpers.ts";
-import type { ToolMessage, ToolStatus } from "./view-helpers.ts";
 import { displayWidth } from "./width.ts";
 
 export type Role =
@@ -130,15 +137,7 @@ function heading(
 }
 
 function shellCommand(toolClass: ToolClass): string | undefined {
-  return toolClass.kind === "shell" ? toolSubject(toolClass) : undefined;
-}
-
-function partTitle(toolClass: ToolClass, status: ToolStatus): string {
-  const subject = toolSubject(toolClass);
-  const verb = toolLabel(toolClass, status.tense);
-  const words = verb === undefined ? [subject, toolNoun(toolClass)] : [verb, subject];
-
-  return words.filter((word) => word !== undefined).join(" ");
+  return toolClass.kind === "shell" ? toolClass.command : undefined;
 }
 
 function textBody(
@@ -186,7 +185,7 @@ function settled(
   const word = status.word?.toLowerCase();
   const clock = partClock(message);
   const cut = previewCut(toolClass);
-  const title = partTitle(toolClass, status);
+  const title = toolLine(toolClass, status.tense);
   const command = shellCommand(toolClass);
   const check = statusMark("done");
 
@@ -280,9 +279,7 @@ export function findChildTask(message: ToolMessage, tasks: readonly Task[]): Tas
 export function agentStatus(message: ToolMessage, tasks: readonly Task[]): TaskStatus {
   const task = findChildTask(message, tasks);
 
-  return task === undefined
-    ? toneStatus(toolStatus(message.state, message.status).tone)
-    : taskStatus(task);
+  return task === undefined ? toneStatus(toolStatus(message).tone) : taskStatus(task);
 }
 
 function delegation(
@@ -297,7 +294,9 @@ function delegation(
   if (toolClass.role !== "create" && toolClass.role !== "task") {
     const own = statusMark(toneStatus(status.tone));
     const name = task === undefined ? delegateSubject(toolClass) : taskLabel(task);
-    const verb = toolLabel(toolClass, status.tense);
+
+    const verb =
+      status.tense === "none" ? undefined : lowerFirst(toolVerbs(toolClass)[status.tense]);
 
     return {
       heading: [
@@ -336,7 +335,7 @@ export function toolCard(
   tasks: readonly Task[],
   expanded: boolean,
 ): ToolCardModel {
-  const status = toolStatus(message.state, message.status);
+  const status = toolStatus(message);
   const toolClass = message.state.class;
 
   if (toolClass.kind === "delegate") return delegation(message, toolClass, status, tasks);
@@ -359,7 +358,7 @@ export function toolCard(
         heading: heading(
           mark.glyph,
           status.tone === "running" && text !== "" ? "user" : mark.tone,
-          partTitle(toolClass, status),
+          toolLine(toolClass, status.tense),
           [inline ?? resultSummary(text), status.word?.toLowerCase(), partClock(message)],
           shellCommand(toolClass),
         ),

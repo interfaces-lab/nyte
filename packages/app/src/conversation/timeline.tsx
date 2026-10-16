@@ -2,7 +2,7 @@ import { props } from "@stylexjs/stylex";
 import type { SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
 import { useCallback } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { UserMessage } from "../view-helpers.ts";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";

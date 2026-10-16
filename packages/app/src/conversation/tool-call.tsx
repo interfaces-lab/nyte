@@ -8,8 +8,8 @@
  */
 import { memo } from "react";
 import type { ReactElement } from "react";
-import { toolOutput } from "../view-helpers.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import { toolOutput } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { EditCallView } from "./edit-call.tsx";
 import { ShellCallView } from "./shell-call.tsx";

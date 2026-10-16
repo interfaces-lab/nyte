@@ -1,3 +1,4 @@
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { threadStyles } from "./thread.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -77,7 +78,7 @@ import { connected, connection } from "../sdk.tsx";
 import { nyte } from "../nyte.ts";
 import type { DesktopModelOption } from "../catalog.ts";
 import { conversationTurns } from "../view-helpers.ts";
-import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
+import type { ConversationTurn } from "../view-helpers.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
