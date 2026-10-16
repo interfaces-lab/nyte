@@ -58,13 +58,15 @@ export interface HostPort {
   workspace(id: WorkspaceId): WorkspacePort;
   /** Registers `path`, or the folder the TUI opened in when `null`, as a workspace; with neither, resolves the host's default workspace. */
   openFolder(path: string | null): Promise<WorkspaceId>;
-  /** Starts chat `id` with its first message; the same id and input start it once. */
+  /** Starts chat `id` with its first message; the same id and input start it once. A start that failed once it landed resolves as started; `taken` means an earlier start made chat `id` with other input. */
   start(input: {
     readonly id: SessionId;
     readonly workspace: WorkspaceId;
     readonly selection: Selection;
     readonly content: UserContent;
-  }): Promise<{ readonly message: MessageId }>;
+  }): Promise<
+    { readonly kind: "started"; readonly message: MessageId } | { readonly kind: "taken" }
+  >;
   rootSessions(): AsyncIterable<SessionInfo>;
   catalog(): AsyncIterable<Pick<HostView, "catalog">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;

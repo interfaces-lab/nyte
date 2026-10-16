@@ -112,7 +112,7 @@ export async function submit(
   }
 }
 
-/** Starts a blank chat with the submission as its first message, then follows it, and resolves whether the chat started. A failed start leaves the chat blank, its id kept for the retry. */
+/** Starts a blank chat with the submission as its first message, then follows it, and resolves whether the chat started. A failed start leaves the chat blank, its id kept for the retry. When an earlier start already took the id, the TUI follows that chat and hands this message back to its composer. */
 async function start(
   chat: BlankChat,
   submission: Submission,
@@ -147,14 +147,21 @@ async function start(
       return false;
     }
 
-    const { message } = await ports.host.start({
+    const started = await ports.host.start({
       id: chat.id,
       workspace: current.workspace,
       selection: current.selection,
       content: decision.draft.content,
     });
 
-    dispatch({ kind: "sent", submission: submission.id, message });
+    if (started.kind === "taken") {
+      await follow(chat.id, false, context);
+      refuse("This chat had already started. Your message is back in the composer.");
+
+      return true;
+    }
+
+    dispatch({ kind: "sent", submission: submission.id, message: started.message });
   } catch (error) {
     refuse(`Message not sent: ${errorMessage(error)}. It is back in the composer.`);
     throw error;

@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import { pagedViews } from "@nyte-ai/sdk/client";
 import type { Connection, MessageId, PagedViews, Session, WorkspaceId } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
@@ -28,14 +28,30 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
       throw new Error("Open nyte in a folder: the host has no default workspace.");
     },
     async start(input) {
-      const { receipt } = await host.sessions.start({
-        id: input.id,
-        workspace: input.workspace,
-        configuration: { model: input.selection.model, thinking: input.selection.effort },
-        content: input.content,
-      });
+      try {
+        const { receipt } = await host.sessions.start({
+          id: input.id,
+          workspace: input.workspace,
+          configuration: { model: input.selection.model, thinking: input.selection.effort },
+          content: input.content,
+        });
 
-      return { message: receipt.message };
+        return { kind: "started", message: receipt.message };
+      } catch (error) {
+        const exists = await host
+          .session(input.id)
+          .info()
+          .then(
+            () => true,
+            () => false,
+          );
+
+        if (!exists) throw error;
+
+        return error instanceof SdkError && error.code === "invalid"
+          ? { kind: "taken" }
+          : { kind: "started", message: asId<"message">(input.id) };
+      }
     },
     rootSessions: () => rootSessions(host),
     catalog: () => host.watch(),

@@ -269,7 +269,9 @@ export function fakeHost(): FakeHost {
     async start(input) {
       starts.push(input);
 
-      return addSession(input.id).send(input.content, { delivery: "steer" });
+      const { message } = await addSession(input.id).send(input.content, { delivery: "steer" });
+
+      return { kind: "started", message };
     },
     async *rootSessions() {
       yield* [...sessions.keys()].map(buildSessionInfo);

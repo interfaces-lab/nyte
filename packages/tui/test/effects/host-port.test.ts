@@ -17,9 +17,11 @@ async function startChat(
 
   if (selection === null) throw new Error("The test host lists no model.");
   const workspace = await port.openFolder(null);
-  const { message } = await port.start({ id, workspace, selection, content });
+  const started = await port.start({ id, workspace, selection, content });
 
-  return { session: port.session(id), message };
+  if (started.kind !== "started") throw new Error("A fresh id was taken.");
+
+  return { session: port.session(id), message: started.message };
 }
 
 function userStatus(view: SessionView, id: MessageId): string | undefined {
@@ -35,6 +37,24 @@ async function viewWhere(
   for await (const view of session.watch()) if (predicate(view)) return view;
   throw new Error("The watch ended first.");
 }
+
+test("a start under an id another start took answers taken, and a replay answers started", async () => {
+  await using fixture = await openTestHost();
+  const port = hostPort(fixture.host, null);
+  fixture.reply({ content: [{ type: "text", text: "Hi." }] });
+  const id = asId<"session">(crypto.randomUUID());
+  const selection = fallbackSelection(await port.listModels(), "off");
+
+  if (selection === null) throw new Error("The test host lists no model.");
+  const workspace = await port.openFolder(null);
+  const first = await port.start({ id, workspace, selection, content: "first" });
+
+  expect(first).toEqual({ kind: "started", message: asId<"message">(id) });
+  expect(await port.start({ id, workspace, selection, content: "first" })).toEqual(first);
+  expect(await port.start({ id, workspace, selection, content: "other" })).toEqual({
+    kind: "taken",
+  });
+});
 
 test("send, withdraw and stop round trips with real views", async () => {
   await using fixture = await openTestHost();
