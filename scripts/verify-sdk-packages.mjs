@@ -108,7 +108,7 @@ const smokePlugin = { id: "smoke" } satisfies Plugin;
 function open(store: Store) {
   return sdk.open({
     store,
-    models: fakeModels().models,
+    models: fakeModels({ fallback: { content: [{ type: "text", text: "Hello." }] } }).models,
     plugins: [{ id: "chat-only", environment: chatOnlyProvider() }, smokePlugin],
     workspace: { kind: "chat-only", locator: null },
     home: join(directory, "home"),
@@ -129,7 +129,8 @@ async function smoke(store: Store, label: string) {
           sdk.connect({ url: "http://sdk.invalid", credentials: { kind: "token", token: "not-the-host-token" }, fetch: transport }),
           (error: unknown) => error instanceof SdkError && error.code === "unauthenticated",
         );
-        const session = await connection.sessions.create({ name: label });
+        const { session, receipt } = await connection.sessions.start({ name: label, content: "Hi." });
+        await receipt.settled();
         await session.update({ name: "packed " + label, pinned: true });
         const row = (await connection.sessions.list()).items.find((item) => item.id === session.id);
         assert.ok(row);

@@ -25,7 +25,7 @@ const turns = Number(process.env.PROBE_TURNS ?? 24);
 const titles = ["Probe one", "Probe two", "Probe three", "Probe four"];
 const seeded = performance.now();
 for (const name of titles) {
-  const session = await host.sessions.create({ name });
+  let session;
   for (let turn = 0; turn < turns; turn++) {
     fake.reply({
       content: [
@@ -40,7 +40,12 @@ for (const name of titles) {
         },
       ],
     });
-    const outcome = await (await session.send(`${name} question ${turn}`)).settled();
+    const content = `${name} question ${turn}`;
+    let receipt;
+    if (session === undefined)
+      ({ session, receipt } = await host.sessions.start({ name, content }));
+    else receipt = await session.send(content);
+    const outcome = await receipt.settled();
     if (turn === 0) console.log("SEED OUTCOME", name, JSON.stringify(outcome).slice(0, 200));
   }
 }
