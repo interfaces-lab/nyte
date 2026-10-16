@@ -5,9 +5,9 @@ import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-export type StatTone = "neutral" | "success" | "warning" | "danger";
+type StatTone = "neutral" | "success" | "warning" | "danger";
 
-export type BadgeTone = "neutral" | "info" | StatTone;
+type BadgeTone = "neutral" | "info" | StatTone;
 
 const tones = {
   neutral: null,

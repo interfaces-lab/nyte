@@ -230,7 +230,7 @@ function PieTip({ datum }: PieTooltipProps<PieDatum>): ReactElement {
   );
 }
 
-export type LineSeriesInput = {
+type LineSeriesInput = {
   readonly id: string;
   readonly data: readonly { readonly x: number | string; readonly y: number }[];
   readonly tint?: Tint;
@@ -352,7 +352,7 @@ export function LineChart({
   );
 }
 
-export type BarKey =
+type BarKey =
   | string
   | { readonly key: string; readonly label?: string; readonly tint?: Tint };
 
@@ -437,7 +437,7 @@ export function BarChart({
   );
 }
 
-export type PieDatum = {
+type PieDatum = {
   readonly id: string;
   readonly value: number;
   readonly label?: string;
