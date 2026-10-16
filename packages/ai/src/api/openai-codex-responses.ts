@@ -31,7 +31,6 @@ import type {
   StreamOptions,
   Usage,
 } from "../types.ts";
-import { sleep } from "../utils/abort.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { getSystemMessageText } from "../utils/text.ts";
 import {
@@ -52,6 +51,7 @@ import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { iterateServerSentEvents } from "../utils/sse.ts";
+import { RetryDelayExceededError, retryProviderRequest } from "../utils/provider-retry.ts";
 import { uuidv7 } from "../utils/uuid.ts";
 import { emptyCost, runAssistantStream } from "./assistant-stream.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
@@ -140,9 +140,8 @@ const DEFAULT_MAX_RETRIES = 0;
 
 const DEFAULT_COMPACT_IDLE_TIMEOUT_MS = 300_000;
 
-const BASE_DELAY_MS = 1000;
-
-const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
+/** Compaction retries a failed HTTP open on these statuses only, never on provider error prose. */
+const RETRYABLE_COMPACTION_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
 
@@ -188,66 +187,6 @@ function isTerminalRateLimitError(errorText: string): boolean {
   return /GoUsageLimitError|FreeUsageLimitError|Monthly usage limit reached|available balance|insufficient_quota|out of budget|quota exceeded|billing/i.test(
     errorText,
   );
-}
-
-function isRetryableError(status: number, errorText: string): boolean {
-  if (status === 429 && isTerminalRateLimitError(errorText)) {
-    return false;
-  }
-
-  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
-    return true;
-  }
-
-  return /rate.?limit|overloaded|service.?unavailable|upstream.?connect|connection.?refused/i.test(
-    errorText,
-  );
-}
-
-function getRetryAfterDelayMs(headers: Headers): number | undefined {
-  const retryAfterMs = headers.get("retry-after-ms");
-
-  if (retryAfterMs !== null) {
-    const millis = Number(retryAfterMs);
-
-    if (Number.isFinite(millis)) {
-      return Math.max(0, millis);
-    }
-  }
-
-  const retryAfter = headers.get("retry-after");
-
-  if (!retryAfter) {
-    return undefined;
-  }
-
-  const seconds = Number(retryAfter);
-
-  if (Number.isFinite(seconds)) {
-    return Math.max(0, seconds * 1000);
-  }
-
-  const date = Date.parse(retryAfter);
-
-  if (!Number.isNaN(date)) {
-    return Math.max(0, date - Date.now());
-  }
-
-  return undefined;
-}
-
-class RetryDelayExceededError extends Error {}
-
-function validateRetryDelayMs(delayMs: number, options?: StreamOptions): number {
-  const maxRetryDelayMs = options?.maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
-
-  if (maxRetryDelayMs > 0 && delayMs > maxRetryDelayMs) {
-    throw new RetryDelayExceededError(
-      `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxRetryDelayMs / 1000)}s)`,
-    );
-  }
-
-  return delayMs;
 }
 
 function normalizeTimeoutMs(value: number | undefined): number | undefined {
@@ -452,103 +391,15 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 
     const sseBody = compressedBody ? new Uint8Array(compressedBody) : bodyJson;
 
-    let response: Response | undefined;
-    let lastError: Error | undefined;
-    const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      if (options?.signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      try {
-        const headerTimeout = new AbortController();
-        const headerTimer =
-          httpTimeoutMs !== undefined && httpTimeoutMs > 0
-            ? setTimeout(() => headerTimeout.abort(), httpTimeoutMs)
-            : undefined;
-
-        const signal = options?.signal
-          ? AbortSignal.any([options.signal, headerTimeout.signal])
-          : headerTimeout.signal;
-
-        try {
-          response = await (options?.fetch ?? globalThis.fetch)(resolveCodexUrl(model.baseUrl), {
-            method: "POST",
-            headers: sseHeaders,
-            body: sseBody,
-            signal,
-          });
-        } catch (error) {
-          if (headerTimeout.signal.aborted && !options?.signal?.aborted) {
-            throw new Error(`Codex SSE response headers timed out after ${httpTimeoutMs}ms`);
-          }
-
-          throw error;
-        } finally {
-          clearTimeout(headerTimer);
-        }
-
-        const responseHeaders = headersToRecord(response.headers);
-        await options?.onResponse?.({ status: response.status, headers: responseHeaders }, model);
-
-        if (response.ok) {
-          if (options?.onAccountLimits !== undefined) {
-            const limits = codexHeaderLimits(responseHeaders, model.provider);
-
-            if (limits !== undefined) await options.onAccountLimits(limits, model);
-          }
-
-          break;
-        }
-
-        const errorText = await response.text();
-
-        if (attempt < maxRetries && isRetryableError(response.status, errorText)) {
-          const retryAfterDelayMs = getRetryAfterDelayMs(response.headers);
-
-          const delayMs =
-            retryAfterDelayMs === undefined
-              ? BASE_DELAY_MS * 2 ** attempt
-              : validateRetryDelayMs(retryAfterDelayMs, options);
-
-          await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
-          continue;
-        }
-
-        const fakeResponse = new Response(errorText, {
-          status: response.status,
-          statusText: response.statusText,
-        });
-
-        const info = await parseErrorResponse(fakeResponse);
-        throw new Error(info.friendlyMessage || info.message);
-      } catch (error) {
-        if (error instanceof Error) {
-          if (error.name === "AbortError" || error.message === "Request was aborted") {
-            throw new Error("Request was aborted");
-          }
-        }
-
-        lastError = error instanceof Error ? error : new Error(String(error));
-
-        if (
-          attempt < maxRetries &&
-          !(lastError instanceof RetryDelayExceededError) &&
-          !lastError.message.includes("usage limit")
-        ) {
-          const delayMs = BASE_DELAY_MS * 2 ** attempt;
-          await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
-          continue;
-        }
-
-        throw lastError;
-      }
-    }
-
-    if (!response?.ok) {
-      throw lastError ?? new Error("Failed after retries");
-    }
+    const response = await retryProviderRequest(
+      () => openCodexSse(model, sseHeaders, sseBody, httpTimeoutMs, options),
+      {
+        maxRetries: options?.maxRetries,
+        maxRetryDelayMs: options?.maxRetryDelayMs,
+        signal: options?.signal,
+        retryable: retryableCodexRequest,
+      },
+    );
 
     if (!response.body) {
       throw new Error("No response body");
@@ -824,214 +675,207 @@ export async function compactOpenAICodexContext(
   let failure = "Request failed";
   let usage: Usage | undefined;
 
-  try {
-    for (let attempt = 0; ; attempt++) {
-      response = undefined;
-      failure = "Request failed";
-      const headerTimeout = new AbortController();
-      const signal = options?.signal
-        ? AbortSignal.any([options.signal, headerTimeout.signal])
-        : headerTimeout.signal;
-      const timer = timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
-      let retryable = true;
-      let output: CodexCompactionOutput = { kind: "missing" };
+  const attempt = async (): Promise<OpenAICodexCompactResult> => {
+    response = undefined;
+    failure = "Request failed";
+    const headerTimeout = new AbortController();
+    const signal = options?.signal
+      ? AbortSignal.any([options.signal, headerTimeout.signal])
+      : headerTimeout.signal;
+    const timer = timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
+    let retryable = true;
+    let output: CodexCompactionOutput = { kind: "missing" };
 
-      try {
-        response = await (options?.fetch ?? globalThis.fetch)(url, {
-          method: "POST",
-          headers,
-          body: compressedBody ? new Uint8Array(compressedBody) : encodedBody,
-          signal,
-        });
-        clearTimeout(timer);
-        retryable = false;
-        await options?.onResponse?.(
-          { status: response.status, headers: headersToRecord(response.headers) },
-          model,
-        );
+    try {
+      response = await (options?.fetch ?? globalThis.fetch)(url, {
+        method: "POST",
+        headers,
+        body: compressedBody ? new Uint8Array(compressedBody) : encodedBody,
+        signal,
+      });
+      clearTimeout(timer);
+      retryable = false;
+      await options?.onResponse?.(
+        { status: response.status, headers: headersToRecord(response.headers) },
+        model,
+      );
 
-        if (!response.ok) {
-          failure = "HTTP request failed";
-          // Only status codes authorize an HTTP retry, never provider error prose.
-          retryable = response.status === 408 || isRetryableError(response.status, "");
+      if (!response.ok) {
+        failure = "HTTP request failed";
+        retryable = RETRYABLE_COMPACTION_STATUSES.has(response.status);
 
-          if (response.status === 429) {
-            const bodyTimer =
-              timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
+        if (response.status === 429) {
+          const bodyTimer =
+            timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
 
-            try {
-              retryable = !isTerminalRateLimitError(await response.text());
-            } finally {
-              clearTimeout(bodyTimer);
-            }
-          }
-
-          throw new Error(failure);
-        }
-
-        retryable = true;
-
-        for await (const event of parseSSE(response, signal, timeoutMs)) {
-          if (event.type === "response.output_item.done") {
-            const item = event.item;
-
-            // Keep reading malformed output to account for terminal usage, but never commit it.
-            if (!Value.Check(CodexFrameJson, item)) {
-              output = { kind: "invalid", reason: "Invalid output item" };
-              continue;
-            }
-
-            if (item.type !== "compaction" || output.kind === "invalid") continue;
-
-            if (!Value.Check(codexCompactionItem, item)) {
-              output = { kind: "invalid", reason: "Invalid compaction item" };
-              continue;
-            }
-
-            if (output.kind === "checkpoint") {
-              output = { kind: "invalid", reason: "Expected exactly one compaction item" };
-              continue;
-            }
-
-            // Persist only protocol fields, never arbitrary server metadata.
-            const checkpoint: Static<typeof codexCompactionItem> = {
-              type: item.type,
-              encrypted_content: item.encrypted_content,
-            } satisfies ResponseCompactionItemParam;
-
-            if (item.id !== undefined) checkpoint.id = item.id;
-            output = { kind: "checkpoint", item: checkpoint };
-          } else if (isTerminalResponseType(event.type) || event.type === "response.cancelled") {
-            retryable = false;
-            const terminal = recordOf(event.response);
-            const tokens = terminal?.usage;
-
-            if (
-              tokens !== undefined &&
-              !Value.Check(codexCompactCompleted.properties.usage, tokens)
-            ) {
-              failure = "Invalid terminal usage";
-              throw new Error(failure);
-            }
-
-            if (tokens) {
-              const cached = tokens.input_tokens_details?.cached_tokens ?? 0;
-              const written = tokens.input_tokens_details?.cache_write_tokens ?? 0;
-
-              const reported: Usage = {
-                input: Math.max(0, tokens.input_tokens - cached - written),
-                output: tokens.output_tokens,
-                cacheRead: cached,
-                cacheWrite: written,
-                reasoning: tokens.output_tokens_details?.reasoning_tokens ?? 0,
-                totalTokens: tokens.total_tokens,
-                cost: emptyCost(),
-              };
-
-              calculateCost(model, reported);
-              applyServiceTierPricing(
-                reported,
-                resolveCodexServiceTier(
-                  Value.Check(codexCompactCompleted.properties.service_tier, terminal?.service_tier)
-                    ? terminal?.service_tier
-                    : undefined,
-                  options?.serviceTier,
-                ),
-                model,
-              );
-
-              if (usage) {
-                for (const key of [
-                  "input",
-                  "output",
-                  "cacheRead",
-                  "cacheWrite",
-                  "totalTokens",
-                ] as const) {
-                  reported[key] += usage[key];
-                }
-
-                reported.reasoning = (reported.reasoning ?? 0) + (usage.reasoning ?? 0);
-
-                for (const key of [
-                  "input",
-                  "output",
-                  "cacheRead",
-                  "cacheWrite",
-                  "total",
-                ] as const) {
-                  reported.cost[key] += usage.cost[key];
-                }
-              }
-
-              usage = reported;
-            }
-
-            if (event.type !== "response.completed") {
-              failure = output.kind === "invalid" ? output.reason : "Compaction did not complete";
-              const code = recordOf(terminal?.error)?.code;
-              retryable =
-                event.type === "response.failed" &&
-                (code === "server_error" ||
-                  code === "rate_limit_exceeded" ||
-                  code === "overloaded");
-              throw new Error(failure);
-            }
-
-            if (!Value.Check(codexCompactCompleted, event.response)) {
-              failure = "Invalid completed response or usage";
-              throw new Error(failure);
-            }
-
-            if (output.kind !== "checkpoint") {
-              failure =
-                output.kind === "invalid" ? output.reason : "Expected exactly one compaction item";
-              throw new Error(failure);
-            }
-
-            const data = [...retainCodexUserInputs(userInputs), output.item];
-
-            return usage === undefined ? { data } : { data, usage };
-          } else if (event.type === "error") {
-            failure = "Compaction did not complete";
-            const code = extractCodexEventError(event).code;
-            retryable =
-              code === "server_error" || code === "rate_limit_exceeded" || code === "overloaded";
-            throw new Error(failure);
+          try {
+            retryable = !isTerminalRateLimitError(await response.text());
+          } finally {
+            clearTimeout(bodyTimer);
           }
         }
 
-        failure =
-          output.kind === "invalid" ? output.reason : "Stream ended before response.completed";
         throw new Error(failure);
-      } catch (error) {
-        if (options?.signal?.aborted) throw error;
-
-        if (headerTimeout.signal.aborted)
-          failure = response ? "HTTP error body timed out" : "Response headers timed out";
-        else if (error instanceof DOMException && error.name === "TimeoutError")
-          failure = "Stream idle timeout";
-        else if (error instanceof CodexProtocolError) {
-          failure = "Invalid SSE stream";
-          retryable = false;
-        }
-
-        if (!retryable || output.kind === "invalid" || attempt >= maxRetries) throw error;
-      } finally {
-        clearTimeout(timer);
-        await response?.body?.cancel().catch(() => {});
       }
 
-      const delayMs =
-        getRetryAfterDelayMs(response?.headers ?? new Headers()) ?? BASE_DELAY_MS * 2 ** attempt;
+      retryable = true;
 
-      failure = "Retry delay exceeded";
-      await sleep(
-        validateRetryDelayMs(delayMs, options),
-        options?.signal,
-        () => new Error("Request was aborted"),
+      for await (const event of parseSSE(response, signal, timeoutMs)) {
+        if (event.type === "response.output_item.done") {
+          const item = event.item;
+
+          // Keep reading malformed output to account for terminal usage, but never commit it.
+          if (!Value.Check(CodexFrameJson, item)) {
+            output = { kind: "invalid", reason: "Invalid output item" };
+            continue;
+          }
+
+          if (item.type !== "compaction" || output.kind === "invalid") continue;
+
+          if (!Value.Check(codexCompactionItem, item)) {
+            output = { kind: "invalid", reason: "Invalid compaction item" };
+            continue;
+          }
+
+          if (output.kind === "checkpoint") {
+            output = { kind: "invalid", reason: "Expected exactly one compaction item" };
+            continue;
+          }
+
+          // Persist only protocol fields, never arbitrary server metadata.
+          const checkpoint: Static<typeof codexCompactionItem> = {
+            type: item.type,
+            encrypted_content: item.encrypted_content,
+          } satisfies ResponseCompactionItemParam;
+
+          if (item.id !== undefined) checkpoint.id = item.id;
+          output = { kind: "checkpoint", item: checkpoint };
+        } else if (isTerminalResponseType(event.type) || event.type === "response.cancelled") {
+          retryable = false;
+          const terminal = recordOf(event.response);
+          const tokens = terminal?.usage;
+
+          if (
+            tokens !== undefined &&
+            !Value.Check(codexCompactCompleted.properties.usage, tokens)
+          ) {
+            failure = "Invalid terminal usage";
+            throw new Error(failure);
+          }
+
+          if (tokens) {
+            const cached = tokens.input_tokens_details?.cached_tokens ?? 0;
+            const written = tokens.input_tokens_details?.cache_write_tokens ?? 0;
+
+            const reported: Usage = {
+              input: Math.max(0, tokens.input_tokens - cached - written),
+              output: tokens.output_tokens,
+              cacheRead: cached,
+              cacheWrite: written,
+              reasoning: tokens.output_tokens_details?.reasoning_tokens ?? 0,
+              totalTokens: tokens.total_tokens,
+              cost: emptyCost(),
+            };
+
+            calculateCost(model, reported);
+            applyServiceTierPricing(
+              reported,
+              resolveCodexServiceTier(
+                Value.Check(codexCompactCompleted.properties.service_tier, terminal?.service_tier)
+                  ? terminal?.service_tier
+                  : undefined,
+                options?.serviceTier,
+              ),
+              model,
+            );
+
+            if (usage) {
+              for (const key of [
+                "input",
+                "output",
+                "cacheRead",
+                "cacheWrite",
+                "totalTokens",
+              ] as const) {
+                reported[key] += usage[key];
+              }
+
+              reported.reasoning = (reported.reasoning ?? 0) + (usage.reasoning ?? 0);
+
+              for (const key of ["input", "output", "cacheRead", "cacheWrite", "total"] as const) {
+                reported.cost[key] += usage.cost[key];
+              }
+            }
+
+            usage = reported;
+          }
+
+          if (event.type !== "response.completed") {
+            failure = output.kind === "invalid" ? output.reason : "Compaction did not complete";
+            const code = recordOf(terminal?.error)?.code;
+            retryable =
+              event.type === "response.failed" &&
+              (code === "server_error" || code === "rate_limit_exceeded" || code === "overloaded");
+            throw new Error(failure);
+          }
+
+          if (!Value.Check(codexCompactCompleted, event.response)) {
+            failure = "Invalid completed response or usage";
+            throw new Error(failure);
+          }
+
+          if (output.kind !== "checkpoint") {
+            failure =
+              output.kind === "invalid" ? output.reason : "Expected exactly one compaction item";
+            throw new Error(failure);
+          }
+
+          const data = [...retainCodexUserInputs(userInputs), output.item];
+
+          return usage === undefined ? { data } : { data, usage };
+        } else if (event.type === "error") {
+          failure = "Compaction did not complete";
+          const code = extractCodexEventError(event).code;
+          retryable =
+            code === "server_error" || code === "rate_limit_exceeded" || code === "overloaded";
+          throw new Error(failure);
+        }
+      }
+
+      failure =
+        output.kind === "invalid" ? output.reason : "Stream ended before response.completed";
+      throw new Error(failure);
+    } catch (error) {
+      if (options?.signal?.aborted) throw error;
+
+      if (headerTimeout.signal.aborted)
+        failure = response ? "HTTP error body timed out" : "Response headers timed out";
+      else if (error instanceof DOMException && error.name === "TimeoutError")
+        failure = "Stream idle timeout";
+      else if (error instanceof CodexProtocolError) {
+        failure = "Invalid SSE stream";
+        retryable = false;
+      }
+
+      throw new CodexRequestError(
+        failure,
+        response?.ok === false ? response.status : undefined,
+        response?.headers,
+        retryable && output.kind !== "invalid",
       );
+    } finally {
+      clearTimeout(timer);
+      await response?.body?.cancel().catch(() => {});
     }
+  };
+
+  try {
+    return await retryProviderRequest(attempt, {
+      maxRetries,
+      maxRetryDelayMs: options?.maxRetryDelayMs,
+      signal: options?.signal,
+      retryable: retryableCodexRequest,
+    });
   } catch (error) {
     if (options?.signal?.aborted) failure = "Request was aborted";
     else if (error instanceof RetryDelayExceededError) failure = error.message;
@@ -1368,6 +1212,103 @@ function resolveCodexWebSocketUrl(baseUrl?: string): string {
   if (url.protocol === "http:") url.protocol = "ws:";
 
   return url.toString();
+}
+
+/**
+ * A failed Codex request attempt, carrying `status` and `headers` so the shared provider retry
+ * policy applies; `retryable` vetoes a retry the policy would allow, such as a 429 that is quota
+ * exhaustion, which waiting does not lift.
+ */
+class CodexRequestError extends Error {
+  readonly status: number | undefined;
+  readonly headers: Headers | undefined;
+  readonly retryable: boolean;
+
+  constructor(
+    message: string,
+    status: number | undefined,
+    headers: Headers | undefined,
+    retryable: boolean,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = "CodexRequestError";
+    this.status = status;
+    this.headers = headers;
+    this.retryable = retryable;
+  }
+}
+
+function retryableCodexRequest(error: unknown): boolean {
+  return error instanceof CodexRequestError && error.retryable;
+}
+
+/**
+ * Opens one Codex SSE response. `timeoutMs` bounds the wait for response headers; a transport
+ * failure or non-2xx answer throws a {@link CodexRequestError}.
+ */
+async function openCodexSse(
+  model: Model<"openai-codex-responses">,
+  headers: Headers,
+  body: string | Uint8Array<ArrayBuffer>,
+  timeoutMs: number | undefined,
+  options: OpenAICodexResponsesOptions | undefined,
+): Promise<Response> {
+  const headerTimeout = new AbortController();
+  const timer =
+    timeoutMs !== undefined && timeoutMs > 0
+      ? setTimeout(() => headerTimeout.abort(), timeoutMs)
+      : undefined;
+  const signal = options?.signal
+    ? AbortSignal.any([options.signal, headerTimeout.signal])
+    : headerTimeout.signal;
+  let response: Response;
+
+  try {
+    response = await (options?.fetch ?? globalThis.fetch)(resolveCodexUrl(model.baseUrl), {
+      method: "POST",
+      headers,
+      body,
+      signal,
+    });
+  } catch (cause) {
+    if (options?.signal?.aborted) throw cause;
+
+    throw new CodexRequestError(
+      headerTimeout.signal.aborted
+        ? `Codex SSE response headers timed out after ${String(timeoutMs)}ms`
+        : formatThrownValue(cause),
+      undefined,
+      undefined,
+      true,
+      { cause },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const responseHeaders = headersToRecord(response.headers);
+  await options?.onResponse?.({ status: response.status, headers: responseHeaders }, model);
+
+  if (response.ok) {
+    if (options?.onAccountLimits !== undefined) {
+      const limits = codexHeaderLimits(responseHeaders, model.provider);
+
+      if (limits !== undefined) await options.onAccountLimits(limits, model);
+    }
+
+    return response;
+  }
+
+  const errorText = await response.text();
+  const info = parseErrorResponse(errorText, response);
+
+  throw new CodexRequestError(
+    info.friendlyMessage || info.message,
+    response.status,
+    response.headers,
+    !(response.status === 429 && isTerminalRateLimitError(errorText)),
+  );
 }
 
 async function processStream(
@@ -2270,10 +2211,10 @@ async function processWebSocketStream(
   }
 }
 
-async function parseErrorResponse(
+function parseErrorResponse(
+  raw: string,
   response: Response,
-): Promise<{ message: string; friendlyMessage?: string }> {
-  const raw = await response.text();
+): { message: string; friendlyMessage?: string } {
   let message = raw || response.statusText || "Request failed";
   let friendlyMessage: string | undefined;
 

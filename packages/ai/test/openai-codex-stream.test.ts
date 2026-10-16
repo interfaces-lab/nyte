@@ -1194,7 +1194,7 @@ describe("openai-codex streaming", () => {
     }).result();
 
     expect(result.stopReason).toBe("error");
-    expect(result.errorMessage).toBe("Server requested 2s retry delay (max: 1s)");
+    expect(result.errorMessage).toBe("Server requested 2s retry delay (max: 1s). retry later");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1237,8 +1237,9 @@ describe("openai-codex streaming", () => {
     });
   });
 
-  it("uses exponential backoff across repeated SSE retries without retry headers", async () => {
+  it("uses the shared exponential backoff across repeated SSE retries without retry headers", async () => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     let codexRequests = 0;
     vi.stubGlobal(
       "fetch",
@@ -1263,7 +1264,7 @@ describe("openai-codex streaming", () => {
     expect(codexRequests).toBe(1);
 
     let expectedRequests = 1;
-    for (const delay of [1000, 2000, 4000]) {
+    for (const delay of [500, 1000, 2000]) {
       await vi.advanceTimersByTimeAsync(delay - 1);
       expect(codexRequests).toBe(expectedRequests);
       await vi.advanceTimersByTimeAsync(1);

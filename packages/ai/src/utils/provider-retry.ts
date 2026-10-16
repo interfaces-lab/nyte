@@ -9,7 +9,12 @@ interface ProviderRetryOptions {
   maxRetries?: number;
   maxRetryDelayMs?: number;
   signal?: AbortSignal;
+  /** Vetoes a retry the SDK policy would allow, for provider-specific terminal failures. */
+  retryable?: (error: unknown) => boolean;
 }
+
+/** A server asked to wait longer than `maxRetryDelayMs` before retrying. */
+export class RetryDelayExceededError extends Error {}
 
 interface ProviderError extends Error {
   status: number | undefined;
@@ -48,7 +53,7 @@ function validateServerRetryDelayMs(
   const maxDelayMs = maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
 
   if (maxDelayMs > 0 && delayMs > maxDelayMs) {
-    throw new Error(
+    throw new RetryDelayExceededError(
       `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s). ${providerErrorMessage}`,
     );
   }
@@ -97,8 +102,9 @@ function createAbortError(): Error {
  * their backoff sleep interruptible. Their built-in retry timers ignore the
  * request AbortSignal, so callers must invoke the SDK with `maxRetries: 0` and
  * wrap the request with this helper. Provider-requested delays above
- * `maxRetryDelayMs` fail immediately (60 seconds by default); set it to zero to
- * disable the limit.
+ * `maxRetryDelayMs` fail immediately with a {@link RetryDelayExceededError} (60
+ * seconds by default); set it to zero to disable the limit. Adapters without an SDK
+ * throw errors carrying `status` and `headers` to take part in the same policy.
  */
 export async function retryProviderRequest<T>(
   request: () => Promise<T>,
@@ -114,7 +120,12 @@ export async function retryProviderRequest<T>(
     } catch (error) {
       if (options.signal?.aborted) throw createAbortError();
 
-      if (retriesRemaining <= 0 || !isProviderError(error) || !isRetryableProviderError(error))
+      if (
+        retriesRemaining <= 0 ||
+        !isProviderError(error) ||
+        !isRetryableProviderError(error) ||
+        options.retryable?.(error) === false
+      )
         throw error;
 
       const retryIndex = maxRetries - retriesRemaining;

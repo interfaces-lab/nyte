@@ -707,9 +707,9 @@ describe("Codex V2 compaction", () => {
     },
   );
 
-  test.each(["server delay", "backoff"])("honors the retry delay cap for %s", async (kind) => {
+  test("honors the retry delay cap for a server-requested delay", async () => {
     await using server = await serve((response) => {
-      response.writeHead(503, kind === "server delay" ? { "retry-after-ms": "5000" } : {});
+      response.writeHead(503, { "retry-after-ms": "5000" });
       response.end();
     });
     await assert.rejects(
