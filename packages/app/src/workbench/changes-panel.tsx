@@ -439,15 +439,16 @@ function ChangesPanelView({
           activeScopeValue,
           ignoreWhitespace ? "ignore-whitespace" : "",
         ].join("\u0000");
-  const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${ignoreWhitespace ? "w" : ""}`;
+  const whitespace = ignoreWhitespace ? "w" : "";
+  const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${whitespace}`;
 
   const patchSource = useMemo((): PatchSource | undefined => {
     if (selectedTurnId !== undefined) {
       if (workspace === undefined || selectedRun === undefined) return undefined;
 
       return {
-        key: `turn\u0000${selectedTurnId}\u0000${String(recordedVersion(recordedRows))}`,
-        lineage: `turn\u0000${selectedTurnId}`,
+        key: `turn\u0000${selectedTurnId}\u0000${whitespace}\u0000${String(recordedVersion(recordedRows))}`,
+        lineage: `turn\u0000${selectedTurnId}\u0000${whitespace}`,
         paths: stackOrder,
         read: (paths) => readRunPatches(workspace, selectedRun, paths, ignoreWhitespace),
       };
@@ -473,6 +474,7 @@ function ChangesPanelView({
     stackOrder,
     activeScope,
     ignoreWhitespace,
+    whitespace,
   ]);
 
   const [patches] = useState(createPatchLoader);
