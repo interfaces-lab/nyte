@@ -348,7 +348,7 @@ function decoder<S extends TSchema>(kind: RecordKind, schema: S) {
 
   return (object: Json | null) =>
     isJsonObject(object) && object.kind === kind && validator.Check(object.body)
-      ? validator.Decode(object.body)
+      ? object.body
       : null;
 }
 

@@ -1,4 +1,4 @@
-import { asSeq, isJson, SessionEventSchema } from "@nyte-ai/schema";
+import { asSeq, SessionEventSchema } from "@nyte-ai/schema";
 import type { Json, Ref, RefUpdate, Seq, SessionEvent, SessionId } from "@nyte-ai/schema";
 import { SdkError } from "../util/error.ts";
 import { parseSessionRef } from "./refs.ts";
@@ -52,10 +52,7 @@ export function loggedEvent(seq: number, at: number, body: unknown): SessionEven
   return result.value;
 }
 
+/** Parses a stored object's text. `JSON.parse` builds only JSON values, so its result is `Json` without a second walk; the record decoders check the shape. */
 export function decodeObject(text: string): Json {
-  const value: unknown = JSON.parse(text);
-
-  if (!isJson(value)) throw new SdkError("internal", "A stored object is not JSON.");
-
-  return value;
+  return JSON.parse(text);
 }
