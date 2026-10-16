@@ -30,7 +30,7 @@ import type {
 import { createJobs, jobHandle } from "../engine/jobs.ts";
 import { dropScans } from "../extend/resources.ts";
 import { commit } from "../fold/commit.ts";
-import { runRef, workspaceRef } from "../store/refs.ts";
+import { endedRunRef, runRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
   listSessionRecords,
@@ -348,9 +348,12 @@ export function workspaceHandle(
     job: (job) => jobHandle(kernel, job),
     async changes(run) {
       const found = await snapshots();
-      const from = (await runStart(kernel.store, id, run)) ?? (await found.before(run));
+      const range = await runSnapshots(kernel.store, id, run);
 
-      return found.diff(from, await found.after(run));
+      return found.diff(
+        range?.from ?? (await found.before(run)),
+        range?.to ?? (await found.after(run)),
+      );
     },
     patches(run, paths, options) {
       return streamWorkspacePatches(kernel, { workspace: id, run, paths, options, snapshots });
@@ -423,9 +426,9 @@ async function* streamWorkspacePatches(
 ): AsyncGenerator<PatchSet> {
   const { run, options } = input;
   const snapshots = await input.snapshots();
-  const from =
-    (await runStart(kernel.store, input.workspace, run)) ?? (await snapshots.before(run));
-  const to = await snapshots.after(run);
+  const range = await runSnapshots(kernel.store, input.workspace, run);
+  const from = range?.from ?? (await snapshots.before(run));
+  const to = range?.to ?? (await snapshots.after(run));
   let statuses: Promise<ReadonlyMap<string, FileStatus> | null> | null = null;
 
   const caches = kernel.workspaceState.patches;
@@ -568,15 +571,33 @@ function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
     });
 }
 
-async function runStart(
+/**
+ * Where `run`'s changes start (its first snapshot) and, once it has ended,
+ * where they stop (its last); `to` is null while the run is live, its end
+ * being the workspace as it is now. Null when no record holds its first snapshot.
+ */
+async function runSnapshots(
   store: StoreConnection,
   workspace: WorkspaceId,
   run: RunId,
-): Promise<SnapshotId | null> {
+): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId | null } | null> {
   for (const session of await sessionsOn(store, workspace)) {
-    const found = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
+    const live = await load(store, await store.refs.get(runRef(session, run)), decodeRunRecord);
 
-    if (found !== null) return found.record.snapshot;
+    if (live !== null)
+      return live.record.snapshot === null ? null : { from: live.record.snapshot, to: null };
+
+    const ended = await load(
+      store,
+      await store.refs.get(endedRunRef(session, run)),
+      decodeRunRecord,
+    );
+
+    if (ended !== null && ended.record.snapshot !== null)
+      return {
+        from: ended.record.snapshot,
+        to: ended.record.lastSnapshot ?? ended.record.snapshot,
+      };
   }
 
   return null;

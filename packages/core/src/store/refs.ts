@@ -46,6 +46,11 @@ export function runRef(id: SessionId, run: RunId): string {
   return `sessions/${id}/runs/${run}`;
 }
 
+/** An ended run's last record, kept when the run snapshotted its workspace, so the changes it made stay readable once its run ref goes. */
+export function endedRunRef(id: SessionId, run: RunId): string {
+  return `sessions/${id}/ended/${run}`;
+}
+
 /** A run's live ref: it exists from the run's start until its stop fence or its end, and every run-scoped write lands under it (`RefUpdate.fence`). */
 export function liveRef(id: SessionId, run: RunId): string {
   return `sessions/${id}/live/${run}`;

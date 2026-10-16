@@ -25,6 +25,7 @@ const RECORDS: ReadonlyMap<string, string> = new Map([
   ["heads", "commit"],
   ["inbox", "inbox"],
   ["runs", "run"],
+  ["ended", "run"],
   ["parts", "part"],
   ["receipts", "receipt"],
   ["seen", "seen"],

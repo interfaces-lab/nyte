@@ -19,7 +19,7 @@ import type { Run } from "../contract/session.ts";
 import { commit } from "../fold/commit.ts";
 import { liveParts, readRunEnd, withFold } from "../fold/reads.ts";
 import { failedParts } from "../store/parts.ts";
-import { inboxRef, liveRef, runRef, sessionRef } from "../store/refs.ts";
+import { endedRunRef, inboxRef, liveRef, runRef, sessionRef } from "../store/refs.ts";
 import { wokenIndex } from "../store/wait-index.ts";
 import {
   attempt,
@@ -154,6 +154,9 @@ export async function endRun(
         events: [{ head, kind: "run", run, change: "ended", end: final }],
       },
       { name: liveRef(session, run), target: null },
+      ...(found.record.snapshot === null
+        ? []
+        : [{ name: endedRunRef(session, run), target: found.ref.target }]),
       {
         name: sessionRef(session),
         target: await put(kernel.store, "session", record, endedAt),
