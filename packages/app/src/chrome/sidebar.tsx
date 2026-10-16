@@ -58,7 +58,7 @@ import { AccountFooterMenu } from "./account-footer.tsx";
 import { useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
-import { shellActions, useStagePage } from "./shell-state.ts";
+import { shellActions, useOverlays, useStagePage } from "./shell-state.ts";
 import { recordArchive, SidebarContent } from "./sidebar-content.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
@@ -173,6 +173,7 @@ export function Sidebar(): ReactElement {
   const { layout } = usePaneControllerSnapshot();
   const workingSessions = useWorkingSessionIds();
   const page = useStagePage();
+  const paletteOpen = useOverlays().search;
   const homeVisible = useSetting(preferences.homeVisible);
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const router = useRouter();
@@ -186,7 +187,6 @@ export function Sidebar(): ReactElement {
   const [confirmation, setConfirmation] = useState<SidebarConfirmation>({ kind: "closed" });
   const [collectionExpanded, setCollectionExpanded] = useState(true);
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
-  const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
   const [hold, setHold] = useState<ShelfHold | undefined>();
 
@@ -370,7 +370,7 @@ export function Sidebar(): ReactElement {
             platform={host.data?.platform}
             sessionQueriesAvailable={host.data !== undefined}
             recentSessions={listed?.map(({ session }) => session)}
-            onOpenChange={setPaletteOpen}
+            onOpenChange={shellActions.setSearchOpen}
             onOpenSession={(sessionId) =>
               windowTabs.dispatch({
                 kind: "open",

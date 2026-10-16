@@ -15,6 +15,12 @@ export type ViewCommand = Extract<
   "reload" | "hard-reload" | "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
 >;
 
+/**
+ * The menu bar. A window command whose key the renderer owns shows its
+ * shortcut and runs on click, but leaves the key to the page, which knows when
+ * an editor, a terminal or a browser page wants it instead. ⌘W closes a tab,
+ * so closing the window takes Shift.
+ */
 export function applicationMenuTemplate(options: {
   platform: NodeJS.Platform;
   name: string;
@@ -43,6 +49,10 @@ export function applicationMenuTemplate(options: {
   };
 
   const settings = action(clientActions.settings);
+
+  const command = (
+    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
+  ): MenuItemConstructorOptions => ({ ...action(definition), registerAccelerator: false });
 
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
@@ -115,6 +125,14 @@ export function applicationMenuTemplate(options: {
     {
       label: "View",
       submenu: [
+        command(clientActions.sidebar),
+        command(clientActions.workbench),
+        command(clientActions.terminal),
+        { type: "separator" },
+        command(clientActions.splitRight),
+        command(clientActions.splitDown),
+        command(clientActions.focusPane),
+        { type: "separator" },
         ...(options.developer
           ? [
               view("Reload", "CommandOrControl+R", "reload"),
@@ -134,7 +152,15 @@ export function applicationMenuTemplate(options: {
         { role: "togglefullscreen" },
       ],
     },
-    // ⌘W closes a tab, so closing the window takes Shift.
+    {
+      label: "Go",
+      submenu: [
+        command(clientActions.back),
+        command(clientActions.forward),
+        { type: "separator" },
+        command(clientActions.search),
+      ],
+    },
     options.platform === "darwin"
       ? { role: "windowMenu" }
       : {
@@ -228,6 +254,8 @@ interface KeyMenuItem<Item> {
   readonly enabled: boolean;
   readonly visible: boolean;
   readonly accelerator: string | null | undefined;
+  /** False for a shortcut the menu only shows; the page keeps that key. */
+  readonly registerAccelerator?: boolean;
   readonly submenu?: KeyMenu<Item> | null;
 }
 
@@ -237,7 +265,7 @@ export function menuItemForKey<Item extends KeyMenuItem<Item>>(
   mac: boolean,
 ): Item | undefined {
   for (const item of menu.items) {
-    if (!item.enabled || !item.visible) continue;
+    if (!item.enabled || !item.visible || item.registerAccelerator === false) continue;
     const nested = item.submenu ? menuItemForKey(item.submenu, key, mac) : undefined;
 
     if (nested !== undefined) return nested;

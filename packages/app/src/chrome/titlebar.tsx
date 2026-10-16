@@ -1,14 +1,11 @@
-import { titlebarStyles } from "./titlebar.stylex.ts";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
 /**
  * Permanent window chrome. The sidebar toggle stays on the rail side; chat
  * actions and the stage-level workbench entry stay at the trailing edge.
  */
+import { titlebarStyles } from "./titlebar.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
-import { createLink, useMatch, useRouter } from "@tanstack/react-router";
-import { closeSettings } from "../settings/index.ts";
-// oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
-import { useCallback, useEffect } from "react";
+import { createLink, useMatch } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { PanelToggleIcon } from "@nyte-ai/ui/icon";
@@ -26,16 +23,11 @@ import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { useHostState, useSession, useWorkspaces } from "../queries.ts";
 import {
-  activeWorkbenchTab,
-  defaultWorkbenchTab,
   workbenchController,
   workbenchScope,
-  workbenchShowsChat,
   workbenchViewKey,
   useWorkbenchSnapshot,
 } from "../workbench/controller.ts";
-import { terminalActions } from "../workbench/terminal-store.ts";
-import { folderPicker } from "./open-workspace.tsx";
 import { shellActions, useStagePage } from "./shell-state.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
@@ -43,7 +35,6 @@ import {
   clientActionShortcut,
   clientActions,
   clientCapabilities,
-  resolveClientAction,
 } from "../client-actions.ts";
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
@@ -128,7 +119,6 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
 }
 
 export function Titlebar(): ReactElement {
-  const shellRouter = useRouter();
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();
@@ -143,150 +133,15 @@ export function Titlebar(): ReactElement {
   const viewKey = workbenchViewKey(workspacePath);
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
 
-  const userTerminals = view.tabs.filter(
-    (tab) => tab.kind === "terminal" && tab.owner.kind === "user",
-  );
-
   const terminalWorkspacePath = workspacePath ?? null;
   const scope = workbenchScope(workspacePath);
-  const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const settingsMatch = useMatch({ from: "/settings/$section", shouldThrow: false });
   const settingsOpen = settingsMatch !== undefined;
   const workspaceVisible = !settingsOpen && page === undefined;
   const workbenchOpen = workspaceVisible && view.expanded;
   const maximized = view.layout.kind === "maximized";
-  const chatShowing = workbenchShowsChat(view.layout);
   const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
-
-  const openTerminal = useCallback((): void => {
-    if (nyte.host.terminal === undefined) return;
-
-    const id = workbenchController.actions.openTab({
-      view: viewKey,
-      tab: { kind: "terminal", owner: { kind: "user" } },
-      activate: true,
-    });
-
-    void terminalActions.create({ id, workspacePath: terminalWorkspacePath });
-  }, [terminalWorkspacePath, viewKey]);
-
-  useEffect(() => {
-    const showWorkspace = (): void => {
-      if (settingsOpen) closeSettings(shellRouter);
-      shellActions.showWorkspace();
-    };
-
-    return nyte.host.onMenuCommand((command) => {
-      if (command.kind === "about") {
-        shellActions.showAbout(command.info);
-
-        return;
-      }
-
-      shellActions.showAbout(undefined);
-
-      switch (command.action) {
-        case clientActions.newChat.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          panes.newChat();
-
-          return;
-        case clientActions.newTab.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          windowTabs.dispatch({ kind: "new-tab" });
-
-          return;
-        case clientActions.reopenTab.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          windowTabs.dispatch({ kind: "reopen-tab" });
-
-          return;
-        case clientActions.closeTab.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          else
-            windowTabs.dispatch({ kind: "close-tab", tabId: windowTabs.getSnapshot().activeTabId });
-
-          return;
-        case clientActions.openFolder.id:
-          folderPicker()?.();
-
-          return;
-        case clientActions.newTerminal.id:
-          if (nyte.host.terminal === undefined) return;
-          showWorkspace();
-          openTerminal();
-
-          return;
-        case clientActions.newBrowser.id:
-          if (nyte.host.browser === undefined) return;
-          showWorkspace();
-          workbenchController.actions.openTab({
-            view: viewKey,
-            tab: defaultWorkbenchTab("browser"),
-            activate: true,
-          });
-
-          return;
-        case clientActions.settings.id:
-          if (settingsOpen) return;
-          void shellRouter.navigate({
-            to: "/settings/$section",
-            params: { section: "general" },
-          });
-
-          return;
-        default: {
-          const _exhaustive: never = command.action;
-
-          return _exhaustive;
-        }
-      }
-    });
-  }, [openTerminal, panes, settingsOpen, shellRouter, viewKey]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (!workspaceVisible) return;
-      const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
-
-      if (action?.id === "terminal" || action?.id === "new-terminal") {
-        event.preventDefault();
-
-        if (
-          action.id === "terminal" &&
-          workbenchOpen &&
-          !chatShowing &&
-          activeTab?.kind === "terminal"
-        ) {
-          workbenchController.actions.toggle({ view: viewKey });
-        } else if (action.id === "terminal" && userTerminals[0] !== undefined) {
-          workbenchController.actions.activateTab({ view: viewKey, id: userTerminals[0].id });
-        } else {
-          openTerminal();
-        }
-
-        return;
-      }
-
-      if (action?.id !== "workbench") return;
-      event.preventDefault();
-      workbenchController.actions.toggleWorkbench({ view: viewKey });
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    activeTab,
-    chatShowing,
-    mac,
-    openTerminal,
-    userTerminals,
-    viewKey,
-    workbenchOpen,
-    workspaceVisible,
-  ]);
 
   if (settingsOpen) {
     return (

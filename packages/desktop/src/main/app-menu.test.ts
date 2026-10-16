@@ -247,6 +247,7 @@ test("a forwarded key finds its item in a menu shaped like Electron's at runtime
     readonly enabled: boolean;
     readonly visible: boolean;
     readonly accelerator: string | null;
+    readonly registerAccelerator?: boolean;
     readonly submenu: { readonly items: readonly FakeItem[] } | null;
   }
 
@@ -272,6 +273,7 @@ test("a forwarded key finds its item in a menu shaped like Electron's at runtime
       branch("View", [
         leaf("Reload", "CommandOrControl+R"),
         leaf("Zoom In", "CommandOrControl+Plus", false),
+        { ...leaf("Split Right", "CommandOrControl+D"), registerAccelerator: false },
       ]),
     ],
   };
@@ -290,4 +292,5 @@ test("a forwarded key finds its item in a menu shaped like Electron's at runtime
   expect(menuItemForKey(menu, command("q", "KeyQ"), true)?.label).toBe("Quit Nyte");
   expect(menuItemForKey(menu, command("+", "Equal"), true)).toBeUndefined();
   expect(menuItemForKey(menu, command("k", "KeyK"), true)).toBeUndefined();
+  expect(menuItemForKey(menu, command("d", "KeyD"), true)).toBeUndefined();
 });

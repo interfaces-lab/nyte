@@ -1,6 +1,6 @@
 /**
  * Window chrome that more than one surface steers: the rail, the About
- * dialog, and the page that covers the stage. The rail's visibility and width
+ * dialog, the search palette, and the page that covers the stage. The rail's visibility and width
  * are preferences; its width is also written to the root as a CSS variable, so
  * the static boot shell and the mounted rail share one number. The covering
  * page is the active tab's view, so opening or leaving one is tab navigation.
@@ -28,25 +28,38 @@ applySidebarWidth(preferences.sidebarWidth.get());
 
 preferences.sidebarWidth.subscribe(() => applySidebarWidth(preferences.sidebarWidth.get()));
 
-let about: AppInfo | undefined;
+/** What the window shows over its stage for a moment: About, or the search palette. */
+interface Overlays {
+  readonly about: AppInfo | undefined;
+  readonly search: boolean;
+}
 
-const aboutListeners = new Set<() => void>();
+let overlays: Overlays = { about: undefined, search: false };
 
-function subscribeAbout(listener: () => void): () => void {
-  aboutListeners.add(listener);
+const overlayListeners = new Set<() => void>();
+
+function subscribeOverlays(listener: () => void): () => void {
+  overlayListeners.add(listener);
 
   return () => {
-    aboutListeners.delete(listener);
+    overlayListeners.delete(listener);
   };
 }
 
-function readAbout(): AppInfo | undefined {
-  return about;
+function readOverlays(): Overlays {
+  return overlays;
 }
 
-/** The About dialog's details while it is open. */
-export function useAbout(): AppInfo | undefined {
-  return useSyncExternalStore(subscribeAbout, readAbout, readAbout);
+function showOverlays(next: Overlays): void {
+  if (next.about === overlays.about && next.search === overlays.search) return;
+  overlays = next;
+
+  for (const listener of overlayListeners) listener();
+}
+
+/** The About dialog's details while it is open, and whether search is open. */
+export function useOverlays(): Overlays {
+  return useSyncExternalStore(subscribeOverlays, readOverlays, readOverlays);
 }
 
 function stagePage(): Page | undefined {
@@ -61,11 +74,14 @@ export function useStagePage(): Page | undefined {
 }
 
 export const shellActions = Object.freeze({
-  showAbout(info: AppInfo | undefined): void {
-    if (about === info) return;
-    about = info;
-
-    for (const listener of aboutListeners) listener();
+  showAbout(about: AppInfo | undefined): void {
+    showOverlays({ ...overlays, about });
+  },
+  setSearchOpen(search: boolean): void {
+    showOverlays({ ...overlays, search });
+  },
+  toggleSearch(): void {
+    showOverlays({ ...overlays, search: !overlays.search });
   },
   toggleSidebar(): void {
     preferences.sidebarVisible.set(!preferences.sidebarVisible.get());

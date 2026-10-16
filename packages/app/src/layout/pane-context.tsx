@@ -33,6 +33,24 @@ export function hideFromPanes(sessionId: SessionId): () => boolean {
   return windowTabs.controller().removeSessionWithUndo(sessionId);
 }
 
+/** Split the focused pane where the window has room; false when it does not. */
+export function splitPanes(controller: PaneController, direction: SplitDirection): boolean {
+  if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return false;
+  controller.split(direction);
+
+  return true;
+}
+
+/** Move focus to the other pane of a split; false when there is one pane. */
+export function focusNextPane(controller: PaneController): boolean {
+  const layout = controller.getSnapshot().layout;
+
+  if (layout.kind !== "split") return false;
+  controller.focus(activePane(layout).id === "primary" ? "secondary" : "primary");
+
+  return true;
+}
+
 function useController(): PaneController {
   const controller = useContext(PaneControllerContext);
 
@@ -97,8 +115,7 @@ export function usePaneActions(): PaneActions {
         controller.selectSessionInPane(paneId, sessionId);
       },
       split(direction) {
-        if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return;
-        controller.split(direction);
+        splitPanes(controller, direction);
       },
       close(paneId) {
         controller.close(paneId);
@@ -107,12 +124,7 @@ export function usePaneActions(): PaneActions {
         controller.focus(paneId);
       },
       focusNext() {
-        const layout = controller.getSnapshot().layout;
-
-        if (layout.kind !== "split") return false;
-        controller.focus(activePane(layout).id === "primary" ? "secondary" : "primary");
-
-        return true;
+        return focusNextPane(controller);
       },
       resize(ratio) {
         controller.resize(ratio);

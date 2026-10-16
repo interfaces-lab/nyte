@@ -16,12 +16,13 @@ import { useEffect, useSyncExternalStore } from "react";
 import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
-import { shellActions, useAbout, useStagePage } from "./chrome/shell-state.ts";
+import { runWindowCommand, windowCommand } from "./shell/window-commands.ts";
+import { shellActions, useOverlays, useStagePage } from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
 import { Sidebar } from "./chrome/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
-import { PaneControllerProvider, usePaneActions, useCanSplitPane } from "./layout/pane-context.tsx";
+import { PaneControllerProvider } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
 import { queryClient, readSession, useHostState } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
@@ -144,10 +145,8 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
 function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const host = useHostState();
   const shellRouter = useRouter();
-  const panes = usePaneActions();
-  const canSplit = useCanSplitPane();
   const page = useStagePage();
-  const about = useAbout();
+  const { about } = useOverlays();
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const mac = macPlatform(host.data?.platform);
   const strip = windowTabs.strip;
@@ -182,53 +181,9 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         clientCapabilities(nyte.host),
       );
 
-      if (action === undefined) return;
+      const command = action === undefined ? undefined : windowCommand(action.id);
 
-      if (action.id === "new-tab" || action.id === "close-tab" || action.id === "reopen-tab") {
-        if (!strip) return;
-        event.preventDefault();
-
-        if (action.id === "new-tab") windowTabs.dispatch({ kind: "new-tab" });
-        else if (action.id === "reopen-tab") windowTabs.dispatch({ kind: "reopen-tab" });
-        else
-          windowTabs.dispatch({ kind: "close-tab", tabId: windowTabs.getSnapshot().activeTabId });
-
-        return;
-      }
-
-      if (action.id === "split-right" || action.id === "split-down") {
-        if (!canSplit) return;
-        event.preventDefault();
-        panes.split(action.id === "split-down" ? "down" : "right");
-
-        return;
-      }
-
-      if (action.id === "focus-pane") {
-        if (panes.focusNext()) event.preventDefault();
-
-        return;
-      }
-
-      if (action.id === "new-chat") {
-        event.preventDefault();
-        panes.newChat();
-      } else if (action.id === "back" && settingsOpen) {
-        event.preventDefault();
-        closeSettings(shellRouter);
-      } else if ((action.id === "back" || action.id === "forward") && !settingsOpen) {
-        event.preventDefault();
-        windowTabs.dispatch({ kind: "travel", step: action.id === "back" ? -1 : 1 });
-      } else if (action.id === "sidebar") {
-        event.preventDefault();
-        shellActions.toggleSidebar();
-      } else if (action.id === "settings") {
-        event.preventDefault();
-        void shellRouter.navigate({
-          to: "/settings/$section",
-          params: { section: "general" },
-        });
-      }
+      if (command !== undefined && runWindowCommand(shellRouter, command)) event.preventDefault();
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -236,7 +191,17 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [canSplit, mac, page?.kind, panes, shellRouter, strip]);
+  }, [mac, page?.kind, shellRouter, strip]);
+
+  useEffect(
+    () =>
+      nyte.host.onMenuCommand((command) => {
+        shellActions.showAbout(command.kind === "about" ? command.info : undefined);
+
+        if (command.kind === "action") runWindowCommand(shellRouter, command.action);
+      }),
+    [shellRouter],
+  );
 
   return (
     <div data-nyte-shell {...props(styles.shell)}>

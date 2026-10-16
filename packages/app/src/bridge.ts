@@ -223,6 +223,7 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export type ClientSurface = "desktop" | "web";
 
+/** The window commands the menu bar sends; the renderer runs each as its shortcut would. */
 export type AppMenuAction =
   | typeof clientActions.newChat.id
   | typeof clientActions.newTab.id
@@ -231,7 +232,16 @@ export type AppMenuAction =
   | typeof clientActions.openFolder.id
   | typeof clientActions.newTerminal.id
   | typeof clientActions.newBrowser.id
-  | typeof clientActions.settings.id;
+  | typeof clientActions.settings.id
+  | typeof clientActions.search.id
+  | typeof clientActions.sidebar.id
+  | typeof clientActions.workbench.id
+  | typeof clientActions.terminal.id
+  | typeof clientActions.splitRight.id
+  | typeof clientActions.splitDown.id
+  | typeof clientActions.back.id
+  | typeof clientActions.forward.id
+  | typeof clientActions.focusPane.id;
 
 export interface AppInfo {
   readonly name: string;
