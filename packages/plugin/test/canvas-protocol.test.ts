@@ -64,6 +64,11 @@ describe("the shell's messages", () => {
       id: "link-1",
       url: "https://nyte.sh/",
     });
+    expect(readShellMessage(wire(openLinkRequest("link-2", "ci.ts:42")))).toEqual({
+      kind: "open-link",
+      id: "link-2",
+      url: "ci.ts:42",
+    });
     expect(wire(errorNotification({ phase: "render", message: "boom", stack: "at View" }))).toEqual(
       {
         jsonrpc: "2.0",

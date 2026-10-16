@@ -25,7 +25,11 @@ import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
 import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
 import type { CanvasTheme } from "./canvas-theme.ts";
-import { openExternalLink } from "./external-link.ts";
+import { openConversationLink } from "./external-link.ts";
+import type { MentionFile } from "./message-references.ts";
+import { linkReference, useCitableFiles } from "./prose.tsx";
+import { useReferenceOpener } from "./reference-opener.tsx";
+import type { ReferenceOpener } from "./reference-opener.tsx";
 
 const styles = create({
   figure: {
@@ -97,6 +101,26 @@ function post(frame: HTMLIFrameElement | null, message: CanvasPost): void {
   frame?.contentWindow?.postMessage(message, "*");
 }
 
+/**
+ * What a canvas link opens: a web link where the user's link setting says (the
+ * workbench browser or the system browser), a workspace path such as
+ * `src/ci.ts:42` in the file editor at its line. Undefined when nothing can
+ * open it, so the canvas is told the link failed and stays where it is.
+ */
+function canvasLink(
+  href: string,
+  files: readonly MentionFile[],
+  opener: ReferenceOpener | undefined,
+): (() => void) | undefined {
+  const url = URL.parse(href);
+
+  if (url?.protocol === "http:" || url?.protocol === "https:")
+    return () => openConversationLink(url.href, opener);
+  const reference = linkReference(href, files);
+
+  return reference?.kind === "file" ? opener?.(reference) : undefined;
+}
+
 const HEIGHTS_KEY = "nyte.canvas-heights";
 
 /** Canvases whose last reported height is kept; older ones paint at their hint again. */
@@ -157,6 +181,9 @@ export function CanvasFrame({
   const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<CanvasError>();
   const shell = useRef({ initialized: false, reported: new Set<string>() });
+  const opener = useReferenceOpener();
+  const files = useCitableFiles(opener !== undefined);
+  const citable = files.data;
 
   const reportedHeight =
     reported?.key === heightKey ? reported.height : measuredHeights.get(heightKey);
@@ -187,8 +214,9 @@ export function CanvasFrame({
             break;
           case "open-link": {
             const allowed = document.activeElement === frame && navigator.userActivation.isActive;
-            if (allowed) openExternalLink(effect.url);
-            post(frame, openLinkResult(effect.id, !allowed));
+            const open = allowed ? canvasLink(effect.url, citable ?? [], opener) : undefined;
+            open?.();
+            post(frame, openLinkResult(effect.id, open === undefined));
             break;
           }
 
@@ -209,7 +237,7 @@ export function CanvasFrame({
     window.addEventListener("message", receive);
 
     return () => window.removeEventListener("message", receive);
-  }, [theme, runtime, code, title, known, report, heightKey]);
+  }, [theme, runtime, code, title, known, report, heightKey, citable, opener]);
 
   useLayoutEffect(() => {
     if (shell.current.initialized)

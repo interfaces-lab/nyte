@@ -170,8 +170,16 @@ function MarkdownCode({
   return <FileCitation reference={reference} open={open} label={text} code />;
 }
 
-function linkReference(href: string, files: readonly MentionFile[]): MessageReference | undefined {
-  if (/^[a-z][a-z\d+.-]*:/iu.test(href) && !href.startsWith("file:")) return undefined;
+/**
+ * The workspace file a link names: a `file:` URL, an absolute path, or a
+ * path relative to the workspace with an optional `:12` or `#L12` suffix.
+ * A scheme has no dot, so `ci.ts:42` is a path and `mailto:` is not.
+ */
+export function linkReference(
+  href: string,
+  files: readonly MentionFile[],
+): MessageReference | undefined {
+  if (/^[a-z][a-z\d+-]*:/iu.test(href) && !href.startsWith("file:")) return undefined;
 
   if (href.startsWith("file:")) {
     const file = fileFromUrl(href);

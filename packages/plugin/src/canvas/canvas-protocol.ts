@@ -200,6 +200,7 @@ export type ShellMessage =
   | { readonly kind: "initialize"; readonly id: JsonRpcId; readonly runtime: number }
   | { readonly kind: "initialized" }
   | { readonly kind: "size"; readonly height: number }
+  /** `url` is an http(s) URL, or a reference with no scheme that the client resolves in its workspace. */
   | { readonly kind: "open-link"; readonly id: JsonRpcId; readonly url: string }
   | {
       readonly kind: "error";
@@ -344,7 +345,7 @@ export function readShellMessage(data: unknown): ShellMessage | undefined {
   }
 
   if (method === OPEN_LINK && id !== undefined) {
-    const url = httpUrl(params?.["url"]);
+    const url = linkHref(params?.["url"]);
 
     return url === undefined ? undefined : { kind: "open-link", id, url };
   }
@@ -549,14 +550,18 @@ function stringEntries(value: Record<string, unknown>): Record<string, string> {
   );
 }
 
-function httpUrl(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
+/**
+ * A link a canvas may ask its client to open: an http(s) URL, or a reference
+ * with no scheme, such as `src/ci.ts:42`, which the client resolves in its
+ * workspace or refuses. Every other scheme (`javascript:`, `file:`) is refused.
+ */
+function linkHref(value: unknown): string | undefined {
+  if (typeof value !== "string" || value === "") return undefined;
+  const scheme = /^([a-z][a-z\d+-]*):/iu.exec(value)?.[1]?.toLowerCase();
 
-  try {
-    const url = new URL(value);
+  if (scheme === undefined) return value;
 
-    return url.protocol === "http:" || url.protocol === "https:" ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
+  if (scheme !== "http" && scheme !== "https") return undefined;
+
+  return URL.parse(value)?.href;
 }

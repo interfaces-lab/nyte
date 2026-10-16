@@ -289,22 +289,17 @@ window.addEventListener("unhandledrejection", (event) => {
 document.addEventListener(
   "click",
   (event) => {
-    if (!event.isTrusted) return;
     const anchor = event.composedPath().find((target) => target instanceof HTMLAnchorElement);
 
     if (!(anchor instanceof HTMLAnchorElement)) return;
-    let url: URL;
+    const href = anchor.getAttribute("href");
 
-    try {
-      url = new URL(anchor.getAttribute("href") ?? "", document.baseURI);
-    } catch {
-      return;
-    }
-
-    if (url.protocol !== "http:" && url.protocol !== "https:") return;
+    if (href === null || href.startsWith("#")) return;
     event.preventDefault();
+
+    if (!event.isTrusted) return;
     links += 1;
-    post(openLinkRequest(`link-${String(links)}`, url.href));
+    post(openLinkRequest(`link-${String(links)}`, href));
   },
   true,
 );
