@@ -35,7 +35,7 @@ import {
 } from "./app-menu.ts";
 import type { ViewCommand } from "./app-menu.ts";
 import { safeExternalUrl } from "./external-url.ts";
-import { createBrowserSurfaces } from "./browser.ts";
+import { BrowserSurfaces } from "./browser.ts";
 import { BrowserHistoryStore } from "./browser-history.ts";
 import { showContextMenu } from "./context-menu.ts";
 import { callIpc } from "./ipc-call.ts";
@@ -185,7 +185,7 @@ const browserHistory = new BrowserHistoryStore(
   join(app.getPath("userData"), "browser-history.json"),
 );
 
-const browserSurfaces = createBrowserSurfaces({
+const browserSurfaces = new BrowserSurfaces({
   settings: () => settings,
   history: browserHistory,
   window: (id) =>

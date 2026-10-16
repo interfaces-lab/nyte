@@ -23,7 +23,7 @@ import type {
   TailnetAvailability,
 } from "@nyte-ai/app/bridge.ts";
 import type { CallInput, CallOutput, CallPath } from "../shared/ipc.ts";
-import type { BrowserSurfaces } from "./browser.ts";
+import type { BrowserPanels } from "./browser.ts";
 import { desktopBrowserPlugin } from "./browser-tools.ts";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import {
@@ -78,7 +78,7 @@ export interface DesktopHostDependencies {
     input: CallInput<"host.contextMenu">,
     window: HostWindow,
   ): Promise<CallOutput<"host.contextMenu">>;
-  browser: BrowserSurfaces;
+  browser: BrowserPanels;
   listFonts(): Promise<LocalFontCatalog>;
   /** Native folder picker; resolves undefined on cancel. */
   pickFolder(window: HostWindow): Promise<string | undefined>;
