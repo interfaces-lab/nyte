@@ -903,6 +903,44 @@ describe("turn", () => {
     expect(fake.requests).toHaveLength(2);
   });
 
+  it("drops the calls a stopped run recorded but never opened, leaving no work owed", async () => {
+    const fake = fakeModels();
+    const gate = Promise.withResolvers<void>();
+    const { plugin } = recorder(gate.promise);
+
+    fake.reply({
+      content: [
+        { type: "toolCall", id: "a", name: "wait", arguments: {} },
+        { type: "toolCall", id: "b", name: "echo", arguments: { text: "never" } },
+      ],
+    });
+
+    await using host = await open(fake, { plugins: [plugin] });
+    const session = await host.sessions.create();
+    const receipt = await session.send("Go.");
+
+    const run = await until(async () => {
+      const { execution } = await session.view();
+
+      return execution.kind === "live" && execution.phase === "executing"
+        ? execution.run.id
+        : undefined;
+    });
+
+    expect(await session.run(run).stop()).toEqual({ kind: "requested" });
+    gate.resolve();
+
+    expect(await receipt.settled()).toEqual({ kind: "stopped" });
+    expect(
+      await host.kernel.store.sessions.pending({ kind: "call", sessions: [session.id] }),
+    ).toEqual([]);
+    expect(
+      (await session.view()).messages.some(
+        (message) => isPart(message, tool) && message.state.name === "echo",
+      ),
+    ).toBe(false);
+  });
+
   it("fails every call of a response cut off at the output cap, without running any, and goes on", async () => {
     const fake = fakeModels();
 

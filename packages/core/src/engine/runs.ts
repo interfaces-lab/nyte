@@ -13,7 +13,7 @@ import type {
 import type { FoldState } from "../contract/fold.ts";
 import { CORE_CONTEXT, LOCAL } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import { decodeRunRecord } from "../contract/records.ts";
+import { decodeCallRecord, decodeRunRecord } from "../contract/records.ts";
 import type { RunRecord, SessionRecord } from "../contract/records.ts";
 import type { Run } from "../contract/session.ts";
 import { commit } from "../fold/commit.ts";
@@ -168,6 +168,7 @@ export async function endRun(
             final.kind === "failed" ? final.failure : FENCED,
           )),
       ...receipts.flat(),
+      ...(await unopenedCalls(kernel, session, run)),
     ]);
 
     return outcome.kind === "set"
@@ -200,6 +201,29 @@ export async function endRun(
   if (!woke && ended.parent !== null) await deliverChildReport(kernel, session, run, ended.end);
 
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
+}
+
+/** Deletes the calls an ended run recorded but never opened: nothing owes them once the run is over. */
+async function unopenedCalls(
+  kernel: Kernel,
+  session: SessionId,
+  run: RunId,
+): Promise<readonly RefUpdate[]> {
+  const refs = await kernel.store.sessions.pending({ kind: "call", sessions: [session] });
+
+  const found = await Promise.all(
+    refs.map(async (ref) => ({ ref, call: await load(kernel, ref, decodeCallRecord) })),
+  );
+
+  return found.flatMap(({ ref, call }) =>
+    call !== null &&
+    call.record.run === run &&
+    call.record.kind === "tool" &&
+    call.record.part === null &&
+    call.record.result === null
+      ? [{ name: ref.name, target: null, expect: ref.revision }]
+      : [],
+  );
 }
 
 export function runHandle(kernel: Kernel, session: SessionId, id: RunId): Run {
