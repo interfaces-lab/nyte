@@ -3,22 +3,14 @@ import { defineRule } from "@oxlint/plugins";
 import {
   functionParameterBindingName,
   functionParameterTypeAnnotation,
-} from "../shared/function-parameters.ts";
+} from "../../anti-slop/shared/function-parameters.ts";
+import { readFunctionValue } from "../shared/function-value.ts";
 
 import type { ESTree } from "@oxlint/plugins";
 
 const OF_LOOKUP_NAME = /^[a-z][A-Za-z0-9]*[a-z0-9]Of$/;
 
-function isFunctionValue(node: ESTree.Node | null): boolean {
-  let current = node;
-
-  while (current?.type === "ParenthesizedExpression" || current?.type === "TSSatisfiesExpression") {
-    current = current.expression;
-  }
-
-  return current?.type === "ArrowFunctionExpression" || current?.type === "FunctionExpression";
-}
-
+/** Disallow `…Of` lookup names on functions, function-typed parameters, and function-valued members. */
 export const noOfLookupNamesRule = defineRule({
   meta: {
     type: "problem",
@@ -64,22 +56,23 @@ export const noOfLookupNamesRule = defineRule({
       ArrowFunctionExpression: inspectFunction,
       TSDeclareFunction: inspectFunction,
       VariableDeclarator(node) {
-        if (node.id.type !== "Identifier" || !isFunctionValue(node.init)) return;
+        if (node.id.type !== "Identifier" || readFunctionValue(node.init) === null) return;
 
         reportOfLookupName(node.id, node.id.name);
       },
       Property(node) {
-        if (node.parent.type !== "ObjectExpression" || !isFunctionValue(node.value)) return;
+        if (node.parent.type !== "ObjectExpression" || readFunctionValue(node.value) === null)
+          return;
         reportFunctionKey(node.key, node.computed);
       },
       MethodDefinition(node) {
         reportFunctionKey(node.key, node.computed);
       },
       PropertyDefinition(node) {
-        if (isFunctionValue(node.value)) reportFunctionKey(node.key, node.computed);
+        if (readFunctionValue(node.value) !== null) reportFunctionKey(node.key, node.computed);
       },
       AccessorProperty(node) {
-        if (isFunctionValue(node.value)) reportFunctionKey(node.key, node.computed);
+        if (readFunctionValue(node.value) !== null) reportFunctionKey(node.key, node.computed);
       },
     };
   },

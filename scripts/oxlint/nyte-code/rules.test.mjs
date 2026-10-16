@@ -1,6 +1,6 @@
 import { deepEqual, equal } from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -177,6 +177,36 @@ export default {
 };`,
   },
   {
+    rule: "nyte-code/no-of-lookup-names",
+    rejected: `function indexOf(state: FoldState): Index { return indexes.get(state.messages); }
+async function stopReceipt<O extends Json>(outcomeOf: (value: Json) => O) {}
+const keyOf = (value: Entry) => value.id;
+const childOf = ((value: Entry) => value.child) satisfies (value: Entry) => Entry;
+const read = function partOf(value: Entry) { return value.part; };
+const helpers = {
+  modelOf(value: Entry) { return value.model; },
+  "headOf": (value: Entry) => value.head,
+  taskOf: function(value: Entry) { return value.task; },
+};
+class Helpers {
+  refOf(value: Entry) { return value.ref; }
+  messageOf = (value: Entry) => value.message;
+  #stateOf = (value: Entry) => value.state;
+}
+declare function pathOf(value: Entry): string;`,
+    rejectedLines: [1, 2, 3, 4, 5, 7, 8, 9, 12, 13, 14, 16],
+    accepted: `function findPart(state: FoldState) { return state.parts.get("a"); }
+const readChild = (value: Entry) => value.child;
+function stopReceipt(decodeOutcome: (value: Json) => Json) {}
+const helpers = { indexOf: 2, partOf: "part", findModel(value: Entry) { return value.model; } };
+const [headOf] = tuple;
+const property = "keyOf";
+const computed = { [property]: (value: Entry) => value.id };
+const index = messages.indexOf(message);
+const proofOfConcept = (value: Entry) => value;
+const instanceOf = true;`,
+  },
+  {
     rule: "typescript/no-explicit-any",
     rejected: `const a: any = 1;
 function f(list: any[]): Array<any> { return list; }`,
@@ -232,18 +262,26 @@ await test("code-shape rules reject their targets and accept the idioms around t
   const directory = await mkdtemp(join(tmpdir(), "nyte-code-lint-"));
 
   try {
-    for (const { rule, rejected, rejectedLines, accepted } of cases) {
+    for (const { rule, rejected, rejectedLines, accepted, ...layout } of cases) {
       const ruleName = rule.split("/").at(-1);
-      const rejectedFile = join(directory, `${ruleName}.rejected.ts`);
-      const acceptedFile = join(directory, `${ruleName}.accepted.ts`);
+      const fixtureDirectory = join(directory, ruleName, layout.directory ?? "");
+      const rejectedFile = join(fixtureDirectory, `${ruleName}.rejected.ts`);
+      const acceptedFile = join(fixtureDirectory, `${ruleName}.accepted.ts`);
       const config = {
         categories: { correctness: "off" },
         plugins: ["typescript", "eslint"],
         jsPlugins: [pluginPath],
-        rules: { [rule]: repositoryConfig.rules[rule] },
+        rules: { [rule]: repositoryConfig.rules[rule] ?? "error" },
       };
 
       await writeFile(join(directory, `${rule.replaceAll("/", "-")}.json`), JSON.stringify(config));
+      await mkdir(fixtureDirectory, { recursive: true });
+
+      for (const root of layout.packageRoots ?? []) {
+        await mkdir(join(directory, ruleName, root), { recursive: true });
+        await writeFile(join(directory, ruleName, root, "package.json"), "{}");
+      }
+
       await writeFile(rejectedFile, rejected);
       await writeFile(acceptedFile, accepted);
 

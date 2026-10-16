@@ -4,9 +4,7 @@ import type { ESTree } from "@oxlint/plugins";
 export type FunctionValue = ESTree.ArrowFunctionExpression | ESTree.Function;
 
 /** Read the function a binding holds, looking through parentheses and `satisfies`; null when the value is not a function. */
-export function readFunctionValue(
-  node: ESTree.Expression | null | undefined,
-): FunctionValue | null {
+export function readFunctionValue(node: ESTree.Node | null | undefined): FunctionValue | null {
   let current = node ?? null;
 
   while (current?.type === "ParenthesizedExpression" || current?.type === "TSSatisfiesExpression") {
