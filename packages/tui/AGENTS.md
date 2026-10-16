@@ -2,7 +2,7 @@
 
 - Terminal rendering and keyboard interaction live here; session behavior belongs in core.
 - The interactive app is a Solid app on `@opentui/solid`, started by `runTui` in `src/app/main.tsx`. Print mode (`print.ts`, `print-invocation.ts`) and the CLI (`index.ts`, `flags.ts`, `run.ts`) stay outside it.
-- `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`, starting at `src/index.ts`; from source, `src/binary.ts` installs the same transform before loading the app.
+- `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`, starting at `src/index.ts`, to bytecode so launch skips parsing; from source, `src/binary.ts` installs the same transform before loading the app.
 
 ## Architecture
 

@@ -47,6 +47,8 @@ try {
     target: "bun",
     plugins: [solidPlugin, codemodePlugin],
     define: binaryDefines(process.env),
+    format: "esm",
+    bytecode: true,
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },
   });
 
