@@ -10,7 +10,6 @@ import type {
   SessionId,
   ValidationIssue,
 } from "@nyte-ai/schema";
-import { createConnection } from "./connection.ts";
 import type { PluginStorage } from "./connection.ts";
 import { dev } from "./dev-log.ts";
 import type { ExecutionEnv, Resources } from "./environment.ts";
@@ -29,7 +28,6 @@ import { kvRef } from "./refs.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
 import type { CoreRegistry, RegistrySet } from "./registry.ts";
 import { commit, isCovered, put, requireSession } from "./session-state.ts";
-import { activationSession, sessionHandle } from "./session.ts";
 import type { Session } from "./session.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
 import { activateSession } from "./workspaces.ts";
@@ -378,7 +376,7 @@ export function createPluginRuntime(
 
     void own.observe(
       "session_activated",
-      { session: sessionHandle(kernel, CORE_CONTEXT, session) },
+      { session: kernel.handles.session(CORE_CONTEXT, session) },
       { session, head: null, run: null, principal: LOCAL },
     );
 
@@ -915,7 +913,7 @@ function createInstance(
     ...input,
     owner,
     contribute,
-    handle: activationSession(kernel, CORE_CONTEXT, session),
+    handle: kernel.handles.activationSession(CORE_CONTEXT, session),
     signal: controller.signal,
     hook: (name, entry) =>
       register((to, signal) => untilAborted(signal, to.hooks.register(owner, api, name, entry))),
@@ -994,7 +992,7 @@ export function corePluginApi(
   return build(kernel, {
     ...input,
     contribute: input.registries.owned("core", signal),
-    handle: sessionHandle(kernel, CORE_CONTEXT, input.session),
+    handle: kernel.handles.session(CORE_CONTEXT, input.session),
     owner: "core",
     signal,
     hook: () => () => {},
@@ -1011,14 +1009,14 @@ export function stepPluginApi(
 ): PluginApi<"core"> {
   return {
     side: api.side,
-    sdk: createConnection(kernel, context),
+    sdk: kernel.handles.connection(context),
     contribute: api.contribute,
     storage: api.storage,
     signal: api.signal,
     hook: (name, entry) => api.hook(name, entry),
     report: (issue) => api.report(issue),
     reload: () => api.reload(),
-    session: sessionHandle(kernel, context, session),
+    session: kernel.handles.session(context, session),
     get env() {
       return api.env;
     },
@@ -1049,7 +1047,7 @@ function build(
 
   return {
     side: "core",
-    sdk: createConnection(kernel, CORE_CONTEXT),
+    sdk: kernel.handles.connection(CORE_CONTEXT),
     contribute: input.contribute,
     storage: createPluginStorage(kernel, { owner, session }),
     signal: input.signal,

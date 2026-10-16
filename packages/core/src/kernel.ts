@@ -33,7 +33,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { PageTable } from "./browser.ts";
 import type { SessionBus } from "./bus.ts";
-import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
+import type { Connection, ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import type { McpHub } from "./mcp.ts";
 import type { StepOutcome } from "./durable.ts";
 import type { EnvironmentRegistry, ExecutionEnv, Resources, SnapshotsApi } from "./environment.ts";
@@ -47,6 +47,7 @@ import type { Part, PartDefinition, PartState, PartTable } from "./parts.ts";
 import type { PluginRuntime, PluginState } from "./plugin-runtime.ts";
 import type { Plugin, PluginApi } from "./plugin.ts";
 import type { ConnectionContext, ConnectionRegistry } from "./principals.ts";
+import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
 import type { ToolSource } from "./tool-runner.ts";
 import type { Durable } from "./tools.ts";
@@ -189,6 +190,18 @@ export interface Kernel {
   loadPlugins(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
 
   readonly principals: Host["principals"];
+
+  /** Builds the public connection and session handles, so engine and plugin code never import the api layer. */
+  readonly handles: Handles;
+}
+
+export interface Handles {
+  connection(context: ConnectionContext): Connection;
+
+  session(context: ConnectionContext, session: SessionId): Session;
+
+  /** The session handle a plugin's `activate` receives: its main head sends without waiting on the activation. */
+  activationSession(context: ConnectionContext, session: SessionId): Session;
 }
 
 export interface RunTable {

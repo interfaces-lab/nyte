@@ -1,6 +1,5 @@
 import { asId } from "@nyte-ai/schema";
 import type { CallId, HeadName, RunId, SessionId, WorkspaceId } from "@nyte-ai/schema";
-import { createConnection } from "./connection.ts";
 import { parkStep } from "./durable.ts";
 import type { ExecutionEnv } from "./environment.ts";
 import type { Kernel } from "./kernel.ts";
@@ -8,7 +7,6 @@ import type { PluginRuntime } from "./plugin-runtime.ts";
 import { PARTICIPANT_AUTHORITY } from "./principals.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { publishPatch } from "./runs.ts";
-import { sessionHandle } from "./session.ts";
 import { executeNested } from "./tool-runner.ts";
 import type { Durable, ToolInvocation } from "./tools.ts";
 
@@ -51,14 +49,14 @@ export function createInvocation(
   };
 
   const source = kernel.tools(input.runtime);
-  const sdk = createConnection(kernel, context);
+  const sdk = kernel.handles.connection(context);
 
   return {
     run,
     call,
     head,
     signal,
-    session: sessionHandle(kernel, context, session),
+    session: kernel.handles.session(context, session),
     sdk,
     workspace: sdk.workspace(input.workspace),
     env: input.env,

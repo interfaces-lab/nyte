@@ -16,7 +16,7 @@ import { createPageTable } from "./browser.ts";
 import type { PageTable } from "./browser.ts";
 import { createBus } from "./bus.ts";
 import { createCompactor, createSummarizer } from "./compaction.ts";
-import { createHost } from "./connection.ts";
+import { createConnection, createHost } from "./connection.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { dev } from "./dev-log.ts";
 import { runAction } from "./durable.ts";
@@ -62,6 +62,7 @@ import { bumpGeneration, runCommand, toolSource } from "./registry.ts";
 import { createRequest } from "./request.ts";
 import { resourcesPlugin, scanResources } from "./resources.ts";
 import { dispatchHead } from "./session-state.ts";
+import { activationSession, sessionHandle } from "./session.ts";
 import { createSettingsApi, settingInfos } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
 import { stoppableTool } from "./tool-runner.ts";
@@ -544,6 +545,11 @@ export function createKernel(input: KernelOptions): Kernel {
       (async () => unavailable("plugin files: this host has no plugin loader")),
     get principals() {
       return (principals ??= createPrincipals(kernel));
+    },
+    handles: {
+      connection: (context) => createConnection(kernel, context),
+      session: (context, session) => sessionHandle(kernel, context, session),
+      activationSession: (context, session) => activationSession(kernel, context, session),
     },
   };
 
