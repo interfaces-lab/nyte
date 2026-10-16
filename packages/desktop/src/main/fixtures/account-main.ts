@@ -82,7 +82,7 @@ const server = createServer((request, response) => {
         () => response.writeHead(404).end(),
       );
 
-    if (basename(path).startsWith("clerk-")) {
+    if (basename(path).startsWith("account-")) {
       accountModuleRequests += 1;
 
       if (accountModuleMode === "hold") releaseAccountModule.push(serve);
@@ -221,7 +221,9 @@ async function run(): Promise<void> {
   accountModuleMode = "serve";
   await until(
     async () =>
-      (await contents.executeJavaScript("window.nyteAccountRuntime !== undefined")) === true,
+      (await contents.executeJavaScript(
+        'performance.getEntriesByType("resource").some((entry) => entry.name.includes("/account-") && entry.responseEnd > 0)',
+      )) === true,
     "Account module did not finish loading",
   );
   await new Promise((resolve) => setTimeout(resolve, 100));

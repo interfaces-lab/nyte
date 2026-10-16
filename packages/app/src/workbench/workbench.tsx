@@ -45,11 +45,9 @@ import type {
 } from "./controller";
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
-import { FilesPanel } from "./files-panel.tsx";
+import { Deferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
-import { TerminalPanel } from "./terminal-panel";
-import { ChangesPanel } from "./changes-panel";
 
 // Views visited since launch stay mounted so a dev server terminal or a
 // browser page in another folder survives switching away and back, and a
@@ -319,65 +317,73 @@ function PanelContent({
     case "file":
     case "files":
       return (
-        <FilesPanel
-          key={uiFontSize}
-          viewKey={viewKey}
-          visible={visible}
-          workspaceActive={workspaceActive}
-        />
+        <Deferred entry="workbench">
+          {({ FilesPanel }) => (
+            <FilesPanel
+              key={uiFontSize}
+              viewKey={viewKey}
+              visible={visible}
+              workspaceActive={workspaceActive}
+            />
+          )}
+        </Deferred>
       );
     case "changes":
       return (
-        <ChangesPanel
-          visible={visible}
-          sessionId={sessionId}
-          scope={tab.scope}
-          selectedPath={tab.selectedPath ?? undefined}
-          revealPathRevision={tab.pathRevealRevision}
-          scrollTop={tab.scrollTop}
-          fileTreeVisible={sidebarVisible}
-          onScopeChange={(scope) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: {
-                scope,
-                selectedPath: null,
-                pathRevealRevision: tab.pathRevealRevision,
-                scrollTop: 0,
-              },
-            })
-          }
-          onToggleFileTree={onToggleSidebar}
-          onSelectPath={(path) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: { ...tab, selectedPath: path ?? null },
-            })
-          }
-          onRevealPath={(path) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: {
-                ...tab,
-                selectedPath: path,
-                pathRevealRevision: tab.pathRevealRevision + 1,
-              },
-            })
-          }
-          onScrollTop={(scrollTop) =>
-            workbenchController.actions.scrollTab({
-              view: viewKey,
-              id: tab.id,
-              scrollTop: Math.max(0, scrollTop),
-            })
-          }
-        />
+        <Deferred entry="workbench">
+          {({ ChangesPanel }) => (
+            <ChangesPanel
+              visible={visible}
+              sessionId={sessionId}
+              scope={tab.scope}
+              selectedPath={tab.selectedPath ?? undefined}
+              revealPathRevision={tab.pathRevealRevision}
+              scrollTop={tab.scrollTop}
+              fileTreeVisible={sidebarVisible}
+              onScopeChange={(scope) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: {
+                    scope,
+                    selectedPath: null,
+                    pathRevealRevision: tab.pathRevealRevision,
+                    scrollTop: 0,
+                  },
+                })
+              }
+              onToggleFileTree={onToggleSidebar}
+              onSelectPath={(path) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: { ...tab, selectedPath: path ?? null },
+                })
+              }
+              onRevealPath={(path) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: {
+                    ...tab,
+                    selectedPath: path,
+                    pathRevealRevision: tab.pathRevealRevision + 1,
+                  },
+                })
+              }
+              onScrollTop={(scrollTop) =>
+                workbenchController.actions.scrollTab({
+                  view: viewKey,
+                  id: tab.id,
+                  scrollTop: Math.max(0, scrollTop),
+                })
+              }
+            />
+          )}
+        </Deferred>
       );
     case "browser":
       return (
@@ -410,7 +416,13 @@ function PanelContent({
         />
       );
     case "terminal":
-      return <TerminalPanel tabId={tab.id} workspacePath={workspacePath} visible={visible} />;
+      return (
+        <Deferred entry="workbench">
+          {({ TerminalPanel }) => (
+            <TerminalPanel tabId={tab.id} workspacePath={workspacePath} visible={visible} />
+          )}
+        </Deferred>
+      );
     default: {
       const _exhaustive: never = tab;
 

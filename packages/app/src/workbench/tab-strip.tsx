@@ -43,7 +43,7 @@ import type {
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "./controller.ts";
-import { copyTerminal, clearTerminal } from "./terminal-runtime.ts";
+import { readDeferred } from "../deferred.tsx";
 import { isJobTerminal, terminalActions, useTerminalRuntime } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
@@ -481,10 +481,16 @@ export function WorkbenchTabStrip({
                             New Terminal
                           </ContextMenuItem>
                         )}
-                        <ContextMenuItem icon="copy" onClick={() => copyTerminal(terminal.id)}>
+                        <ContextMenuItem
+                          icon="copy"
+                          onClick={() => readDeferred("workbench")?.copyTerminal(terminal.id)}
+                        >
                           Copy Selection
                         </ContextMenuItem>
-                        <ContextMenuItem icon="refresh" onClick={() => clearTerminal(terminal.id)}>
+                        <ContextMenuItem
+                          icon="refresh"
+                          onClick={() => readDeferred("workbench")?.clearTerminal(terminal.id)}
+                        >
                           Clear Terminal
                         </ContextMenuItem>
                         <ContextMenuSeparator />

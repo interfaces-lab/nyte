@@ -1,4 +1,5 @@
 import { AccountScope, accountAppearance } from "@nyte-ai/app/account/appearance.tsx";
+import { publishDeferred } from "@nyte-ai/app/deferred.tsx";
 import { ClerkLoading, ClerkProvider, SignIn, useClerk } from "@clerk/electron/react";
 import { useEffect } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -173,4 +174,4 @@ function Form({ fallback }: { readonly fallback: ReactNode }): ReactElement {
 
 export const accountRuntime = { Provider, Form };
 
-window.nyteAccountRuntime = accountRuntime;
+publishDeferred("account", accountRuntime);

@@ -1,4 +1,4 @@
-import { BarChart, Sparkline, type ChartSeries } from "@nyte-ai/ui/chart";
+import type { ChartSeries } from "@nyte-ai/ui/chart";
 import { Meter } from "@nyte-ai/ui/meter";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -8,6 +8,7 @@ import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { Fragment, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { Deferred } from "../deferred.tsx";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { useChromeTab } from "./use-chrome-tab.ts";
 import { isOption } from "./sidebar-view.ts";
@@ -89,6 +90,14 @@ function Bone({
   readonly height: number;
 }): ReactElement {
   return <span aria-hidden="true" {...props(bone.bone)} style={{ width, height }} />;
+}
+
+function Trend({ values }: { readonly values: readonly number[] }): ReactElement {
+  return (
+    <Deferred entry="charts" fallback={<Bone width={72} height={20} />}>
+      {({ Sparkline }) => <Sparkline values={values} />}
+    </Deferred>
+  );
 }
 
 export function UsageRangePicker(): ReactElement {
@@ -245,12 +254,16 @@ function SpendCard({
           <span {...props(text.sm, styles.fact)}>{describeTotals(usage.totals)}</span>
         </span>
       </div>
-      <BarChart
-        label={`${usage.measure === "cost" ? "Spend" : "Tokens"} per ${usage.grain}`}
-        series={layers.series}
-        buckets={layers.buckets}
-        format={format}
-      />
+      <Deferred entry="charts" fallback={<Bone width="100%" height={108} />}>
+        {({ BarChart }) => (
+          <BarChart
+            label={`${usage.measure === "cost" ? "Spend" : "Tokens"} per ${usage.grain}`}
+            series={layers.series}
+            buckets={layers.buckets}
+            format={format}
+          />
+        )}
+      </Deferred>
     </section>
   );
 }
@@ -411,7 +424,7 @@ function BreakdownTable({
               {row.trend === undefined ? (
                 <span {...props(text.base, styles.number, styles.absent)}>—</span>
               ) : (
-                <Sparkline values={row.trend} />
+                <Trend values={row.trend} />
               )}
             </span>
             <span role="cell" {...props(styles.cost)}>

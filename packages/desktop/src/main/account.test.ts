@@ -6,8 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build, defaultClientConditions } from "vite";
-import { stylex } from "@nyte-ai/app/vite";
-import { deferredClerk } from "../../account.vite.ts";
+import { deferredChunks, stylex } from "@nyte-ai/app/vite";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { defaultSecrets, openSecret, sealSecret } from "@nyte-ai/host";
 import type { SecretsSource } from "@nyte-ai/host";
@@ -435,7 +434,15 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
       configFile: false,
       envDir: false,
       logLevel: "silent",
-      plugins: [deferredClerk(), stylex.rollup({ devMode: "css-only" })],
+      plugins: [
+        deferredChunks({
+          account: {
+            module: new URL("../account/clerk.tsx", import.meta.url).href,
+            packages: ["@clerk/"],
+          },
+        }),
+        stylex.rollup({ devMode: "css-only" }),
+      ],
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       oxc: { jsx: { development: false } },
       resolve: { conditions: ["nyte-source", ...defaultClientConditions] },

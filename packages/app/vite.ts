@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { DevRow } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { Plugin } from "vite";
+import { normalizePath, type Plugin } from "vite";
 
 export { stylex } from "@nyte-ai/ui/stylex";
 
@@ -25,6 +25,88 @@ export function dropInlinedGhosttyWasm(): Plugin {
 
         return { code: code.replace(inlinedWasm, '""'), map: null };
       },
+    },
+  };
+}
+
+/** A module the interface loads on first use, as an entry chunk of its own. */
+export interface DeferredEntry {
+  /** File URL of the module that publishes the entry's runtime with `publishDeferred`. */
+  readonly module: string;
+  /** Paths under `node_modules/` that may load only through this entry. */
+  readonly packages: readonly string[];
+}
+
+const DEFERRED_URLS = normalizePath(
+  fileURLToPath(new URL("./src/deferred-urls.ts", import.meta.url)),
+);
+
+/**
+ * Builds each entry as a chunk of its own and fills `src/deferred-urls.ts`
+ * with their URLs, which `loadDeferred` injects as module scripts. The build
+ * fails if a listed package reaches the startup chunks, so a static import
+ * cannot quietly pull a deferred surface back into startup.
+ */
+export function deferredChunks(entries: Readonly<Record<string, DeferredEntry>>): Plugin {
+  const modules = Object.entries(entries).map(
+    ([name, entry]) => [name, normalizePath(fileURLToPath(entry.module))] as const,
+  );
+
+  const deferredModules = new Set(modules.map(([, module]) => module));
+
+  const forbidden = Object.values(entries).flatMap((entry) =>
+    entry.packages.map((path) => `/node_modules/${path}`),
+  );
+
+  let serving = false;
+
+  return {
+    name: "nyte:deferred-chunks",
+    configResolved(config) {
+      serving = config.command === "serve";
+    },
+    load(id) {
+      if (normalizePath(id.split("?", 1)[0] ?? id) !== DEFERRED_URLS) return;
+
+      const urls = modules.map(([name, module]) => {
+        const url = serving
+          ? JSON.stringify(`/@fs/${module}`)
+          : `import.meta.ROLLUP_FILE_URL_${this.emitFile({ type: "chunk", id: module, name })}`;
+
+        return `${JSON.stringify(name)}: ${url}`;
+      });
+
+      return `export default { ${urls.join(", ")} };`;
+    },
+    generateBundle(_options, bundle) {
+      const startup = Object.values(bundle)
+        .filter(
+          (output) =>
+            output.type === "chunk" &&
+            output.isEntry &&
+            !deferredModules.has(output.facadeModuleId ?? ""),
+        )
+        .map((output) => output.fileName);
+
+      const visited = new Set<string>();
+
+      for (const file of startup) {
+        if (visited.has(file)) continue;
+        visited.add(file);
+        const chunk = bundle[file];
+
+        if (chunk?.type !== "chunk") continue;
+
+        const leaked = Object.keys(chunk.modules).find((id) =>
+          forbidden.some((path) => id.includes(path)),
+        );
+
+        if (leaked !== undefined) {
+          this.error(`${leaked} reached the startup chunks; load it through its deferred entry`);
+        }
+
+        startup.push(...chunk.imports);
+      }
     },
   };
 }
@@ -73,6 +155,11 @@ const SHELL_TYPES = new Map([
   [".map", "application/json"],
 ]);
 
+/**
+ * Serves the canvas shell under `/canvas` in development and copies it into
+ * the build. The sandboxed frame's origin is opaque, so its module script,
+ * stylesheet and fonts are CORS requests.
+ */
 export function canvasShell(): Plugin {
   let outDir = "dist";
 
@@ -103,8 +190,6 @@ export function canvasShell(): Plugin {
         void readFile(target).then(
           (body) => {
             response.setHeader("Content-Type", type);
-            // The sandboxed frame's origin is opaque, so its module script,
-            // stylesheet and fonts are CORS requests.
             response.setHeader("Access-Control-Allow-Origin", "*");
 
             if (type.startsWith("text/html")) {
@@ -144,7 +229,7 @@ const ROW = Type.Object({
   data: Type.String(),
 });
 
-function rowsOf(body: string): readonly DevRow[] {
+function parseRows(body: string): readonly DevRow[] {
   try {
     return Value.Parse(Type.Array(Type.Unknown()), JSON.parse(body)).filter((item) =>
       Value.Check(ROW, item),
@@ -187,7 +272,7 @@ export function devConsole(): Plugin {
           const chunks: Buffer[] = [];
           request.on("data", (chunk: Buffer) => chunks.push(chunk));
           request.on("end", () => {
-            accept(rowsOf(Buffer.concat(chunks).toString("utf8")));
+            accept(parseRows(Buffer.concat(chunks).toString("utf8")));
             response.statusCode = 204;
             response.end();
           });

@@ -13,7 +13,7 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { focusTerminal } from "../../workbench/terminal-runtime.ts";
+import { readDeferred } from "../../deferred.tsx";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
 const styles = create({
@@ -163,7 +163,9 @@ function AvailableBackgroundWork({
                 aria-label={`Open terminal for ${job.command}`}
                 title={job.command}
                 onClick={() => {
-                  focusTerminal(onOpenTerminal(job));
+                  const terminal = onOpenTerminal(job);
+
+                  readDeferred("workbench")?.focusTerminal(terminal);
                   onOpenChange(false);
                 }}
               >

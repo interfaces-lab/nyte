@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
-import { dropInlinedGhosttyWasm, stylex, withoutKatex } from "@nyte-ai/app/vite";
-import { deferredClerk } from "./account.vite.ts";
+import { deferredEntries } from "@nyte-ai/app/deferred-entries.ts";
+import { deferredChunks, dropInlinedGhosttyWasm, stylex, withoutKatex } from "@nyte-ai/app/vite";
 
 const offlineModels: Plugin = {
   name: "nyte:e2e-models",
@@ -17,6 +17,58 @@ const offlineModels: Plugin = {
     return resolve("src/main/fixtures/e2e-models.ts");
   },
 };
+
+/**
+ * The renderer. StyleX compiles @nyte-ai/ui from source here, so it resolves the
+ * `nyte-source` condition.
+ */
+const renderer = {
+  plugins: [
+    deferredChunks({
+      ...deferredEntries,
+      account: {
+        module: new URL("./src/account/clerk.tsx", import.meta.url).href,
+        packages: ["@clerk/"],
+      },
+    }),
+    withoutKatex(),
+    dropInlinedGhosttyWasm(),
+    stylex.vite({
+      useCSSLayers: true,
+      lightningcssOptions: { targets: { chrome: 152 << 16 } },
+    }),
+    react({ compiler: true }),
+    {
+      name: "nyte:serve-devtools",
+      apply: "serve",
+      transformIndexHtml: () => [
+        {
+          tag: "script",
+          attrs: { type: "module", src: "/src/devtools.tsx" },
+          injectTo: "body",
+        },
+      ],
+    } satisfies Plugin,
+  ],
+  optimizeDeps: {
+    exclude: ["@nyte-ai/ui", "@nyte-ai/app"],
+    include: ["react", "react-dom/client"],
+  },
+  resolve: {
+    conditions: ["nyte-source", ...defaultClientConditions],
+    dedupe: ["react", "react-dom"],
+  },
+  build: {
+    chunkSizeWarningLimit: 6_000,
+    manifest: true,
+    minify: true,
+    target: "chrome152",
+    rolldownOptions: {
+      input: { index: resolve("src/renderer/index.html") },
+    },
+  },
+  server: { host: "127.0.0.1", port: 5174, strictPort: true, forwardConsole: true },
+} satisfies UserConfig["renderer"];
 
 const config = (mode: string): UserConfig => ({
   main: {
@@ -70,48 +122,7 @@ const config = (mode: string): UserConfig => ({
       },
     },
   },
-  renderer: {
-    plugins: [
-      deferredClerk(),
-      withoutKatex(),
-      dropInlinedGhosttyWasm(),
-      stylex.vite({
-        useCSSLayers: true,
-        lightningcssOptions: { targets: { chrome: 152 << 16 } },
-      }),
-      react({ compiler: true }),
-      {
-        name: "nyte:serve-devtools",
-        apply: "serve",
-        transformIndexHtml: () => [
-          {
-            tag: "script",
-            attrs: { type: "module", src: "/src/devtools.tsx" },
-            injectTo: "body",
-          },
-        ],
-      } satisfies Plugin,
-    ],
-    optimizeDeps: {
-      exclude: ["@nyte-ai/ui", "@nyte-ai/app"],
-      include: ["react", "react-dom/client"],
-    },
-    /* StyleX compiles @nyte-ai/ui from source here, so resolve its `nyte-source` condition. */
-    resolve: {
-      conditions: ["nyte-source", ...defaultClientConditions],
-      dedupe: ["react", "react-dom"],
-    },
-    build: {
-      chunkSizeWarningLimit: 6_000,
-      manifest: true,
-      minify: true,
-      target: "chrome152",
-      rolldownOptions: {
-        input: { index: resolve("src/renderer/index.html") },
-      },
-    },
-    server: { host: "127.0.0.1", port: 5174, strictPort: true, forwardConsole: true },
-  },
+  renderer,
 });
 
 export default defineConfig(({ mode }) => {

@@ -14,9 +14,9 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import { Deferred } from "../deferred.tsx";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { diffView } from "../theme/schema.stylex.ts";
-import { DiffView } from "./diff-view.tsx";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./styles.stylex.ts";
@@ -300,7 +300,9 @@ export const EditCallView = memo(function EditCallView({
           data-tool-body
           {...props(styles.cardBody, expandable && !open && styles.cardBodyCollapsed)}
         >
-          <DiffView path={path} diff={diff} variant="card" />
+          <Deferred entry="code">
+            {({ DiffView }) => <DiffView path={path} diff={diff} variant="card" />}
+          </Deferred>
         </div>
         {expandable && (
           <Collapsible.Trigger
@@ -366,7 +368,9 @@ export const EditCallView = memo(function EditCallView({
       </Collapsible.Trigger>
       {diff !== undefined && (
         <Collapsible.Panel data-tool-body>
-          <DiffView path={path} diff={diff} variant="inline" />
+          <Deferred entry="code">
+            {({ DiffView }) => <DiffView path={path} diff={diff} variant="inline" />}
+          </Deferred>
         </Collapsible.Panel>
       )}
     </Collapsible.Root>
