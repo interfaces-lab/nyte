@@ -177,7 +177,7 @@ function ApiKeyForm({
       <span {...props(text.sm, styles.keyHint)}>
         {nyte.clientSurface === "web"
           ? "Stored on the machine running the server"
-          : "Stored on this Mac in ~/.nyte/auth.json"}
+          : "Stored on this Mac"}
       </span>
     </form>
   );
