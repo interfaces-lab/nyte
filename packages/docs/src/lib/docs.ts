@@ -125,7 +125,7 @@ interface Site {
   byPath: Map<string, DocPage>;
 }
 
-/* Docs pages nest by folder; design pages are flat, so `foundations/colors` is `/design/colors`. */
+/** Docs pages nest by folder; design pages are flat, so `foundations/colors` is `/design/colors`. */
 function nestedSlugs(file: string): string[] {
   const parts = file.split("/");
   return parts.at(-1) === "index" ? parts.slice(0, -1) : parts;

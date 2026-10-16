@@ -1,8 +1,13 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-/* Mirrors ACCOUNT_SCHEMES in packages/desktop/src/account/scheme.ts. */
+/** Mirrors ACCOUNT_SCHEMES in packages/desktop/src/account/scheme.ts. */
 const APPS = new Set(["nyte-desktop", "nyte-desktop-test", "nyte-desktop-dev"]);
 
+/**
+ * The landing page after a desktop sign-in. It rebuilds the deep link Clerk
+ * would have sent the browser to, with Clerk's parameters intact, and hands
+ * it to the app once on mount; the query never changes.
+ */
 export function SignedIn() {
   const search = useSyncExternalStore(
     () => () => undefined,
@@ -13,7 +18,6 @@ export function SignedIn() {
   const app = params.get("app");
   const failed = params.get("__clerk_status") === "failed";
 
-  // The deep link Clerk would have sent the browser to, with Clerk's parameters intact.
   params.delete("app");
   const query = params.toString();
   const deepLink =
@@ -21,7 +25,6 @@ export function SignedIn() {
       ? `${app}://account/${query === "" ? "" : `?${query}`}`
       : undefined;
 
-  // One-time external sync: hand the callback to the app. The query never changes.
   useEffect(() => {
     if (deepLink !== undefined) window.location.replace(deepLink);
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount-only is the contract

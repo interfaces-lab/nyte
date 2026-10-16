@@ -257,7 +257,10 @@ export function SessionStage({ transcripts }: { transcripts: Record<Client, Reac
             }}
             onPointerDownCapture={() => raise(client)}
             onFocusCapture={() => raise(client)}
-            style={{ zIndex: order.indexOf(client) + 1, ...position(placements[client]) }}
+            style={{
+              zIndex: order.findIndex((entry) => entry === client) + 1,
+              ...position(placements[client]),
+            }}
             className={`absolute h-(--h) w-(--w) ${SIZES[client]} ${client === "mobile" ? "rounded-[calc(var(--phone-h)*54/844)] outline-offset-4 outline-white/90 focus-within:outline-2" : ""}`}
           >
             {client === "terminal" ? (

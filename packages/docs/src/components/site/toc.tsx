@@ -9,7 +9,7 @@ export interface TocEntry {
   depth: number;
 }
 
-/*
+/**
  * On-this-page rail. The current heading is whichever one most recently
  * crossed the top third of the viewport, so the mark moves as you read, not
  * only when a heading enters view.

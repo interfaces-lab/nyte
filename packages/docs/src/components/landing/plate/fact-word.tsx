@@ -13,7 +13,7 @@ interface FactWordProps {
   children: ReactNode;
 }
 
-/* A word in the sentence that, on hover or focus, throws two facts about itself and lets them drift with the pointer. */
+/** A word in the sentence that, on hover or focus, throws two facts about itself and lets them drift with the pointer. */
 export function FactWord({
   href,
   above,

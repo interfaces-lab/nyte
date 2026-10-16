@@ -4,7 +4,7 @@ const PITCH = 4;
 const LINE = 1.4;
 const DASH = 3;
 
-/*
+/**
  * DitherMoon's sphere drawn as scanlines. Each row breaks into dashes only
  * near the terminator, where the ordered threshold flips between light and
  * earthshine.

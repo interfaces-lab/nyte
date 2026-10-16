@@ -48,10 +48,11 @@ function Highlighted({ content }: { content: string }) {
   );
 }
 
-/*
+/**
  * ⌘K over the shared /api/search index, drawn with the shared Dialog and
  * Input. Results outside the current section are kept: an agent searching
- * "subagent" should find the core docs too.
+ * "subagent" should find the core docs too. A result on the other host (docs
+ * from design.nyte.sh, or back) navigates with a full document load.
  */
 export function SiteSearch() {
   const [open, setOpen] = useState(false);
@@ -105,9 +106,9 @@ export function SiteSearch() {
       if (!target) return;
       event.preventDefault();
       setOpen(false);
-      // A result on the other host (docs from design.nyte.sh, or back) needs a full load.
       const next = splitHref(target.url);
-      void router.navigate({ ...next, reloadDocument: router.buildLocation(next).external });
+      const onOtherHost = router.buildLocation(next).external;
+      void router.navigate({ ...next, reloadDocument: onOtherHost });
     }
   };
 

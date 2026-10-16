@@ -11,7 +11,7 @@ const exact = new Map([
   ["/docs/build/desktop", "/docs"],
 ]);
 
-/* The component reference moved from /docs/components (and before that /cloud) to the design site. */
+/** The component reference moved from /docs/components (and before that /cloud) to the design site. */
 const movedReference =
   /^\/(?:cloud|docs\/components)\/(?:foundations|components)\/([a-z0-9-]+)\/?$/;
 

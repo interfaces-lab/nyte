@@ -13,7 +13,7 @@ function PagerLink({ target, dir }: { target?: NavItem; dir: "previous" | "next"
   );
 }
 
-/*
+/**
  * One doc page: eyebrow, title, lede, and any header actions, then the
  * prose, the pager, and the on-this-page rail.
  */

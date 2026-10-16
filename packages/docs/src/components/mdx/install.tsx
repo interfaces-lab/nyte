@@ -1,9 +1,9 @@
-import { docsIcons, isDocsIconName } from "~/lib/docs-icons";
+import { docsIcons, hasDocsIcon } from "~/lib/docs-icons";
 import { releasesUrl } from "~/lib/releases";
 import { useMacRelease } from "~/lib/site-data";
 
 export function PlatformIcon({ name }: { name: string }) {
-  if (!isDocsIconName(name)) throw new Error(`Unknown docs icon: ${name}`);
+  if (!hasDocsIcon(name)) throw new Error(`Unknown docs icon: ${name}`);
   const Icon = docsIcons[name];
   return (
     <span aria-hidden="true" className="doc-platform-icon">

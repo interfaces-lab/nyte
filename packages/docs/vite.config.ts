@@ -12,8 +12,10 @@ export default defineConfig({
     fumadocsMdx(),
     stylex.vite({
       useCSSLayers: true,
-      // Older targets make lightningcss polyfill the tokens' light-dark() and
-      // relative colours with variables nothing defines.
+      /**
+       * Older targets make lightningcss polyfill the tokens' light-dark() and
+       * relative colours with variables nothing defines.
+       */
       lightningcssOptions: { targets: { chrome: 123 << 16 } },
     }),
     tanstackStart({ srcDirectory: "src" }),
@@ -66,7 +68,7 @@ export default defineConfig({
         "cn",
       ]),
   },
-  /* StyleX compiles @nyte-ai/ui from source here, so resolve its `nyte-source` condition. */
+  /** StyleX compiles @nyte-ai/ui from source here, so resolve its `nyte-source` condition. */
   resolve: {
     conditions: ["nyte-source", ...defaultClientConditions],
     dedupe: ["react", "react-dom"],

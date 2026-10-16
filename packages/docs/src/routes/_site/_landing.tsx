@@ -1,7 +1,7 @@
 import { Outlet, createFileRoute } from "@tanstack/react-router";
 import { editDiffHTML } from "~/components/landing/plate/hosts/edit-diff";
 
-/*
+/**
  * The landing surface shares the site navbar and adds nothing above the
  * content. Its loader highlights the preview's diff on the server.
  */

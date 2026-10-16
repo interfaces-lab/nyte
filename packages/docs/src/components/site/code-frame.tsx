@@ -7,7 +7,7 @@ export type CodeFrameProps = ComponentProps<"pre"> & {
   icon?: unknown;
 };
 
-/*
+/**
  * The `pre` renderer for doc pages. fumadocs-mdx hands us Shiki's output
  * plus unused fence meta. The copy button reads the rendered text so it
  * never disagrees with what is on screen.

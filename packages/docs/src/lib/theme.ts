@@ -5,7 +5,7 @@ export type ThemeChoice = "light" | "dark" | "system";
 const storageKey = "theme";
 const darkQuery = "(prefers-color-scheme: dark)";
 
-/*
+/**
  * Runs in <head> before first paint, so a stored dark choice never flashes
  * light. It mirrors `apply` below; keep the two in step.
  */
@@ -28,7 +28,7 @@ function resolve(choice: ThemeChoice): "light" | "dark" {
   return matchMedia(darkQuery).matches ? "dark" : "light";
 }
 
-/* Theme changes swap every colour at once; transitions would animate each one. */
+/** Theme changes swap every colour at once; transitions would animate each one. */
 function apply(choice: ThemeChoice) {
   const root = document.documentElement;
   const resolved = resolve(choice);

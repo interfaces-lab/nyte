@@ -3,7 +3,7 @@ import { ImageResponse } from "takumi-js/response";
 import { findPage } from "~/lib/docs";
 import { appName } from "~/lib/shared";
 
-/* `/og/docs/build/composition/image.png` is the social card for that page. */
+/** `/og/docs/build/composition/image.png` is the social card for that page. */
 export const Route = createFileRoute("/og/$")({
   server: {
     handlers: {

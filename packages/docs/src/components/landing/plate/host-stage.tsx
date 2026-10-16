@@ -40,7 +40,7 @@ type Host = (typeof HOSTS)[number]["value"];
 const tileShadow =
   "shadow-[inset_0_1px_0_rgb(255_255_255/0.18),inset_0_0_0_1px_rgb(255_255_255/0.06),0_8px_16px_-8px_rgb(12_16_32/0.5),0_1px_2px_rgb(12_16_32/0.2)]";
 
-/* One session, three hosts, open side by side like windows on a Mac. The dock raises one to the front. */
+/** One session, three hosts, open side by side like windows on a Mac. The dock raises one to the front. */
 export function HostStage({ hosts }: { hosts: Record<Host, ReactNode> }) {
   const [stack, setStack] = useState<readonly Host[]>(["desktop", "terminal", "mobile"]);
 
@@ -49,7 +49,7 @@ export function HostStage({ hosts }: { hosts: Record<Host, ReactNode> }) {
       <div className="relative h-[clamp(460px,46vw,600px)] px-6 pt-10 md:px-10 md:pt-14">
         <div className="relative isolate h-full">
           {HOSTS.map((host) => {
-            const depth = stack.indexOf(host.value);
+            const depth = stack.findIndex((entry) => entry === host.value);
             return (
               <div
                 key={host.value}

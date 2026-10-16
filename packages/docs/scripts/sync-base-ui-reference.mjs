@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/*
+/**
  * Vendors Base UI's generated API tables into content/base-ui-reference.
  *
  * Every `@nyte-ai/ui` component built on Base UI gets one
@@ -69,7 +69,7 @@ function reference(typesMd) {
     .trim();
 }
 
-/** Split the reference into `### Part` sections keyed by part name. */
+/** Split the reference into `### Part` sections keyed by part name, skipping `Root.Props`-style type aliases. */
 function parts(typesMd) {
   const result = new Map();
   const sections = reference(typesMd).split(/^(?=### )/m);
@@ -77,7 +77,6 @@ function parts(typesMd) {
     const match = /^### ([A-Za-z.]+)\n/.exec(section);
     if (!match) continue;
     const name = match[1];
-    // "Root.Props", "Root.State" and friends are type aliases, not parts.
     if (name.includes(".")) continue;
     result.set(name, section.replace(/^### [A-Za-z.]+\n/, "").trim());
   }

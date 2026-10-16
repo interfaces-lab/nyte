@@ -6,7 +6,7 @@ import { githubUrl } from "~/lib/shared";
 const linkClass =
   "rounded-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-(--site-panel)";
 
-/* One link per page in an unlabeled section, then one per labeled section, to its first page. */
+/** One link per page in an unlabeled section, then one per labeled section, to its first page. */
 function footerLinks(nav: readonly NavSection[]) {
   return nav.flatMap((section) =>
     section.label ? [{ title: section.label, href: section.items[0].href }] : section.items,
