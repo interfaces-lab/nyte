@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/schema";
+import { SdkError, serial } from "@nyte-ai/schema";
 import type {
   Awaitable,
   Disposer,
@@ -43,7 +43,6 @@ import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
 import { scanResources } from "./resources.ts";
-import { serial } from "../util/serial.ts";
 
 interface Active {
   readonly instance: PluginInstance;

@@ -17,6 +17,7 @@ import type {
   JobEnd,
   JobId,
   Json,
+  KeyedSerial,
   MessageId,
   MessageSource,
   ModelRequestInput,
@@ -78,7 +79,6 @@ import type {
   Workspaces,
   WorkspaceState,
 } from "./workspace.ts";
-import type { KeyedSerial } from "../util/serial.ts";
 
 export interface Kernel {
   readonly hostId: HostId;

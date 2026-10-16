@@ -17,7 +17,7 @@ import {
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId, SdkError, serial } from "@nyte-ai/schema";
 import type {
   ByteReader,
   FileEntryView,
@@ -27,7 +27,6 @@ import type {
   SearchFrame,
 } from "@nyte-ai/schema";
 import type { FileBatch, FilesApi } from "@nyte-ai/core";
-import { serial } from "@nyte-ai/core/server";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sha256 } from "../hash.ts";

@@ -1,10 +1,9 @@
 import { readCredentialAccounts } from "@nyte-ai/ai/auth/types";
 import type { CredentialAccounts, CredentialStore } from "@nyte-ai/ai/auth/types";
-import { SdkError } from "@nyte-ai/schema";
+import { keyedSerial, SdkError } from "@nyte-ai/schema";
 import type { Json, Ref } from "@nyte-ai/schema";
 import { decodeKvValue, envelope, kvRef } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
-import { keyedSerial } from "@nyte-ai/core/server";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";

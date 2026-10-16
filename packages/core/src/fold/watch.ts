@@ -1,4 +1,4 @@
-import { asId, asSeq, isJsonObject } from "@nyte-ai/schema";
+import { asId, asSeq, isJsonObject, serial } from "@nyte-ai/schema";
 import type {
   Disposer,
   HeadName,
@@ -8,6 +8,7 @@ import type {
   PrincipalId,
   Ref,
   RefUpdate,
+  Serial,
   SessionEvent,
   SessionId,
   SetOutcome,
@@ -29,8 +30,6 @@ import { collectSessionEvents } from "../store/log.ts";
 import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
 import { EMPTY_REVISION, load } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { serial } from "../util/serial.ts";
-import type { Serial } from "../util/serial.ts";
 import { emptyFold, fold } from "./fold.ts";
 import { withPair } from "./project.ts";
 

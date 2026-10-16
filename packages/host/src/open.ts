@@ -7,7 +7,7 @@ import type { Models, Provider } from "@nyte-ai/ai";
 import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
-import { isJson } from "@nyte-ai/schema";
+import { isJson, serial } from "@nyte-ai/schema";
 import type {
   HostDescription,
   HostView,
@@ -17,7 +17,7 @@ import type {
   WorkspaceTarget,
 } from "@nyte-ai/schema";
 import { dev, processEnvironment } from "@nyte-ai/core";
-import { composeHost, serial } from "@nyte-ai/core/server";
+import { composeHost } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";

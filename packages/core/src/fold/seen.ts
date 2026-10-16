@@ -1,3 +1,4 @@
+import { serial } from "@nyte-ai/schema";
 import type { CommitId, HeadName, PrincipalId, SessionId } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeSeenRecord } from "../contract/records.ts";
@@ -14,7 +15,6 @@ import {
   walkCommitPath,
 } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { serial } from "../util/serial.ts";
 import { commit } from "./commit.ts";
 import { withFold } from "./reads.ts";
 

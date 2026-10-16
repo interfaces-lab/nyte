@@ -1,4 +1,4 @@
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId, keyedSerial, SdkError } from "@nyte-ai/schema";
 import type {
   AdvanceReport,
   Cursor,
@@ -42,7 +42,6 @@ import {
 import type { Found } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
-import { keyedSerial } from "../util/serial.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const RENEW_MS = 10_000;
