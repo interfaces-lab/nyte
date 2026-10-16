@@ -112,6 +112,11 @@ function terminalAppearance() {
   }
 }
 
+/** Whether keys typed into `tab` reach a shell: one running, or one starting, which keeps them until it runs. */
+function takesInput(tab: TerminalTab): boolean {
+  return tab.kind === "shell" && (tab.state.kind === "running" || tab.state.kind === "starting");
+}
+
 function sendInput(id: string, data: string): Promise<void> {
   return terminalActions.write(id, data).catch((cause: unknown) => {
     const current = getTerminal(id);
@@ -162,7 +167,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     scrollback: preferences.terminalScrollback.get(),
     smoothScrollDuration: 0,
     convertEol: commandOutput,
-    disableStdin: commandOutput || initialTab.state.kind !== "running",
+    disableStdin: commandOutput || !takesInput(initialTab),
   });
 
   const fit = new FitAddon();
@@ -243,7 +248,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   };
 
   const update = (tab: TerminalTab): void => {
-    terminal.options.disableStdin = tab.kind !== "shell" || tab.state.kind !== "running";
+    terminal.options.disableStdin = !takesInput(tab);
 
     if (commandOutput) mirrorOutput();
     scheduleFit();
