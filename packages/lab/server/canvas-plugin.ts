@@ -20,6 +20,7 @@ Example: import { BarChart } from "nyte:canvas"; export default function Canvas(
 If compilation fails, fix the named line and call canvas again. After publishing, do not repeat the chart in prose.`,
     parameters: standard(CanvasInputSchema),
     class: () => ({ kind: "custom", label: "Canvas" }),
+    effects: "none",
     replay: "safe",
     execute: async (input) => {
       const code = await options.compile(input.source);

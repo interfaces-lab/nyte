@@ -159,6 +159,7 @@ describe("workspaces", () => {
       workspace,
       env: await kernel.env(session.id),
       durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
+      covered: false,
     });
 
     const git = await invocation.workspace.git();

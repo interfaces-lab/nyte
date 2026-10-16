@@ -96,6 +96,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     "Run a subagent on a task and wait for its answer. Give it everything it needs; it does not see this conversation.",
   parameters: taskParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await invocation.sdk.sessions.create({
@@ -123,6 +124,7 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
     "Create a subagent session and return its id, to send it messages and await it later.",
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await invocation.sdk.sessions.create({
@@ -147,6 +149,7 @@ const send: ToolDefinition<Infer<typeof sendParameters>> = {
     role: "send",
     title: null,
   }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await requireChildSession(invocation, args.session);
@@ -168,6 +171,7 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
     role: "await",
     title: null,
   }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await requireChildSession(invocation, args.session);
@@ -218,6 +222,7 @@ const readAgent: ToolDefinition<Infer<typeof readParameters>> = {
     role: "read",
     title: null,
   }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await requireChildSession(invocation, args.session);
@@ -249,6 +254,7 @@ const stop: ToolDefinition<Infer<typeof stopParameters>> = {
     role: "stop",
     title: null,
   }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const child = await requireChildSession(invocation, args.session);

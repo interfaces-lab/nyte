@@ -268,6 +268,7 @@ function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
       "Search the web for current information beyond your knowledge cutoff. Returns titles, URLs and excerpts.",
     parameters,
     class: (args) => ({ kind: "custom", label: `Searching ${args.query}` }),
+    effects: "none",
     replay: "safe",
     async execute(args, invocation) {
       const value = await api.contribute.settings.value(provider.id);

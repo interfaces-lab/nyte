@@ -144,6 +144,7 @@ describe("connection gate (§52 rule 5)", () => {
       workspace: at,
       env: await kernel.env(session.id),
       durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
+      covered: false,
     });
 
     expect(elevated).toHaveLength(34);

@@ -95,6 +95,8 @@ interface Where {
   readonly signal: AbortSignal;
   /** Why the model's arguments text could not be read; the call then fails without running. */
   readonly argumentsError?: string;
+  /** Set for a call nested inside one that snapshots the workspace: the parent's pair records this call's writes. */
+  readonly covered?: boolean;
 }
 
 const HOOK = "hook:before_tool:";
@@ -249,6 +251,11 @@ async function perform(
   if (planned.kind === "parked") return PARKED;
   let concluded: Promise<Settled> | undefined;
 
+  const snapshotted =
+    planned.kind === "execute" &&
+    where.covered !== true &&
+    planned.definition.effects !== "none";
+
   const step = await runStep<ToolOutcome>(kernel, {
     session,
     head,
@@ -262,15 +269,10 @@ async function perform(
     signal,
     body:
       planned.kind === "execute"
-        ? (durable) => execute(kernel, where, planned, durable)
+        ? (durable) => execute(kernel, where, planned, durable, snapshotted)
         : async () => planned.outcome,
     async settle(ended) {
-      concluded ??= conclude(
-        kernel,
-        where,
-        ended,
-        planned.kind === "execute" && writes(planned.class),
-      );
+      concluded ??= conclude(kernel, where, ended, snapshotted);
       const settled = await concluded;
 
       return {
@@ -480,11 +482,12 @@ async function execute(
   where: Where & { readonly runtime: PluginRuntime },
   planned: Extract<Plan, { readonly kind: "execute" }>,
   durable: Durable,
+  snapshotted: boolean,
 ): Promise<ToolOutcome> {
   const { session, run, signal } = where;
 
   try {
-    if (writes(planned.class)) await baseline(kernel, session, run);
+    if (snapshotted) await baseline(kernel, session, run);
 
     const [env, found] = await Promise.all([kernel.env(session), requireSession(kernel, session)]);
 
@@ -499,6 +502,7 @@ async function execute(
       env,
       durable,
       runtime: where.runtime,
+      covered: where.covered === true || snapshotted,
     });
 
     const result = await planned.definition.execute(planned.input, invocation);
@@ -544,7 +548,7 @@ async function conclude(
   kernel: Kernel,
   where: Where & { readonly runtime: PluginRuntime },
   ended: StepEnd<ToolOutcome>,
-  wrote: boolean,
+  snapshotted: boolean,
 ): Promise<Settled> {
   const { session, head, run, call } = where;
 
@@ -557,7 +561,8 @@ async function conclude(
     runtime: where.runtime,
   });
 
-  const snapshots = wrote && ended.kind === "done" ? await kernel.snapshots(session) : null;
+  const snapshots =
+    snapshotted && ended.kind === "done" ? await kernel.snapshots(session) : null;
 
   if (snapshots === null) return { outcome, changes: null, files: [], snapshot: null };
   const from = (await diffBase(kernel, session, run)) ?? (await snapshots.before(run));
@@ -758,10 +763,6 @@ function classifyToolCall(
   }
 }
 
-function writes(klass: ToolClass): boolean {
-  return klass.kind !== "read" && klass.kind !== "list";
-}
-
 function stripHookPrefix(record: CallRecord): string {
   return record.kind === "hook" && record.id.startsWith(HOOK)
     ? record.id.slice(HOOK.length)
@@ -785,6 +786,7 @@ export function createInvocation(
     readonly env: ExecutionEnv;
     readonly durable: Durable;
     readonly runtime: PluginRuntime;
+    readonly covered: boolean;
   },
 ): ToolInvocation {
   const { session, head, run, call, durable, signal } = input;
@@ -843,6 +845,7 @@ export function createInvocation(
           args,
           context: input.context,
           runtime: input.runtime,
+          covered: input.covered,
           signal:
             options?.signal === undefined ? signal : AbortSignal.any([signal, options.signal]),
           key,

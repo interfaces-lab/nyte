@@ -71,6 +71,7 @@ function browserTool<S extends ReturnType<typeof on>>(input: {
     description: input.description,
     parameters: input.parameters,
     class: () => ({ kind: "custom", label: input.name.replace("browser_", "Browser: ") }),
+    effects: "none",
     replay: input.replay,
     execute: async (args, invocation) => ({
       content: [{ kind: "text", text: await input.run(args, invocation) }],
@@ -85,6 +86,7 @@ const open: ToolDefinition<{ url: string }> = {
     Type.Object({ url: Type.String({ minLength: 1, description: "The URL to open." }) }),
   ),
   class: (args) => ({ kind: "custom", label: `Opening ${args.url}` }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const opened = await (await requireBrowser(invocation)).open({ url: args.url });
@@ -106,6 +108,7 @@ const capture: ToolDefinition<{ page?: string }> = {
   description: "Take a screenshot of the page.",
   parameters: on({}),
   class: () => ({ kind: "custom", label: "Browser: capture" }),
+  effects: "none",
   replay: "safe",
   execute: (args, invocation) =>
     withPage(invocation, args.page, async (held) => {

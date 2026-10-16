@@ -193,6 +193,7 @@ function reviewTools(deps: { readonly repo: Repo; readonly registry: Registry })
     name: "read_file",
     description: READ_DESCRIPTION,
     parameters: standard(readParameters),
+    effects: "none",
     replay: "safe",
     class: (args) => ({ kind: "read", path: args.path }),
     execute: async (input) => {
@@ -212,6 +213,7 @@ function reviewTools(deps: { readonly repo: Repo; readonly registry: Registry })
     name: "diff_file",
     description: DIFF_DESCRIPTION,
     parameters: standard(diffParameters),
+    effects: "none",
     replay: "safe",
     class: () => ({ kind: "custom", label: "Diff" }),
     execute: async (input) => {
@@ -234,6 +236,7 @@ function reviewTools(deps: { readonly repo: Repo; readonly registry: Registry })
     name: "search",
     description: SEARCH_DESCRIPTION,
     parameters: standard(searchParameters),
+    effects: "none",
     replay: "safe",
     class: () => ({ kind: "custom", label: "Search" }),
     execute: async (input) => {
@@ -259,6 +262,7 @@ function reviewTools(deps: { readonly repo: Repo; readonly registry: Registry })
     name: "publish_guide",
     description: PUBLISH_DESCRIPTION,
     parameters: standard(GuideSchema),
+    effects: "none",
     replay: "safe",
     output: standard(GuideSchema),
     class: () => ({ kind: "custom", label: "Guide" }),

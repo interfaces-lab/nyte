@@ -340,15 +340,17 @@ export type Environment = {
 
 /**
  * Tools declare Standard Schema parameters, an optional output schema, a
- * class and replay policy. Results use kind text/file, typed output and
- * optional part ids. A tool invocation receives the real session,
- * connection, workspace and environment, plus progress and tool access.
+ * class, workspace effects and replay policy. Results use kind text/file,
+ * typed output and optional part ids. A tool invocation receives the real
+ * session, connection, workspace and environment, plus progress and tool
+ * access.
  */
 export const labelTool: ToolDefinition<Label> = {
   name: "reference_label",
   description: "Return a label.",
   parameters: labelSchema,
   class: () => ({ kind: "custom", label: "Label" }),
+  effects: "none",
   replay: "safe",
   async execute(input) {
     return { content: [{ kind: "text", text: input.label }] };

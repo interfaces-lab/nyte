@@ -82,6 +82,7 @@ const read: ToolDefinition<Infer<typeof readParameters>> = {
     "Read a file in the workspace. Text comes back as numbered lines; an image comes back as an image.",
   parameters: readParameters,
   class: (args) => ({ kind: "read", path: args.path }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const { files } = invocation.env;
@@ -192,6 +193,7 @@ const list: ToolDefinition<Infer<typeof listParameters>> = {
   description: "List a directory in the workspace, one entry per line; directories end in /.",
   parameters: listParameters,
   class: (args) => ({ kind: "list", path: args.path ?? "." }),
+  effects: "none",
   replay: "safe",
   async execute(args, invocation) {
     const directory = (args.path ?? ".").replace(/^\.\/?/, "").replace(/\/+$/, "");
