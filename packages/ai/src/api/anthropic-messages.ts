@@ -209,6 +209,23 @@ export interface AnthropicOptions extends StreamOptions {
   client?: Anthropic;
 }
 
+const AnthropicErrorEventSchema = Type.Object({
+  error: Type.Object({ type: Type.String(), message: Type.String() }),
+});
+
+/** The message of an Anthropic `error` event (`{"type":"error","error":{"type","message"}}`), or its raw data when it has none. */
+function anthropicErrorText(data: string): string {
+  try {
+    const parsed: unknown = JSON.parse(data);
+
+    if (!Value.Check(AnthropicErrorEventSchema, parsed)) return data;
+
+    return parsed.error.message === "" ? parsed.error.type : parsed.error.message;
+  } catch {
+    return data;
+  }
+}
+
 async function* iterateAnthropicEvents(
   response: Response,
   signal?: AbortSignal,
@@ -221,9 +238,7 @@ async function* iterateAnthropicEvents(
   let sawMessageEnd = false;
 
   for await (const sse of iterateServerSentEvents(response.body, signal)) {
-    if (sse.event === "error") {
-      throw new Error(sse.data);
-    }
+    if (sse.event === "error") throw new Error(anthropicErrorText(sse.data));
 
     if (!Value.Check(AnthropicEventTypeSchema, sse.event)) continue;
 
