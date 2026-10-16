@@ -55,13 +55,14 @@ export function refOf(row: Readonly<Record<string, unknown>>): Ref {
 
 export function storedRecordOf(row: Readonly<Record<string, unknown>>): StoredRecord {
   const name = textOf(row.name);
+  const target = textOf(row.target);
   const revision = textOf(row.revision);
   const body = textOf(row.body);
 
-  if (name === null || revision === null || body === null)
+  if (name === null || target === null || revision === null || body === null)
     throw new SdkError("internal", "A stored ref is malformed.");
 
-  return { name, revision, body };
+  return { name, target: asId<"object">(target), revision, body };
 }
 
 export function loggedRow(row: Readonly<Record<string, unknown>>): LoggedRow {

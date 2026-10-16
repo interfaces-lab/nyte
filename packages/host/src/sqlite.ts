@@ -131,7 +131,7 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
     async records() {
       return database
         .prepare(
-          "SELECT refs.name, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
+          "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
         )
         .all()
         .map(storedRecordOf);
@@ -174,6 +174,17 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
             return "conflict";
           }
           updateSessionIndex(database, moved.name, moved.id, mintRevision());
+        }
+
+        const create = database.prepare(
+          "INSERT INTO refs (name, target, revision) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+        );
+
+        for (const created of change.creates) {
+          const revision = mintRevision();
+
+          if (Number(create.run(created.name, created.target, revision).changes) > 0)
+            updateSessionIndex(database, created.name, created.target, revision);
         }
 
         const relog = database.prepare(

@@ -10,7 +10,10 @@ import {
 import type { Json, ObjectId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { decodeCallRecord, decodeRunRecord } from "../contract/records.ts";
 import { objectId } from "../util/content.ts";
+import { callRef, liveRef, parseSessionRef, runRef } from "./refs.ts";
+import { waitIndex } from "./wait-index.ts";
 
 export type StoreDialect = "sqlite" | "postgres";
 
@@ -21,12 +24,13 @@ interface SchemaStep {
   readonly sql: { readonly [D in StoreDialect]: readonly string[] };
 }
 
-/** Rewrites stored records (`rewrite`, one record or null to keep it), logged events (`rewriteLog`, one session's events in seq order, each rewritten or null to keep it), or both. */
+/** Rewrites stored records (`rewrite`, one record or null to keep it), logged events (`rewriteLog`, one session's events in seq order, each rewritten or null to keep it), or derives new refs from a record (`adds`, the names of refs to create at the record the ref `name` holds, after every step's rewrite; one that exists is kept). */
 interface RewriteStep {
   readonly kind: "rewrite";
   readonly name: string;
   rewrite?(record: Json): Json | null;
   rewriteLog?(events: readonly Json[]): readonly (Json | null)[];
+  adds?(name: string, record: Json): readonly string[];
 }
 
 type StoreStep = SchemaStep | RewriteStep;
@@ -38,6 +42,7 @@ export interface StoreStamp {
 
 export interface StoredRecord {
   readonly name: string;
+  readonly target: ObjectId;
   readonly revision: string;
   readonly body: string;
 }
@@ -47,6 +52,12 @@ interface Repoint {
   readonly expect: string;
   readonly id: ObjectId;
   readonly body: string;
+}
+
+/** A ref the migration creates at an object it already holds, unless the ref exists. */
+interface Creation {
+  readonly name: string;
+  readonly target: ObjectId;
 }
 
 /** One logged event as the store keeps it. */
@@ -75,6 +86,7 @@ export interface StoreChange {
 
   readonly sql: readonly string[];
   readonly repoints: readonly Repoint[];
+  readonly creates: readonly Creation[];
   readonly relogs: readonly Relog[];
   /** Rebuild the session read index from current refs inside the migration transaction. */
   readonly reindexSessions: boolean;
@@ -341,6 +353,41 @@ const callIntentOnce: RewriteStep = {
   },
 };
 
+/** A run's live ref, the fence its run-scoped writes land under, for each run an older Nyte started and has not stopped: only a run's start wrote one. */
+const liveRefs: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-live-refs",
+  adds(name, record) {
+    const session = parseSessionRef(name);
+    const run = decodeRunRecord(record);
+
+    if (session === null || run === null || run.stopping || name !== runRef(session, run.view.id))
+      return [];
+
+    return [liveRef(session, run.view.id)];
+  },
+};
+
+/** The `waits/` index of each call an older Nyte parked: only a park writes it, and every wake reads it. */
+const parkedWaitIndex: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-wait-index",
+  adds(name, record) {
+    const session = parseSessionRef(name);
+    const call = decodeCallRecord(record);
+
+    if (
+      session === null ||
+      call === null ||
+      call.result !== null ||
+      name !== callRef(session, call.id)
+    )
+      return [];
+
+    return waitIndex(session, call);
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -350,6 +397,8 @@ const STORE_STEPS: readonly StoreStep[] = [
   workspaceTrust,
   patchText,
   callIntentOnce,
+  liveRefs,
+  parkedWaitIndex,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
@@ -374,10 +423,10 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
 
     const rewrites = steps.flatMap((step) => (step.kind === "rewrite" ? [step] : []));
 
-    const moved =
-      stamp.empty || !rewrites.some((step) => step.rewrite !== undefined)
-        ? []
-        : await repoints(rewrites, await target.records());
+    const { moved, created } =
+      stamp.empty || !rewrites.some((step) => step.rewrite !== undefined || step.adds !== undefined)
+        ? { moved: [], created: [] }
+        : await rewriteRecords(rewrites, await target.records());
 
     const relogged =
       stamp.empty || !rewrites.some((step) => step.rewriteLog !== undefined)
@@ -397,6 +446,7 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
       to: STORE_VERSION,
       sql: steps.flatMap((step) => (step.kind === "schema" ? step.sql[target.dialect] : [])),
       repoints: moved,
+      creates: created,
       relogs: relogged,
       reindexSessions: steps.includes(sessionIndex) || steps.includes(orderedSessionIndex),
     });
@@ -410,28 +460,30 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
   );
 }
 
-async function repoints(
+async function rewriteRecords(
   rewrites: readonly RewriteStep[],
   records: readonly StoredRecord[],
-): Promise<readonly Repoint[]> {
+): Promise<{ readonly moved: readonly Repoint[]; readonly created: readonly Creation[] }> {
   const moved: Repoint[] = [];
+  const created: Creation[] = [];
 
   for (const stored of records) {
     const record = parsed(stored.body);
 
     if (record === null) continue;
     const next = rewrites.reduce((value, step) => step.rewrite?.(value) ?? value, record);
+    const adds = rewrites.flatMap((step) => step.adds?.(stored.name, next) ?? []);
 
-    if (next === record) continue;
-    moved.push({
-      name: stored.name,
-      expect: stored.revision,
-      id: await objectId(next),
-      body: JSON.stringify(next),
-    });
+    if (next === record && adds.length === 0) continue;
+    const id = next === record ? stored.target : await objectId(next);
+
+    if (next !== record)
+      moved.push({ name: stored.name, expect: stored.revision, id, body: JSON.stringify(next) });
+
+    for (const name of adds) created.push({ name, target: id });
   }
 
-  return moved;
+  return { moved, created };
 }
 
 async function relogs(

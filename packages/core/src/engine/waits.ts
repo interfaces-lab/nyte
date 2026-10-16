@@ -3,7 +3,6 @@ import type {
   CallId,
   Disposer,
   JobEnd,
-  Ref,
   RefUpdate,
   RequestOptions,
   RunId,
@@ -20,28 +19,21 @@ import { readRunEnd } from "../fold/reads.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { callRef, partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
+import {
+  findEarliestDeadline,
+  readIndexed,
+  TIME,
+  TIME_DIGITS,
+  waitIndex,
+  WAITS,
+} from "../store/wait-index.ts";
+import type { Indexed } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const LOST: JobEnd = { kind: "lost" };
 
 const STOPPED: WaitOutcome = { kind: "stopped" };
-
-const WAITS = "waits/";
-
-const TIME = `${WAITS}time/`;
-
-/** Digits a time key is padded to, so the index lists times in order. */
-const TIME_DIGITS = 16;
-
-/** One entry of the store-side wait index: the index ref (null for a wait found from the call record itself), the parked call it points at, which wait of the call (its count of earlier waits), and which of the wait's targets, null for a deadline or input stop, which ends the whole wait. */
-interface Indexed {
-  readonly name: string | null;
-  readonly session: SessionId;
-  readonly call: CallId;
-  readonly occurrence: number;
-  readonly target: number | null;
-}
 
 /**
  * Returns the wait registry over the store-side wait index: a park writes one `waits/` ref per
@@ -375,83 +367,41 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
   return registry;
 }
 
-/** Reads every unsettled call in `sessions` (default all): a parked one gets its index refs and is checked against what it waits on, a woken one whose head no process here is driving is stepped, and an action whose re-run claim lapsed runs again. The store poll calls it when another process committed, so a wait another process completed wakes its head here. */
+/** Reads every unsettled call in `sessions` (default all), as recovery does when a process starts covering them: a parked one is checked against what it waits on, and a woken one is stepped or run again (see `wake`). */
 export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
-  const refs = await kernel.store.sessions.pending({ kind: "call", sessions });
-
-  for (const ref of refs) {
-    const [root, id, kind] = ref.name.split("/");
-
-    if (root !== "sessions" || id === undefined || kind !== "calls") continue;
-    const session = asId<"session">(id);
-    const found = await load(kernel.store, ref, decodeCallRecord);
-
-    if (found === null) continue;
-    const { record } = found;
+  for (const { session, record } of await pendingCalls(kernel, sessions)) {
     const entry = readParkedWait(session, record);
 
-    if (entry !== null) {
-      await indexWait(kernel, ref, session, record);
-      await kernel.waits.park(entry);
-    } else if (record.head === null && lapsed(kernel, record))
-      kernel.waits.rerun(session, record.id);
-    else if (record.head !== null && record.waits.length > 0 && record.result === null)
-      kernel.wakes.notify(session, record.head);
+    if (entry === null) wake(kernel, session, record);
+    else await kernel.waits.park(entry);
   }
 }
 
-/** Writes the index refs a parked call is missing, pointing at its record. */
-async function indexWait(
+async function pendingCalls(
   kernel: Kernel,
-  ref: Ref,
-  session: SessionId,
-  record: CallRecord,
-): Promise<void> {
-  if (ref.target === null) return;
-  const { target } = ref;
-  const names = waitIndex(session, record);
-  const found = await Promise.all(names.map((name) => kernel.store.refs.get(name)));
-  const missing = names.filter((_name, index) => found[index] === null);
+  sessions?: readonly SessionId[],
+): Promise<readonly { readonly session: SessionId; readonly record: CallRecord }[]> {
+  const refs = await kernel.store.sessions.pending({ kind: "call", sessions });
 
-  if (missing.length > 0)
-    await commit(
-      kernel,
-      missing.map((name) => ({ name, target })),
-    );
+  const found = await Promise.all(
+    refs.map(async (ref) => {
+      const [root, id, kind] = ref.name.split("/");
+
+      if (root !== "sessions" || id === undefined || kind !== "calls") return [];
+      const loaded = await load(kernel.store, ref, decodeCallRecord);
+
+      return loaded === null ? [] : [{ session: asId<"session">(id), record: loaded.record }];
+    }),
+  );
+
+  return found.flat();
 }
 
-/** The index refs a parked call's current wait needs: one per target it still waits on, its earliest deadline, and its input stop. */
-export function waitIndex(session: SessionId, record: CallRecord): readonly string[] {
-  const target = record.waiting;
-
-  if (target === null) return [];
-
-  const tail = (slot: number | "deadline" | "input") =>
-    `${session}/${record.id}/${record.waits.length}/${slot}`;
-
-  const targets = "targets" in target ? target.targets : [target];
-  const deadline = findEarliestDeadline(target);
-
-  return [
-    ...targets.flatMap((waited, slot) => {
-      if ((record.partial.at(slot) ?? null) !== null) return [];
-
-      switch (waited.kind) {
-        case "run":
-          return [`${WAITS}run/${waited.session}/${waited.run}/${tail(slot)}`];
-        case "part":
-          return [`${WAITS}part/${session}/${waited.part}/${tail(slot)}`];
-        case "job":
-          return [`${WAITS}job/${waited.job}/${tail(slot)}`];
-        case "timer":
-          return [`${TIME}${formatTime(waited.until)}/${tail(slot)}`];
-      }
-    }),
-    ...(deadline === null ? [] : [`${TIME}${formatTime(deadline)}/${tail("deadline")}`]),
-    ...("targets" in target && target.untilInput === true && record.head !== null
-      ? [`${WAITS}input/${session}/${record.head}/${tail("input")}`]
-      : []),
-  ];
+/** Steps an unparked call another process woke: a head's call by notifying the head, which only a covering process advances, and an action whose re-run claim lapsed by running it again. */
+function wake(kernel: Kernel, session: SessionId, record: CallRecord): void {
+  if (record.head === null && lapsed(kernel, record)) kernel.waits.rerun(session, record.id);
+  else if (record.head !== null && record.waits.length > 0 && record.result === null)
+    kernel.wakes.notify(session, record.head);
 }
 
 /** The earliest time any of `calls` waits for: a deadline, or a timer it has not had yet. */
@@ -478,26 +428,6 @@ export async function earliestWake(
   });
 
   return due.length === 0 ? null : Math.min(...due);
-}
-
-function readIndexed(name: string): Indexed | null {
-  const parts = name.split("/");
-  const [slot, occurrence, call, session] = parts.toReversed();
-
-  if (slot === undefined || occurrence === undefined || call === undefined || session === undefined)
-    return null;
-
-  return {
-    name,
-    session: asId<"session">(session),
-    call: asId<"call">(call),
-    occurrence: Number(occurrence),
-    target: slot === "deadline" || slot === "input" ? null : Number(slot),
-  };
-}
-
-function formatTime(at: number): string {
-  return String(Math.max(0, Math.floor(at))).padStart(TIME_DIGITS, "0");
 }
 
 export function onReceipt(
@@ -651,15 +581,6 @@ export function waitingOn(
   if (!("targets" in target)) return target;
 
   return target.targets.find((_waited, index) => (partial.at(index) ?? null) === null) ?? null;
-}
-
-function findEarliestDeadline(target: NonNullable<CallRecord["waiting"]>): number | null {
-  const bounds = [
-    target.deadline,
-    ...("targets" in target ? target.targets.map((waited) => waited.deadline) : []),
-  ].flatMap((deadline) => (deadline === undefined ? [] : [deadline]));
-
-  return bounds.length === 0 ? null : Math.min(...bounds);
 }
 
 function formatWaitKey(session: SessionId, call: CallId): string {

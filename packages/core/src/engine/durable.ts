@@ -19,9 +19,10 @@ import { changeCall } from "../fold/commit.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { partRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
+import { waitIndex } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
 import { holdLease } from "./lease.ts";
-import { lapsed, readParkedWait, runWait, waitIndex, waitingOn } from "./waits.ts";
+import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 export type ActionIntent = {

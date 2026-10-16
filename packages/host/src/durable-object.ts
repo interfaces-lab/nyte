@@ -92,7 +92,7 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
     },
     async records() {
       return rows(
-        "SELECT refs.name, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
+        "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
       ).map(storedRecordOf);
     },
     async *logs() {
@@ -148,6 +148,20 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
             moved.name,
           );
           updateSessionIndex(storage, moved.name, moved.id, mintRevision());
+        }
+
+        for (const created of change.creates) {
+          const revision = mintRevision();
+
+          if (
+            rows(
+              "INSERT INTO refs (name, target, revision) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING RETURNING name",
+              created.name,
+              created.target,
+              revision,
+            ).length > 0
+          )
+            updateSessionIndex(storage, created.name, created.target, revision);
         }
 
         for (const relog of change.relogs)

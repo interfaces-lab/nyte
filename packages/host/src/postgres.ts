@@ -119,7 +119,7 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
       (
         await withClient(pool, (client) =>
           client.query(
-            "SELECT refs.name, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
+            "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
           ),
         )
       ).rows.map(storedRecordOf),
@@ -176,6 +176,18 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
               return "conflict";
             }
             await updateSessionIndex(client, moved.name, moved.id, mintRevision());
+          }
+
+          for (const created of change.creates) {
+            const revision = mintRevision();
+
+            const { rows } = await client.query(
+              "INSERT INTO refs (name, target, revision) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING RETURNING name",
+              [created.name, created.target, revision],
+            );
+
+            if (rows.length > 0)
+              await updateSessionIndex(client, created.name, created.target, revision);
           }
 
           for (const relog of change.relogs) {
