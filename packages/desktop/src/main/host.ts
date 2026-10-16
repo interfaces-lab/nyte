@@ -2,8 +2,10 @@ import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
+import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
+import { childEnvironment } from "@nyte-ai/core";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Host, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
@@ -38,7 +40,6 @@ import { safeExternalUrl } from "./external-url.ts";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { SavedServer } from "./server-settings.ts";
-import { ensureShellEnvironment } from "./shell-env.ts";
 import { findTailnetAddress } from "./tailnet.ts";
 import { TerminalSessions } from "./terminals.ts";
 
@@ -290,8 +291,7 @@ export class DesktopHost {
 
   async #open(): Promise<Opened> {
     const { home } = this.#deps;
-    await ensureShellEnvironment();
-    performance.mark("nyte:shell-environment-ready");
+    void completeShellEnvironment().then(() => performance.mark("nyte:shell-environment-ready"));
 
     const host = await sdk.open({
       models: this.#deps.models,
@@ -465,7 +465,7 @@ export class DesktopHost {
     "host.browser.focusPage": async (_window, input) => this.#deps.browser.focusPage(input),
     "host.terminal.create": async (window, { id, workspacePath }) => {
       const terminals = this.#windowTerminals(window);
-      await ensureShellEnvironment();
+      await childEnvironment();
 
       if (this.#closing !== undefined || this.#terminals.get(window) !== terminals)
         throw new ExpectedHostError({ code: "unavailable", message: "Terminal window closed" });

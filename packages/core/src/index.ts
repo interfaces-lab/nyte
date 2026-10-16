@@ -190,6 +190,7 @@ export {
   workspaceRef,
 } from "./store/refs.ts";
 export { projectSessionIndex, sessionIndexRef } from "./store/session-index.ts";
+export { childEnvironment, holdChildEnvironment } from "./util/child-environment.ts";
 export { blobId, objectId } from "./util/content.ts";
 export { dev } from "./util/dev-log.ts";
 export type { DevRow } from "./util/dev-log.ts";

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
+import { holdChildEnvironment } from "@nyte-ai/core";
 
 const TIMEOUT_MS = 10_000;
 
@@ -10,12 +11,22 @@ const SHELL_LOCAL = new Set(["PWD", "OLDPWD", "SHLVL", "_"]);
 
 let shared: (() => Promise<void>) | undefined;
 
-export function ensureShellEnvironment(): Promise<void> {
-  shared ??= createShellEnvironmentRepair();
+/**
+ * Starts reading the login shell's environment into `process.env`, once per process, and holds
+ * every child spawn (`childEnvironment()`) until it lands. The process itself goes on: a desktop
+ * app opened from the Dock inherits launchd's bare PATH, and only what it spawns needs the
+ * shell's. The read gives up after 10 s and keeps the inherited environment.
+ */
+export function completeShellEnvironment(): Promise<void> {
+  if (shared === undefined) {
+    shared = createShellEnvironmentRepair();
+    holdChildEnvironment(shared());
+  }
 
   return shared();
 }
 
+/** Returns a repair that merges the login shell's environment into `env` on its first call; later calls share that attempt. */
 export function createShellEnvironmentRepair({
   env = process.env,
   platform = process.platform,
@@ -61,6 +72,11 @@ async function repairShellEnvironment({
   env.PATH = inheritedPath ? `${path}:${inheritedPath}` : path;
 }
 
+/**
+ * Runs `shell -ilc` and reads the environment it prints between two random fences. It settles
+ * at the first of exit, the timeout or 64 KiB of output, and kills the shell then without
+ * waiting for descendants a startup script left holding stdout open.
+ */
 function readLoginShellEnvironment({
   shell,
   env,
@@ -89,7 +105,6 @@ function readLoginShellEnvironment({
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      // A startup script can leave descendants holding stdout open. Do not wait for them.
       child.stdout.destroy();
       child.kill("SIGKILL");
 
@@ -111,17 +126,15 @@ function readLoginShellEnvironment({
       chunks.push(chunk);
     });
     child.on("close", (code) => {
-      const output = Buffer.concat(chunks).toString("utf8");
-      const start = output.indexOf(fence);
-      const end = output.indexOf(fence, start + fence.length);
+      const [, fenced, ...after] = Buffer.concat(chunks).toString("utf8").split(fence);
 
-      if (code !== 0 || start === -1 || end === -1) {
+      if (code !== 0 || fenced === undefined || after.length === 0) {
         finish(undefined);
 
         return;
       }
 
-      finish(parseEnvironment(output.slice(start + fence.length, end)));
+      finish(parseEnvironment(fenced));
     });
   });
 }
@@ -130,9 +143,9 @@ function parseEnvironment(output: string): Map<string, string> {
   const loaded = new Map<string, string>();
 
   for (const entry of output.split("\0")) {
-    const separator = entry.indexOf("=");
+    const [name = "", ...value] = entry.split("=");
 
-    if (separator > 0) loaded.set(entry.slice(0, separator), entry.slice(separator + 1));
+    if (name !== "" && value.length > 0) loaded.set(name, value.join("="));
   }
 
   return loaded;

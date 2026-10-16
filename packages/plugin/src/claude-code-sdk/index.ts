@@ -23,6 +23,7 @@ import type {
   ThinkingLevel,
   TranscriptContext,
 } from "@nyte-ai/ai";
+import { childEnvironment } from "@nyte-ai/core";
 import type { SettingDefinition, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
 import type { PartId } from "@nyte-ai/schema";
@@ -109,6 +110,7 @@ function answerOnce(
   void (async () => {
     try {
       stream.push({ type: "start", partial: output });
+      await childEnvironment();
 
       for await (const message of query({
         prompt: flatPrompt(context.messages),
@@ -331,6 +333,7 @@ export function claudeCodeSdk() {
       session?.close();
 
       if (prompt.length === 0) throw new Error(NOT_RUNNING);
+      await childEnvironment();
       const claudeSession = randomUUID();
 
       session = new ClaudeCodeSession({

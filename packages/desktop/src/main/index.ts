@@ -59,7 +59,6 @@ import { models } from "./models.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
 import { LaunchStateStore } from "./launch-state.ts";
 import { registerUpdates } from "./updates.ts";
-import { ensureShellEnvironment } from "./shell-env.ts";
 
 import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "./ipc-inputs.ts";
 
@@ -680,9 +679,6 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  // The login shell can take seconds; the window never waits on it.
-  void ensureShellEnvironment();
-
   const config = readConnectConfig(import.meta.env);
   const scheme = accountScheme({ packaged: app.isPackaged, updateTest });
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createShellEnvironmentRepair } from "./shell-env.ts";
+import { createShellEnvironmentRepair } from "../src/shell-env.ts";
 
 const directories: string[] = [];
 
