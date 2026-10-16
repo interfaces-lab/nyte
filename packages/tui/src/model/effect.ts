@@ -27,6 +27,7 @@ export type Effect =
       readonly label: string;
     }
   | { readonly kind: "follow"; readonly target: SessionId | "new"; readonly announce: boolean }
+  | { readonly kind: "load-earlier"; readonly session: SessionId }
   | { readonly kind: "send"; readonly submission: Submission; readonly delivery: Delivery }
   | {
       readonly kind: "revise";

@@ -61,8 +61,14 @@ function reveal(state: State, direction: "earlier" | "later"): Step {
     null,
   );
 
-  if (direction === "earlier" ? current.start === 0 : current.end === rows.length)
-    return stay(state);
+  const session = state.facts.session;
+
+  if (direction === "earlier" && current.start === 0)
+    return session === null
+      ? stay(state)
+      : { state, effects: [{ kind: "load-earlier", session: session.id }] };
+
+  if (direction === "later" && current.end === rows.length) return stay(state);
 
   const window =
     direction === "earlier"

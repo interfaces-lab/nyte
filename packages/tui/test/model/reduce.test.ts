@@ -909,7 +909,7 @@ describe("session and view intents", () => {
     ]);
   });
 
-  test("Ctrl+End follows the latest again; revealing earlier keeps the viewport", () => {
+  test("Ctrl+End follows the latest again; revealing earlier keeps the viewport, then pages older messages in", () => {
     const many = viewOf((v) => {
       let built = v;
 
@@ -930,6 +930,9 @@ describe("session and view intents", () => {
 
     expect(revealed.effects).toEqual([{ kind: "scroll", op: { kind: "keep-viewport" } }]);
     expect(deriveScreen(revealed.state, null).transcript.window.start).toBe(0);
+    expect(play(revealed.state, { kind: "reveal-earlier" }).effects).toEqual([
+      { kind: "load-earlier", session: revealed.state.facts.session?.id },
+    ]);
     expect(
       play(revealed.state, { kind: "scroll", to: "latest" }).state.local.transcript.window,
     ).toEqual({ kind: "tail" });

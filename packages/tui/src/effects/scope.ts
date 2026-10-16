@@ -1,9 +1,11 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import type { DialogId } from "../model/dialogs/dialog.ts";
 import type { SessionConfigurator } from "../services/session-config.ts";
+import type { SessionPort } from "./ports.ts";
 
 export interface Followed {
   readonly id: SessionId;
+  readonly port: SessionPort;
   readonly controller: AbortController;
   readonly configurator: SessionConfigurator;
 }

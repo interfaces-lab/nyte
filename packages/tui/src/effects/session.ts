@@ -17,6 +17,8 @@ import { readWorkspaceStatus } from "../services/workspace.ts";
 import { messageOf } from "./runner.ts";
 import type { HandlerContext } from "./runner.ts";
 
+const HISTORY_PAGE = 200;
+
 const PLACEHOLDER_SELECTION: Selection = {
   model: { provider: "none", id: "none" },
   effort: "medium",
@@ -61,7 +63,7 @@ export async function follow(
     },
   });
 
-  scope.followed = { id, controller, configurator };
+  scope.followed = { id, port, controller, configurator };
   dispatch({ kind: "session-opened", session: id, info, selection: fallback(read()) });
   let first = true;
 
@@ -123,6 +125,16 @@ export async function follow(
     await refreshWorkspace(context, workspace.cwd, { mentions: port, signal: controller.signal });
 
   unavailable(info.activation, dispatch);
+}
+
+/** Pages older messages into the followed session's views once the transcript shows its first loaded row. */
+export async function loadEarlier(
+  effect: { readonly session: SessionId },
+  context: HandlerContext,
+): Promise<void> {
+  const followed = context.scope.followed;
+
+  if (followed?.id === effect.session) await followed.port.earlier(HISTORY_PAGE);
 }
 
 export async function watchHost(context: HandlerContext): Promise<void> {

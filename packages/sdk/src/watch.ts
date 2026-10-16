@@ -225,7 +225,8 @@ function hostView(wire: HostViewWire, link: HostView["link"]): HostView {
   };
 }
 
-function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T> {
+/** Returns an iterable over what `start` pushes into its sink, the latest value kept while nobody pulls; its disposer runs when the iteration ends. */
+export function pushed<T>(start: (sink: Sink<T>) => () => void): AsyncIterable<T> {
   return closable<T>(() => {
     let slot: { readonly value: T } | null = null;
     let ending: { readonly error: Error } | "ended" | null = null;

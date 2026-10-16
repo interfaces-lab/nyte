@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { asId } from "@nyte-ai/schema";
-import type { Connection, MessageId, Session, SessionId } from "@nyte-ai/sdk";
+import { pagedViews } from "@nyte-ai/sdk/client";
+import type { Connection, MessageId, PagedViews, Session, SessionId } from "@nyte-ai/sdk";
 import type { Task } from "../lib/tasks.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
@@ -184,10 +185,12 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
 
 function sessionPort(host: Connection, session: Session): SessionPort {
   const receiptOf = (message: MessageId) => session.receipt(asId(message));
+  let views: PagedViews | null = null;
 
   return {
     id: session.id,
-    watch: () => session.watch(),
+    watch: () => (views = pagedViews(session)),
+    earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
     info: () => session.info(),
     async workspace() {
       const info = await session.info();

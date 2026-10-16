@@ -97,6 +97,8 @@ export interface HostPort {
 export interface SessionPort {
   readonly id: SessionId;
   watch(): AsyncIterable<SessionView>;
+  /** Pages up to `limit` older messages into the latest watch's views; resolves how many came, 0 at the session's first message. */
+  earlier(limit: number): Promise<number>;
   info(): Promise<SessionInfo>;
   workspace(): Promise<{ readonly id: WorkspaceId; readonly cwd: string | null }>;
   send(content: UserContent, options: SendOptions): Promise<{ readonly message: MessageId }>;

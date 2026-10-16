@@ -44,7 +44,7 @@ import {
 import type { Ports } from "./ports.ts";
 import { createScope } from "./scope.ts";
 import type { Scope } from "./scope.ts";
-import { follow } from "./session.ts";
+import { follow, loadEarlier } from "./session.ts";
 import { submit } from "./submit.ts";
 
 export interface Runner {
@@ -131,6 +131,7 @@ function shellsDone(scope: Scope): readonly Promise<void>[] {
 
 export const HANDLERS: Handlers = {
   follow: (effect, context) => follow(effect.target, effect.announce, context),
+  "load-earlier": loadEarlier,
   send: (effect, context) => submit(effect.submission, effect.delivery, context),
   revise,
   withdraw,

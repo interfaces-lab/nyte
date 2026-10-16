@@ -153,6 +153,7 @@ function fakeSession(id: string): FakeSession {
     pushTasks: (list) => tasks.push(list),
     watchTasks: () => tasks,
     watch: () => views,
+    earlier: async () => 0,
     info: async () => infoOf(id),
     workspace: async () => ({ id: asId("workspace"), cwd: "/tmp/fake-workspace" }),
     async send(content, options) {
