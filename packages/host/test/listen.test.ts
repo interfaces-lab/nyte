@@ -15,7 +15,7 @@ import type {
 import type { ComposeOptions, Listener, ListenOptions } from "@nyte-ai/core";
 import { SdkError, memoryStore } from "@nyte-ai/core";
 import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { listen, pluginLoader } from "../src/index.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
 import type { FakeModels } from "../src/bench/fake-models.ts";
@@ -272,18 +272,13 @@ describe("listen", () => {
     await kept.return?.(undefined);
   });
 
-  it("re-reads a device token after a minute, so another host's revoke is seen, ending its open head.watch here (ADV C 3)", async () => {
+  it("re-reads a remembered device token when another host commits, so its revoke there ends an open head.watch here (ADV C 3)", async () => {
     const store = memoryStore();
-    const host = await open(fakeModels(), { store });
+    const host = await open(fakeModels(), { store, poll: 10 });
     cleanups.push(() => host.close());
     const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
-    vi.useFakeTimers({ toFake: ["Date"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
-    const start = Date.now();
 
     const exchange = await post(
       listener,
@@ -297,55 +292,30 @@ describe("listen", () => {
     const device = { Authorization: `Bearer ${token}` };
 
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    vi.setSystemTime(start + 30_000);
-    expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    vi.setSystemTime(start + 61_000);
-    expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-
-    const created = await json(await post(listener, "sessions.create", {}));
-    assert(
-      typeof created === "object" &&
-        created !== null &&
-        "session" in created &&
-        typeof created.session === "string",
-    );
-
-    const watch = await post(
-      listener,
-      "head.watch",
-      { session: created.session, head: main },
-      device,
-    );
+    const created = await host.sessions.create();
+    const watch = await post(listener, "head.watch", { session: created.id, head: main }, device);
 
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
     expect(kindOf((await frames.next()).value ?? null)).toBe("view");
 
     const ended = endOf(frames);
-
     const [paired] = await other.principals.list();
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
 
-    expect(await within(ended, 50)).toBe("timed out");
-    vi.setSystemTime(start + 122_000);
+    expect(await within(ended, 1_000)).toBe("unauthenticated");
     const revoked = await post(listener, "sessions.list", {}, device);
-
     expect([revoked.status, await codeOf(revoked)]).toEqual([401, "unauthenticated"]);
-    expect(await within(ended, 100)).toBe("unauthenticated");
   });
 
-  it("ends a head.watch opened by its own pairing request within one re-check window of another host's revoke (ADV C-3 N2, probe N2r)", async () => {
+  it("ends a head.watch opened by its own pairing request once another host's revoke commits (ADV C-3 N2, probe N2r)", async () => {
     const store = memoryStore();
-    const host = await open(fakeModels(), { store });
+    const host = await open(fakeModels(), { store, poll: 10 });
     cleanups.push(() => host.close());
     const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
     const session = await host.sessions.create();
 
     const watch = await post(
@@ -365,9 +335,7 @@ describe("listen", () => {
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
 
-    expect(await within(ended, 50)).toBe("timed out");
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(await within(ended, 100)).toBe("unauthenticated");
+    expect(await within(ended, 1_000)).toBe("unauthenticated");
   });
 
   it("denies a participant git.stage by the row's authority", async () => {

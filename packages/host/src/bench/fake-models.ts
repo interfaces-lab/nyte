@@ -254,6 +254,7 @@ export async function open(
     readonly store?: Store;
     readonly execution?: ComposeOptions["execution"];
     readonly loadPlugins?: ComposeOptions["loadPlugins"];
+    readonly poll?: number;
   },
 ): ReturnType<typeof composeHost> {
   return composeHost({
@@ -263,6 +264,7 @@ export async function open(
     workspace: { kind: "chat-only", locator: null },
     execution: options?.execution,
     loadPlugins: options?.loadPlugins,
+    poll: options?.poll,
     home: null,
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
