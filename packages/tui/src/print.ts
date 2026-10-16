@@ -2,6 +2,8 @@ import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import type { ConfigurationPatch, RunEnd, Session, SessionId } from "@nyte-ai/sdk";
 import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { sessionRecovery } from "./flags.ts";
+import { exitStatus } from "./lifecycle.ts";
+import type { Ending } from "./lifecycle.ts";
 
 export interface PrintOutput {
   write(text: string): void;
@@ -23,7 +25,7 @@ export type PrintOutcome =
   | { readonly kind: "completed" }
   | { readonly kind: "aborted" }
   | { readonly kind: "failed"; readonly message: string; readonly code?: string }
-  | { readonly kind: "cancelled"; readonly signal?: "SIGINT" | "SIGTERM" }
+  | { readonly kind: "cancelled"; readonly signal?: Ending }
   | { readonly kind: "input-required" };
 
 function toPrintOutcome(end: RunEnd): PrintOutcome {
@@ -194,7 +196,7 @@ export function reportPrintOutcome(
     case "aborted":
       return 130;
     case "cancelled":
-      return outcome.signal === "SIGTERM" ? 143 : 130;
+      return exitStatus(outcome.signal ?? "SIGINT");
     default: {
       const exhaustive: never = outcome;
 

@@ -20,6 +20,8 @@ export interface TestService extends AsyncDisposable {
   readonly requests: readonly Request[];
   /** The binary's whole environment: never merge the caller's into it. */
   readonly env: Readonly<Record<string, string>>;
+  /** How many requests the service saw end because their client went away. */
+  disconnects(): number;
 }
 
 /**
@@ -62,6 +64,7 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
 
   const replies: Reply[] = [];
   const requests: Request[] = [];
+  let disconnects = 0;
 
   const models = fakeModels({
     fallback(request) {
@@ -76,7 +79,28 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
   });
 
   const service = await startService({
-    open: () => openHost({ home, workspace: { kind: "local", path: cwd }, models: models.models }),
+    async open() {
+      const host = await openHost({
+        home,
+        workspace: { kind: "local", path: cwd },
+        models: models.models,
+      });
+
+      return {
+        ...host,
+        listen: (listening) =>
+          host.listen({
+            ...listening,
+            before(request) {
+              request.signal.addEventListener("abort", () => void (disconnects += 1), {
+                once: true,
+              });
+
+              return listening.before?.(request);
+            },
+          }),
+      };
+    },
     home,
     port: 0,
     version: VERSION,
@@ -87,6 +111,7 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     cwd,
     reply: (...queued) => void replies.push(...queued),
     requests,
+    disconnects: () => disconnects,
     env: {
       HOME: home,
       NYTE_HOME: join(home, ".nyte"),

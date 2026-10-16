@@ -59,6 +59,32 @@ function records(stdout: string) {
 const ready = (pty: Pty) =>
   pty.waitFor((screen) => screen.text.includes("enter send") && !screen.text.includes("Loading"));
 
+/** How long the binary may take to exit after it is told to, by a signal or a closed terminal. */
+const EXIT_BUDGET_MS = 2_000;
+
+/** The status `pty` exits with and the milliseconds it took from `from`; throws if it outlives the budget. */
+async function exitTimed(pty: Pty, from: number) {
+  const status = await Promise.race([pty.exited(), Bun.sleep(EXIT_BUDGET_MS * 2).then(() => null)]);
+  const elapsed = performance.now() - from;
+
+  if (status === null)
+    throw new Error(
+      `The TUI was still running ${String(EXIT_BUDGET_MS * 2)} ms after it was told to exit.`,
+    );
+
+  return { status, elapsed };
+}
+
+/** Resolves once `done` holds, checking every 10 ms; throws after the exit budget. */
+async function eventually(done: () => boolean, what: string): Promise<void> {
+  const deadline = performance.now() + EXIT_BUDGET_MS;
+
+  while (!done()) {
+    if (performance.now() > deadline) throw new Error(`Never saw ${what}.`);
+    await Bun.sleep(10);
+  }
+}
+
 test("--help prints plain usage and exits 0", async () => {
   const child = Bun.spawn([BINARY, "--help"], { stdout: "pipe", stderr: "pipe", env: {} });
 
@@ -188,4 +214,47 @@ test("the TUI keeps keys typed at launch, streams a reply, and prints the resume
   resumed.signal("SIGTERM");
   expect(await resumed.exited()).toBe(143);
   expect(RESUME.exec(resumed.output())?.[1]).toBe(session);
+}, 30_000);
+
+test("closing the terminal ends the TUI within 2 s with 129, and the service sees its connection close", async () => {
+  await using service = await serveForBinary({ plugin: false });
+  await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
+  await ready(pty);
+  const connected = service.disconnects();
+
+  const from = performance.now();
+  pty.hangUp();
+  const { status, elapsed } = await exitTimed(pty, from);
+
+  expect(status).toBe(129);
+  expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
+  await eventually(() => service.disconnects() > connected, "the client's streams close");
+}, 30_000);
+
+test("SIGTERM to a TUI whose terminal already closed ends it within 2 s", async () => {
+  await using service = await serveForBinary({ plugin: false });
+  await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
+  await ready(pty);
+
+  const from = performance.now();
+  pty.hangUp();
+  pty.signal("SIGTERM");
+  const { status, elapsed } = await exitTimed(pty, from);
+
+  expect([129, 143]).toContain(status);
+  expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
+}, 30_000);
+
+test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", async () => {
+  await using service = await serveForBinary({ plugin: false });
+  await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
+  await ready(pty);
+
+  const from = performance.now();
+  pty.signal("SIGHUP");
+  const { status, elapsed } = await exitTimed(pty, from);
+
+  expect(status).toBe(129);
+  expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
+  expect(pty.output()).toMatch(RESUME);
 }, 30_000);

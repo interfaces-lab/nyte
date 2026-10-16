@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import type { Writable } from "node:stream";
 import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import {
@@ -23,6 +24,8 @@ import { createRunner } from "../effects/runner.ts";
 import { terminalPort } from "../effects/terminal-port.ts";
 import { sessionRecovery } from "../flags.ts";
 import type { RunFlags } from "../flags.ts";
+import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts";
+import type { Ending } from "../lifecycle.ts";
 import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
@@ -41,10 +44,6 @@ import type { Store } from "./store.ts";
 import { createTickers } from "./ticker.ts";
 import { holdTypeahead } from "./typeahead.ts";
 import type { Typeahead } from "./typeahead.ts";
-
-type TuiExit =
-  | { readonly kind: "quit" }
-  | { readonly kind: "signal"; readonly signal: "SIGINT" | "SIGTERM" };
 
 const STARTUP_SETTINGS: ResolvedSettings = {
   autoUpdate: false,
@@ -75,10 +74,13 @@ export interface AppOptions {
   /** Keys held since the renderer began reading stdin, replayed once the composer has focus. */
   readonly typeahead?: Typeahead;
   readonly kit?: (kit: Kit) => Kit;
+  /** The streams beside the renderer that write to its terminal; a write one fails is a hangup, as the renderer's input ending is. */
+  readonly outputs?: readonly Writable[];
 }
 
 export interface MountedApp {
   readonly store: Store;
+  /** The status the app ends with: 0 on quit, 1 when boot fails, and 129, a hangup, once its terminal or renderer is gone. */
   readonly closing: Promise<number>;
   readonly report: ReturnType<typeof createReporter>;
   startupError(): string | null;
@@ -120,6 +122,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   );
 
   const quit = (): void => closing.resolve(0);
+  const hangUp = (): void => closing.resolve(exitStatus("SIGHUP"));
+  const unwatchTerminal = watchTerminal(renderer.stdin, options.outputs ?? [], hangUp);
 
   const root = createRoot((dispose) => {
     const store = createStore({
@@ -221,6 +225,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   };
 
   renderer.once(CliRenderEvents.DESTROY, () => {
+    unwatchTerminal();
+    hangUp();
     root.sinks.dispose();
     renderer.off(CliRenderEvents.RESIZE, syncTerminal);
     renderer.off(CliRenderEvents.THEME_MODE, syncTerminal);
@@ -260,6 +266,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     report,
     startupError: () => startupError,
     async close() {
+      unwatchTerminal();
       controller.abort();
       await store.runner.dispose();
       root.sinks.dispose();
@@ -274,27 +281,22 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
  * Runs the interactive TUI: connects to the service from the first instruction, holds keys
  * typed before the app mounts, and prints the resume command on exit. The exit text waits
  * for `renderer.closed`, because OpenTUI restores and clears the terminal after `destroy`
- * returns and would wipe anything written before.
+ * returns and would wipe anything written before. Resolves with the status to exit with; once
+ * the app ends or a signal arrives, shutdown has `SHUTDOWN_DEADLINE_MS` before the process exits.
  */
-export async function runTui(flags: RunFlags): Promise<TuiExit> {
+export async function runTui(flags: RunFlags): Promise<number> {
   const connecting = connectLocalService();
   connecting.catch(() => undefined);
   const cwd = process.cwd();
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
   const log = openCrashLog(home);
   const failures: string[] = [];
-  let exit: TuiExit = { kind: "quit" };
-  const signalled = Promise.withResolvers<void>();
+  const signalled = Promise.withResolvers<Ending>();
 
-  const onSignal = (signal: "SIGINT" | "SIGTERM"): void => {
-    exit = { kind: "signal", signal };
-    signalled.resolve();
-  };
-
-  const onSigint = (): void => onSignal("SIGINT");
-  const onSigterm = (): void => onSignal("SIGTERM");
-  process.on("SIGINT", onSigint);
-  process.on("SIGTERM", onSigterm);
+  const stopEnding = onEnding((ending) => {
+    exitWithin(exitStatus(ending));
+    signalled.resolve(ending);
+  });
 
   const cleanup = async (resource: string, dispose: () => Promise<void>): Promise<void> => {
     try {
@@ -339,6 +341,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
     renderer,
     cwd,
     typeahead,
+    outputs: [process.stdout, process.stderr],
     ports: {
       terminal,
       composer: createHandle(),
@@ -353,7 +356,9 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   });
 
   const unhook = installProcessHooks(app.report);
-  const code = await Promise.race([app.closing, signalled.promise.then(() => 0)]);
+  const status = await Promise.race([app.closing, signalled.promise.then(exitStatus)]);
+  stopEnding();
+  exitWithin(status);
   const session = app.store.state().facts.session?.id ?? null;
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
@@ -365,14 +370,9 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
     await renderer.closed;
   });
   unhook();
-  process.off("SIGINT", onSigint);
-  process.off("SIGTERM", onSigterm);
-
   process.stdout.write(exitText({ session, failures, crashes: app.store.state().local.failures }));
 
-  if ((code !== 0 || failures.length > 0) && exit.kind === "quit") process.exit(1);
-
-  return exit;
+  return status === 0 && failures.length > 0 ? 1 : status;
 }
 
 /** Opens the background service's host for the TUI: its plugins, and the Nyte Connect status. */

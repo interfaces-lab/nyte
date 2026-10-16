@@ -30,6 +30,7 @@ import { VERSION, checkForUpdate } from "./version.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
 import { addFolder, flagConfiguration, targetSession } from "./run.ts";
 import { connectLocalService, serviceCommandMain } from "./service.ts";
+import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
 import { PrintInvocation } from "./print-invocation.ts";
@@ -55,9 +56,11 @@ const signal = invocation.controller.signal;
 function untilInterrupted(): AbortSignal {
   invocation.handoff();
   const interrupted = new AbortController();
-  const end = (): void => interrupted.abort();
-  process.once("SIGINT", end);
-  process.once("SIGTERM", end);
+
+  const stop = onEnding(() => {
+    stop();
+    interrupted.abort();
+  });
 
   return interrupted.signal;
 }
@@ -468,12 +471,8 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   signal.throwIfAborted();
   invocation.handoff();
-  const exit = await runTui(resolveTuiResume(flags));
 
-  if (exit.kind === "signal") process.kill(process.pid, exit.signal);
-  else process.exit(0);
-
-  return undefined;
+  return process.exit(await runTui(resolveTuiResume(flags)));
 }
 
 let outcome: PrintOutcome | undefined;

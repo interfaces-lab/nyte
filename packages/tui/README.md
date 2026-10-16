@@ -46,7 +46,7 @@ Parse, settings, and startup errors also produce a terminal JSON record.
 | `failed` | 1 | Startup, configuration, run, delivery, or cleanup failed |
 | `input-required` | 2 | Print stopped and settled a run waiting on a question part |
 | `aborted` | 130 | The durable run was aborted |
-| `cancelled` | 130 or 143 | This CLI was interrupted by SIGINT or SIGTERM, respectively |
+| `cancelled` | 130, 143 or 129 | This CLI was interrupted by SIGINT, SIGTERM or SIGHUP, respectively |
 
 Print waits through background tools. For a run waiting on a question, it stops the run and awaits
 its settlement before reporting `input_required`. It never answers.

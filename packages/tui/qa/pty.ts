@@ -6,6 +6,7 @@ import type { EmbeddedTerminalScreen } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { keyStrokes } from "../src/lib/constants.ts";
 import type { ChatCommand } from "../src/lib/constants.ts";
+import type { Ending } from "../src/lifecycle.ts";
 
 const WAIT_MS = 15_000;
 
@@ -16,7 +17,9 @@ export interface Pty extends AsyncDisposable {
   press(command: ChatCommand): void;
   type(text: string): void;
   waitFor(predicate: (screen: EmbeddedTerminalScreen) => boolean): Promise<EmbeddedTerminalScreen>;
-  signal(name: "SIGINT" | "SIGTERM"): void;
+  signal(name: Ending): void;
+  /** Closes the PTY's master, as a terminal app does when its tab closes: the binary's input ends and its writes fail. */
+  hangUp(): void;
   /** The exit status; Bun reports a signal as 128 plus its number, as a shell does. */
   exited(): Promise<number>;
   /** Everything the binary wrote, without escape sequences; the exit text is at its end. */
@@ -121,6 +124,7 @@ export async function openPty(options: {
     type: (text) => pty?.write(text),
     waitFor,
     signal: (name) => process.kill(child.pid, name),
+    hangUp: () => pty?.close(),
     exited: () => child.exited,
     output: () =>
       stripVTControlCharacters(Buffer.concat(written).toString("utf8")).replaceAll("\r", ""),
