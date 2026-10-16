@@ -1,12 +1,13 @@
 import { homedir } from "node:os";
+import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId } from "@nyte-ai/schema";
 import { pagedViews } from "@nyte-ai/sdk/client";
 import type { Connection, MessageId, PagedViews, Session } from "@nyte-ai/sdk";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
+import { follow } from "../lib/view-helpers.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
-import { mountClientPlugins } from "../services/plugins.ts";
-import type { ClientPlugins } from "../services/plugins.ts";
 import { TaskIndex } from "../services/task-index.ts";
 import type { HostPort, PluginsPort, SessionPort } from "./ports.ts";
 
@@ -345,21 +346,40 @@ export async function pluginsPort(
     readonly notify: (title: string, body: string, sound: boolean) => void;
     readonly report: (plugin: string, message: string) => void;
   },
-): Promise<PluginsPort & Pick<ClientPlugins, "draw" | "dispose">> {
+): Promise<
+  PluginsPort & {
+    readonly draw: (message: PartMessage) => unknown;
+    readonly dispose: () => Promise<void>;
+  }
+> {
   let current: Session | null = null;
 
   const plugins = await mountClientPlugins({
     connection: host,
     plugins: tuiPlugins(),
+    client: { name: "tui", frameworks: ["tui"] },
     session: () => current,
     notify: (input) => options.notify(input.title ?? "Nyte", input.message, input.sound === true),
     report: options.report,
   });
 
+  const stopDirectory = follow(
+    host.sessions.watch({ parents: { kind: "all" } }),
+    (sessions) => plugins.sessionsChanged(sessions),
+    (cause) =>
+      options.report("notifications", cause instanceof Error ? cause.message : String(cause)),
+  );
+
   return {
-    draw: (message) => plugins.draw(message),
+    draw: (message) =>
+      current === null
+        ? undefined
+        : plugins.draw(current, message, { kind: "transcript", role: message.role }),
     ids: plugins.ids,
-    dispose: () => plugins.dispose(),
+    dispose: async () => {
+      stopDirectory();
+      await plugins.dispose();
+    },
     async switched(previous, next) {
       const opened = host.session(next);
       current = opened;

@@ -1,30 +1,28 @@
 import type {
   Command,
-  HookEntry,
-  HookHandler,
-  HookName,
-  Keybinding,
-  Plugin,
-  PluginApi,
-  Renderer,
-  SettingDefinition,
-} from "@nyte-ai/plugin/client";
-import type {
   Connection,
-  Decision,
-  Disposer,
-  Json,
+  Keybinding,
   PluginStorage,
   Registry,
   RegistryDraft,
+  Renderer,
   Session,
-  SessionId,
   Setting,
+  SettingDefinition,
+} from "@nyte-ai/core";
+import type {
+  Awaitable,
+  Decision,
+  Disposer,
+  Json,
+  Placement,
+  RunId,
+  SessionId,
+  SessionInfo,
   SubmitDraft,
-  ValidationIssue,
-} from "@nyte-ai/sdk";
-import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
-import { follow } from "../lib/view-helpers.ts";
+} from "@nyte-ai/schema";
+import type { HookEntry, HookHandler, HookName, Plugin, PluginApi } from "../client.ts";
+import type { PartMessage } from "./presentation.ts";
 
 type Notification = Parameters<PluginApi["ui"]["notify"]>[0];
 
@@ -32,50 +30,69 @@ type ClientRegistries = PluginApi["contribute"];
 
 type Derive<T> = (draft: RegistryDraft<T>, siblings: ClientRegistries) => void;
 
-type Handlers = {
-  [N in HookName]: {
-    readonly order: number;
-    readonly run: HookHandler<N>;
-    readonly api: PluginApi;
-  }[];
-};
+interface Handler<N extends HookName> {
+  readonly order: number;
+  readonly run: HookHandler<N>;
+  readonly api: PluginApi;
+}
 
-interface MountOptions {
+type Handlers = { [N in HookName]: Handler<N>[] };
+
+/**
+ * What a client hands the plugins it mounts: its connection, the frameworks
+ * it draws, the session on screen, and where notices and plugin errors go.
+ *
+ * @category plugins
+ */
+export interface MountOptions {
   readonly connection: Connection;
   readonly plugins: readonly Plugin[];
+  readonly client: PluginApi["client"];
   readonly session: () => Session | null;
   readonly notify: (input: Notification) => void;
   readonly report: (plugin: string, message: string) => void;
 }
 
+/**
+ * The mounted client plugins: their renderers and the hooks a client fires.
+ *
+ * @category plugins
+ */
 export interface ClientPlugins {
-  draw(message: PartMessage): unknown;
   readonly ids: readonly string[];
+  /** The view a plugin renderer draws for a part, or undefined when none draws its kind. */
+  draw(session: Session, message: PartMessage, placement: Placement): unknown;
+  /** Feeds the session directory; each run that ends after the first list fires `run_ended_anywhere`. */
+  sessionsChanged(sessions: readonly SessionInfo[]): void;
   switched(previous: Session | null, next: Session): Promise<void>;
   beforeSubmit(draft: SubmitDraft): Promise<Decision<SubmitDraft>>;
   dispose(): Promise<void>;
 }
 
+/** A derive is the only function a registry takes; every item is a plain record. */
+function derives<T>(entry: T | Derive<T>): entry is Derive<T> {
+  return typeof entry === "function";
+}
+
 function registry<T>(
   key: (item: T) => string,
-  isItem: (entry: T | Derive<T>) => entry is T,
   siblings: () => ClientRegistries,
 ): Registry<T, "client"> {
   const items = new Set<T>();
-  const derives = new Set<Derive<T>>();
+  const derivations = new Set<Derive<T>>();
 
   function add(item: T): Disposer;
   function add(derive: Derive<T>): Disposer;
   function add(entry: T | Derive<T>): Disposer {
-    if (isItem(entry)) {
-      items.add(entry);
+    if (derives(entry)) {
+      derivations.add(entry);
 
-      return () => void items.delete(entry);
+      return () => void derivations.delete(entry);
     }
 
-    derives.add(entry);
+    items.add(entry);
 
-    return () => void derives.delete(entry);
+    return () => void items.delete(entry);
   }
 
   return {
@@ -83,7 +100,7 @@ function registry<T>(
     list() {
       const draft = new Map<string, T>([...items].map((item) => [key(item), item]));
 
-      for (const derive of derives)
+      for (const derive of derivations)
         derive(
           {
             set: (id, item) => void draft.set(id, item),
@@ -105,12 +122,7 @@ function registry<T>(
 }
 
 function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["settings"] {
-  const base = registry<SettingDefinition>(
-    (item) => item.id,
-    (entry): entry is SettingDefinition => typeof entry !== "function",
-    siblings,
-  );
-
+  const base = registry<SettingDefinition>((item) => item.id, siblings);
   const values = new Map<string, unknown>();
   const listeners = new Map<string, Set<(value: unknown) => void>>();
 
@@ -145,7 +157,7 @@ function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["s
   function add(item: SettingDefinition): Setting & Disposer;
   function add(derive: Derive<SettingDefinition>): Disposer;
   function add(entry: SettingDefinition | Derive<SettingDefinition>) {
-    if (typeof entry === "function") return base.add(entry);
+    if (derives(entry)) return base.add(entry);
     const remove = base.add(entry);
 
     return Object.assign(remove, {
@@ -159,15 +171,10 @@ function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["s
     });
   }
 
-  return {
-    add,
-    list: () => base.list(),
-    value: async (id) => current(id),
-    watch,
-  };
+  return { add, list: () => base.list(), value: async (id) => current(id), watch };
 }
 
-function memoryStorage(): PluginStorage {
+function memoryStorage(client: string): PluginStorage {
   const values = new Map<string, Json>();
 
   function get<T extends Json>(key: string): Promise<T | undefined>;
@@ -177,20 +184,14 @@ function memoryStorage(): PluginStorage {
 
   const storage: PluginStorage = {
     get,
-    async set(key, value) {
-      values.set(key, value);
-    },
-    async delete(key) {
-      values.delete(key);
-    },
-    async keys() {
-      return [...values.keys()];
-    },
+    set: async (key, value) => void values.set(key, value),
+    delete: async (key) => void values.delete(key),
+    keys: async () => [...values.keys()],
     at: () => storage,
     secrets: {
       get: async () => undefined,
       set: async () => {
-        throw new Error("The terminal keeps no client secrets.");
+        throw new Error(`The ${client} client keeps no plugin secrets.`);
       },
       delete: async () => undefined,
     },
@@ -199,6 +200,16 @@ function memoryStorage(): PluginStorage {
   return storage;
 }
 
+function causeMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * Activates client plugins once per app: their registries, hooks and the
+ * first renderer per part kind among the frameworks the client draws.
+ *
+ * @category plugins
+ */
 export async function mountClientPlugins(options: MountOptions): Promise<ClientPlugins> {
   const handlers: Handlers = {
     run_ended_anywhere: [],
@@ -213,51 +224,51 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
   const apis: { readonly plugin: Plugin; readonly api: PluginApi }[] = [];
 
   const register = <N extends HookName>(api: PluginApi, name: N, entry: HookEntry<N>): Disposer => {
-    const handler =
-      typeof entry === "function"
-        ? { order: 0, run: entry, api }
-        : { order: entry.order ?? 0, run: entry.run, api };
+    const handler: Handler<N> =
+      "run" in entry
+        ? { order: entry.order ?? 0, run: entry.run, api }
+        : { order: 0, run: entry, api };
 
-    const list: {
-      readonly order: number;
-      readonly run: HookHandler<N>;
-      readonly api: PluginApi;
-    }[] = handlers[name];
+    const list: Handler<N>[] = handlers[name];
 
     list.push(handler);
     list.sort((left, right) => left.order - right.order);
 
     return () => {
-      const index = list.indexOf(handler);
+      const index = list.findIndex((candidate) => candidate === handler);
 
       if (index !== -1) list.splice(index, 1);
     };
   };
 
-  const context = (api: PluginApi, session: SessionId | null) => ({
+  const context = (api: PluginApi, session: SessionId | null, run: RunId | null) => ({
     api,
     signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]),
     session,
     head: null,
-    run: null,
+    run,
   });
+
+  const reportFrom = (api: PluginApi, cause: unknown): void =>
+    options.report(
+      apis.find((entry) => entry.api === api)?.plugin.id ?? "plugin",
+      causeMessage(cause),
+    );
 
   const observe = async <E>(
     list: readonly {
-      readonly run: (event: E, ctx: ReturnType<typeof context>) => unknown;
+      readonly run: (event: E, ctx: ReturnType<typeof context>) => Awaitable<void>;
       readonly api: PluginApi;
     }[],
     event: E,
     session: SessionId | null,
+    run: RunId | null = null,
   ): Promise<void> => {
     for (const handler of list) {
       try {
-        await handler.run(event, context(handler.api, session));
+        await handler.run(event, context(handler.api, session, run));
       } catch (cause) {
-        options.report(
-          apis.find((entry) => entry.api === handler.api)?.plugin.id ?? "plugin",
-          cause instanceof Error ? cause.message : String(cause),
-        );
+        reportFrom(handler.api, cause);
       }
     }
   };
@@ -266,18 +277,15 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
     const registries: ClientRegistries = {
       commands: registry<Command>(
         (item) => item.name,
-        (entry): entry is Command => typeof entry !== "function",
         () => registries,
       ),
       settings: settingsRegistry(() => registries),
       renderers: registry<Renderer>(
         (item) => `${item.kind.kind}:${item.framework}`,
-        (entry): entry is Renderer => typeof entry !== "function",
         () => registries,
       ),
       keybindings: registry<Keybinding>(
         (item) => item.key,
-        (entry): entry is Keybinding => typeof entry !== "function",
         () => registries,
       ),
     };
@@ -294,12 +302,12 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
       side: "client",
       sdk: options.connection,
       contribute: registries,
-      storage: memoryStorage(),
+      storage: memoryStorage(options.client.name),
       signal: controller.signal,
       hook: (name, entry) => register(api, name, entry),
-      report: (issue: ValidationIssue) => options.report(plugin.id, issue.message),
+      report: (issue) => options.report(plugin.id, issue.message),
       reload: () => undefined,
-      client: { name: "tui", frameworks: ["tui"] },
+      client: options.client,
       get session() {
         return options.session();
       },
@@ -327,7 +335,7 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
     try {
       await plugin.activate?.(api);
     } catch (cause) {
-      options.report(plugin.id, cause instanceof Error ? cause.message : String(cause));
+      options.report(plugin.id, causeMessage(cause));
     }
   }
 
@@ -335,15 +343,31 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
 
   for (const { api } of apis)
     for (const renderer of api.contribute.renderers.list())
-      if (renderer.framework === "tui" && !renderers.has(renderer.kind.kind))
+      if (
+        options.client.frameworks.includes(renderer.framework) &&
+        !renderers.has(renderer.kind.kind)
+      )
         renderers.set(renderer.kind.kind, renderer);
 
-  const ends = new Map<string, string>();
+  const ends = new Map<string, RunId>();
   let seeded = false;
 
-  const stopDirectory = follow(
-    options.connection.sessions.watch({ parents: { kind: "all" } }),
-    (sessions) => {
+  await observe(handlers.app_ready, { restored: false }, null);
+
+  return {
+    ids: apis.map(({ plugin }) => plugin.id),
+    draw(session, message, placement) {
+      const renderer = renderers.get(message.partKind);
+
+      if (renderer === undefined) return undefined;
+      const part = session.part(message.part);
+
+      return renderer.render(
+        { state: message.state, version: message.version, placement },
+        (action, input) => part.act(action, input),
+      );
+    },
+    sessionsChanged(sessions) {
       for (const info of sessions) {
         for (const head of info.heads) {
           const key = `${info.id}/${head.name}`;
@@ -357,35 +381,12 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
               handlers.run_ended_anywhere,
               { session: info.id, run: last.id, end: last.end },
               info.id,
+              last.id,
             );
         }
       }
 
       seeded = true;
-    },
-    (cause) =>
-      options.report("notifications", cause instanceof Error ? cause.message : String(cause)),
-  );
-
-  await observe(handlers.app_ready, { restored: false }, null);
-
-  return {
-    ids: apis.map(({ plugin }) => plugin.id),
-    draw(message) {
-      const renderer = renderers.get(message.partKind);
-      const session = options.session();
-
-      if (renderer === undefined || session === null) return undefined;
-      const part = session.part(message.part);
-
-      return renderer.render(
-        {
-          state: message.state,
-          version: message.version,
-          placement: { kind: "transcript", role: message.role },
-        },
-        (action, input) => part.act(action, input),
-      );
     },
     async switched(previous, next) {
       if (previous !== null)
@@ -394,7 +395,7 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
     },
     async beforeSubmit(draft) {
       for (const handler of handlers.before_submit) {
-        const decision = await handler.run(draft, context(handler.api, draft.session));
+        const decision = await handler.run(draft, context(handler.api, draft.session, null));
 
         if (decision.action !== "continue") return decision;
       }
@@ -402,7 +403,6 @@ export async function mountClientPlugins(options: MountOptions): Promise<ClientP
       return { action: "continue" };
     },
     async dispose() {
-      stopDirectory();
       await observe(handlers.app_closing, undefined, null);
       controller.abort();
     },

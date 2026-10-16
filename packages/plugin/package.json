@@ -32,6 +32,7 @@
     "./core/telemetry": "./src/telemetry.ts",
     "./core/web-search": "./src/web-search.ts",
     "./client": "./src/client.ts",
+    "./client/mount": "./src/client/mount.ts",
     "./client/notifications": "./src/client/notifications.ts",
     "./client/presentation": "./src/client/presentation.ts",
     "./client/questions": "./src/question/client/questions.tsx",

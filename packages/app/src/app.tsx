@@ -20,8 +20,7 @@ import { workbenchController } from "./workbench/controller.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { acceptHostSettings } from "./preferences/host.ts";
-import { mountClientPlugins, observeRunEnds } from "./client-plugins.tsx";
-import { connected, directoryWatch } from "./sdk.tsx";
+import { watchClientPlugins } from "./client-plugins.tsx";
 
 function focusedSession(): SessionId | undefined {
   const selection = activeSelection(windowTabs.controller().getSnapshot().layout);
@@ -110,17 +109,7 @@ function useHostEvents(router: AppRouter): void {
 }
 
 function useClientPlugins(): void {
-  useMountEffect(() => {
-    void connected().then(() => mountClientPlugins(focusedSession));
-    const directory = directoryWatch("all");
-    let previous = directory.value ?? [];
-
-    return directory.subscribe(() => {
-      const next = directory.value ?? [];
-      observeRunEnds(previous, next);
-      previous = next;
-    });
-  });
+  useMountEffect(() => watchClientPlugins(focusedSession));
 }
 
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
