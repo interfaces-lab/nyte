@@ -107,7 +107,7 @@ class AsyncQueue<T> {
         settled = true;
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
-        const index = this.waiters.indexOf(waiter);
+        const index = this.waiters.findIndex((pending) => pending === waiter);
 
         if (index >= 0) this.waiters.splice(index, 1);
         fn();
