@@ -585,6 +585,25 @@ function createWindow(): NyteWindow {
   return entry;
 }
 
+/** How long quitting waits for the history flush and the host close before it exits anyway. */
+const SHUTDOWN_LIMIT_MS = 5_000;
+
+let shuttingDown: Promise<void> | undefined;
+
+let shutDown = false;
+
+/** Flushes browser history and closes the host, once; quit and relaunch both wait for it. */
+function shutdown(): Promise<void> {
+  shuttingDown ??= Promise.race([
+    Promise.allSettled([browserHistory.flush(), desktopHost?.close()]),
+    new Promise((resolve) => setTimeout(resolve, SHUTDOWN_LIMIT_MS)),
+  ]).then(() => {
+    shutDown = true;
+  });
+
+  return shuttingDown;
+}
+
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -665,16 +684,15 @@ if (!hasSingleInstanceLock) {
         publish: (state) => broadcast({ kind: "update_changed", state }),
         item: updateItem,
         activity: () => getHost().updateActivity(),
-        beforeRelaunch: async () => {
-          await desktopHost?.close();
-        },
+        beforeRelaunch: shutdown,
       });
     Menu.setApplicationMenu(menu);
   });
 
-  app.on("before-quit", () => {
-    void browserHistory.flush();
-    void desktopHost?.close();
+  app.on("before-quit", (event) => {
+    if (shutDown) return;
+    event.preventDefault();
+    void shutdown().then(() => app.quit());
   });
 
   app.on("window-all-closed", () => {
