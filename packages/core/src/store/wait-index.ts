@@ -6,6 +6,9 @@ export const WAITS = "waits/";
 
 export const TIME = `${WAITS}time/`;
 
+/** The index of woken calls: a wake that completes a call's wait writes `woken/<session>/<call>`, and the call's next park or its settle drops it, so a process polling for other processes' wakes lists these rather than every unsettled call. */
+export const WOKEN = `${WAITS}woken/`;
+
 /** Digits a time key is padded to, so the index lists times in order. */
 export const TIME_DIGITS = 16;
 
@@ -53,6 +56,21 @@ export function waitIndex(
       ? [`${WAITS}input/${session}/${record.head}/${tail("input")}`]
       : []),
   ];
+}
+
+export function wokenIndex(session: SessionId, call: CallId): string {
+  return `${WOKEN}${session}/${call}`;
+}
+
+/** The session and call a `woken/` index ref names. */
+export function readWoken(
+  name: string,
+): { readonly session: SessionId; readonly call: CallId } | null {
+  const [session, ...call] = name.slice(WOKEN.length).split("/");
+
+  return !name.startsWith(WOKEN) || session === undefined || call.length === 0
+    ? null
+    : { session: asId<"session">(session), call: asId<"call">(call.join("/")) };
 }
 
 export function readIndexed(name: string): Indexed | null {

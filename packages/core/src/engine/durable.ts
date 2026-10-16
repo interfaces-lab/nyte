@@ -19,7 +19,7 @@ import { changeCall } from "../fold/commit.ts";
 import { storedAnswer } from "../store/parts.ts";
 import { partRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
-import { waitIndex } from "../store/wait-index.ts";
+import { waitIndex, wokenIndex } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
 import { holdLease } from "./lease.ts";
 import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
@@ -127,6 +127,7 @@ export async function runStep<T>(
       return {
         record: { ...current, result: settled.result, waiting: null, partial: [] },
         updates: settled.updates,
+        index: { add: [], drop: wokenDrop(session, current) },
       };
     });
 
@@ -518,7 +519,7 @@ async function park(
             }))),
         ...(await modalsWaiting(kernel.store, place.session, place.call, target)),
       ],
-      index: { add: waitIndex(place.session, record), drop: [] },
+      index: { add: waitIndex(place.session, record), drop: wokenDrop(place.session, current) },
     };
   });
 
@@ -561,6 +562,11 @@ async function modalsWaiting(
   }
 
   return updates;
+}
+
+/** The woken index ref a call's step drops when it parks again or settles: only a call that waited before can hold one. */
+function wokenDrop(session: SessionId, current: CallRecord): readonly string[] {
+  return current.waits.length === 0 ? [] : [wokenIndex(session, current.id)];
 }
 
 /** A tool call recorded with the response that asked for it, before its step opens, so a host stop in between still owes it. Its step replaces the intent with a `tool` call as if new; an intent has run nothing, so it replays safely. */

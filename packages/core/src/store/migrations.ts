@@ -13,7 +13,7 @@ import { Value } from "typebox/value";
 import { decodeCallRecord, decodeRunRecord } from "../contract/records.ts";
 import { objectId } from "../util/content.ts";
 import { callRef, liveRef, parseSessionRef, runRef } from "./refs.ts";
-import { waitIndex } from "./wait-index.ts";
+import { waitIndex, wokenIndex } from "./wait-index.ts";
 
 export type StoreDialect = "sqlite" | "postgres";
 
@@ -431,6 +431,28 @@ const intentPosition: RewriteStep = {
   },
 };
 
+/** The `woken/` index of each call an older Nyte woke and had not stepped since: only a wake writes it, and a poll for other processes' wakes reads only it. */
+const wokenCalls: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-woken-index",
+  adds(name, record) {
+    const session = parseSessionRef(name);
+    const call = decodeCallRecord(record);
+
+    if (
+      session === null ||
+      call === null ||
+      call.result !== null ||
+      call.waiting !== null ||
+      call.waits.length === 0 ||
+      name !== callRef(session, call.id)
+    )
+      return [];
+
+    return [wokenIndex(session, call.id)];
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -444,6 +466,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   parkedWaitIndex,
   toolArgsInPart,
   intentPosition,
+  wokenCalls,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

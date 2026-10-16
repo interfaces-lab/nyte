@@ -9,6 +9,7 @@ import { migrateStore } from "../src/store.ts";
 import type { StoredRecord } from "../src/store.ts";
 import type { StoreChange } from "../src/store/migrations.ts";
 import { callRef, liveRef, partRef } from "../src/store/refs.ts";
+import { wokenIndex } from "../src/store/wait-index.ts";
 import { configuration, main, setup, startRun } from "../src/harness.ts";
 
 it("gives an older store's unstopped runs their live ref and its parked calls their wait index", async () => {
@@ -220,4 +221,46 @@ it("gives an older Nyte's unopened tool call position 0, so recovery still owes 
   expect(await owedCalls(kernel.store, session.id, run.id)).toEqual([
     { call, intent, parked: false },
   ]);
+});
+
+it("indexes as woken a call an older Nyte woke and had not stepped since", async () => {
+  const { kernel, host } = await setup();
+  const session = await host.sessions.create();
+  const soon = Date.now() + 1;
+
+  for (const call of ["woken", "parked"])
+    await runStep<Json>(kernel, {
+      session: session.id,
+      head: main,
+      run: null,
+      call: asId(call),
+      kind: "hook",
+      replay: "safe",
+      intent: { test: true },
+      part: null,
+      signal: new AbortController().signal,
+      body: async (durable) =>
+        durable.wait({ kind: "timer", until: call === "woken" ? soon : soon + 60_000 }),
+      settle: async () => ({ result: null, updates: [] }),
+      decode: (result) => result,
+    });
+
+  await kernel.waits.tick(soon + 1);
+  const woken = wokenIndex(session.id, asId("woken"));
+  await kernel.store.refs.set([{ name: woken, target: null }]);
+  const created: string[] = [];
+
+  await migrateStore({
+    dialect: "sqlite",
+    stamp: async () => ({ version: 12, empty: false }),
+    records: async () => storedRecords(kernel),
+    logs: async function* () {},
+    commit: async (change) => {
+      created.push(...change.creates.map((creation) => creation.name));
+
+      return "committed";
+    },
+  });
+
+  expect(created).toEqual([woken]);
 });

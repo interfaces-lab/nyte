@@ -22,10 +22,13 @@ import { load, put, readCall } from "../store/session.ts";
 import {
   findEarliestDeadline,
   readIndexed,
+  readWoken,
   TIME,
   TIME_DIGITS,
   waitIndex,
   WAITS,
+  WOKEN,
+  wokenIndex,
 } from "../store/wait-index.ts";
 import type { Indexed } from "../store/wait-index.ts";
 import { dev } from "../util/dev-log.ts";
@@ -41,8 +44,9 @@ const STOPPED: WaitOutcome = { kind: "stopped" };
  * each pointing at the parked call record, and the wake that completes the wait deletes them in
  * the same write. Every offer is a compare-and-set on the call record that completes the wait or
  * fills its target of an `all`; an offer that finds the wait already past, or the call gone,
- * drops the index entry that led to it. The registry keeps no copy of what is parked; only this
- * process's live action loops are held, as resumers.
+ * drops the index entry that led to it. A completed wait indexes the call as woken until its next
+ * park or its settle, which is all a poll for other processes' wakes reads. The registry keeps no
+ * copy of what is parked; only this process's live action loops are held, as resumers.
  */
 export function createWaitRegistry(
   kernel: Kernel,
@@ -88,7 +92,7 @@ export function createWaitRegistry(
   ): Promise<CallChange> => ({
     record: { ...current, waits: [...current.waits, outcome], waiting: null, partial: [] },
     updates: await resumed(session, current),
-    index: { add: [], drop: waitIndex(session, current) },
+    index: { add: [wokenIndex(session, current.id)], drop: waitIndex(session, current) },
   });
 
   const woken = (session: SessionId, record: CallRecord): void => {
@@ -338,8 +342,17 @@ export function createWaitRegistry(
       await Promise.all(due);
     },
     async refresh() {
-      for (const { session, record } of await pendingCalls(kernel))
-        if (record.waiting === null) wake(kernel, session, record);
+      await Promise.all(
+        (await kernel.store.refs.list(WOKEN)).map(async (ref) => {
+          const woken = readWoken(ref.name);
+
+          if (woken === null) return;
+          const found = await readCall(kernel.store, woken.session, woken.call);
+
+          if (found !== null && found.record.waiting === null)
+            wake(kernel, woken.session, found.record);
+        }),
+      );
 
       await Promise.all(
         [...resumers.values()].map(async (resumer) => {

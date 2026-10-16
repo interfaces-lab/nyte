@@ -367,7 +367,7 @@ export interface WaitRegistry {
 
   rerun(session: SessionId, call: CallId): void;
 
-  /** After another process committed: steps the unparked calls it may have woken (see `loadWaits`), and resumes this process's action loops whose call it settled or whose re-run claim lapsed. A parked call is left to its index, which every process offers through. */
+  /** After another process committed: steps the calls its wakes indexed as woken (see `loadWaits`), and resumes this process's action loops whose call it settled or whose re-run claim lapsed. A parked call is left to its index, which every process offers through. */
   refresh(): Promise<void>;
 
   /** Registers this process's live loop for an action call, resumed when its wait completes. */
