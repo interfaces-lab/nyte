@@ -1,5 +1,7 @@
-// Generates the ASCII moon frames used by the desktop startup shell.
-// Cells are 23x12: at 0.6ch advance width and 1.15 line-height the disc is square.
+/**
+ * Generates the ASCII moon frames used by the desktop startup shell.
+ * Cells are 23x12: at 0.6ch advance width and 1.15 line-height the disc is square.
+ */
 
 const COLS = 23;
 
@@ -36,8 +38,11 @@ const mariaShade = (x, y) => {
 const pick = (ramp, t) =>
   ramp[Math.min(ramp.length - 1, Math.max(0, Math.round(t * (ramp.length - 1))))];
 
+/**
+ * Render one phase: 0 is new, 0.5 is full, and the sun turns in the disc plane. The lit side softens
+ * toward the terminator and the limb so the sphere reads as a sphere.
+ */
 const frame = (phase) => {
-  // Sun direction in the disc plane; phase 0 is new, 0.5 is full.
   const angle = phase * Math.PI * 2;
   const sun = [Math.sin(angle), 0, -Math.cos(angle)];
   const rows = [];
@@ -60,7 +65,6 @@ const frame = (phase) => {
       const shade = mariaShade(x, y);
 
       if (light > 0) {
-        // Soften the terminator and the limb so the sphere reads as a sphere.
         const t = Math.min(1, Math.pow(light, 0.55)) * (1 - shade) * (0.55 + 0.45 * z);
         line += pick(LIT_RAMP, t);
       } else {

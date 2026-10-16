@@ -310,7 +310,7 @@ try {
       );
 
       for (const { condition, target } of targets) {
-        assert.ok(/^\.\/dist\/src\//.test(target), `Uncompiled export ${entry.name}: ${target}`);
+        assert.ok(target.startsWith("./dist/src/"), `Uncompiled export ${entry.name}: ${target}`);
         assert.ok(
           condition === "types" ? target.endsWith(".d.ts") : target.endsWith(".js"),
           `Invalid ${condition} export ${target}`,
@@ -467,14 +467,13 @@ console.log("PASS OAuth lazy loads without login or network");
 
     if (result.error) throw result.error;
     const errors = result.stdout.split("\n").filter((line) => /: error TS\d+:/.test(line));
-    const isForeign = (line) => {
-      const file = line.slice(0, line.indexOf("("));
+    const { foreign = [], ours = [] } = Object.groupBy(errors, (line) => {
+      const file = line.split("(", 1)[0];
 
-      return file.includes("node_modules/") && !file.includes("/node_modules/@nyte-ai/");
-    };
-
-    const foreign = errors.filter(isForeign);
-    const ours = errors.filter((line) => !isForeign(line));
+      return file.includes("node_modules/") && !file.includes("/node_modules/@nyte-ai/")
+        ? "foreign"
+        : "ours";
+    });
 
     for (const line of foreign) console.warn(`Third-party declaration error, not ours: ${line}`);
     assert.equal(ours.length, 0, `Consumer or @nyte-ai type errors:\n${ours.join("\n")}`);
