@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
+import { watch } from "node:fs";
 import { mkdir, open, readFile, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import process from "node:process";
 import { scheduler } from "node:timers/promises";
 import { ConnectViewSchema } from "@nyte-ai/connect";
 import type { ConnectView } from "@nyte-ai/connect";
 import { HOST_HEADER } from "@nyte-ai/protocol";
 import { Value } from "typebox/value";
-import { alive, lockHolder, logPath, readRegistration } from "./registration.ts";
+import { alive, lockHolder, logPath, readRegistration, registrationPath } from "./registration.ts";
 import type { Registration } from "./registration.ts";
 import { SERVICE_ROUTES, ServiceEventSchema } from "./routes.ts";
 import type { ServiceEvent } from "./routes.ts";
@@ -16,7 +17,8 @@ const START_TIMEOUT_MS = 20_000;
 
 const STOP_TIMEOUT_MS = 5_000;
 
-const POLL_MS = 50;
+/** How often `stopService` checks whether the stopped service has exited. */
+const STOP_POLL_MS = 50;
 
 export interface EnsureServiceOptions {
   readonly home: string;
@@ -57,7 +59,7 @@ export async function stopService(home: string): Promise<boolean> {
 
   while (Date.now() < deadline) {
     if (!alive(pid)) return true;
-    await scheduler.wait(POLL_MS);
+    await scheduler.wait(STOP_POLL_MS);
   }
 
   throw new Error(
@@ -65,43 +67,64 @@ export async function stopService(home: string): Promise<boolean> {
   );
 }
 
+/**
+ * Starts the service and waits for it to register. The registration file is the readiness
+ * signal: the service renames it into place once it listens, so each change to it (or the
+ * child exiting) wakes one check instead of a timer polling for it.
+ */
 async function start(options: EnsureServiceOptions): Promise<Registration> {
   const log = logPath(options.home);
+  const registration = registrationPath(options.home);
   await mkdir(dirname(log), { recursive: true, mode: 0o700 });
+  await mkdir(dirname(registration), { recursive: true, mode: 0o700 });
   const offset = (await stat(log).catch(() => undefined))?.size ?? 0;
   const output = await open(log, "a", 0o600);
   const [command, ...args] = options.command;
+  let wake = Promise.withResolvers<void>();
 
-  const child = spawn(command, args, {
-    cwd: options.home,
-    detached: true,
-    stdio: ["ignore", output.fd, output.fd],
-  });
-
-  child.unref();
-  await output.close();
-
-  const exited = new Promise<void>((settle) => {
-    child.once("exit", () => settle());
-    child.once("error", () => settle());
+  const watcher = watch(dirname(registration), (_event, file) => {
+    if (file === null || file === basename(registration)) wake.resolve();
   });
 
   let gone = false;
-  void exited.then(() => {
-    gone = true;
-  });
 
-  const deadline = Date.now() + START_TIMEOUT_MS;
+  try {
+    const child = spawn(command, args, {
+      cwd: options.home,
+      detached: true,
+      stdio: ["ignore", output.fd, output.fd],
+    });
 
-  while (Date.now() < deadline) {
-    const exitedBefore = gone;
-    const found = await findService(options.home);
+    child.unref();
+    await output.close();
 
-    if (found?.version === options.version) return found;
+    const exited = (): void => {
+      gone = true;
+      wake.resolve();
+    };
 
-    if (exitedBefore && (await lockHolder(options.home)) === undefined)
-      throw new Error(`${await failureIn(log, offset)} See ${log}.`);
-    await scheduler.wait(POLL_MS);
+    child.once("exit", exited);
+    child.once("error", exited);
+    const timeout = setTimeout(() => wake.resolve(), START_TIMEOUT_MS);
+    const deadline = Date.now() + START_TIMEOUT_MS;
+
+    try {
+      while (Date.now() < deadline) {
+        const exitedBefore = gone;
+        const found = await findService(options.home);
+
+        if (found?.version === options.version) return found;
+
+        if (exitedBefore && (await lockHolder(options.home)) === undefined)
+          throw new Error(`${await failureIn(log, offset)} See ${log}.`);
+        await wake.promise;
+        wake = Promise.withResolvers<void>();
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  } finally {
+    watcher.close();
   }
 
   throw new Error(`The Nyte service didn't start within 20 s. See ${log}.`);
@@ -128,7 +151,6 @@ async function answers(registration: Registration): Promise<boolean> {
 
   return hostId === registration.hostId;
 }
-
 
 export interface ServiceConnect {
   view(): Promise<ConnectView>;
@@ -177,16 +199,11 @@ async function* events(
 
   try {
     for await (const chunk of response.body) {
-      buffered += decoder.decode(chunk, { stream: true });
-      let newline = buffered.indexOf("\n");
+      const lines = `${buffered}${decoder.decode(chunk, { stream: true })}`.split("\n");
+      buffered = lines.pop() ?? "";
 
-      while (newline !== -1) {
-        const line = buffered.slice(0, newline);
-        buffered = buffered.slice(newline + 1);
-
+      for (const line of lines)
         if (line !== "") yield Value.Parse(ServiceEventSchema, JSON.parse(line));
-        newline = buffered.indexOf("\n");
-      }
     }
   } catch (cause) {
     if (signal.aborted) return;
