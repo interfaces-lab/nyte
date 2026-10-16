@@ -48,7 +48,7 @@ export function localFontSelection(family: string): LocalFontSelection {
   return `${LOCAL_FONT_PREFIX}${normalized}`;
 }
 
-export function localFontFamily(selection: UiFont | CodeFont): string | undefined {
+export function localFontFamily(selection: string): string | undefined {
   return Value.Check(LocalFontSelection, selection)
     ? selection.slice(LOCAL_FONT_PREFIX.length)
     : undefined;
