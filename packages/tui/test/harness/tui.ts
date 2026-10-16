@@ -8,6 +8,7 @@ import type { Kit } from "../../src/app/context.tsx";
 import { mountApp } from "../../src/app/main.tsx";
 import type { AppOptions, MountedApp } from "../../src/app/main.tsx";
 import type { Store } from "../../src/app/store.ts";
+import { holdTypeahead } from "../../src/app/typeahead.ts";
 import type { BootOptions } from "../../src/effects/boot.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
 import { hostPort } from "../../src/effects/host-port.ts";
@@ -28,6 +29,8 @@ export interface TuiOptions {
   /** `false` keeps the host closed until `openHost()`, as a slow service would. */
   readonly opened?: boolean;
   readonly target?: BootOptions["target"];
+  /** Keys typed after the renderer starts reading input but before the app mounts. */
+  readonly typed?: string;
   readonly kit?: (kit: Kit) => Kit;
 }
 
@@ -63,6 +66,9 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     clock,
   });
 
+  const typeahead = holdTypeahead(setup.renderer);
+
+  if (options.typed !== undefined) await setup.mockInput.typeText(options.typed);
   const fixture = options.fixture ?? (await openTestHost());
   const home = mkdtempSync(join(tmpdir(), "nyte-tui-app-"));
   const fakes = fakePorts(fakeHost());
@@ -75,6 +81,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     renderer: setup.renderer,
     ports: { ...fakes, log: openCrashLog(home) },
     cwd: home,
+    typeahead,
     boot: { home, cwd: home, target: options.target ?? { kind: "new" }, model: null, effort: null },
     async open() {
       await opening.promise;

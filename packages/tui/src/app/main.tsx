@@ -5,12 +5,12 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import {
   CliRenderEvents,
+  CliRenderer,
   MouseButton,
   NativeSession,
-  createCliRenderer,
   maybeMakeRenderable,
 } from "@opentui/core";
-import type { CliRenderer, Renderable } from "@opentui/core";
+import type { Renderable } from "@opentui/core";
 import { render } from "@opentui/solid";
 import { createRoot, createSignal } from "solid-js";
 import type { BootOptions } from "../effects/boot.ts";
@@ -40,6 +40,8 @@ import { installSinks } from "./sinks.ts";
 import { createStore } from "./store.ts";
 import type { Store } from "./store.ts";
 import { createTickers } from "./ticker.ts";
+import { holdTypeahead } from "./typeahead.ts";
+import type { Typeahead } from "./typeahead.ts";
 
 export type TuiExit =
   | { readonly kind: "quit" }
@@ -71,6 +73,8 @@ export interface AppOptions {
   readonly boot: BootOptions;
   /** Opens the host. The app paints and takes typing at once, and boots when this resolves. */
   readonly open: (dispatch: (msg: Msg) => void) => Promise<OpenedHost>;
+  /** Keys held since the renderer began reading stdin, replayed once the composer has focus. */
+  readonly typeahead?: Typeahead;
   readonly kit?: (kit: Kit) => Kit;
 }
 
@@ -245,6 +249,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     renderer,
   );
 
+  options.typeahead?.release();
   store.runner.boot(
     options.boot,
     opening.then(() => undefined),
@@ -267,8 +272,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 }
 
 /**
- * Runs the interactive TUI: connects to the service from the first instruction, and prints
- * the resume command on exit. The exit text waits
+ * Runs the interactive TUI: connects to the service from the first instruction, holds keys
+ * typed before the app mounts, and prints the resume command on exit. The exit text waits
  * for `renderer.closed`, because OpenTUI restores and clears the terminal after `destroy`
  * returns and would wipe anything written before.
  */
@@ -303,14 +308,29 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   registerSyntaxParsers();
   const native = new NativeSession(process.stdout);
 
-  const renderer = await createCliRenderer({
-    ...TUI_RENDERER_CONFIG,
-    nativeSession: native,
-    exitOnCtrlC: false,
-    autoFocus: false,
-    enableMouseMovement: true,
-    clearOnShutdown: true,
-    openConsoleOnError: false,
+  const renderer = new CliRenderer(
+    process.stdin,
+    process.stdout,
+    process.stdout.columns || 80,
+    process.stdout.rows || 24,
+    {
+      ...TUI_RENDERER_CONFIG,
+      nativeSession: native,
+      exitOnCtrlC: false,
+      autoFocus: false,
+      enableMouseMovement: true,
+      clearOnShutdown: true,
+      openConsoleOnError: false,
+    },
+  );
+
+  const typeahead = holdTypeahead(renderer);
+
+  await renderer.setupTerminal().catch(async (cause: unknown) => {
+    renderer.destroy();
+    await renderer.closed.catch(() => undefined);
+
+    throw cause;
   });
 
   const encoder = new TextEncoder();
@@ -319,6 +339,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
   const app = await mountApp({
     renderer,
     cwd,
+    typeahead,
     ports: {
       terminal,
       composer: createHandle(),

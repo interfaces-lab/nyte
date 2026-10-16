@@ -4,8 +4,7 @@ import solidPlugin from "@opentui/solid/bun-plugin";
 import { Glob } from "bun";
 import { expect, test } from "bun:test";
 
-const ROOT = resolve(import.meta.dir, "..");
-const SRC = join(ROOT, "src");
+const SRC = join(resolve(import.meta.dir, ".."), "src");
 
 const DIRS = ["app", "model", "effects", "ui", "lib", "services"] as const;
 
@@ -22,12 +21,13 @@ function sources(dir: string): readonly string[] {
   return [...new Glob(`${dir}/**/*.{ts,tsx}`).scanSync(SRC)];
 }
 
-function importsOf(file: string): readonly Import[] {
+function readImports(file: string): readonly Import[] {
   const code = readFileSync(join(SRC, file), "utf8");
 
   return [...code.matchAll(STATEMENT)].map((match) => {
     const [, , typeOnly, clause = "", spec = ""] = match;
     const named = /\{([^}]*)\}/u.exec(clause)?.[1];
+
     const outside = clause
       .replace(/\{[^}]*\}/u, "")
       .replaceAll(",", "")
@@ -51,7 +51,7 @@ function importsOf(file: string): readonly Import[] {
 }
 
 function all(dirs: readonly string[]): readonly Import[] {
-  return dirs.flatMap((dir) => sources(dir).flatMap(importsOf));
+  return dirs.flatMap((dir) => sources(dir).flatMap(readImports));
 }
 
 const describe = (entry: Import): string => `${entry.file} → ${entry.spec}`;
@@ -90,11 +90,13 @@ test("only effects/host-port.ts imports SDK values", () => {
   expect(offending.map(describe)).toEqual([]);
 });
 
-test("no frame callbacks and no raw keyInput listeners", () => {
-  const offending = DIRS.flatMap(sources).filter((file) =>
-    /setFrameCallback\s*\(|keyInput\s*\.\s*(on|once|addListener|prependListener)\s*\(/u.test(
-      readFileSync(join(SRC, file), "utf8"),
-    ),
+test("no frame callbacks, and no raw keyInput listeners but the typeahead held before the keymap exists", () => {
+  const offending = DIRS.flatMap(sources).filter(
+    (file) =>
+      file !== "app/typeahead.ts" &&
+      /setFrameCallback\s*\(|keyInput\s*\.\s*(on|once|addListener|prependListener)\s*\(/u.test(
+        readFileSync(join(SRC, file), "utf8"),
+      ),
   );
 
   expect(offending).toEqual([]);
