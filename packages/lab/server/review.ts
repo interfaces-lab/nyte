@@ -891,7 +891,7 @@ class Reviews {
 
     try {
       switch (route) {
-        case "GET /this.#repo":
+        case "GET /repo":
           return this.#json(await this.#repoInfo());
         case "GET /compare":
           return this.#json(
