@@ -105,10 +105,6 @@ export { dev } from "./util/dev-log.ts";
 
 export type { DevRow } from "./util/dev-log.ts";
 
-export { SdkError } from "./util/error.ts";
-
-export type { SdkErrorCode } from "./util/error.ts";
-
 export { closable, coalesce } from "./util/iterable.ts";
 
 export { matchesOutput } from "./util/json-schema.ts";

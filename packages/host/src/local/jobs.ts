@@ -3,9 +3,9 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
-import { SdkError, processEnvironment, closable, dev } from "@nyte-ai/core";
+import { processEnvironment, closable, dev } from "@nyte-ai/core";
 import type { ExecutionEnv, Job } from "@nyte-ai/core";
 
 type PtyModule = {

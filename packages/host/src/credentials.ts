@@ -1,7 +1,7 @@
 import { readCredentialAccounts } from "@nyte-ai/ai/auth/types";
 import type { CredentialAccounts, CredentialStore } from "@nyte-ai/ai/auth/types";
+import { SdkError } from "@nyte-ai/schema";
 import type { Json, Ref } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import { decodeKvValue, envelope, kvRef } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { Type } from "typebox";

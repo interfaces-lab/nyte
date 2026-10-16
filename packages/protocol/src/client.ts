@@ -1,4 +1,4 @@
-import { OPERATIONS, asId } from "@nyte-ai/schema";
+import { asId, OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type {
   ByteReader,
   FileVersion,
@@ -7,7 +7,6 @@ import type {
   OutputFrame,
   RequestOptions,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { OperationName } from "./declarations.ts";
 import { parseJson } from "./json.ts";
 import { HOST_HEADER, decodeError, parseOutputFrames, parseSse, withInputHeader } from "./wire.ts";

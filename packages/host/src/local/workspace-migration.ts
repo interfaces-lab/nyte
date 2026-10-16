@@ -1,8 +1,7 @@
 import { realpath, stat } from "node:fs/promises";
-import { SdkError } from "@nyte-ai/core";
 import { decodeWorkspaceRecord, envelope } from "@nyte-ai/core/store";
 import type { StoreConnection } from "@nyte-ai/core";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { RefUpdate } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";

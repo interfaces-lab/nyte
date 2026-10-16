@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   BatchOutcome,
   BlobId,
@@ -13,7 +13,6 @@ import type { BatchEntry, FilesApi, FileScope } from "../contract/workspace.ts";
 import { writeReceipt } from "../fold/commit.ts";
 import { readReceipt } from "../store/session.ts";
 import { blobId, objectId } from "../util/content.ts";
-import { SdkError } from "../util/error.ts";
 import { settleReceipt, typedReceipt } from "./receipts.ts";
 import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";

@@ -1,3 +1,4 @@
+import { SdkError } from "@nyte-ai/schema";
 import type {
   ByteReader,
   Disposer,
@@ -6,7 +7,7 @@ import type {
   OutputFrame,
   RequestOptions,
 } from "@nyte-ai/schema";
-import { SdkError, closable, dev } from "@nyte-ai/core";
+import { closable, dev } from "@nyte-ai/core";
 import { decodeOutput, encodeInput } from "@nyte-ai/protocol";
 import type {
   ByteName,

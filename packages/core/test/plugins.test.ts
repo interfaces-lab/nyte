@@ -1,4 +1,4 @@
-import { asId, asSeq, standard } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError, standard } from "@nyte-ai/schema";
 import type {
   Json,
   PartId,
@@ -11,7 +11,7 @@ import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
-import { ALL_AUTHORITY, LOCAL, SdkError, definePart, text } from "../src/index.ts";
+import { ALL_AUTHORITY, LOCAL, definePart, text } from "../src/index.ts";
 import { callRef, decodeCallRecord, decodePartRecord, kvRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type {

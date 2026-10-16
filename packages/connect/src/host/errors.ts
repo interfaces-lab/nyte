@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 
 /**
  * A failure the Connect lifecycle reports to its embedding, as an `SdkError`

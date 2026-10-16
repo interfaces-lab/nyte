@@ -1,5 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
-import { isJsonObject } from "@nyte-ai/schema";
+import { isJsonObject, SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 
 export const CHANNEL_PATH = ".nyte/streams";

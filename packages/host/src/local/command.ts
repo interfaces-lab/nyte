@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
-import { SdkError, processEnvironment } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
+import { processEnvironment } from "@nyte-ai/core";
 
 export type Ran = {
   readonly code: number | null;

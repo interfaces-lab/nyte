@@ -1,5 +1,6 @@
+import { SdkError } from "@nyte-ai/schema";
 import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core";
 import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
 import type { Connection, ListenOptions, Listener } from "@nyte-ai/core";
 import type { ServedHost, Verdict } from "@nyte-ai/core/server";

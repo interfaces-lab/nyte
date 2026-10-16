@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
+import { SdkError } from "@nyte-ai/schema";
 import type { Message, SessionView, ViewAppend, ViewFrame, ViewSplice } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import { mapped } from "./streams.ts";
 
 type ViewDelta = Extract<ViewFrame, { readonly kind: "delta" }>;

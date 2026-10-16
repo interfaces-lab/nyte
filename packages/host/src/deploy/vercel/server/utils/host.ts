@@ -1,6 +1,6 @@
 import process from "node:process";
 import { createModels } from "@nyte-ai/ai/models";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import { composeHost } from "@nyte-ai/core/server";
 import type { Host, Listener, OpenOptions } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";

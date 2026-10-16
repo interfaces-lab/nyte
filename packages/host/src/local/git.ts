@@ -1,6 +1,6 @@
 import { lstat, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   BlameView,
   ChangeSet,
@@ -17,7 +17,7 @@ import type {
   PatchEntry,
   PatchSet,
 } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core";
 import type { ExecutionEnv, GitApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { run } from "./command.ts";

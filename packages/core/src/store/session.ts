@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CallId,
   CommitId,
@@ -37,7 +37,6 @@ import type {
   SessionRecord,
 } from "../contract/records.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { callRef, headRef, inboxRef, receiptRef, sessionRef } from "./refs.ts";
 import type { StoreConnection } from "../contract/store.ts";
 

@@ -1,6 +1,5 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import { createTransport } from "@nyte-ai/protocol";
 import { afterEach, expect, it, vi } from "vitest";
 import { createLink, createRows } from "../src/rows.ts";

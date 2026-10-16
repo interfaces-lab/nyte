@@ -1,8 +1,9 @@
 import { readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
+import { SdkError } from "@nyte-ai/schema";
 import type { ValidationIssue } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/core";
 import type { ComposeOptions } from "@nyte-ai/core/server";
 import { codeOf } from "../local/tree.ts";

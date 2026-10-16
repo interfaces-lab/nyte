@@ -1,7 +1,7 @@
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Authority,
   ExecutionCoverage,
@@ -14,7 +14,6 @@ import type {
 } from "@nyte-ai/schema";
 import type { Listener, ListenOptions } from "@nyte-ai/core";
 import type { ComposeOptions } from "@nyte-ai/core/server";
-import { SdkError } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
 import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";

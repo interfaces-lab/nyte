@@ -1,4 +1,4 @@
-import { asId, isJson } from "@nyte-ai/schema";
+import { asId, isJson, SdkError } from "@nyte-ai/schema";
 import type {
   CredentialSource,
   HeadName,
@@ -8,7 +8,7 @@ import type {
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { SdkError, closable, dev } from "@nyte-ai/core";
+import { closable, dev } from "@nyte-ai/core";
 import type { Connection, Head, Login, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
 import type { OperationOutput, Transport } from "@nyte-ai/protocol";
 import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";

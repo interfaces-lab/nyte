@@ -59,7 +59,6 @@ export type {
   Resources,
   Row,
   Run,
-  SdkErrorCode,
   SendReceipt,
   Session,
   Sessions,
@@ -216,6 +215,7 @@ export type {
   RunView,
   ScanFrame,
   Schedule,
+  SdkErrorCode,
   Schema,
   SearchFrame,
   SendOptions,
@@ -262,7 +262,9 @@ export type {
   WriteOutcome,
 } from "@nyte-ai/schema";
 
-export { dev, SdkError } from "@nyte-ai/core";
+export { dev } from "@nyte-ai/core";
+
+export { SdkError } from "@nyte-ai/schema";
 
 export { pagedViews } from "./history.ts";
 

@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Disposer,
   HeadName,
@@ -25,7 +25,6 @@ import {
   readRefExpectation,
   STALE,
 } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import { stopRun } from "./fence.ts";
 import { notifyReceipt, onReceipt, waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";

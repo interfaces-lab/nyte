@@ -1,4 +1,4 @@
-import { BatchOutcomeSchema, MoveOutcomeSchema, RunEndSchema } from "@nyte-ai/schema";
+import { BatchOutcomeSchema, MoveOutcomeSchema, RunEndSchema, SdkError } from "@nyte-ai/schema";
 import type {
   BatchOutcome,
   Json,
@@ -9,7 +9,6 @@ import type {
   Schema,
   SessionId,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { Receipt, Run, SendReceipt } from "@nyte-ai/core";
 import type { Rows } from "./rows.ts";
 

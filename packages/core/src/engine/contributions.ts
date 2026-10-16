@@ -1,6 +1,6 @@
+import { SdkError } from "@nyte-ai/schema";
 import type { ConfigureOutcome } from "@nyte-ai/schema";
 import type { Contributions, Kernel, PluginRuntime } from "../contract/kernel.ts";
-import { SdkError } from "../util/error.ts";
 
 export type Refusal = Exclude<ConfigureOutcome, { readonly kind: "configured" }>;
 

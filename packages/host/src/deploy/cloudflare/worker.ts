@@ -1,8 +1,7 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { AdvanceReport, HeadName, Owned, SessionId } from "@nyte-ai/schema";
 import type { Models } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
-import { SdkError } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import type { Host, Listener, OpenOptions } from "@nyte-ai/core";
 import type { ServedHost, ServerHost } from "@nyte-ai/core/server";

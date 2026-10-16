@@ -2,7 +2,7 @@ import type { ProviderAuth, SimpleStreamOptions } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels, Provider } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Authority,
   FileVersion,
@@ -12,7 +12,6 @@ import type {
   PrincipalId,
 } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model, TextContent } from "@nyte-ai/schema/model";
-import { SdkError } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
 import type {
   BrowserApi,

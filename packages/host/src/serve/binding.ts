@@ -1,4 +1,4 @@
-import { isJson } from "@nyte-ai/schema";
+import { isJson, SdkError } from "@nyte-ai/schema";
 import type {
   ByteReader,
   Capability,
@@ -16,7 +16,6 @@ import type {
   SessionId,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type {
   BrowserApi,
   Connection,

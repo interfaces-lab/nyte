@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Disposer,
   HeadName,
@@ -7,7 +7,7 @@ import type {
   SessionId,
   SessionView,
 } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core";
 import type { RequestJournal } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "./rows.ts";

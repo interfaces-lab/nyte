@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_HEADER, asSdkError, encodeError, streamBuffer } from "@nyte-ai/protocol";
 import type { StreamFrame } from "@nyte-ai/protocol";

@@ -1,6 +1,5 @@
-import { asSeq } from "@nyte-ai/schema";
+import { asSeq, SdkError } from "@nyte-ai/schema";
 import type { ObjectId, Ref, Revision, Seq, SessionId, SetOutcome } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import {
   admits,
   fenceNames,

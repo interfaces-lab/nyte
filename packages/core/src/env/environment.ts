@@ -1,3 +1,4 @@
+import { SdkError } from "@nyte-ai/schema";
 import type { Availability, Capability, SessionId, WorkspaceId } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeWorkspaceRecord } from "../contract/records.ts";
@@ -20,7 +21,6 @@ import type {
 import { applyBatch } from "../engine/batches.ts";
 import { workspaceRef } from "../store/refs.ts";
 import { load, requireSession } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import { wrapBrowser } from "./browser.ts";
 import type { StoreConnection } from "../contract/store.ts";
 

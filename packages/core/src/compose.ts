@@ -1,4 +1,4 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
 import type {
   Activation,
   Disposer,
@@ -75,7 +75,6 @@ import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
 import { readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
-import { SdkError } from "./util/error.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;

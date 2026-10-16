@@ -1,3 +1,4 @@
+import { SdkError } from "@nyte-ai/schema";
 import type {
   Configuration,
   ConfigurationPatch,
@@ -33,7 +34,6 @@ import { commit } from "../fold/commit.ts";
 import { MODEL_PREFERENCE, readModelSelection } from "../store/model-state.ts";
 import { put } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
-import { SdkError } from "../util/error.ts";
 import { closable } from "../util/iterable.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
 import { bumpGeneration } from "./registry.ts";

@@ -1,8 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { HostView, SessionView } from "@nyte-ai/schema";
-import { SdkError, dev, isPart, text as textPart } from "@nyte-ai/core";
+import { dev, isPart, text as textPart } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { createTransport, decodeInput, encodeError, parseSse } from "@nyte-ai/protocol";
 import { CHANNEL_PATH, STREAM_HEADER, readStreamFrame } from "../../protocol/src/stream-channel.ts";

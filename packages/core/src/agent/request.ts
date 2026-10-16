@@ -8,6 +8,7 @@ import type {
   ProviderCheckpointMaterial,
   Tool,
 } from "@nyte-ai/schema/model";
+import { SdkError } from "@nyte-ai/schema";
 import type {
   DurableEvent,
   Failure,
@@ -34,7 +35,6 @@ import { commit } from "../fold/commit.ts";
 import { runRef, sessionRef } from "../store/refs.ts";
 import { attempt, load, put, requireSession, STALE } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
 
 interface Completed {

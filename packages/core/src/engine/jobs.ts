@@ -1,4 +1,4 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
 import type {
   BackgroundItem,
   CallId,
@@ -18,7 +18,6 @@ import type { Kernel } from "../contract/kernel.ts";
 import type { Job, JobEntry, JobOutput, Jobs, JobTable } from "../contract/workspace.ts";
 import { MAIN, readSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { closable } from "../util/iterable.ts";
 import { send } from "./admission.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";

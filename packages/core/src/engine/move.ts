@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CommitId,
   HeadName,
@@ -32,7 +32,6 @@ import {
 } from "../store/session.ts";
 import type { MoveFailure, Tip } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
-import { SdkError } from "../util/error.ts";
 import { holdSummary, summarizedMove, summaryHeld } from "./branch-summary.ts";
 import { fence, finishFence } from "./fence.ts";
 import { known, reserve, settleReceipt, typedReceipt } from "./receipts.ts";

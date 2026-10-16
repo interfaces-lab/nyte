@@ -1,6 +1,5 @@
-import { SessionEventSchema } from "@nyte-ai/schema";
+import { SdkError, SessionEventSchema } from "@nyte-ai/schema";
 import type { DurableEvent, Json, Ref, RefUpdate, SessionEvent, SessionId } from "@nyte-ai/schema";
-import { SdkError } from "../util/error.ts";
 import { parseSessionRef } from "./refs.ts";
 
 export function admits(update: RefUpdate, current: Ref | undefined): boolean {

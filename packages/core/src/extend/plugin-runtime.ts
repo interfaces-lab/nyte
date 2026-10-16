@@ -1,3 +1,4 @@
+import { SdkError } from "@nyte-ai/schema";
 import type {
   Awaitable,
   Disposer,
@@ -34,7 +35,6 @@ import type { Resources } from "../contract/workspace.ts";
 import { RESERVED_PART_KINDS } from "../engine/part-definitions.ts";
 import { isCovered, requireSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { convertJsonSchema } from "../util/json-schema.ts";
 import { activateSession } from "./activation.ts";
 import { createHookDispatch, isCoreHook } from "./hooks.ts";

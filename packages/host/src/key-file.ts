@@ -1,6 +1,6 @@
 import { link, mkdir, open, readFile, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import { codeOf } from "./local/tree.ts";
 
 export async function readKeyFile(path: string, name: string): Promise<Uint8Array> {

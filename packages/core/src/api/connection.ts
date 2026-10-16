@@ -1,3 +1,4 @@
+import { SdkError } from "@nyte-ai/schema";
 import type { Capability, CredentialSource, WorkspaceId } from "@nyte-ai/schema";
 import { ALL_AUTHORITY, LOCAL } from "../contract/host.ts";
 import type { Connection, ConnectionContext, Host, PluginFile } from "../contract/host.ts";
@@ -9,7 +10,6 @@ import { advance, cover, repair } from "../drive/execution.ts";
 import { gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
 import { inspect } from "../store/inspect.ts";
-import { SdkError } from "../util/error.ts";
 import { watchHost } from "./host.ts";
 import { createSessions, sessionHandle } from "./session.ts";
 

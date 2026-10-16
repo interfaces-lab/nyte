@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import {
   CANCEL_PATH,

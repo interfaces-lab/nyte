@@ -6,9 +6,9 @@ import type {
 } from "@earendil-works/pi-codemode";
 import { renderToolSample } from "@earendil-works/pi-codemode/declarations";
 import { CODEMODE_SOURCE_GRAMMAR, parseCodemodeSource } from "@earendil-works/pi-codemode/source";
-import { SdkError, dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core";
 import type { ToolDefinition, ToolInvocation } from "@nyte-ai/core";
-import { isJson, isJsonObject, standard } from "@nyte-ai/schema";
+import { isJson, isJsonObject, SdkError, standard } from "@nyte-ai/schema";
 import type { Json, ToolContent, ToolInfo, ToolOutcome } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";

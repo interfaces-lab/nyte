@@ -1,5 +1,5 @@
+import { SdkError } from "@nyte-ai/schema";
 import type { HostId } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { ListenOptions } from "@nyte-ai/core";
 
 const PKCS8_PREFIX = Uint8Array.fromHex("302e020100300506032b657004220420");

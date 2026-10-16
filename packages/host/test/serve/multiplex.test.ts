@@ -1,6 +1,6 @@
 import { assert, expect, it } from "vitest";
-import { SdkError, definePart } from "@nyte-ai/core";
-import { standard } from "@nyte-ai/schema";
+import { definePart } from "@nyte-ai/core";
+import { SdkError, standard } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import {
   CHANNEL_HEADER,

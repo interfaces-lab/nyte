@@ -1,6 +1,5 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";

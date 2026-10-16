@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Activation,
   AddOutcome,
@@ -42,7 +42,6 @@ import {
   STALE,
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
-import { SdkError } from "../util/error.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { inspectWorkspaceAvailability, readWorkspace, workspaceRecords } from "./environment.ts";
 import { mcpApi } from "./mcp.ts";

@@ -1,10 +1,9 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
 import type { BackgroundItem, ObjectId, PageId, PageInfo } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import type { BrowserApi, Page, PageHolder, PageTable } from "../contract/workspace.ts";
 import { acquire } from "../engine/jobs.ts";
 import { objectId } from "../util/content.ts";
-import { SdkError } from "../util/error.ts";
 
 const OPENED_IDS = 256;
 

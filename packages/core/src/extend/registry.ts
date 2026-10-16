@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CatalogGeneration,
   CommandInfo,
@@ -31,7 +31,6 @@ import type {
 } from "../contract/plugin.ts";
 import { sendNow } from "../engine/admission.ts";
 import { MAIN } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import { check, convertJsonSchema } from "../util/json-schema.ts";
 import { stepPluginApi } from "./plugin-api.ts";
 import { settingInfos } from "./setting-layers.ts";

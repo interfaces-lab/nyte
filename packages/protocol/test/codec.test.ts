@@ -1,6 +1,5 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
 import type { Json, PatchSetWire, ViewFrame } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
 import { decodeInput, decodeOutput, encodeInput, encodeOutput } from "../src/index.ts";
 import type { OperationInput, OperationOutput } from "../src/index.ts";

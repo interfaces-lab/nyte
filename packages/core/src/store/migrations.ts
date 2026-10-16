@@ -4,13 +4,13 @@ import {
   HunkType,
   isJson,
   isJsonObject,
+  SdkError,
   writePatch,
 } from "@nyte-ai/schema";
 import type { Json, ObjectId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { objectId } from "../util/content.ts";
-import { SdkError } from "../util/error.ts";
 
 export type StoreDialect = "sqlite" | "postgres";
 

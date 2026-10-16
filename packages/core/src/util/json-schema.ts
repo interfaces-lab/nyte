@@ -1,6 +1,5 @@
-import { compile, isJson, isJsonObject } from "@nyte-ai/schema";
+import { compile, isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type { JsonSchema, Schema, ValidationIssue } from "@nyte-ai/schema";
-import { SdkError } from "./error.ts";
 
 const schemas = new WeakMap<
   Schema<unknown>,

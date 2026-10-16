@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
   CHANNEL_HEADER,

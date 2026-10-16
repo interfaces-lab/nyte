@@ -1,4 +1,4 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
 import type { Authority, CallId, Json, PatchSet, RunId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createInvocation } from "../src/agent/tool-runner.ts";
@@ -12,7 +12,7 @@ import { resourcesPlugin } from "../src/extend/resources.ts";
 import { project } from "../src/fold/project.ts";
 import { viewHead } from "../src/fold/view.ts";
 import { createFoldCache } from "../src/fold/watch.ts";
-import { LOCAL, SdkError } from "../src/index.ts";
+import { LOCAL } from "../src/index.ts";
 import { envelope, hostPrincipalsRef, workspaceRef } from "../src/store.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import type { ConnectionContext, Durable, Page, Plugin } from "../src/index.ts";

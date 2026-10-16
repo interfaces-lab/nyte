@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import { envelope, kvRef, memoryStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";

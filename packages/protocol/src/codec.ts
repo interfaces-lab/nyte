@@ -1,9 +1,8 @@
 import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
 import { Guard } from "typebox/guard";
-import { OPERATIONS } from "@nyte-ai/schema";
+import { OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type { Declaration, Json, Schema, ValidationIssue } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type {
   ByteName,
   CallName,

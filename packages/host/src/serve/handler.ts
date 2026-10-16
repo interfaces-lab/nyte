@@ -1,7 +1,6 @@
 import { Type } from "typebox";
-import { OPERATIONS, compile } from "@nyte-ai/schema";
+import { compile, OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type { Authority, Json } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { bindConnection } from "./binding.ts";
 import type {

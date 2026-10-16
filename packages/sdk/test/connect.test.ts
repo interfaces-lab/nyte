@@ -1,6 +1,5 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { HostView } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import { TOKEN, composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection } from "@nyte-ai/core";

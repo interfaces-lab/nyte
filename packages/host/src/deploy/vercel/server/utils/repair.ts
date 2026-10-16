@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import { encodeError, errorStatus } from "@nyte-ai/protocol";
 
 export async function answerRepair(

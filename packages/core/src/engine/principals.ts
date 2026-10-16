@@ -1,4 +1,4 @@
-import { asId, OPERATIONS } from "@nyte-ai/schema";
+import { asId, OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type { Authority, PrincipalId } from "@nyte-ai/schema";
 import type { ConnectionRegistry, Host } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
@@ -7,7 +7,6 @@ import type { PrincipalRecord } from "../contract/records.ts";
 import { commit } from "../fold/commit.ts";
 import { hostPrincipalsRef } from "../store/refs.ts";
 import { load, put, readRefExpectation } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const PAIRING_TTL = 10 * 60 * 1000;

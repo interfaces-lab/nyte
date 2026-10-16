@@ -1,8 +1,8 @@
+import { SdkError } from "@nyte-ai/schema";
 import type { SessionId, WorkspaceId } from "@nyte-ai/schema";
 import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
 import type { McpApi, McpHub, McpWorkspace } from "../contract/workspace.ts";
 import { requireSession } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import { readWorkspace } from "./environment.ts";
 import { projectTrust } from "./trust.ts";
 

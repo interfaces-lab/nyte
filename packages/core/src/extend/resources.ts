@@ -1,4 +1,4 @@
-import { standard } from "@nyte-ai/schema";
+import { SdkError, standard } from "@nyte-ai/schema";
 import type { SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
@@ -8,7 +8,6 @@ import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
 import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
 import { kvRef } from "../store/refs.ts";
 import { readKv, requireSession } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 type Skill = Resources["skills"][number];

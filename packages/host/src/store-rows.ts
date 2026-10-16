@@ -1,6 +1,5 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { ByteReader, Ref, Revision, SessionEvent } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import { loggedEvent } from "@nyte-ai/core/store";
 import type { LoggedRow, StoredRecord } from "@nyte-ai/core/store";
 

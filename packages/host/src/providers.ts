@@ -1,6 +1,6 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { EnvironmentIdentity, WorkspaceTarget } from "@nyte-ai/schema";
-import { SdkError, closable } from "@nyte-ai/core";
+import { closable } from "@nyte-ai/core";
 import { objectId } from "@nyte-ai/core/store";
 import type {
   EnvironmentProvider,

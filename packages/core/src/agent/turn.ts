@@ -1,4 +1,4 @@
-import { asId, isJson } from "@nyte-ai/schema";
+import { asId, isJson, SdkError } from "@nyte-ai/schema";
 import type {
   CallId,
   Disposer,
@@ -40,7 +40,6 @@ import { callRef, partRef, runRef } from "../store/refs.ts";
 import { attempt, load, put, readRefExpectation, readTip, STALE } from "../store/session.ts";
 import type { Found } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { agentLoop } from "./agent-loop.ts";
 import type {
   FailedResponse,

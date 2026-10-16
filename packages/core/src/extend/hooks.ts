@@ -1,4 +1,4 @@
-import { asId, compile, SubmissionType, ToolCallType, withJson } from "@nyte-ai/schema";
+import { asId, compile, SdkError, SubmissionType, ToolCallType, withJson } from "@nyte-ai/schema";
 import type {
   Awaitable,
   Decision,
@@ -29,7 +29,6 @@ import { commit } from "../fold/commit.ts";
 import { callRef } from "../store/refs.ts";
 import { readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { SdkError } from "../util/error.ts";
 import { stepPluginApi } from "./plugin-api.ts";
 
 type Base = {

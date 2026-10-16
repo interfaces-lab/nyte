@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { idSchema } from "./ids.ts";
+import type { HostId } from "./ids.ts";
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
 import { nullable } from "./wire/nullable.ts";
@@ -58,6 +59,37 @@ export const SdkErrorWireType = Type.Object({
 });
 
 export type SdkErrorWire = Decoded<typeof SdkErrorWireType>;
+
+export type SdkErrorCode = SdkErrorWire["code"];
+
+/** The error every Nyte API throws: a `code` a client branches on, a message for people, the host it came from, the issues behind an `invalid`, and a correlation id the host logged it under. On the wire it is an `SdkErrorWire`. */
+export class SdkError extends Error {
+  override readonly name = "SdkError";
+
+  readonly code: SdkErrorCode;
+
+  readonly hostId: HostId | null;
+
+  readonly issues: readonly ValidationIssue[];
+
+  readonly correlation: string | null;
+
+  constructor(
+    code: SdkErrorCode,
+    message: string,
+    options?: {
+      readonly hostId?: HostId | null;
+      readonly issues?: readonly ValidationIssue[];
+      readonly correlation?: string | null;
+    },
+  ) {
+    super(message);
+    this.code = code;
+    this.hostId = options?.hostId ?? null;
+    this.issues = options?.issues ?? [];
+    this.correlation = options?.correlation ?? null;
+  }
+}
 
 export const ValidationIssueSchema: Schema<ValidationIssue> = standard(ValidationIssueType);
 

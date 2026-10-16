@@ -1,5 +1,6 @@
-import { SdkError, definePart, dev } from "@nyte-ai/core";
+import { definePart, dev } from "@nyte-ai/core";
 import type { ActionContext, ActionOutput, ToolDefinition } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
 import {
   answerInput,

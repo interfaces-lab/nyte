@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Activation,
   Configuration,
@@ -48,7 +48,6 @@ import {
   sessionEvent,
   STALE,
 } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
 import type { StoreConnection } from "../contract/store.ts";

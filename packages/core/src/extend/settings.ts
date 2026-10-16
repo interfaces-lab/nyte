@@ -1,4 +1,4 @@
-import { isJson } from "@nyte-ai/schema";
+import { isJson, SdkError } from "@nyte-ai/schema";
 import type {
   ConfigurationPatch,
   ConfigureOutcome,
@@ -15,7 +15,6 @@ import { trustChanged } from "../env/workspaces.ts";
 import { commit } from "../fold/commit.ts";
 import { headRef, kvRef, sessionRef } from "../store/refs.ts";
 import { attempt, EMPTY_REVISION, MAIN, put, requireSession, STALE } from "../store/session.ts";
-import { SdkError } from "../util/error.ts";
 import { check } from "../util/json-schema.ts";
 import { publishCatalog } from "./registry.ts";
 import { dropScans, SKILL_PATHS } from "./resources.ts";
