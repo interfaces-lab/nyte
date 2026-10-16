@@ -498,9 +498,6 @@ export const events = {
       call,
       part,
       change: "intent",
-      name: "read",
-      args: { path: "a.ts" },
-      class: { kind: "read", path: "a.ts" },
     },
     {
       seq: asSeq(23),

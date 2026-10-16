@@ -1,3 +1,4 @@
+import { compile, ToolClassType } from "@nyte-ai/schema";
 import type {
   CallId,
   HeadName,
@@ -11,28 +12,27 @@ import type { Draft, FoldTurn, Logged } from "../contract/fold.ts";
 import { isJsonObject } from "../util/json-schema.ts";
 import { liveRun, setTurn, updatePart } from "./draft.ts";
 
+const TOOL_CLASS = compile(ToolClassType);
+
+/** Applies a call event to the fold. An intent switches the call's part, opened in the same write with the call's name, args and class, to running. */
 export function applyCall(draft: Draft, event: Logged<"call">): void {
   const call = draft.calls.get(event.call);
 
   switch (event.change) {
     case "intent": {
+      const state = draft.parts.get(event.part)?.state;
+
+      if (!isJsonObject(state) || !TOOL_CLASS.Check(state.class)) return;
       draft.calls.set(event.call, {
         part: event.part,
-        class: event.class,
+        class: state.class,
         waiting: null,
         settled: false,
       });
 
       updatePart(draft, event.part, (part) => ({
         ...part,
-        state: {
-          call: event.call,
-          name: event.name,
-          args: event.args,
-          class: event.class,
-          phase: "running",
-          progress: null,
-        },
+        state: { ...state, phase: "running", progress: null },
         version: part.version + 1,
       }));
       const turn = callTurn(draft, event.part, event.head);

@@ -304,9 +304,6 @@ describe("fold", () => {
         call: asId("call1"),
         part: asId("call1"),
         change: "intent",
-        name: "read",
-        args: { path: "src/a.ts" },
-        class: read,
       },
     );
 

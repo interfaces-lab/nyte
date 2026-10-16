@@ -12,7 +12,7 @@ import { BackgroundItemType, RunEndType, RunViewType, WaitTargetType } from "./r
 import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
 import { SessionCatalogViewType, SessionInfoType } from "./sessions.ts";
-import { ToolClassType, ToolOutcomeType, ToolProgressType } from "./tools.ts";
+import { ToolOutcomeType, ToolProgressType } from "./tools.ts";
 import { nullable } from "./wire/nullable.ts";
 import { ActivationType } from "./workspaces.ts";
 
@@ -166,14 +166,7 @@ function durableEvent<Common extends TProperties>(common: Common) {
       answer: Type.Object({ action: Type.String(), input: JsonType }),
     }),
     Type.Object({ ...common, ...PART, change: Type.Literal("closed") }),
-    Type.Object({
-      ...common,
-      ...CALL,
-      change: Type.Literal("intent"),
-      name: Type.String(),
-      args: JsonType,
-      class: ToolClassType,
-    }),
+    Type.Object({ ...common, ...CALL, change: Type.Literal("intent") }),
     Type.Object({ ...common, ...CALL, change: Type.Literal("waiting"), on: WaitTargetType }),
     Type.Object({
       ...common,

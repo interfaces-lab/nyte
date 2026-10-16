@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { composeHost } from "@nyte-ai/core/server";
 import { STORE_VERSION, envelope, memoryStore } from "@nyte-ai/core/store";
 import { asId, asSeq, readHunks } from "@nyte-ai/schema";
-import type { DurableEvent, SessionId } from "@nyte-ai/schema";
+import type { DurableEvent, Json, SessionId } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { sqliteStore } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
@@ -548,7 +548,7 @@ describe("sqliteStore", () => {
       "INSERT INTO refs VALUES ('sessions/s1/calls/c1', 'old-call', 'r1'), ('sessions/s1/parts/c1', 'old-part', 'r2')",
     );
     seeded.prepare("INSERT INTO log VALUES ('s1', 1, 5, ?)").run(JSON.stringify(settled));
-    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 1)}`);
+    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 2)}`);
     seeded.close();
 
     const store = sqliteStore({ path });
@@ -593,6 +593,67 @@ describe("sqliteStore", () => {
     expect(await readdir(join(dir, "backups"))).toEqual(backups);
   });
 
+  it("logs a call's name, args and class once, on its part, keeping what an intent said that its part did not", async () => {
+    const path = join(await folder(), "nyte.db");
+    const fresh = sqliteStore({ path });
+    await fresh.open();
+    await fresh.close();
+
+    const read = { kind: "read", path: "a.ts" };
+
+    const created = (part: string, args: Json) => ({
+      head: "main",
+      kind: "part",
+      part,
+      change: "created",
+      partKind: "tool",
+      placement: { kind: "transcript", role: "step" },
+      state: { call: part, name: "read", args, class: read, phase: "calling" },
+      version: 1,
+      run: "r1",
+      owner: null,
+    });
+
+    const intent = (part: string, args: Json) => ({
+      head: "main",
+      kind: "call",
+      call: part,
+      part,
+      change: "intent",
+      name: "read",
+      args,
+      class: read,
+    });
+
+    const logged = [
+      created("c1", { path: "a.ts" }),
+      intent("c1", { path: "a.ts" }),
+      created("c2", { path: "a.ts" }),
+      intent("c2", { path: "b.ts" }),
+    ];
+
+    const seeded = new DatabaseSync(path);
+    const insert = seeded.prepare("INSERT INTO log VALUES ('s1', ?, 5, ?)");
+    logged.forEach((event, index) => insert.run(index + 1, JSON.stringify(event)));
+    seeded.exec(`INSERT INTO objects (id, body) VALUES ('o1', '{"kept":true}')`);
+    seeded.exec("INSERT INTO refs VALUES ('kv/a', 'o1', 'r1')");
+    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 1)}`);
+    seeded.close();
+
+    const store = sqliteStore({ path });
+    const { refs } = await store.open();
+    const events = await refs.log(asId("s1"), asSeq(0), 10);
+    await store.close();
+    const ids = { head: "main", kind: "call", change: "intent", seq: 2, at: 5 };
+
+    expect(events).toEqual([
+      { ...created("c1", { path: "a.ts" }), seq: 1, at: 5 },
+      { ...ids, call: "c1", part: "c1" },
+      { ...created("c2", { path: "b.ts" }), seq: 3, at: 5 },
+      { ...ids, call: "c2", part: "c2", seq: 4 },
+    ]);
+  });
+
   it("forgets the old default trust of stored workspaces, keeping a declined one, once", async () => {
     const path = join(await folder(), "nyte.db");
     const fresh = sqliteStore({ path });
@@ -621,7 +682,7 @@ describe("sqliteStore", () => {
     seeded.exec(
       "INSERT INTO refs VALUES ('workspaces/a', 'trusted', 'r1'), ('workspaces/b', 'declined', 'r2')",
     );
-    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 2)}`);
+    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 3)}`);
     seeded.close();
 
     const read = async () => {

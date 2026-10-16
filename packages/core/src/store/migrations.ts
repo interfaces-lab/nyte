@@ -1,6 +1,7 @@
 import { compile, FileStatusType, HunkType, isJson, writePatch } from "@nyte-ai/schema";
 import type { Json, ObjectId } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { objectId } from "../util/content.ts";
 import { SdkError } from "../util/error.ts";
 import { isJsonObject } from "../util/json-schema.ts";
@@ -291,6 +292,49 @@ const patchText: RewriteStep = {
     }),
 };
 
+/**
+ * A call's `intent` event repeated the name, args and class its part's
+ * `created` event, logged in the same write, already holds. The intent keeps
+ * only its ids; where an old intent's fields differ from its part's, the
+ * part's state takes the intent's, as the fold showed it.
+ */
+const callIntentOnce: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-call-intent-once",
+  rewriteLog(events) {
+    const next: (Json | null)[] = events.map(() => null);
+    const opened = new Map<Json, number>();
+
+    events.forEach((event, index) => {
+      if (!isJsonObject(event)) return;
+
+      if (event.kind === "part" && event.change === "created")
+        opened.set(event.part ?? null, index);
+
+      if (event.kind !== "call" || event.change !== "intent") return;
+      const { name, args, class: called, ...ids } = event;
+      const at = opened.get(event.part ?? null);
+      const created = at === undefined ? undefined : (next[at] ?? events[at]);
+
+      if (name === undefined || args === undefined || called === undefined) return;
+
+      if (at === undefined || !isJsonObject(created) || !isJsonObject(created.state)) return;
+      next[index] = ids;
+      const state = created.state;
+
+      if (
+        Value.Equal(state.name, name) &&
+        Value.Equal(state.args, args) &&
+        Value.Equal(state.class, called)
+      )
+        return;
+      next[at] = { ...created, state: { ...state, name, args, class: called } };
+    });
+
+    return next;
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -299,6 +343,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   logKindIndex,
   workspaceTrust,
   patchText,
+  callIntentOnce,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
