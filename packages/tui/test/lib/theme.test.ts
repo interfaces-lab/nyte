@@ -77,6 +77,57 @@ describe("backdrop", () => {
   });
 });
 
+/** xterm's default 16-color palette, which a 16-color terminal maps our 24-bit colors onto. */
+const ANSI_16 = [
+  "#000000",
+  "#cd0000",
+  "#00cd00",
+  "#cdcd00",
+  "#0000ee",
+  "#cd00cd",
+  "#00cdcd",
+  "#e5e5e5",
+  "#7f7f7f",
+  "#ff0000",
+  "#00ff00",
+  "#ffff00",
+  "#5c5cff",
+  "#ff00ff",
+  "#00ffff",
+  "#ffffff",
+] as const;
+
+function rgbChannels(hex: string): readonly number[] {
+  return [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+}
+
+function nearestAnsi16(hex: string): string {
+  const color = rgbChannels(hex);
+
+  const distance = (entry: string): number =>
+    rgbChannels(entry).reduce((sum, value, index) => sum + (value - (color[index] ?? 0)) ** 2, 0);
+
+  return ANSI_16.reduce((best, entry) => (distance(entry) < distance(best) ? entry : best));
+}
+
+describe("16-color terminals", () => {
+  for (const mode of ["dark", "light"] as const) {
+    const theme = themeForMode(mode, {});
+
+    test(`${mode}: text mapped to the nearest ANSI color stays legible (3:1) on its mapped backgrounds`, () => {
+      const failing = TEXT.flatMap((key) =>
+        [theme.background, theme.codeBackground].flatMap((background) =>
+          contrast(nearestAnsi16(theme[key]), nearestAnsi16(background)) < 3
+            ? [`${key} ${nearestAnsi16(theme[key])} on ${nearestAnsi16(background)}`]
+            : [],
+        ),
+      );
+
+      expect(failing).toEqual([]);
+    });
+  }
+});
+
 describe("theme contrast", () => {
   for (const mode of ["dark", "light"] as const) {
     const theme = themeForMode(mode);
