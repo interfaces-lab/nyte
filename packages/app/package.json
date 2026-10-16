@@ -57,7 +57,6 @@
   "devDependencies": {
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/canvas": "workspace:*",
-    "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@playwright/test": "1.63.0",
     "@types/node": "^26.6.5",
