@@ -264,7 +264,6 @@ class Sharing {
       this.#emit({ kind: "error", message: messageOf(cause) });
     }
   }
-
 }
 
 function sha256(text: string): Buffer {

@@ -36,28 +36,31 @@ export async function renderWithApp(
   const [state, setState] = createSignal(initial);
   const screen = createMemo(() => deriveScreen(state(), null));
 
-  const setup = await render(() => {
-    const renderer = useRenderer();
-    const tickers = createTickers(renderer.clock);
+  const setup = await render(
+    () => {
+      const renderer = useRenderer();
+      const tickers = createTickers(renderer.clock);
 
-    const kit = createKit({
-      renderer,
-      theme: () => DARK_THEME,
-      tickers,
-      blob: () => noBytes(),
-      drawPart: () => null,
-      attach: { composer: () => () => undefined, scroll: () => () => undefined },
-      report: (origin, error) =>
-        dispatched.push({
-          kind: "failure",
-          failure: { origin, message: String(error), logPath: "/home/.nyte/logs/tui.log" },
-        }),
-    });
+      const kit = createKit({
+        renderer,
+        theme: () => DARK_THEME,
+        tickers,
+        blob: () => noBytes(),
+        drawPart: () => null,
+        attach: { composer: () => () => undefined, scroll: () => () => undefined },
+        report: (origin, error) =>
+          dispatched.push({
+            kind: "failure",
+            failure: { origin, message: String(error), logPath: "/home/.nyte/logs/tui.log" },
+          }),
+      });
 
-    const app: App = { screen, dispatch: (msg) => dispatched.push(msg), kit };
+      const app: App = { screen, dispatch: (msg) => dispatched.push(msg), kit };
 
-    return <AppProvider app={app}>{node(app)}</AppProvider>;
-  }, { clock, ...options });
+      return <AppProvider app={app}>{node(app)}</AppProvider>;
+    },
+    { clock, ...options },
+  );
 
   return { ...setup, dispatched, screen, setState, clock };
 }
