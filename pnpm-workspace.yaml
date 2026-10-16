@@ -29,3 +29,6 @@ allowBuilds:
 minimumReleaseAge: 0
 patchedDependencies:
   "@use-voltra/ios-client@2.3.2": patches/@use-voltra__ios-client@2.3.2.patch
+skills:
+  dirs:
+    - .agents/skills

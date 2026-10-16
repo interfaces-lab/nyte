@@ -4,7 +4,6 @@ interface FingerprintProps {
   seed: string;
   cols: number;
   rows: number;
-  /** Pitch of one cell in px. Each square is one px smaller, leaving a hairline gap. */
   pixel: number;
   className?: string;
 }
@@ -28,7 +27,6 @@ function random(seed: number): () => number {
   };
 }
 
-/* The seeded wave behind a fingerprint: 0 outside the ridges, rising to 1 on them. */
 export function fingerprintField(seed: string): (x: number, y: number) => number {
   const next = random(hash(seed));
   const ax = (next() - 0.5) * 0.7;
@@ -44,12 +42,6 @@ export function fingerprintField(seed: string): (x: number, y: number) => number
   };
 }
 
-/*
- * Two interfering waves, cut off below a seeded level and ordered-dithered
- * onto a grid: most of the field stays empty, a few ridges go solid, and the
- * slopes between them scatter into lone dots. Every name draws a different
- * shape from the same rules: the same job, implemented again.
- */
 export function Fingerprint({ seed, cols, rows, pixel, className }: FingerprintProps) {
   const field = fingerprintField(seed);
   const square = pixel - 1;

@@ -48,7 +48,7 @@ product itself, a few true sentences, and motion that rewards attention.
 2. Shipped behaviour: `README.md`, package READMEs, and source. The JSDoc on `@nyte-ai/core`'s
    exports and `packages/lab/sdk-shape.ts` define core contracts.
 3. This skill and its references.
-4. Components under `packages/docs/src/components/landing` and `src/app/(site)/_layout`.
+4. Components under `packages/docs/src/components/landing` and `src/components/site`.
 5. Outside sites (Poolside, Vercel). Inspiration only; never quote their structure as a rule.
 
 ## Routing

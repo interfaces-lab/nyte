@@ -1,12 +1,10 @@
-"use client";
-
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useId, useState } from "react";
 import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+import { splitHref } from "~/lib/href";
 
 const styles = create({
   popup: {
@@ -39,7 +37,6 @@ function parseResults(value: unknown): Result[] {
   return results;
 }
 
-/* The index wraps each match in <mark>; split on the tags so they render as text. */
 function Highlighted({ content }: { content: string }) {
   return content.split(/<\/?mark>/).map((part, index) =>
     index % 2 === 1 ? (
@@ -109,7 +106,9 @@ export function SiteSearch() {
       if (!target) return;
       event.preventDefault();
       setOpen(false);
-      router.push(target.url);
+      // A result on the other host (docs from design.nyte.sh, or back) needs a full load.
+      const next = splitHref(target.url);
+      void router.navigate({ ...next, reloadDocument: router.buildLocation(next).external });
     }
   };
 
@@ -146,7 +145,7 @@ export function SiteSearch() {
               {results.map((result, index) => (
                 <li key={result.id} role="option" aria-selected={index === active}>
                   <Link
-                    href={result.url}
+                    {...splitHref(result.url)}
                     data-type={result.type}
                     className="flex flex-col gap-0.5 rounded-lg px-3 py-2 text-sm/5 not-data-[type=page]:pl-6 not-data-[type=page]:text-muted-foreground hover:bg-fill-hover data-active:bg-fill-selected data-[type=page]:font-medium"
                     data-active={index === active || undefined}

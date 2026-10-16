@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, type ReactNode } from "react";
 import {
   TerminalHints,
@@ -21,7 +19,6 @@ export interface ClientProps {
 
 const FRAMES = ["⠀⠰", "⠀⡷", "⢸⡷", "⢾⡷", "⢾⡇", "⢾⠀", "⠆⠀"] as const;
 
-/* The TUI's activity spinner: the same frames, every 130ms. */
 function Spinner() {
   const [frame, setFrame] = useState(3);
 

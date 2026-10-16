@@ -1,10 +1,8 @@
-"use client";
-
 import { Popover } from "@nyte-ai/ui/popover";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import { useState } from "react";
 import { products } from "~/lib/products";
 
@@ -58,7 +56,6 @@ const styles = create({
   },
 });
 
-/* The hosts as one list, in the popover's card metrics. */
 export function ProductMenu({ triggerClass }: { triggerClass: string }) {
   const [open, setOpen] = useState(false);
 
@@ -75,7 +72,7 @@ export function ProductMenu({ triggerClass }: { triggerClass: string }) {
         <Popover.Positioner side="bottom" align="start" sideOffset={8}>
           <Popover.Popup aria-label="Product" xstyle={styles.popup}>
             {products.map((product) => (
-              <Link
+              <HrefLink
                 key={product.title}
                 href={product.href}
                 onClick={() => setOpen(false)}
@@ -86,7 +83,7 @@ export function ProductMenu({ triggerClass }: { triggerClass: string }) {
                   {product.soon ? <span {...props(styles.soon)}>Soon</span> : null}
                 </span>
                 <span {...props(styles.description)}>{product.description}</span>
-              </Link>
+              </HrefLink>
             ))}
           </Popover.Popup>
         </Popover.Positioner>

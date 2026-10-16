@@ -1,7 +1,7 @@
 import { docsIcons, isDocsIconName } from "~/lib/docs-icons";
-import { latestMacRelease, releasesUrl } from "~/lib/releases";
+import { releasesUrl } from "~/lib/releases";
+import { useMacRelease } from "~/lib/site-data";
 
-/* An icon set inline before a heading's text, sized to the heading. */
 export function PlatformIcon({ name }: { name: string }) {
   if (!isDocsIconName(name)) throw new Error(`Unknown docs icon: ${name}`);
   const Icon = docsIcons[name];
@@ -12,9 +12,8 @@ export function PlatformIcon({ name }: { name: string }) {
   );
 }
 
-/* The desktop app card: icon, name, the latest version, and one action. */
-export async function DesktopDownload() {
-  const release = await latestMacRelease();
+export function DesktopDownload() {
+  const release = useMacRelease();
 
   return (
     <div className="doc-download">

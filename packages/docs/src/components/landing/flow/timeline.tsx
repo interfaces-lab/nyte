@@ -1,12 +1,6 @@
 import type { ReactNode } from "react";
 import { ease, progress } from "./scene-clock";
 
-/*
- * Pieces for scenes drawn as lanes over time. Horizontal positions are
- * percentages of the lane area; vertical ones are pixels from its top.
- * A dashed line is something waiting; an arrow is it landing.
- */
-
 export const GUTTER = "pl-[96px]";
 
 export function percent(time: number, duration: number): number {
@@ -31,7 +25,6 @@ const TONES = {
   child: "bg-(--scene-run)/15 text-foreground ring-1 ring-(--scene-run)/35 ring-inset",
 } as const satisfies Record<Tone, string>;
 
-/* A span of work that grows as the playhead passes over it. */
 export function Segment({
   from,
   to,
@@ -67,7 +60,6 @@ export function Segment({
   );
 }
 
-/* A moment every lane shares, such as a response boundary. */
 export function Mark({
   at,
   label,
@@ -101,7 +93,6 @@ export function Playhead({ time, duration }: { time: number; duration: number })
   );
 }
 
-/* Waiting in a queue: a dashed line from `from` that grows with time until `to`. */
 export function Wait({
   from,
   to,
@@ -128,7 +119,6 @@ export function Wait({
   );
 }
 
-/* Landing: an arrow that rises at `at` from `from` up to `to`. */
 export function Rise({
   at,
   from,
@@ -161,7 +151,6 @@ export function Rise({
   );
 }
 
-/* Fades and lifts in at `at`. */
 export function appear(time: number, at: number) {
   const shown = ease(progress(time, at, 0.3));
   return { opacity: shown, transform: `translateY(${(1 - shown) * 6}px)` };

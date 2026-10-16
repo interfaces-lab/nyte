@@ -1,4 +1,4 @@
-import { cacheLife } from "next/cache";
+import { createServerFn } from "@tanstack/react-start";
 import { gitConfig, githubUrl } from "./shared";
 
 export const releasesUrl = `${githubUrl}/releases`;
@@ -9,11 +9,19 @@ export interface MacRelease {
   downloadUrl: string;
 }
 
-/* The latest published release and its Apple Silicon disk image, rechecked hourly. */
-export async function latestMacRelease(): Promise<MacRelease | null> {
-  "use cache";
-  cacheLife("hours");
+const hour = 60 * 60 * 1000;
 
+let cached: { at: number; release: MacRelease | null } | undefined;
+
+/* The latest published release and its Apple Silicon disk image, rechecked hourly. */
+export const latestMacRelease = createServerFn().handler(async () => {
+  if (cached && Date.now() - cached.at < hour) return cached.release;
+  const release = await fetchMacRelease();
+  cached = { at: Date.now(), release };
+  return release;
+});
+
+async function fetchMacRelease(): Promise<MacRelease | null> {
   const response = await fetch(
     `https://api.github.com/repos/${gitConfig.user}/${gitConfig.repo}/releases/latest`,
   ).catch(() => null);

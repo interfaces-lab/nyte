@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { docsNav } from "~/lib/docs";
 import { docsIcons, type DocsIconName } from "~/lib/docs-icons";
 
@@ -28,7 +28,7 @@ export function CloudFeatures() {
         if (!first || !presentation) return null;
         const Icon = docsIcons[presentation.icon];
         return (
-          <Link key={label} href={first.href} className="cloud-feature">
+          <Link key={label} to={first.href} className="cloud-feature">
             <span className="cloud-feature-icon">
               <Icon size={28} />
             </span>

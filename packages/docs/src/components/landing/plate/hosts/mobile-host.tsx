@@ -98,7 +98,6 @@ export function Phone({ children }: { children: ReactNode }) {
 const glassControlClass =
   "grid size-11 shrink-0 place-items-center rounded-full bg-(--mobile-surface)/80 shadow-[0_2px_12px_rgb(0_0_0/0.08)] ring-[0.5px] ring-(--mobile-border) backdrop-blur-xl dark:shadow-none";
 
-/* The composer pill; `children` sits between the attach and dictation buttons. */
 export function Composer({ children }: { children: ReactNode }) {
   return (
     <div className="shrink-0 bg-(--mobile-canvas) px-3 pt-1 pb-[38px]">
@@ -171,7 +170,6 @@ export function ChatHeader() {
   );
 }
 
-/* The session's first turn, as every host shows it. */
 export function ChatTranscript() {
   return (
     <>

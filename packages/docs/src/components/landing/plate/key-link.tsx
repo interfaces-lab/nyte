@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import { useEffect, useRef, type ReactNode } from "react";
 
 interface KeyLinkProps {
@@ -34,11 +32,11 @@ export function KeyLink({ href, shortcut, className, kbdClassName, children }: K
   }, [shortcut]);
 
   return (
-    <Link ref={ref} href={href} aria-keyshortcuts={shortcut} className={className}>
+    <HrefLink ref={ref} href={href} aria-keyshortcuts={shortcut} className={className}>
       {children}
       <kbd aria-hidden="true" className={kbdClassName}>
         {shortcut}
       </kbd>
-    </Link>
+    </HrefLink>
   );
 }

@@ -1,5 +1,3 @@
-"use client";
-
 import type { Client } from "../hero-2/use-session";
 import { useSceneClock, type SceneStep } from "./scene-clock";
 import { SceneFrame } from "./scene-frame";
@@ -61,7 +59,6 @@ const STEPS = [
   { at: 7.6, text: "The run ends. The next message lands and starts a new run." },
 ] as const satisfies readonly SceneStep[];
 
-/* Clients steer a live run and queue for after it; each message lands at a boundary. */
 export function InboxScene() {
   const { clock, target } = useSceneClock(DURATION);
   const { time } = clock;

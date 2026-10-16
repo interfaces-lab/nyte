@@ -1,4 +1,4 @@
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { renderMermaidSVG } from "beautiful-mermaid";
 
 /*

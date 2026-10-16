@@ -1,12 +1,12 @@
 ---
 name: component-docs
 description: >
-  Authoring and reviewing the Cloud component documentation in packages/docs/content/docs/components.
-  Use whenever work adds, edits, or reviews a page under content/docs/components, changes what
+  Authoring and reviewing the Cloud component documentation in packages/docs/content/design (served at design.nyte.sh).
+  Use whenever work adds, edits, or reviews a page under content/design, changes what
   @nyte-ai/ui exports, or answers a question by citing those pages. Trigger on component docs,
   design system docs, styled components, tokens, theming, and any request to document a
   component or check that a page is still true.
-  Not for marketing pages under src/app, or code changes in packages/ui that leave the public exports unchanged.
+  Not for marketing pages under src/routes, or code changes in packages/ui that leave the public exports unchanged.
 ---
 
 # Cloud component docs

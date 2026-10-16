@@ -1,10 +1,7 @@
-import { Geist_Pixel } from "next/font/google";
 import { FactWord } from "../plate/fact-word";
 import { KeyLink } from "../plate/key-link";
 import { HarnessRing } from "./harness-ring";
 import { HARNESSES } from "./harnesses";
-
-const geistPixel = Geist_Pixel({ subsets: ["latin"], display: "swap" });
 
 const buttonClass =
   "inline-flex h-9 items-center gap-2.5 rounded-full pr-2 pl-4 text-[14px] font-medium outline-none transition-[background-color,scale] duration-150 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-(--hero-blue)";
@@ -12,11 +9,6 @@ const buttonClass =
 const kbdClass =
   "inline-flex size-5 items-center justify-center rounded-full font-sans text-[11px] font-semibold";
 
-/*
- * The plate opens on the crowd: every harness on a ring, each one a different
- * pattern from the same rules. The promise comes after the visitor has seen
- * how many times the same core got written.
- */
 export function Hero3() {
   const count = HARNESSES.length;
 
@@ -37,9 +29,7 @@ export function Hero3() {
         </div>
 
         <div className="mx-auto mt-14 flex w-[min(100%,var(--site-inner))] flex-col items-center px-(--site-pad) text-center max-sm:mt-10">
-          <h1
-            className={`${geistPixel.className} animate-plate-rise text-hero text-balance [animation-delay:180ms] motion-reduce:animate-none`}
-          >
+          <h1 className="font-pixel animate-plate-rise text-hero text-balance [animation-delay:180ms] motion-reduce:animate-none">
             Skip the hard part.
           </h1>
 

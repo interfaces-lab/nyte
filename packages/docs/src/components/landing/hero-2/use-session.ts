@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 
 export type Client = "terminal" | "desktop" | "mobile";
@@ -49,10 +47,6 @@ const UNSCRIPTED = {
   reply: "This preview has no model behind it. Your message still reached all three clients.",
 } as const satisfies { tools: readonly ToolCall[]; reply: string };
 
-/*
- * The order a message reaches the others. Terminal and desktop share the
- * workspace's store; the phone reaches the desktop through Nyte Connect.
- */
 const ROUTES: Record<Client, readonly (readonly Client[])[]> = {
   terminal: [["desktop"], ["mobile"]],
   desktop: [["terminal", "mobile"]],
@@ -90,10 +84,6 @@ function list(names: readonly string[]): string {
     : (names[0] ?? "");
 }
 
-/*
- * One session seen by three clients. A message shows at once where it was
- * typed, then reaches the others in turn; the reply lands everywhere.
- */
 export function useSession(links: Links) {
   const [turns, setTurns] = useState<readonly Turn[]>([]);
   const [announcement, setAnnouncement] = useState("");

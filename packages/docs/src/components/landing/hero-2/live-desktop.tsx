@@ -1,5 +1,3 @@
-"use client";
-
 import { Spinner } from "@nyte-ai/ui/spinner";
 import {
   DesktopComposer,

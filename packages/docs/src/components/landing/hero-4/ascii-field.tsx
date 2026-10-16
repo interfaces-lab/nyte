@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 import { BAYER } from "../plate/dither-moon";
 
@@ -8,7 +6,6 @@ const TOP = RAMP.length - 1;
 const CELL_HEIGHT = 16;
 const LANTERN = 120;
 
-/* Dark seas on the near side, in sphere coordinates: x, y, radius, depth. */
 const MARIA = [
   [-0.18, -0.28, 0.24, 0.45],
   [0.12, -0.05, 0.2, 0.4],
@@ -33,10 +30,6 @@ function smoothstep(from: number, to: number, value: number) {
   return t * t * (3 - 2 * t);
 }
 
-/*
- * Dither one cell grid: the moon from the app icon, shaded with the startup
- * moon's ramp, inside a field of dots that fades out behind the copy.
- */
 function layout(width: number, height: number, cellWidth: number): Cell[][] {
   const wide = width >= 1180;
   const narrow = width < 640;

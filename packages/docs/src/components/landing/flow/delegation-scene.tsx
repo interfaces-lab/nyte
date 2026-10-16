@@ -1,5 +1,3 @@
-"use client";
-
 import { useSceneClock, type SceneStep } from "./scene-clock";
 import { SceneFrame } from "./scene-frame";
 import {
@@ -59,7 +57,6 @@ function Done({ at, top, time }: { at: number; top: number; time: number }) {
   );
 }
 
-/* A parent waits on three child sessions and a background job, all running at once. */
 export function DelegationScene() {
   const { clock, target } = useSceneClock(DURATION);
   const { time } = clock;

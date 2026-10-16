@@ -1,7 +1,5 @@
-"use client";
-
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create } from "@stylexjs/stylex";
 
 const styles = create({

@@ -5,7 +5,7 @@ manifesto), which say what we believe and why.
 
 ## Reference docs
 
-Docs render through `DocArticle` in `src/app/(site)/_layout/article.tsx`: eyebrow, title, lede,
+Docs render through `DocArticle` in `src/components/site/article.tsx`: eyebrow, title, lede,
 prose, pager, and an on-this-page rail.
 
 - The lede is the frontmatter `description`: one sentence saying what the reader can do after

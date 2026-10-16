@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 
 const REDUCED = "(prefers-reduced-motion: reduce)";
@@ -13,7 +11,6 @@ export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-/* How far `time` is through the window that opens at `start`, from 0 to 1. */
 export function progress(time: number, start: number, length = 0.35): number {
   return clamp01((time - start) / length);
 }
@@ -26,10 +23,6 @@ export function lerp(from: number, to: number, amount: number): number {
   return from + (to - from) * amount;
 }
 
-/*
- * A scene's time. It plays once when the scene scrolls into view and stops at
- * the end; reduced motion starts at the end instead. Seeking jumps to a moment.
- */
 export function useSceneClock(duration: number) {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);

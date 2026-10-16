@@ -26,8 +26,6 @@ const remarkModel = () => fillModel;
  */
 export default defineConfig({
   mdxOptions: {
-    // ```mermaid → <Mermaid />, resolved from src/components/mdx.tsx. {{model}} and
-    // {{modelId}} in code → the site's model, from src/lib/shared.ts.
     remarkPlugins: (plugins) => [remarkModel, remarkMdxMermaid, ...plugins],
     // Dual-theme Shiki tokens (`--shiki-light` / `--shiki-dark`) plus the
     // default notation transformers and language icons on titled blocks.

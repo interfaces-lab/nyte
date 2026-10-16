@@ -1,0 +1,63 @@
+/*
+ * The core docs' own surfaces. What it shares with the design site — frame,
+ * sidebar, article, prose, code, rail, pager — lives in layout.css, which
+ * loads first. Only what the design site has no counterpart for belongs here,
+ * cards and the TUI figures.
+ */
+
+@layer components {
+  .doc-prose figure:has(img[src^="/tui/"]) {
+    margin-block: 1.25rem 1.5rem;
+  }
+
+  .doc-prose img[src^="/tui/"] {
+    border-radius: 8px;
+    border: 1px solid;
+    @apply border-border-subtle;
+    background: #0a0a0a;
+  }
+
+  .doc-prose figure:has(img[src^="/tui/"]) figcaption {
+    margin-top: 8px;
+    font-size: 13px;
+    @apply text-muted-foreground;
+  }
+
+  .docs-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 13px;
+    margin: 0 0 21px;
+  }
+
+  .docs-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border: 0.5px solid;
+    @apply border-border-subtle;
+    border-radius: 13px;
+    transition: border-color 120ms ease-out;
+  }
+
+  .docs-card:hover {
+    @apply border-tertiary-foreground;
+  }
+
+  .docs-card-icon {
+    display: inline-flex;
+    @apply text-foreground;
+  }
+
+  .docs-card strong {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .docs-card span:last-child {
+    @apply text-muted-foreground;
+    font-size: 13px;
+    line-height: 20px;
+  }
+}

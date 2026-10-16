@@ -6,7 +6,7 @@
       "dependsOn": ["^build"],
       "passThroughEnv": ["CENTRAL_LICENSE_KEY"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", ".output/**", "dist/**", "out/**"]
+      "outputs": [".output/**", "dist/**", "out/**"]
     },
     "@nyte-ai/tui#build": {
       "env": ["NYTE_CONNECT_ORIGIN"],

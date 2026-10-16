@@ -1,5 +1,3 @@
-"use client";
-
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup, Textarea } from "@nyte-ai/ui/input";
 

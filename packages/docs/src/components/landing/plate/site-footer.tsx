@@ -1,10 +1,17 @@
-import Link from "next/link";
-import { docsNav } from "~/lib/docs";
+import { HrefLink } from "~/components/site/href-link";
+import { designNav, docsNav, type NavSection } from "~/lib/docs";
 import { releasesUrl } from "~/lib/releases";
 import { githubUrl } from "~/lib/shared";
 
 const linkClass =
   "rounded-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-(--site-panel)";
+
+/* One link per page in an unlabeled section, then one per labeled section, to its first page. */
+function footerLinks(nav: readonly NavSection[]) {
+  return nav.flatMap((section) =>
+    section.label ? [{ title: section.label, href: section.items[0].href }] : section.items,
+  );
+}
 
 export function SiteFooter() {
   const columns = [
@@ -17,12 +24,8 @@ export function SiteFooter() {
         { title: "llms.txt", href: "/llms.txt" },
       ],
     },
-    {
-      label: "Docs",
-      links: docsNav.flatMap((section) =>
-        section.label ? [{ title: section.label, href: section.items[0].href }] : section.items,
-      ),
-    },
+    { label: "Docs", links: footerLinks(docsNav) },
+    { label: "Design", links: footerLinks(designNav) },
     {
       label: "Legal",
       links: [
@@ -43,9 +46,9 @@ export function SiteFooter() {
                 {column.links.map((link) => (
                   <li key={link.href}>
                     {link.href.startsWith("/") || link.href.startsWith("#") ? (
-                      <Link href={link.href} className={linkClass}>
+                      <HrefLink href={link.href} className={linkClass}>
                         {link.title}
-                      </Link>
+                      </HrefLink>
                     ) : (
                       <a href={link.href} target="_blank" rel="noreferrer" className={linkClass}>
                         {link.title}

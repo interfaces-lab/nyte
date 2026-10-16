@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import { useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent } from "react";
 import { githubUrl } from "~/lib/shared";
 import { AsciiArt } from "./ascii-art";
@@ -12,15 +10,10 @@ import { Section, brandTileClass, tileClass } from "./section";
 
 const NYTE = { name: "Nyte", meta: "mine, and yours · MIT" };
 
-/* The row where Nyte's 2x2 tile starts, so it closes the grid at the bottom right. */
 function lastRows(columns: number) {
   return Math.ceil((HARNESSES.length + 4) / columns) - 1;
 }
 
-/*
- * Every harness's core as a tile, each a different pattern from the same
- * rules. Nyte closes the grid. Hovering or focusing one names it below.
- */
 export function CoreMosaic() {
   return (
     <Section
@@ -137,7 +130,7 @@ export function CoreGrid() {
           {...slot(HARNESSES.length)}
           className="col-[-3/-1] row-[var(--r3)/span_2] sm:row-[var(--r6)/span_2]"
         >
-          <Link
+          <HrefLink
             href={githubUrl}
             aria-label="Nyte on GitHub, MIT license"
             {...stop(HARNESSES.length)}
@@ -148,7 +141,7 @@ export function CoreGrid() {
               <span className="block text-[15px]/5 font-medium">Nyte</span>
               <span className="block font-mono text-[11px]/4 text-white/70">MIT · GitHub</span>
             </span>
-          </Link>
+          </HrefLink>
         </li>
       </ul>
 

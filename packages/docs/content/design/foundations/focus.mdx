@@ -1,0 +1,58 @@
+---
+title: Focus and keyboard
+description: "Focus rings, modality, and Base UI keyboard behavior"
+---
+
+## The ring
+
+Focusable components draw a 1px `appearance.focusRing` outline on `:focus-visible`. Hue scopes do
+not change its color.
+
+```ts title="Import"
+import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+```
+
+| Style             | Use                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `focus.ring`      | A standalone control. The outline sits on the element's edge.                           |
+| `focus.ringInset` | A row or menu item flush inside a scroll container or popup, where an outer ring clips. |
+| `srOnly`          | Visually hidden and still announced, for a label on a control that reads by shape.      |
+
+```tsx
+<a href="/settings" {...stylex.props(styles.link, focus.ring)}>
+  Settings
+</a>
+```
+
+`Input`, `InputGroup`, and `Textarea` draw no ring. On focus, their border takes
+`appearance.focusColor` in the `raised` variant and `role.borderPrimaryTranslucent` in `quiet`.
+
+## Focus modality
+
+Chromium matches `:focus-visible` on every text field focus, pointer clicks included. The host sets
+`data-nyte-focus-modality="pointer"` or `"keyboard"` on the document, and pointer mode hides the ring.
+
+```css
+:root[data-nyte-focus-modality="pointer"] {
+  --nyte-focus-ring: transparent;
+}
+```
+
+Start at `pointer` so autofocus draws no ring. Inside a text field, only Tab switches to keyboard
+mode. Elsewhere, any non-modifier key does. Listen in the capture phase so modality changes before a
+handler moves focus.
+
+Without this switch, clicks into a text field draw a ring too. Never hide the ring for keyboard focus.
+
+## Keyboard model
+
+| Component            | Keys                                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Button, Toggle       | Enter and Space activate. Toggle flips `aria-pressed`.                                                                                                                                |
+| Dialog, Alert dialog | Focus moves into the popup on open and returns to the trigger on close. Tab is trapped inside. Escape closes both. Alert dialog ignores outside presses.                              |
+| Menu                 | Arrow Down and Up move the highlight, Home and End jump, type-ahead matches item text, Enter and Space activate, Escape closes, Arrow Right opens a submenu and Arrow Left closes it. |
+| Input                | Native.                                                                                                                                                                               |
+
+## Disabled
+
+Disabled buttons, toggles, and menu items take `--nyte-content-disabled`.

@@ -1,0 +1,28 @@
+---
+title: Nyte Design
+description: "The tokens, rules, and components behind every Nyte surface"
+---
+
+The desktop app, the terminal's web views, and this site draw from one package,
+`@nyte-ai/ui`: StyleX tokens, the rules for using them, and styled [Base UI](https://base-ui.com)
+components. Every value on these pages is read from that package's source.
+
+## Foundations
+
+| Page                             | Decides                                    |
+| -------------------------------- | ------------------------------------------ |
+| [Colors](/design/colors)         | Roles, hue scopes, intents, light and dark |
+| [Radius](/design/radius)         | Five corner names and the component radii  |
+| [Spacing](/design/spacing)       | The 4px unit, its steps, and hit areas     |
+| [Typography](/design/typography) | Text styles, weights, and families         |
+| [Shadows](/design/shadows)       | Four elevation steps                       |
+| [Motion](/design/motion)         | Durations and curves                       |
+
+## Components
+
+```ts
+import { Button } from "@nyte-ai/ui/button";
+import { Popover } from "@nyte-ai/ui/popover";
+```
+
+<CloudFeatures />

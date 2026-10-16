@@ -1,6 +1,6 @@
 # Marketing surfaces
 
-Paths are under `packages/docs/src`. Tokens live in `app/global.css`.
+Paths are under `packages/docs/src`. Tokens live in `styles/global.css`.
 
 ## The plate
 

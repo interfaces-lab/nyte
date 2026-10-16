@@ -1,7 +1,5 @@
-"use client";
-
 import { platformScopes } from "@nyte-ai/ui/platform-colors";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef } from "react";
 

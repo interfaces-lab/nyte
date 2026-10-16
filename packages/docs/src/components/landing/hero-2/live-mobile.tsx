@@ -1,5 +1,3 @@
-"use client";
-
 import { IconChevronRightSmall } from "central-icons";
 import {
   ChatActions,
@@ -56,7 +54,6 @@ function MobileTurn({ turn }: { turn: Turn }) {
   );
 }
 
-/* The phone at 390×844 points, scaled to the stage's --phone-h. */
 export function LiveMobile({ transcript, turns, draft, onDraft, onSend }: ClientProps) {
   return (
     <div

@@ -1,5 +1,3 @@
-"use client";
-
 import { IconCheckmark1Small, IconClipboard } from "central-icons";
 import { useRef, useState } from "react";
 

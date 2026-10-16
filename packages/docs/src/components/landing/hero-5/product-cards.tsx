@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import { Section, tileClass, tileInvertClass } from "./section";
 
 const PITCH = 12;
@@ -42,10 +42,6 @@ const CARDS: readonly Card[] = [
   { title: "Mobile", glyph: "mobile", body: "A companion for a Mac host." },
 ];
 
-/*
- * A 7 by 7 dot matrix. Unlit dots stay as a faint grid. On hover the lit dots
- * fold into the centre, nearest first, and make room for the action.
- */
 function DotIcon({ glyph }: { glyph: Glyph }) {
   const size = PITCH * 7;
   return (
@@ -116,12 +112,12 @@ export function ProductCards() {
         {CARDS.map((card) => (
           <li key={card.title} className="row-span-3 grid grid-rows-subgrid gap-0">
             {card.action ? (
-              <Link
+              <HrefLink
                 href={card.action.href}
                 className={`group/card ${cardClass} ${tileInvertClass}`}
               >
                 <CardBody card={card} />
-              </Link>
+              </HrefLink>
             ) : (
               <div className={cardClass}>
                 <CardBody card={card} />

@@ -1,0 +1,21 @@
+---
+title: Shadows
+description: "Elevation in four steps, inked warm"
+---
+
+```ts
+import { shadow } from "@nyte-ai/ui/styles/vars.stylex";
+```
+
+<ShadowScale />
+
+## Rules
+
+- The elevation shadows are inked in a warm near-black at 3 to 19 percent alpha, not neutral
+  grey, so they sit on the warm gray ramp.
+- Height follows distance from the page: controls take `shadowSm`, popups `shadowLg`, modal
+  popups and dialogs `shadowXl`.
+- `shadowMdOutline` adds a hairline that sits outside in light mode and inside in dark mode, where
+  a drop shadow alone would vanish.
+- Popups share one frame, `floatingSurfaceStyles` in `floating-surface.stylex.ts`: material,
+  `radius.surface`, `shadowLg`, and an inset hairline. Compose it instead of restating them.

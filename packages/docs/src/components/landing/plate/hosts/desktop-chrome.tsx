@@ -1,6 +1,6 @@
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import {
   IconArrowLeft,
@@ -21,11 +21,6 @@ import {
   IconSettingsGear2,
 } from "central-icons-desktop";
 import type { ReactNode } from "react";
-
-/*
- * The desktop app's chrome, free of server-only imports so a live client
- * component can share it with the prerendered host.
- */
 
 type ChatMark = "spinner" | "unread" | "none";
 
@@ -191,7 +186,6 @@ export function DesktopSidebar() {
   );
 }
 
-/* The composer pill; `children` is the field, `ready` lights the send button. */
 export function DesktopComposer({
   children,
   ready = false,

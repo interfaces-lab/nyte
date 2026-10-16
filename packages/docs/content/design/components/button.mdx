@@ -1,0 +1,142 @@
+---
+title: Button
+description: "Buttons and links with six looks, six sizes, and joined actions"
+---
+
+```ts title="Import"
+import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
+```
+
+`Button` acts. `ButtonLink` navigates with a native `<a href>`.
+
+## Usage
+
+- An icon-only control needs `iconOnly` and `aria-label`. A control with visible text omits
+  `aria-label`.
+- The icon-only label doubles as the native `title`. Inside a
+  [Tooltip](/design/tooltip), pass `title={undefined}` to keep one tooltip on screen.
+- Reserve `disabled` for an impossible action. Give the reason with `disabledReason` or nearby text.
+- `Button` defaults to `type="button"`. Pass `type="submit"` to submit a form.
+- In a popup trigger's `render`, put the text inside the `Button`, as in
+  `<Popover.Trigger render={<Button>Open</Button>} />`.
+- Give every `ButtonGroup` part the same size. `SplitButton.MenuTrigger` needs a label that names
+  the action and its target.
+
+## Examples
+
+### Looks and tones
+
+<Preview>
+  <ButtonVariantsDemo />
+</Preview>
+
+```tsx
+<Button>Ghost</Button>
+<Button variant="outline">Outline</Button>
+<Button variant="solid" tone="primary">Solid</Button>
+<Button variant="solid" tone="danger">Danger</Button>
+<Button variant="plain">Plain</Button>
+<Button variant="text">Text</Button>
+```
+
+### Sizes
+
+<Preview>
+  <ButtonSizesDemo />
+</Preview>
+
+```tsx
+<Button variant="outline" size="lg">Large</Button>
+<Button variant="outline">Medium</Button>
+<Button variant="outline" size="sm">Small</Button>
+<Button iconOnly icon="plus" aria-label="Add" />
+<Button size="sm" iconOnly icon="plus" aria-label="Add" />
+<Button size="2xs" iconOnly icon="x" aria-label="Remove" />
+```
+
+### Glyph, pill, chip, and disabled
+
+<Preview>
+  <ButtonStatesDemo />
+</Preview>
+
+```tsx
+<Button variant="outline" icon="refresh">Refresh</Button>
+<Button variant="pill">Pill</Button>
+<Button variant="chip">Chip</Button>
+<Button variant="outline" disabled disabledReason="No changes to save">Save Changes</Button>
+```
+
+### Navigation and loading
+
+```tsx
+<ButtonLink href="/settings" variant="text">Settings</ButtonLink>
+<Button variant="solid" tone="primary" loading={saving} onClick={save}>Save Changes</Button>
+```
+
+### Joined actions
+
+<Preview>
+  <ButtonGroupDemo />
+</Preview>
+
+```tsx
+<SplitButton.Root>
+  <SplitButton.Main variant="solid" tone="primary">
+    Commit and Push
+  </SplitButton.Main>
+  <Menu>
+    <MenuTrigger
+      render={
+        <SplitButton.MenuTrigger variant="solid" tone="primary" aria-label="More commit actions" />
+      }
+    />
+    <MenuContent align="end">
+      <MenuItem onClick={commit}>Commit</MenuItem>
+      <MenuItem onClick={push}>Push</MenuItem>
+    </MenuContent>
+  </Menu>
+</SplitButton.Root>
+```
+
+## Props
+
+### Button and ButtonLink
+
+`Button` takes every Base UI `Button` prop. `className` and `style` take plain values, not functions
+of state. `ButtonLink` takes native `<a>` attributes.
+
+| Prop                 | Type                                                                       | Default                                       | Description                                            |
+| -------------------- | -------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| `variant`            | `"ghost" \| "pill" \| "chip" \| "outline" \| "solid" \| "plain" \| "text"` | `"ghost"`                                     |                                                        |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`             | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                            | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                      |
+| `iconOnly`           | `boolean`                                                                  | `false`                                       | Square control.                                        |
+| `icon`               | `IconName`                                                                 |                                               | Leading or standalone glyph.                           |
+| `children`           | `ReactNode`                                                                |                                               | Required for visible-text controls.                    |
+| `xstyle`             | `ButtonLayout`                                                             |                                               | Position, inset, margin, flex, grid, order, and width. |
+| `className`, `style` | See [Theming](/design/theming)                                             |                                               | Applied to the control.                                |
+| `loading`            | `boolean`                                                                  | `false`                                       | Button only. Disables activation but stays focusable.  |
+| `disabledReason`     | `string`                                                                   |                                               | Button only. Shown as the `title` while `disabled`.    |
+| `href`               | `string`                                                                   | Required for ButtonLink                       |                                                        |
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+<include>../../base-ui-reference/button/Button.md</include>
+
+### ButtonGroup and SplitButton
+
+`ButtonGroup` and `SplitButton.Root` render a `<div role="group">` with native `<div>` attributes
+plus `xstyle`, `className`, and `style`. `SplitButton.Main` is a `Button`.
+`SplitButton.MenuTrigger` is an icon-only `Button` that requires `aria-label`, takes no `children`,
+and defaults `icon` to `chevron-down`.
+
+The exported types include `ButtonProps`, `ButtonVariant`, `ButtonSize`, and `ButtonLayout`.
+
+## Accessibility
+
+- Enter and Space activate `Button`. Enter follows `ButtonLink`.
+- A disabled `Button` sets the native `disabled` attribute and leaves the tab order.
+- `loading` and `disabledReason` set `aria-disabled` instead, so the button keeps focus.
+- `loading` sets `aria-busy` and keeps the accessible name.
+- Name a group with `aria-label` when its parts do not name it. Every part keeps its own tab stop.

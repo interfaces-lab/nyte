@@ -9,10 +9,6 @@ const buttonClass =
 const kbdClass =
   "inline-flex size-5 items-center justify-center rounded-full font-sans text-[11px] font-semibold";
 
-/*
- * The plate as a night sky: the moon from the icon, set in ASCII, fills the
- * right of the plate, and one run-in sentence sits low on the left.
- */
 export function Hero4() {
   return (
     <div className="landing-plate relative isolate mx-(--plate-inset) mt-[calc(var(--plate-inset)-var(--site-nav-top)-var(--site-nav-height))] overflow-clip rounded-(--plate-radius) text-white [--plate-haze:#3341ea] [--plate-lift:#2a30e2] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle dark:[--plate-haze:#151a5c] dark:[--plate-lift:#16197a]">

@@ -1,5 +1,3 @@
-"use client";
-
 import { Switch } from "@nyte-ai/ui/switch";
 import { useState } from "react";
 

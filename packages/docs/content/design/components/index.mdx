@@ -1,0 +1,53 @@
+---
+title: Overview
+description: "Every @nyte-ai/ui component and its import path"
+---
+
+```ts
+import "@nyte-ai/ui/ui.css";
+import { Button } from "@nyte-ai/ui/button";
+import { Popover } from "@nyte-ai/ui/popover";
+```
+
+## Components
+
+| Component                                    | Subpath                        |
+| -------------------------------------------- | ------------------------------ |
+| [Alert dialog](/design/alert-dialog)         | `@nyte-ai/ui/alert-dialog`     |
+| [Autocomplete](/design/autocomplete)         | `@nyte-ai/ui/autocomplete`     |
+| [Attachment](/design/attachment)             | `@nyte-ai/ui/attachment`       |
+| [Avatar](/design/avatar)                     | `@nyte-ai/ui/avatar`           |
+| [Bubble](/design/bubble)                     | `@nyte-ai/ui/bubble`           |
+| [Button](/design/button)                     | `@nyte-ai/ui/button`           |
+| [Chart](/design/chart)                       | `@nyte-ai/ui/chart`            |
+| [Checkbox](/design/checkbox)                 | `@nyte-ai/ui/checkbox`         |
+| [Collapsible](/design/collapsible)           | `@nyte-ai/ui/collapsible`      |
+| [Context menu](/design/context-menu)         | `@nyte-ai/ui/context-menu`     |
+| [Dialog](/design/dialog)                     | `@nyte-ai/ui/dialog`           |
+| [Icon](/design/icon)                         | `@nyte-ai/ui/icon`             |
+| [Input](/design/input)                       | `@nyte-ai/ui/input`            |
+| [Kbd](/design/kbd)                           | `@nyte-ai/ui/kbd`              |
+| [Marker](/design/marker)                     | `@nyte-ai/ui/marker`           |
+| [Menu](/design/menu)                         | `@nyte-ai/ui/menu`             |
+| [Message](/design/message)                   | `@nyte-ai/ui/message`          |
+| [Message scroller](/design/message-scroller) | `@nyte-ai/ui/message-scroller` |
+| [Meter](/design/meter)                       | `@nyte-ai/ui/meter`            |
+| [Number field](/design/number-field)         | `@nyte-ai/ui/number-field`     |
+| [Popover](/design/popover)                   | `@nyte-ai/ui/popover`          |
+| [Preview card](/design/preview-card)         | `@nyte-ai/ui/preview-card`     |
+| [Questionnaire](/design/questionnaire)       | `@nyte-ai/ui/questionnaire`    |
+| [Row](/design/row)                           | `@nyte-ai/ui/row`              |
+| [Select](/design/select)                     | `@nyte-ai/ui/select`           |
+| [Slider](/design/slider)                     | `@nyte-ai/ui/slider`           |
+| [Spinner](/design/spinner)                   | `@nyte-ai/ui/spinner`          |
+| [Switch](/design/switch)                     | `@nyte-ai/ui/switch`           |
+| [Tabs](/design/tabs)                         | `@nyte-ai/ui/tabs`             |
+| [Textarea](/design/textarea)                 | `@nyte-ai/ui/textarea`         |
+| [Toast](/design/toast)                       | `@nyte-ai/ui/toast`            |
+| [Toggle](/design/toggle)                     | `@nyte-ai/ui/toggle`           |
+| [Toggle group](/design/toggle-group)         | `@nyte-ai/ui/toggle-group`     |
+| [Toolbar](/design/toolbar)                   | `@nyte-ai/ui/toolbar`          |
+| [Tooltip](/design/tooltip)                   | `@nyte-ai/ui/tooltip`          |
+
+Import these subpaths instead of `@base-ui/react`. When `render` produces something other than a `<button>`, pass `nativeButton={false}` so
+Base UI keeps button semantics.

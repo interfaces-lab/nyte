@@ -1,8 +1,5 @@
-"use client";
-
 import { useEffect } from "react";
 
-/* The brand's four hues in oklch, top of the screen to bottom: the cyan, blue, violet, and pink tints. */
 const HUES = [216.5, 268.3, 294.6, 349.9] as const;
 const DRIFT = 0.36;
 const DRIFT_SPAN = 700;
@@ -12,7 +9,6 @@ function lattice(index: number) {
   return n - Math.floor(n);
 }
 
-/* Smooth 1D value noise in [0, 1], so scrolling shifts the hue without stepping. */
 function noise(at: number) {
   const index = Math.floor(at);
   const fraction = at - index;
@@ -41,7 +37,6 @@ function inGamut(lightness: number, chroma: number, hue: number) {
   ].every((channel) => channel >= 0 && channel <= 1);
 }
 
-/* The most chroma sRGB holds at this lightness and hue, less a margin, never above the cap. */
 function chromaFor(lightness: number, hue: number, cap: number) {
   let low = 0;
   let high = cap;
@@ -62,12 +57,6 @@ function selectionCenter(selection: Selection) {
   return box ? box.top + box.height / 2 : null;
 }
 
-/*
- * ::selection paints one flat colour, so the gradient lives here: the hue is
- * sampled along the brand tints by where the selection sits on screen, nudged
- * by noise over the scroll offset, and recomputed as the page scrolls. The
- * stylesheet keeps the lightness; this fills in the chroma that fits it.
- */
 export function SelectionHue() {
   useEffect(() => {
     const root = document.documentElement;

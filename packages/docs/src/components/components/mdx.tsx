@@ -1,6 +1,5 @@
 import { CloudFeatures } from "./features";
 import { Preview } from "./preview";
-import { TokenTable } from "./token-table";
 import {
   ButtonGroupDemo,
   ButtonSizesDemo,
@@ -31,11 +30,9 @@ import { KbdDemo } from "./demos/kbd";
 import { SpinnerDemo } from "./demos/spinner";
 import { ToastDemo } from "./demos/toast";
 
-/* The component pages' demo surfaces. */
 export const componentsMdxComponents = {
   CloudFeatures,
   Preview,
-  TokenTable,
   ButtonVariantsDemo,
   ButtonSizesDemo,
   ButtonStatesDemo,

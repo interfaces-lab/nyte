@@ -1,5 +1,3 @@
-"use client";
-
 import { IconArrowRotateCounterClockwise, IconPause, IconPlay } from "central-icons";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import type { SceneClock, SceneStep } from "./scene-clock";
@@ -7,18 +5,12 @@ import type { SceneClock, SceneStep } from "./scene-clock";
 interface SceneFrameProps {
   label: string;
   clock: SceneClock;
-  /** The element whose visibility starts the scene. */
   target: RefObject<HTMLElement | null>;
   steps: readonly SceneStep[];
-  /** Where the action is, as a fraction of the canvas width, kept in view when the canvas scrolls. */
   follow?: number;
   children: ReactNode;
 }
 
-/*
- * The panel a scene plays in. Under the canvas, one line narrates the current
- * step; the numbered buttons jump to each step, so the keyboard sees what motion shows.
- */
 export function SceneFrame({ label, clock, target, steps, follow, children }: SceneFrameProps) {
   const viewport = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -29,7 +21,6 @@ export function SceneFrame({ label, clock, target, steps, follow, children }: Sc
   const ended = clock.time >= clock.duration;
   const action = clock.playing ? "Pause" : ended ? "Replay" : "Play";
 
-  /* Small moves track the playhead; a jump glides. Swiping the canvas lets go until the next play or step. */
   useEffect(() => {
     const element = viewport.current;
     if (!element || follow === undefined || !pinned.current) return;

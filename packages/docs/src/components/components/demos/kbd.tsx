@@ -1,5 +1,3 @@
-"use client";
-
 import { Kbd } from "@nyte-ai/ui/kbd";
 
 export function KbdDemo() {

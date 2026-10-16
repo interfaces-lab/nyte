@@ -1,10 +1,6 @@
-"use client";
-
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { IconImac, IconMoon, IconSun } from "central-icons";
-import { useTheme } from "next-themes";
-import { useSyncExternalStore } from "react";
-import { flushSync } from "react-dom";
+import { setTheme, useTheme } from "~/lib/theme";
 
 const THEMES = [
   { value: "light", label: "Light", Icon: IconSun },
@@ -12,19 +8,11 @@ const THEMES = [
   { value: "system", label: "System", Icon: IconImac },
 ] as const;
 
-const noop = () => () => {};
-
 export function ThemeToggle() {
-  const { theme, resolvedTheme, setTheme } = useTheme();
   // The stored theme is unknown until the client reads storage; select nothing
   // on the server and let hydration fill it in.
-  const hydrated = useSyncExternalStore(
-    noop,
-    () => true,
-    () => false,
-  );
-  const value = hydrated ? (theme ?? "system") : null;
-  const Current = hydrated && resolvedTheme === "dark" ? IconMoon : IconSun;
+  const { theme: value, resolvedTheme } = useTheme();
+  const Current = resolvedTheme === "dark" ? IconMoon : IconSun;
 
   const choose = (next: unknown) => {
     const choice = THEMES.find((item) => item.value === next);
@@ -36,8 +24,7 @@ export function ThemeToggle() {
       setTheme(choice.value);
       return;
     }
-    // next-themes writes the class in an effect; flushSync lands it before the snapshot.
-    document.startViewTransition(() => flushSync(() => setTheme(choice.value)));
+    document.startViewTransition(() => setTheme(choice.value));
   };
 
   return (

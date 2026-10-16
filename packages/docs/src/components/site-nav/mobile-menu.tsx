@@ -1,11 +1,9 @@
-"use client";
-
 import { useState } from "react";
 import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
-import { motion } from "@nyte-ai/ui/vars.stylex";
+import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 import { IconBarsTwo, IconCrossSmall } from "central-icons";
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import type { NavSection } from "~/lib/docs";
 
 const styles = create({
@@ -73,9 +71,9 @@ export function SiteMobileNav({
                 <h2 className="px-3 pb-1 text-[14px] text-tertiary-foreground">{section.label}</h2>
               ) : null}
               {section.items.map((item) => (
-                <Link key={item.href} href={item.href} className={linkClass} onClick={close}>
+                <HrefLink key={item.href} href={item.href} className={linkClass} onClick={close}>
                   {item.title}
-                </Link>
+                </HrefLink>
               ))}
             </div>
           ))}

@@ -1,5 +1,3 @@
-"use client";
-
 import { IconPhone } from "central-icons";
 import { useState, type ReactNode } from "react";
 import { DitherMoon } from "./dither-moon";

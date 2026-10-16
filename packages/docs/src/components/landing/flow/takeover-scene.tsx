@@ -1,5 +1,3 @@
-"use client";
-
 import { IconServer, IconStorage } from "central-icons";
 import { ease, lerp, progress, useSceneClock, type SceneStep } from "./scene-clock";
 import { SceneFrame } from "./scene-frame";
@@ -72,7 +70,6 @@ const STEPS = [
   { at: 8.4, text: "Host A comes back. Its late write is refused." },
 ] as const satisfies readonly SceneStep[];
 
-/* How much of the holder's lease is left, from 0 to 1. */
 function leaseLeft(host: Host, time: number): number {
   if (host === "a" && time >= EXPIRES) return 0;
   if (host === "b" && time < TAKEN) return 0;
@@ -166,7 +163,6 @@ function StoreRow({
   );
 }
 
-/* One head, two hosts on one store: the lease moves, and the old runner's late write fails. */
 export function TakeoverScene() {
   const { clock, target } = useSceneClock(DURATION);
   const { time } = clock;

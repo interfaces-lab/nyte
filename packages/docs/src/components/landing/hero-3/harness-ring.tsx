@@ -1,5 +1,3 @@
-"use client";
-
 import { IconChevronLeft, IconChevronRight } from "central-icons";
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { Fingerprint } from "./fingerprint";
@@ -7,7 +5,6 @@ import { HARNESSES, harnessMeta, type Harness } from "./harnesses";
 
 const COUNT = HARNESSES.length;
 const STEP = 360 / COUNT;
-/* Neighbouring cards sit one gap apart on the ring, whatever the card width. */
 const RADIUS = `calc((var(--card-w) + var(--card-gap)) / ${2 * Math.tan(Math.PI / COUNT)})`;
 const DEGREES_PER_PIXEL = 0.22;
 
@@ -49,10 +46,6 @@ function Card({ harness, index, angle }: { harness: Harness; index: number; angl
   );
 }
 
-/*
- * The harnesses as cards on a ring, one facing the visitor. Drag the ring,
- * press the arrows, or use the arrow keys; the caption follows the front card.
- */
 export function HarnessRing() {
   const drag = useRef<Drag>(null);
   const [angle, setAngle] = useState(0);

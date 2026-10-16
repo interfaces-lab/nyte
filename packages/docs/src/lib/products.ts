@@ -5,7 +5,6 @@ export interface Product {
   soon?: true;
 }
 
-/* Every host the kernel ships in. Each description is a claim backed by README.md. */
 export const products: readonly [Product, ...Product[]] = [
   {
     title: "Core",

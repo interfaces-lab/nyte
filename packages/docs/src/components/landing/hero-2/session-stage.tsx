@@ -1,5 +1,3 @@
-"use client";
-
 import { IconPhone } from "central-icons";
 import {
   useEffect,
@@ -19,10 +17,6 @@ const CLIENTS = ["terminal", "desktop", "mobile"] as const;
 const WIDE = "(min-width: 1280px)";
 const REDUCED = "(prefers-reduced-motion: reduce)";
 
-/*
- * Each window's size, as --w and --h, per breakpoint. Below sm every window
- * fills the screen and the dock picks the front one; from sm they overlap.
- */
 const SIZES = {
   terminal:
     "[--h:100%] [--w:100%] sm:[--h:86%] sm:[--w:min(80%,760px)] xl:[--h:84%] xl:[--w:min(36%,640px)]",
@@ -30,7 +24,6 @@ const SIZES = {
   mobile: "[--h:var(--phone-h)] [--w:calc(var(--phone-h)*390/844)]",
 } as const satisfies Record<Client, string>;
 
-/* Where the title bar sits, so it can carry the window. */
 const HANDLES = {
   terminal: "h-[38px] rounded-t-[20px]",
   desktop: "h-[41px] rounded-t-[20px]",
@@ -61,7 +54,6 @@ const tileShadow =
 const glassClass =
   "h-full rounded-[20px] bg-white/30 p-1.5 shadow-[0_40px_90px_-30px_rgb(6_6_70/0.65)] ring-1 ring-white/40 ring-inset backdrop-blur-md transition-shadow duration-200 focus-within:ring-white/90 dark:bg-white/[0.06] dark:ring-white/10 dark:focus-within:ring-white/35";
 
-/* Fractions of the free space left of and above a window, so it stays on screen at any size. */
 interface Placement {
   x: number;
   y: number;
@@ -78,7 +70,6 @@ interface Drag {
   placement: Placement;
 }
 
-/* Back to front: the desktop app behind, the terminal and the phone over its edges. */
 const STACK = ["desktop", "terminal", "mobile"] as const;
 
 const PLACEMENTS = {
@@ -102,11 +93,6 @@ function position(placement: Placement) {
   };
 }
 
-/*
- * The three clients as windows on one screen. Drag a window by its title bar,
- * click or tab into it to bring it forward. Each composer is live: a message
- * reaches the other clients in turn and the reply lands in all three.
- */
 export function SessionStage({ transcripts }: { transcripts: Record<Client, ReactNode> }) {
   const screen = useRef<HTMLDivElement>(null);
   const floor = useRef<HTMLDivElement>(null);
@@ -189,7 +175,6 @@ export function SessionStage({ transcripts }: { transcripts: Record<Client, Reac
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  /* Moves the window in the DOM; React hears only where it lands. */
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     const current = drag.current;
     const frame = current ? frames.current[current.client] : undefined;
@@ -210,7 +195,6 @@ export function SessionStage({ transcripts }: { transcripts: Record<Client, Reac
     setPlacements((all) => ({ ...all, [current.client]: current.placement }));
   };
 
-  /* Once, when the composers come into view: type the follow-up in one client and send it. */
   const play = useEffectEvent(async (signal: AbortSignal) => {
     const source = matches(WIDE) ? "terminal" : (orderRef.current.at(-1) ?? "mobile");
     await pause(700, signal);

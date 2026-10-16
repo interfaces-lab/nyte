@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { DitherMoon } from "../plate/dither-moon";
 import { Fingerprint } from "./fingerprint";
 import { HARNESSES, harnessMeta } from "./harnesses";
@@ -6,7 +6,6 @@ import { HARNESSES, harnessMeta } from "./harnesses";
 const tileClass =
   "flex h-full flex-col overflow-clip rounded-[16px] bg-(--site-panel) p-2 ring-1 ring-border-subtle";
 
-/* Every card from the ring, laid flat, with Nyte last. */
 export function HarnessArchive() {
   return (
     <section
@@ -47,7 +46,7 @@ export function HarnessArchive() {
         ))}
         <li>
           <Link
-            href="/docs"
+            to="/docs"
             className={`${tileClass} bg-(--hero-blue) text-white outline-none transition-[background-color] duration-150 hover:bg-(--hero-blue)/88 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background`}
           >
             <div className="grid aspect-[4/3] w-full place-items-center rounded-[10px] bg-white/10">

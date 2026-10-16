@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { useState } from "react";

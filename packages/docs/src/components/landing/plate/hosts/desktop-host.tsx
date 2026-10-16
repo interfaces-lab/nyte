@@ -7,12 +7,12 @@ import {
   EditStat,
   ToolLine,
 } from "./desktop-chrome";
-import { EDIT_STATS, editDiffHTML } from "./edit-diff";
+import { useEditDiff } from "~/lib/site-data";
+import { EDIT_STATS } from "./edit-diff";
 import { PrerenderedDiff } from "./prerendered-diff";
 
-/* The session's first turn, as every host shows it. Async for the prerendered diff. */
-export async function DesktopTranscript() {
-  const diff = await editDiffHTML();
+export function DesktopTranscript() {
+  const diff = useEditDiff();
 
   return (
     <>

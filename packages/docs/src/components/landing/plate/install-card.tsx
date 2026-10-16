@@ -1,13 +1,14 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { IconArrowDown } from "central-icons";
-import Link from "next/link";
-import { latestMacRelease, releasesUrl } from "~/lib/releases";
+import { Link } from "@tanstack/react-router";
+import { releasesUrl } from "~/lib/releases";
+import { useMacRelease } from "~/lib/site-data";
 import { CopyCommand } from "./copy-command";
 import { ScanMoon } from "./scan-moon";
 
-export async function InstallCard() {
-  const release = await latestMacRelease();
+export function InstallCard() {
+  const release = useMacRelease();
 
   return (
     <section
@@ -53,7 +54,8 @@ export async function InstallCard() {
         <p className="mt-4 text-[13px]/5 text-muted-foreground">
           Building your own?{" "}
           <Link
-            href="/docs/build/composition"
+            to="/docs/$"
+            params={{ _splat: "build/composition" }}
             {...props(intent.primary)}
             className="text-muted-foreground hover:underline"
           >

@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import type { ReactNode } from "react";
 
 interface FactWordProps {
@@ -15,7 +13,7 @@ interface FactWordProps {
 /* A word in the sentence that, on hover or focus, throws two facts about itself and lets them drift with the pointer. */
 export function FactWord({ href, above, below, tint, children }: FactWordProps) {
   return (
-    <Link
+    <HrefLink
       href={href}
       onPointerMove={(event) => {
         const box = event.currentTarget.getBoundingClientRect();
@@ -40,6 +38,6 @@ export function FactWord({ href, above, below, tint, children }: FactWordProps) 
       >
         {below}
       </span>
-    </Link>
+    </HrefLink>
   );
 }

@@ -49,11 +49,6 @@ const ARRANGEMENTS = [
 const COLS = 28;
 const ROWS = 16;
 
-/*
- * Ray-casts each cell against the blocks in isometric view and shades the
- * face it hits, like the harness logos: tops light, left faces mid, right
- * faces dark. A thin light seam runs along every edge so blocks stay apart.
- */
 function drawBlocks(blocks: readonly Block[]) {
   const bounds = blocks.flatMap(([x, y, z, width, depth, height]) =>
     [x, x + width].flatMap((px) =>

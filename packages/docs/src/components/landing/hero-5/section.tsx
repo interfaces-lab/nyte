@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
 
-/*
- * The page's one surface language below the plate. Every tile is the same
- * panel with the same hairline; hover inverts it. Blue is kept for Nyte.
- */
 export const tileClass =
   "rounded-[12px] bg-(--site-panel) ring-1 ring-border-subtle ring-inset outline-none transition-[background-color,color,opacity,scale] duration-300 ease-nav";
 

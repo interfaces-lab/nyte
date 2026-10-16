@@ -1,5 +1,5 @@
 import { IconArrowRight } from "central-icons";
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import type { ReactNode } from "react";
 import { DelegationScene } from "./delegation-scene";
 import { InboxScene } from "./inbox-scene";
@@ -7,7 +7,6 @@ import { TakeoverScene } from "./takeover-scene";
 
 interface FlowSectionProps {
   id: string;
-  /** The kernel concept, linked to its docs page. */
   topic: { label: string; href: string };
   title: string;
   body: string;
@@ -22,13 +21,13 @@ function FlowSection({ id, topic, title, body, scene }: FlowSectionProps) {
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-16">
         <div className="min-w-0">
-          <Link
+          <HrefLink
             href={topic.href}
             className="inline-flex items-center gap-1 font-mono text-[13px]/5 text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
           >
             {topic.label}
             <IconArrowRight size={12} />
-          </Link>
+          </HrefLink>
           <h2
             id={id}
             className="mt-2 max-w-[18ch] font-display text-[clamp(1.75rem,1.1rem+1.9vw,2.75rem)]/[1.05] font-medium tracking-[-0.035em] text-balance"
@@ -46,10 +45,6 @@ function FlowSection({ id, topic, title, body, scene }: FlowSectionProps) {
   );
 }
 
-/**
- * How work flows through one session at once: the inbox, the lease, and
- * delegation. Each claim traces to the JSDoc in packages/core/src.
- */
 export function FlowSections() {
   return (
     <>

@@ -84,7 +84,6 @@ export function TerminalTitle() {
   );
 }
 
-/* The session's first turn, as every host shows it. */
 export function TerminalTranscript() {
   return (
     <>
@@ -165,7 +164,6 @@ export function TerminalTranscript() {
   );
 }
 
-/* The composer box; `children` follows the prompt glyph. */
 export function TerminalPrompt({ children }: { children: ReactNode }) {
   return (
     <div className="mx-[1ch] shrink-0 text-(--t-border)">
