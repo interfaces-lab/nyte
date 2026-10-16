@@ -24,10 +24,10 @@ export function mentionPreviewRows(displayPath: string): readonly MentionPreview
       ? segments
       : [segments.slice(0, collapsed).join("/"), ...segments.slice(collapsed)];
 
-  const isFolder = displayPath.endsWith("/");
+  const mentionsFolder = displayPath.endsWith("/");
 
   return shown.map((label, index) => ({
-    kind: index === shown.length - 1 && !isFolder ? "file" : "folder",
+    kind: index === shown.length - 1 && !mentionsFolder ? "file" : "folder",
     label,
   }));
 }

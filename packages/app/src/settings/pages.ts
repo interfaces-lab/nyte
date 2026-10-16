@@ -165,9 +165,9 @@ export const SETTINGS_PAGES = {
 
 export type SettingsSection = keyof typeof SETTINGS_PAGES;
 
-const ORDER = Object.keys(SETTINGS_PAGES).filter(isPageId);
+const ORDER = Object.keys(SETTINGS_PAGES).filter(namesSettingsPage);
 
-function isPageId(value: string): value is SettingsSection {
+function namesSettingsPage(value: string): value is SettingsSection {
   return Object.hasOwn(SETTINGS_PAGES, value);
 }
 
@@ -195,8 +195,8 @@ export function settingsSectionGroups(
 }
 
 /** The route's param check: a page this host shows. */
-export function isSettingsSection(value: string): value is SettingsSection {
-  return isPageId(value) && available(SETTINGS_PAGES[value].needs);
+export function showsSettingsSection(value: string): value is SettingsSection {
+  return namesSettingsPage(value) && available(SETTINGS_PAGES[value].needs);
 }
 
 export function settingsTitle(section: SettingsSection): string {

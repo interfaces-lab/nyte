@@ -92,10 +92,6 @@ function loadFailure(plugin: PluginInfo): string | undefined {
   return errors.length === 0 ? undefined : errors.map((issue) => issue.message).join("\n");
 }
 
-function isToggle(setting: SettingInfo): boolean {
-  return typeof setting.value === "boolean";
-}
-
 function choiceKey(value: Json): string {
   return JSON.stringify(value);
 }
@@ -106,7 +102,9 @@ function present(plugin: PluginInfo, settings: readonly SettingInfo[]): PluginVi
   if (builtin === undefined && plugin.source === "builtin" && loadFailure(plugin) === undefined)
     return undefined;
 
-  const toggles = settings.filter((setting) => setting.owner === plugin.id && isToggle(setting));
+  const toggles = settings.filter(
+    (setting) => setting.owner === plugin.id && typeof setting.value === "boolean",
+  );
   const off = toggles.length > 0 && toggles.every((setting) => setting.value === false);
 
   return { name: plugin.id, icon: "box-3d", ...builtin, info: plugin, off };
@@ -282,7 +280,7 @@ function PluginSetting({
   readonly disabled: boolean;
   readonly onApply: (value: Json) => void;
 }): ReactElement {
-  if (isToggle(setting))
+  if (typeof setting.value === "boolean")
     return (
       <SettingsSwitchRow
         title={setting.label}

@@ -87,16 +87,15 @@ function readImageAttachment(args: {
           return;
         }
 
-        const marker = ";base64,";
-        const markerIndex = result.indexOf(marker);
+        const [header = "", ...payload] = result.split(";base64,");
 
-        if (!result.startsWith("data:") || markerIndex === -1) {
+        if (!header.startsWith("data:") || payload.length === 0) {
           reject(new Error(`Could not encode ${file.name}`));
 
           return;
         }
 
-        const data = result.slice(markerIndex + marker.length);
+        const data = payload.join(";base64,");
         resolve({
           id: crypto.randomUUID(),
           name: file.name,

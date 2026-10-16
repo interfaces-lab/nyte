@@ -36,10 +36,6 @@ export interface PaneControllerSnapshot {
  */
 type LayoutRoute = (current: PaneLayout, next: PaneLayout, action: PaneLayoutAction) => PaneLayout;
 
-function actionRequestsFocus(action: PaneLayoutAction): boolean {
-  return action.kind !== "resize" && action.kind !== "remove-session";
-}
-
 function selectedSession(action: PaneLayoutAction): SessionId | undefined {
   if (action.kind === "select" || action.kind === "select-in-pane") {
     return action.selection.kind === "session" ? action.selection.sessionId : undefined;
@@ -125,12 +121,13 @@ export class PaneController {
 
     this.#rememberLayout(layout);
 
-    const focusRequest = actionRequestsFocus(action)
-      ? {
-          paneId: activePane(layout).id,
-          revision: this.#snapshot.focusRequest.revision + 1,
-        }
-      : this.#snapshot.focusRequest;
+    const focusRequest =
+      action.kind !== "resize" && action.kind !== "remove-session"
+        ? {
+            paneId: activePane(layout).id,
+            revision: this.#snapshot.focusRequest.revision + 1,
+          }
+        : this.#snapshot.focusRequest;
 
     this.#snapshot = { layout, focusRequest };
 

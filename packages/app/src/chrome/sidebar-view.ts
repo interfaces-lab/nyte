@@ -290,7 +290,7 @@ export function clearSessionFilters(settings: SessionViewSettings): SessionViewS
   };
 }
 
-export function isOption<T extends string>(value: unknown, options: readonly T[]): value is T {
+export function amongOptions<T extends string>(value: unknown, options: readonly T[]): value is T {
   return options.some((option) => option === value);
 }
 

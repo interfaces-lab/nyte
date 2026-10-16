@@ -4,7 +4,7 @@ import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sameSelection } from "../layout/pane-layout.ts";
-import { isPage } from "./model.ts";
+import { showsPage } from "./model.ts";
 import type { Page, Place } from "./model.ts";
 
 /** The section a page opens on when it has not been moved. */
@@ -61,10 +61,10 @@ export function locationPlace(router: AppRouter): Place | undefined {
 }
 
 export function samePlaceAt(place: Place, location: Place): boolean {
-  if (isPage(place) || isPage(location)) {
+  if (showsPage(place) || showsPage(location)) {
     return (
-      isPage(place) &&
-      isPage(location) &&
+      showsPage(place) &&
+      showsPage(location) &&
       place.kind === location.kind &&
       pageSection(place) === pageSection(location)
     );

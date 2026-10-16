@@ -15,10 +15,6 @@ type TranscriptDisplayPart =
   | { readonly kind: "agents"; readonly messages: readonly ToolMessage[] }
   | { readonly kind: "response"; readonly messages: readonly TextMessage[] };
 
-function isStepMessage(message: Message): message is StepMessage {
-  return showsTool(message) || showsThinking(message);
-}
-
 export function displayTranscriptParts(messages: readonly Message[]): TranscriptDisplayPart[] {
   const display: TranscriptDisplayPart[] = [];
   let step: StepMessage[] = [];
@@ -66,7 +62,7 @@ export function displayTranscriptParts(messages: readonly Message[]): Transcript
       continue;
     }
 
-    if (isStepMessage(message)) {
+    if (showsTool(message) || showsThinking(message)) {
       flushResponse();
       step.push(message);
       continue;

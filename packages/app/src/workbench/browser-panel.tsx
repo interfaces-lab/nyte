@@ -214,16 +214,6 @@ function releaseSurface(surface: string): void {
     .catch(() => undefined);
 }
 
-function sameBounds(a: BrowserBoundsMessage, b: BrowserBoundsMessage): boolean {
-  return (
-    a.visible === b.visible &&
-    a.bounds.x === b.bounds.x &&
-    a.bounds.y === b.bounds.y &&
-    a.bounds.width === b.bounds.width &&
-    a.bounds.height === b.bounds.height
-  );
-}
-
 function useSurfaceBounds(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
@@ -258,7 +248,16 @@ function useSurfaceBounds(
         visible: visible && !overlapped && rect.width > 0 && rect.height > 0,
       };
 
-      if (lastRef.current !== undefined && sameBounds(lastRef.current, message)) return;
+      const last = lastRef.current;
+      const unchanged =
+        last !== undefined &&
+        last.visible === message.visible &&
+        last.bounds.x === message.bounds.x &&
+        last.bounds.y === message.bounds.y &&
+        last.bounds.width === message.bounds.width &&
+        last.bounds.height === message.bounds.height;
+
+      if (unchanged) return;
       lastRef.current = message;
       browserBridge().setBounds(message);
     };

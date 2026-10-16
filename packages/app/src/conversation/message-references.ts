@@ -104,24 +104,7 @@ function encodeClipboardToken(body: string): string {
   return `${CLIPBOARD_TOKEN_PREFIX}${String(payload.length)}:${payload}`;
 }
 
-function decodeClipboardToken(
-  text: string,
-  start: number,
-): { readonly end: number; readonly body: string } | undefined {
-  if (!text.startsWith(CLIPBOARD_TOKEN_PREFIX, start)) return undefined;
-  const lengthStart = start + CLIPBOARD_TOKEN_PREFIX.length;
-  const colon = text.indexOf(":", lengthStart);
-
-  if (colon <= lengthStart) return undefined;
-  const lengthText = text.slice(lengthStart, colon);
-
-  if (!/^[0-9]+$/u.test(lengthText)) return undefined;
-  const length = Number(lengthText);
-  const payloadStart = colon + 1;
-  const payloadEnd = payloadStart + length;
-
-  if (payloadEnd > text.length) return undefined;
-  const payload = text.slice(payloadStart, payloadEnd);
+function parseClipboardBody(payload: string): string | undefined {
   let parsed: unknown;
 
   try {
@@ -130,25 +113,25 @@ function decodeClipboardToken(
     return undefined;
   }
 
-  if (!Value.Check(clipboardBody, parsed)) return undefined;
-
-  return { end: payloadEnd, body: parsed };
+  return Value.Check(clipboardBody, parsed) ? parsed : undefined;
 }
 
+/** The first well-formed token at or after `from`: a `@clipboard/<length>:` header, then `length` characters of JSON. */
 function nextClipboardToken(
   text: string,
   from: number,
 ): { readonly start: number; readonly end: number; readonly body: string } | undefined {
-  let search = from;
+  const header = new RegExp(`${CLIPBOARD_TOKEN_PREFIX}([0-9]+):`, "gu");
+  header.lastIndex = from;
 
-  while (search < text.length) {
-    const start = text.indexOf(CLIPBOARD_TOKEN_PREFIX, search);
+  for (let match = header.exec(text); match !== null; match = header.exec(text)) {
+    const payloadStart = match.index + match[0].length;
+    const payloadEnd = payloadStart + Number(match[1]);
 
-    if (start === -1) return undefined;
-    const decoded = decodeClipboardToken(text, start);
+    if (payloadEnd > text.length) continue;
+    const body = parseClipboardBody(text.slice(payloadStart, payloadEnd));
 
-    if (decoded !== undefined) return { start, end: decoded.end, body: decoded.body };
-    search = start + 1;
+    if (body !== undefined) return { start: match.index, end: payloadEnd, body };
   }
 
   return undefined;
@@ -300,7 +283,7 @@ export function sameReference(left: MessageReference, right: MessageReference): 
   }
 }
 
-export function isFolder(file: MentionFile): boolean {
+export function mentionsFolder(file: MentionFile): boolean {
   return file.label.endsWith("/");
 }
 
@@ -508,7 +491,8 @@ export function inlineCodeReference(
   if (file === undefined) return undefined;
   const start = Number(located?.start ?? located?.anchorStart);
 
-  if (isFolder(file) || !Number.isSafeInteger(start) || start < 1) return { kind: "file", file };
+  if (mentionsFolder(file) || !Number.isSafeInteger(start) || start < 1)
+    return { kind: "file", file };
   const end = Number(located?.end ?? located?.anchorEnd ?? start);
 
   return { kind: "file", file, lines: { start, end: Math.max(start, end) } };

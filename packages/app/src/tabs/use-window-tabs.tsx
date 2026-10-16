@@ -18,7 +18,7 @@ import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 
-import { activeTab, currentView, isPage, tabPlace, tabPlaces } from "./model.ts";
+import { activeTab, currentView, showsPage, tabPlace, tabPlaces } from "./model.ts";
 import type { Place, WindowState } from "./model.ts";
 import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
@@ -78,7 +78,7 @@ export function useWindowTabsSync(): void {
       if (location === undefined) return;
       const view = currentView(activeTab(windowTabs.getSnapshot()));
 
-      if (view.kind === "page" && isPage(location) && view.page.kind === location.kind) {
+      if (view.kind === "page" && showsPage(location) && view.page.kind === location.kind) {
         if (pageSection(view.page) !== pageSection(location))
           windowTabs.dispatch({ kind: "page-section", section: pageSection(location) });
 

@@ -10,7 +10,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { formatTokens, formatUsd } from "../chrome/usage-view.ts";
 import { useSessionView } from "../queries.ts";
-import { isSettingsSection } from "../settings/index.ts";
+import { showsSettingsSection } from "../settings/index.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const CONTEXT_WARNING_PERCENT = 80;
@@ -82,7 +82,7 @@ function CostRow({
         <Row.Primary
           render={<TooltipTrigger />}
           onClick={
-            isSettingsSection("usage")
+            showsSettingsSection("usage")
               ? () => void navigate({ to: "/settings/$section", params: { section: "usage" } })
               : undefined
           }

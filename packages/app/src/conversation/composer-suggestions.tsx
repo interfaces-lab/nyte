@@ -23,7 +23,7 @@ import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts
 import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
 import { composerEnterAction } from "./composer-keys.ts";
 import { mentionPreviewRows } from "./mention-preview.ts";
-import { CONVERSATION_MENTION, isFolder, sameReference } from "./message-references.ts";
+import { CONVERSATION_MENTION, mentionsFolder, sameReference } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./composer.stylex.ts";
 
@@ -239,7 +239,7 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
     case "mention":
       return undefined;
     case "file":
-      return isFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
+      return mentionsFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
     default: {
       const _exhaustive: never = suggestion;
 
@@ -268,14 +268,26 @@ function suggestionEmptyText(
   }
 }
 
+/** Where the trimmed query first appears in `text`, ignoring case; undefined when it is blank or absent. */
+function findQuery(
+  text: string,
+  query: string,
+): { readonly start: number; readonly end: number } | undefined {
+  const needle = query.trim().toLocaleLowerCase();
+
+  if (needle === "") return undefined;
+  const [before = "", ...after] = text.toLocaleLowerCase().split(needle);
+
+  if (after.length === 0) return undefined;
+
+  return { start: before.length, end: before.length + needle.length };
+}
+
 function descriptionExcerpt(description: string, query: string): string {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const match = findQuery(description, query);
 
-  if (normalizedQuery === "") return description;
-  const match = description.toLocaleLowerCase().indexOf(normalizedQuery);
-
-  if (match <= 36) return description;
-  const start = Math.max(0, match - 24);
+  if (match === undefined || match.start <= 36) return description;
+  const start = Math.max(0, match.start - 24);
 
   return `${start === 0 ? "" : "…"}${description.slice(start)}`;
 }
@@ -287,19 +299,17 @@ function HighlightedSuggestionText({
   readonly text: string;
   readonly query: string;
 }): ReactElement {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const match = normalizedQuery === "" ? -1 : text.toLocaleLowerCase().indexOf(normalizedQuery);
+  const match = findQuery(text, query);
 
-  if (match === -1) return <>{text}</>;
-  const end = match + normalizedQuery.length;
+  if (match === undefined) return <>{text}</>;
 
   return (
     <>
-      {text.slice(0, match)}
+      {text.slice(0, match.start)}
       <span {...props(intent.primary, composerStyles.suggestionMatch)}>
-        {text.slice(match, end)}
+        {text.slice(match.start, match.end)}
       </span>
-      {text.slice(end)}
+      {text.slice(match.end)}
     </>
   );
 }

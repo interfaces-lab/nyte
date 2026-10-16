@@ -39,7 +39,7 @@ import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
+import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,
   commitScopeOptions,
@@ -596,7 +596,7 @@ export function ChangesToolbar({
           <PanelToggleIcon side="right" visible={fileTreeVisible} />
         </Toggle>
       </div>
-      {repository !== undefined && isWorkingTreeScope(scope) && (
+      {repository !== undefined && readsWorkingTree(scope) && (
         <ChangesCommitBar
           scope={scope}
           branch={branch}

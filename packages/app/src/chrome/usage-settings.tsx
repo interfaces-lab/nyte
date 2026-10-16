@@ -11,7 +11,7 @@ import type { ReactElement, ReactNode } from "react";
 import { Deferred } from "../deferred.tsx";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { useChromeTab } from "./use-chrome-tab.ts";
-import { isOption } from "./sidebar-view.ts";
+import { amongOptions } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import {
@@ -108,7 +108,7 @@ export function UsageRangePicker(): ReactElement {
       variant="segmented"
       value={range}
       onValueChange={(value) => {
-        if (isOption(value, USAGE_RANGES)) setRange(value);
+        if (amongOptions(value, USAGE_RANGES)) setRange(value);
       }}
     >
       <Tabs.List aria-label="Usage range">
@@ -577,7 +577,7 @@ export function UsageSettings(): ReactElement {
           variant="segmented"
           value={axis}
           onValueChange={(next) => {
-            if (isOption(next, AXES)) setAxis(next);
+            if (amongOptions(next, AXES)) setAxis(next);
           }}
           xstyle={styles.breakdown}
         >

@@ -92,14 +92,17 @@ const CLOSED_LIMIT = 25;
 
 const HISTORY_LIMIT = 50;
 
-export function isPage(place: Place): place is Page {
+export function showsPage(place: Place): place is Page {
   return place.kind === "customize" || place.kind === "environments";
 }
 
 export function samePlace(left: Place, right: Place): boolean {
-  if (isPage(left) || isPage(right)) {
+  if (showsPage(left) || showsPage(right)) {
     return (
-      isPage(left) && isPage(right) && left.kind === right.kind && left.section === right.section
+      showsPage(left) &&
+      showsPage(right) &&
+      left.kind === right.kind &&
+      left.section === right.section
     );
   }
 
@@ -160,7 +163,9 @@ export function newTab(id: string, place: Place): Tab {
   return {
     id,
     views: [
-      isPage(place) ? { kind: "page", page: place } : panesView(createSinglePane("primary", place)),
+      showsPage(place)
+        ? { kind: "page", page: place }
+        : panesView(createSinglePane("primary", place)),
     ],
     index: 0,
   };
@@ -243,7 +248,7 @@ function recordLayout(tab: Tab, view: PanesView, next: PaneLayout, action: PaneL
 function openHere(tab: Tab, place: Place): Tab {
   const view = currentView(tab);
 
-  if (isPage(place)) {
+  if (showsPage(place)) {
     if (view.kind === "page" && view.page.kind === place.kind) return tab;
 
     return pushView(tab, { kind: "page", page: place });

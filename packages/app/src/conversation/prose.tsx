@@ -34,7 +34,7 @@ import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import {
   fileFromUrl,
   inlineCodeReference,
-  isFolder,
+  mentionsFolder,
   referenceTitle,
 } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
@@ -107,7 +107,7 @@ function FileCitation({
           <a
             {...elementProps}
             href={reference.file.url}
-            data-citation={isFolder(reference.file) ? "folder" : "file"}
+            data-citation={mentionsFolder(reference.file) ? "folder" : "file"}
             {...props(intent.primary, proseStyles.link)}
             onClick={(event) => {
               event.preventDefault();
@@ -117,7 +117,7 @@ function FileCitation({
           >
             <span {...props(proseStyles.linkLead)}>
               <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-                {isFolder(reference.file) ? (
+                {mentionsFolder(reference.file) ? (
                   <Icon name="folder" size={12} />
                 ) : (
                   <FileTypeIcon path={reference.file.path} />

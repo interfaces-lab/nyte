@@ -413,7 +413,10 @@ function ChangesPanelView({
   const preparedPaths = useMemo((): readonly string[] => {
     if (!visible) return [];
     const collapsed = new Set(collapsedPaths);
-    const active = Math.max(stackOrder.indexOf(activePath ?? ""), 0);
+    const active = Math.max(
+      stackOrder.findIndex((path) => path === activePath),
+      0,
+    );
     const nearest: string[] = [];
 
     for (let distance = 0; nearest.length < stackOrder.length; distance += 1) {

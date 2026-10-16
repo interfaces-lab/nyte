@@ -8,7 +8,7 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { isFolder } from "../conversation/message-references.ts";
+import { mentionsFolder } from "../conversation/message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
 import { macPlatform } from "../platform.ts";
 import { treeStatus } from "./tree-theme.ts";
@@ -37,7 +37,7 @@ export function FilesEmptyState({
   const mod = macPlatform(undefined) ? "⌘" : "Ctrl";
 
   const { rank, byPath } = useMemo(() => {
-    const openable = (files ?? []).filter((file) => !isFolder(file));
+    const openable = (files ?? []).filter((file) => !mentionsFolder(file));
 
     return {
       rank: createFileRanking(openable, MATCH_LIMIT),

@@ -49,7 +49,7 @@ import { CustomizeSurface } from "./chrome/customize.tsx";
 import { EnvironmentsSurface } from "./chrome/environments.tsx";
 import {
   closeSettings,
-  isSettingsSection,
+  showsSettingsSection,
   rememberWorkspaceHref,
   SettingsSurface,
 } from "./settings/index.ts";
@@ -410,7 +410,7 @@ export const settingsRoute = createRoute({
   path: "/settings/$section",
   params: {
     parse: ({ section }) => {
-      if (!isSettingsSection(section)) {
+      if (!showsSettingsSection(section)) {
         throw redirect({
           to: "/settings/$section",
           params: { section: "general" },

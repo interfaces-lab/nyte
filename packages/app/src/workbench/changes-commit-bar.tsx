@@ -127,7 +127,7 @@ export function commitActionLabel(action: CommitAction): string {
 }
 
 /** The scopes that read the working tree, which is the only place a commit applies. */
-export function isWorkingTreeScope(scope: WorkbenchChangesScope): boolean {
+export function readsWorkingTree(scope: WorkbenchChangesScope): boolean {
   return scope.kind === "uncommitted" || scope.kind === "staged" || scope.kind === "unstaged";
 }
 
@@ -150,7 +150,7 @@ export function commitActionDisabledReason(
 ): string | undefined {
   const plan = commitActionPlan(action);
 
-  if (plan.pullRequest && !isWorkingTreeScope(state.scope))
+  if (plan.pullRequest && !readsWorkingTree(state.scope))
     return "Pull requests apply to the working tree";
 
   if (plan.branch) return undefined;

@@ -38,17 +38,14 @@ export function matchesChangePathQuery(path: string, query: string): boolean {
   const needle = query.trim().toLowerCase();
 
   if (needle === "") return true;
-  const haystack = path.toLowerCase();
-  let cursor = 0;
+  const characters = Array.from(needle);
+  let matched = 0;
 
-  for (const character of needle) {
-    const found = haystack.indexOf(character, cursor);
-
-    if (found === -1) return false;
-    cursor = found + 1;
+  for (const character of path.toLowerCase()) {
+    if (character === characters[matched]) matched += 1;
   }
 
-  return true;
+  return matched === characters.length;
 }
 
 /** Narrows a change list to the paths a search query and filter menu keep, in input order. */

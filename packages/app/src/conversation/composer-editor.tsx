@@ -132,15 +132,6 @@ function caretBox(range: Range): CaretBox | undefined {
   return { x: rect.left, top: rect.top, height: rect.height };
 }
 
-function sameReferences(
-  left: readonly MessageReference[],
-  right: readonly MessageReference[],
-): boolean {
-  return (
-    left.length === right.length && left.every((reference, index) => reference === right[index])
-  );
-}
-
 export function ComposerEditor({
   ref,
   inputRef,
@@ -296,7 +287,12 @@ export function ComposerEditor({
 
       const references = composerReferences(state.doc);
 
-      if (!sameReferences(references, lastReferences.current)) {
+      const previousReferences = lastReferences.current;
+      const referencesChanged =
+        references.length !== previousReferences.length ||
+        references.some((reference, index) => reference !== previousReferences[index]);
+
+      if (referencesChanged) {
         lastReferences.current = references;
         onReferencesChange?.(references);
       }

@@ -117,7 +117,7 @@ function groups(markup: string): Map<string, string> {
     markup
       .split('<section aria-label="')
       .slice(1)
-      .map((part) => [part.slice(0, part.indexOf('"')), part]),
+      .map((part) => [part.split('"', 1)[0] ?? "", part]),
   );
 }
 

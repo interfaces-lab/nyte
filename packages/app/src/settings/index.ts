@@ -1,7 +1,7 @@
 export { SettingsNavigation } from "./navigation.tsx";
 
 export {
-  isSettingsSection,
+  showsSettingsSection,
   settingsSectionGroups,
   settingsTitle,
   type SettingsSection,

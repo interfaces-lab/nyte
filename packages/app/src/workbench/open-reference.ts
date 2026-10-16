@@ -1,4 +1,4 @@
-import { isFolder } from "../conversation/message-references.ts";
+import { mentionsFolder } from "../conversation/message-references.ts";
 import type { ReferenceOpener } from "../conversation/reference-opener.tsx";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { workbenchController } from "./controller.ts";
@@ -32,7 +32,7 @@ export function workbenchReferenceOpener(input: {
       case "file": {
         const { file } = reference;
 
-        if (isFolder(file)) return () => fileActions.reveal(viewKey, file.displayPath);
+        if (mentionsFolder(file)) return () => fileActions.reveal(viewKey, file.displayPath);
 
         return () =>
           fileActions.open(viewKey, {

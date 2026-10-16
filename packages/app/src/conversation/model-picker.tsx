@@ -38,7 +38,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { menu, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
-import { isSettingsSection } from "../settings/index.ts";
+import { showsSettingsSection } from "../settings/index.ts";
 import {
   modelTriggerLabel,
   pickerGroups,
@@ -130,7 +130,7 @@ function ModelPickerView({
 
   const unknown = catalog?.providers.some((provider) => provider.credential === "unknown") ?? false;
 
-  const manage = isSettingsSection("providers")
+  const manage = showsSettingsSection("providers")
     ? {
         label: connected || unknown ? "Manage Providers…" : "Connect a Provider…",
         href: "/settings/providers",

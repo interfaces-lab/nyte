@@ -12,7 +12,7 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { macPlatform } from "../platform.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 
-import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
+import { amongOptions, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionSearch, useWorkingSessionIds } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
@@ -253,7 +253,7 @@ export function SearchPalette({
           value={tab}
           xstyle={styles.tabsBar}
           onValueChange={(value) => {
-            if (isOption(value, TABS)) setTab(value);
+            if (amongOptions(value, TABS)) setTab(value);
           }}
         >
           <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>

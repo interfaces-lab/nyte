@@ -88,12 +88,6 @@ function parseSessionDropData(value: Data | undefined): SessionDropData | undefi
   return Value.Check(sessionDropDataSchema, value) ? value : undefined;
 }
 
-function contains(rect: ClientRect, point: SessionDragPoint): boolean {
-  return (
-    point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom
-  );
-}
-
 function pointForCollision(
   pointerCoordinates: SessionDragPoint | null,
   collisionRect: ClientRect,
@@ -135,7 +129,15 @@ function collisionDetector(layout: PaneLayout): CollisionDetection {
       if (paneContainer === undefined) continue;
       const rect = droppableRects.get(paneContainer.id);
 
-      if (rect === undefined || !contains(rect, point)) continue;
+      if (
+        rect === undefined ||
+        point.x < rect.left ||
+        point.x > rect.right ||
+        point.y < rect.top ||
+        point.y > rect.bottom
+      ) {
+        continue;
+      }
 
       if (pane.selection.kind === "session" && pane.selection.sessionId === dragged.sessionId) {
         return [];

@@ -161,11 +161,13 @@ export async function run(): Promise<string> {
           check(frameBounds.height === 40, "Compact padding preserves the pill height");
         }
 
-        const anchorOffset = text.includes("\n")
-          ? text.indexOf("\n") + 1
-          : Array.from({ length: text.length }, (_, index) => index).find(
-              (index) => glyphBox(area, index).top > firstBox.top + 2,
-            );
+        const [firstLine = "", ...laterLines] = text.split("\n");
+        const anchorOffset =
+          laterLines.length > 0
+            ? firstLine.length + 1
+            : Array.from({ length: text.length }, (_, index) => index).find(
+                (index) => glyphBox(area, index).top > firstBox.top + 2,
+              );
 
         const lastLineStart = Array.from({ length: text.length }, (_, index) => index).find(
           (index) => text[index] !== "\n" && glyphBox(area, index).top === lastBox.top,

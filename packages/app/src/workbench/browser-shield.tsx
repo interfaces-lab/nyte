@@ -29,16 +29,12 @@ const styles = create({
   menu: { minWidth: 260 },
 });
 
-function hostOf(url: string): string {
+function readHost(url: string): string {
   try {
     return new URL(url).hostname;
   } catch {
     return "";
   }
-}
-
-function covers(allowed: string, host: string): boolean {
-  return host === allowed || host.endsWith(`.${allowed}`);
 }
 
 interface ShieldMenuProps {
@@ -49,7 +45,7 @@ interface ShieldMenuProps {
 export function ShieldMenu({ state, onChanged }: ShieldMenuProps): ReactElement {
   const blockAds = useSetting(hostSetting("blockAds")) ?? true;
   const allowedHosts = useSetting(hostSetting("adblockAllowedHosts")) ?? [];
-  const host = hostOf(state.url);
+  const host = readHost(state.url);
   const unavailable = blockAds && state.blocking === "off";
   const active = state.blocking === "on";
 
@@ -86,7 +82,9 @@ export function ShieldMenu({ state, onChanged }: ShieldMenuProps): ReactElement 
             onCheckedChange={(block) =>
               change({
                 adblockAllowedHosts: block
-                  ? allowedHosts.filter((allowed) => !covers(allowed, host))
+                  ? allowedHosts.filter(
+                      (allowed) => host !== allowed && !host.endsWith(`.${allowed}`),
+                    )
                   : [...allowedHosts, host],
               })
             }

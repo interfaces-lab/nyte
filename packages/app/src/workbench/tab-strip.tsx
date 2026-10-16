@@ -334,7 +334,7 @@ export function WorkbenchTabStrip({
             listRef={listRef}
             onPick={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
             onReorder={(order, id) => {
-              const after = order[order.indexOf(id) + 1];
+              const after = order[order.findIndex((entry) => entry === id) + 1];
 
               workbenchController.actions.moveTab({
                 view: viewKey,
