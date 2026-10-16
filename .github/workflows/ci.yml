@@ -41,6 +41,7 @@ jobs:
       - run: pnpm --dir packages/tui verify:targets
       - run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: pnpm exec turbo test
+      - run: pnpm --dir packages/tui test:binary
 
   e2e-web:
     runs-on: blacksmith-8vcpu-ubuntu-2404

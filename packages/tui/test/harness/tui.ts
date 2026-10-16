@@ -11,11 +11,13 @@ import type { Store } from "../../src/app/store.ts";
 import { holdTypeahead } from "../../src/app/typeahead.ts";
 import type { BootOptions } from "../../src/effects/boot.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
+import { keyStrokes } from "../../src/lib/constants.ts";
+import type { ChatCommand } from "../../src/lib/constants.ts";
 import { hostPort } from "../../src/effects/host-port.ts";
 import { openTestHost } from "../fixture/host.ts";
 import type { TestHost } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
-import type { FakePlugins, FakeTerminal } from "../fixture/ports.ts";
+import type { FakePlugins, FakeShell, FakeTerminal } from "../fixture/ports.ts";
 
 process.env["NYTE_SKIP_VERSION_CHECK"] = "1";
 
@@ -32,6 +34,8 @@ export interface TuiOptions {
   /** Keys typed after the renderer starts reading input but before the app mounts. */
   readonly typed?: string;
   readonly kit?: (kit: Kit) => Kit;
+  /** Starts `recorder` just before the app mounts, so frame timestamps count from mount. */
+  readonly record?: boolean;
 }
 
 /** The whole TUI on a test renderer, its timers on a `ManualClock`, over an in-process host. */
@@ -43,10 +47,13 @@ export interface Tui extends TestRendererSetup {
   readonly recorder: TestRecorder;
   readonly terminal: FakeTerminal;
   readonly plugins: FakePlugins;
+  readonly shell: FakeShell;
   readonly home: string;
-  /** `performance.now()` just before the app mounted. */
-  readonly mountedAt: number;
   openHost(): void;
+  /** Presses the first key bound to `command`, as the keymap sees it. */
+  press(command: ChatCommand): void;
+  /** Types `text` and presses Enter. */
+  send(text: string): Promise<void>;
   /** Renders until `done` holds; fails after a bounded number of turns with the last frame. */
   until(done: () => boolean): Promise<void>;
   /** Renders until the frame satisfies `predicate` and returns it. */
@@ -75,7 +82,9 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
   const opening = Promise.withResolvers<void>();
 
   if (options.opened !== false) opening.resolve();
-  const mountedAt = performance.now();
+  const recorder = new TestRecorder(setup.renderer);
+
+  if (options.record === true) recorder.rec();
 
   const mounting: AppOptions = {
     renderer: setup.renderer,
@@ -121,14 +130,18 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
   const state = (predicate: (store: Store) => boolean): Promise<void> =>
     until(() => predicate(app.store));
 
-  const dispose = async (): Promise<void> => {
-    opening.resolve();
-    await app.close();
-    await setup.dispose();
+  let disposed: Promise<void> | null = null;
 
-    if (options.fixture === undefined) await fixture.close();
-    rmSync(home, { recursive: true, force: true });
-  };
+  const dispose = (): Promise<void> =>
+    (disposed ??= (async () => {
+      opening.resolve();
+      recorder.stop();
+      await app.close();
+      await setup.dispose();
+
+      if (options.fixture === undefined) await fixture.close();
+      rmSync(home, { recursive: true, force: true });
+    })());
 
   return {
     ...setup,
@@ -136,12 +149,34 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     store: app.store,
     fixture,
     clock,
-    recorder: new TestRecorder(setup.renderer),
+    recorder,
     terminal: fakes.terminal,
     plugins: fakes.plugins,
+    shell: fakes.shell,
     home,
-    mountedAt,
     openHost: () => opening.resolve(),
+    press(command) {
+      const [stroke] = keyStrokes(command);
+
+      if (stroke === undefined) throw new Error(`No key is bound to ${command}.`);
+      setup.renderer.keyInput.processParsedKey({
+        name: stroke.name,
+        ctrl: stroke.ctrl ?? false,
+        shift: stroke.shift ?? false,
+        meta: false,
+        option: stroke.meta ?? false,
+        super: stroke.super ?? false,
+        sequence: "",
+        raw: "",
+        number: false,
+        eventType: "press",
+        source: "kitty",
+      });
+    },
+    async send(text) {
+      await setup.mockInput.typeText(text);
+      setup.mockInput.pressEnter();
+    },
     until,
     frame,
     state,
@@ -153,4 +188,49 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     dispose,
     [Symbol.asyncDispose]: dispose,
   };
+}
+
+/** The composer's row reads `❯ text…` inside its border. */
+export function composerShows(frame: string, text: string): boolean {
+  return frame
+    .split("\n")
+    .some((line) => line.trimStart().startsWith(`│ ❯ ${text}`) && line.trimEnd().endsWith("│"));
+}
+
+/** `text` shows on a row below the composer's bottom border, where menus and panels open. */
+export function belowComposer(frame: string, text: string): boolean {
+  const lines = frame.split("\n");
+  const border = lines.findIndex((line) => composerBorder(line));
+
+  return border >= 0 && lines.slice(border + 1).some((line) => line.includes(text));
+}
+
+function composerBorder(line: string): boolean {
+  return line.trimStart().startsWith("╰─ ") && line.includes(" │ ");
+}
+
+/** The composer's bottom border names the model and thinking level. */
+export function footerShows(frame: string, model: string, level: string): boolean {
+  return frame
+    .split("\n")
+    .some(
+      (line) =>
+        composerBorder(line) &&
+        line.includes(`│ ${model} │`) &&
+        new RegExp(`\\b${level}\\b`, "u").test(line),
+    );
+}
+
+/** The cursor's 0-based column and row; `captureSpans` reports it 1-based. */
+export function cursorCell(
+  setup: Pick<TestRendererSetup, "captureSpans">,
+): readonly [number, number] {
+  const [column, row] = setup.captureSpans().cursor;
+
+  return [column - 1, row - 1];
+}
+
+/** When the first recorded frame showing `text` was drawn, in ms since recording began. */
+export function shownAt(tui: Pick<Tui, "recorder">, text: string): number | undefined {
+  return tui.recorder.recordedFrames.find((recorded) => recorded.frame.includes(text))?.timestamp;
 }

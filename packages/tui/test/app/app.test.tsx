@@ -45,7 +45,7 @@ test("without copy-on-select, a right-click copies the transcript selection and 
   app.mockInput.pressEnter();
   const frame = await app.frame((text) => text.includes("Select this answer."));
   const row = frame.split("\n").findIndex((line) => line.includes("Select this answer."));
-  const column = (frame.split("\n")[row] ?? "").indexOf("Select");
+  const column = (frame.split("\n")[row] ?? "").split("Select")[0]?.length ?? 0;
 
   await app.mockMouse.drag(column, row, column + 5, row);
   await app.renderOnce();

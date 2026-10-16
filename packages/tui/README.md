@@ -226,23 +226,14 @@ creation, and Nyte never substitutes another model or provider.
 From the repository root:
 
 ```sh
-pnpm --dir packages/tui run test:unit
-pnpm --dir packages/tui run test
-pnpm --dir packages/tui run test --scenario tui
-pnpm --dir packages/tui run test:show
+pnpm --dir packages/tui test
+pnpm --dir packages/tui test:binary
 pnpm --dir packages/tui typecheck
 ```
 
-Unit tests run under `bun test` with OpenTUI's test renderer.
-
-QA builds and runs the actual CLI executable in a Bun PTY. OpenTUI's embedded terminal decodes
-its output and encodes input; Nyte is not reconstructed in the test process. Scenarios use isolated
-workspaces and loopback providers, and read keys from `src/lib/constants.ts`.
-
-Each run prints its evidence directory, binary identity, scenario outcomes, and per-action latency
-measurements. Visible mode displays the same PTY session. Emulator measurements do not establish
-physical screen latency, OS clipboard behavior, or image-protocol rendering. See `qa/README.md`
-for coverage and execution details.
+`test` runs every test in process under `bun test`: the whole TUI on OpenTUI's test renderer over
+an in-process host with a scripted provider. `test:binary` builds `bin/nyte` and runs a small smoke
+of the compiled binary through pipes and a PTY. See `qa/README.md`.
 
 ## Local shell
 

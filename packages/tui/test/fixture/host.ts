@@ -1,7 +1,7 @@
 import process from "node:process";
 import { composeHost, dev, memoryStore } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/core";
-import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
+import { chatOnly, fakeModels, testModel } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
 
@@ -24,9 +24,11 @@ export interface TestHost extends AsyncDisposable {
 
 export async function openTestHost(options?: {
   readonly plugins?: readonly Plugin<"core">[];
+  /** The fake provider's catalog; default one model `model` without thinking levels. */
+  readonly models?: readonly ReturnType<typeof testModel>[];
 }): Promise<TestHost> {
   dev.off();
-  const models = fakeModels();
+  const models = fakeModels({ models: options?.models });
 
   const host = await composeHost({
     store: memoryStore(),

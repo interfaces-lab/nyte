@@ -10,9 +10,8 @@
     "clean": "rm -rf node_modules .turbo ../../bin",
     "dev": "bun --watch src/binary.ts",
     "start": "bun src/binary.ts",
-    "test": "pnpm test:unit && pnpm build && node qa/run.mjs",
-    "test:unit": "bun test",
-    "test:show": "pnpm build && node qa/run.mjs --show",
+    "test": "bun test",
+    "test:binary": "pnpm build && bun test ./qa/binary.smoke.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

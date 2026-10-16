@@ -34,14 +34,14 @@ Native resources (`SyntaxStyle`, `TextBuffer`) take `renderer.nativeScene` as ow
 
 ## Tests
 
-- Unit: `bun test` with `testRender` from `@opentui/solid` and helpers from `@opentui/core/testing` (`bunfig.toml` preloads the Solid transform). Model tests are plain functions over `test/fixture/view.ts`; effect tests run the runner over `fakeHost`/`fakePorts`; app tests run a real in-process host (`test/fixture/host.ts`).
-- End to end: two scenarios in `qa/` against the compiled binary: `headless` (piped CLI) and `tui` (a real PTY observed with OpenTUI's `EmbeddedTerminalRenderable`). Assert visible screens, provider requests, process outcomes and clean exit output; never import the app into QA. Wait for observable states with deadlines and close every process, PTY, renderer and fixture.
+- `bun test` runs everything in process: model tests are plain functions over `test/fixture/view.ts`, effect tests run the runner over `fakeHost`/`fakePorts`, and UI tests use `testRender` from `@opentui/solid` (`bunfig.toml` preloads the Solid transform).
+- App tests start the whole TUI with `startTui()` (`test/harness/tui.ts`): a test renderer whose clock is a `ManualClock`, `mountApp` over a real in-process host with `fakeModels` from `@nyte-ai/host/bench`, and fake local ports. `opened: false` holds the host closed, `typed` types before mount, and `until`/`frame` render until a condition holds or fail after a bounded number of turns with the last frame. Drive keys by command name with `press`, never by escape sequence.
+- `qa/binary.smoke.ts` is the only test of the compiled binary: pipes and a PTY, against a service this process registers in an isolated HOME (`qa/service.ts`), so the binary connects to a real host over the fake provider. `qa/pty.ts` encodes keys with `EmbeddedTerminalRenderable.encodeKey` for the modes the binary negotiated. Keep it to what only the binary shows: startup, trust, exit codes and the resume text.
 
 ## Verification
 
 From the repository root:
 
-- Unit tests: `pnpm --dir packages/tui test:unit`.
-- Unit tests, build and both QA scenarios: `pnpm --dir packages/tui test`; one scenario with `--scenario headless` or `--scenario tui`.
-- Visible PTY playback: `pnpm --dir packages/tui test:show` (add `--step` to advance with Enter).
-- Types: `pnpm --dir packages/tui typecheck`. QA needs ripgrep 12 or later on PATH.
+- Tests: `pnpm --dir packages/tui test`.
+- The compiled binary: `pnpm --dir packages/tui test:binary` (builds `bin/nyte` first; set `NYTE_BINARY` to test another build).
+- Types: `pnpm --dir packages/tui typecheck`.
