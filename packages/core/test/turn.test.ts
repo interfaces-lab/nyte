@@ -762,6 +762,39 @@ describe("turn", () => {
     ).toEqual(["call_1", "call_2", "dup", "dup_4", "call_1", "call_2", "dup", "dup_4"]);
   });
 
+  it("fails every call of a response cut off at the output cap, without running any, and goes on", async () => {
+    const fake = fakeModels();
+
+    fake.reply(
+      {
+        content: [
+          { type: "toolCall", id: "a", name: "echo", arguments: { text: "whole" } },
+          { type: "toolCall", id: "b", name: "echo", arguments: { text: "cut" } },
+        ],
+        stopReason: "length",
+        usage: { output: 4_096 },
+      },
+      { content: [{ type: "text", text: "Re-issued." }] },
+    );
+
+    await using host = await open(fake, { plugins: [recorder().plugin] });
+    const session = await host.sessions.create();
+    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+
+    const outcomes = (await session.view()).messages.flatMap((message) =>
+      isPart(message, tool) && message.state.phase === "settled" ? [message.state.outcome] : [],
+    );
+
+    expect(outcomes).toHaveLength(2);
+
+    for (const outcome of outcomes)
+      expect(outcome).toMatchObject({
+        kind: "failed",
+        message: expect.stringContaining("output token limit"),
+      });
+    expect(sent(fake, 1).filter((line) => line.startsWith("result:echo"))).toEqual([]);
+  });
+
   it("retries a retryable failure at the next attempt, then succeeds", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
     const fake = fakeModels();

@@ -146,6 +146,9 @@ type Outcome =
 
 const STOPPED = { reason: "stopped", response: null } as const;
 
+const CUT_OFF =
+  "the response reached the output token limit before it finished, so this call did not run. Re-issue it with smaller arguments, for example by splitting the change across several calls.";
+
 const UNFINISHED: Failure = {
   class: "provider",
   message: "The response ended without a result.",
@@ -326,12 +329,23 @@ async function* respond<P extends PreparedRequest>(
 
   if (final.stopReason === "length" && isRecoverableLength(final, prepared.info.maxOutput))
     return { kind: "overflow", failure: buildContextOverflowFailure(final), usage };
+  const message = final.stopReason === "length" ? failCutOffCalls(final) : final;
 
   return {
     kind: "done",
-    message: final,
-    calls: final.content.filter((block): block is ModelToolCall => block.type === "toolCall"),
+    message,
+    calls: message.content.filter((block): block is ModelToolCall => block.type === "toolCall"),
     usage,
+  };
+}
+
+/** A response cut off at the output cap may end inside a call's arguments, so none of its calls runs: each fails with a reason the model can act on. */
+function failCutOffCalls(message: AssistantMessage): AssistantMessage {
+  return {
+    ...message,
+    content: message.content.map((block) =>
+      block.type === "toolCall" ? { ...block, argumentsError: CUT_OFF } : block,
+    ),
   };
 }
 
