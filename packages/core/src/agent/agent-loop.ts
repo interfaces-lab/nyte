@@ -16,12 +16,7 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import type { AssistantMessageEventStream } from "@nyte-ai/ai";
-import {
-  abortableSleep,
-  DEFAULT_MAX_AGENT_RETRY_DELAY_MS,
-  failedTransiently,
-  retryDelayMs,
-} from "@nyte-ai/ai/utils/retry";
+import { abortableSleep, assistantRetryDelayMs, failedTransiently } from "@nyte-ai/ai/utils/retry";
 import type { RetryPolicy } from "@nyte-ai/ai/utils/retry";
 import { overflowsContext, stoppedShort } from "@nyte-ai/ai/utils/overflow";
 import { classifyAssistantFailure } from "@nyte-ai/ai/utils/failure";
@@ -228,7 +223,9 @@ async function* run<P extends PreparedRequest>(
         const { failure } = outcome;
         const response = { usage: outcome.usage, prepared };
 
-        const delay = outcome.retryable ? retryDelay(config.retry, retries + 1, failure) : null;
+        const delay = outcome.retryable
+          ? assistantRetryDelayMs(config.retry, retries + 1, failure.retryAfterMs)
+          : null;
 
         if (delay === null || retries >= config.retry.maxRetries)
           return yield* end({ reason: "failed", failure, response });
@@ -363,15 +360,6 @@ async function* end<P extends PreparedRequest>(
   yield { type: "loop_end", end: loopEnd };
 
   return loopEnd;
-}
-
-/** The backoff before retry `retry`, stretched to the provider's retry-after; null when the provider asks for longer than the policy waits, since an earlier retry meets the same limit. */
-function retryDelay(policy: RetryPolicy, retry: number, failure: Failure): number | null {
-  const asked = failure.retryAfterMs ?? 0;
-
-  if (asked > (policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS)) return null;
-
-  return Math.max(asked, retryDelayMs(policy, retry));
 }
 
 function buildContextOverflowFailure(message: AssistantMessage): Failure {

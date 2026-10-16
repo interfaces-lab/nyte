@@ -41,23 +41,34 @@ export interface RetryCallbacks {
 }
 
 /**
- * Backoff before `attempt`, 1-based, stretched to the provider's `retryAfterMs`. The one
- * definition: a caller that schedules its own retries must compute the delay here rather than
- * restating the formula. The backoff is capped at `maxAgentDelayMs`; the retry-after is not, so
- * a caller that will not wait past the cap gives up when the provider asks for longer.
+ * Backoff before `attempt`, 1-based, capped at `maxAgentDelayMs`. The one definition: a caller
+ * that schedules its own retries must compute the delay here rather than restating the formula.
  */
 export function retryDelayMs(
   policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs">,
   attempt: number,
-  retryAfterMs = 0,
 ): number {
   const delay = policy.baseDelayMs * 2 ** Math.max(0, attempt - 1);
   const safeDelay = Number.isSafeInteger(delay) ? delay : Number.MAX_SAFE_INTEGER;
 
-  return Math.max(
-    retryAfterMs,
-    Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS),
-  );
+  return Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS);
+}
+
+/**
+ * The wait before retrying a failed assistant call at `attempt`: the backoff stretched to the
+ * provider's `retryAfterMs`, or null when the provider asks for longer than `maxAgentDelayMs`,
+ * since every later attempt meets the same limit.
+ */
+export function assistantRetryDelayMs(
+  policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs">,
+  attempt: number,
+  retryAfterMs: number | undefined,
+): number | null {
+  const asked = retryAfterMs ?? 0;
+
+  if (asked > (policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS)) return null;
+
+  return Math.max(asked, retryDelayMs(policy, attempt));
 }
 
 class RetrySleepAbortError extends Error {
@@ -117,14 +128,13 @@ export async function retryAssistantCall(
     }
 
     const failure = classifyAssistantFailure(response);
-    const asked = failure.retryAfterMs ?? 0;
 
-    if (
-      policy === undefined ||
-      attempt >= maxAttempts ||
-      !retryCanHelp(failure.class) ||
-      asked > (policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS)
-    ) {
+    const delayMs =
+      policy === undefined || attempt >= maxAttempts || !retryCanHelp(failure.class)
+        ? null
+        : assistantRetryDelayMs(policy, attempt + 1, failure.retryAfterMs);
+
+    if (delayMs === null) {
       if (lastRetry)
         await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
 
@@ -133,7 +143,6 @@ export async function retryAssistantCall(
 
     attempt++;
     lastRetry = { attempt, errorMessage: response.errorMessage || "Unknown error" };
-    const delayMs = retryDelayMs(policy, attempt, asked);
     await callbacks?.onRetryScheduled?.(attempt, maxAttempts, delayMs, lastRetry.errorMessage);
 
     try {
