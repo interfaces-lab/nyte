@@ -1,13 +1,101 @@
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { WorkerPoolContext } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
-import type { WorkerInitializationRenderOptions, WorkerPoolOptions } from "@pierre/diffs/worker";
+import type {
+  WorkerInitializationRenderOptions,
+  WorkerPoolOptions,
+  WorkerRequest,
+  WorkerResponse,
+} from "@pierre/diffs/worker";
 import PierreDiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?url";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 
-/** Half the cores, within reason: highlighting shares the machine with the agent. */
+/**
+ * At most half the cores, within reason: highlighting shares the machine with
+ * the agent. Slots start their workers only under load; see `OnDemandWorker`.
+ */
 const POOL_SIZE = Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurrency || 4) / 2)));
+
+/**
+ * One pool slot, whose worker starts with the slot's first render request.
+ * Pierre's pool creates every slot up front and waits for each to initialize,
+ * so a slot without a worker answers setup requests itself and replays them,
+ * in order, to the worker it starts; the worker's own answers to those are
+ * dropped. The pool hands a task to its first idle slot, so a second worker
+ * starts only while the first is busy: one diff costs one worker, and a review
+ * of many grows the pool up to `POOL_SIZE`.
+ */
+class OnDemandWorker extends EventTarget implements Worker {
+  onmessage: ((this: Worker, event: MessageEvent<WorkerResponse>) => void) | null = null;
+
+  onmessageerror: ((this: Worker, event: MessageEvent) => void) | null = null;
+
+  onerror: ((this: AbstractWorker, event: ErrorEvent) => void) | null = null;
+
+  #worker: Worker | undefined;
+
+  readonly #setup: WorkerRequest[] = [];
+
+  readonly #replayed = new Set<string>();
+
+  postMessage(request: WorkerRequest): void {
+    if (this.#worker !== undefined) {
+      this.#worker.postMessage(request);
+
+      return;
+    }
+
+    if (request.type === "file" || request.type === "diff") {
+      this.#start().postMessage(request);
+
+      return;
+    }
+
+    this.#setup.push(request);
+    this.#replayed.add(request.id);
+    queueMicrotask(() =>
+      this.#deliver({
+        type: "success",
+        requestType: request.type,
+        id: request.id,
+        sentAt: Date.now(),
+      }),
+    );
+  }
+
+  terminate(): void {
+    this.#worker?.terminate();
+    this.#worker = undefined;
+  }
+
+  #start(): Worker {
+    const worker = new Worker(PierreDiffWorkerUrl, { type: "module" });
+
+    worker.addEventListener("message", (event: MessageEvent<WorkerResponse>) => {
+      if (!this.#replayed.delete(event.data.id)) this.#deliver(event.data);
+    });
+
+    worker.addEventListener("error", (event) => {
+      const copy = new ErrorEvent("error", { message: event.message, error: event.error });
+
+      this.dispatchEvent(copy);
+      this.onerror?.call(this, copy);
+    });
+
+    for (const request of this.#setup.splice(0)) worker.postMessage(request);
+    this.#worker = worker;
+
+    return worker;
+  }
+
+  #deliver(data: WorkerResponse): void {
+    const event = new MessageEvent("message", { data });
+
+    this.dispatchEvent(event);
+    this.onmessage?.call(this, event);
+  }
+}
 
 /**
  * How long a pool outlives its last surface. A transcript scrolling past its
@@ -15,11 +103,13 @@ const POOL_SIZE = Math.max(2, Math.min(6, Math.floor((navigator.hardwareConcurre
  */
 const POOL_IDLE_MS = 30_000;
 
+/**
+ * The cache keeps 240 highlights per file and per diff: enough that a review's
+ * every file stays warm while it scrolls in and out of the viewport.
+ */
 const poolOptions = {
-  workerFactory: () => new Worker(PierreDiffWorkerUrl, { type: "module" }),
+  workerFactory: () => new OnDemandWorker(),
   poolSize: POOL_SIZE,
-  // Highlights per file and per diff: enough that a review's every file stays
-  // warm while it scrolls in and out of the viewport.
   totalASTLRUCacheSize: 240,
 } satisfies WorkerPoolOptions;
 
