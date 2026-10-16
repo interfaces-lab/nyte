@@ -79,9 +79,9 @@ test("the navigation journey", async ({ desktop }) => {
     const actions = results.getByRole("group", { name: "Actions" });
 
     for (const name of [
-      "New chat ⌘ N",
-      "Open folder… ⌘ O",
-      "General settings",
+      "New Chat ⌘ N",
+      "Open Folder… ⌘ O",
+      "General Settings",
       "Appearance",
       "Providers",
     ])

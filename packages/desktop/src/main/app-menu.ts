@@ -2,6 +2,7 @@ import { nativeImage } from "electron";
 import type { App, BaseWindow, MenuItemConstructorOptions, WebContents } from "electron";
 import type {
   AppInfo,
+  AppMenuAction,
   AppMenuCommand,
   BrowserKey,
   BrowserNavigationAction,
@@ -29,46 +30,28 @@ export function applicationMenuTemplate(options: {
     click: () => options.dispatch({ kind: "about", info: options.appInfo() }),
   };
 
-  const settings = {
-    label: "Settings…",
-    accelerator: clientActionAccelerator(clientActions.settings),
-    click: () => options.dispatch({ kind: "action", action: clientActions.settings.id }),
+  const action = (
+    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
+  ): MenuItemConstructorOptions => {
+    const accelerator = clientActionAccelerator(definition);
+
+    return {
+      label: definition.label,
+      accelerator: accelerator === "" ? undefined : accelerator,
+      click: () => options.dispatch({ kind: "action", action: definition.id }),
+    };
   };
 
-  const action = (
-    definition:
-      | typeof clientActions.newTab
-      | typeof clientActions.reopenTab
-      | typeof clientActions.closeTab,
-  ): MenuItemConstructorOptions => ({
-    label: definition.label,
-    accelerator: clientActionAccelerator(definition),
-    click: () => options.dispatch({ kind: "action", action: definition.id }),
-  });
+  const settings = action(clientActions.settings);
 
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
-    {
-      label: "New Chat",
-      accelerator: clientActionAccelerator(clientActions.newChat),
-      click: () => options.dispatch({ kind: "action", action: clientActions.newChat.id }),
-    },
+    action(clientActions.newChat),
     action(clientActions.newTab),
-    {
-      label: "Open Folder…",
-      accelerator: clientActionAccelerator(clientActions.openFolder),
-      click: () => options.dispatch({ kind: "action", action: clientActions.openFolder.id }),
-    },
+    action(clientActions.openFolder),
     { type: "separator" },
-    {
-      label: "New Terminal",
-      accelerator: clientActionAccelerator(clientActions.newTerminal),
-      click: () => options.dispatch({ kind: "action", action: clientActions.newTerminal.id }),
-    },
-    {
-      label: "New Browser",
-      click: () => options.dispatch({ kind: "action", action: clientActions.newBrowser.id }),
-    },
+    action(clientActions.newTerminal),
+    action(clientActions.newBrowser),
   ] satisfies MenuItemConstructorOptions[];
 
   const update = { id: "check-for-updates", label: "Check for Updates…" };
