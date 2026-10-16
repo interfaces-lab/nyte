@@ -12,10 +12,10 @@ import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { button, glyph, radius } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { motion as motionTokens, role, type } from "@nyte-ai/ui/vars.stylex";
+import { motion as motionTokens, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { ShellTab, TabKind } from "./fixtures";
 
 export type ActiveStyle = "connected" | "card" | "flat";

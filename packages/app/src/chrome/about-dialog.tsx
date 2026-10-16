@@ -5,8 +5,8 @@ import { useState } from "react";
 import type { AppInfo } from "../bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const styles = create({
   popup: {

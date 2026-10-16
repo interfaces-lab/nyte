@@ -1,5 +1,5 @@
 /** Font selections: bundled stacks, the system stack, or one installed family the host listed. */
-import { type } from "@nyte-ai/ui/vars.stylex";
+import { type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";

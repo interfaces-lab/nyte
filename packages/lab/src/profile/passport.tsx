@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } fr
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Button } from "@nyte-ai/ui/button";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { HOLDER, STAMPS, TOTALS, formatDate } from "./fixtures";
 import { Guilloche } from "./guilloche";
 import { Moon } from "./moon";

@@ -1,5 +1,5 @@
 import { defineVars } from "@stylexjs/stylex";
-import "@nyte-ai/ui/tokens.stylex";
+import "@nyte-ai/ui/styles/tokens.stylex";
 
 export const windowInput = defineVars({ "--nyte-window-zoom": "1" });
 

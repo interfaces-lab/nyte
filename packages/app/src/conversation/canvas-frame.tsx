@@ -18,7 +18,7 @@ import {
 import type { CanvasHostContext, CanvasHostInfo } from "@nyte-ai/plugin/canvas-protocol";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";

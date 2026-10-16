@@ -8,8 +8,8 @@
 import { create, props } from "@stylexjs/stylex";
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import type { ReactElement } from "react";
-import { glyph } from "@nyte-ai/ui/schema.stylex";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 
 type FileIconTone =

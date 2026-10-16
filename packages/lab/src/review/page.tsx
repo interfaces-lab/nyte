@@ -35,10 +35,10 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
-import { button, glyph, radius } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useLiveReview, useReviews } from "./api";
 import { NewChatPlace } from "./new-chat";
 import { pullRequestNumber } from "./pull-request";

@@ -1,8 +1,8 @@
 import { create, props } from "@stylexjs/stylex";
-import { target } from "@nyte-ai/ui/schema.stylex";
+import { target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useLayoutEffect, useState } from "react";
 import type { FileStatus } from "@nyte-ai/sdk";
 import { workbenchStyles } from "./workbench.stylex.ts";

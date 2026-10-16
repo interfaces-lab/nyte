@@ -7,7 +7,7 @@ const outputPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "p
 
 const check = process.argv.includes("--check");
 
-const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "styles");
 
 const themeGroups = await readGroups(join(tokenDirectory, "theme.stylex.ts"));
 

@@ -6,7 +6,7 @@
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";
-import { motion } from "@nyte-ai/ui/vars.stylex";
+import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { StepGroupView } from "./step-group.tsx";
 

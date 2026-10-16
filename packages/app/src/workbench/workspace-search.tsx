@@ -1,4 +1,4 @@
-import { glyph, row, radius, target } from "@nyte-ai/ui/schema.stylex";
+import { glyph, row, radius, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
@@ -10,7 +10,7 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
 import { useHostState, useWorkspaceSearch } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 

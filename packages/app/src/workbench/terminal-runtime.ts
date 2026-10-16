@@ -9,7 +9,7 @@ import type { TerminalBridge } from "../bridge.ts";
 import { props } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   attachTerminalOutput,
   getTerminal,

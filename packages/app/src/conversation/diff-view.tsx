@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { button, glyph } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * One diff surface shared by transcript receipts and the Changes workbench.
  * Pierre renders the patch inside a shadow root; Nyte's tokens reach it as
@@ -19,7 +19,7 @@ import {
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "../workbench/changes-viewed.ts";
 import { diffStyles } from "./styles.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";

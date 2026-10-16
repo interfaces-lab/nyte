@@ -13,7 +13,7 @@ import { Meter } from "@nyte-ai/ui/meter";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useMemo, useState } from "react";

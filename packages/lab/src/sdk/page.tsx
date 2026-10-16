@@ -5,8 +5,8 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { CodeBlock } from "@nyte-ai/app/conversation/code-block.tsx";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import source from "../../sdk-spec.ts?raw";
 import { parseSpec, type SpecBlock, type SpecLine } from "./spec";
 

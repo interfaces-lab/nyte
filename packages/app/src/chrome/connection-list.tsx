@@ -1,11 +1,11 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { avatar, radius } from "@nyte-ai/ui/schema.stylex";
+import { avatar, radius } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * The card of rows Settings uses for anything that connects: the GitHub
  * account and each model provider. A row ends in one control: a button for
  * what is not set up yet, or a status menu that holds the verbs.
  */
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
@@ -13,7 +13,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode, Ref } from "react";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const styles = create({
   row: {

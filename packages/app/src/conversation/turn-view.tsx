@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 /**
  * One transcript item. User prompts are the only ordinary contained message
  * region. Assistant prose stays flat, while reasoning, tools, and system

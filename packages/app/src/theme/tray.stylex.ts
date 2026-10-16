@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { tray } from "./schema.stylex.ts";
-import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /** Shared frame for the queue, background agents, and terminal trays. */
 export const trayStyles = create({

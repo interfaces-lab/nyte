@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * What every code surface in the review shares: one Pierre preset, one file
  * header, and one way to turn a line selection into a side-chat reference.
@@ -16,7 +16,7 @@ import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /** One file of the pull request at its current head. */
 export interface ReviewFile {

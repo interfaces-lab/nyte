@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * The transcript's shape while a session's snapshot is still on its way:
  * a user card, a work row, and a prose block at the transcript's row gaps so
@@ -8,7 +8,7 @@ import { radius } from "@nyte-ai/ui/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 const pulse = keyframes({
   "0%": { opacity: 0.55 },

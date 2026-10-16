@@ -32,7 +32,7 @@ import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
 import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 

@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const terminalStyles = create({
   root: {

@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { create, props } from "@stylexjs/stylex";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";

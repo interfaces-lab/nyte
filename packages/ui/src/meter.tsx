@@ -2,18 +2,18 @@ import { Meter as MeterPrimitive } from "@base-ui/react/meter";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { radius } from "./schema.stylex.ts";
+import { radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
-import { motion, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { motion, role } from "./styles/vars.stylex.ts";
 
 const styles = create({
-  root: { display: "flex", flexDirection: "column", gap: 6, minWidth: 0 },
-  label: { color: role.contentPrimary, fontSize: type.fontSm, lineHeight: type.leadingSm },
+  root: { display: "flex", flexDirection: "column", gap: space.s1_5, minWidth: 0 },
+  label: { color: role.contentPrimary },
   value: {
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
   },
   track: {
@@ -22,7 +22,6 @@ const styles = create({
     borderRadius: radius.indicator,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
   },
-  // The filled part paints inside the primary intent unless a scope says otherwise.
   indicator: {
     height: "100%",
     backgroundColor: role.bgInteractiveStrong,
@@ -38,7 +37,7 @@ function MeterRoot({
   className,
   style,
   ...rest
-}: StyledProps<MeterPrimitive.Root.Props>): ReactElement {
+}: StyledProps<MeterPrimitive.Root.Props, Restyle<"Meter.Root">>): ReactElement {
   return (
     <MeterPrimitive.Root
       {...rest}
@@ -52,11 +51,11 @@ function MeterLabel({
   className,
   style,
   ...rest
-}: StyledProps<MeterPrimitive.Label.Props>): ReactElement {
+}: StyledProps<MeterPrimitive.Label.Props, Restyle<"Meter.Label">>): ReactElement {
   return (
     <MeterPrimitive.Label
       {...rest}
-      {...mergeStyleProps(props(styles.label, xstyle), className, style)}
+      {...mergeStyleProps(props(text.sm, styles.label, xstyle), className, style)}
     />
   );
 }
@@ -66,11 +65,11 @@ function MeterValue({
   className,
   style,
   ...rest
-}: StyledProps<MeterPrimitive.Value.Props>): ReactElement {
+}: StyledProps<MeterPrimitive.Value.Props, Restyle<"Meter.Value">>): ReactElement {
   return (
     <MeterPrimitive.Value
       {...rest}
-      {...mergeStyleProps(props(styles.value, xstyle), className, style)}
+      {...mergeStyleProps(props(text.sm, styles.value, xstyle), className, style)}
     />
   );
 }
@@ -80,7 +79,7 @@ function MeterTrack({
   className,
   style,
   ...rest
-}: StyledProps<MeterPrimitive.Track.Props>): ReactElement {
+}: StyledProps<MeterPrimitive.Track.Props, Restyle<"Meter.Track">>): ReactElement {
   return (
     <MeterPrimitive.Track
       {...rest}
@@ -94,7 +93,7 @@ function MeterIndicator({
   className,
   style,
   ...rest
-}: StyledProps<MeterPrimitive.Indicator.Props>): ReactElement {
+}: StyledProps<MeterPrimitive.Indicator.Props, Restyle<"Meter.Indicator">>): ReactElement {
   return (
     <MeterPrimitive.Indicator
       {...rest}

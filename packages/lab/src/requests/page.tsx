@@ -17,10 +17,10 @@ import {
 } from "@xyflow/react";
 import { useState, type ReactElement } from "react";
 import { MermaidDiagram } from "@nyte-ai/app/conversation/mermaid-diagram.tsx";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const ORDER = ["chat", "guide", "side", "change"] as const;
 

@@ -34,8 +34,8 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { menu } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { menu } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 import { isSettingsSection } from "../settings/index.ts";
 import {

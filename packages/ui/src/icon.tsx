@@ -232,7 +232,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { mergeStyleProps, type XStyle } from "./style.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 
 type Glyph = ComponentType<CentralIconBaseProps>;
 
@@ -405,7 +406,6 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    lineHeight: 0,
   },
 });
 
@@ -421,7 +421,7 @@ interface IconFrameProps {
   readonly children: ReactNode;
   readonly className?: string;
   readonly style?: CSSProperties;
-  readonly xstyle?: XStyle;
+  readonly xstyle?: Restyle<"Icon">;
 }
 
 function IconFrame({ label, children, className, style, xstyle }: IconFrameProps): ReactElement {
@@ -448,7 +448,7 @@ export interface IconProps {
   readonly variant?: IconVariant;
   readonly className?: string;
   readonly style?: CSSProperties;
-  readonly xstyle?: XStyle;
+  readonly xstyle?: Restyle<"Icon">;
 }
 
 export function Icon({

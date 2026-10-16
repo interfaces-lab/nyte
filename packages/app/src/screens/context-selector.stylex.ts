@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
-import { button, glyph, menu, radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { button, glyph, menu, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const contextStyles = create({
   row: {

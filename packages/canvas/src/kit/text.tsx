@@ -1,7 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const heading = create({
   base: { margin: 0, color: role.contentPrimary, fontWeight: 600, textWrap: "balance" },

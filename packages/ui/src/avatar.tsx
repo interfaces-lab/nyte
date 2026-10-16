@@ -1,9 +1,10 @@
-import { avatar, radius } from "./schema.stylex.ts";
+import { avatar, radius } from "./styles/schema.stylex.ts";
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
 import { create, props } from "@stylexjs/stylex";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme } from "./surface-theme.ts";
-import { role, type } from "./vars.stylex.ts";
+import { role, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   root: {
@@ -18,8 +19,7 @@ const styles = create({
     borderStyle: "solid",
     borderColor: role.borderPrimaryTranslucent,
     fontFamily: type.fontSans,
-    fontWeight: 600,
-    lineHeight: 1,
+    fontWeight: type.weightSemibold,
     userSelect: "none",
   },
   image: {
@@ -77,7 +77,7 @@ export function Avatar({
   style,
   xstyle,
   ...rest
-}: StyledProps<AvatarPrimitive.Root.Props> & {
+}: StyledProps<AvatarPrimitive.Root.Props, Restyle<"Avatar">> & {
   readonly corners?: keyof typeof cornerStyles;
   readonly size?: keyof typeof sizeStyles;
   readonly tone?: keyof typeof toneScopes;
@@ -109,7 +109,7 @@ export function AvatarImage({
   style,
   xstyle,
   ...rest
-}: StyledProps<AvatarPrimitive.Image.Props>) {
+}: StyledProps<AvatarPrimitive.Image.Props, Restyle<"AvatarImage">>) {
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
@@ -124,7 +124,7 @@ export function AvatarFallback({
   style,
   xstyle,
   ...rest
-}: StyledProps<AvatarPrimitive.Fallback.Props>) {
+}: StyledProps<AvatarPrimitive.Fallback.Props, Restyle<"AvatarFallback">>) {
   return (
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"

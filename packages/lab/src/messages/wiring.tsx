@@ -4,9 +4,9 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 type Verdict = "keeps" | "rewraps" | "twice" | "fixed";
 

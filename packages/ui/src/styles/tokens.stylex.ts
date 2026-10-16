@@ -1,17 +1,7 @@
-/**
- * Tokens that never change inside a scope: the appearance inputs the desktop
- * sets on <html>, shadows, type, motion, and component measurements. Colour
- * lives in `theme.stylex.ts` and `roles.stylex.ts`; importing this file ships
- * all of them.
- *
- * Component measurements are named decisions on the 2px grid. A coarse
- * pointer gets larger controls.
- */
 import { defineVars } from "@stylexjs/stylex";
 import "./theme.stylex.ts";
 import "./roles.stylex.ts";
 
-/** Each group is one concern, so the desktop's theme classes never collide. */
 export const displayMode = defineVars({
   "--nyte-popup-material-filter": "blur(12px)",
 });
@@ -36,7 +26,6 @@ export const focusModality = defineVars({
 
 export const elevation = defineVars({
   "--nyte-shadow-sm": "0 4px 12px #42230308, 0 1px 2px #42230308",
-  "--nyte-shadow-md": "0 8px 12px #42230308, 0 2px 6px #42230308",
   "--nyte-shadow-lg": "0 20px 24px #2a1c0012, 0 5px 8px #42230308",
   "--nyte-shadow-xl": "0 24px 72px -24px #1b150030, 0 8px 32px #2a1c0012",
   "--nyte-shadow-workbench": "0 0 8px 2px #00000014",
@@ -56,13 +45,21 @@ export const typography = defineVars({
   "--nyte-font-size-sm": "calc(var(--nyte-font-size-base) * 12 / 13)",
   "--nyte-font-size-lg": "calc(var(--nyte-font-size-base) * 15 / 13)",
   "--nyte-font-size-2xl": "calc(var(--nyte-font-size-base) * 19 / 13)",
-  "--nyte-line-height-xs": "calc(var(--nyte-font-size-base) * 14 / 13)",
-  "--nyte-line-height-sm": "calc(var(--nyte-font-size-base) * 16 / 13)",
-  "--nyte-line-height-base": "calc(var(--nyte-font-size-base) * 18 / 13)",
-  "--nyte-line-height-lg": "calc(var(--nyte-font-size-base) * 24 / 13)",
-  "--nyte-line-height-code": "calc(var(--nyte-font-size-code) * 18 / 12)",
+  "--nyte-line-height-xs": "round(up, calc(var(--nyte-font-size-base) * 14 / 13), 1px)",
+  "--nyte-line-height-sm": "round(up, calc(var(--nyte-font-size-base) * 16 / 13), 1px)",
+  "--nyte-line-height-base": "round(up, calc(var(--nyte-font-size-base) * 18 / 13), 1px)",
+  "--nyte-line-height-lg": "round(up, calc(var(--nyte-font-size-base) * 24 / 13), 1px)",
+  "--nyte-line-height-code": "round(up, calc(var(--nyte-font-size-code) * 18 / 12), 1px)",
   "--nyte-letter-spacing-base": "0em",
   "--nyte-letter-spacing-lg": "-0.016em",
+  "--nyte-font-weight-regular": "400",
+  "--nyte-font-weight-medium": "500",
+  "--nyte-font-weight-semibold": "600",
+});
+
+/** One 4px unit; the scale steps follow Tailwind's, with `px` for a hairline. */
+export const spacing = defineVars({
+  "--nyte-space-unit": "4px",
 });
 
 export const motion = defineVars({
@@ -285,11 +282,8 @@ export const components = defineVars({
   "--nyte-row-padding-inline-lg": "6px",
   "--nyte-row-gap": "6px",
   "--nyte-row-radius": "8px",
-  // The one touch policy: a control's hit area and the space between
-  // independent controls. Every coarse-pointer size reads these.
   "--nyte-target-min": { default: "24px", "@media (pointer: coarse)": "44px" },
   "--nyte-target-gap": { default: "2px", "@media (pointer: coarse)": "8px" },
-  // The slot a glyph sits in, sized to the icon it holds.
   "--nyte-glyph-sm": "14px",
   "--nyte-glyph-md": "16px",
   "--nyte-glyph-lg": "20px",
@@ -325,7 +319,6 @@ export const components = defineVars({
   "--nyte-toast-close-gutter": "calc(var(--nyte-target-min) + 20px)",
   "--nyte-clipboard-preview-max-width": "360px",
   "--nyte-clipboard-preview-max-height": "240px",
-  "--nyte-shape-square": "0px",
   "--nyte-shape-indicator": "4px",
   "--nyte-shape-control": "8px",
   "--nyte-shape-card": "12px",

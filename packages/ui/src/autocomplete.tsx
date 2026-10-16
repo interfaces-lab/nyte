@@ -2,12 +2,14 @@ import { Combobox } from "@base-ui/react/combobox";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { glyph, input, layer, menu, radius } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { glyph, input, layer, menu, radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { appearance, motion, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, type } from "./styles/vars.stylex.ts";
 import { PickerTrigger, type PickerTriggerProps } from "./button.tsx";
 import { Icon } from "./icon.tsx";
 
@@ -58,7 +60,7 @@ const styles = create({
     height: input.heightXl,
     margin: 0,
     paddingBlock: 0,
-    paddingInline: 12,
+    paddingInline: space.s3,
     borderStyle: "none",
     borderRadius: 0,
     backgroundColor: "transparent",
@@ -77,7 +79,7 @@ const styles = create({
     flexDirection: "column",
     flex: "0 1 auto",
     minHeight: 0,
-    paddingBlock: 6,
+    paddingBlock: space.s1_5,
     overflowY: "auto",
     overscrollBehavior: "contain",
     outline: "none",
@@ -86,10 +88,10 @@ const styles = create({
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 12px",
     alignItems: "center",
-    columnGap: 6,
+    columnGap: space.s1_5,
     minHeight: menu.itemHeight,
     paddingBlock: 0,
-    paddingInline: 12,
+    paddingInline: space.s3,
     borderRadius: radius.control,
     outlineStyle: { default: "none", "[data-highlighted]": "solid" },
     outlineWidth: 1,
@@ -97,9 +99,6 @@ const styles = create({
     outlineOffset: -1,
     backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",
   },
@@ -117,25 +116,21 @@ const styles = create({
     color: role.contentSecondary,
   },
   groupLabel: {
-    paddingBlockStart: 6,
-    paddingBlockEnd: 2,
-    paddingInline: 12,
+    paddingBlockStart: space.s1_5,
+    paddingBlockEnd: space.s0_5,
+    paddingInline: space.s3,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   separator: {
     flexShrink: 0,
     height: 1,
-    marginBlock: 4,
+    marginBlock: space.s1,
     backgroundColor: role.borderSecondaryTranslucent,
   },
   empty: {
     flexShrink: 0,
-    padding: { default: 0, ":not(:empty)": "10px 12px" },
+    padding: { default: 0, ":not(:empty)": `${space.s2_5} ${space.s3}` },
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
 });
 
@@ -145,22 +140,28 @@ const styles = create({
  */
 const inputVariants = create({
   popup: {},
-  inline: { height: menu.itemHeight, paddingInline: 8, boxShadow: "none" },
+  inline: { height: menu.itemHeight, paddingInline: space.s2, boxShadow: "none" },
 });
 
 const listVariants = create({
   popup: {},
-  inline: { display: "block", flex: 1, marginInline: -4, paddingBlock: 0, paddingInline: 4 },
+  inline: {
+    display: "block",
+    flex: 1,
+    marginInline: `calc(${space.s1} * -1)`,
+    paddingBlock: 0,
+    paddingInline: space.s1,
+  },
 });
 
 const itemVariants = create({
   popup: {},
   inline: {
     gridTemplateColumns: `minmax(0, 1fr) ${glyph.sm}`,
-    columnGap: 8,
+    columnGap: space.s2,
     minHeight: menu.itemHeight,
-    paddingBlock: 4,
-    paddingInline: 8,
+    paddingBlock: space.s1,
+    paddingInline: space.s2,
     borderRadius: menu.itemRadius,
   },
 });
@@ -175,9 +176,9 @@ const groupLabelVariants = create({
   inline: {
     display: "flex",
     alignItems: "baseline",
-    gap: 6,
-    paddingBlockStart: 4,
-    paddingInline: 8,
+    gap: space.s1_5,
+    paddingBlockStart: space.s1,
+    paddingInline: space.s2,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
     userSelect: "none",
@@ -218,7 +219,7 @@ export function AutocompleteClear({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.Clear.Props>): ReactElement {
+}: StyledProps<Combobox.Clear.Props, Restyle<"AutocompleteClear">>): ReactElement {
   return (
     <Combobox.Clear
       data-slot="autocomplete-clear"
@@ -228,7 +229,10 @@ export function AutocompleteClear({
   );
 }
 
-export type AutocompleteContentProps = StyledProps<Combobox.Popup.Props> &
+export type AutocompleteContentProps = StyledProps<
+  Combobox.Popup.Props,
+  Restyle<"AutocompleteContent">
+> &
   Pick<
     Combobox.Positioner.Props,
     "side" | "align" | "sideOffset" | "alignOffset" | "anchor" | "collisionAvoidance"
@@ -288,7 +292,7 @@ export function AutocompleteInput({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.Input.Props> & {
+}: StyledProps<Combobox.Input.Props, Restyle<"AutocompleteInput">> & {
   readonly variant?: AutocompleteVariant;
 }): ReactElement {
   return (
@@ -310,7 +314,7 @@ export function AutocompleteList({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.List.Props> & {
+}: StyledProps<Combobox.List.Props, Restyle<"AutocompleteList">> & {
   readonly variant?: AutocompleteVariant;
 }): ReactElement {
   return (
@@ -329,13 +333,17 @@ export function AutocompleteItem({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.Item.Props> & {
+}: StyledProps<Combobox.Item.Props, Restyle<"AutocompleteItem">> & {
   readonly variant?: AutocompleteVariant;
 }): ReactElement {
   return (
     <Combobox.Item
       data-slot="autocomplete-item"
-      {...mergeStyleProps(props(styles.item, itemVariants[variant], xstyle), className, style)}
+      {...mergeStyleProps(
+        props(text.base, styles.item, itemVariants[variant], xstyle),
+        className,
+        style,
+      )}
       {...rest}
     >
       <span {...props(styles.itemText)}>{children}</span>
@@ -352,14 +360,14 @@ export function AutocompleteGroupLabel({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.GroupLabel.Props> & {
+}: StyledProps<Combobox.GroupLabel.Props, Restyle<"AutocompleteGroupLabel">> & {
   readonly variant?: AutocompleteVariant;
 }): ReactElement {
   return (
     <Combobox.GroupLabel
       data-slot="autocomplete-group-label"
       {...mergeStyleProps(
-        props(styles.groupLabel, groupLabelVariants[variant], xstyle),
+        props(text.sm, styles.groupLabel, groupLabelVariants[variant], xstyle),
         className,
         style,
       )}
@@ -373,7 +381,7 @@ export function AutocompleteSeparator({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.Separator.Props>): ReactElement {
+}: StyledProps<Combobox.Separator.Props, Restyle<"AutocompleteSeparator">>): ReactElement {
   return (
     <Combobox.Separator
       data-slot="autocomplete-separator"
@@ -388,11 +396,11 @@ export function AutocompleteEmpty({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.Empty.Props>): ReactElement {
+}: StyledProps<Combobox.Empty.Props, Restyle<"AutocompleteEmpty">>): ReactElement {
   return (
     <Combobox.Empty
       data-slot="autocomplete-empty"
-      {...mergeStyleProps(props(styles.empty, xstyle), className, style)}
+      {...mergeStyleProps(props(text.sm, styles.empty, xstyle), className, style)}
       {...rest}
     />
   );
@@ -403,11 +411,11 @@ export function AutocompleteStatus({
   style,
   xstyle,
   ...rest
-}: StyledProps<Combobox.Status.Props>): ReactElement {
+}: StyledProps<Combobox.Status.Props, Restyle<"AutocompleteStatus">>): ReactElement {
   return (
     <Combobox.Status
       data-slot="autocomplete-status"
-      {...mergeStyleProps(props(styles.empty, xstyle), className, style)}
+      {...mergeStyleProps(props(text.sm, styles.empty, xstyle), className, style)}
       {...rest}
     />
   );

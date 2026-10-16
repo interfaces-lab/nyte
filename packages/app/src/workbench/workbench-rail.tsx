@@ -8,7 +8,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar, workbench } from "../theme/schema.stylex.ts";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const WIDTH_DEFAULT = 200;

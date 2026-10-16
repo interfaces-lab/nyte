@@ -20,7 +20,7 @@ import { diffStyles } from "../conversation/styles.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";

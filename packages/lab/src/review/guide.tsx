@@ -22,10 +22,10 @@ import { PierreWorkerProvider } from "@nyte-ai/app/pierre-worker-provider.tsx";
 import { isToolMessage, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { glyph, radius, row } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius, row } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   AddToChat,
   CodeFileHeader,

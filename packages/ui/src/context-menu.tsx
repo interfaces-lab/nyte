@@ -2,8 +2,9 @@ import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu
 import { props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { Icon } from "./icon.tsx";
 import {
@@ -38,7 +39,7 @@ export function ContextMenuContent({
   className,
   style,
   ...rest
-}: StyledProps<ContextMenuPrimitive.Popup.Props> &
+}: StyledProps<ContextMenuPrimitive.Popup.Props, Restyle<"ContextMenuContent">> &
   Pick<
     ContextMenuPrimitive.Positioner.Props,
     | "side"
@@ -141,7 +142,7 @@ export function ContextMenuItem({
   style,
   children,
   ...rest
-}: StyledProps<ContextMenuPrimitive.Item.Props> &
+}: StyledProps<ContextMenuPrimitive.Item.Props, Restyle<"ContextMenuItem">> &
   MenuItemBodyProps & {
     readonly variant?: MenuItemVariant;
   }): ReactElement {
@@ -168,7 +169,8 @@ export function ContextMenuLinkItem({
   style,
   children,
   ...rest
-}: StyledProps<ContextMenuPrimitive.LinkItem.Props> & MenuItemBodyProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.LinkItem.Props, Restyle<"ContextMenuLinkItem">> &
+  MenuItemBodyProps): ReactElement {
   return (
     <ContextMenuPrimitive.LinkItem
       data-slot="context-menu-link-item"
@@ -197,7 +199,8 @@ export function ContextMenuRadioItem({
   style,
   children,
   ...rest
-}: StyledProps<ContextMenuPrimitive.RadioItem.Props> & MenuItemBodyProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.RadioItem.Props, Restyle<"ContextMenuRadioItem">> &
+  MenuItemBodyProps): ReactElement {
   return (
     <ContextMenuPrimitive.RadioItem
       data-slot="context-menu-radio-item"
@@ -234,7 +237,8 @@ export function ContextMenuCheckboxItem({
   style,
   children,
   ...rest
-}: StyledProps<ContextMenuPrimitive.CheckboxItem.Props> & MenuItemBodyProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.CheckboxItem.Props, Restyle<"ContextMenuCheckboxItem">> &
+  MenuItemBodyProps): ReactElement {
   return (
     <ContextMenuPrimitive.CheckboxItem
       data-slot="context-menu-checkbox-item"
@@ -271,7 +275,7 @@ export function ContextMenuSubTrigger({
   style,
   children,
   ...rest
-}: StyledProps<ContextMenuPrimitive.SubmenuTrigger.Props> &
+}: StyledProps<ContextMenuPrimitive.SubmenuTrigger.Props, Restyle<"ContextMenuSubTrigger">> &
   Omit<MenuItemBodyProps, "meta"> & {
     /** The current choice, shown before the chevron. */
     readonly value?: ReactNode;
@@ -309,7 +313,7 @@ export function ContextMenuSeparator({
   className,
   style,
   ...rest
-}: StyledProps<ContextMenuPrimitive.Separator.Props> & {
+}: StyledProps<ContextMenuPrimitive.Separator.Props, Restyle<"ContextMenuSeparator">> & {
   /** Stops short of the popup's edges instead of running through its padding. */
   readonly inset?: boolean;
 }): ReactElement {
@@ -331,7 +335,10 @@ export function ContextMenuGroupLabel({
   className,
   style,
   ...rest
-}: StyledProps<ContextMenuPrimitive.GroupLabel.Props>): ReactElement {
+}: StyledProps<
+  ContextMenuPrimitive.GroupLabel.Props,
+  Restyle<"ContextMenuGroupLabel">
+>): ReactElement {
   return (
     <ContextMenuPrimitive.GroupLabel
       data-slot="context-menu-group-label"

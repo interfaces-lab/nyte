@@ -4,7 +4,7 @@
  * `props()` on the element that starts it. Both halves are needed: a role
  * resolved at <html> stays gray below a hue theme alone.
  */
-import { tinted } from "./roles.stylex.ts";
+import { tinted } from "./styles/roles.stylex.ts";
 import {
   blue,
   brown,
@@ -17,7 +17,7 @@ import {
   red,
   teal,
   yellow,
-} from "./theme.stylex.ts";
+} from "./styles/theme.stylex.ts";
 
 export const surfaceTheme = {
   gray: [gray, tinted],

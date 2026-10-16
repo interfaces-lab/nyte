@@ -22,9 +22,9 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
 import { useSession } from "../queries.ts";
-import { button, glyph, radius, target } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, radius, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,

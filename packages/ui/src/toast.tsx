@@ -2,10 +2,19 @@ import { Toast } from "@base-ui/react/toast";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { button, glyph, layer, radius, target, toast as toastSchema } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import {
+  button,
+  glyph,
+  layer,
+  radius,
+  space,
+  target,
+  toast as toastSchema,
+} from "./styles/schema.stylex.ts";
 import { intent } from "./surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const GAP = 8;
@@ -17,8 +26,8 @@ const EXIT = "translateY(150%)";
 const styles = create({
   viewport: {
     position: "fixed",
-    insetInlineEnd: 16,
-    insetBlockEnd: 16,
+    insetInlineEnd: space.s4,
+    insetBlockEnd: space.s4,
     zIndex: layer.toast,
     boxSizing: "border-box",
     width: "min(380px, calc(100vw - 32px))",
@@ -91,16 +100,13 @@ const styles = create({
   content: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     boxSizing: "border-box",
     height: "100%",
     minHeight: toastSchema.minHeight,
-    padding: 12,
+    padding: space.s3,
     paddingInlineEnd: toastSchema.closeGutter,
     overflow: "clip",
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    letterSpacing: type.letterBase,
     opacity: { default: 1, "[data-behind]": 0, "[data-expanded]": 1 },
     transitionProperty: "opacity",
     transitionDuration: {
@@ -109,20 +115,16 @@ const styles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
-  text: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: 2 },
+  text: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: space.s0_5 },
   title: {
     margin: 0,
-    fontWeight: 500,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
+    fontWeight: type.weightMedium,
     fontVariantNumeric: "tabular-nums",
     textWrap: "balance",
   },
   description: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   icon: {
@@ -154,9 +156,7 @@ const styles = create({
     },
     color: role.contentPrimary,
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    fontWeight: 400,
-    lineHeight: type.leadingSm,
+    fontWeight: type.weightRegular,
     whiteSpace: "nowrap",
     cursor: appearance.cursorInteractive,
     scale: { default: 1, ":active": 0.96 },
@@ -170,8 +170,8 @@ const styles = create({
   close: {
     position: "absolute",
     zIndex: 1,
-    insetBlockStart: 8,
-    insetInlineEnd: 8,
+    insetBlockStart: space.s2,
+    insetInlineEnd: space.s2,
     display: "grid",
     placeItems: "center",
     boxSizing: "border-box",
@@ -222,32 +222,32 @@ function ToastList(): ReactElement[] {
   const { toasts } = Toast.useToastManager();
 
   return toasts.map((item) => {
-    const text = copyText(item.title, item.description);
+    const copy = copyText(item.title, item.description);
     const status = isStatus(item.type) ? STATUS_ICON[item.type] : undefined;
 
     return (
       <Toast.Root key={item.id} toast={item} data-slot="toast" {...props(styles.root)}>
-        <Toast.Content {...props(styles.content)}>
+        <Toast.Content {...props(text.base, styles.content)}>
           {status !== undefined && (
             <span {...props(status.intent, styles.icon)}>
               <Icon name={status.name} size={16} />
             </span>
           )}
           <div {...props(styles.text)}>
-            <Toast.Title {...props(styles.title)} />
-            <Toast.Description {...props(styles.description)} />
+            <Toast.Title {...props(text.base, styles.title)} />
+            <Toast.Description {...props(text.sm, styles.description)} />
           </div>
-          {text !== undefined && (
+          {copy !== undefined && (
             <button
               type="button"
               aria-label="Copy notification"
-              onClick={() => void navigator.clipboard.writeText(text)}
-              {...props(styles.action, focus.ring)}
+              onClick={() => void navigator.clipboard.writeText(copy)}
+              {...props(text.sm, styles.action, focus.ring)}
             >
               Copy
             </button>
           )}
-          <Toast.Action {...props(styles.action, focus.ring)} />
+          <Toast.Action {...props(text.sm, styles.action, focus.ring)} />
           <Toast.Close aria-label="Dismiss notification" {...props(styles.close, focus.ring)}>
             <Icon name="x" size={12} />
           </Toast.Close>

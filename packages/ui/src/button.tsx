@@ -1,5 +1,5 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
-import { create, props, type StyleXStyles } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import {
   createContext,
   use,
@@ -9,8 +9,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { button, radius, target } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { button, radius, space, target } from "./styles/schema.stylex.ts";
 import {
   mergeStyleProps,
   type StateStyledProps,
@@ -18,8 +18,10 @@ import {
   type StyledProps,
   type XStyle,
 } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
 import { ControlGlyphs, Icon, type IconName } from "./icon.tsx";
 import { Spinner } from "./spinner.tsx";
 
@@ -46,7 +48,7 @@ const control = create({
       },
       ":active:not([data-disabled])": role.layerPressed,
     },
-    fontWeight: 500,
+    fontWeight: type.weightMedium,
     cursor: {
       default: appearance.cursorInteractive,
       "[data-disabled]": "default",
@@ -95,7 +97,7 @@ const control = create({
     "::after": {
       content: { default: '""', ":first-of-type": "none" },
       position: "absolute",
-      insetBlock: 4,
+      insetBlock: space.s1,
       insetInlineStart: 0,
       width: 1,
       backgroundColor: role.borderPrimary,
@@ -130,48 +132,36 @@ const buttonSizes = create({
     "--_btn-height": button.height2xs,
     paddingInline: button.paddingInline2xs,
     gap: button.gap2xs,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   xs: {
     "--_btn-radius": button.radiusXs,
     "--_btn-height": button.heightXs,
     paddingInline: button.paddingInlineXs,
     gap: button.gapXs,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   sm: {
     "--_btn-radius": button.radiusSm,
     "--_btn-height": button.heightSm,
     paddingInline: button.paddingInlineSm,
     gap: button.gapSm,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
   md: {
     "--_btn-radius": button.radiusMd,
     "--_btn-height": button.heightMd,
     paddingInline: button.paddingInlineMd,
     gap: button.gapMd,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
   lg: {
     "--_btn-radius": button.radiusLg,
     "--_btn-height": button.heightLg,
     paddingInline: button.paddingInlineLg,
     gap: button.gapLg,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
   xl: {
     "--_btn-radius": button.radiusXl,
     "--_btn-height": button.heightXl,
     paddingInline: button.paddingInlineXl,
     gap: button.gapXl,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
 });
 
@@ -214,7 +204,7 @@ const buttonVariants = create({
     backgroundImage: "none",
   },
   plain: {
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
     backgroundImage: "none",
     backgroundColor: {
       default: "transparent",
@@ -255,7 +245,7 @@ const buttonVariants = create({
     transitionDuration: motion.durationNormal,
     "::before": {
       zIndex: -1,
-      insetBlock: -1,
+      insetBlock: `calc(${space.px} * -1)`,
       insetInline: -3,
       borderRadius: radius.indicator,
       backgroundColor: "var(--_btn-inline-hover)",
@@ -295,37 +285,7 @@ export type ButtonSizing = { readonly size?: ButtonSize } & (
   | { readonly iconOnly: true; readonly children?: ReactNode; readonly "aria-label": string }
 );
 
-export type ButtonLayout = StyleXStyles<{
-  position?: "static" | "relative" | "absolute" | "sticky";
-  inset?: number | string;
-  insetBlock?: number | string;
-  insetBlockStart?: number | string;
-  insetBlockEnd?: number | string;
-  insetInline?: number | string;
-  insetInlineStart?: number | string;
-  insetInlineEnd?: number | string;
-  zIndex?: number;
-  margin?: number | string;
-  marginBlock?: number | string;
-  marginBlockStart?: number | string;
-  marginBlockEnd?: number | string;
-  marginInline?: number | string;
-  marginInlineStart?: number | string;
-  marginInlineEnd?: number | string;
-  flex?: number | string;
-  flexGrow?: number;
-  flexShrink?: number;
-  alignSelf?: string;
-  justifySelf?: string;
-  gridArea?: string;
-  gridColumn?: number | string;
-  gridRow?: number | string;
-  order?: number;
-  width?: number | string;
-  minWidth?: number | string;
-  maxWidth?: number | string;
-  borderRadius?: number | string;
-}>;
+export type ButtonLayout = Restyle<"Button">;
 
 export interface ButtonAppearance {
   readonly icon?: IconName;
@@ -386,6 +346,7 @@ export function buttonStyle<State>(
 ): StateStyledProps<State> {
   return mergeStyleProps(
     props(
+      size === "2xs" || size === "xs" ? text.sm : text.base,
       tone !== "neutral" && intent[tone],
       control.base,
       buttonSizes[size],
@@ -563,7 +524,7 @@ export function ButtonGroup({
   style,
   children,
   ...rest
-}: StyledProps<ComponentProps<"div">>): ReactElement {
+}: StyledProps<ComponentProps<"div">, Restyle<"ButtonGroup">>): ReactElement {
   return (
     <div
       role="group"

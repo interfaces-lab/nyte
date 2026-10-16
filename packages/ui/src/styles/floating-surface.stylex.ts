@@ -1,14 +1,8 @@
 import { radius } from "./schema.stylex.ts";
-/**
- * One painted frame for raised surfaces. The popup owns its fill,
- * shadow, and hairline so all three follow the same enter/exit lifecycle.
- * Collision-aware positioners only handle placement.
- */
 import { create } from "@stylexjs/stylex";
 import { appearance, role, shadow } from "./vars.stylex.ts";
 
 export const floatingSurfaceStyles = create({
-  /** The translucent fill every floating surface shares, blurring the page behind it. */
   material: {
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,

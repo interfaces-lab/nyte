@@ -1,4 +1,4 @@
-import { button, row } from "@nyte-ai/ui/schema.stylex";
+import { button, row } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
@@ -12,7 +12,7 @@ import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte";
 import { macPlatform } from "../platform.ts";
 import { keys } from "../queries.ts";

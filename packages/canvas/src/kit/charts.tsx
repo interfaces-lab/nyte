@@ -15,10 +15,10 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, useContext } from "react";
 import type { ReactElement } from "react";
 import { platformScopes } from "@nyte-ai/ui/platform-colors";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
-import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useColorScheme } from "./scheme.ts";
 
 /** Series without a tint of their own paint in this order. */

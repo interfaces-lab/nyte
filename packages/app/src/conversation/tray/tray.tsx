@@ -6,10 +6,10 @@ import type { ReactElement, ReactNode, Ref } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { glyph } from "@nyte-ai/ui/schema.stylex";
+import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /** Parts every composer tray draws: its pill, rows, header actions, and notices. */
 export const trayParts = create({

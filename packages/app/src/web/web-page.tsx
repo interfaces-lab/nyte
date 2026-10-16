@@ -1,6 +1,6 @@
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 

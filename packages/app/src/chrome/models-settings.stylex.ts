@@ -1,7 +1,7 @@
-import { input, radius } from "@nyte-ai/ui/schema.stylex";
+import { input, radius } from "@nyte-ai/ui/styles/schema.stylex";
 /** Settings › Models geometry beyond the shared settings patterns. */
 import { create } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { settings } from "../theme/schema.stylex.ts";
 
 export const modelsSettingsStyles = create({

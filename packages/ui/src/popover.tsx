@@ -2,22 +2,22 @@ import { Popover } from "@base-ui/react/popover";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { layer, radius } from "./schema.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { layer, radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { motion, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { motion, role, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   positioner: { zIndex: layer.menu, outline: "none" },
   popup: {
-    padding: 8,
+    padding: space.s2,
     borderStyle: "none",
     borderRadius: radius.card,
     outline: "none",
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     transformOrigin: "var(--transform-origin)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     scale: {
@@ -36,15 +36,11 @@ const styles = create({
   title: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    fontWeight: 500,
-    lineHeight: type.leadingBase,
+    fontWeight: type.weightMedium,
   },
   description: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
 });
 
@@ -70,7 +66,7 @@ function PopoverPositioner({
   style,
   xstyle,
   ...rest
-}: StyledProps<Popover.Positioner.Props>): ReactElement {
+}: StyledProps<Popover.Positioner.Props, Restyle<"Popover.Positioner">>): ReactElement {
   return (
     <Popover.Positioner
       positionMethod={positionMethod}
@@ -87,7 +83,7 @@ function PopoverPopup({
   style,
   xstyle,
   ...rest
-}: StyledProps<Popover.Popup.Props> & {
+}: StyledProps<Popover.Popup.Props, Restyle<"Popover.Popup">> & {
   /** Scopes the popup to a hue. */
   readonly tint?: Tint;
 }): ReactElement {
@@ -96,6 +92,7 @@ function PopoverPopup({
       data-slot="popover-popup"
       {...mergeStyleProps(
         props(
+          text.base,
           tint !== undefined && surfaceTheme[tint],
           floatingSurfaceStyles.popup,
           styles.popup,
@@ -114,9 +111,12 @@ function PopoverTitle({
   style,
   xstyle,
   ...rest
-}: StyledProps<Popover.Title.Props>): ReactElement {
+}: StyledProps<Popover.Title.Props, Restyle<"Popover.Title">>): ReactElement {
   return (
-    <Popover.Title {...mergeStyleProps(props(styles.title, xstyle), className, style)} {...rest} />
+    <Popover.Title
+      {...mergeStyleProps(props(text.base, styles.title, xstyle), className, style)}
+      {...rest}
+    />
   );
 }
 
@@ -125,10 +125,10 @@ function PopoverDescription({
   style,
   xstyle,
   ...rest
-}: StyledProps<Popover.Description.Props>): ReactElement {
+}: StyledProps<Popover.Description.Props, Restyle<"Popover.Description">>): ReactElement {
   return (
     <Popover.Description
-      {...mergeStyleProps(props(styles.description, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.description, xstyle), className, style)}
       {...rest}
     />
   );

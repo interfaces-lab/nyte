@@ -8,7 +8,7 @@ import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { toast } from "@nyte-ai/ui/toast";

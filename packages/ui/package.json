@@ -194,12 +194,14 @@
       "default": "./stylex.mjs"
     },
     "./platform-colors": "./src/platform-colors.ts",
-    "./tokens.stylex": "./src/tokens.stylex.ts",
-    "./vars.stylex": "./src/vars.stylex.ts",
-    "./schema.stylex": "./src/schema.stylex.ts",
-    "./floating-surface.stylex": "./src/floating-surface.stylex.ts",
-    "./a11y.stylex": "./src/a11y.stylex.ts",
-    "./tailwind.css": "./src/tailwind.css",
+    "./styles/tokens.stylex": "./src/styles/tokens.stylex.ts",
+    "./styles/vars.stylex": "./src/styles/vars.stylex.ts",
+    "./styles/schema.stylex": "./src/styles/schema.stylex.ts",
+    "./styles/floating-surface.stylex": "./src/styles/floating-surface.stylex.ts",
+    "./styles/a11y.stylex": "./src/styles/a11y.stylex.ts",
+    "./styles/text.stylex": "./src/styles/text.stylex.ts",
+    "./styles/base.css": "./src/styles/base.css",
+    "./styles/tailwind.css": "./src/styles/tailwind.css",
     "./ui.css": "./dist/ui.css",
     "./avatar": {
       "nyte-source": "./src/avatar.tsx",
@@ -224,7 +226,9 @@
     "check:tokens": "node scripts/check-tokens.mjs && node scripts/sync-platform-colors.mjs --check",
     "lock:tokens": "node scripts/check-tokens.mjs --update",
     "sync:tokens": "node scripts/sync-platform-colors.mjs",
-    "typecheck": "pnpm check:tokens && tsc --noEmit"
+    "check:stylex": "node scripts/stylex-capabilities.mjs --check",
+    "sync:stylex": "node scripts/stylex-capabilities.mjs",
+    "typecheck": "pnpm check:tokens && tsc --noEmit && pnpm check:stylex"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

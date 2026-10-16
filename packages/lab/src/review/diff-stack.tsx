@@ -17,7 +17,7 @@ import { workbenchStyles } from "@nyte-ai/app/workbench/workbench.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   AddToChat,
   CodeFileHeader,

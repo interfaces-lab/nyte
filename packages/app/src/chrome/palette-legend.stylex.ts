@@ -1,6 +1,6 @@
-import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const paletteLegendStyles = create({
   footer: {

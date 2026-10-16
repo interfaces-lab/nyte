@@ -34,10 +34,10 @@ import {
 } from "@nyte-ai/ui/context-menu";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { button, radius } from "@nyte-ai/ui/schema.stylex";
+import { button, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export interface TabItem {
   readonly id: string;

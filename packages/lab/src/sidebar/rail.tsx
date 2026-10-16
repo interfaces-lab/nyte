@@ -2,10 +2,10 @@ import { create, props } from "@stylexjs/stylex";
 import { useId, useState, type ReactElement, type ReactNode } from "react";
 import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /** A folded group of rows under one header that says how many it holds. */
 export function Shelf({

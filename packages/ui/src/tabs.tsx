@@ -2,10 +2,12 @@ import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { button, radius, target } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { button, radius, space, target } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
-import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
+import type { Restyle } from "./styles/contracts.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
 
 const lists = create({
   segmented: {
@@ -14,7 +16,7 @@ const lists = create({
     gridAutoColumns: "1fr",
     alignItems: "center",
     gap: 0,
-    padding: 2,
+    padding: space.s0_5,
     borderRadius: `calc(${button.radiusSm} + 2px)`,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
@@ -22,21 +24,21 @@ const lists = create({
   underline: {
     display: "flex",
     flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
-    gap: 16,
+    gap: space.s4,
     boxShadow: `inset 0 -1px 0 ${role.borderSecondaryTranslucent}`,
   },
   pill: {
     display: "flex",
     flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
     alignItems: "center",
-    gap: 4,
-    paddingBlock: 2,
+    gap: space.s1,
+    paddingBlock: space.s0_5,
   },
   plain: {
     display: "flex",
     flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
   },
 });
 
@@ -48,6 +50,16 @@ const tab = create({
     cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
     opacity: { default: 1, "[data-disabled]": 0.5 },
   },
+  bare: {
+    margin: 0,
+    padding: 0,
+    borderStyle: "none",
+    backgroundColor: "transparent",
+    color: "inherit",
+    font: "inherit",
+    letterSpacing: "inherit",
+    textAlign: "start",
+  },
 });
 
 const tabs = create({
@@ -55,7 +67,7 @@ const tabs = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: space.s1_5,
     height: button.heightSm,
     paddingInline: button.paddingInlineSm,
     borderStyle: "none",
@@ -68,9 +80,7 @@ const tabs = create({
     boxShadow: { default: "none", "[data-active]": shadow.shadowSm },
     color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    fontWeight: 500,
-    lineHeight: type.leadingSm,
+    fontWeight: type.weightMedium,
     userSelect: "none",
     whiteSpace: "nowrap",
     scale: {
@@ -83,7 +93,7 @@ const tabs = create({
   },
   underline: {
     position: "relative",
-    paddingBlock: "4px 8px",
+    paddingBlock: `${space.s1} ${space.s2}`,
     paddingInline: 0,
     borderStyle: "none",
     backgroundColor: "transparent",
@@ -93,9 +103,7 @@ const tabs = create({
       "[data-active]": role.contentPrimary,
     },
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    fontWeight: 500,
-    lineHeight: type.leadingSm,
+    fontWeight: type.weightMedium,
     userSelect: "none",
     transitionProperty: "color",
     transitionDuration: motion.durationFast,
@@ -128,9 +136,7 @@ const tabs = create({
     },
     color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    fontWeight: 500,
-    lineHeight: type.leadingSm,
+    fontWeight: type.weightMedium,
   },
   plain: {
     display: "inline-flex",
@@ -138,8 +144,8 @@ const tabs = create({
     justifyContent: "center",
     height: button.heightMd,
     flexShrink: 0,
-    paddingBlock: 2,
-    paddingInline: 10,
+    paddingBlock: space.s0_5,
+    paddingInline: space.s2_5,
     borderStyle: "none",
     borderRadius: radius.indicator,
     backgroundColor: {
@@ -149,9 +155,6 @@ const tabs = create({
     },
     color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    letterSpacing: type.letterBase,
   },
 });
 
@@ -199,7 +202,7 @@ function TabsList({
   className,
   style,
   ...rest
-}: StyledProps<TabsPrimitive.List.Props>): ReactElement {
+}: StyledProps<TabsPrimitive.List.Props, Restyle<"Tabs.List">>): ReactElement {
   const variant = use(TabsVariantContext);
 
   return (
@@ -211,19 +214,26 @@ function TabsList({
   );
 }
 
-function TabsTab({
-  xstyle,
-  className,
-  style,
-  ...rest
-}: StyledProps<TabsPrimitive.Tab.Props>): ReactElement {
+type TabsTabProps =
+  | (StyledProps<TabsPrimitive.Tab.Props, Restyle<"Tabs.Tab">> & { readonly variant?: never })
+  | (StyledProps<TabsPrimitive.Tab.Props, Restyle<"Tabs.Tab[variant=bare]">> & {
+      /** Paints nothing, for a tab strip that draws its own tabs. */
+      readonly variant: "bare";
+    });
+
+function TabsTab({ variant: own, xstyle, className, style, ...rest }: TabsTabProps): ReactElement {
   const variant = use(TabsVariantContext);
 
   return (
     <TabsPrimitive.Tab
       {...rest}
       {...mergeStyleProps(
-        props(tabs[variant], tab.base, variant === "plain" ? focus.ringInset : focus.ring, xstyle),
+        props(
+          own === "bare" ? tab.bare : [variant === "plain" ? text.base : text.sm, tabs[variant]],
+          tab.base,
+          variant === "plain" ? focus.ringInset : focus.ring,
+          xstyle,
+        ),
         className,
         style,
       )}
@@ -246,7 +256,7 @@ function TabsIndicator({
   className,
   style,
   ...rest
-}: StyledProps<TabsPrimitive.Indicator.Props>): ReactElement {
+}: StyledProps<TabsPrimitive.Indicator.Props, Restyle<"Tabs.Indicator">>): ReactElement {
   return (
     <TabsPrimitive.Indicator
       {...rest}

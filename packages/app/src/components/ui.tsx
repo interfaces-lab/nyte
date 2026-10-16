@@ -2,9 +2,9 @@
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
-import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { SessionMark } from "../view-helpers.ts";
 

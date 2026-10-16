@@ -8,8 +8,8 @@ import { create, props } from "@stylexjs/stylex";
 import { motion } from "motion/react";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
-import { glyph } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export type FolderStyle = "paper" | "flat";
 

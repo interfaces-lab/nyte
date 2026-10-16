@@ -1,8 +1,8 @@
-import { input, layer, menu, radius } from "@nyte-ai/ui/schema.stylex";
-import { floatingSurfaceStyles } from "@nyte-ai/ui/floating-surface.stylex";
+import { input, layer, menu, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useImperativeHandle, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, ReactElement, ReactNode, Ref } from "react";

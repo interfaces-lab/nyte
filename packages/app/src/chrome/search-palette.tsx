@@ -8,7 +8,7 @@ import { Command } from "@nyte-ai/ui/command";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { formatTimeAgo } from "../components/ui.tsx";
 import { StatusGlyph } from "./status-glyph.tsx";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { macPlatform } from "../platform.ts";
 import { sessionActivityMark } from "../session-activity.ts";

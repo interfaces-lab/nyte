@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * A session's activation, as its view carries it, says when its workspace is
  * out of reach or its plugins failed; trust is requested when the host refuses
@@ -14,7 +14,7 @@ import type { ReactElement } from "react";
 import type { Activation } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient, useHostState } from "../queries.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import type { HostBridge, OpenWorkspaceOutcome, TrustConsent } from "../bridge.ts";
 

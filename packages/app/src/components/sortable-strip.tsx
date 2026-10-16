@@ -11,7 +11,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { createContext, use, useCallback, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode, RefObject } from "react";
-import { motion } from "@nyte-ai/ui/vars.stylex";
+import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 import { useMountEffect } from "../use-mount-effect.ts";
 
 const styles = create({

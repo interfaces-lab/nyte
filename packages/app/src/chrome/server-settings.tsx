@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * The two connections Environments shows, pointing opposite ways. The Cloud
  * row is outbound: a remote Nyte host this desktop reaches, whose chats run
@@ -28,13 +28,13 @@ import type {
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { nyte } from "../nyte.ts";
 import { keys, useRemoteAccessState, useServerState } from "../queries.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   ConnectionList,
   ConnectionMenu,

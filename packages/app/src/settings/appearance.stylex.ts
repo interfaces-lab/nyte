@@ -1,8 +1,8 @@
-import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
 /** Controls unique to Settings › Appearance. */
 import { create } from "@stylexjs/stylex";
 import { diffView, settings } from "../theme/schema.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const appearanceStyles = create({
   root: { display: "flex", flexDirection: "column", gap: settings.sectionGap },

@@ -14,11 +14,11 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { motion as motionTokens, role, type } from "@nyte-ai/ui/vars.stylex";
+import { motion as motionTokens, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { DRAFTS, SPACE, TABS, type ShellTab } from "./fixtures";
 import { WindowTabStrip, useCardCorners, type StripDesign } from "./strip";
 

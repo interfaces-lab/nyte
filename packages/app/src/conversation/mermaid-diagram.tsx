@@ -1,5 +1,5 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -8,7 +8,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { Button } from "@nyte-ai/ui/button";
 import { keys } from "../query-keys.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { CodeBlock } from "./code-block.tsx";
 import type { DiagramResult } from "./mermaid-render.ts";
 

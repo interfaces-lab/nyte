@@ -1,23 +1,25 @@
-/**
- * Component geometry and paint order. Components compose these named
- * decisions instead of growing their own almost-matching widths, insets, and
- * row heights. The values live in `tokens.stylex.ts`; importing this file
- * ships them.
- *
- * Every length reads a custom property rather than holding a number: a dev
- * build transforms each file alone, where a numeric const compiles to a
- * variable nothing declares there and the sizing is dropped.
- */
 import { defineConsts } from "@stylexjs/stylex";
 
 import "./tokens.stylex.ts";
 
 /**
- * One odd box, shared by the spinner and the icons that sit in the same slot.
- * The spinner's 4x4 grid of 3px squares at a 4px pitch measures 15px, and an
- * icon centred in that box lands on whole pixels, so it is named here rather
- * than rounded onto the 2px sizing grid.
+ * Padding, gaps, margins, and insets. Steps count 4px units as Tailwind's do:
+ * `s1_5` is 6px, `s2` is 8px. `px` is a hairline.
  */
+export const space = defineConsts({
+  px: "1px",
+  s0_5: "calc(var(--nyte-space-unit) * 0.5)",
+  s1: "var(--nyte-space-unit)",
+  s1_5: "calc(var(--nyte-space-unit) * 1.5)",
+  s2: "calc(var(--nyte-space-unit) * 2)",
+  s2_5: "calc(var(--nyte-space-unit) * 2.5)",
+  s3: "calc(var(--nyte-space-unit) * 3)",
+  s4: "calc(var(--nyte-space-unit) * 4)",
+  s5: "calc(var(--nyte-space-unit) * 5)",
+  s6: "calc(var(--nyte-space-unit) * 6)",
+  s8: "calc(var(--nyte-space-unit) * 8)",
+});
+
 export const glyph = defineConsts({
   sm: "var(--nyte-glyph-sm)",
   md: "var(--nyte-glyph-md)",
@@ -42,10 +44,6 @@ export const slider = defineConsts({
   thumb: "var(--nyte-slider-thumb)",
 });
 
-/**
- * The trailing padding that keeps toast text clear of the close button, which
- * is 24px wide at an 8px inset.
- */
 export const toast = defineConsts({
   minHeight: "var(--nyte-toast-min-height)",
   closeGutter: "var(--nyte-toast-close-gutter)",
@@ -134,10 +132,6 @@ export const row = defineConsts({
   radius: "var(--nyte-row-radius)",
 });
 
-/**
- * One menu row, shared by items, group headings, and the model picker's footer
- * item, so a popup's rows all land on the same pitch.
- */
 export const menu = defineConsts({
   itemHeight: "var(--nyte-menu-item-height)",
   metaMinWidth: "var(--nyte-menu-meta-min-width)",
@@ -171,9 +165,9 @@ export const layer = defineConsts({
   sash: 31,
   menu: 60,
   submenu: 61,
-  tooltip: 70,
   dialogBackdrop: 70,
   dialog: 71,
+  tooltip: 72,
   toast: 75,
   commandBackdrop: 80,
   command: 81,
@@ -181,7 +175,6 @@ export const layer = defineConsts({
 });
 
 export const radius = defineConsts({
-  square: "var(--nyte-shape-square)",
   indicator: "var(--nyte-shape-indicator)",
   control: "var(--nyte-shape-control)",
   card: "var(--nyte-shape-card)",

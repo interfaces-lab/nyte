@@ -15,7 +15,7 @@ import {
 } from "react";
 import type { MouseEvent, ReactElement, Ref } from "react";
 import type { FileDocument } from "@nyte-ai/sdk";
-import { button } from "@nyte-ai/ui/schema.stylex";
+import { button } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { diffStyles } from "../conversation/styles.stylex.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
@@ -34,7 +34,7 @@ import {
 } from "../queries.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { createFileDocument } from "./file-document.ts";
 import { fileActions } from "./file-store.ts";

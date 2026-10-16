@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
-import { input, layer, radius } from "@nyte-ai/ui/schema.stylex";
+import { input, layer, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation, pane } from "../theme/schema.stylex.ts";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const threadStyles = create({
   stage: {

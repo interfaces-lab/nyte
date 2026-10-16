@@ -6,7 +6,7 @@
  */
 import { createTheme, props } from "@stylexjs/stylex";
 import type { CompiledStyles, StyleXArray } from "@stylexjs/stylex";
-import { focusModality, pointerCursor, transparency } from "@nyte-ai/ui/tokens.stylex";
+import { focusModality, pointerCursor, transparency } from "@nyte-ai/ui/styles/tokens.stylex";
 
 const arrow = createTheme(pointerCursor, { "--nyte-cursor-interactive": "default" });
 

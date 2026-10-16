@@ -1,6 +1,6 @@
-import { button, glyph } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
-import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const stripStyles = create({
   strip: {

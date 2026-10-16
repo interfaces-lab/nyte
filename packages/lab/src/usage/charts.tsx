@@ -9,10 +9,10 @@ import { create, props } from "@stylexjs/stylex";
 import { useCallback, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { useClientBox } from "@nyte-ai/app/workbench/use-client-box.ts";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
-import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   TOKEN_KINDS,
   TOKEN_LABELS,

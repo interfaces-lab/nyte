@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { Button } from "@nyte-ai/ui/button";

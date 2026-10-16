@@ -13,8 +13,8 @@ import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { layer } from "@nyte-ai/ui/schema.stylex";
-import { motion, role } from "@nyte-ai/ui/vars.stylex";
+import { layer } from "@nyte-ai/ui/styles/schema.stylex";
+import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import {
   clampSidebarWidth,

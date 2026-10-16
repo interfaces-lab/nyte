@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
-import { button, layer } from "@nyte-ai/ui/schema.stylex";
+import { button, layer } from "@nyte-ai/ui/styles/schema.stylex";
 import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /**
  * One row of three slots, each sized by the token its stage column already

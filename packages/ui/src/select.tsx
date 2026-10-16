@@ -2,10 +2,12 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { layer, menu } from "./schema.stylex.ts";
+import { layer, menu } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, shadow } from "./styles/vars.stylex.ts";
 import { PickerTrigger, type PickerTriggerProps } from "./button.tsx";
 import { Icon } from "./icon.tsx";
 
@@ -82,9 +84,6 @@ const styles = create({
       "[data-highlighted]": role.bgHover,
     },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",
   },
@@ -136,7 +135,7 @@ export function SelectContent({
   className,
   style,
   ...rest
-}: StyledProps<SelectPrimitive.Popup.Props> &
+}: StyledProps<SelectPrimitive.Popup.Props, Restyle<"SelectContent">> &
   Pick<
     SelectPrimitive.Positioner.Props,
     "side" | "align" | "sideOffset" | "alignOffset" | "alignItemWithTrigger" | "collisionAvoidance"
@@ -177,11 +176,11 @@ export function SelectItem({
   className,
   style,
   ...rest
-}: StyledProps<SelectPrimitive.Item.Props>): ReactElement {
+}: StyledProps<SelectPrimitive.Item.Props, Restyle<"SelectItem">>): ReactElement {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
-      {...mergeStyleProps(props(styles.item, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.item, xstyle), className, style)}
       {...rest}
     >
       <SelectPrimitive.ItemText {...props(styles.itemText)}>{children}</SelectPrimitive.ItemText>

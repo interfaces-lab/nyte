@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 export type Gap = 0 | 1 | 2 | 3 | 4 | 6;
 

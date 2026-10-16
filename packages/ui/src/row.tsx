@@ -4,11 +4,12 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRender } from "@base-ui/react/use-render";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
-import { focus } from "./a11y.stylex.ts";
-import { glyph, row, target } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { glyph, row, space, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
-import { appearance, motion, role, type } from "./vars.stylex.ts";
+import { mergeStyleProps, type StyledProps, type XStyle } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
+import { appearance, motion, role, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   root: {
@@ -35,10 +36,11 @@ const styles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
+  bare: { position: "relative", isolation: "isolate" },
   lg: {
     minHeight: row.heightLg,
     "--_row-padding-inline": row.paddingInlineLg,
-    paddingBlock: 6,
+    paddingBlock: space.s1_5,
   },
   interactive: {
     "--_row-fill": {
@@ -133,7 +135,6 @@ const styles = create({
     placeItems: "center",
     flexShrink: 0,
     width: glyph.box,
-    lineHeight: 0,
     color: "inherit",
   },
   body: {
@@ -183,7 +184,10 @@ const styles = create({
   },
 });
 
-type RowPartProps = StyledProps<useRender.ComponentProps<"span">>;
+type RowPartProps<Style extends XStyle = XStyle> = StyledProps<
+  useRender.ComponentProps<"span">,
+  Style
+>;
 
 interface RowOwnProps {
   /** `lg` is taller, with room for a description under the label. */
@@ -200,11 +204,17 @@ interface RowOwnProps {
 }
 
 type RowProps =
-  | (StyledProps<useRender.ComponentProps<"div">> & RowOwnProps & { readonly variant?: "list" })
-  | (StyledProps<useRender.ComponentProps<"button">> &
+  | (StyledProps<useRender.ComponentProps<"div">, Restyle<"Row">> &
+      RowOwnProps & { readonly variant?: "list" })
+  | (StyledProps<useRender.ComponentProps<"button">, Restyle<"Row">> &
       RowOwnProps & {
         /** Makes the row itself the control, a `<button type="button">`, with no `Row.Primary`. */
         readonly variant: "nav";
+      })
+  | (StyledProps<useRender.ComponentProps<"div">, Restyle<"Row[variant=bare]">> &
+      RowOwnProps & {
+        /** Keeps the activation and paints nothing, for a surface such as a bubble that draws itself. */
+        readonly variant: "bare";
       });
 
 type RowClickEvent = BaseUIEvent<ReactMouseEvent<HTMLElement>>;
@@ -284,12 +294,16 @@ export function Row({
       "data-slot": "row",
       ...mergeStyleProps(
         props(
-          styles.root,
-          size === "lg" && styles.lg,
-          interactive && styles.interactive,
-          revealActions && styles.revealActions,
-          nav ? [styles.nav, focus.ringInset] : styles.primaryFocus,
-          (interactive || nav) && selected && styles.selected,
+          variant === "bare"
+            ? styles.bare
+            : [
+                styles.root,
+                size === "lg" && styles.lg,
+                interactive && styles.interactive,
+                revealActions && styles.revealActions,
+                nav ? [styles.nav, focus.ringInset] : styles.primaryFocus,
+                (interactive || nav) && selected && styles.selected,
+              ],
           xstyle,
         ),
         className,
@@ -308,8 +322,12 @@ type RowSlot =
   | "row-description"
   | "row-meta";
 
-function rowPart(slot: RowSlot, part: StyleXStyles, decorative = false) {
-  return function RowPart({ className, render, style, xstyle, ...rest }: RowPartProps) {
+function rowPart<Style extends XStyle = XStyle>(
+  slot: RowSlot,
+  part: StyleXStyles,
+  decorative = false,
+) {
+  return function RowPart({ className, render, style, xstyle, ...rest }: RowPartProps<Style>) {
     return useRender({
       defaultTagName: "span",
       render,
@@ -350,17 +368,17 @@ function RowPrimary({
 const RowBackdrop = rowPart("row-backdrop", styles.backdrop, true);
 
 /** A fixed lane, so labels align down the list whatever glyph each row carries. */
-const RowLeading = rowPart("row-leading", styles.leading);
+const RowLeading = rowPart<Restyle<"Row.Leading">>("row-leading", styles.leading);
 
 /** Stacks its children, so a label can carry a description under it. */
-const RowBody = rowPart("row-body", styles.body);
+const RowBody = rowPart<Restyle<"Row.Body">>("row-body", styles.body);
 
-const RowLabel = rowPart("row-label", styles.label);
+const RowLabel = rowPart<Restyle<"Row.Label">>("row-label", styles.label);
 
-const RowDescription = rowPart("row-description", styles.description);
+const RowDescription = rowPart<Restyle<"Row.Description">>("row-description", styles.description);
 
 /** Trailing text such as a time or a count. */
-const RowMeta = rowPart("row-meta", styles.meta);
+const RowMeta = rowPart<Restyle<"Row.Meta">>("row-meta", styles.meta);
 
 /**
  * Actions, a switch, or a chevron. A sibling of the primary, never a child.
@@ -374,7 +392,7 @@ function RowActions({
   style,
   xstyle,
   ...rest
-}: RowPartProps & { readonly placement?: "inline" | "overlay" }) {
+}: RowPartProps<Restyle<"Row.Actions">> & { readonly placement?: "inline" | "overlay" }) {
   return useRender({
     defaultTagName: "span",
     render,

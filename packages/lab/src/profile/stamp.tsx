@@ -5,9 +5,9 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { formatDate, type Stamp } from "./fixtures";
 
 function InkFilter({ id, seed }: { readonly id: string; readonly seed: number }): ReactElement {

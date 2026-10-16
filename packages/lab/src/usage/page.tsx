@@ -15,9 +15,9 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   KIND_TINT,
   LimitTrace,

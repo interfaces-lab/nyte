@@ -3,12 +3,14 @@ import { Field } from "@base-ui/react/field";
 import { create, props } from "@stylexjs/stylex";
 import { useId, type ComponentProps, type ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { row, radius, switchControl, target } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { radius, row, space, switchControl, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
 
 const THUMB_TRAVEL = `calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2)`;
 
@@ -25,15 +27,13 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: space.s2,
     width: "100%",
     minHeight: row.heightMd,
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     cursor: appearance.cursorInteractive,
   },
-  copy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  copy: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   description: { color: role.contentSecondary, fontSize: type.fontSm },
   track: {
     "::before": {
@@ -103,7 +103,7 @@ function SwitchControl({
   className,
   style,
   ...rest
-}: StyledProps<Omit<SwitchPrimitive.Root.Props, "children">>): ReactElement {
+}: StyledProps<Omit<SwitchPrimitive.Root.Props, "children">, Restyle<"Switch">>): ReactElement {
   return (
     <span {...props(styles.target)}>
       <SwitchPrimitive.Root
@@ -131,7 +131,7 @@ export type SwitchFieldProps = Omit<
   ComponentProps<typeof SwitchControl>,
   "aria-label" | "aria-labelledby" | "nativeButton" | "className" | "style" | "xstyle"
 > &
-  Pick<StyledProps<Field.Root.Props>, "className" | "style" | "xstyle"> & {
+  Pick<StyledProps<Field.Root.Props, Restyle<"SwitchField">>, "className" | "style" | "xstyle"> & {
     readonly label: string;
     readonly description?: string;
   };
@@ -151,7 +151,7 @@ export function SwitchField({
 
   return (
     <Field.Root
-      {...mergeStyleProps(props(styles.field, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.field, xstyle), className, style)}
       render={
         <label
           htmlFor={controlId}

@@ -2,13 +2,13 @@ import { ClerkFailed, ClerkLoading, ClerkProvider, SignIn, useAuth, useClerk } f
 import { createBrokerClient } from "@nyte-ai/connect";
 import type { DeviceRole, EnvironmentSummary } from "@nyte-ai/connect";
 import type { AccountConfig } from "@nyte-ai/connect/account-config";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";

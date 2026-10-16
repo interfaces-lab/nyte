@@ -28,7 +28,7 @@ import {
 } from "../queries.ts";
 import { conversationTurns } from "../view-helpers.ts";
 import type { ConversationTurn } from "../view-helpers.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   branchReadout,
   changesRepository,

@@ -1,4 +1,4 @@
-import { role, shadow } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps } from "react";
 import {

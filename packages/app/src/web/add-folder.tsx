@@ -6,7 +6,7 @@
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";

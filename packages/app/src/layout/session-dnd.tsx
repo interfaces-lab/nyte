@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import {
   DndContext,
   DragOverlay,
@@ -24,7 +24,7 @@ import { Value } from "typebox/value";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
 import { sessionId as sessionIdSchema } from "../schemas.ts";
-import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
 import { orderedPanes } from "./pane-layout.ts";
 import type { DropPlacement, PaneId, PaneLayout } from "./pane-layout.ts";

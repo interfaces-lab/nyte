@@ -14,13 +14,13 @@ import {
   QuestionnaireItem,
   QuestionnaireTitle,
 } from "@nyte-ai/ui/questionnaire";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { checkbox, radius } from "@nyte-ai/ui/schema.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { checkbox, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { useChildSessions, useSessionView } from "../../queries.ts";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
 import { answerQuestion, questionAnswerOptions } from "./questions-state.ts";
 

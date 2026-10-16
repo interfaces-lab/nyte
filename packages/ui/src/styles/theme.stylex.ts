@@ -1,21 +1,9 @@
-/**
- * The ramps and the theme layer the roles read. Each ramp defines lightness
- * and alpha per step. Blue, red, green, yellow, orange, purple, teal, and pink
- * use Nyte's hues, with chroma scaled so step 80 carries Nyte's colour.
- * Gray and brown use fixed ramps.
- *
- * The ramps are data, not custom properties: nothing outside this file can
- * name a hue step. `theme` holds one ramp at a time, gray by default; each
- * hue export is a theme that swaps in its ramp, and `custom` builds one from
- * the template at the workspace tint's hue and chroma.
- */
 import { createTheme, defineConsts, defineVars } from "@stylexjs/stylex";
 
 const steps = [
   0, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 135, 140, 145, 150,
 ];
 
-/** Opaque steps, the same in both modes. */
 const opaque = {
   gray: [
     "lab(99.9996% -0.00357628 -0.0378609)",
@@ -239,7 +227,6 @@ const opaque = {
   ],
 };
 
-/** Translucent steps as [light, dark]: they composite differently in each mode. */
 const translucent = {
   gray: [
     ["lab(99.9996% -0.00357628 -0.0378609 / 0)", "lab(99.9996% -0.00357628 -0.0378609)"],
@@ -463,7 +450,6 @@ const translucent = {
   ],
 };
 
-/** Custom hue template: lightness and chroma, opaque then translucent. */
 const template = {
   l: [
     "100%",
@@ -587,10 +573,6 @@ const ramp = (hue: keyof typeof opaque) => ({
   ),
 });
 
-/**
- * Unchecked switches and checkboxes stay gray inside a tinted scope.
- * These gray steps never swap with a hue.
- */
 const neutral = (step: number) => ({
   [`--nyte-neutral-${step}`]: opaque.gray[steps.indexOf(step)],
   [`--nyte-neutral-translucent-${step}`]: `light-dark(${translucent.gray[steps.indexOf(step)][0]}, ${translucent.gray[steps.indexOf(step)][1]})`,
@@ -603,7 +585,6 @@ export const theme = defineVars({
   ...neutral(100),
 });
 
-/** The workspace tint's inputs, written on <html> by the desktop's boot. */
 export const tint = defineVars({
   "--nyte-custom-hue": "250",
   "--nyte-custom-chroma-scale": "1",
@@ -627,17 +608,12 @@ export const pink = createTheme(theme, ramp("pink"));
 
 export const red = createTheme(theme, ramp("red"));
 
-/** The danger border outside a scope, for `:user-invalid` on a plain field. */
 export const danger = defineConsts({
   border: opaque.red[steps.indexOf(80)],
 });
 
 export const teal = createTheme(theme, ramp("teal"));
 
-/**
- * The template's translucent steps are dark ink, so dark mode rotates the blue
- * translucent ramp to the hue instead.
- */
 export const custom = createTheme(theme, {
   ...Object.fromEntries(
     steps.map((step, index) => [

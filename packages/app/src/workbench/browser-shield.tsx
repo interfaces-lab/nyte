@@ -12,7 +12,7 @@ import {
   MenuSwitchItem,
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { changeHostSettings, hostSetting, useSetting } from "../preferences/index.ts";
 
 const styles = create({

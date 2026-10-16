@@ -1,5 +1,5 @@
 // Bundled faces: Inter with its optical-size axis for UI text, JetBrains Mono
-// for code. @nyte-ai/ui/tokens.stylex names both in its `--nyte-*-font-*` stacks.
+// for code. @nyte-ai/ui/styles/tokens.stylex names both in its `--nyte-*-font-*` stacks.
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
 import "@fontsource-variable/jetbrains-mono/wght.css";

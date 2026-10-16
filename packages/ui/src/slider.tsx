@@ -1,18 +1,16 @@
-import { radius, slider, target } from "./schema.stylex.ts";
+import { radius, slider, target } from "./styles/schema.stylex.ts";
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
-import { appearance, role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, role, shadow, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
-  label: {
-    color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-  },
+  label: { color: role.contentPrimary },
   value: {
     color: role.contentSecondary,
     fontSize: type.fontXs,
@@ -96,11 +94,11 @@ function SliderLabel({
   className,
   style,
   ...rest
-}: StyledProps<SliderPrimitive.Label.Props>): ReactElement {
+}: StyledProps<SliderPrimitive.Label.Props, Restyle<"Slider.Label">>): ReactElement {
   return (
     <SliderPrimitive.Label
       {...rest}
-      {...mergeStyleProps(props(styles.label, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.label, xstyle), className, style)}
     />
   );
 }
@@ -110,7 +108,7 @@ function SliderValue({
   className,
   style,
   ...rest
-}: StyledProps<SliderPrimitive.Value.Props>): ReactElement {
+}: StyledProps<SliderPrimitive.Value.Props, Restyle<"Slider.Value">>): ReactElement {
   return (
     <SliderPrimitive.Value
       {...rest}
@@ -124,7 +122,7 @@ function SliderControl({
   className,
   style,
   ...rest
-}: StyledProps<SliderPrimitive.Control.Props>): ReactElement {
+}: StyledProps<SliderPrimitive.Control.Props, Restyle<"Slider.Control">>): ReactElement {
   return (
     <SliderPrimitive.Control
       {...rest}
@@ -138,7 +136,7 @@ function SliderTrack({
   className,
   style,
   ...rest
-}: StyledProps<SliderPrimitive.Track.Props>): ReactElement {
+}: StyledProps<SliderPrimitive.Track.Props, Restyle<"Slider.Track">>): ReactElement {
   return (
     <SliderPrimitive.Track
       {...rest}
@@ -152,7 +150,7 @@ function SliderIndicator({
   className,
   style,
   ...rest
-}: StyledProps<SliderPrimitive.Indicator.Props>): ReactElement {
+}: StyledProps<SliderPrimitive.Indicator.Props, Restyle<"Slider.Indicator">>): ReactElement {
   return (
     <SliderPrimitive.Indicator
       {...rest}
@@ -166,7 +164,7 @@ function SliderThumb({
   className,
   style,
   ...rest
-}: StyledProps<SliderPrimitive.Thumb.Props>): ReactElement {
+}: StyledProps<SliderPrimitive.Thumb.Props, Restyle<"Slider.Thumb">>): ReactElement {
   return (
     <SliderPrimitive.Thumb
       {...rest}

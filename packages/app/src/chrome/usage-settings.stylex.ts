@@ -3,9 +3,9 @@
  * shape, how much of each plan is left, then the rows that make up the cost.
  * Every figure uses tabular digits so a column lines up on its decimal.
  */
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { settings } from "../theme/schema.stylex.ts";
 
 /** Below this the table drops its secondary columns rather than squeezing names. */

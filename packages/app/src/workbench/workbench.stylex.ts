@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
-import { layer, row, radius, target } from "@nyte-ai/ui/schema.stylex";
+import { layer, row, radius, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
-import { appearance, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const workbenchStyles = create({
   root: {

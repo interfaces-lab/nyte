@@ -1,4 +1,4 @@
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { WorkerPoolContext } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import type { WorkerInitializationRenderOptions, WorkerPoolOptions } from "@pierre/diffs/worker";

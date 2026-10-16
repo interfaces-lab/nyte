@@ -7,11 +7,13 @@ import { Dialog } from "@base-ui/react/dialog";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { dialog, layer } from "./schema.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { dialog, layer, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { role, shadow, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   backdrop: {
@@ -41,21 +43,17 @@ const styles = create({
     color: role.contentPrimary,
     transform: "translate(-50%, -50%)",
   },
-  header: { display: "flex", flexDirection: "column", gap: 4 },
+  header: { display: "flex", flexDirection: "column", gap: space.s1 },
   title: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: type.fontLg,
-    fontWeight: 600,
-    lineHeight: type.leadingLg,
+    fontWeight: type.weightSemibold,
   },
   description: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
-  footer: { display: "flex", justifyContent: "flex-end", gap: 8 },
+  footer: { display: "flex", justifyContent: "flex-end", gap: space.s2 },
 });
 
 function DialogTrigger({
@@ -82,7 +80,7 @@ function DialogPopup({
   className,
   style,
   ...rest
-}: StyledProps<Dialog.Popup.Props> & {
+}: StyledProps<Dialog.Popup.Props, Restyle<"Dialog.Popup">> & {
   /** Scopes the panel to a hue; the scrim stays neutral. */
   readonly tint?: Tint;
 }): ReactElement {
@@ -112,7 +110,7 @@ function DialogHeader({
   className,
   style,
   ...rest
-}: StyledProps<ComponentProps<"div">>): ReactElement {
+}: StyledProps<ComponentProps<"div">, Restyle<"Dialog.Header">>): ReactElement {
   return <div {...rest} {...mergeStyleProps(props(styles.header, xstyle), className, style)} />;
 }
 
@@ -121,9 +119,12 @@ function DialogTitle({
   className,
   style,
   ...rest
-}: StyledProps<Dialog.Title.Props>): ReactElement {
+}: StyledProps<Dialog.Title.Props, Restyle<"Dialog.Title">>): ReactElement {
   return (
-    <Dialog.Title {...rest} {...mergeStyleProps(props(styles.title, xstyle), className, style)} />
+    <Dialog.Title
+      {...rest}
+      {...mergeStyleProps(props(text.lg, styles.title, xstyle), className, style)}
+    />
   );
 }
 
@@ -132,11 +133,11 @@ function DialogDescription({
   className,
   style,
   ...rest
-}: StyledProps<Dialog.Description.Props>): ReactElement {
+}: StyledProps<Dialog.Description.Props, Restyle<"Dialog.Description">>): ReactElement {
   return (
     <Dialog.Description
       {...rest}
-      {...mergeStyleProps(props(styles.description, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.description, xstyle), className, style)}
     />
   );
 }
@@ -146,7 +147,7 @@ function DialogFooter({
   className,
   style,
   ...rest
-}: StyledProps<ComponentProps<"div">>): ReactElement {
+}: StyledProps<ComponentProps<"div">, Restyle<"Dialog.Footer">>): ReactElement {
   return <div {...rest} {...mergeStyleProps(props(styles.footer, xstyle), className, style)} />;
 }
 

@@ -7,7 +7,7 @@
  * opened.
  */
 import "./shell.css";
-import "@nyte-ai/ui/tokens.stylex";
+import "@nyte-ai/ui/styles/tokens.stylex";
 import React, { Component, StrictMode } from "react";
 import type { ComponentType, ErrorInfo, ReactElement, ReactNode } from "react";
 import jsxRuntime from "react/jsx-runtime";
@@ -15,8 +15,8 @@ import { createRoot } from "react-dom/client";
 import { create, props } from "@stylexjs/stylex";
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   CANVAS_GLOBAL,
   CANVAS_RUNTIME,

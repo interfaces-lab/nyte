@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import type { HostId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { type } from "@nyte-ai/ui/vars.stylex";
+import { type } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { errorMessage } from "../errors.ts";
 import { connectionProblem, hostChanged } from "../sdk.tsx";

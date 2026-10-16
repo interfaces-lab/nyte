@@ -1,4 +1,4 @@
-import { radius, target } from "@nyte-ai/ui/schema.stylex";
+import { radius, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -18,7 +18,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { workbench } from "../theme/schema.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
 import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";

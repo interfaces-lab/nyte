@@ -1,13 +1,13 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius, target } from "@nyte-ai/ui/schema.stylex";
+import { radius, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { AttachmentTrigger } from "@nyte-ai/ui/attachment";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const styles = create({
   trigger: {

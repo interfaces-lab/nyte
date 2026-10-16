@@ -1,6 +1,6 @@
 import type { ClerkProviderProps } from "@clerk/react";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 

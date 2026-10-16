@@ -2,11 +2,12 @@ import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible"
 import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { target } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { space, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
-import { appearance, motion, role } from "./vars.stylex.ts";
+import type { Restyle } from "./styles/contracts.ts";
+import { appearance, motion, role } from "./styles/vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -27,7 +28,7 @@ const styles = create({
     alignItems: "center",
     width: "100%",
     minHeight: target.min,
-    gap: 4,
+    gap: space.s1,
     maxWidth: "100%",
     minWidth: 0,
     color: {
@@ -73,10 +74,8 @@ const styles = create({
   },
 });
 
-/** A preview whose collapsible is closed. Base UI marks an open one `data-panel-open`. */
 const PREVIEWING = '[data-slot="collapsible-preview"]:not([data-panel-open])';
 
-/** Shift extends a selection and a drag ends one. Neither press toggles anything. */
 function selecting(event: {
   readonly shiftKey: boolean;
   readonly currentTarget: Element;
@@ -97,7 +96,6 @@ function CollapsibleRoot({
       onOpenChange={(open, details) => {
         const { target } = details.event;
 
-        // A press inside a closed preview only reveals, so a disclosure there stays open.
         if (!open && target instanceof Element && target.closest(PREVIEWING) !== null) {
           details.cancel();
 
@@ -214,7 +212,7 @@ function CollapsibleChevron({
   className,
   style,
   ...rest
-}: StyledProps<ComponentProps<"span">> & {
+}: StyledProps<ComponentProps<"span">, Restyle<"Collapsible.Chevron">> & {
   readonly size?: number;
 }): ReactElement {
   return (

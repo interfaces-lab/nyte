@@ -7,14 +7,14 @@ import { toolStatus } from "../view-helpers.ts";
 import type { ToolMessage } from "../view-helpers.ts";
 import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Row } from "@nyte-ai/ui/row";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   useCatalog,
   useChildSessions,

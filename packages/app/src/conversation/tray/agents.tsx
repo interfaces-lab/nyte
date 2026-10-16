@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { useSession, warmSession } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { subagentTrayState } from "../agent-status.ts";
 import type { SubagentSession } from "../subagent-sessions.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";

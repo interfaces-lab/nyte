@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const searchPaletteStyles = create({
   tabs: {

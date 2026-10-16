@@ -6,7 +6,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { isFolder } from "../conversation/message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
 import { macPlatform } from "../platform.ts";

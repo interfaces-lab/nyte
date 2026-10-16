@@ -13,7 +13,7 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { toolOutput, toolStatus } from "../view-helpers.ts";
 import type { ToolMessage } from "../view-helpers.ts";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../preferences/index.ts";

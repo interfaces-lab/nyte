@@ -20,12 +20,16 @@ export type StaticStyleProps = { readonly className?: string; readonly style?: C
 
 /**
  * A wrapper's props: the part's own `className` and `style`, which Base UI parts
- * also accept as functions of their state, plus StyleX styles in `xstyle`.
+ * also accept as functions of their state, plus StyleX styles in `xstyle`,
+ * narrowed to the part's restyle contract.
  */
-export type StyledProps<Props> = Omit<Props, "className" | "style" | "xstyle"> & {
+export type StyledProps<Props, Style extends XStyle = XStyle> = Omit<
+  Props,
+  "className" | "style" | "xstyle"
+> & {
   className?: "className" extends keyof Props ? Props["className"] : string;
   style?: "style" extends keyof Props ? Props["style"] : CSSProperties;
-  xstyle?: XStyle;
+  xstyle?: Style;
 };
 
 /** `className` and `style` for a part whose state is `State`. */

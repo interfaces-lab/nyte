@@ -4,7 +4,7 @@ import type { FormEvent, ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import { dismissLogin } from "./browser-surfaces.ts";
 

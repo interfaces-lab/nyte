@@ -23,14 +23,14 @@ import {
   NumberFieldInput,
 } from "@nyte-ai/ui/number-field";
 import { Row } from "@nyte-ai/ui/row";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { SECTIONS, type Control, type Setting, type Status } from "./catalog";
 
 const FILTERS = ["all", "shipped", "wire", "new"] as const;

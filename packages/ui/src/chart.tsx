@@ -1,13 +1,3 @@
-/**
- * Charts for figures that sit beside their own numbers, drawn by nivo: a
- * stacked bar per bucket and a sparkline for a table row. Neither draws a value
- * axis or gridlines. The numbers live in the surrounding copy, so a chart only
- * has to carry shape.
- *
- * nivo paints with colour strings, and Nyte's hues exist only inside a scope.
- * Each series is drawn inside its tint's scope and painted with the scoped
- * strong role, so a theme or display-mode change repaints without a re-render.
- */
 import { BarItem, ResponsiveBar } from "@nivo/bar";
 import type { BarItemProps, BarTooltipProps } from "@nivo/bar";
 import type { AxisTickProps } from "@nivo/axes";
@@ -16,33 +6,33 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, useContext, useMemo } from "react";
 import type { CSSProperties, ReactElement } from "react";
 
-import { radius } from "./schema.stylex.ts";
-import { mergeStyleProps, type XStyle } from "./style.ts";
+import { radius, space } from "./styles/schema.stylex.ts";
+import { mergeStyleProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { role, shadow, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   root: { minWidth: 0 },
   tip: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
-    paddingBlock: 6,
-    paddingInline: 8,
+    gap: space.s0_5,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2,
     borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMdOutline,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
     fontVariantNumeric: "tabular-nums",
     whiteSpace: "nowrap",
   },
   tipTitle: { color: role.contentSecondary },
-  tipRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 },
-  tipKey: { display: "flex", alignItems: "center", gap: 6 },
-  tipTotal: { fontWeight: 500 },
+  tipRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.s4 },
+  tipKey: { display: "flex", alignItems: "center", gap: space.s1_5 },
+  tipTotal: { fontWeight: type.weightMedium },
   swatch: {
     flexShrink: 0,
     width: 8,
@@ -54,7 +44,6 @@ const styles = create({
   sparkTinted: { color: role.bgInteractiveStrong },
 });
 
-/** Bucket labels under the bars: muted, tabular, in the interface face. */
 const BAR_THEME = {
   text: {
     fontFamily: type.fontSans,
@@ -64,7 +53,6 @@ const BAR_THEME = {
   },
 } as const;
 
-/** Height of the bucket labels' row, below the plot. */
 const AXIS_HEIGHT = 20;
 
 /** One stacked layer: its name in the readout and the hue it paints in. */
@@ -95,10 +83,9 @@ export interface BarChartProps {
   readonly ticks?: number;
   readonly className?: string;
   readonly style?: CSSProperties;
-  readonly xstyle?: XStyle;
+  readonly xstyle?: Restyle<"BarChart">;
 }
 
-/** Evenly spaced bucket indexes, always including both ends. */
 function tickIndexes(count: number, ticks: number): readonly number[] {
   if (count <= ticks) return Array.from({ length: count }, (_slot, index) => index);
 
@@ -107,10 +94,8 @@ function tickIndexes(count: number, ticks: number): readonly number[] {
   );
 }
 
-/** nivo keys a datum by field name, so series are named by position: `s0`, `s1`… */
 const seriesKey = (index: number): string => `s${String(index)}`;
 
-/** What the bar and readout components need; nivo only hands them its own props. */
 interface BarChartContextValue {
   readonly series: readonly ChartSeries[];
   readonly buckets: readonly ChartBucket[];
@@ -125,7 +110,6 @@ const BarChartContext = createContext<BarChartContextValue>({
 
 type Datum = Record<string, string | number>;
 
-/** nivo's own bar, inside its series' tint scope. */
 function Segment(item: BarItemProps<Datum>): ReactElement {
   const { series } = useContext(BarChartContext);
   const layer = series[Number(String(item.bar.data.id).slice(1))];
@@ -141,7 +125,6 @@ function Segment(item: BarItemProps<Datum>): ReactElement {
   );
 }
 
-/** The whole bucket under the pointer, not only the segment it touches. */
 function Readout({ indexValue }: BarTooltipProps<Datum>): ReactElement | null {
   const { series, buckets, format } = useContext(BarChartContext);
   const bucket = buckets[Number(indexValue)];
@@ -149,7 +132,7 @@ function Readout({ indexValue }: BarTooltipProps<Datum>): ReactElement | null {
   if (bucket === undefined) return null;
 
   return (
-    <div {...props(styles.tip)}>
+    <div {...props(text.xs, styles.tip)}>
       <span {...props(styles.tipTitle)}>{bucket.label}</span>
       {series.map((layer, layerIndex) => {
         const value = bucket.values[layerIndex] ?? 0;
@@ -174,7 +157,6 @@ function Readout({ indexValue }: BarTooltipProps<Datum>): ReactElement | null {
   );
 }
 
-/** A bucket label; the first and last hang inward so neither is cut at the edge. */
 function Tick({ value, x, y, textY }: AxisTickProps<string | number>): ReactElement {
   const { buckets } = useContext(BarChartContext);
   const index = Number(value);
@@ -272,7 +254,7 @@ export interface SparklineProps {
   readonly height?: number;
   readonly className?: string;
   readonly style?: CSSProperties;
-  readonly xstyle?: XStyle;
+  readonly xstyle?: Restyle<"Sparkline">;
 }
 
 /** A row's trend, scaled to its own peak so a small row still shows its shape. */
@@ -306,7 +288,6 @@ export function Sparkline({
         data={[{ id: "trend", data: values.map((value, index) => ({ x: index, y: value })) }]}
         width={width}
         height={height}
-        // The stroke's half-width, so a peak or a zero is not clipped at the edge.
         margin={{ top: 1, right: 1, bottom: 1, left: 1 }}
         xScale={{ type: "linear", min: 0, max: Math.max(values.length - 1, 1) }}
         yScale={{ type: "linear", min: 0, max: Math.max(...values, Number.EPSILON) }}

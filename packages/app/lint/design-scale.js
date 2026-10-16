@@ -2,7 +2,7 @@
  * Desktop design-scale rules for oxlint's JS plugin runtime.
  *
  * Colour, type, radius, shadow, and motion are themed, so they live in
- * `@nyte-ai/ui/tokens.stylex` behind typed handles, and `no-raw-colors` keeps a literal
+ * `@nyte-ai/ui/styles/tokens.stylex` behind typed handles, and `no-raw-colors` keeps a literal
  * colour from landing in a component where no appearance can reach it.
  * Spacing and sizing are not themed:
  * a gap is the same 6px in every appearance, and naming it `space.x6` would
@@ -412,7 +412,7 @@ const noRawColors = {
 /**
  * A box between 14 and 36px is a glyph slot, an avatar, a control, or a row,
  * and each of those already has a size: `glyph`, `avatar`, `button`, `input`,
- * `row`, `menu`, and `target` in `@nyte-ai/ui/schema.stylex`. A literal there
+ * `row`, `menu`, and `target` in `@nyte-ai/ui/styles/schema.stylex`. A literal there
  * is a size that will not follow the component, nor grow for touch.
  */
 const CONTROL_SIZE_MIN = 14;
@@ -431,7 +431,7 @@ const controlSize = styleValueRule(
       message:
         `"${property}: ${value}" sizes a box by hand. Use glyph.sm|md|lg for a glyph slot, ` +
         `avatar.* for an avatar, button.* / input.* / row.* / menu.* for a control or the row ` +
-        `that holds one, or target.min for a hit area (all in @nyte-ai/ui/schema.stylex). If ` +
+        `that holds one, or target.min for a hit area (all in @nyte-ai/ui/styles/schema.stylex). If ` +
         `padding and line height already give the height, drop it.`,
     });
   },
@@ -453,7 +453,7 @@ const touchInTokens = {
         node: member,
         message:
           `"${property}" grows for touch by hand. Read target.min, target.gap, or a component ` +
-          `token from @nyte-ai/ui/schema.stylex, which already grow under a coarse pointer; a ` +
+          `token from @nyte-ai/ui/styles/schema.stylex, which already grow under a coarse pointer; a ` +
           `layout measurement that must grow belongs in ${SCHEMA_PATH}.`,
       });
     });

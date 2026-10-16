@@ -1,4 +1,4 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -29,7 +29,7 @@ import { macPlatform } from "../platform.ts";
 import { preferences, useSetting, type Preference } from "../preferences/index.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { WorkspaceFileEditor } from "./file-editor.tsx";
 import { FilesEmptyState } from "./files-empty-state.tsx";

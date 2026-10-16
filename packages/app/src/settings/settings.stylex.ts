@@ -1,8 +1,8 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 /** Settings navigation in the persistent sidebar and route-owned page content. */
 import { create } from "@stylexjs/stylex";
 import { settings, sidebar } from "../theme/schema.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const settingsStyles = create({
   /** A card whose rows all decided this host can't back them has nothing to say. */

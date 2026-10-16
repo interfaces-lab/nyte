@@ -1,4 +1,4 @@
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useId } from "react";
 import { props } from "@stylexjs/stylex";
 import { Icon } from "@nyte-ai/ui/icon";

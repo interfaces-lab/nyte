@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const styles = create({
   shell: {

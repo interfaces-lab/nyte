@@ -34,10 +34,10 @@ import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { macPlatform } from "../platform.ts";
 import { useVcsLog } from "../queries.ts";
-import { menu, radius } from "@nyte-ai/ui/schema.stylex";
+import { menu, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,

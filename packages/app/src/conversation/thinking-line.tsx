@@ -2,7 +2,7 @@ import { props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
 import { Prose } from "./prose.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";

@@ -3,12 +3,14 @@ import { Field } from "@base-ui/react/field";
 import { create, props } from "@stylexjs/stylex";
 import { useId, type ComponentProps, type ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { checkbox, row, radius, target } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { checkbox, radius, row, space, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
-import { appearance, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, role, type } from "./styles/vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -23,15 +25,13 @@ const styles = create({
   field: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     width: "100%",
     minHeight: row.heightMd,
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     cursor: appearance.cursorInteractive,
   },
-  copy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  copy: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   description: { color: role.contentSecondary, fontSize: type.fontSm },
   box: {
     position: "relative",
@@ -86,28 +86,48 @@ const styles = create({
     borderRadius: radius.pill,
     backgroundColor: "currentColor",
   },
+  attention: {
+    borderColor: role.contentInteractiveTertiary,
+    color: role.contentInteractiveTertiary,
+    "::after": {
+      content: "''",
+      width: 6,
+      height: 6,
+      borderRadius: radius.pill,
+      backgroundColor: "currentColor",
+    },
+  },
 });
 
 /**
  * A box that is ticked, empty, or mixed. `indeterminate` draws the dash, for a
  * master box over a list that is partly ticked. It paints inside the primary
- * intent, whose selected control is blue.
+ * intent, whose selected control is blue. `attention` dots an empty box in the
+ * warning hue, for an item that wants another look.
  */
 export function Checkbox({
   size = "md",
+  attention = false,
   xstyle,
   className,
   style,
   ...rest
-}: StyledProps<Omit<CheckboxPrimitive.Root.Props, "children">> & {
+}: StyledProps<Omit<CheckboxPrimitive.Root.Props, "children">, Restyle<"Checkbox">> & {
   readonly size?: "md" | "lg";
+  readonly attention?: boolean;
 }): ReactElement {
   return (
     <span {...props(styles.target, styles[size])}>
       <CheckboxPrimitive.Root
         {...rest}
         {...mergeStyleProps(
-          props(intent.primary, styles.box, focus.ring, xstyle),
+          props(
+            intent.primary,
+            styles.box,
+            attention && [intent.warning, styles.attention],
+            focus.ring,
+            xstyle,
+          ),
           className,
           style,
         )}
@@ -141,7 +161,10 @@ export function CheckboxField({
   ComponentProps<typeof Checkbox>,
   "aria-label" | "aria-labelledby" | "nativeButton" | "className" | "style" | "xstyle"
 > &
-  Pick<StyledProps<Field.Root.Props>, "className" | "style" | "xstyle"> & {
+  Pick<
+    StyledProps<Field.Root.Props, Restyle<"CheckboxField">>,
+    "className" | "style" | "xstyle"
+  > & {
     readonly label: string;
     readonly description?: string;
   }): ReactElement {
@@ -151,7 +174,7 @@ export function CheckboxField({
 
   return (
     <Field.Root
-      {...mergeStyleProps(props(styles.field, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.field, xstyle), className, style)}
       render={
         <label
           htmlFor={controlId}

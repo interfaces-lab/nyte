@@ -15,9 +15,9 @@ import {
   row,
   radius,
   target,
-} from "@nyte-ai/ui/schema.stylex";
+} from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation, diffView, pane, tray } from "../theme/schema.stylex.ts";
-import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 const CHIP_LABEL_FADE =
   "linear-gradient(to right, black calc(100% - 28px), transparent calc(100% - 8px))";

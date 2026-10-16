@@ -1,11 +1,11 @@
-import { glyph, input, radius, target } from "@nyte-ai/ui/schema.stylex";
+import { glyph, input, radius, target } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
 import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const sidebarStyles = create({
   rail: {

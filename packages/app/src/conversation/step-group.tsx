@@ -14,7 +14,7 @@ import type { ReactElement } from "react";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { isToolMessage } from "../view-helpers.ts";
 import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";

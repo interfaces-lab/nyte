@@ -1,15 +1,3 @@
-/**
- * Colour roles over the theme layer. Each role names a light
- * and a dark theme step; `light-dark()` picks one by `color-scheme`. Hover and
- * pressed states derive from their base role, so a scope that moves the base
- * moves them too.
- *
- * `roles` holds the neutral steps the page uses. `tinted` is what a scope
- * applies with a hue: a theme class re-declares this whole group on its
- * element, so every role re-resolves from the scoped theme, and `tinted` only
- * lists the roles whose steps differ. Gray with `tinted` is a second, softer
- * gray.
- */
 import { createTheme, defineVars } from "@stylexjs/stylex";
 import "./theme.stylex.ts";
 
@@ -33,7 +21,6 @@ export const roles = defineVars({
   "--nyte-content-secondary": step(100, 70),
   "--nyte-content-tertiary": step(70, 100),
   "--nyte-content-disabled": step(40, 120),
-  "--nyte-content-disabled-translucent": glass(40, 120),
   "--nyte-content-chrome": step(100, 60),
   "--nyte-content-interactive-primary": step(120, 20),
   "--nyte-content-interactive-secondary": step(100, 50),
@@ -51,46 +38,23 @@ export const roles = defineVars({
   "--nyte-border-strong-translucent": glass(40, 100),
   "--nyte-border-control-translucent":
     "light-dark(var(--nyte-neutral-translucent-80), var(--nyte-neutral-translucent-80))",
-  "--nyte-border-interactive-primary-translucent": "var(--nyte-theme-translucent-80)",
 
   "--nyte-bg-base": step(0, 145),
   "--nyte-bg-chrome": step(5, 150),
   "--nyte-bg-muted": step(10, 140),
   "--nyte-bg-elevated": step(0, 140),
-  "--nyte-bg-inverse": step(130, 120),
-  "--nyte-bg-base-translucent": glass(0, 150),
-  "--nyte-bg-chrome-translucent": glass(5, 145),
   "--nyte-bg-muted-translucent": glass(10, 140),
   "--nyte-bg-scrim": "light-dark(#00000026, #000000bf)",
   "--nyte-bg-scrim-translucent": glass(40, 100),
 
   "--nyte-bg-interactive-primary": step(30, 120),
-  "--nyte-bg-interactive-primary-hover": shade("bg-interactive-primary", 0.95, 1.05),
   "--nyte-bg-interactive-primary-pressed": shade("bg-interactive-primary", 0.88, 1.12),
   "--nyte-bg-interactive-secondary": step(15, 135),
   "--nyte-bg-interactive-secondary-hover": shade("bg-interactive-secondary", 0.95, 1.05),
   "--nyte-bg-interactive-secondary-pressed": shade("bg-interactive-secondary", 0.88, 1.12),
   "--nyte-bg-interactive-strong": step(130, 100),
-  "--nyte-bg-interactive-strong-hover": shade("bg-interactive-strong", 1.2, 1.05),
-  "--nyte-bg-interactive-strong-pressed": shade("bg-interactive-strong", 1.27, 1.12),
   "--nyte-bg-interactive-primary-translucent": glass(30, 120),
-  "--nyte-bg-interactive-primary-translucent-hover": lift(
-    "bg-interactive-primary-translucent",
-    0.055,
-  ),
-  "--nyte-bg-interactive-primary-translucent-pressed": lift(
-    "bg-interactive-primary-translucent",
-    0.1,
-  ),
   "--nyte-bg-interactive-secondary-translucent": glass(15, 135),
-  "--nyte-bg-interactive-secondary-translucent-hover": lift(
-    "bg-interactive-secondary-translucent",
-    0.055,
-  ),
-  "--nyte-bg-interactive-secondary-translucent-pressed": lift(
-    "bg-interactive-secondary-translucent",
-    0.1,
-  ),
   "--nyte-bg-hover": glass(15, 135),
   "--nyte-bg-pressed": lift("bg-hover", 0.045),
 
@@ -101,7 +65,6 @@ export const roles = defineVars({
   "--nyte-bg-control-selected-hover": shade("bg-control-selected", 0.95, 1.05),
   "--nyte-bg-control-selected-pressed": shade("bg-control-selected", 0.88, 1.12),
 
-  // Step 80, capped in lightness so a white label reads at 4.5:1 in every hue.
   "--nyte-button-fill": "oklch(from var(--nyte-theme-80) min(l, 0.52) c h)",
   "--nyte-button-fill-hover": shade("button-fill", 0.95, 0.95),
   "--nyte-button-fill-pressed": shade("button-fill", 0.88, 0.88),
@@ -127,8 +90,6 @@ export const tinted = createTheme(roles, {
   "--nyte-border-primary": step(30, 110),
   "--nyte-bg-scrim-translucent": glass(40, 130),
   "--nyte-bg-interactive-strong": "var(--nyte-theme-80)",
-  "--nyte-bg-interactive-strong-hover": shade("bg-interactive-strong", 0.95, 1.05),
-  "--nyte-bg-interactive-strong-pressed": shade("bg-interactive-strong", 0.88, 1.12),
   "--nyte-bg-control-selected": "var(--nyte-theme-80)",
   "--nyte-scrollbar-thumb": `color-mix(in srgb, ${step(50, 100)} 50%, transparent)`,
 });
