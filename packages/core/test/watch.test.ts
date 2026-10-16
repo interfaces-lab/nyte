@@ -53,7 +53,12 @@ async function kernelOf(): Promise<Kernel> {
     hostId: asId("h1"),
     store: await memoryStore().open(),
     description: { name: "studio", platform: "darwin", version: "0.1.0" },
-    host: createHostState({ catalog: asId("g1"), plugins: [], settings: [] }),
+    host: createHostState({
+      catalog: asId("g1"),
+      plugins: [],
+      settings: [],
+      defaultWorkspace: null,
+    }),
   });
 }
 

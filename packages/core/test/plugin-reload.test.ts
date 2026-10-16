@@ -56,8 +56,12 @@ async function controlled(attach: () => Promise<typeof env>) {
     hostId: asId("h1"),
     store,
     description: { name: "studio", platform: "darwin", version: "0.1.0" },
-    host: createHostState({ catalog: asId("g1"), plugins: [], settings: [] }),
-    defaultWorkspace: workspace,
+    host: createHostState({
+      catalog: asId("g1"),
+      plugins: [],
+      settings: [],
+      defaultWorkspace: workspace,
+    }),
     turn: script().driver,
     resolveConfiguration: async () => configuration,
     builtins: [

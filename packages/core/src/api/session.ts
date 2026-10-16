@@ -344,7 +344,8 @@ async function create(
   if ((await readSession(kernel.store, id)) !== null) return id;
   const parent =
     input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
-  const workspace = input.workspace ?? parent?.record.workspace ?? kernel.defaultWorkspace;
+  const workspace =
+    input.workspace ?? parent?.record.workspace ?? kernel.host.current().defaultWorkspace;
 
   if (workspace === null)
     throw new SdkError("unknown", "No workspace was named and the host has none by default.");

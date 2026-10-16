@@ -78,7 +78,7 @@ export function watchHost(
             catalog: fields.catalog,
             plugins: fields.plugins,
             settings: fields.settings,
-            defaultWorkspace: kernel.defaultWorkspace,
+            defaultWorkspace: fields.defaultWorkspace,
             authority: input.authority,
           },
         };

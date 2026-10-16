@@ -35,7 +35,6 @@ import type {
   ToolOutcome,
   Usage,
   ValidationIssue,
-  WorkspaceId,
 } from "@nyte-ai/schema";
 import type { FoldCache, LogPublisher, SessionBus } from "./fold.ts";
 import type {
@@ -103,8 +102,6 @@ export interface Kernel {
   readonly calls: Map<string, Set<AbortController>>;
 
   readonly sessions: SessionDirectory;
-
-  defaultWorkspace: WorkspaceId | null;
 
   readonly execution: NonNullable<OpenOptions["execution"]>;
 

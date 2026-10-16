@@ -182,7 +182,7 @@ export async function composeServer(
     );
   }
 
-  kernel.defaultWorkspace = added.workspace;
+  kernel.host.update({ defaultWorkspace: added.workspace });
 
   try {
     if (options.seed !== undefined) await applySeed(kernel, options.seed);
@@ -297,6 +297,7 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
       catalog: asId<"catalog-generation">(crypto.randomUUID()),
       plugins: [],
       settings: [],
+      defaultWorkspace: null,
     }),
     execution: options.execution,
     models: options.models,
@@ -319,7 +320,6 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
   Partial<
     Pick<
       Kernel,
-      | "defaultWorkspace"
       | "execution"
       | "turn"
       | "summarize"
@@ -396,7 +396,6 @@ export function createKernel(input: KernelOptions): Kernel {
     workspaceState: createWorkspaceState(),
     calls: new Map(),
     sessions,
-    defaultWorkspace: input.defaultWorkspace ?? null,
     execution: input.execution ?? RUN_ALL,
     runs: createRunTable(bus),
     wakes: createWakes(),

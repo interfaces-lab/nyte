@@ -309,7 +309,10 @@ export interface Listener {
   [Symbol.asyncDispose](): Promise<void>;
 }
 
-export type HostViewFields = Pick<HostView, "catalog" | "plugins" | "settings">;
+export type HostViewFields = Pick<
+  HostView,
+  "catalog" | "plugins" | "settings" | "defaultWorkspace"
+>;
 
 export interface HostState {
   current(): HostViewFields;

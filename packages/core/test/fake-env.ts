@@ -312,7 +312,12 @@ export function kernelOver(
     hostId: asId("h1"),
     store,
     description: { name: "studio", platform: "darwin", version: "0.1.0" },
-    host: createHostState({ catalog: asId("g1"), plugins: [], settings: [] }),
+    host: createHostState({
+      catalog: asId("g1"),
+      plugins: [],
+      settings: [],
+      defaultWorkspace: null,
+    }),
     turn: { run: () => new Promise(() => {}) },
     resolveConfiguration: async () => configuration,
     home: options?.home,

@@ -531,12 +531,12 @@ describe("composeHost", () => {
   it("registers the workspace once and makes it the default", async () => {
     const store = memoryStore();
     const first = await open(fakeModels(), { store });
-    const workspace = first.kernel.defaultWorkspace;
+    const workspace = first.kernel.host.current().defaultWorkspace;
     await first.close();
     await using second = await open(fakeModels(), { store });
 
     expect(workspace).not.toBeNull();
-    expect(second.kernel.defaultWorkspace).toBe(workspace);
+    expect(second.kernel.host.current().defaultWorkspace).toBe(workspace);
     expect(await second.workspaces.list()).toMatchObject([
       { id: workspace, addedBy: "local", projectResources: null },
     ]);
