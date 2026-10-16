@@ -37,7 +37,11 @@ import type {
 } from "../types.ts";
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
-import { parseStreamingJson } from "../utils/json-parse.ts";
+import {
+  parseStreamingJson,
+  parseToolCallArguments,
+  unfinishedToolCallArguments,
+} from "../utils/json-parse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
 import { resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
@@ -579,6 +583,12 @@ type ResponsesOutputSlot =
 
 type ToolCallOutputSlot = Extract<ResponsesOutputSlot, { type: "toolCall" }>;
 
+/**
+ * Maps a Responses event stream onto `output`. A tool call whose `output_item.done` never
+ * arrived may have cut-off or mixed-up arguments, e.g. when a non-compliant server omits
+ * `output_index`: a `toolUse` stop with one fails the stream, and any other stop marks it with
+ * `argumentsError` so it is reported instead of run.
+ */
 export async function processResponsesStream<TApi extends Api>(
   openaiStream: AsyncIterable<ResponsesStreamEvent>,
   output: AssistantMessage,
@@ -588,6 +598,7 @@ export async function processResponsesStream<TApi extends Api>(
 ): Promise<void> {
   let sawTerminalResponseEvent = false;
   const outputSlots = new Map<number, ResponsesOutputSlot>();
+  const unfinishedToolCalls = new Set<StreamingToolCall>();
   const reasoningBlocksById = new Map<string, ThinkingContent>();
 
   const applyMessagePhaseStopReason = (item: ResponseOutputItem): void => {
@@ -663,6 +674,7 @@ export async function processResponsesStream<TApi extends Api>(
       } satisfies ResponsesOutputSlot;
 
       outputSlots.set(outputIndex, slot);
+      unfinishedToolCalls.add(block);
       stream.push({ type: "toolcall_start", contentIndex: slot.contentIndex, partial: output });
 
       return slot;
@@ -695,6 +707,7 @@ export async function processResponsesStream<TApi extends Api>(
       } satisfies ResponsesOutputSlot;
 
       outputSlots.set(outputIndex, slot);
+      unfinishedToolCalls.add(block);
       stream.push({ type: "toolcall_start", contentIndex: slot.contentIndex, partial: output });
 
       return slot;
@@ -915,12 +928,16 @@ export async function processResponsesStream<TApi extends Api>(
         slot?.type === "toolCall" &&
         slot.block.partialJson !== undefined
       ) {
-        slot.block.arguments = parseStreamingJson(item.arguments || slot.block.partialJson || "{}");
+        Object.assign(
+          slot.block,
+          parseToolCallArguments(item.arguments || slot.block.partialJson),
+        );
 
         if (item.namespace !== undefined) slot.block.namespace = item.namespace;
         // Finalize in-place and strip the scratch buffer so replay only
         // carries parsed arguments.
         delete slot.block.partialJson;
+        unfinishedToolCalls.delete(slot.block);
         stream.push({
           type: "toolcall_end",
           contentIndex: slot.contentIndex,
@@ -940,6 +957,7 @@ export async function processResponsesStream<TApi extends Api>(
 
         if (item.namespace !== undefined) slot.block.namespace = item.namespace;
         delete slot.block.customInput;
+        unfinishedToolCalls.delete(slot.block);
         stream.push({
           type: "toolcall_end",
           contentIndex: slot.contentIndex,
@@ -971,19 +989,18 @@ export async function processResponsesStream<TApi extends Api>(
     throw new Error("OpenAI Responses stream ended before a terminal response event");
   }
 
-  // The agent runs every tool call in the final message. Refuse to hand over calls whose
-  // output_item.done never arrived: their arguments may be cut off or mixed up, e.g. when a
-  // non-compliant server omits output_index. Finished calls have their scratch buffers removed.
-  if (output.stopReason !== "toolUse") return;
-
-  for (const block of output.content) {
-    if (block.type !== "toolCall") continue;
-
-    if ("partialJson" in block || "customInput" in block) {
+  for (const block of unfinishedToolCalls) {
+    if (output.stopReason === "toolUse") {
       throw new Error(
         `OpenAI Responses stream completed with an unfinished tool call: ${block.name} (${block.id})`,
       );
     }
+
+    Object.assign(
+      block,
+      unfinishedToolCallArguments(block.partialJson ?? block.customInput?.input ?? ""),
+    );
+    stripStreamingScratchState([block]);
   }
 }
 

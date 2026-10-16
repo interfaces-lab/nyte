@@ -44,7 +44,7 @@ import { formatProviderError, normalizeProviderError } from "../utils/error-body
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { getClientApiKey, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
-import { parseStreamingJson } from "../utils/json-parse.ts";
+import { parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
@@ -545,7 +545,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
               });
             }
           } else {
-            block.arguments = parseStreamingJson(block.partialArgs);
+            Object.assign(block, parseToolCallArguments(block.partialArgs));
           }
 
           // Finalize in-place and strip the scratch buffers so replay only

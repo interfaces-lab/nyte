@@ -347,9 +347,14 @@ function formatValidationPath(error: TLocalizedValidationError): string {
  * @param tool The tool definition with TypeBox schema
  * @param toolCall The tool call from the LLM
  * @returns The validated (and potentially coerced) arguments
- * @throws Error with formatted message if validation fails
+ * @throws Error with formatted message if validation fails, or with the call's `argumentsError`
+ * when its arguments text was not a JSON object
  */
 export function validateToolArguments(tool: Tool, toolCall: ToolCall) {
+  if (toolCall.argumentsError !== undefined) {
+    throw new Error(`Invalid arguments for tool "${toolCall.name}": ${toolCall.argumentsError}`);
+  }
+
   return parseToolArguments(
     tool.parameters,
     toolCall.arguments,

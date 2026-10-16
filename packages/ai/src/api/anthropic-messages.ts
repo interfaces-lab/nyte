@@ -49,7 +49,7 @@ import type {
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { hasHeader, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
-import { repairJson, parseStreamingJson } from "../utils/json-parse.ts";
+import { parseStreamingJson, parseToolCallArguments, repairJson } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -1129,7 +1129,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
           const { block, contentIndex } = slot;
 
           if (slot.kind === "toolCall") {
-            if (slot.json.length > 0) slot.block.arguments = parseStreamingJson(slot.json);
+            if (slot.json.length > 0) Object.assign(slot.block, parseToolCallArguments(slot.json));
             stream.push({
               type: "toolcall_end",
               contentIndex,

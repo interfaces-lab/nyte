@@ -51,6 +51,12 @@ export interface ToolCall {
   arguments: Record<string, any>;
   thoughtSignature?: string;
   namespace?: string;
+  /**
+   * Set when the call's finished arguments text was not a JSON object, for example because the
+   * response hit its output limit mid-call. `arguments` is then `{}`; this describes the problem
+   * and includes the text the model sent. Tool argument validation fails with it.
+   */
+  argumentsError?: string;
 }
 
 export interface Usage {
