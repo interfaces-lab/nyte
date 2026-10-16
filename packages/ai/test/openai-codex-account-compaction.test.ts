@@ -881,7 +881,7 @@ describe("Codex V2 compaction", () => {
         await setTimeout(30);
       }
       const wire = sse(itemDone(), completed()).replaceAll("\n", "\r\n");
-      const split = wire.indexOf("\r") + 1;
+      const split = wire.split("\r")[0].length + 1;
       response.write(wire.slice(0, split));
       await setTimeout(10);
       response.end(wire.slice(split));
