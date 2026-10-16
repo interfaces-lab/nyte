@@ -1,5 +1,4 @@
 import type { Schema } from "./schema.ts";
-import { OPERATIONS } from "./wire/operations/index.ts";
 
 export type Authority = "participant" | "owner" | "maintenance";
 
@@ -14,10 +13,3 @@ export type Declaration<Input, Output> = {
   readonly wait?: true;
 };
 
-/** Names one served operation: a key of the operations table. */
-export type ServedOperation = keyof typeof OPERATIONS;
-
-/** Returns each served operation's authority and scope, read from the operations table. */
-export const OPERATION_AUTHORITY: {
-  readonly [N in ServedOperation]: Pick<Declaration<unknown, unknown>, "authority" | "scope">;
-} = OPERATIONS;

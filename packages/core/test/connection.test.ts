@@ -1,4 +1,4 @@
-import { OPERATION_AUTHORITY, asId } from "@nyte-ai/schema";
+import { OPERATIONS, asId } from "@nyte-ai/schema";
 import type { Authority, PrincipalId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import {
@@ -126,7 +126,7 @@ describe("connection gate (§52 rule 5)", () => {
   it("denies every row the schema table marks above participant, to a connection and to a tool's invocation, from that one table (D6 audit 1, §56)", async () => {
     const { kernel, host, workspace: at } = await world();
     const session = await host.sessions.create({ workspace: at });
-    const elevated = Object.entries(OPERATION_AUTHORITY).flatMap(([name, row]) =>
+    const elevated = Object.entries(OPERATIONS).flatMap(([name, row]) =>
       row.authority === "participant" ? [] : [name],
     );
     const denied = Object.fromEntries(elevated.map((name) => [name, "denied"]));

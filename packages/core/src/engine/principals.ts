@@ -1,5 +1,5 @@
-import { asId, OPERATION_AUTHORITY } from "@nyte-ai/schema";
-import type { Authority, PrincipalId, ServedOperation } from "@nyte-ai/schema";
+import { asId, OPERATIONS } from "@nyte-ai/schema";
+import type { Authority, PrincipalId } from "@nyte-ai/schema";
 import type { ConnectionRegistry, Host } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodePrincipalRecord } from "../contract/records.ts";
@@ -15,8 +15,8 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const EMPTY: PrincipalRecord = { principals: [], codes: [] };
 
-export function gate(authority: ReadonlySet<Authority>, operation: ServedOperation): void {
-  const needed = OPERATION_AUTHORITY[operation].authority;
+export function gate(authority: ReadonlySet<Authority>, operation: keyof typeof OPERATIONS): void {
+  const needed = OPERATIONS[operation].authority;
 
   if (!authority.has(needed))
     throw new SdkError("denied", `${operation} needs ${needed} authority.`);
@@ -29,7 +29,7 @@ export function gated<T extends object>(
   overrides: Partial<T> = {},
 ): T {
   const members = new Map<string, unknown>([
-    ...Object.entries(OPERATION_AUTHORITY).flatMap(([operation, row]) =>
+    ...Object.entries(OPERATIONS).flatMap(([operation, row]) =>
       operation.startsWith(`${kind}.`) &&
       row.authority !== "participant" &&
       !authority.has(row.authority)
