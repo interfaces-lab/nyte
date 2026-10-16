@@ -195,7 +195,7 @@ async function captureFileSnapshot(
   try {
     const snapshots =
       "session" in scope
-        ? await kernel.snapshots(scope.session)
+        ? await kernel.environments.snapshots(scope.session)
         : await kernel.environments.workspaceSnapshots(scope.workspace);
 
     return snapshots === null ? EMPTY_SNAPSHOT : await snapshots.after(asId<"run">(id));

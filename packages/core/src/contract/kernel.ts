@@ -75,8 +75,6 @@ import type {
   JobTable,
   McpHub,
   PageTable,
-  Resources,
-  SnapshotsApi,
   Workspaces,
   WorkspaceState,
 } from "./workspace.ts";
@@ -161,12 +159,6 @@ export interface Kernel {
   readonly beforeTool: ToolGate;
 
   readonly afterTool: ToolOutcomeRewriter;
-
-  snapshots(session: SessionId): Promise<SnapshotsApi | null>;
-
-  env(session: SessionId): Promise<ExecutionEnv>;
-
-  resources(session: SessionId): Promise<Resources>;
 
   readonly home: string | null;
 

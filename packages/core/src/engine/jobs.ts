@@ -377,7 +377,7 @@ async function spawn(
   const env =
     runner === null
       ? await kernel.environments.attachWorkspace(workspace)
-      : await kernel.env(runner);
+      : await kernel.environments.attach(runner);
 
   const process = await env.exec(input.command ?? [], { cwd: env.cwd, pty: input.pty });
   const own = origin !== null && input.session !== undefined && origin.session === input.session;

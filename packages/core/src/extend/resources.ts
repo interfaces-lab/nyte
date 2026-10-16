@@ -185,7 +185,7 @@ async function scan(
   const attached =
     record !== null &&
     classifyFileSupport(kernel.environments.provider(record.target.kind)) === "available"
-      ? kernel.env(session)
+      ? kernel.environments.attach(session)
       : null;
 
   const env =

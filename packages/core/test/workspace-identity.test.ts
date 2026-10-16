@@ -95,7 +95,9 @@ it("keeps old history readable but refuses a replacement environment", async () 
     kind: "unavailable",
     reason: `Workspace ${workspace} no longer refers to its registered environment.`,
   });
-  await expect(kernel.env(session.id)).rejects.toMatchObject({ code: "unavailable" });
+  await expect(kernel.environments.attach(session.id)).rejects.toMatchObject({
+    code: "unavailable",
+  });
 
   const replacement = await host.workspaces.add({ kind: "local", path: "/work/project" });
   assert(replacement.kind === "added");

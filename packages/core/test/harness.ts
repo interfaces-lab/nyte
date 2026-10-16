@@ -19,7 +19,13 @@ import { begin, newRun } from "../src/engine/runs.ts";
 import { publishSet } from "../src/fold/watch.ts";
 import { envelope, leaseRef, memoryStore, partRef, workspaceRef } from "../src/store.ts";
 import type { Kernel, TurnDriver } from "../src/contract/kernel.ts";
-import type { ExecutionEnv, Host, StoreConnection } from "../src/index.ts";
+import type {
+  EnvironmentProvider,
+  ExecutionEnv,
+  Host,
+  SnapshotsApi,
+  StoreConnection,
+} from "../src/index.ts";
 import type { PartRecord, WorkspaceRecord } from "../src/store.ts";
 
 export const main: HeadName = asId("main");
@@ -130,13 +136,14 @@ export async function setup(
       | "tools"
       | "beforeTool"
       | "afterTool"
-      | "snapshots"
       | "secrets"
       | "resolveConfiguration"
     >
   > & {
     readonly script?: Script;
     readonly poll?: number;
+    /** The snapshots the workspace's environment takes; default none. */
+    readonly snapshots?: SnapshotsApi;
   },
 ): Promise<{
   readonly kernel: Kernel;
@@ -160,16 +167,15 @@ export async function setup(
     tools: options?.tools,
     beforeTool: options?.beforeTool,
     afterTool: options?.afterTool,
-    snapshots: options?.snapshots,
     secrets: options?.secrets,
-    env: async () => env,
+    builtins: [{ id: "test-environment", environment: provider(options?.snapshots) }],
     poll: options?.poll,
   });
 
   if ((await store.refs.get(workspaceRef(workspace))) === null) {
     const record: WorkspaceRecord = {
       id: workspace,
-      target: { kind: "local", path: "/tmp/project" },
+      target: { kind: "test", locator: null },
       identity: asId("identity"),
       projectResources: true,
       projectSources: [],
@@ -190,6 +196,34 @@ export async function setup(
     host: createHost(kernel, { credential: { kind: "token", token: "x" } }),
     script: turns,
   };
+}
+
+/** The test workspace's environment: `env`, serving no files; given snapshots, an empty folder that takes them. */
+function provider(snapshots: SnapshotsApi | undefined): EnvironmentProvider {
+  const base: EnvironmentProvider = {
+    kind: "test",
+    inspect: async () => ({
+      identity: env.identity,
+      availability: { kind: "available" },
+      projectSources: [],
+    }),
+    attach: async () => env,
+  };
+
+  if (snapshots === undefined) return base;
+
+  const folder: ExecutionEnv = {
+    ...env,
+    files: {
+      ...env.files,
+      read: async (path) => ({ kind: "missing", path }),
+      async *scan() {
+        yield { kind: "complete" };
+      },
+    },
+  };
+
+  return { ...base, attach: async () => folder, snapshots: () => snapshots };
 }
 
 export async function startRun(

@@ -6,7 +6,7 @@ import { createHost } from "../src/api/connection.ts";
 import { createHostState } from "../src/api/host.ts";
 import { createKernel } from "../src/compose.ts";
 import { envelope, memoryStore, workspaceRef } from "../src/store.ts";
-import type { Plugin, Resources, ToolDefinition } from "../src/index.ts";
+import type { Plugin, ToolDefinition } from "../src/index.ts";
 import { world } from "./fake-env.ts";
 import { chatOnly, fakeModels, open } from "./fake-models.ts";
 import { configuration, env, main, script, setup, until, workspace } from "./harness.ts";
@@ -28,19 +28,7 @@ function tool(name: string, execute?: () => Promise<void>): ToolDefinition<Infer
   };
 }
 
-const empty: Resources = {
-  user: null,
-  project: null,
-  skills: [],
-  contextFiles: [],
-  prompt: { system: null, append: null, scope: null },
-  prompts: [],
-};
-
-async function controlled(input: {
-  attach(): Promise<typeof env>;
-  resources(): Promise<Resources>;
-}) {
+async function controlled(attach: () => Promise<typeof env>) {
   const store = await memoryStore().open();
 
   await store.refs.set([
@@ -72,8 +60,20 @@ async function controlled(input: {
     defaultWorkspace: workspace,
     turn: script().driver,
     resolveConfiguration: async () => configuration,
-    env: () => input.attach(),
-    resources: () => input.resources(),
+    builtins: [
+      {
+        id: "local",
+        environment: {
+          kind: "local",
+          inspect: async () => ({
+            identity: env.identity,
+            availability: { kind: "available" },
+            projectSources: [],
+          }),
+          attach,
+        },
+      },
+    ],
   });
 
   return { kernel, host: createHost(kernel, { credential: { kind: "token", token: "x" } }) };
@@ -180,6 +180,7 @@ describe("plugin reload (D4)", () => {
     expect(report.plugins).toEqual([{ kind: "activated", id: "extra", issues: [] }]);
     await other.kernel.pluginsFor(session.id).ready;
     expect(other.kernel.host.current().plugins).toEqual([
+      { id: "test-environment", source: "inline", path: null, issues: [] },
       { id: "extra", source: "inline", path: null, issues: [] },
     ]);
     expect(
@@ -187,34 +188,32 @@ describe("plugin reload (D4)", () => {
         .pluginsFor(session.id)
         .plugins()
         .map((plugin) => plugin.id),
-    ).toEqual(["extra"]);
+    ).toEqual(["test-environment", "extra"]);
   });
 
   it("3.5 / E E6 + D D13: an activation whose resources cannot be read rejects ready, fails the activation and drops the runtime; the next use activates again", async () => {
-    let failing = false;
-
-    const { kernel, host } = await controlled({
-      attach: async () => env,
-      async resources() {
-        if (failing) throw new Error("The scan failed.");
-
-        return empty;
-      },
-    });
+    const { kernel, host } = await controlled(async () => env);
 
     kernel.hostPlugins = [{ id: "kept" }];
     const session = await host.sessions.create();
+    await kernel.pluginsFor(session.id).ready;
+    const unreadable = Promise.reject(new Error("The scan failed."));
+    unreadable.catch(() => undefined);
+    kernel.workspaceState.scans.set(session.id, {
+      workspace,
+      resources: unreadable,
+      stop: () => undefined,
+    });
 
-    failing = true;
     await expect(kernel.reloadPlugins(session.id)).rejects.toThrow("The scan failed.");
     expect(kernel.activation(session.id)).toEqual({ kind: "failed", message: "The scan failed." });
     await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
 
-    failing = false;
+    kernel.workspaceState.scans.delete(session.id);
     const again = kernel.pluginsFor(session.id);
     await again.ready;
 
-    expect(again.plugins().map((plugin) => plugin.id)).toEqual(["kept"]);
+    expect(again.plugins().map((plugin) => plugin.id)).toEqual(["local", "kept"]);
   });
 
   it("E E5 (P5): a host-wide replace resolves when another instance removed a session this one holds a runtime for", async () => {
@@ -233,11 +232,8 @@ describe("plugin reload (D4)", () => {
   it("E E7 (runtime side) + D D13: a failed attach rejects ready with its own error and shows failed; no plugin activates on a null env", async () => {
     const reads: unknown[] = [];
 
-    const { kernel, host } = await controlled({
-      attach: async () => {
-        throw new Error("The disk is gone.");
-      },
-      resources: async () => empty,
+    const { kernel, host } = await controlled(async () => {
+      throw new Error("The disk is gone.");
     });
 
     kernel.hostPlugins = [{ id: "reader", activate: (api) => void reads.push(api.env) }];

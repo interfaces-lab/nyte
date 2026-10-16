@@ -18,7 +18,7 @@ export async function activateSession(
   const workspace = (await requireSession(kernel.store, session)).record.workspace;
 
   const attached = (await isCovered(kernel, session))
-    ? kernel.env(session).then(
+    ? kernel.environments.attach(session).then(
         () => ACTIVE,
         (error: unknown) => classifyActivationFailure(workspace, error),
       )

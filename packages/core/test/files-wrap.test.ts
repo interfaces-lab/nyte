@@ -1,5 +1,5 @@
 import { asId } from "@nyte-ai/schema";
-import type { Json, ToolOutcome } from "@nyte-ai/schema";
+import type { Json, SessionId, ToolOutcome } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { environmentPlugin } from "../src/builtins/environment.ts";
@@ -25,12 +25,12 @@ async function* streamOf(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
 async function sessionFiles(options?: Parameters<typeof world>[0]) {
   const built = await world(options);
   const session = await built.host.sessions.create({ workspace: built.workspace });
-  const files: FilesApi = (await built.kernel.env(session.id)).files;
+  const files: FilesApi = (await built.kernel.environments.attach(session.id)).files;
 
   return { ...built, session, files };
 }
 
-async function tools(kernel: Kernel, session: Parameters<Kernel["env"]>[0]) {
+async function tools(kernel: Kernel, session: SessionId) {
   const run = await startRun(
     kernel,
     session,

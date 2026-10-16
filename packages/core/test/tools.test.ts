@@ -124,7 +124,7 @@ async function readRun(kernel: Kernel, session: SessionId, run: RunId) {
 }
 
 function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[0]>["snapshots"] {
-  return async () => ({
+  return {
     before: async () => {
       taken.push("before");
 
@@ -143,7 +143,7 @@ function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[0]>["sn
           : [],
     }),
     patches: async () => [],
-  });
+  };
 }
 
 async function toolPart(session: Session, id: string) {
@@ -849,17 +849,15 @@ describe("tool calls", () => {
   it("B-2 N4: another instance's changed file stays in the session's changes", async () => {
     const store = await memoryStore().open();
 
-    const touching =
-      (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] =>
-      async () => ({
-        before: async () => asId("s0"),
-        after: async () => asId(`after-${path}`),
-        diff: async (_from, to) => ({
-          revision: to,
-          files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
-        }),
-        patches: async () => [],
-      });
+    const touching = (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] => ({
+      before: async () => asId("s0"),
+      after: async () => asId(`after-${path}`),
+      diff: async (_from, to) => ({
+        revision: to,
+        files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
+      }),
+      patches: async () => [],
+    });
 
     const edit = {
       ...echo,
@@ -885,24 +883,22 @@ describe("tool calls", () => {
     const both = Promise.withResolvers<void>();
     let diffing = 0;
 
-    const touching =
-      (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] =>
-      async () => ({
-        before: async () => asId("s0"),
-        after: async () => asId(`after-${path}`),
-        diff: async (_from, to) => {
-          diffing += 1;
+    const touching = (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] => ({
+      before: async () => asId("s0"),
+      after: async () => asId(`after-${path}`),
+      diff: async (_from, to) => {
+        diffing += 1;
 
-          if (diffing === 2) both.resolve();
-          await both.promise;
+        if (diffing === 2) both.resolve();
+        await both.promise;
 
-          return {
-            revision: to,
-            files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
-          };
-        },
-        patches: async () => [],
-      });
+        return {
+          revision: to,
+          files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
+        };
+      },
+      patches: async () => [],
+    });
 
     const edit = {
       ...echo,

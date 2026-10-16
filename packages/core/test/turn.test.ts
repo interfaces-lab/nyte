@@ -1882,10 +1882,14 @@ describe("turn findings (CORE-DIET D3)", () => {
     fake.reply({ content: [{ type: "text", text: "Never sent." }] });
     await using host = await open(fake);
     const session = await host.sessions.create();
+    const unreadable = Promise.reject(new Error("The workspace is unreachable."));
+    unreadable.catch(() => undefined);
 
-    host.kernel.resources = async () => {
-      throw new Error("The workspace is unreachable.");
-    };
+    host.kernel.workspaceState.scans.set(session.id, {
+      workspace: (await session.info()).workspace,
+      resources: unreadable,
+      stop: () => undefined,
+    });
 
     expect(await (await session.send("Go.")).settled()).toMatchObject({
       kind: "failed",

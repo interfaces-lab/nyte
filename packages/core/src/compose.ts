@@ -64,7 +64,7 @@ import {
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
 import { bumpGeneration, runCommand, toolSource } from "./extend/registry.ts";
-import { dropScans, resourcesPlugin, scanResources } from "./extend/resources.ts";
+import { dropScans, resourcesPlugin } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-layers.ts";
 import { createSettingsApi } from "./extend/settings.ts";
 import { createBus } from "./fold/bus.ts";
@@ -318,9 +318,6 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
       | "tools"
       | "beforeTool"
       | "afterTool"
-      | "snapshots"
-      | "env"
-      | "resources"
       | "request"
       | "home"
       | "secrets"
@@ -486,9 +483,6 @@ export function createKernel(input: KernelOptions): Kernel {
       input.afterTool ??
       ((outcome, { runtime, ...context }) =>
         runtime.hooks.transform("after_tool", outcome, context)),
-    snapshots: input.snapshots ?? ((session) => kernel.environments.snapshots(session)),
-    env: input.env ?? ((session) => kernel.environments.attach(session)),
-    resources: input.resources ?? ((session) => scanResources(kernel, session)),
     get request() {
       return (request ??=
         models === undefined ? async () => unavailable("request") : createRequest(kernel, models));

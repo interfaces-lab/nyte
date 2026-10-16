@@ -145,7 +145,7 @@ describe("workspaces", () => {
       },
       signal: new AbortController().signal,
       workspace,
-      env: await kernel.env(session.id),
+      env: await kernel.environments.attach(session.id),
       durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
       covered: false,
     });
@@ -323,7 +323,7 @@ describe("workspaces", () => {
   it("applies wraps in order and lazily, a wrap's browser served as the capability", async () => {
     const { kernel, host, workspace } = await world();
     const session = await host.sessions.create({ workspace });
-    const env = await kernel.env(session.id);
+    const env = await kernel.environments.attach(session.id);
     const calls: string[] = [];
 
     kernel.environments.wrap(session.id, (inner) => ({
@@ -663,9 +663,9 @@ describe("activation (§37j–m)", () => {
     const session = await host.sessions.create({ workspace });
     const other = await addWorkspace(host, "/work/other");
 
-    expect((await kernel.env(session.id)).cwd).toBe("/work/project");
+    expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/project");
     expect(await session.update({ workspace: other })).toEqual({ kind: "updated" });
-    expect((await kernel.env(session.id)).cwd).toBe("/work/other");
+    expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/other");
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(
       kernel
@@ -766,7 +766,7 @@ describe("activation (§37j–m)", () => {
 
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(provider.attaches).toBe(1);
-    expect((await kernel.env(session.id)).cwd).toBe("/work/project");
+    expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/project");
     await driver.close();
   });
 });

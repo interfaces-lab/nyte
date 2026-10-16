@@ -47,7 +47,7 @@ describe("resources", () => {
     });
 
     const session = await host.sessions.create({ workspace });
-    const resources = await kernel.resources(session.id);
+    const resources = await scanResources(kernel, session.id);
 
     expect(resources.user).not.toBeNull();
     expect(resources.project).not.toBeNull();
@@ -99,7 +99,7 @@ describe("resources", () => {
       { name: "fix", location: ".nyte/prompts/fix.md", scope: "project" },
       { name: "ship", location: ".nyte/prompts/ship.md", scope: "project" },
     ]);
-    expect(await kernel.resources(session.id)).toBe(resources);
+    expect(await scanResources(kernel, session.id)).toBe(resources);
   });
 
   it("rejects a scan while the session's environment does not attach, never answering no resources (D 13)", async () => {
@@ -227,7 +227,7 @@ describe("resources", () => {
   it("hides project skills, prompts and system files but keeps context files when projectResources is false", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
     const session = await host.sessions.create({ workspace });
-    const before = await kernel.resources(session.id);
+    const before = await scanResources(kernel, session.id);
 
     expect(before.project).not.toBeNull();
     expect(await host.workspace(workspace).update({ projectResources: false })).toEqual({
@@ -260,7 +260,7 @@ describe("resources", () => {
     const disk = seeded();
     const { kernel, host, workspace } = await world({ disk });
     const session = await host.sessions.create({ workspace });
-    const resources = await kernel.resources(session.id);
+    const resources = await scanResources(kernel, session.id);
 
     expect(resources.user).toBeNull();
     expect(resources.skills.map((skill) => skill.scope)).toEqual(["project"]);
@@ -280,7 +280,7 @@ describe("resources", () => {
     );
     assert(added.kind === "added");
     const boxed = await remoteHost.sessions.create({ workspace: added.workspace });
-    const scanned = await remote.resources(boxed.id);
+    const scanned = await scanResources(remote, boxed.id);
 
     expect(scanned.user).toBeNull();
     expect(scanned.contextFiles).toEqual([

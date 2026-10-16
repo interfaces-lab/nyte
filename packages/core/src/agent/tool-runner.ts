@@ -421,7 +421,7 @@ async function execute(
     if (snapshotted) await baseline(kernel, session, run);
 
     const [env, found] = await Promise.all([
-      kernel.env(session),
+      kernel.environments.attach(session),
       requireSession(kernel.store, session),
     ]);
 
@@ -495,7 +495,8 @@ async function conclude(
     runtime: where.runtime,
   });
 
-  const snapshots = snapshotted && ended.kind === "done" ? await kernel.snapshots(session) : null;
+  const snapshots =
+    snapshotted && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
 
   if (snapshots === null) return { outcome, changes: null, files: [], snapshot: null };
   const from = (await diffBase(kernel.store, session, run)) ?? (await snapshots.before(run));
@@ -601,7 +602,7 @@ async function settlement(
 
 async function baseline(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
   if ((await diffBase(kernel.store, session, run)) !== null) return;
-  const snapshots = await kernel.snapshots(session);
+  const snapshots = await kernel.environments.snapshots(session);
 
   if (snapshots === null) return;
   const before = await snapshots.before(run);

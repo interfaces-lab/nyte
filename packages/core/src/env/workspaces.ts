@@ -193,7 +193,7 @@ export function workspaceHandle(
     const found =
       session === null
         ? await kernel.environments.workspaceSnapshots(id)
-        : await kernel.snapshots(session);
+        : await kernel.environments.snapshots(session);
 
     if (found === null)
       throw new SdkError("unavailable", `Workspace ${id} takes no run snapshots.`);

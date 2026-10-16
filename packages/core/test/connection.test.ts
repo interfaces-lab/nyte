@@ -135,7 +135,7 @@ describe("connection gate (§52 rule 5)", () => {
       context: CORE_CONTEXT,
       signal: new AbortController().signal,
       workspace: at,
-      env: await kernel.env(session.id),
+      env: await kernel.environments.attach(session.id),
       durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
       covered: false,
     });

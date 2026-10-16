@@ -36,6 +36,7 @@ import { withFold } from "../fold/reads.ts";
 import { readPositionCommit, requireSession, START, walkCommitPath } from "../store/session.ts";
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
+import { scanResources } from "../extend/resources.ts";
 
 interface Step {
   readonly commit: CommitId;
@@ -170,7 +171,7 @@ async function buildContext(
 ): Promise<readonly Message[]> {
   const { session, configuration } = input;
   const found = await requireSession(kernel.store, session);
-  const resources = await kernel.resources(session);
+  const resources = await scanResources(kernel, session);
   const model = models.getModel(configuration.model.provider, configuration.model.id);
 
   const system = buildSystemPrompt(

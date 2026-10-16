@@ -226,6 +226,7 @@ describe("plugin runtime", () => {
       }),
     ).toEqual(ok);
     expect(kernel.host.current().plugins.map((row) => [row.id, row.issues.length])).toEqual([
+      ["test-environment", 0],
       ["tools", 0],
       ["twin", 2],
       ["sandbox", 1],
@@ -827,6 +828,7 @@ describe("plugin api", () => {
     assert(!view.done);
 
     expect(view.value.plugins).toEqual([
+      { id: "test-environment", source: "inline", path: null, issues: [] },
       { id: "system-prompt", source: "builtin", path: null, issues: [] },
       {
         id: "mcp",

@@ -41,6 +41,7 @@ import { createHookDispatch, isCoreHook } from "./hooks.ts";
 import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
+import { scanResources } from "./resources.ts";
 
 interface Active {
   readonly instance: PluginInstance;
@@ -258,7 +259,10 @@ export function createPluginRuntime(
 
         return UNRESOLVED;
       }
-      const [env, inputs] = await Promise.all([kernel.env(session), kernel.resources(session)]);
+      const [env, inputs] = await Promise.all([
+        kernel.environments.attach(session),
+        scanResources(kernel, session),
+      ]);
 
       return { env: { env }, inputs };
     })());
