@@ -136,6 +136,16 @@ export function BlankConversation({
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
     if (plan.kind !== "message") return false;
+
+    if (catalog.data?.models.length === 0) {
+      setStartFailure({
+        kind: "refused",
+        message: "Connect a provider in Settings to choose a model.",
+      });
+
+      return false;
+    }
+
     setSending(true);
     setStartFailure(undefined);
 
