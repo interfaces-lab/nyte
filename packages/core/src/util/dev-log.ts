@@ -18,9 +18,17 @@ const FLUSH_MS = 100;
 
 const FLUSH_ROWS = 50;
 
-export function dev(area: string, message: string, data?: Record<string, unknown>): void {
+/** Writes one dev-log line, `DEV:<area> <message> <json>`, to the sink and the forwarder. Nothing is serialized while neither listens; pass `data` as a function when building it costs (sizing a record, walking a list), so it runs only then. */
+export function dev(
+  area: string,
+  message: string,
+  data?: Record<string, unknown> | (() => Record<string, unknown>),
+): void {
+  if (dev.sink === NOOP && tap === undefined) return;
+
   try {
-    const json = data === undefined ? "{}" : JSON.stringify(data, replacer);
+    const fields = data instanceof Function ? data() : data;
+    const json = fields === undefined ? "{}" : JSON.stringify(fields, replacer);
     dev.sink(`DEV:${area} ${message} ${json}`);
     tap?.(area, message, json);
   } catch {
@@ -37,8 +45,6 @@ dev.off = (): void => {
 dev.on = (sink: Sink = CONSOLE): void => {
   dev.sink = sink;
 };
-
-dev.bytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 
 dev.forward = (url: string, source: string): (() => void) => {
   const queue: DevRow[] = [];

@@ -189,7 +189,11 @@ export async function put(
 ): Promise<ObjectId> {
   const object = envelope(kind, body, at);
   const id = await kernel.store.objects.put(object);
-  dev("store", "objects.put", { id, kind, bytes: dev.bytes(object) });
+  dev("store", "objects.put", () => ({
+    id,
+    kind,
+    bytes: new TextEncoder().encode(JSON.stringify(object)).byteLength,
+  }));
 
   return id;
 }
