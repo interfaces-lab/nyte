@@ -6,7 +6,7 @@ import type { Stream } from "openai/streaming";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { ChatCompletionChunk } from "openai/resources/chat/completions.js";
-import { calculateCost } from "../models.ts";
+import { calculateCost } from "../model-capabilities.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
   AssistantMessage,

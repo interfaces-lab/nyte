@@ -5,7 +5,7 @@
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { calculateCost } from "../models.ts";
+import { calculateCost } from "../model-capabilities.ts";
 import type {
   Api,
   AssistantMessage,

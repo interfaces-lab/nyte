@@ -2,7 +2,8 @@ import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
-import { createProvider, type Provider } from "../models.ts";
+import type { Provider } from "../models-types.ts";
+import { createProvider } from "../provider.ts";
 import { withOpenCodeSessionHeader } from "./opencode-headers.ts";
 import type { OpenCodeApi } from "./opencode.ts";
 

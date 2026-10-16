@@ -12,7 +12,7 @@ import {
   isGitHubCopilotCredential,
   type GitHubCopilotOAuthOptions,
 } from "../auth/oauth/github-copilot.ts";
-import { createProvider } from "../models.ts";
+import { createProvider } from "../provider.ts";
 
 export function githubCopilotProvider(options: GitHubCopilotOAuthOptions = {}) {
   let getKnownModelIds: () => ReadonlySet<string> = () => new Set();

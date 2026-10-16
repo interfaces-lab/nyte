@@ -15,7 +15,8 @@ import {
   ANTHROPIC_SERVICE_ACCOUNT_ID_ENV,
   ANTHROPIC_WORKSPACE_ID_ENV,
 } from "../env-api-keys.ts";
-import { createProvider, type Provider } from "../models.ts";
+import type { Provider } from "../models-types.ts";
+import { createProvider } from "../provider.ts";
 import type { ProviderEnv } from "../types.ts";
 
 function anthropicApiKeyAuth(): ApiKeyAuth {

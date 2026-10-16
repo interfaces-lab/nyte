@@ -9,7 +9,7 @@ import type {
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import { applyServiceTierPricing } from "../model-pricing.ts";
-import { calculateCost } from "../models.ts";
+import { calculateCost } from "../model-capabilities.ts";
 import type { Context, JsonValue, Model, Usage } from "../types.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { RetryDelayExceededError, retryProviderRequest } from "../utils/provider-retry.ts";

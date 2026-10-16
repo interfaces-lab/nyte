@@ -2,7 +2,7 @@ import type { ResponseCreateParamsStreaming } from "openai/resources/responses/r
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { applyServiceTierPricing } from "../model-pricing.ts";
-import { calculateCost } from "../models.ts";
+import { calculateCost } from "../model-capabilities.ts";
 import { emptyCost } from "./assistant-stream.ts";
 import type { Api, JsonValue, Model, Usage } from "../types.ts";
 

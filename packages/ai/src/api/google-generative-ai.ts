@@ -13,7 +13,7 @@ import {
   type ThinkingConfig,
   ThinkingLevel as GoogleThinkingLevel,
 } from "@google/genai";
-import { calculateCost, clampThinkingLevel } from "../models.ts";
+import { calculateCost, clampThinkingLevel } from "../model-capabilities.ts";
 import type {
   ImageContent,
   Model,

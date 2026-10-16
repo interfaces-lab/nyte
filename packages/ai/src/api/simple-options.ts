@@ -1,4 +1,4 @@
-import { clampThinkingLevel } from "../models.ts";
+import { clampThinkingLevel } from "../model-capabilities.ts";
 import type {
   Api,
   Model,

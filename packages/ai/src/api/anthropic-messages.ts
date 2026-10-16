@@ -11,7 +11,7 @@ import type {
   MessageCreateParamsStreaming,
   BetaTextBlockParam,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
-import { calculateCost, clampThinkingLevel } from "../models.ts";
+import { calculateCost, clampThinkingLevel } from "../model-capabilities.ts";
 import { ANTHROPIC_FAST_MODE_COST_MULTIPLIER } from "../model-pricing.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {

@@ -4,7 +4,8 @@
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { verifyWithRequest } from "../auth/verify.ts";
-import { createProvider, type Provider } from "../models.ts";
+import type { Provider } from "../models-types.ts";
+import { createProvider } from "../provider.ts";
 
 const VERCEL_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
 
