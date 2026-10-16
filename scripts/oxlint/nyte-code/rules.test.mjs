@@ -76,6 +76,25 @@ export function use(list: string[], value: number, entry: Entry) {
 }`,
   },
   {
+    rule: "nyte-code/no-cross-package-relative-imports",
+    directory: "packages/app/src",
+    packageRoots: ["packages/app", "packages/app/modules/native", "packages/core"],
+    rejected: `import { fold } from "../../core/src/fold.ts";
+import type { Part } from "../../../packages/core/src/part.ts";
+export * from "../../core/test/harness.ts";
+export { main } from "../../core";
+const native = await import("../modules/native/src/index.ts");
+const outside = require("../../../../outside.cjs");`,
+    rejectedLines: [1, 2, 3, 4, 5, 6],
+    accepted: `import { join } from "node:path";
+import { fold } from "@nyte-ai/core";
+import { local } from "./local.ts";
+import { fixture } from "../test/fixture.ts";
+export * from "../package.json";
+const later = await import("./later.ts");
+const config = require("../app.config.cjs");`,
+  },
+  {
     rule: "nyte-code/declarative-comments",
     rejected: `// TODO: remove
 const a = 1;

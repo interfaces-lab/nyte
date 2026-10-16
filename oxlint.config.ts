@@ -83,6 +83,7 @@ export default defineConfig({
     "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
     "eslint/max-lines": ["error", { max: 1000, skipBlankLines: false, skipComments: false }],
     "nyte-code/declarative-comments": "error",
+    "nyte-code/no-cross-package-relative-imports": "error",
     "nyte-code/no-index-of": "error",
     "nyte-code/no-is-helper-names": "error",
     "nyte-code/no-one-off-boolean-helpers": "error",
