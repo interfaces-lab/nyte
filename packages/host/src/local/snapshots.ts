@@ -57,6 +57,8 @@ type Kept = {
 
 const GENERATION_NAME = /^g(\d{6})$/;
 
+const NOTHING_KEPT: Kept = { id: "", root: [], last: null };
+
 const ENV: Readonly<Record<string, string>> = {
   GIT_OPTIONAL_LOCKS: "0",
   GIT_TERMINAL_PROMPT: "0",
@@ -208,8 +210,7 @@ export function localSnapshots(
 
     const current = refs.find((ref) => ref.name === KEPT_REF)?.id ?? null;
     const legacy = refs.filter((ref) => ref.name.startsWith(LEGACY_REFS));
-    const known =
-      current === null ? { id: "", root: [], last: null } : await readKept(repo, current);
+    const known = current === null ? NOTHING_KEPT : await readKept(repo, current);
 
     const open = known.last !== null && known.last.trees.length < GENERATION ? known.last : null;
 
