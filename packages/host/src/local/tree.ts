@@ -173,15 +173,21 @@ export async function* walkTree(
   yield denied ? { kind: "incomplete", reason: "permission" } : { kind: "complete" };
 }
 
+/** Calls `changed` with the paths below `root` that moved, coalesced over `delay`, from a recursive `fs.watch`; where that is unavailable it walks the tree every `poll` ms when one is given, and calls `unwatched` once either way. */
 export function watchTree(
   root: string,
-  options: { readonly delay: number; readonly poll: number | null },
+  options: {
+    readonly delay: number;
+    readonly poll: number | null;
+    readonly unwatched?: () => void;
+  },
   changed: (paths: ReadonlySet<string>) => void,
 ): Disposer {
   let pending = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let polling: ReturnType<typeof setTimeout> | null = null;
   let watcher: FSWatcher | null = null;
+  let fellBack = false;
   let stopped = false;
 
   const flush = (): void => {
@@ -233,7 +239,11 @@ export function watchTree(
     watcher?.close();
     watcher = null;
 
-    if (options.poll !== null && !stopped && polling === null) poll(options.poll);
+    if (stopped || fellBack) return;
+    fellBack = true;
+    options.unwatched?.();
+
+    if (options.poll !== null) poll(options.poll);
   };
 
   try {
