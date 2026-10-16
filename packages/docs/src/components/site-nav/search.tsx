@@ -3,7 +3,6 @@ import { useEffect, useId, useState } from "react";
 import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
-import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { splitHref } from "~/lib/href";
 
 const styles = create({
@@ -123,8 +122,7 @@ export function SiteSearch() {
         <span>Search</span>
       </button>
       <Dialog.Root open={open} onOpenChange={setOpen}>
-        <Dialog.Popup xstyle={styles.popup}>
-          <Dialog.Title xstyle={srOnly}>Search</Dialog.Title>
+        <Dialog.Popup aria-label="Search" xstyle={styles.popup}>
           <Input
             autoFocus
             variant="bare"
