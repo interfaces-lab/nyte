@@ -47,9 +47,3 @@ export function supportedThinkingLevel(
 
   return levels[0] ?? "off";
 }
-
-export function thinkingIndex(levels: readonly ThinkingLevel[], value: ThinkingLevel): number {
-  const index = levels.indexOf(value);
-
-  return index < 0 ? 0 : index;
-}

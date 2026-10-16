@@ -19,7 +19,7 @@ const PULSE_HIGH = 0.85;
 
 const PULSE_MS = 850;
 
-/** Placeholder block pulsing over the fill tint, like UIKit skeletons. */
+/** Placeholder block pulsing over the fill tint, like UIKit skeletons. The pulse follows the reduced-motion setting, which can change while mounted. */
 export function Skeleton({
   width,
   height,
@@ -34,7 +34,6 @@ export function Skeleton({
   const theme = useTheme();
   const reduceMotion = useReducedMotion();
   const pulse = useSharedValue(reduceMotion ? 0.6 : PULSE_LOW);
-  // The pulse loop follows the reduced-motion setting, which can change while mounted.
   useEffect(() => {
     if (reduceMotion) return;
     pulse.set(

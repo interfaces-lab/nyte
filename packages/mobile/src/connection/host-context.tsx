@@ -55,9 +55,8 @@ export function HostProvider({ session, children }: { session: HostSession; chil
   return <HostContext.Provider value={session}>{children}</HostContext.Provider>;
 }
 
+/** The saved connection and its host check. The Keychain read is the app's only boot fetch; the store, not a query cache, holds it because it carries the bearer. */
 export function useHostConnection() {
-  // The Keychain read is the app's only boot fetch. The store, not a query
-  // cache, holds the result, because it carries the bearer.
   const snapshot = useSyncExternalStore(connectionStore.subscribe, connectionStore.getSnapshot);
   const check = useSyncExternalStore(hostVerifier.subscribe, hostVerifier.getSnapshot);
   useMountEffect(() => {

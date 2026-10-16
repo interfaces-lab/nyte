@@ -6,12 +6,13 @@ import { useEffect } from "react";
 import type { SessionInfo } from "@nyte-ai/sdk";
 import { liveRun } from "../view-helpers.ts";
 
-// WidgetKit renders this content in its own process, over a background that
-// follows the device appearance, and it keeps rendering while the app is
-// suspended. A fixed palette therefore suits one appearance and washes out in
-// the other, so the activity names SwiftUI's adaptive colors instead of the
-// app's brand hexes: they resolve per appearance at draw time, and the Dynamic
-// Island, which is always dark, resolves them as light-on-black.
+/**
+ * WidgetKit renders this content in its own process, over a background that follows the device
+ * appearance, and it keeps rendering while the app is suspended. A fixed palette suits one appearance
+ * and washes out in the other, so the activity names SwiftUI's adaptive colors instead of the app's
+ * brand hexes: they resolve per appearance at draw time, and the Dynamic Island, which is always dark,
+ * resolves them as light-on-black.
+ */
 const FOREGROUND = "primary";
 
 const MUTED = "secondary";
@@ -74,11 +75,11 @@ function lockScreenUi(working: readonly SessionInfo[], attention: readonly Sessi
   );
 }
 
+/** The Live Activity's lock-screen and Dynamic Island views; a question outranks progress everywhere they show. */
 export function workLiveActivityVariants(
   working: readonly SessionInfo[],
   attention: readonly SessionInfo[],
 ) {
-  // One decision: a question outranks progress everywhere the activity shows.
   const asking = attention.length > 0;
   const lead = attention[0] ?? working[0];
   const count = asking ? attention.length : working.length;
@@ -119,6 +120,7 @@ export function workLiveActivityVariants(
   return variants;
 }
 
+/** Keep the Live Activity, a native system, in step with session state: start, update, or end it. */
 export function useWorkLiveActivitySync(
   working: readonly SessionInfo[],
   attention: readonly SessionInfo[],
@@ -135,7 +137,6 @@ export function useWorkLiveActivitySync(
   const live = working.length + attention.length;
   const activeKey = [...attention, ...working].map((session) => session.id).join(",");
 
-  // The Live Activity is a native system that follows session state.
   useEffect(() => {
     if (live === 0) {
       if (liveActive) void end().catch(() => undefined);

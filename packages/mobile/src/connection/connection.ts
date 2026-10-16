@@ -50,7 +50,7 @@ export interface ManagedPolicy {
  * the others: reaching one means the device is already inside an authenticated
  * tailnet, and the host binds that address alone.
  */
-function isPrivateHost(hostname: string): boolean {
+function allowsPlainHttp(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) return true;
 
   if (hostname.endsWith(".ts.net")) return true;
@@ -127,7 +127,7 @@ export function parseConnection(value: Connection): Connection {
     throw new Error("Enter the full address, including http:// or https://.");
   }
 
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isPrivateHost(url.hostname))) {
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && allowsPlainHttp(url.hostname))) {
     throw new Error("Use HTTPS, or HTTP with the computer's local or Tailscale address.");
   }
 

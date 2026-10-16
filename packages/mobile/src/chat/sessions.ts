@@ -26,7 +26,7 @@ export const statusLabels: Record<SessionMark, string> = {
   idle: "Ready",
 };
 
-export function isActive(session: SessionInfo): boolean {
+export function inProgress(session: SessionInfo): boolean {
   const mark = sessionMark(session);
 
   return mark === "working" || mark === "retry";

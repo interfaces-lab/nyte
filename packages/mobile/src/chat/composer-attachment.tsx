@@ -1,3 +1,4 @@
+// oxlint-disable-next-line no-restricted-imports -- the enter spring and the flight reveal follow props into Reanimated
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { SymbolView } from "expo-symbols";

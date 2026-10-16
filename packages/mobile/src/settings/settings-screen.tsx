@@ -27,6 +27,7 @@ import { controls, list, spacing, textStyles, tokens, useTheme } from "../theme.
 
 type HostStatus = "checking" | "connected" | "unreachable" | "refused";
 
+/** The settings page. Its box is the scroll view's own content: an inner styled box would be a flex child of a native parent, which cannot grow it. */
 export function SettingsScreen() {
   const theme = useTheme();
   const { client, connection, saved, disconnect } = useHost();
@@ -105,8 +106,6 @@ export function SettingsScreen() {
   return (
     <ScrollView
       style={{ flex: 1 }}
-      // The page's box is the scroll view's own content: an inner styled box
-      // would be a flex child of a native parent, which cannot grow it.
       contentContainerStyle={{
         flexGrow: 1,
         paddingTop: spacing.sm,

@@ -14,7 +14,7 @@ export type PinRoute =
       readonly environmentId: string;
     };
 
-export function routeOf(saved: SavedConnection): PinRoute {
+export function pinRoute(saved: SavedConnection): PinRoute {
   return saved.kind === "manual"
     ? { kind: "address", url: saved.connection.url }
     : {
@@ -37,20 +37,20 @@ export interface PinStore {
 
 const PinSchema = Type.Object({ hostId: Type.String({ minLength: 1 }) });
 
+/** The Keychain key for a route's pin, hashed because Keychain keys allow only letters, digits, `.`, `-` and `_`. */
+async function pinKey(crypto: DeviceCrypto, route: PinRoute): Promise<string> {
+  const parts =
+    route.kind === "address"
+      ? [route.kind, route.url]
+      : [route.kind, route.origin, route.ownerId, route.environmentId];
+
+  return `nyte.pin.${base64ToBase64Url(await crypto.sha256Base64(JSON.stringify(parts)))}`;
+}
+
 export function createPinStore(storage: PinStorage, crypto: DeviceCrypto): PinStore {
-  // Keychain keys allow only letters, digits, `.`, `-` and `_`.
-  const keyOf = async (route: PinRoute) => {
-    const parts =
-      route.kind === "address"
-        ? [route.kind, route.url]
-        : [route.kind, route.origin, route.ownerId, route.environmentId];
-
-    return `nyte.pin.${base64ToBase64Url(await crypto.sha256Base64(JSON.stringify(parts)))}`;
-  };
-
   return {
     async read(route) {
-      const text = await storage.read(await keyOf(route));
+      const text = await storage.read(await pinKey(crypto, route));
 
       if (text === null) return undefined;
       const value: unknown = JSON.parse(text);
@@ -59,6 +59,7 @@ export function createPinStore(storage: PinStorage, crypto: DeviceCrypto): PinSt
 
       return value.hostId;
     },
-    write: async (route, hostId) => storage.write(await keyOf(route), JSON.stringify({ hostId })),
+    write: async (route, hostId) =>
+      storage.write(await pinKey(crypto, route), JSON.stringify({ hostId })),
   };
 }

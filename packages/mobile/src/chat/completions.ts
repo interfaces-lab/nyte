@@ -126,6 +126,13 @@ function slashChoices(
   ];
 }
 
+/**
+ * The suggestion menu for the trigger at the caret: files for `@`, commands and skills for `/`. While a
+ * debounced file read lands, the previous key's rows stay up, so a keystroke narrows the menu instead of
+ * flashing the loading notice. The debounce needs no timer: the query reads `signal`, so the next
+ * keystroke moves the observer to a new key, the old query loses its last observer, and its aborted
+ * delay ends before the request fires.
+ */
 export function useCompletions(
   client: Connection,
   source: CompletionSource,
@@ -142,13 +149,8 @@ export function useCompletions(
   const filesQuery = useQuery({
     queryKey: ["file-completion", workspace ?? null, epoch, query],
     enabled: kind === "@" && workspace !== undefined,
-    // The previous key's rows stay up while the debounced read lands, so a
-    // keystroke narrows the menu instead of flashing the loading notice.
     placeholderData: keepPreviousData,
     queryFn: async ({ signal }): Promise<readonly Suggestion[]> => {
-      // Reading `signal` marks the fetch cancelable: the next keystroke moves the
-      // observer to a new key, the old query loses its last observer, and the
-      // aborted delay ends before the request fires — debounce without a timer.
       await delay(FILE_DEBOUNCE_MS, signal);
 
       if (workspace === undefined) return [];

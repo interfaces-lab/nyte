@@ -205,7 +205,7 @@ describe("createDeviceSecret", () => {
 });
 
 describe("connectEnvironment", () => {
-  it("sends the broker only a digest and gives the bearer to the picked Mac alone", async () => {
+  it("sends the broker only a digest and the JWT, and gives the bearer to the picked Mac alone", async () => {
     const net = network({
       list: (attempt) => (attempt < 3 ? refusal(401, "unauthenticated") : Response.json(PAGE)),
     });
@@ -238,11 +238,10 @@ describe("connectEnvironment", () => {
     });
     expect(enrolls[0]?.body).not.toContain(connection.token);
 
-    // The readiness window retried the same bearer at the relay. On the shared
-    // origin the JWT goes only to the broker and the bearer only to the Mac.
-    expect(net.seen.filter((request) => request.url === `${MAC_URL}/sessions.list`)).toHaveLength(
-      3,
+    const readinessRetries = net.seen.filter(
+      (request) => request.url === `${MAC_URL}/sessions.list`,
     );
+    expect(readinessRetries).toHaveLength(3);
 
     for (const request of net.seen) {
       expect(request.authorization).toBe(

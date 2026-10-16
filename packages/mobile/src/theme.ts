@@ -3,8 +3,7 @@ import { StyleSheet, useColorScheme } from "react-native";
 import type { MarkdownStyle } from "react-native-enriched-markdown";
 import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 
-// Raw colors serve native controls outside RSD; RSD gets the same values
-// through prefers-color-scheme conditionals on the tokens below.
+/** Raw colors serve native controls outside RSD; RSD gets the same values through prefers-color-scheme conditionals on the tokens below. */
 const schemes = {
   light: {
     background: "#F7F7F8",
@@ -272,13 +271,12 @@ export const AGENT_LINK = "^agent:.";
 
 export const FILE_LINK = "^(file:|(?![a-zA-Z][a-zA-Z\\d+.-]*:|#))";
 
+/** The transcript's markdown style. A monospaced transcript borrows the code blocks' face, so a reply reads as one font rather than two. */
 export function markdownStyle(
   theme: Theme,
   transcriptFont: TranscriptFont,
   scheme: keyof typeof schemes,
 ): MarkdownStyle {
-  // A monospaced transcript borrows the face the code blocks already use, so a
-  // reply reads as one font rather than two.
   const prose =
     transcriptFont === "monospaced" ? { fontFamily: typography.code.fontFamily } : undefined;
 

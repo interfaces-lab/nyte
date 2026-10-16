@@ -146,12 +146,16 @@ function createAnnotateResponder(deps: ResponderDeps) {
   });
 }
 
+/**
+ * Draw strokes and numbered point comments over a staged photo. Marks bake into the image on save, so
+ * re-editing starts from the flattened capture with its point comments; earlier strokes are already
+ * drawn in. The stroke under the finger becomes a mark on release. Only the canvas size, the save lock,
+ * and the next point number reach the responder; the drag itself lives in the responder's closure.
+ */
 export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string }) {
   const theme = useTheme();
 
   const insets = useSafeAreaInsets();
-  // Marks bake into the image on save, so re-editing starts from the flattened
-  // capture with its point comments — earlier strokes are already drawn in.
   const [existing] = useState(() => readAnnotation(imageId));
   const baseUri = existing?.image.uri ?? uri;
   const [size, setSize] = useState<Canvas | undefined>(undefined);
@@ -160,7 +164,6 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
     (existing?.points ?? []).map((point) => ({ kind: "point", point })),
   );
 
-  // The stroke under the finger, promoted to a mark on release.
   const [drawing, setDrawing] = useState<readonly Spot[] | undefined>(undefined);
   const [selected, setSelected] = useState<number | undefined>(undefined);
   const [saving, setSaving] = useState(false);
@@ -175,8 +178,6 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   const nextNumber =
     marks.reduce((max, mark) => (mark.kind === "point" ? Math.max(max, mark.point.n) : max), 0) + 1;
 
-  // Only the canvas size, the save lock, and the next number reach the
-  // responder; the drag itself lives in its own closure.
   const responder = useMemo(
     () =>
       createAnnotateResponder({
@@ -467,15 +468,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
                   selectionColor={themes.light.accent}
                   returnKeyType="done"
                   onSubmitEditing={closeComment}
-                  style={{
-                    // The comment sits on a white pill over the photo, so it
-                    // keeps the light palette in either appearance.
-                    color: themes.light.foreground,
-                    ...typography.title,
-                    fontWeight: typography.body.fontWeight,
-                    paddingVertical: spacing.sm,
-                    paddingHorizontal: spacing.lg,
-                  }}
+                  style={nativeStyles.commentInput}
                 />
               </View>
               <GlassButton
@@ -554,6 +547,14 @@ const nativeStyles = {
     borderRadius: radii.bubble,
     overflow: "hidden",
   } satisfies ViewStyle,
+  /** The comment sits on a white pill over the photo, so it keeps the light palette in either appearance. */
+  commentInput: {
+    color: themes.light.foreground,
+    ...typography.title,
+    fontWeight: typography.body.fontWeight,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  } satisfies TextStyle,
 };
 
 const markerStyles = {

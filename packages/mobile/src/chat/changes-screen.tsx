@@ -103,6 +103,10 @@ async function textPatches(stream: AsyncIterable<PatchSet>): Promise<TextPatch[]
   );
 }
 
+/**
+ * A session's changes, from the agent's record or the Mac's working tree. Past three files, only the
+ * file the user arrived on starts open; a tap moves one file between collapsed, head, and full views.
+ */
 export function ChangesScreen({
   client,
   sessionId,
@@ -117,7 +121,6 @@ export function ChangesScreen({
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [source, setSource] = useState<Source>(initialSource ?? "agent");
-  // Sections past three start collapsed; taps move one file between views.
   const [views, setViews] = useState<ReadonlyMap<string, FileView>>(new Map());
   const [pulling, setPulling] = useState(false);
   const chat = useRemoteChat(client, sessionId);
@@ -229,8 +232,7 @@ export function ChangesScreen({
     return (macDiffsQuery.data ?? []).map((file) => fileSection(file, undefined));
   }, [source, agentQuery.data, macDiffsQuery.data]);
 
-  // Past three files, only the one the user arrived on starts open.
-  const viewOf = useCallback(
+  const readView = useCallback(
     (section: FileSection): FileView =>
       views.get(section.key) ??
       (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head"),
@@ -298,7 +300,7 @@ export function ChangesScreen({
             description="The agent didn't report file edits in this conversation. Try On Mac to see what's changed there."
           />
         ) : (
-          <DiffSections sections={sections} viewOf={viewOf} onSetView={setView} />
+          <DiffSections sections={sections} readView={readView} onSetView={setView} />
         )
       ) : macDiffs.kind === "loading" ? (
         <html.div style={styles.state}>
@@ -319,7 +321,7 @@ export function ChangesScreen({
       ) : (
         <DiffSections
           sections={sections}
-          viewOf={viewOf}
+          readView={readView}
           onSetView={setView}
           refreshControl={
             <RefreshControl
@@ -340,12 +342,12 @@ export function ChangesScreen({
 
 function DiffSections({
   sections,
-  viewOf,
+  readView,
   onSetView,
   refreshControl,
 }: {
   sections: FileSection[];
-  viewOf: (section: FileSection) => FileView;
+  readView: (section: FileSection) => FileView;
   onSetView: (key: string, view: FileView) => void;
   refreshControl?: ReactElement<RefreshControlProps>;
 }) {
@@ -354,7 +356,7 @@ function DiffSections({
   const visibleSections = useMemo(
     () =>
       sections.map((section) => {
-        const view = viewOf(section);
+        const view = readView(section);
 
         return {
           ...section,
@@ -367,7 +369,7 @@ function DiffSections({
                 ),
         };
       }),
-    [sections, viewOf],
+    [sections, readView],
   );
 
   return (
@@ -382,7 +384,7 @@ function DiffSections({
       refreshControl={refreshControl}
       contentContainerStyle={{ paddingBottom: spacing.xl }}
       renderSectionHeader={({ section }) => {
-        const collapsed = viewOf(section) === "collapsed";
+        const collapsed = readView(section) === "collapsed";
 
         return (
           <html.button
@@ -416,7 +418,7 @@ function DiffSections({
       renderSectionFooter={({ section }) => {
         const hidden = section.lineCount - LINE_LIMIT;
 
-        if (viewOf(section) !== "head" || hidden <= 0) return null;
+        if (readView(section) !== "head" || hidden <= 0) return null;
 
         return (
           <html.button onClick={() => onSetView(section.key, "whole")} style={styles.showRest}>

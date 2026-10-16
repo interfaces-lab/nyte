@@ -7,7 +7,7 @@ import { displayAddress, type Connection, type SavedConnection } from "./connect
 import { classifyConnectFailure, type ConnectFailure } from "./connect-copy.ts";
 import { createConnectionStore } from "./connection-store.ts";
 import { createJournal } from "./journal.ts";
-import { createPinStore, routeOf } from "./pins.ts";
+import { createPinStore, pinRoute } from "./pins.ts";
 import { readAccountConfig } from "../account/account-config.ts";
 import { deviceCrypto } from "../account/device.ts";
 import { releaseReplaced } from "../account/revocation.ts";
@@ -63,7 +63,7 @@ export async function verifyHost(input: {
   readonly signal: AbortSignal;
 }): Promise<HostVerification> {
   const { saved, signal } = input;
-  const route = routeOf(saved);
+  const route = pinRoute(saved);
   const address = displayAddress(saved.connection);
   let pinned: string | undefined;
 

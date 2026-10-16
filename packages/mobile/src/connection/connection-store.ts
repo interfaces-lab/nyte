@@ -55,7 +55,10 @@ export interface ConnectionStore {
 /**
  * The saved connection as an external store. Every change runs in one queue,
  * so a write that started earlier cannot land after a removal that started
- * later. The bearer stays here and in the Keychain, never in a query cache.
+ * later, and every queued change reads the Keychain first, whoever asked first.
+ * The bearer stays here and in the Keychain, never in a query cache. A save
+ * cancelled after its write restores the previous value; if that fails too, it
+ * still tries not to keep the cancelled bearer, then reports the disk unknown.
  */
 export function createConnectionStore(
   storage: ConnectionStorage,
@@ -78,7 +81,6 @@ export function createConnectionStore(
     return run;
   };
 
-  // Every queued change reads the Keychain first, whoever asked first.
   const settle = async () => {
     if (snapshot.kind !== "loading") return;
 
@@ -123,7 +125,6 @@ export function createConnectionStore(
 
             return { kind: "cancelled" };
           } catch {
-            // At least try not to keep the cancelled bearer, then admit the disk is unknown.
             await storage.remove().catch(() => undefined);
             publish({ kind: "unknown" });
 

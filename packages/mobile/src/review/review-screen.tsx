@@ -42,6 +42,7 @@ function basenameOf(path: string): string {
   return slash < 0 ? path : path.slice(slash + 1);
 }
 
+/** A finished run's review. One readiness value drives the headline, its symbol, its tint, and the detail line, so the four never describe different states. */
 export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const theme = useTheme();
   const { client } = useHost();
@@ -78,8 +79,6 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const ended = execution?.kind === "idle" ? execution.lastRun?.end.kind : undefined;
   const outcome = ended === "stopped" ? "aborted" : ended;
 
-  // One decision drives the headline, its symbol, its tint, and the detail line,
-  // so the four can never describe different states.
   const readiness: { headline: string; symbol: SFSymbol; tint: string; detail: string } = running
     ? {
         headline: "Agent is working",

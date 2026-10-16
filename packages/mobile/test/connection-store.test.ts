@@ -155,10 +155,11 @@ describe("createConnectionStore", () => {
   it("admits a failed undo instead of reporting a rollback, and serves nothing", async () => {
     const previous = JSON.stringify(manual);
     const controller = new AbortController();
-    // The new connection lands; putting the old one back and deleting both fail.
+    const restoreAndRemoveFail = (operation: "write" | "remove", text?: string) =>
+      operation === "remove" || text === previous;
     const disk = memory(previous, {
       writing: () => controller.abort(),
-      fail: (operation, text) => operation === "remove" || text === previous,
+      fail: restoreAndRemoveFail,
     });
     const store = createConnectionStore(disk.storage, POLICY);
     await store.load();

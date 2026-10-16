@@ -8,8 +8,7 @@
  * APNs host without an error the app can see. This plugin must be listed after
  * that one so it writes last.
  */
-// Imported through `expo` rather than the bare package: `@expo/config-plugins` is
-// not a direct dependency here, and pnpm's layout puts it out of reach.
+/** Imported through `expo`: `@expo/config-plugins` is not a direct dependency, and pnpm's layout puts it out of reach. */
 const { withEntitlementsPlist } = require("expo/config-plugins");
 
 const ENVIRONMENTS = new Set(["development", "production"]);
