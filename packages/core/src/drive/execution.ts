@@ -24,7 +24,6 @@ import { landing, selectRunStart } from "../engine/admission.ts";
 import { LEASE_MS } from "../engine/durable.ts";
 import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
-import type { Lease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
 import { loadWaits } from "../engine/waits.ts";
@@ -617,11 +616,7 @@ async function resume(
 }
 
 /** Holds a head's lease while a run is resumed or driven; `refused` says why it was lost. */
-function holdHead(
-  kernel: Kernel,
-  session: SessionId,
-  head: HeadName,
-): { readonly lease: Lease; refused(): Refused | null } {
+function holdHead(kernel: Kernel, session: SessionId, head: HeadName) {
   let refused: Refused | null = null;
 
   const lease = holdLease(
@@ -634,7 +629,10 @@ function holdHead(
     { every: RENEW_MS, lapse: LEASE_MS },
   );
 
-  return { lease, refused: () => refused ?? (lease.signal.aborted ? FENCED : null) };
+  return {
+    lease,
+    refused: (): Refused | null => refused ?? (lease.signal.aborted ? FENCED : null),
+  };
 }
 
 async function drive(
@@ -666,7 +664,7 @@ async function drive(
     })
     .then(
       (end) => ({ end }),
-      (error: unknown) => ({ end: failed(error) }),
+      (error) => ({ end: failed(error) }),
     )
     .finally(() => {
       unrenew();
@@ -817,8 +815,8 @@ function waitingOn(
   };
 }
 
-function failed(error: unknown): RunEnd {
-  return { kind: "failed", failure: { class: "runner", message: formatError(error) } };
+function failed(cause: unknown): RunEnd {
+  return { kind: "failed", failure: { class: "runner", message: formatError(cause) } };
 }
 
 function formatError(cause: unknown): string {

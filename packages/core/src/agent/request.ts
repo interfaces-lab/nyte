@@ -210,7 +210,7 @@ export async function complete(
       where,
     );
 
-    if (isFailedResponse(message))
+    if (unanswered(message))
       await chargeFailed(kernel, where, requestEvent(where.head, input.step, usage, info), usage);
 
     return message;
@@ -224,11 +224,12 @@ export async function complete(
     message,
     usage: calculateUsage(message, model),
     info,
-    failure: isFailedResponse(message) ? classifyAssistantFailure(message) : null,
+    failure: unanswered(message) ? classifyAssistantFailure(message) : null,
   };
 }
 
-function isFailedResponse(message: AssistantMessage): boolean {
+/** The provider sent no answer: the request errored or was aborted. */
+function unanswered(message: AssistantMessage): boolean {
   return message.stopReason === "error" || message.stopReason === "aborted";
 }
 
