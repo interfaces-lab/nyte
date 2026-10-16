@@ -142,6 +142,41 @@ describe("retryAssistantCall", () => {
     );
   });
 
+  test("waits the provider's retry-after and gives up when it asks past the cap", async () => {
+    const limited = (retryAfterMs: number) =>
+      fauxAssistantMessage("", {
+        stopReason: "error",
+        errorMessage: "terminated",
+        diagnostics: [{ type: "http", timestamp: 0, details: { retryAfterMs } }],
+      });
+    const policy: RetryPolicy = {
+      enabled: true,
+      maxRetries: 2,
+      baseDelayMs: 1,
+      maxAgentDelayMs: 40,
+    };
+    const onRetryScheduled = vi.fn();
+    let n = 0;
+    const produce = vi.fn(async () => {
+      n++;
+      return n === 1 ? limited(30) : fauxAssistantMessage("recovered");
+    });
+
+    const res = await retryAssistantCall(produce, policy, undefined, { onRetryScheduled });
+
+    assert.equal(res.stopReason, "stop");
+    assert.deepEqual(
+      onRetryScheduled.mock.calls.map((call) => call[2]),
+      [30],
+    );
+
+    const tooLong = vi.fn(async () => limited(41));
+    const given = await retryAssistantCall(tooLong, policy, undefined);
+
+    assert.equal(given.stopReason, "error");
+    assert.equal(tooLong.mock.calls.length, 1);
+  });
+
   test("reports an aborted retried call as unsuccessful", async () => {
     let n = 0;
     const produce = vi.fn(async () => {
