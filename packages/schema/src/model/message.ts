@@ -48,7 +48,7 @@ export interface ToolCall {
   type: "toolCall";
   id: string;
   name: string;
-  arguments: Record<string, any>;
+  arguments: Record<string, unknown>;
   thoughtSignature?: string;
   namespace?: string;
   /**
@@ -142,7 +142,7 @@ export interface AssistantMessage {
   timestamp: number;
 }
 
-export interface ToolResultMessage<TDetails = any> {
+export interface ToolResultMessage<TDetails = unknown> {
   role: "toolResult";
   toolCallId: string;
   toolName: string;
