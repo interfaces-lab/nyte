@@ -387,7 +387,14 @@ async function partOpening(
   const opened: RefUpdate[] = [
     {
       name,
-      target: await put(kernel, "part", record(calling, 1), at),
+  const running = await put(
+    kernel,
+    "part",
+    record({ ...fields, phase: "running", progress: null }, 2),
+    at,
+  );
+
+      target: running,
       expect: "absent",
       event: {
         head,
@@ -404,12 +411,7 @@ async function partOpening(
     },
     {
       name,
-      target: await put(
-        kernel,
-        "part",
-        record({ ...fields, phase: "running", progress: null }, 2),
-        at,
-      ),
+      target: running,
       event: {
         head,
         kind: "call",
