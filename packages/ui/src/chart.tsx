@@ -110,13 +110,13 @@ const BarChartContext = createContext<BarChartContextValue>({
 
 type Datum = Record<string, string | number>;
 
+/** One bar inside its series' tint scope. `fill` on the datum wins over nivo's resolved colour, so the scope applies. */
 function Segment(item: BarItemProps<Datum>): ReactElement {
   const { series } = useContext(BarChartContext);
   const layer = series[Number(String(item.bar.data.id).slice(1))];
 
   return (
     <g {...props(layer !== undefined && surfaceTheme[layer.tint])}>
-      {/* `fill` on the datum wins over nivo's resolved colour, so the scope applies. */}
       <BarItem
         {...item}
         bar={{ ...item.bar, data: { ...item.bar.data, fill: role.bgInteractiveStrong } }}

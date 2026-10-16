@@ -6,7 +6,7 @@ import { glyph } from "./styles/schema.stylex.ts";
 import { mergeStyleProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 
-/*
+/**
  * The app icon's dithered moon, 5 cells across on a 3px pitch, with the sun
  * orbiting once per loop: new, waxing, full, waning. Unlit cells keep a trace
  * of earthshine so the disc holds its outline through the new moon.
@@ -79,10 +79,10 @@ export interface SpinnerProps {
   readonly xstyle?: Restyle<"Spinner">;
 }
 
+/** Every spinner on screen shows the same phase: the loop offset syncs to the page clock on mount. */
 export function Spinner({ className, style, xstyle }: SpinnerProps = {}): ReactElement {
   const root = useRef<SVGSVGElement>(null);
 
-  // Every spinner on screen shows the same phase.
   useLayoutEffect(() => {
     root.current?.style.setProperty("--moon-sync", `${performance.now() % LOOP_MS}ms`);
   }, []);

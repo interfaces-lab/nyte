@@ -202,15 +202,13 @@ const styles = create({
   },
 });
 
-const STATUS_ICON = {
-  success: { intent: intent.success, name: "checkmark" },
-  error: { intent: intent.danger, name: "warning" },
-  warning: { intent: intent.warning, name: "warning" },
-} as const;
-
-function isStatus(type: string | undefined): type is keyof typeof STATUS_ICON {
-  return type !== undefined && type in STATUS_ICON;
-}
+const STATUS_ICON = new Map(
+  Object.entries({
+    success: { intent: intent.success, name: "checkmark" },
+    error: { intent: intent.danger, name: "warning" },
+    warning: { intent: intent.warning, name: "warning" },
+  } as const),
+);
 
 function copyText(title: ReactNode, description: ReactNode): string | undefined {
   if (typeof title !== "string") return undefined;
@@ -223,7 +221,7 @@ function ToastList(): ReactElement[] {
 
   return toasts.map((item) => {
     const copy = copyText(item.title, item.description);
-    const status = isStatus(item.type) ? STATUS_ICON[item.type] : undefined;
+    const status = item.type === undefined ? undefined : STATUS_ICON.get(item.type);
 
     return (
       <Toast.Root key={item.id} toast={item} data-slot="toast" {...props(styles.root)}>

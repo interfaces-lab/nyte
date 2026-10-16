@@ -405,14 +405,11 @@ const block = [
 
 const current = readFileSync(agentsPath, "utf8");
 
-const startIndex = current.indexOf(start);
+const existing = new RegExp(`${RegExp.escape(start)}[\\s\\S]*?${RegExp.escape(end)}`);
 
-const endIndex = current.indexOf(end);
-
-const next =
-  startIndex === -1 || endIndex === -1
-    ? `${current.endsWith("\n") ? current : `${current}\n`}\n${block}\n`
-    : `${current.slice(0, startIndex)}${block}${current.slice(endIndex + end.length)}`;
+const next = existing.test(current)
+  ? current.replace(existing, () => block)
+  : `${current.endsWith("\n") ? current : `${current}\n`}\n${block}\n`;
 
 if (process.argv.includes("--check")) {
   if (next !== current) {

@@ -574,8 +574,8 @@ const ramp = (hue: keyof typeof opaque) => ({
 });
 
 const neutral = (step: number) => ({
-  [`--nyte-neutral-${step}`]: opaque.gray[steps.indexOf(step)],
-  [`--nyte-neutral-translucent-${step}`]: `light-dark(${translucent.gray[steps.indexOf(step)][0]}, ${translucent.gray[steps.indexOf(step)][1]})`,
+  [`--nyte-neutral-${step}`]: opaque.gray[steps.findIndex((entry) => entry === step)],
+  [`--nyte-neutral-translucent-${step}`]: `light-dark(${translucent.gray[steps.findIndex((entry) => entry === step)][0]}, ${translucent.gray[steps.findIndex((entry) => entry === step)][1]})`,
 });
 
 export const theme = defineVars({
@@ -609,7 +609,7 @@ export const pink = createTheme(theme, ramp("pink"));
 export const red = createTheme(theme, ramp("red"));
 
 export const danger = defineConsts({
-  border: opaque.red[steps.indexOf(80)],
+  border: opaque.red[steps.findIndex((entry) => entry === 80)],
 });
 
 export const teal = createTheme(theme, ramp("teal"));
