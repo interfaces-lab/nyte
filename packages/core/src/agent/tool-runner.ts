@@ -66,19 +66,24 @@ const ToolCallerType = Type.Object({
 
 type ToolCaller = Static<typeof ToolCallerType>;
 
-/** An `intent` call record's intent: the model's call as its response asked for it, held until the step opens the call's part. */
-const ToolIntentType = Type.Object({
+const ToolInputType = Type.Object({
   ...ToolCallerType.properties,
   name: Type.String(),
   args: JsonType,
 });
+
+/** What a call replays from: its caller, and the name and args the model asked for. */
+type ToolInput = Static<typeof ToolInputType>;
+
+/** An `intent` call record's intent: the model's call as its response asked for it, at its `position` among the response's calls, held until the step opens the call's part. */
+const ToolIntentType = Type.Object({ ...ToolInputType.properties, position: Type.Number() });
 
 export type ToolIntent = Static<typeof ToolIntentType>;
 
 /** A call a run still owes: never opened, or opened and not settled. */
 export interface OwedCall {
   readonly call: CallId;
-  readonly intent: ToolIntent;
+  readonly intent: ToolInput;
   readonly parked: boolean;
 }
 
@@ -162,7 +167,7 @@ export async function executeCall(
   }
 }
 
-/** The tool calls `run` owes, each with the input to replay it from: an unopened call's intent, or an opened call's caller with its part's name and args. Calls nested in another are left to their parent's replay. */
+/** The tool calls `run` owes, in the order they run: opened calls first, since a run opens its calls one at a time in response order, then unopened ones in response order. Each comes with the input to replay it from: an unopened call's intent, or an opened call's caller with its part's name and args. Calls nested in another are left to their parent's replay. */
 export async function owedCalls(
   store: StoreConnection,
   session: SessionId,
@@ -175,38 +180,49 @@ export async function owedCalls(
   const ids = new Set(records.map(stripHookPrefix));
 
   const owed = await Promise.all(
-    records.map(async (record): Promise<readonly OwedCall[]> => {
-      if (
-        (record.kind !== "tool" && record.kind !== "intent") ||
-        record.result !== null ||
-        nestedIn(ids, record.id)
-      )
-        return [];
-      const intent = await readToolIntent(store, session, record);
+    records.map(
+      async (record): Promise<readonly { readonly owed: OwedCall; readonly order: number }[]> => {
+        if (
+          (record.kind !== "tool" && record.kind !== "intent") ||
+          record.result !== null ||
+          nestedIn(ids, record.id)
+        )
+          return [];
+        const read = await readToolInput(store, session, record);
 
-      if (intent === null) return [];
+        if (read === null) return [];
 
-      const parked = records.some(
-        (other) =>
-          other.waiting !== null &&
-          other.result === null &&
-          (stripHookPrefix(other) === record.id ||
-            stripHookPrefix(other).startsWith(`${record.id}:`)),
-      );
+        const parked = records.some(
+          (other) =>
+            other.waiting !== null &&
+            other.result === null &&
+            (stripHookPrefix(other) === record.id ||
+              stripHookPrefix(other).startsWith(`${record.id}:`)),
+        );
 
-      return [{ call: record.id, intent, parked }];
-    }),
+        return [{ owed: { call: record.id, intent: read.input, parked }, order: read.order }];
+      },
+    ),
   );
 
-  return owed.flat();
+  return owed
+    .flat()
+    .toSorted((left, right) => left.order - right.order)
+    .map((entry) => entry.owed);
 }
 
-async function readToolIntent(
+/** A call's replay input, and where it runs among its run's owed calls: an opened call before any unopened one, which runs at its position in the response. */
+async function readToolInput(
   store: StoreConnection,
   session: SessionId,
   record: CallRecord,
-): Promise<ToolIntent | null> {
-  if (record.kind === "intent") return toolIntents.Check(record.intent) ? record.intent : null;
+): Promise<{ readonly input: ToolInput; readonly order: number } | null> {
+  if (record.kind === "intent") {
+    if (!toolIntents.Check(record.intent)) return null;
+    const { position, ...input } = record.intent;
+
+    return { input, order: position };
+  }
 
   if (record.part === null || !toolCallers.Check(record.intent)) return null;
   const caller: ToolCaller = record.intent;
@@ -221,7 +237,7 @@ async function readToolIntent(
 
   return checked === null || checked.kind === "invalid"
     ? null
-    : { ...caller, name: checked.value.name, args: checked.value.args };
+    : { input: { ...caller, name: checked.value.name, args: checked.value.args }, order: -1 };
 }
 
 /** Whether `id` names a call nested in another of `ids`: one whose id is a `:`-separated prefix of it. */

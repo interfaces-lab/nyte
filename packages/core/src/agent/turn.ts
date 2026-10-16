@@ -336,11 +336,12 @@ async function turn(
         const intents = record.stopping
           ? []
           : await Promise.all(
-              [...callIds].map(async ([call, id]): Promise<RefUpdate> => {
+              [...callIds].map(async ([call, id], position): Promise<RefUpdate> => {
                 const intent: ToolIntent = {
                   name: call.name,
                   args: isJson(call.arguments) ? call.arguments : {},
                   principal: CALLER.principal,
+                  position,
                   ...(call.argumentsError !== undefined && { argumentsError: call.argumentsError }),
                 };
 

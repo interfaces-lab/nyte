@@ -416,6 +416,21 @@ const toolArgsInPart: RewriteStep = {
   },
 };
 
+/** An unopened tool call's intent records its position among its response's calls, the order a recovering host runs them in; an older Nyte's has none, and keeps the call-id order it ran in, from position 0. */
+const intentPosition: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-intent-position",
+  rewrite(object) {
+    if (!isJsonObject(object) || object.kind !== "call") return null;
+
+    return patched(object, (body) =>
+      body.kind !== "intent" || !isJsonObject(body.intent) || "position" in body.intent
+        ? body
+        : { ...body, intent: { ...body.intent, position: 0 } },
+    );
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -428,6 +443,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   liveRefs,
   parkedWaitIndex,
   toolArgsInPart,
+  intentPosition,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

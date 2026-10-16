@@ -4,7 +4,7 @@ import { expect, it } from "vitest";
 import { owedCalls } from "../src/agent/tool-runner.ts";
 import type { Kernel } from "../src/contract/kernel.ts";
 import { decodeCallRecord } from "../src/contract/records.ts";
-import { runStep } from "../src/engine/durable.ts";
+import { intendedCall, runStep } from "../src/engine/durable.ts";
 import { migrateStore } from "../src/store.ts";
 import type { StoredRecord } from "../src/store.ts";
 import type { StoreChange } from "../src/store/migrations.ts";
@@ -179,6 +179,44 @@ it("moves a tool call's name and args to its part alone, which recovery then rep
   );
 
   expect(migrated).toEqual({ ...callBody, intent: { principal: "local" } });
+  expect(await owedCalls(kernel.store, session.id, run.id)).toEqual([
+    { call, intent, parked: false },
+  ]);
+});
+
+it("gives an older Nyte's unopened tool call position 0, so recovery still owes it", async () => {
+  const { kernel, host } = await setup();
+  const session = await host.sessions.create();
+
+  const run = await startRun(
+    kernel,
+    session.id,
+    main,
+    { kind: "continuation", from: "wake" },
+    configuration,
+  );
+
+  const call = asId<"call">(`${run.id}:1:toolu_01`);
+  const intent = { name: "bash", args: { command: "ls" }, principal: "local" };
+
+  const target = await kernel.store.objects.put({
+    kind: "call",
+    parent: null,
+    at: 1,
+    body: { ...intendedCall({ call, run: run.id, head: main, intent: {} }), intent },
+  });
+
+  await kernel.store.refs.set([{ name: callRef(session.id, call), target, expect: "absent" }]);
+  expect(await owedCalls(kernel.store, session.id, run.id)).toEqual([]);
+
+  await migrateStore({
+    dialect: "sqlite",
+    stamp: async () => ({ version: 11, empty: false }),
+    records: async () => storedRecords(kernel),
+    logs: async function* () {},
+    commit: async (change) => landChange(kernel, change),
+  });
+
   expect(await owedCalls(kernel.store, session.id, run.id)).toEqual([
     { call, intent, parked: false },
   ]);
