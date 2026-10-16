@@ -1,5 +1,5 @@
-import { asSeq, SessionEventSchema } from "@nyte-ai/schema";
-import type { Json, Ref, RefUpdate, Seq, SessionEvent, SessionId } from "@nyte-ai/schema";
+import { SessionEventSchema } from "@nyte-ai/schema";
+import type { Json, Ref, RefUpdate, SessionEvent, SessionId } from "@nyte-ai/schema";
 import { SdkError } from "../util/error.ts";
 import { parseSessionRef } from "./refs.ts";
 
@@ -26,19 +26,6 @@ export function collectSessionEvents(
 
     return [{ session, event: update.event }];
   });
-}
-
-export function setSeq<T>(
-  updates: readonly RefUpdate[],
-  appended: readonly Seq[],
-  tail: (session: SessionId) => T,
-): Seq | T {
-  const last = appended.at(-1);
-
-  if (last !== undefined) return last;
-  const session = updates.map((update) => parseSessionRef(update.name)).find((id) => id !== null);
-
-  return session ? tail(session) : asSeq(0);
 }
 
 export function loggedEvent(seq: number, at: number, body: unknown): SessionEvent {

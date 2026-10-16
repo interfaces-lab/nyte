@@ -2,7 +2,7 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type { BlobId, ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
 import type { Store, StoreConnection } from "../contract/store.ts";
 import { blobId, objectId } from "../util/content.ts";
-import { admits, collectSessionEvents, decodeObject, loggedEvent, setSeq } from "./log.ts";
+import { admits, collectSessionEvents, decodeObject, loggedEvent } from "./log.ts";
 import { parseSessionRef } from "./refs.ts";
 import { projectSessionIndex, sessionIndexRef } from "./session-index.ts";
 import type { SessionIndexEntry } from "./session-index.ts";
@@ -179,7 +179,7 @@ export function memoryStore(): Store {
           return revision;
         });
 
-        return { kind: "set", seq: setSeq(updates, appended, tail), revisions };
+        return { kind: "set", logged: appended, at, revisions };
       },
       log: async (session, after, limit) =>
         (logs.get(session) ?? [])

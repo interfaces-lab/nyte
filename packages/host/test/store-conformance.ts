@@ -188,7 +188,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
       assert(outcome.kind === "set");
 
-      expect(outcome.seq).toBe(0);
+      expect(outcome.logged).toEqual([]);
       expect(outcome.revisions).toHaveLength(2);
       expect(outcome.revisions[0]).not.toBe(outcome.revisions[1]);
       expect(await refs.get("sessions/s1/heads/main")).toEqual({
@@ -322,8 +322,8 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
         { name: "sessions/s1/heads/main", target: null, event: removed },
       ]);
 
-      expect(first).toMatchObject({ kind: "set", seq: 2 });
-      expect(second).toMatchObject({ kind: "set", seq: 3 });
+      expect(first).toMatchObject({ kind: "set", logged: [1, 1, 2] });
+      expect(second).toMatchObject({ kind: "set", logged: [3] });
       expect(await refs.log(session, asSeq(0), 10)).toMatchObject([
         { seq: 1, at: expect.any(Number), kind: "head", reason: "created" },
         { seq: 2, kind: "head", reason: "moved" },
@@ -335,19 +335,6 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       expect((await refs.log(session, asSeq(1), 10)).map((event) => event.seq)).toEqual([2, 3]);
       expect((await refs.log(session, asSeq(0), 2)).map((event) => event.seq)).toEqual([1, 2]);
       expect(await refs.log(session, asSeq(3), 10)).toEqual([]);
-    });
-
-    it("answers a set without events with the tail of the first session it names", async () => {
-      const { objects, refs } = await connect();
-      const target = await objects.put({ tail: true });
-      await refs.set([{ name: "sessions/s1/heads/main", target, event: created }]);
-
-      expect(
-        await refs.set([
-          { name: "kv/host/core/x", target },
-          { name: "sessions/s1/parts/p", target },
-        ]),
-      ).toMatchObject({ kind: "set", seq: 1 });
     });
 
     it("throws for an event outside a session and writes nothing", async () => {
@@ -429,7 +416,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
       assert(outcome.kind === "set");
       expect(new Set(outcome.revisions).size).toBe(4);
-      expect(outcome.seq).toBe(3);
+      expect(outcome.logged).toEqual([1, 2, 3]);
       expect(await refs.get("sessions/s1/heads/main")).toEqual({
         name: "sessions/s1/heads/main",
         target: three,

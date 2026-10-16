@@ -39,7 +39,7 @@ import type {
   ValidationIssue,
   WorkspaceId,
 } from "@nyte-ai/schema";
-import type { FoldCache, Follow, LiveStream, SessionBus } from "./fold.ts";
+import type { FoldCache, LiveStream, SessionBus } from "./fold.ts";
 import type {
   Connection,
   ConnectionContext,
@@ -99,8 +99,6 @@ export interface Kernel {
   readonly folds: FoldCache;
 
   readonly streams: Map<SessionId, Map<PartId, LiveStream>>;
-
-  readonly follows: Map<SessionId, Follow>;
 
   readonly driving: Map<RunId, SessionId>;
   readonly executionState: ExecutionState;

@@ -166,7 +166,7 @@ export { emptyFold, fold } from "./fold/fold.ts";
 export { project } from "./fold/project.ts";
 export { viewHead, watchHead } from "./fold/view.ts";
 export { createFoldCache, pollStore, publishSet } from "./fold/watch.ts";
-export { admits, collectSessionEvents, decodeObject, loggedEvent, setSeq } from "./store/log.ts";
+export { admits, collectSessionEvents, decodeObject, loggedEvent } from "./store/log.ts";
 export { memoryStore } from "./store/memory-store.ts";
 export { STORE_VERSION, assertStoreVersion, migrateStore } from "./store/migrations.ts";
 export type { CommitOutcome, MigrationTarget, StoredRecord } from "./store/migrations.ts";

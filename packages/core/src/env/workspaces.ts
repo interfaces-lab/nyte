@@ -332,7 +332,7 @@ export function workspaceHandle(
 
         if (
           kernel.runtimes().has(session) ||
-          kernel.follows.has(session) ||
+          kernel.folds.folding(session) ||
           kernel.activation(session).kind !== "inactive"
         )
           await kernel.reloadPlugins(session).catch(() => undefined);

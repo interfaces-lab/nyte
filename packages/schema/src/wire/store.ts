@@ -23,7 +23,8 @@ export const RefUpdateType = Type.Object({
 export const SetOutcomeType = Type.Union([
   Type.Object({
     kind: Type.Literal("set"),
-    seq: SeqType,
+    logged: Type.Array(SeqType),
+    at: Type.Number(),
     revisions: Type.Array(idSchema<"revision">()),
   }),
   Type.Object({

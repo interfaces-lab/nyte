@@ -13,7 +13,6 @@ import {
   dev,
   migrateStore,
   objectId,
-  setSeq,
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core";
@@ -370,11 +369,10 @@ function connect(
             return asSeq(seq);
           });
 
-          const seq = setSeq(updates, appended, tail);
           database.exec("COMMIT");
           workers?.check();
 
-          return { kind: "set", seq, revisions };
+          return { kind: "set", logged: appended, at, revisions };
         } catch (error) {
           if (database.isTransaction) database.exec("ROLLBACK");
 

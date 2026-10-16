@@ -9,7 +9,6 @@ import {
   collectSessionEvents,
   migrateStore,
   objectId,
-  setSeq,
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core";
@@ -273,7 +272,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
             return asSeq(seq);
           });
 
-          return { kind: "set", seq: setSeq(updates, appended, tail), revisions };
+          return { kind: "set", logged: appended, at, revisions };
         });
       },
       async log(session, after, limit) {

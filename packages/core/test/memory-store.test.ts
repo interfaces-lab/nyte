@@ -53,7 +53,7 @@ describe("memoryStore", () => {
 
     assert(outcome.kind === "set");
 
-    expect(outcome.seq).toBe(0);
+    expect(outcome.logged).toEqual([]);
     expect(outcome.revisions).toHaveLength(2);
     expect(outcome.revisions[0]).not.toBe(outcome.revisions[1]);
     expect(await refs.get("sessions/s1/heads/main")).toEqual({
@@ -161,8 +161,8 @@ describe("memoryStore", () => {
       { name: "sessions/s1/heads/main", target: null, event: removed },
     ]);
 
-    expect(first).toMatchObject({ kind: "set", seq: 2 });
-    expect(second).toMatchObject({ kind: "set", seq: 3 });
+    expect(first).toMatchObject({ kind: "set", logged: [1, 1, 2] });
+    expect(second).toMatchObject({ kind: "set", logged: [3] });
     expect(await refs.log(session, asSeq(0), 10)).toMatchObject([
       { seq: 1, at: expect.any(Number), kind: "head", reason: "created" },
       { seq: 2, kind: "head", reason: "moved" },
@@ -231,32 +231,32 @@ describe("attempt", () => {
 });
 
 describe("commit", () => {
-  it("publishes a landed write whose first publish failed, so watchers still see it", async () => {
+  it("publishes a write's events from the updates in hand, reading none of them back", async () => {
     const store = await memoryStore().open();
-    let failing = true;
+    let reads = 0;
 
-    const flaky: StoreConnection = {
+    const counted: StoreConnection = {
       ...store,
       refs: {
         ...store.refs,
         async log(session, after, limit) {
-          if (failing) {
-            failing = false;
-
-            throw new Error("The log read failed.");
-          }
+          reads += 1;
 
           return store.refs.log(session, after, limit);
         },
       },
     };
 
-    const { kernel, host } = await setup({ store: flaky });
-    const seen: string[] = [];
-    kernel.bus.subscribeAll((_session, event) => seen.push(event.kind));
-    await host.sessions.create();
+    const { kernel, host } = await setup({ store: counted });
+    const seen: number[] = [];
+    kernel.bus.subscribeAll((_session, event) => {
+      if (event.kind === "session") seen.push(event.seq);
+    });
+    reads = 0;
+    const session = await host.sessions.create();
+    await session.update({ name: "Renamed" });
 
-    expect(failing).toBe(false);
-    expect(await until(() => (seen.includes("session") ? seen : undefined))).toContain("session");
+    expect(seen).toHaveLength(2);
+    expect(reads).toBe(0);
   });
 });

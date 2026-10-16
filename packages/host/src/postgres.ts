@@ -16,7 +16,6 @@ import {
   collectSessionEvents,
   migrateStore,
   objectId,
-  setSeq,
   sessionIndexRef,
   parseSessionRef,
 } from "@nyte-ai/core";
@@ -387,10 +386,9 @@ async function publish(
       appended.push(asSeq(seq));
     }
 
-    const seq = await setSeq(updates, appended, (session) => tailOf(client, session));
     await client.query("COMMIT");
 
-    return { kind: "set", seq, revisions };
+    return { kind: "set", logged: appended, at, revisions };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
 

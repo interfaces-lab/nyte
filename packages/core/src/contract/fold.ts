@@ -201,13 +201,12 @@ export interface FoldCache {
     subscribe(listener: (state: FoldState) => void): Disposer;
     release(): void;
   };
-}
 
-export interface Follow {
-  feeds: number;
-  from: Seq | null;
-  published: Seq | null;
-  publishing: number;
+  /** Whether a fold of the session is held or lingering. */
+  folding(session: SessionId): boolean;
+
+  /** Reads each fold's log past it and publishes what it finds on the bus: what another process logged since. */
+  refresh(): Promise<void>;
 }
 
 export interface LiveStream {

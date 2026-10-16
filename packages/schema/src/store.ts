@@ -14,6 +14,12 @@ export type RefUpdate = {
   readonly event?: DurableEvent;
 };
 
+/** What `RefStore.set` did: `set` with the seq each update carrying an event was logged at, in update order, the time it logged them at, and each update's new revision; or `stale`, naming the first ref whose expectation failed. */
 export type SetOutcome =
-  | { readonly kind: "set"; readonly seq: Seq; readonly revisions: readonly Revision[] }
+  | {
+      readonly kind: "set";
+      readonly logged: readonly Seq[];
+      readonly at: number;
+      readonly revisions: readonly Revision[];
+    }
   | { readonly kind: "stale"; readonly name: string; readonly revision: Revision | null };

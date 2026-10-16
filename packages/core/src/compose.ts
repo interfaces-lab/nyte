@@ -24,7 +24,7 @@ import { delegationPlugin } from "./builtins/delegation.ts";
 import { environmentPlugin } from "./builtins/environment.ts";
 import { mcpPlugin } from "./builtins/mcp.ts";
 import { systemPromptPlugin } from "./builtins/system-prompt.ts";
-import type { Follow, SessionBus } from "./contract/fold.ts";
+import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
 import type { Host, ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
 import type { Kernel, PluginRuntime, RunTable, WaitRegistry, Wakes } from "./contract/kernel.ts";
@@ -330,7 +330,6 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
 export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const streams = trackStreams(bus);
-  const follows = new Map<SessionId, Follow>();
   const activations = new Map<SessionId, Activation>();
   const inactive: Activation = { kind: "inactive" };
   const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
@@ -377,7 +376,6 @@ export function createKernel(input: KernelOptions): Kernel {
     folds: createFoldCache({
       store: input.store,
       bus,
-      follows,
       streams,
       activation,
       catalog,
@@ -389,7 +387,6 @@ export function createKernel(input: KernelOptions): Kernel {
       },
     }),
     streams,
-    follows,
     driving: new Map(),
     executionState: createExecutionState(),
     pluginState: createPluginState(),

@@ -2140,8 +2140,8 @@ const cases = {
   ),
   SetOutcomeSchema: sample(
     SetOutcomeSchema,
-    { kind: "set", seq: asSeq(3), revisions: [revision] },
-    { kind: "set", seq: 1.5, revisions: [] },
+    { kind: "set", logged: [asSeq(3)], at: 4, revisions: [revision] },
+    { kind: "set", logged: [1.5], at: 4, revisions: [] },
   ),
 } satisfies Record<string, Case>;
 

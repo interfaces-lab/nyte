@@ -302,7 +302,7 @@ describe("watch", () => {
       reused.release();
       vi.advanceTimersByTime(30_000);
 
-      expect(kernel.follows.has(first)).toBe(false);
+      expect(kernel.folds.folding(first)).toBe(false);
     } finally {
       vi.useRealTimers();
     }
@@ -330,6 +330,7 @@ describe("watch", () => {
     const spied: Kernel = {
       ...kernel,
       folds: {
+        ...kernel.folds,
         acquire(session, principal) {
           const hold = kernel.folds.acquire(session, principal);
 

@@ -8,7 +8,6 @@ import type {
   PrincipalId,
   Ref,
   RefUpdate,
-  Seq,
   SessionEvent,
   SessionId,
   SetOutcome,
@@ -17,7 +16,6 @@ import type {
   FeedItem,
   FoldCache,
   FoldState,
-  Follow,
   HeadPair,
   LiveStream,
   SessionBus,
@@ -25,7 +23,8 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeRunRecord } from "../contract/records.ts";
 import { settleAnswersFrom } from "../store/parts.ts";
-import { headRef, parseHeadRef, parseSessionRef, runRef } from "../store/refs.ts";
+import { collectSessionEvents } from "../store/log.ts";
+import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
 import { EMPTY_REVISION, load } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { isJsonObject } from "../util/json-schema.ts";
@@ -36,20 +35,32 @@ type Entry = {
   state: FoldState;
   holders: number;
   linger: ReturnType<typeof setTimeout> | undefined;
-  ready: Promise<void>;
-  catchUp: () => Promise<void>;
-  dispose: Disposer;
+  feed: FoldFeed;
   readonly listeners: Set<(state: FoldState) => void>;
 };
 
+/** The log and bus feeding one session's fold, every durable event once and in seq order. */
+interface FoldFeed {
+  readonly ready: Promise<void>;
+  /** Reads what the log holds past the fold into it. */
+  sync(): Promise<void>;
+  /** Reads what the log holds past the fold and publishes it on the bus, for every subscriber of the session. */
+  refresh(): Promise<void>;
+  dispose(): void;
+}
+
 type Feeds = Pick<
   Kernel,
-  "store" | "bus" | "follows" | "streams" | "activation" | "catalog" | "jobs" | "pages"
+  "store" | "bus" | "streams" | "activation" | "catalog" | "jobs" | "pages"
 >;
+
+type Paired = { readonly event: SessionEvent; readonly head: HeadPair | null };
 
 const LOG_PAGE = 512;
 
 const FOLD_LINGER = 30_000;
+
+const NO_PAIRS: ReadonlyMap<HeadName, HeadPair> = new Map();
 
 export function createFoldCache(kernel: Feeds): FoldCache {
   const entries = new Map<SessionId, Entry>();
@@ -59,27 +70,18 @@ export function createFoldCache(kernel: Feeds): FoldCache {
       state: emptyFold({ session, principal }),
       holders: 0,
       linger: undefined,
-      ready: Promise.resolve(),
-      catchUp: async () => {},
-      dispose: () => {},
+      feed: openFoldFeed(kernel, session, ({ event, head }) => {
+        const folded = fold(entry.state, event);
+        const name = movedHead(event);
+        const next = head === null || name === null ? folded : withPair(folded, name, head);
+
+        if (next === entry.state) return;
+        entry.state = next;
+
+        for (const listener of entry.listeners) listener(next);
+      }),
       listeners: new Set(),
     };
-
-    const feed = openFoldFeed(kernel, session, asSeq(0), ({ event, head }) => {
-      const folded = fold(entry.state, event);
-      const name = movedHead(event);
-
-      const next = head === null || name === null ? folded : withPair(folded, name, head);
-
-      if (next === entry.state) return;
-      entry.state = next;
-
-      for (const listener of entry.listeners) listener(next);
-    });
-
-    entry.dispose = feed.dispose;
-    entry.catchUp = feed.catchUp;
-    entry.ready = feed.ready;
 
     return entry;
   };
@@ -105,8 +107,8 @@ export function createFoldCache(kernel: Feeds): FoldCache {
 
       return {
         async ready() {
-          await entry.ready;
-          await entry.catchUp();
+          await entry.feed.ready;
+          await entry.feed.sync();
         },
         state: () => as(entry.state),
         subscribe(listener) {
@@ -130,7 +132,7 @@ export function createFoldCache(kernel: Feeds): FoldCache {
 
           entry.linger = setTimeout(() => {
             if (entry.holders > 0) return;
-            entry.dispose();
+            entry.feed.dispose();
 
             if (entries.get(session) === entry) entries.delete(session);
           }, FOLD_LINGER);
@@ -139,35 +141,31 @@ export function createFoldCache(kernel: Feeds): FoldCache {
         },
       };
     },
+    folding: (session) => entries.has(session),
+    async refresh() {
+      await Promise.all(Array.from(entries.values(), (entry) => entry.feed.refresh()));
+    },
   };
 }
 
+/** Publishes a set's events on the bus as the set logged them, from the updates in hand: each event at the seq and time the store gave it, each head-moving event with its head's ref pair (the one this set wrote, else read). A fold that sees a seq skip reads the gap from the log itself. */
 export async function publishSet(
-  kernel: Pick<Kernel, "store" | "bus" | "follows">,
+  kernel: Pick<Kernel, "store" | "bus">,
   updates: readonly RefUpdate[],
   outcome: SetOutcome,
 ): Promise<void> {
   if (outcome.kind !== "set") return;
-  const counts = new Map<SessionId, number>();
-  let last: SessionId | null = null;
-
-  for (const update of updates) {
-    const session = update.event === undefined ? null : parseSessionRef(update.name);
-
-    if (session === null) continue;
-    counts.set(session, (counts.get(session) ?? 0) + 1);
-    last = session;
-  }
-
-  const written = new Map<HeadName, HeadPair>();
+  const written = new Map<SessionId, Map<HeadName, HeadPair>>();
 
   for (const [index, update] of updates.entries()) {
     const head = parseHeadRef(update.name);
     const revision = outcome.revisions[index];
 
-    if (head === null || head.session !== last || revision === undefined) continue;
+    if (head === null || revision === undefined) continue;
+    const heads = written.get(head.session) ?? new Map<HeadName, HeadPair>();
+    written.set(head.session, heads);
 
-    written.set(
+    heads.set(
       head.head,
       update.target === null
         ? { tip: null, revision: EMPTY_REVISION }
@@ -175,56 +173,25 @@ export async function publishSet(
     );
   }
 
-  for (const [session, count] of counts) {
-    const follow = ensureSessionFollow(kernel.follows, session);
-    follow.publishing += 1;
+  const logged = new Map<SessionId, SessionEvent[]>();
 
-    try {
-      if (follow.published === null) {
-        const through = session === last ? outcome.seq : await kernel.store.refs.tail(session);
-        const own = Math.max(0, through - count);
-        follow.published = asSeq(Math.min(follow.from ?? own, own));
-      }
+  for (const [index, { session, event }] of collectSessionEvents(updates).entries()) {
+    const seq = outcome.logged[index];
 
-      await followLog(
-        kernel,
-        session,
-        follow.published,
-        session === last ? { through: outcome.seq, heads: written } : null,
-      );
-    } finally {
-      follow.publishing -= 1;
-      unfollow(kernel.follows, session, follow);
-    }
+    if (seq === undefined) continue;
+    const events = logged.get(session) ?? [];
+    logged.set(session, events);
+    events.push({ ...event, seq, at: outcome.at });
   }
-}
 
-async function followLog(
-  kernel: Pick<Kernel, "store" | "bus" | "follows">,
-  session: SessionId,
-  from: Seq,
-  known: { readonly through: Seq; readonly heads: ReadonlyMap<HeadName, HeadPair> } | null = null,
-): Promise<void> {
-  const follow = ensureSessionFollow(kernel.follows, session);
-  follow.publishing += 1;
-
-  try {
-    for (;;) {
-      const events = await kernel.store.refs.log(session, follow.published ?? from, LOG_PAGE);
-      const items = await paired(kernel, session, events, known);
-
-      for (const { event, head } of items) {
-        if (event.seq <= (follow.published ?? from)) continue;
-        follow.published = event.seq;
-        kernel.bus.publish(session, event, head);
-      }
-
-      if (events.length < LOG_PAGE) return;
-    }
-  } finally {
-    follow.publishing -= 1;
-    unfollow(kernel.follows, session, follow);
-  }
+  for (const [session, events] of logged)
+    for (const { event, head } of await paired(
+      kernel,
+      session,
+      events,
+      written.get(session) ?? NO_PAIRS,
+    ))
+      kernel.bus.publish(session, event, head);
 }
 
 export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveStream>> {
@@ -284,20 +251,13 @@ export function trackStreams(bus: SessionBus): Map<SessionId, Map<PartId, LiveSt
   return streams;
 }
 
-function openFoldFeed(
-  kernel: Feeds,
-  session: SessionId,
-  after: Seq,
-  push: (item: FeedItem) => void,
-) {
-  const buffered: FeedItem[] = [];
-  const follow = ensureSessionFollow(kernel.follows, session);
-  let building = true;
+function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) => void): FoldFeed {
+  let through = 0;
   let open = true;
-  let through: number = after;
+  let held: FeedItem[] | null = [];
+  let reading: Promise<void> = Promise.resolve();
 
   const deliver = (item: FeedItem): void => {
-    if (!open) return;
     const event = item.event;
 
     if (event.kind !== "patch" && event.seq !== 0) {
@@ -308,42 +268,72 @@ function openFoldFeed(
     push(item);
   };
 
-  const unsubscribe = kernel.bus.subscribe(session, (event, head) => {
-    if (building) buffered.push({ event, head });
-    else deliver({ event, head });
-  });
-
-  follow.feeds += 1;
-
-  const dispose = (): void => {
-    if (!open) return;
-    open = false;
-    unsubscribe();
-    follow.feeds -= 1;
-    unfollow(kernel.follows, session, follow);
-  };
-
-  const catchUp = async (): Promise<void> => {
+  const readPast = async (): Promise<void> => {
     while (open) {
       const events = await kernel.store.refs.log(session, asSeq(through), LOG_PAGE);
 
       if (!open) return;
 
-      for (const item of await paired(kernel, session, events, null)) deliver(item);
+      for (const item of await paired(kernel, session, events, NO_PAIRS)) deliver(item);
 
       if (events.length < LOG_PAGE) return;
     }
   };
 
+  const release = (): void => {
+    const waiting = held ?? [];
+    held = null;
+
+    for (const item of waiting) accept(item);
+  };
+
+  const read = (waiting: FeedItem[]): Promise<void> => {
+    held = waiting;
+
+    reading = (async () => {
+      try {
+        await readPast();
+      } finally {
+        release();
+      }
+    })();
+
+    return reading;
+  };
+
+  const accept = (item: FeedItem): void => {
+    if (!open) return;
+
+    if (held !== null) {
+      held.push(item);
+
+      return;
+    }
+
+    const event = item.event;
+
+    if (event.kind === "patch" || event.seq <= through + 1) {
+      deliver(item);
+
+      return;
+    }
+
+    dev("fold", "gap", { session, through, seq: event.seq });
+    read([item]).catch((error) =>
+      dev("fold", "gap read failed", { session, error: String(error) }),
+    );
+  };
+
+  const unsubscribe = kernel.bus.subscribe(session, (event, head) => accept({ event, head }));
+
   const ready = (async () => {
     try {
-      await catchUp();
+      await readPast();
 
       if (!open) return;
 
-      follow.from ??= asSeq(through);
-
       const seed = { seq: asSeq(0), at: Date.now() };
+
       const events: SessionEvent[] = [
         { ...seed, head: null, kind: "activation", activation: kernel.activation(session) },
         { ...seed, head: null, kind: "catalog", catalog: kernel.catalog(session) },
@@ -354,11 +344,9 @@ function openFoldFeed(
 
       for (const event of events) deliver({ event, head: null });
     } finally {
-      building = false;
+      release();
 
-      if (open) {
-        for (const item of buffered.splice(0)) deliver(item);
-
+      if (open)
         for (const [part, live] of kernel.streams.get(session) ?? []) {
           if (live.markdown !== null)
             push({ event: { kind: "patch", part, markdown: live.markdown }, head: null });
@@ -366,27 +354,48 @@ function openFoldFeed(
           if (live.progress !== null)
             push({ event: { kind: "patch", part, progress: live.progress }, head: null });
         }
-      }
     }
   })();
 
-  return { ready, catchUp, dispose };
+  reading = ready;
+
+  return {
+    ready,
+    sync: () => (held === null ? read([]) : reading),
+    async refresh() {
+      let cursor = through;
+
+      while (open) {
+        const events = await kernel.store.refs.log(session, asSeq(cursor), LOG_PAGE);
+
+        if (!open) return;
+
+        for (const { event, head } of await paired(kernel, session, events, NO_PAIRS))
+          if (event.seq > through) kernel.bus.publish(session, event, head);
+        const last = events.at(-1);
+
+        if (last === undefined || events.length < LOG_PAGE) return;
+        cursor = last.seq;
+      }
+    },
+    dispose() {
+      open = false;
+      unsubscribe();
+    },
+  };
 }
 
 async function paired(
   kernel: Pick<Kernel, "store">,
   session: SessionId,
   events: readonly SessionEvent[],
-  known: { readonly through: Seq; readonly heads: ReadonlyMap<HeadName, HeadPair> } | null,
-): Promise<readonly { readonly event: SessionEvent; readonly head: HeadPair | null }[]> {
-  const knownFor = (event: SessionEvent, head: HeadName): HeadPair | undefined =>
-    known !== null && event.seq <= known.through ? known.heads.get(head) : undefined;
-
+  written: ReadonlyMap<HeadName, HeadPair>,
+): Promise<readonly Paired[]> {
   const unknown = new Set(
     events.flatMap((event) => {
       const head = movedHead(event);
 
-      return head === null || knownFor(event, head) !== undefined ? [] : [head];
+      return head === null || written.has(head) ? [] : [head];
     }),
   );
 
@@ -402,10 +411,7 @@ async function paired(
   return events.map((event) => {
     const head = movedHead(event);
 
-    return {
-      event,
-      head: head === null ? null : (knownFor(event, head) ?? read.get(head) ?? null),
-    };
+    return { event, head: head === null ? null : (written.get(head) ?? read.get(head) ?? null) };
   });
 }
 
@@ -423,18 +429,6 @@ function movedHead(event: SessionEvent | PatchEvent): HeadName | null {
   return event.kind === "commit" || event.kind === "head" ? event.head : null;
 }
 
-function ensureSessionFollow(follows: Map<SessionId, Follow>, session: SessionId): Follow {
-  const follow = follows.get(session) ?? { feeds: 0, from: null, published: null, publishing: 0 };
-  follows.set(session, follow);
-
-  return follow;
-}
-
-function unfollow(follows: Map<SessionId, Follow>, session: SessionId, follow: Follow): void {
-  if (follow.feeds === 0 && follow.publishing === 0 && follows.get(session) === follow)
-    follows.delete(session);
-}
-
 export function pollStore(kernel: Kernel): Disposer {
   const every = kernel.poll;
 
@@ -443,10 +437,7 @@ export function pollStore(kernel: Kernel): Disposer {
   let stopped = false;
 
   const pass = async (): Promise<void> => {
-    for (const [session, follow] of Array.from(kernel.follows)) {
-      if (follow.feeds === 0 || follow.from === null || stopped) continue;
-      await followLog(kernel, session, follow.from);
-    }
+    await kernel.folds.refresh();
 
     if (stopped) return;
     await kernel.waits.settleFromStore();
