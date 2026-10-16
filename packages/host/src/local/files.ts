@@ -27,6 +27,7 @@ import type {
   SearchFrame,
 } from "@nyte-ai/schema";
 import type { FileBatch, FilesApi } from "@nyte-ai/core";
+import { serial } from "@nyte-ai/core/server";
 import { sha256 } from "../hash.ts";
 import { findExecutable, run } from "./command.ts";
 import type { Ran } from "./command.ts";
@@ -596,7 +597,7 @@ function watchFiles(
       const ignores = createIgnores(root);
       const known = new Map<string, FileVersion | null>();
       const started = Date.now();
-      let queue = Promise.resolve();
+      const reads = serial();
 
       const readEvent = async (path: string): Promise<FileEvent | null> => {
         if (path.endsWith(".gitignore"))
@@ -645,7 +646,7 @@ function watchFiles(
       };
 
       const heard = (changed: Iterable<string> | Promise<Iterable<string>>): void => {
-        queue = queue.then(async () => {
+        void reads.run(async () => {
           const events: FileEvent[] = [];
 
           for (const path of await changed) {

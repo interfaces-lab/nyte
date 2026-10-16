@@ -17,7 +17,7 @@ import type {
   WorkspaceTarget,
 } from "@nyte-ai/schema";
 import { dev, processEnvironment } from "@nyte-ai/core";
-import { composeHost } from "@nyte-ai/core/server";
+import { composeHost, serial } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
@@ -357,11 +357,11 @@ function refused(
 
 function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () => Promise<void> {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let running = Promise.resolve();
+  const reloads = serial();
 
   const run = (): void => {
     timer = null;
-    running = running.then(reload).catch((error: unknown) =>
+    void reloads.run(reload).catch((error: unknown) =>
       dev("open", "plugin reload failed", {
         message: error instanceof Error ? error.message : String(error),
       }),
@@ -396,7 +396,7 @@ function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () 
     for (const watcher of watchers) watcher.close();
 
     if (timer !== null) clearTimeout(timer);
-    await running;
+    await reloads.settled();
   };
 }
 

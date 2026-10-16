@@ -11,3 +11,7 @@ export type { ServedHost, ServerHost, Verdict, WireHost } from "./contract/serve
 export type { McpHub, McpHubFactory, McpServerBrief, McpWorkspace } from "./contract/workspace.ts";
 
 export { holdProcessEnvironment } from "./util/process-environment.ts";
+
+export { keyedSerial, serial } from "./util/serial.ts";
+
+export type { KeyedSerial, Serial } from "./util/serial.ts";

@@ -101,9 +101,7 @@ export function changeCall(
   readonly fenced: boolean;
 }> {
   const name = callRef(session, call);
-  const queues = kernel.executionState.callQueues;
-
-  const done = (queues.get(name) ?? Promise.resolve()).then(async () => {
+  return kernel.executionState.callQueue.run(name, async () => {
     for (let tries = 0; tries < CALL_TRIES; tries += 1) {
       const found = await readCall(kernel.store, session, call);
       const next = await change(found?.record ?? null);
@@ -135,16 +133,4 @@ export function changeCall(
 
     throw new SdkError("stale", `Call ${call} lost to concurrent writes ${CALL_TRIES} times.`);
   });
-
-  const settled = done.then(
-    () => undefined,
-    () => undefined,
-  );
-
-  queues.set(name, settled);
-  void settled.then(() => {
-    if (queues.get(name) === settled) queues.delete(name);
-  });
-
-  return done;
 }

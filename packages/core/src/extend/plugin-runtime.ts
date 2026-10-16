@@ -42,6 +42,7 @@ import { build, corePluginApi } from "./plugin-api.ts";
 import { bumpGeneration, createRegistrySet, publishCatalog } from "./registry.ts";
 import { publishSettings, settingHandle } from "./settings.ts";
 import { scanResources } from "./resources.ts";
+import { serial } from "../util/serial.ts";
 
 interface Active {
   readonly instance: PluginInstance;
@@ -113,18 +114,11 @@ export function createPluginRuntime(
   let core: PluginApi<"core"> | null = null;
   let closed = false;
   let last: readonly PluginLoadOutcome[] = [];
-  let queue: Promise<unknown> = Promise.resolve();
+  const lifecycle = serial();
   let holds = 0;
   let idle: PromiseWithResolvers<void> | null = null;
   let shownIssues = "";
   let resolvedUncovered = false;
-
-  const serial = <T>(work: () => Promise<T>): Promise<T> => {
-    const next = queue.then(work, work);
-    queue = next.catch(() => undefined);
-
-    return next;
-  };
 
   const held = <T>(work: () => Promise<T>): Promise<T> => {
     const release = hold();
@@ -373,7 +367,7 @@ export function createPluginRuntime(
     hooks,
     ready,
     hold,
-    load: (plugins) => serial(() => loadAll(plugins)),
+    load: (plugins) => lifecycle.run(() => loadAll(plugins)),
     outcomes: () => last,
     issues: issueRows,
     resolvedUncovered: () => resolvedUncovered,
@@ -387,7 +381,7 @@ export function createPluginRuntime(
     instance: (id) => active.get(id)?.instance,
     assigned: () => kernel.plugins.state.assigned.get(session) ?? null,
     close: () =>
-      serial(async () => {
+      lifecycle.run(async () => {
         while (holds > 0) await (idle ??= Promise.withResolvers()).promise;
         dev("plugins", "close", { session, plugins: [...active.keys()] });
         closed = true;

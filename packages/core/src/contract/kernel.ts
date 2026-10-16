@@ -78,6 +78,7 @@ import type {
   Workspaces,
   WorkspaceState,
 } from "./workspace.ts";
+import type { KeyedSerial } from "../util/serial.ts";
 
 export interface Kernel {
   readonly hostId: HostId;
@@ -600,10 +601,10 @@ export interface ExecutionState {
   readonly held: Map<string, Held>;
   readonly covers: Map<object, ExecutionCoverage>;
   readonly advancing: Set<string>;
-  readonly queue: Map<string, Promise<unknown>>;
+  readonly leaseQueue: KeyedSerial<string>;
   readonly pending: Map<string, boolean>;
   readonly summaries: Set<string>;
-  readonly callQueues: Map<string, Promise<unknown>>;
+  readonly callQueue: KeyedSerial<string>;
   timer: ReturnType<typeof setInterval> | null;
   closing: AbortController;
 }

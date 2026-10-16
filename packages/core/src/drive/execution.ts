@@ -42,6 +42,7 @@ import {
 import type { Found } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
+import { keyedSerial } from "../util/serial.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const RENEW_MS = 10_000;
@@ -59,10 +60,10 @@ export function createExecutionState(): ExecutionState {
     held: new Map(),
     covers: new Map(),
     advancing: new Set(),
-    queue: new Map(),
+    leaseQueue: keyedSerial(),
     pending: new Map(),
     summaries: new Set(),
-    callQueues: new Map(),
+    callQueue: keyedSerial(),
     timer: null,
     closing: new AbortController(),
   };
@@ -408,11 +409,15 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 }
 
 function claim(kernel: Kernel, session: SessionId, head: HeadName): Promise<Refused | null> {
-  return inOrder(kernel, leaseRef(session, head), () => claimNow(kernel, session, head));
+  return kernel.executionState.leaseQueue.run(leaseRef(session, head), () =>
+    claimNow(kernel, session, head),
+  );
 }
 
 function release(kernel: Kernel, session: SessionId, head: HeadName): Promise<void> {
-  return inOrder(kernel, leaseRef(session, head), () => releaseNow(kernel, session, head));
+  return kernel.executionState.leaseQueue.run(leaseRef(session, head), () =>
+    releaseNow(kernel, session, head),
+  );
 }
 
 /** Renews the leases a cover holds between steps. Nothing runs under them, so a refusal only drops the entry (claimNow does); a step in flight renews its own lease. */
@@ -420,30 +425,15 @@ async function renewIdle(kernel: Kernel): Promise<void> {
   const { held, advancing } = kernel.executionState;
 
   for (const name of Array.from(held.keys()))
-    await inOrder(kernel, name, async () => {
-      const entry = held.get(name);
+    await kernel.executionState.leaseQueue
+      .run(name, async () => {
+        const entry = held.get(name);
 
-      return entry === undefined || entry.owners.size === 0 || advancing.has(name)
-        ? null
-        : claimNow(kernel, entry.session, entry.head);
-    }).catch((error) => dev("execution", "renewal failed", { name, error: formatError(error) }));
-}
-
-function inOrder<T>(kernel: Kernel, name: string, task: () => Promise<T>): Promise<T> {
-  const queue = kernel.executionState.queue;
-  const done = (queue.get(name) ?? Promise.resolve()).then(task);
-
-  const settled = done.then(
-    () => undefined,
-    () => undefined,
-  );
-
-  queue.set(name, settled);
-  void settled.then(() => {
-    if (queue.get(name) === settled) queue.delete(name);
-  });
-
-  return done;
+        return entry === undefined || entry.owners.size === 0 || advancing.has(name)
+          ? null
+          : claimNow(kernel, entry.session, entry.head);
+      })
+      .catch((error) => dev("execution", "renewal failed", { name, error: formatError(error) }));
 }
 
 async function claimNow(

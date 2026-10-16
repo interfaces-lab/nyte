@@ -29,6 +29,8 @@ import { collectSessionEvents } from "../store/log.ts";
 import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
 import { EMPTY_REVISION, load } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
+import { serial } from "../util/serial.ts";
+import type { Serial } from "../util/serial.ts";
 import { emptyFold, fold } from "./fold.ts";
 import { withPair } from "./project.ts";
 
@@ -59,7 +61,7 @@ type Feeds = Pick<
 type Sequence = {
   published: number | null;
   logged: number;
-  queue: Promise<void>;
+  readonly queue: Serial;
   linger: ReturnType<typeof setTimeout> | undefined;
 };
 
@@ -219,7 +221,7 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
     const created: Sequence = {
       published,
       logged: 0,
-      queue: Promise.resolve(),
+      queue: serial(),
       linger: undefined,
     };
     sessions.set(session, created);
@@ -236,11 +238,10 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
     const state = sessions.get(session);
 
     if (state === undefined || !idle(session, state)) return;
-    const queue = state.queue;
     clearTimeout(state.linger);
 
     state.linger = setTimeout(() => {
-      if (state.queue === queue && idle(session, state)) sessions.delete(session);
+      if (!state.queue.busy && idle(session, state)) sessions.delete(session);
     }, PUBLISH_LINGER);
 
     if (typeof state.linger === "object") state.linger.unref();
@@ -276,7 +277,7 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
     publish(session, items) {
       const state = sequence(session);
 
-      const published = state.queue.then(async () => {
+      const published = state.queue.run(async () => {
         for (const item of items) {
           if (state.published !== null && item.event.seq > state.published + 1)
             await fill(session, state, item.event.seq).catch((error) =>
@@ -287,11 +288,8 @@ export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPu
         }
       });
 
-      state.queue = published.catch(() => undefined);
-      const queued = state.queue;
-
-      void queued.then(() => {
-        if (state.queue === queued) forget(session);
+      void state.queue.settled().then(() => {
+        if (!state.queue.busy) forget(session);
       });
 
       return published;

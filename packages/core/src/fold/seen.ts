@@ -14,6 +14,7 @@ import {
   walkCommitPath,
 } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
+import { serial } from "../util/serial.ts";
 import { commit } from "./commit.ts";
 import { withFold } from "./reads.ts";
 
@@ -80,7 +81,7 @@ export function seenWriter(
 ) {
   let pending: { readonly tip: CommitId | null } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let writing: Promise<void> = Promise.resolve();
+  const writes = serial();
 
   const flush = (): Promise<void> => {
     clearTimeout(timer);
@@ -88,19 +89,18 @@ export function seenWriter(
     const next = pending;
     pending = null;
 
-    if (next === null) return writing;
+    if (next !== null)
+      void writes
+        .run(() => advanceSeen(kernel, { ...input, commit: next.tip }))
+        .catch((error: unknown) =>
+          dev("watch", "seen failed", {
+            session: input.session,
+            head: input.head,
+            error: String(error),
+          }),
+        );
 
-    writing = writing
-      .then(() => advanceSeen(kernel, { ...input, commit: next.tip }))
-      .catch((error: unknown) =>
-        dev("watch", "seen failed", {
-          session: input.session,
-          head: input.head,
-          error: String(error),
-        }),
-      );
-
-    return writing;
+    return writes.settled();
   };
 
   return {

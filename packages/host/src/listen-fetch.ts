@@ -1,7 +1,7 @@
 import { SdkError } from "@nyte-ai/schema";
 import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
-import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
+import { serial, TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
 import type { Connection, ListenOptions, Listener } from "@nyte-ai/core";
 import type { ServedHost, Verdict } from "@nyte-ai/core/server";
 import { HOST_HEADER, asSdkError, encodeError, errorStatus } from "@nyte-ai/protocol";
@@ -46,7 +46,7 @@ export async function listenFetch(
   let generation = new AbortController();
   let closing: Promise<void> | null = null;
   let principalsRevision: string | null = null;
-  let rechecks: Promise<void> = Promise.resolve();
+  const rechecks = serial();
 
   const drop = (key: string, entry: Cached, reason: SdkError): void => {
     if (cache.get(key) === entry) cache.delete(key);
@@ -143,8 +143,8 @@ export async function listenFetch(
   };
 
   const externalCommit = (): void => {
-    rechecks = rechecks
-      .then(recheck)
+    void rechecks
+      .run(recheck)
       .catch((error) => dev("listen", "device re-check failed", { error: String(error) }));
   };
 
