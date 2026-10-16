@@ -1,8 +1,6 @@
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { FileModelsStore } from "@nyte-ai/ai";
 import { dev } from "@nyte-ai/core";
-import { testModel } from "@nyte-ai/host/bench";
 import { sdk } from "@nyte-ai/sdk";
 import { e2eModels } from "../../../desktop/src/main/fixtures/e2e-models.ts";
 import { FIXTURES, prepareHome } from "./baseline.ts";
@@ -18,7 +16,6 @@ export interface StartupFixture {
   readonly profile: string;
   readonly sessions: number;
   readonly turns: number;
-  readonly models: number;
   readonly storeBytes: number;
   readonly expected:
     | { readonly kind: "empty" }
@@ -43,7 +40,6 @@ export async function prepareStartupFixture(
       profile,
       sessions: 0,
       turns: 0,
-      models: 0,
       storeBytes: 0,
       expected: { kind: "empty" },
     };
@@ -60,6 +56,8 @@ export async function prepareStartupFixture(
 
   const target = scenario === "heavy" ? "long" : "beta";
   const marker = `Startup ${scenario} fixture ready`;
+  let sessionCount = 0;
+  let turns = 0;
 
   try {
     if (scenario === "heavy") {
@@ -77,50 +75,22 @@ export async function prepareStartupFixture(
     const outcome = await receipt.settled();
 
     if (outcome.kind !== "completed") throw new Error(`Seeding ${target} failed: ${outcome.kind}`);
-  } finally {
-    await host.close();
-  }
-
-  const modelCount = scenario === "heavy" ? 500 : 1;
-  const cache = new FileModelsStore(join(home, ".nyte", "models-store.json"));
-  await cache.write("anthropic", {
-    checkedAt: Date.now(),
-    models: Array.from({ length: modelCount }, (_, index) =>
-      testModel(`startup-fixture-${index}`, {
-        provider: "anthropic",
-        api: "anthropic-messages",
-        name: `Startup fixture ${index + 1}`,
-      }),
-    ),
-  });
-  const production = await sdk.open({ home, workspace: { kind: "local", path: home } });
-  let sessionCount = 0;
-  let turns = 0;
-
-  try {
-    const model = { provider: "anthropic", id: "startup-fixture-0" };
-    await production.models.setDefault(model);
-    let page = await production.sessions.list({ parents: { kind: "all" } });
+    let page = await host.sessions.list({ parents: { kind: "all" } });
     const rows = [...page.items];
 
     while (page.next !== null) {
-      page = await production.sessions.list({ parents: { kind: "all" }, cursor: page.next });
+      page = await host.sessions.list({ parents: { kind: "all" }, cursor: page.next });
       rows.push(...page.items);
     }
 
     sessionCount = rows.length;
 
     for (const row of rows) {
-      const session = production.session(row.id);
-      const outcome = await session.configure({ model });
-
-      if (outcome.kind !== "configured")
-        throw new Error(`Configuring startup fixture failed: ${outcome.kind}`);
-      const view = await session.view();
+      const view = await host.session(row.id).view();
       turns += view.messages.filter((message) => message.kind === "user").length;
     }
   } finally {
-    await production.close();
+    await host.close();
   }
 
   return {
@@ -130,7 +100,6 @@ export async function prepareStartupFixture(
     profile,
     sessions: sessionCount,
     turns,
-    models: modelCount,
     storeBytes: (await stat(join(home, ".nyte", "nyte.db"))).size,
     expected: { kind: "chat", title: FIXTURES[target], lastMessage: `Echo: ${marker}` },
   };

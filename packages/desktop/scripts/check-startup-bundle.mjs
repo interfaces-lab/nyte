@@ -4,12 +4,17 @@ import { failure, formatSize, green, red, table } from "./terminal.mjs";
 
 const KIB = 1_024;
 
-// Grammars live in the worker, the terminal wasm is its own asset, and provider
-// SDKs load on first request. Clerk has a separate entry loaded by an account command.
+/**
+ * Grammars live in the worker, the terminal wasm is its own asset, and provider SDKs load on
+ * first request. Clerk has a separate entry loaded by an account command. Each budget ratchets
+ * about 2% above the 0.0.18 audit build so growth fails here; lower it when an entry shrinks.
+ * `css` is the render-blocking stylesheet the startup HTML links.
+ */
 const budgets = {
-  main: 700 * KIB,
-  preload: 16 * KIB,
-  renderer: 5_000 * KIB,
+  main: 630 * KIB,
+  preload: 8 * KIB,
+  renderer: 4_900 * KIB,
+  css: 190 * KIB,
 };
 
 const desktopRoot = join(import.meta.dirname, "..");
@@ -53,12 +58,20 @@ for await (const path of glob("out/preload/**/*.js", { cwd: desktopRoot })) {
 
 const manifest = JSON.parse(await readFile(join(rendererRoot, ".vite", "manifest.json"), "utf8"));
 
-const startupFiles = html
-  .matchAll(/<(?:script|link)\b[^>]*>/gu)
-  .filter(([tag]) => tag.startsWith("<script") || /rel="modulepreload"/u.test(tag))
-  .map(([tag]) => tag.match(/(?:src|href)="([^"]+)"/u)?.[1]?.replace(/^\.?\//u, ""))
-  .filter((file) => file !== undefined)
-  .toArray();
+const startupTags = html.matchAll(/<(?:script|link)\b[^>]*>/gu).toArray();
+
+function startupAssets(test) {
+  return startupTags
+    .filter(([tag]) => test(tag))
+    .map(([tag]) => tag.match(/(?:src|href)="([^"]+)"/u)?.[1]?.replace(/^\.?\//u, ""))
+    .filter((file) => file !== undefined);
+}
+
+const startupFiles = startupAssets(
+  (tag) => tag.startsWith("<script") || /rel="modulepreload"/u.test(tag),
+);
+
+const stylesheets = startupAssets((tag) => /rel="stylesheet"/u.test(tag));
 
 if (startupFiles.length === 0) {
   failure("Cannot find the renderer entry in out/renderer/index.html");
@@ -91,6 +104,9 @@ const sizes = {
   main: (await stat(join(desktopRoot, "out", "main", "index.js"))).size,
   preload: (await stat(preloadPath)).size,
   renderer: rendererSizes.reduce((total, size) => total + size, 0),
+  css: (
+    await Promise.all(stylesheets.map(async (file) => (await stat(join(rendererRoot, file))).size))
+  ).reduce((total, size) => total + size, 0),
 };
 
 const rows = [];
