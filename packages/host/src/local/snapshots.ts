@@ -44,6 +44,19 @@ type Manifest = Readonly<Record<string, string>>;
 
 type Tree = { readonly files: Manifest; readonly incomplete: boolean };
 
+/** The root tree of `refs/nyte/kept`: its entries, and the newest generation, the only one a rewrite adds to. */
+type Kept = {
+  readonly id: string;
+  readonly root: readonly { readonly tree: string; readonly name: string }[];
+  readonly last: {
+    readonly name: string;
+    readonly number: number;
+    readonly trees: readonly string[];
+  } | null;
+};
+
+const GENERATION_NAME = /^g(\d{6})$/;
+
 const ENV: Readonly<Record<string, string>> = {
   GIT_OPTIONAL_LOCKS: "0",
   GIT_TERMINAL_PROMPT: "0",
@@ -68,13 +81,14 @@ const KEPT_REF = "refs/nyte/kept";
 
 const LEGACY_REFS = "refs/nyte/snapshots/";
 
-const SNAPSHOTS_KEPT = 1_000;
+/** Snapshot trees per generation tree under `refs/nyte/kept`; a full generation is never rewritten. */
+const GENERATION = 1_000;
 
 const KEEP_TRIES = 3;
 
 const CHUNK = 64 * 1024;
 
-/** Returns content-addressed snapshots of an environment's tree, so equal trees are equal ids whichever run took them. `before(run)` is taken once per run in this process and answered again after; `after(run)` is taken on every call. In a repository (`git`, default `git` on the PATH), a snapshot writes the environment's part of the worktree, tracked and untracked files that are not ignored, into a temporary index seeded from the real one (`GIT_INDEX_FILE`, `git add -A`, `git write-tree --prefix` for a workspace below the root; the real index is never touched) and keeps the tree reachable from the hidden ref `refs/nyte/kept`, a tree of the newest 1,000 snapshot trees (named by age, rewritten in the background after a snapshot of a tree it lacks, so a snapshot costs two git spawns: `add` and `write-tree`; the per-tree refs `refs/nyte/snapshots/<tree>` of earlier versions fold into it and go); the id is `git:<tree>`. The repository is looked up once. Without a repository it walks the tree as `localFiles.scan` does (up to `limit` entries, default 50 000), stores each file's bytes up to 1 MiB once under `<store>/objects/<sha256>` (a larger file is hashed, not stored; a file whose size, mtime and inode did not move is not re-read) and the tree, `{ incomplete, files }` (whether the walk stopped short, at its limit or at an unreadable directory, and the manifest of paths to content hashes), under `<store>/trees/<sha256 of it>.json`; the id is `tree:<hash>`. `diff(from, to)` answers the `ChangeSet` between two snapshots of one kind (empty, without running git, when they are equal; `git diff-tree -r -M --name-status`/`--numstat`, or the two manifests compared, an exact-content move a rename; the empty id `""` is the empty tree), its `revision` `to`; a path only an incomplete side lacks is neither added nor deleted but `modified` with an `unknown` stat; `patches(from, to, paths, options)` answers one `PatchEntry` per path the comparison reports, parsed into hunks as `localGit` parses them (`git diff` between the trees, read as `localGit.patches` reads: a path past 1 MiB `too-large`, one whose read fails `failed`, the others fine), or, between manifests, from the stored contents with the line diff (`too-large` for a file not stored, `binary` for one not text, `failed { reason: "incomplete" }` for a path only an incomplete side lacks). Snapshots of two kinds do not compare: `SdkError("invalid")`. */
+/** Returns content-addressed snapshots of an environment's tree, so equal trees are equal ids whichever run took them. `before(run)` is taken once per run in this process and answered again after; `after(run)` is taken on every call. In a repository (`git`, default `git` on the PATH), a snapshot writes the environment's part of the worktree, tracked and untracked files that are not ignored, into a temporary index seeded from the real one (`GIT_INDEX_FILE`, `git add -A`, `git write-tree --prefix` for a workspace below the root; the real index is never touched) and keeps the tree reachable for good from the hidden ref `refs/nyte/kept`, a tree of generation trees `g000000`, `g000001`, ... that each hold up to 1,000 snapshot trees named by their hash (only the newest generation and the root are rewritten, in the background after a snapshot of a tree this process has not kept, so a snapshot costs two git spawns: `add` and `write-tree`; the per-tree refs `refs/nyte/snapshots/<tree>` of earlier versions all fold into it and go); the id is `git:<tree>`. The repository is looked up once. Without a repository it walks the tree as `localFiles.scan` does (up to `limit` entries, default 50 000), stores each file's bytes up to 1 MiB once under `<store>/objects/<sha256>` (a larger file is hashed, not stored; a file whose size, mtime and inode did not move is not re-read) and the tree, `{ incomplete, files }` (whether the walk stopped short, at its limit or at an unreadable directory, and the manifest of paths to content hashes), under `<store>/trees/<sha256 of it>.json`; the id is `tree:<hash>`. `diff(from, to)` answers the `ChangeSet` between two snapshots of one kind (empty, without running git, when they are equal; `git diff-tree -r -M --name-status`/`--numstat`, or the two manifests compared, an exact-content move a rename; the empty id `""` is the empty tree), its `revision` `to`; a path only an incomplete side lacks is neither added nor deleted but `modified` with an `unknown` stat; `patches(from, to, paths, options)` answers one `PatchEntry` per path the comparison reports, parsed into hunks as `localGit` parses them (`git diff` between the trees, read as `localGit.patches` reads: a path past 1 MiB `too-large`, one whose read fails `failed`, the others fine), or, between manifests, from the stored contents with the line diff (`too-large` for a file not stored, `binary` for one not text, `failed { reason: "incomplete" }` for a path only an incomplete side lacks). Snapshots of two kinds do not compare: `SdkError("invalid")`. */
 export function localSnapshots(
   env: ExecutionEnv,
   options: { readonly store: string; readonly git?: string; readonly limit?: number },
@@ -86,7 +100,8 @@ export function localSnapshots(
   let repositoryLookup: Promise<Repository | null> | undefined;
   let emptyTree: Promise<string> | undefined;
   let keeping: Promise<void> | undefined;
-  let kept: { readonly id: string; readonly trees: readonly string[] } | null = null;
+  let kept: Kept | null = null;
+  const keptTrees = new Set<string>();
 
   const git = (
     cwd: string,
@@ -153,7 +168,7 @@ export function localSnapshots(
     const tree = await checked(first.code === 0 ? first : await write(false));
     const id = snapshotOf(`git:${tree}`);
 
-    if (fresh.includes(tree) || kept?.trees.includes(tree) === true) return id;
+    if (fresh.includes(tree) || keptTrees.has(tree)) return id;
     fresh.push(tree);
     keeping ??= keepTrees(repo).finally(() => {
       keeping = undefined;
@@ -193,15 +208,43 @@ export function localSnapshots(
 
     const current = refs.find((ref) => ref.name === KEPT_REF)?.id ?? null;
     const legacy = refs.filter((ref) => ref.name.startsWith(LEGACY_REFS));
-    const known = current === null ? [] : await readKept(repo, current);
-    const newest = new Set([...legacy.map((ref) => ref.id), ...known, ...taken].reverse());
-    const trees = [...newest].slice(0, SNAPSHOTS_KEPT).reverse();
+    const known =
+      current === null ? { id: "", root: [], last: null } : await readKept(repo, current);
+    const open = known.last !== null && known.last.trees.length < GENERATION ? known.last : null;
+    const openTrees = open?.trees ?? [];
 
-    const listing = trees
-      .map((tree, age) => `040000 tree ${tree}\t${String(age).padStart(6, "0")}\n`)
-      .join("");
+    const adding = [...new Set([...legacy.map((ref) => ref.id), ...taken])].filter(
+      (tree) => !keptTrees.has(tree) && !openTrees.includes(tree),
+    );
 
-    const next = await checked(await git(repo.root, ["mktree"], { input: listing }));
+    if (adding.length === 0 && legacy.length === 0) return true;
+    const filled = [...openTrees, ...adding];
+    const first = open?.number ?? (known.last === null ? 0 : known.last.number + 1);
+
+    const generations = await Promise.all(
+      Array.from({ length: Math.ceil(filled.length / GENERATION) }, async (_, index) => {
+        const trees = filled.slice(index * GENERATION, (index + 1) * GENERATION);
+
+        return {
+          number: first + index,
+          trees,
+          tree: await mktree(
+            repo,
+            trees.map((tree) => ({ tree, name: tree })),
+          ),
+        };
+      }),
+    );
+
+    const root = [
+      ...known.root.filter((entry) => entry.name !== open?.name),
+      ...generations.map((generation) => ({
+        tree: generation.tree,
+        name: generationName(generation.number),
+      })),
+    ];
+
+    const next = await mktree(repo, root);
 
     const commands = [
       current === null ? `create ${KEPT_REF} ${next}` : `update ${KEPT_REF} ${next} ${current}`,
@@ -218,25 +261,69 @@ export function localSnapshots(
       return false;
     }
 
-    kept = { id: next, trees };
+    const newest = generations.at(-1);
+
+    kept = {
+      id: next,
+      root,
+      last:
+        newest === undefined
+          ? known.last
+          : {
+              name: generationName(newest.number),
+              number: newest.number,
+              trees: newest.trees,
+            },
+    };
+
+    for (const tree of filled) keptTrees.add(tree);
 
     return true;
   };
 
-  const readKept = async (repo: Repository, id: string): Promise<readonly string[]> => {
-    if (kept?.id === id) return kept.trees;
+  const mktree = async (
+    repo: Repository,
+    entries: readonly { readonly tree: string; readonly name: string }[],
+  ): Promise<string> =>
+    checked(
+      await git(repo.root, ["mktree"], {
+        input: entries.map((entry) => `040000 tree ${entry.tree}\t${entry.name}\n`).join(""),
+      }),
+    );
+
+  const readTree = async (
+    repo: Repository,
+    id: string,
+  ): Promise<readonly { readonly tree: string; readonly name: string }[]> => {
     const listed = await checked(await git(repo.root, ["ls-tree", id]));
 
-    return listed
-      .split("\n")
-      .flatMap((line) => {
-        const [mode = "", type = "", rest = ""] = line.split(" ");
-        const [tree = "", name = ""] = rest.split("\t");
+    return listed.split("\n").flatMap((line) => {
+      const [mode = "", type = "", rest = ""] = line.split(" ");
+      const [tree = "", name = ""] = rest.split("\t");
 
-        return mode === "040000" && type === "tree" ? [{ tree, name }] : [];
+      return mode === "040000" && type === "tree" ? [{ tree, name }] : [];
+    });
+  };
+
+  const readKept = async (repo: Repository, id: string): Promise<Kept> => {
+    if (kept?.id === id) return kept;
+    const root = await readTree(repo, id);
+
+    const last = root
+      .flatMap((entry) => {
+        const number = GENERATION_NAME.exec(entry.name)?.[1];
+
+        return number === undefined ? [] : [{ ...entry, number: Number(number) }];
       })
-      .sort((left, right) => (left.name < right.name ? -1 : 1))
-      .map((entry) => entry.tree);
+      .toSorted((left, right) => left.number - right.number)
+      .at(-1);
+
+    if (last === undefined) return { id, root, last: null };
+    const trees = (await readTree(repo, last.tree)).map((entry) => entry.tree);
+
+    for (const tree of trees) keptTrees.add(tree);
+
+    return { id, root, last: { name: last.name, number: last.number, trees } };
   };
 
   const walkSnapshot = async (): Promise<SnapshotId> => {
@@ -682,4 +769,8 @@ async function manifestEntry(
     ),
     digest,
   };
+}
+
+function generationName(number: number): string {
+  return `g${String(number).padStart(6, "0")}`;
 }
