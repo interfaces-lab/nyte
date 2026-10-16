@@ -65,6 +65,44 @@ describe("execution", () => {
     await owned.close();
   });
 
+  it("ends a run failed when its step throws, instead of leaving it live with nothing driving it", async () => {
+    const store = await memoryStore().open();
+    let broken = true;
+
+    const failing: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        set(updates) {
+          if (
+            broken &&
+            updates.some((update) => update.event?.kind === "run" && update.event.change === "ended")
+          ) {
+            broken = false;
+
+            throw new Error("The disk is full.");
+          }
+
+          return store.refs.set(updates);
+        },
+      },
+    };
+
+    const { host, script } = await setup({ store: failing });
+    const session = await host.sessions.create();
+    const owned = await host.execution.cover({ kind: "all" });
+    const receipt = await session.send("Go.");
+    const step = host.execution.advance({ session: session.id, head: main });
+    (await script.started(1)).finish();
+
+    expect(await step).toEqual({ kind: "idle" });
+    expect(await receipt.settled()).toEqual({
+      kind: "failed",
+      failure: { class: "runner", message: "The disk is full." },
+    });
+    await owned.close();
+  });
+
   it("answers busy for a lease the same host holds in another instance (§42b)", async () => {
     const store = await memoryStore().open();
     const first = await setup({ store });

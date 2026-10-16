@@ -13,6 +13,7 @@ import type {
   SessionId,
   WaitTarget,
 } from "@nyte-ai/schema";
+import { retryDelayMs } from "@nyte-ai/ai/utils/retry";
 import { executeCall, owedCalls } from "../agent/tool-runner.ts";
 import type { FoldInput } from "../contract/fold.ts";
 import { PARTICIPANT_AUTHORITY } from "../contract/host.ts";
@@ -45,6 +46,8 @@ import { SdkError } from "../util/error.ts";
 const RENEW_MS = 10_000;
 
 const PAGE = 100;
+
+const ADVANCE_RETRY = { baseDelayMs: 1_000, maxAgentDelayMs: 60_000 } as const;
 
 type Refused = Extract<AdvanceReport, { readonly kind: "busy" | "fenced" }>;
 
@@ -153,7 +156,9 @@ export async function advance(
     for (const [handle, coverage] of state.covers)
       if (await covers(kernel, coverage, session)) owners?.add(handle);
 
-    report = await step(kernel, session, head);
+    report = await step(kernel, session, head).catch((error: unknown) =>
+      failStep(kernel, session, head, error),
+    );
     dev("execution", "advance", { session, head, report: report.kind });
 
     return report;
@@ -188,6 +193,22 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   begin(kernel, session, run.view);
 
   return (await drive(kernel, session, head, run.view)) ?? next(kernel, session, head);
+}
+
+/** A step that throws leaves its run live with nothing driving it, so the head would show working forever: the run ends failed with the error instead. */
+async function failStep(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  error: unknown,
+): Promise<AdvanceReport> {
+  dev("execution", "step failed", { session, head, error: formatError(error) });
+  const live = await liveRun(kernel, session, head);
+
+  if (live === null || kernel.driving.has(live.record.view.id)) throw error;
+  await endRun(kernel, session, live.record.view.id, failed(error));
+
+  return next(kernel, session, head);
 }
 
 export async function repair(
@@ -258,6 +279,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
   const inflight = new Map<string, Promise<void>>();
   const again = new Set<string>();
   const due = new Set<number>();
+  const failures = new Map<string, number>();
   const retries = new Set<ReturnType<typeof setTimeout>>();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
@@ -307,10 +329,17 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
 
         if (report.kind === "retry" || report.kind === "busy") stepAt(session, head, report.until);
 
-        if (report.kind !== "continue") return;
+        if (report.kind !== "continue") break;
       }
+
+      failures.delete(key);
     })()
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        const failed = (failures.get(key) ?? 0) + 1;
+        failures.set(key, failed);
+        dev("execution", "advance failed", { session, head, error: formatError(error) });
+        stepAt(session, head, Date.now() + retryDelayMs(ADVANCE_RETRY, failed));
+      })
       .finally(() => {
         inflight.delete(key);
 
@@ -344,7 +373,7 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
       do {
         cursor = (await repair(kernel, { cursor, limit: PAGE })).next ?? undefined;
       } while (cursor !== undefined && !closed);
-    })().catch(() => undefined);
+    })().catch((error: unknown) => dev("execution", "repair failed", { error: formatError(error) }));
 
   let closing: Promise<void> | null = null;
 
@@ -787,10 +816,11 @@ function waitingOn(
 }
 
 function failed(error: unknown): RunEnd {
-  return {
-    kind: "failed",
-    failure: { class: "runner", message: error instanceof Error ? error.message : String(error) },
-  };
+  return { kind: "failed", failure: { class: "runner", message: formatError(error) } };
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const DISPATCH_RETRIES = 3;
