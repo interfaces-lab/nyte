@@ -51,9 +51,9 @@ import {
   focusedPlace,
   focusedReview,
   initialWindow,
-  placeOf,
+  readPlace,
   reduce,
-  targetOf,
+  readOpenTarget,
   type OpenTarget,
   type Place,
   type WindowAction,
@@ -62,7 +62,7 @@ import type { ReviewSummary } from "./wire";
 
 type Dispatch = (action: WindowAction) => void;
 
-function titleOf(place: Place, reviews: readonly ReviewSummary[]): string {
+function describePlace(place: Place, reviews: readonly ReviewSummary[]): string {
   if (place.kind === "new-chat") return "New chat";
 
   if (place.kind === "reviews") return "Review";
@@ -155,7 +155,7 @@ function Sidebar({
 }): ReactElement {
   const open = (event: MouseEvent, place: Place): void => {
     event.preventDefault();
-    dispatch({ kind: "open", place, target: targetOf(event) });
+    dispatch({ kind: "open", place, target: readOpenTarget(event) });
   };
 
   const onNewChat = focused?.kind === "new-chat";
@@ -215,8 +215,8 @@ function TabStrip({
     <div {...props(styles.strip)}>
       <ul aria-label="Tabs" {...props(styles.tabs)}>
         {state.tabs.map((tab) => {
-          const place = placeOf(tab);
-          const title = titleOf(place, reviews);
+          const place = readPlace(tab);
+          const title = describePlace(place, reviews);
           const active = tab.id === state.active;
 
           return (

@@ -23,7 +23,7 @@ export type SideThread =
   | { readonly kind: "demo"; readonly exchanges: readonly DemoExchange[] }
   | { readonly kind: "live"; readonly id: string; readonly startedAt: number };
 
-const draftOf = (text: string): ComposerDocumentState => ({
+const createDraft = (text: string): ComposerDocumentState => ({
   text,
   selectionStart: text.length,
   selectionEnd: text.length,
@@ -62,7 +62,7 @@ function readMarks(reviewId: string): Readonly<Record<string, string>> {
 const fresh = (reviewId: string): Local => ({
   side: false,
   thread: { kind: "demo", exchanges: [] },
-  draft: draftOf(""),
+  draft: createDraft(""),
   opened: new Map(),
   marks: readMarks(reviewId),
   focus: 0,
@@ -127,14 +127,14 @@ export function useReviewState(reviewId: string, files: readonly Marked[]): Revi
 
   const local = store.states.get(reviewId) ?? fresh(reviewId);
   const update = (change: (local: Local) => Local): void => store.update(reviewId, change);
-  const blobsOf = (path: string): string => files.find((file) => file.path === path)?.blobs ?? "";
+  const findBlobs = (path: string): string => files.find((file) => file.path === path)?.blobs ?? "";
 
   const reviewed = (path: string): ReviewedState => {
     const seen = local.marks[path];
 
     if (seen === undefined) return "unreviewed";
 
-    return seen === blobsOf(path) ? "reviewed" : "changed";
+    return seen === findBlobs(path) ? "reviewed" : "changed";
   };
 
   return {
@@ -171,7 +171,7 @@ export function useReviewState(reviewId: string, files: readonly Marked[]): Revi
         const marks = { ...current.marks };
 
         for (const path of paths) {
-          if (next) marks[path] = blobsOf(path);
+          if (next) marks[path] = findBlobs(path);
           else delete marks[path];
         }
 
@@ -196,7 +196,7 @@ export function useReviewState(reviewId: string, files: readonly Marked[]): Revi
         return {
           ...current,
           side: true,
-          draft: draftOf(`${text}${text === "" || text.endsWith(" ") ? "" : " "}${reference} `),
+          draft: createDraft(`${text}${text === "" || text.endsWith(" ") ? "" : " "}${reference} `),
           focus: current.focus + 1,
         };
       }),
@@ -204,7 +204,7 @@ export function useReviewState(reviewId: string, files: readonly Marked[]): Revi
       update((current) => ({
         ...current,
         side: true,
-        draft: draftOf(draft),
+        draft: createDraft(draft),
         focus: current.focus + 1,
       })),
   };

@@ -22,7 +22,7 @@ import {
   AddToChat,
   CodeFileHeader,
   pierreHost,
-  referenceOf,
+  formatReference,
   usePierreOptions,
   type ReviewedState,
   type ReviewFile,
@@ -231,7 +231,7 @@ export function DiffStack(componentProps: DiffStackProps): ReactElement {
                         : { start: line.lineNumber, end: line.lineNumber });
 
                   if (file !== undefined && range !== undefined)
-                    componentProps.onReference(referenceOf(file, range));
+                    componentProps.onReference(formatReference(file, range));
                 }}
               />
             )}

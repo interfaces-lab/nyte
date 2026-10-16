@@ -4,10 +4,10 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Sparkline, hitRate, readTotal, type Metric } from "./charts";
-import { seriesTotal, sumOf, type Row, type Tally } from "./fixtures";
+import { seriesTotal, sumKinds, type Row, type Tally } from "./fixtures";
 import { count, delta, pct, tokens, usd } from "./format";
 import { dataFont, useFamily, widest } from "./measure";
-import { TONE_SCOPE, toneOf } from "./cells";
+import { TONE_SCOPE, judgeTone } from "./cells";
 import { CUM_BAR, styles } from "./page.stylex";
 
 const PARETO_CUT = 0.8;
@@ -101,7 +101,7 @@ export function Breakdown({
         changeRaw: previous === 0 ? 0 : (value - previous) / previous,
         share,
         cumulative: (built.at(-1)?.cumulative ?? 0) + share,
-        rate: sumOf(tally.cost) / Math.max(sumOf(tally.tokens) / 1e6, Number.EPSILON),
+        rate: sumKinds(tally.cost) / Math.max(sumKinds(tally.tokens) / 1e6, Number.EPSILON),
       },
     ];
   }, []);
@@ -117,7 +117,7 @@ export function Breakdown({
       case "delta":
         return line.changeRaw;
       case "tokens":
-        return metric === "cost" ? sumOf(line.tally.tokens) : sumOf(line.tally.cost);
+        return metric === "cost" ? sumKinds(line.tally.tokens) : sumKinds(line.tally.cost);
       case "hit":
         return hitRate(line.tally);
       case "rate":
@@ -146,7 +146,8 @@ export function Breakdown({
     delta: line.change.text,
     share: pct(line.share, 1),
     cum: pct(line.cumulative),
-    tokens: metric === "cost" ? tokens(sumOf(line.tally.tokens)) : usd(sumOf(line.tally.cost)),
+    tokens:
+      metric === "cost" ? tokens(sumKinds(line.tally.tokens)) : usd(sumKinds(line.tally.cost)),
     hit: pct(hitRate(line.tally), 1),
     rate: usd(line.rate),
     turns: count(line.tally.turns),
@@ -270,7 +271,10 @@ export function Breakdown({
                     styles.end,
                     line.change.sign === 0
                       ? styles.dim
-                      : [TONE_SCOPE[toneOf(line.change.sign, metric === "tokens")], styles.toned],
+                      : [
+                          TONE_SCOPE[judgeTone(line.change.sign, metric === "tokens")],
+                          styles.toned,
+                        ],
                   )}
                 >
                   {text.delta}
@@ -316,14 +320,14 @@ export function Breakdown({
             </td>
             <td {...props(styles.td, styles.end)}>
               {metric === "cost"
-                ? tokens(totals.reduce((sum, tally) => sum + sumOf(tally.tokens), 0))
-                : usd(totals.reduce((sum, tally) => sum + sumOf(tally.cost), 0))}
+                ? tokens(totals.reduce((sum, tally) => sum + sumKinds(tally.tokens), 0))
+                : usd(totals.reduce((sum, tally) => sum + sumKinds(tally.cost), 0))}
             </td>
             <td {...props(styles.td, styles.end)}>{pct(hitRate(seriesTotal(totals)), 1)}</td>
             <td {...props(styles.td, styles.end)}>
               {usd(
-                sumOf(seriesTotal(totals).cost) /
-                  Math.max(sumOf(seriesTotal(totals).tokens) / 1e6, Number.EPSILON),
+                sumKinds(seriesTotal(totals).cost) /
+                  Math.max(sumKinds(seriesTotal(totals).tokens) / 1e6, Number.EPSILON),
               )}
             </td>
             <td {...props(styles.td, styles.end)}>{count(seriesTotal(totals).turns)}</td>

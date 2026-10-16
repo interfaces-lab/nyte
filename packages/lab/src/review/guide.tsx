@@ -32,7 +32,7 @@ import {
   CodeFileHeader,
   Counts,
   pierreHost,
-  referenceOf,
+  formatReference,
   usePierreOptions,
   type ReviewedState,
   type ReviewFile,
@@ -280,7 +280,7 @@ function FileCard({
                       ? null
                       : { start: line.lineNumber, end: line.lineNumber, side: line.side });
 
-                  if (range !== null) input.onReference(referenceOf(file, range));
+                  if (range !== null) input.onReference(formatReference(file, range));
                 }}
               />
             )}

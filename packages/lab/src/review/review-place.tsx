@@ -35,9 +35,9 @@ import {
   type GuideWriting,
 } from "./guide";
 import { ReviewOverview } from "./overview";
-import { openerOf, pullRequestNumber } from "./pull-request";
+import { readOpener, pullRequestNumber } from "./pull-request";
 import { useReviewState } from "./review-state";
-import { briefsOf, useReviewFiles } from "./use-review-files";
+import { selectBriefs, useReviewFiles } from "./use-review-files";
 import { SideChat } from "./side-chat";
 import type { ReviewView } from "./window";
 import type { ReviewDetail } from "./wire";
@@ -130,7 +130,7 @@ export function PullRequestHeader({ review }: { readonly review: ReviewDetail })
   const { files } = review;
 
   const draft = review.author?.status === "working";
-  const opener = openerOf(review);
+  const opener = readOpener(review);
   const added = files.reduce((sum, file) => sum + file.added, 0);
   const removed = files.reduce((sum, file) => sum + file.removed, 0);
 
@@ -218,7 +218,7 @@ function ReviewDocument({
   onView,
 }: Navigation & { readonly review: ReviewDetail; readonly version: number }): ReactElement {
   const local = useReviewState(review.id, review.files);
-  const { empty, current, shown } = briefsOf(review);
+  const { empty, current, shown } = selectBriefs(review);
   const write = useWriteGuide(review.id);
   const approve = useApprove(review.id);
   const [inView, setInView] = useState(0);

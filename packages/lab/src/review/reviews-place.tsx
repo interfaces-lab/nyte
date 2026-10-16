@@ -16,10 +16,10 @@ import { useRepo } from "./api";
 import { count, plural, when } from "./files";
 import { NewReview } from "./new-review";
 import { pullRequestNumber } from "./pull-request";
-import { targetOf, type OpenTarget, type Place } from "./window";
+import { readOpenTarget, type OpenTarget, type Place } from "./window";
 import type { ReviewSummary } from "./wire";
 
-function statusOf(review: ReviewSummary): string | undefined {
+function describeStatus(review: ReviewSummary): string | undefined {
   if (review.author === "working") return "Nyte is working";
 
   if (review.author === "failed") return "Nyte stopped";
@@ -43,7 +43,7 @@ function PullRequestRow({
   readonly onOpen: (place: Place, target: OpenTarget) => void;
 }): ReactElement {
   const draft = review.author === "working";
-  const status = statusOf(review);
+  const status = describeStatus(review);
 
   const open = (event: MouseEvent, target: OpenTarget): void => {
     event.preventDefault();
@@ -54,7 +54,7 @@ function PullRequestRow({
     <li>
       <a
         href={`/review?id=${encodeURIComponent(review.id)}`}
-        onClick={(event) => open(event, targetOf(event))}
+        onClick={(event) => open(event, readOpenTarget(event))}
         onAuxClick={(event) => {
           if (event.button === 1) open(event, "background");
         }}

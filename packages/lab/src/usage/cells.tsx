@@ -31,13 +31,13 @@ export function Cell({
   );
 }
 
-export function toneOf(sign: -1 | 0 | 1, upIsGood: boolean): Tone {
+export function judgeTone(sign: -1 | 0 | 1, upIsGood: boolean): Tone {
   if (sign === 0) return "neutral";
 
   return sign > 0 === upIsGood ? "good" : "bad";
 }
 
-export function changeOf({
+export function describeChange({
   current,
   previous,
   upIsGood = false,
@@ -48,5 +48,5 @@ export function changeOf({
 }) {
   const change = delta(current, previous);
 
-  return { sub: change.text, tone: toneOf(change.sign, upIsGood) };
+  return { sub: change.text, tone: judgeTone(change.sign, upIsGood) };
 }

@@ -42,20 +42,20 @@ export type WindowAction =
   | { readonly kind: "forward" };
 
 /** The pull request a place is about, if it is about one. */
-export function reviewOf(place: Place): string | undefined {
+export function readReviewId(place: Place): string | undefined {
   return place.kind === "review" ? place.reviewId : undefined;
 }
 
 /** How a click asks to open a place: ⌘ or a middle click for a background tab. */
-export function targetOf(event: MouseEvent): OpenTarget {
+export function readOpenTarget(event: MouseEvent): OpenTarget {
   return event.metaKey || event.ctrlKey || event.button === 1 ? "background" : "here";
 }
 
 export function samePlace(left: Place, right: Place): boolean {
-  return left.kind === right.kind && reviewOf(left) === reviewOf(right);
+  return left.kind === right.kind && readReviewId(left) === readReviewId(right);
 }
 
-export const placeOf = (tab: Tab): Place => tab.entries[tab.index] ?? { kind: "new-chat" };
+export const readPlace = (tab: Tab): Place => tab.entries[tab.index] ?? { kind: "new-chat" };
 
 export function activeTab(state: WindowState): Tab | undefined {
   return state.tabs.find((tab) => tab.id === state.active);
@@ -65,14 +65,14 @@ export function activeTab(state: WindowState): Tab | undefined {
 export function focusedPlace(state: WindowState): Place | undefined {
   const tab = activeTab(state);
 
-  return tab === undefined ? undefined : placeOf(tab);
+  return tab === undefined ? undefined : readPlace(tab);
 }
 
 /** The pull request the active tab shows, if it shows one. */
 export function focusedReview(state: WindowState): string | undefined {
   const place = focusedPlace(state);
 
-  return place === undefined ? undefined : reviewOf(place);
+  return place === undefined ? undefined : readReviewId(place);
 }
 
 const newTab = (serial: number, place: Place): Tab => ({
@@ -121,7 +121,7 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
       }
 
       return updateActive(state, (tab) =>
-        samePlace(placeOf(tab), action.place)
+        samePlace(readPlace(tab), action.place)
           ? tab
           : {
               ...tab,

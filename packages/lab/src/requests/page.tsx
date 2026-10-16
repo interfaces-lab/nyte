@@ -261,7 +261,7 @@ const NODE_TYPES = {
   head: HeadCard,
 } satisfies NodeTypes;
 
-function graphOf(selected: RequestId) {
+function buildGraph(selected: RequestId) {
   const lit = { stroke: role.contentPrimary, strokeWidth: 1.5 };
   const quiet = { stroke: role.borderPrimaryTranslucent };
 
@@ -316,7 +316,7 @@ function graphOf(selected: RequestId) {
 export function RequestsPage(): ReactElement {
   const [selected, setSelected] = useState<RequestId>("chat");
   const request = REQUESTS[selected];
-  const { nodes, edges } = graphOf(selected);
+  const { nodes, edges } = buildGraph(selected);
 
   const select = (value: string | undefined): void => {
     const next = ORDER.find((id) => id === value);

@@ -40,7 +40,7 @@ export function parsePatch(patch: string, key: string): FileDiffMetadata | undef
  * removed lines. The side chat forks the brief, which already read the patch,
  * so the place is enough; the lines need not be quoted.
  */
-export function referenceOf(file: ReviewFile, range: SelectedLineRange): string {
+export function formatReference(file: ReviewFile, range: SelectedLineRange): string {
   const start = Math.min(range.start, range.end);
   const end = Math.max(range.start, range.end);
   const lines = start === end ? `${start}` : `${start}-${end}`;

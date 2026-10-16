@@ -14,7 +14,7 @@ export type ShownBrief = Brief & { readonly guide: Guide };
 const withGuide = (brief: Brief | undefined): brief is ShownBrief => brief?.guide !== undefined;
 
 /** The head's brief and the guide on screen. Pure: the Overview reads it without loading a patch. */
-export function briefsOf(review: ReviewDetail) {
+export function selectBriefs(review: ReviewDetail) {
   const { revision } = review;
   const current = review.briefs.find((brief) => brief.head === revision.head);
 
@@ -34,7 +34,7 @@ export function briefsOf(review: ReviewDetail) {
  */
 export function useReviewFiles(review: ReviewDetail) {
   const { revision } = review;
-  const { empty, current, shown } = briefsOf(review);
+  const { empty, current, shown } = selectBriefs(review);
 
   const since =
     shown === undefined ? undefined : shown.head === revision.head ? shown.from : shown.head;

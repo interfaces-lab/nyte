@@ -175,7 +175,7 @@ export function scale(tally: Tally, by: number): Tally {
   };
 }
 
-export const sumOf = (values: PerKind): number =>
+export const sumKinds = (values: PerKind): number =>
   values.input + values.output + values.cacheRead + values.cacheWrite;
 
 function priced(model: Model, cost: number, seed: number): Tally {
@@ -183,8 +183,8 @@ function priced(model: Model, cost: number, seed: number): Tally {
     (kind) => model.mix[kind] * (kind === "cacheRead" ? 1 + 0.08 * noise(seed) : 1),
   );
 
-  const mix = perKind((kind) => drift[kind] / sumOf(drift));
-  const blended = sumOf(perKind((kind) => mix[kind] * model.rate[kind]));
+  const mix = perKind((kind) => drift[kind] / sumKinds(drift));
+  const blended = sumKinds(perKind((kind) => mix[kind] * model.rate[kind]));
   const tokens = perKind((kind) => (cost / blended) * mix[kind] * 1e6);
 
   return {

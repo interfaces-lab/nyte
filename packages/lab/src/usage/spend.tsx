@@ -15,7 +15,7 @@ import {
   rows as groupRows,
   seriesTotal,
   slicePeriod,
-  sumOf,
+  sumKinds,
   type Grouping,
   type Period,
   type Tally,
@@ -23,7 +23,7 @@ import {
 } from "./fixtures";
 import { bucketLabel, count, pct, tokens, usd } from "./format";
 import { Breakdown } from "./breakdown";
-import { Cell, changeOf, toneOf } from "./cells";
+import { Cell, describeChange, judgeTone } from "./cells";
 import { styles } from "./page.stylex";
 
 export function SpendView({
@@ -159,15 +159,15 @@ function CostTicker({
   readonly period: Period;
   readonly perUnit: string;
 }): ReactElement {
-  const cost = sumOf(now.cost);
-  const costBefore = sumOf(before.cost);
-  const mtok = sumOf(now.tokens) / 1e6;
-  const mtokBefore = sumOf(before.tokens) / 1e6;
+  const cost = sumKinds(now.cost);
+  const costBefore = sumKinds(before.cost);
+  const mtok = sumKinds(now.tokens) / 1e6;
+  const mtokBefore = sumKinds(before.tokens) / 1e6;
   const perDay = period.unit === "hour" ? cost : cost / period.buckets;
 
   const peak = series.reduce(
     (best, tally, index) =>
-      sumOf(tally.cost) > sumOf(series[best]?.cost ?? tally.cost) ? index : best,
+      sumKinds(tally.cost) > sumKinds(series[best]?.cost ?? tally.cost) ? index : best,
     0,
   );
 
@@ -175,22 +175,26 @@ function CostTicker({
 
   return (
     <>
-      <Cell label="Cost" value={usd(cost)} {...changeOf({ current: cost, previous: costBefore })} />
+      <Cell
+        label="Cost"
+        value={usd(cost)}
+        {...describeChange({ current: cost, previous: costBefore })}
+      />
       <Cell
         label={`Avg${perUnit}`}
         value={usd(cost / series.length)}
-        {...changeOf({ current: cost / series.length, previous: costBefore / series.length })}
+        {...describeChange({ current: cost / series.length, previous: costBefore / series.length })}
       />
       <Cell label="Run rate 30D" value={usd(perDay * 30)} sub={`${usd(perDay)}/day`} />
       <Cell
         label="Peak"
-        value={usd(sumOf(series[peak]?.cost ?? now.cost))}
+        value={usd(sumKinds(series[peak]?.cost ?? now.cost))}
         sub={bucketLabel(starts[peak] ?? 0, period.unit)}
       />
       <Cell
         label="$/Mtok"
         value={usd(cost / Math.max(mtok, Number.EPSILON))}
-        {...changeOf({
+        {...describeChange({
           current: cost / Math.max(mtok, Number.EPSILON),
           previous: costBefore / Math.max(mtokBefore, Number.EPSILON),
         })}
@@ -205,12 +209,12 @@ function CostTicker({
       <Cell
         label="Turns"
         value={count(now.turns)}
-        {...changeOf({ current: now.turns, previous: before.turns, upIsGood: true })}
+        {...describeChange({ current: now.turns, previous: before.turns, upIsGood: true })}
       />
       <Cell
         label="$/Turn"
         value={usd(cost / Math.max(now.turns, 1))}
-        {...changeOf({
+        {...describeChange({
           current: cost / Math.max(now.turns, 1),
           previous: costBefore / Math.max(before.turns, 1),
         })}
@@ -226,7 +230,7 @@ function TokenTicker({
   readonly now: Tally;
   readonly before: Tally;
 }): ReactElement {
-  const total = sumOf(now.tokens);
+  const total = sumKinds(now.tokens);
   const hit = hitRate(now);
   const hitBefore = hitRate(before);
 
@@ -235,14 +239,14 @@ function TokenTicker({
       <Cell
         label="Tokens"
         value={tokens(total)}
-        {...changeOf({ current: total, previous: sumOf(before.tokens), upIsGood: true })}
+        {...describeChange({ current: total, previous: sumKinds(before.tokens), upIsGood: true })}
       />
       {TOKEN_KINDS.map((kind) => (
         <Cell
           key={kind}
           label={TOKEN_LABELS[kind]}
           value={tokens(now.tokens[kind])}
-          {...changeOf({
+          {...describeChange({
             current: now.tokens[kind],
             previous: before.tokens[kind],
             upIsGood: kind === "cacheRead",
@@ -253,7 +257,7 @@ function TokenTicker({
         label="Hit rate"
         value={pct(hit, 1)}
         sub={`${hit >= hitBefore ? "+" : "−"}${(Math.abs(hit - hitBefore) * 100).toFixed(1)} pts`}
-        tone={toneOf(Math.abs(hit - hitBefore) < 0.0005 ? 0 : hit > hitBefore ? 1 : -1, true)}
+        tone={judgeTone(Math.abs(hit - hitBefore) < 0.0005 ? 0 : hit > hitBefore ? 1 : -1, true)}
       />
       <Cell label="Tok/Turn" value={tokens(total / Math.max(now.turns, 1))} />
       <Cell
