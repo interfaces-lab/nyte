@@ -12,18 +12,10 @@ import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
 import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { TINTS } from "@nyte-ai/plugin/canvas/protocol";
 import { useColorScheme } from "./scheme.ts";
 
-const HUES: readonly Tint[] = [
-  "blue",
-  "purple",
-  "teal",
-  "orange",
-  "green",
-  "pink",
-  "yellow",
-  "red",
-];
+const HUES: readonly Tint[] = TINTS.slice(0, 8);
 
 const MAX_BOTTOM_TICKS = 8;
 
@@ -47,7 +39,7 @@ const styles = create({
     height: 8,
     flexShrink: 0,
     borderRadius: 2,
-    backgroundColor: role.bgInteractiveStrong,
+    backgroundColor: role.chartSeries,
   },
   readout: {
     display: "flex",
@@ -71,7 +63,7 @@ const styles = create({
     width: 6,
     height: 6,
     borderRadius: 1,
-    backgroundColor: role.bgInteractiveStrong,
+    backgroundColor: role.chartSeries,
   },
   readoutTotal: {
     marginBlockStart: 2,
@@ -122,7 +114,7 @@ function usePaint(): (tint: Tint) => string {
 
   return (tint) =>
     (tint === "custom" ? platformScopes[scheme].blue : platformScopes[scheme][tint])
-      .bgInteractiveStrong;
+      .chartSeries;
 }
 
 const tintAt = (index: number): Tint => HUES[index % HUES.length] ?? "blue";

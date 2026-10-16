@@ -78,16 +78,21 @@ export const REACT_EXPORTS = [
 
 export const JSX_RUNTIME_EXPORTS = ["Fragment", "jsx", "jsxs"] as const;
 
-/** The hues a series, a sparkline or a meter may name; charts without one take them in this order. */
+/**
+ * The hues a series, a sparkline or a meter may name; charts without one take
+ * the first eight in this order. Neighbours stay apart under protan and deutan
+ * vision (OKLab ΔE ≥ 10 on the chart-series step), the first three stay apart
+ * pairwise, and yellow, the one hue under 3:1 on white, comes late.
+ */
 export const TINTS = [
   "blue",
-  "purple",
-  "teal",
-  "orange",
-  "green",
   "pink",
-  "yellow",
+  "orange",
+  "teal",
   "red",
+  "yellow",
+  "purple",
+  "green",
   "gray",
   "brown",
 ] as const;
