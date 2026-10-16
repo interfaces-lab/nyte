@@ -220,14 +220,17 @@ export async function repair(
   if (input.cursor !== undefined && !input.cursor.startsWith("work:"))
     throw new SdkError("invalid", `${input.cursor} is not a recovery cursor`);
   const limit = Math.max(1, input.limit);
+
   const refs = await kernel.store.sessions.work({
     after:
       input.cursor === undefined ? undefined : asId<"session">(input.cursor.slice("work:".length)),
     limit: limit + 1,
   });
+
   const sessions = refs
     .slice(0, limit)
     .map((ref) => asId<"session">(ref.name.slice("sessions/".length)));
+
   await loadWaits(kernel, sessions);
   const runnable: { readonly session: SessionId; readonly head: HeadName }[] = [];
 
@@ -430,6 +433,7 @@ async function renewIdle(kernel: Kernel): Promise<void> {
 function inOrder<T>(kernel: Kernel, name: string, task: () => Promise<T>): Promise<T> {
   const queue = kernel.executionState.queue;
   const done = (queue.get(name) ?? Promise.resolve()).then(task);
+
   const settled = done.then(
     () => undefined,
     () => undefined,
