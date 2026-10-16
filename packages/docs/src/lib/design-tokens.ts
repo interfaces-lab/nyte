@@ -35,11 +35,6 @@ export function declaredToken(name: string): DeclaredToken {
   return token;
 }
 
-/** Every declared token whose name starts with `prefix`, in source order. */
-export function declaredTokens(prefix: string): DeclaredToken[] {
-  return [...declared.values()].filter((token) => token.name.startsWith(prefix));
-}
-
 /**
  * The px a type token resolves to at the default 13px UI size. Sizes are
  * written as `base * n / 13`, so at the default they are `n`.
