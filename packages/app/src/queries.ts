@@ -191,7 +191,6 @@ export function useServerState(active: boolean) {
     queryKey: keys.server,
     queryFn: () => nyte.host.server.state(),
     staleTime: active ? 0 : Infinity,
-    refetchInterval: active ? 15_000 : false,
     refetchOnWindowFocus: active ? "always" : false,
     refetchOnMount: active ? "always" : false,
   });

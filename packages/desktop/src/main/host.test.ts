@@ -123,7 +123,10 @@ test("connecting a server proves the token, pins the host that answered and reme
   assert.equal(JSON.parse(saved).hostId, remote.expect?.hostId);
 
   await server.close();
-  assert.equal((await made.host.call(1, "host.server.state", undefined)).kind, "unavailable");
+  await vi.waitFor(async () =>
+    assert.equal((await made.host.call(1, "host.server.state", undefined)).kind, "unavailable"),
+  );
+  assert.ok(made.events.filter((event) => event.kind === "server_changed").length >= 2);
   await made.host.call(1, "host.server.disconnect", undefined);
   assert.deepEqual(await made.host.call(1, "host.server.state", undefined), { kind: "none" });
 });

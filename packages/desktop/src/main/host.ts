@@ -6,7 +6,7 @@ import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { childEnvironment } from "@nyte-ai/core";
 import { SdkError, sdk } from "@nyte-ai/sdk";
-import type { Host, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
+import type { Host, HostView, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
 import { ConnectError, hostShare, machineName } from "@nyte-ai/connect/host";
 import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
@@ -182,26 +182,47 @@ async function follow<T>(
   }
 }
 
+const SERVER_PROBLEMS = {
+  network: {
+    kind: "network",
+    message: "Cannot reach the server. Check your connection and try again.",
+  },
+  authentication: {
+    kind: "authentication",
+    message: "The server rejected this token. Update the connection token.",
+  },
+  incompatible: {
+    kind: "incompatible",
+    message: "A different host answered at this address. Pair with it again.",
+  },
+  server: { kind: "server", message: "The server could not answer. Try again later." },
+} as const satisfies { readonly [K in ServerConnectionProblem["kind"]]: ServerConnectionProblem };
+
 function serverProblem(cause: unknown): ServerConnectionProblem {
-  if (!(cause instanceof SdkError) || cause.code === "unavailable")
-    return {
-      kind: "network",
-      message: "Cannot reach the server. Check your connection and try again.",
-    };
+  if (!(cause instanceof SdkError) || cause.code === "unavailable") return SERVER_PROBLEMS.network;
 
   if (cause.code === "unauthenticated" || cause.code === "denied")
-    return {
-      kind: "authentication",
-      message: "The server rejected this token. Update the connection token.",
-    };
+    return SERVER_PROBLEMS.authentication;
 
-  if (cause.code === "stale")
-    return {
-      kind: "incompatible",
-      message: "A different host answered at this address. Pair with it again.",
-    };
+  if (cause.code === "stale") return SERVER_PROBLEMS.incompatible;
 
-  return { kind: "server", message: "The server could not answer. Try again later." };
+  return SERVER_PROBLEMS.server;
+}
+
+/** The saved server's state as its connection's link reports it. */
+function linkedServer(url: string, view: HostView): ServerState {
+  const { link } = view;
+
+  if (link.kind === "connected") return { kind: "connected", baseUrl: url, version: view.version };
+
+  const problem =
+    link.kind === "reconnecting" || link.reason === "client"
+      ? SERVER_PROBLEMS.network
+      : link.reason === "revoked"
+        ? SERVER_PROBLEMS.authentication
+        : SERVER_PROBLEMS.incompatible;
+
+  return { kind: "unavailable", baseUrl: url, problem };
 }
 
 /**
@@ -217,6 +238,14 @@ export function throwForRenderer(cause: unknown): never {
     throw new ExpectedHostError({ code: cause.code, message: cause.message });
 
   throw cause;
+}
+
+/** The saved server as one long-lived watch reports it; `first` settles with its first answer. */
+interface ServerWatch {
+  readonly saved: SavedServer;
+  readonly stop: AbortController;
+  readonly first: PromiseWithResolvers<void>;
+  state: ServerState | undefined;
 }
 
 async function probeServer(url: string, token: string, hostId?: SavedServer["hostId"]) {
@@ -271,6 +300,7 @@ export class DesktopHost {
   #awake = false;
   #remote: Promise<ActiveRemote> | undefined;
   #remoteLock: Promise<void> = Promise.resolve();
+  #server: Promise<ServerWatch | undefined> | undefined;
   #closing: Promise<void> | undefined;
 
   constructor(dependencies: DesktopHostDependencies) {
@@ -400,6 +430,7 @@ export class DesktopHost {
     "host.server.connect": (_window, input) => this.#connectServer(input),
     "host.server.disconnect": async () => {
       await this.#servers.clear();
+      await this.#watchServer(undefined);
       this.#deps.emitHostEvent({ kind: "server_changed" });
     },
     "host.remote.state": () => this.#remoteState(),
@@ -542,23 +573,15 @@ export class DesktopHost {
     };
   }
 
+  /** Answers from the saved server's watch; only the first read after launch waits, for its first answer. */
   async #serverState(): Promise<ServerState> {
-    const saved = await this.#servers.read();
+    this.#server ??= this.#servers.read().then((saved) => this.#startServer(saved));
+    const watch = await this.#server;
 
-    if (saved === undefined) return { kind: "none" };
+    if (watch === undefined) return { kind: "none" };
+    await watch.first.promise;
 
-    return probeServer(saved.url, saved.token, saved.hostId).then(
-      (answered): ServerState => ({
-        kind: "connected",
-        baseUrl: saved.url,
-        version: answered.version,
-      }),
-      (cause: unknown): ServerState => ({
-        kind: "unavailable",
-        baseUrl: saved.url,
-        problem: serverProblem(cause),
-      }),
-    );
+    return watch.state ?? { kind: "none" };
   }
 
   async #connectServer(input: { readonly baseUrl: string; readonly token: string }) {
@@ -567,10 +590,94 @@ export class DesktopHost {
     );
 
     if ("kind" in answered) return { kind: "failed" as const, message: answered.message };
-    await this.#servers.write({ url: input.baseUrl, hostId: answered.hostId, token: input.token });
+    const saved = { url: input.baseUrl, hostId: answered.hostId, token: input.token };
+    await this.#servers.write(saved);
+    await this.#watchServer(saved);
     this.#deps.emitHostEvent({ kind: "server_changed" });
 
     return { kind: "connected" as const, baseUrl: input.baseUrl, version: answered.version };
+  }
+
+  /** Replaces the saved server's watch: stops the old one and, given a server, opens the next. */
+  async #watchServer(saved: SavedServer | undefined): Promise<void> {
+    const previous = await this.#server;
+    previous?.stop.abort();
+    this.#server = Promise.resolve(this.#startServer(saved));
+  }
+
+  #startServer(saved: SavedServer | undefined): ServerWatch | undefined {
+    if (saved === undefined || this.#closing !== undefined) return undefined;
+
+    const watch: ServerWatch = {
+      saved,
+      stop: new AbortController(),
+      first: Promise.withResolvers(),
+      state: undefined,
+    };
+
+    void this.#followServer(watch);
+
+    return watch;
+  }
+
+  /**
+   * Keeps one connection to the saved server and reads its state from the link
+   * `connection.watch` reports, so a status read costs nothing: the SDK reconnects a lost link
+   * itself. A refused or closed connection reads as unavailable and is opened again after a
+   * growing pause. Each change is announced as `server_changed`.
+   */
+  async #followServer(watch: ServerWatch): Promise<void> {
+    const { saved } = watch;
+    const signal = AbortSignal.any([watch.stop.signal, this.#watching.signal]);
+    let wait = WATCH_RETRY_MS;
+
+    while (!signal.aborted) {
+      try {
+        const connection = await sdk.connect({
+          url: saved.url,
+          credentials: { kind: "token", token: saved.token },
+          expect: { hostId: saved.hostId },
+        });
+
+        const stop = (): void => {
+          void connection.close();
+        };
+
+        signal.addEventListener("abort", stop, { once: true });
+
+        try {
+          for await (const view of connection.watch()) {
+            wait = WATCH_RETRY_MS;
+            this.#serverAnswered(watch, linkedServer(saved.url, view));
+          }
+        } finally {
+          signal.removeEventListener("abort", stop);
+          await connection.close().catch(() => undefined);
+        }
+
+        throw new SdkError("unavailable", "The server closed the connection.");
+      } catch (cause) {
+        if (signal.aborted) return;
+        this.#serverAnswered(watch, {
+          kind: "unavailable",
+          baseUrl: saved.url,
+          problem: serverProblem(cause),
+        });
+      }
+
+      await pause(wait, signal);
+      wait = Math.min(wait * 2, WATCH_RETRY_CAP_MS);
+    }
+  }
+
+  #serverAnswered(watch: ServerWatch, state: ServerState): void {
+    const changed =
+      watch.state !== undefined && JSON.stringify(watch.state) !== JSON.stringify(state);
+
+    watch.state = state;
+    watch.first.resolve();
+
+    if (changed) this.#deps.emitHostEvent({ kind: "server_changed" });
   }
 
   async #remoteState(): Promise<RemoteAccessState> {
