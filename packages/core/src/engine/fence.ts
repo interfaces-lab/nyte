@@ -18,11 +18,14 @@ import {
   inboxWithout,
   load,
   put,
+  readCall,
   readInbox,
   readRefExpectation,
+  readSession,
   readTip,
   STALE,
 } from "../store/session.ts";
+import { readParkedWait } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 export const FENCED: Failure = { class: "aborted", message: "Stopped." };
@@ -57,10 +60,41 @@ export async function stopRun(
   }
 
   await finishFence(kernel, session, run);
+  await stopWaitedChildren(kernel, session, run);
   await kernel.waits.runStopped(session, run);
   kernel.wakes.notify(session, fenced.head);
 
   return { kind: "requested" };
+}
+
+/** Stops each run of this session's subagents that `run` is parked waiting on, as a `task` call waits on the child it started: the work it waited for is part of what the user stopped. */
+async function stopWaitedChildren(kernel: Kernel, session: SessionId, run: RunId): Promise<void> {
+  const found = await load(
+    kernel.store,
+    await kernel.store.refs.get(runRef(session, run)),
+    decodeRunRecord,
+  );
+
+  const waited = await Promise.all(
+    (found?.record.parked ?? []).map(async (call) => {
+      const parked = readParkedWait(
+        session,
+        (await readCall(kernel.store, session, call))?.record ?? null,
+      );
+
+      if (parked === null) return [];
+
+      return ("targets" in parked.target ? parked.target.targets : [parked.target]).flatMap(
+        (target) => (target.kind === "run" ? [target] : []),
+      );
+    }),
+  );
+
+  for (const target of waited.flat()) {
+    const child = await readSession(kernel.store, target.session);
+
+    if (child?.record.parent === session) await stopRun(kernel, target.session, target.run);
+  }
 }
 
 export async function fence(kernel: Kernel, session: SessionId, run: RunId): Promise<Fence> {
