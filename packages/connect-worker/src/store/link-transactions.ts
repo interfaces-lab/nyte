@@ -5,7 +5,7 @@ import type { LinkTransaction } from "./rows.ts";
 
 const LINK_TRANSACTION_PENDING_LIMIT = 3;
 
-export type OpenTransactionOutcome =
+type OpenTransactionOutcome =
   | { readonly kind: "opened"; readonly transaction: LinkTransaction }
   | { readonly kind: "conflict" }
   | { readonly kind: "code_taken" }

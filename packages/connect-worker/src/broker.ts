@@ -33,7 +33,7 @@ import { errorName } from "./log.ts";
 import { connectRelay, relayPublic } from "./public-relay.ts";
 import { handleWebhook } from "./webhook.ts";
 
-export interface ExecutionContext {
+interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
 

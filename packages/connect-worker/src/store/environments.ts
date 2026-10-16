@@ -68,7 +68,7 @@ const standing = (owner: string, session: string, now: string) => `
 const CLAIM_INSERT = `INSERT INTO environments
   (id, owner_id, thumbprint, public_key, name, state, generation, policy, created_at)`;
 
-export type ClaimInput =
+type ClaimInput =
   | {
       readonly kind: "session";
       readonly ownerId: string;

@@ -75,7 +75,7 @@ const RATE_LIMITS = {
   relay: { windowMs: 60_000, limit: 1200 },
 } as const;
 
-export type RateLimit = keyof typeof RATE_LIMITS;
+type RateLimit = keyof typeof RATE_LIMITS;
 
 /** Count one request against `bucket` for `subject`. False once the window is full. */
 export async function allow(

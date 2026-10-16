@@ -79,7 +79,7 @@ type ClerkUser = Static<typeof ClerkUser>;
 
 const LABEL_LIMIT = 320;
 
-export interface Session {
+interface Session {
   readonly userId: string;
   readonly sessionId: string;
   /** A non-empty `email` claim, when the operator added one to the session token. */
@@ -188,7 +188,7 @@ async function clerkCall(
   return { status: response.status, body };
 }
 
-export type Standing =
+type Standing =
   | "active"
   /** Banned or locked in Clerk, or unknown to it. Not terminal. */
   | "disabled"
@@ -230,7 +230,7 @@ export async function ownerStanding(
   return (await findOwner(context.db, input.userId))?.status ?? "active";
 }
 
-export type OwnerLookup =
+type OwnerLookup =
   | { readonly kind: "found"; readonly label: string | undefined }
   | { readonly kind: "absent" }
   | { readonly kind: "failed" };
