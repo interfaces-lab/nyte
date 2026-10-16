@@ -33,9 +33,9 @@ const stateSchema = Type.Object({ theme: themeSource, window: Type.Optional(wind
 
 const launchState = Compile(stateSchema);
 
-export type ThemeSource = Static<typeof themeSource>;
+type ThemeSource = Static<typeof themeSource>;
 
-export type WindowFrame = Static<typeof windowFrame>;
+type WindowFrame = Static<typeof windowFrame>;
 
 type LaunchState = Static<typeof stateSchema>;
 

@@ -24,7 +24,7 @@ function guestUserAgent(): string {
     .join(" ");
 }
 
-export interface GuestSessionsOptions {
+interface GuestSessionsOptions {
   readonly dependencies: BrowserSurfacesDependencies;
   readonly downloads: BrowserDownloads;
   /** The live surface showing this `WebContents`, if any. */

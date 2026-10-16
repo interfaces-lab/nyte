@@ -58,7 +58,7 @@ export type TunnelFile = Static<typeof tunnelType>;
 
 export type StoredDevice = Static<typeof deviceType>;
 
-export type TunnelRead =
+type TunnelRead =
   | { readonly kind: "ready"; readonly file: TunnelFile | undefined }
   | { readonly kind: "failed" };
 

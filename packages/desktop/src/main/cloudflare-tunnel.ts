@@ -66,7 +66,7 @@ function storeFailed(): ExpectedHostError {
   });
 }
 
-export interface CloudflareTunnelOptions {
+interface CloudflareTunnelOptions {
   /** Holds the settings file and cloudflared's private home. */
   readonly home: string;
   /** The cloudflared executable. Absent, the usual install paths are searched. */

@@ -3,7 +3,7 @@ import type { AccountState } from "./account-session.ts";
 import type { AccountStore } from "./account-store.ts";
 
 /** The sign-in main holds for Clerk: its client token and the account it describes. */
-export type SignInKeeper = {
+type SignInKeeper = {
   readonly state: () => AccountState;
   /** The renderer's report of who Clerk has signed in. */
   readonly report: (next: AccountState) => void;

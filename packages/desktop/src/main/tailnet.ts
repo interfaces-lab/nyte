@@ -20,12 +20,12 @@ const statusSchema = Type.Object(
   { additionalProperties: true },
 );
 
-export interface TailnetAddress {
+interface TailnetAddress {
   readonly ip: string;
   readonly name: string | undefined;
 }
 
-export type TailnetLookup =
+type TailnetLookup =
   | { readonly kind: "ready"; readonly address: TailnetAddress }
   | { readonly kind: "unavailable"; readonly state: string }
   | { readonly kind: "missing" };

@@ -56,24 +56,6 @@ function reclaimable(surface: Surface): boolean {
   return contents.isDestroyed() || !contents.isLoading();
 }
 
-/** The renderer's calls the host routes to the browser, by its bridge's own signatures. */
-export type BrowserPanels = Pick<
-  BrowserSurfaces,
-  | "open"
-  | "navigate"
-  | "menu"
-  | "perform"
-  | "close"
-  | "captureFrame"
-  | "find"
-  | "cancelDownload"
-  | "login"
-  | "history"
-  | "forgetHistory"
-  | "focusPage"
-  | "agent"
->;
-
 export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
   readonly dependencies: BrowserSurfacesDependencies;
   /** The BrowserAgent implementation for the tools plugin. */

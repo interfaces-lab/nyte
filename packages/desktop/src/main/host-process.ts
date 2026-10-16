@@ -18,7 +18,7 @@ import type { DesktopUpdateActivity } from "./host.ts";
 import type { HostWindow } from "./host-window.ts";
 
 /** What main does with the host process's messages. */
-export interface HostProcessHandlers {
+interface HostProcessHandlers {
   event(event: HostEvent, window: HostWindow | undefined): void;
   awake(awake: boolean): void;
   settings(settings: DesktopSettings): void;

@@ -81,7 +81,7 @@ export function shellContentSecurityPolicy(input: { readonly frameAncestor: stri
   ].join("; ");
 }
 
-export type RendererFile =
+type RendererFile =
   | {
       readonly kind: "file";
       readonly host: typeof ACCOUNT_HOST | typeof CANVAS_HOST;

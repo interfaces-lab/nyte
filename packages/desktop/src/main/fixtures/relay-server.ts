@@ -67,7 +67,7 @@ function waitOn(exchange: Exchange): Promise<void> {
   return new Promise((resolve) => exchange.waiters.add(resolve));
 }
 
-export interface RelayServerOptions {
+interface RelayServerOptions {
   /** The broker origin the desktop was built with. */
   readonly origin: string;
   /** Undefined accepts the socket; a number closes it with that code. */
