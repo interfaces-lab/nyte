@@ -49,7 +49,13 @@ export function Screen(): JSX.Element {
           <DialogHost />
         </box>
       </Show>
-      <box id="conversation" flexGrow={1} minHeight={0} visible={where() !== "screen" && !tiny()}>
+      <box
+        id="conversation"
+        flexGrow={1}
+        flexBasis={0}
+        minHeight={0}
+        visible={where() !== "screen" && !tiny()}
+      >
         <Transcript
           model={() => screen().transcript}
           tasks={() => screen().tasks}
