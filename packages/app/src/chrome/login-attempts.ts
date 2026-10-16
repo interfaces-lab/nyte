@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { DeviceCode } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
 import { connection } from "../sdk.tsx";
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -91,7 +92,10 @@ export async function startLogin(
         case "open":
           if (step.code === undefined) {
             patch(provider, attempt, { browser: { url: step.url, acceptsCode: false } });
-            void nyte.host.openExternal({ url: step.url }).catch(() => undefined);
+            openExternal(
+              step.url,
+              "Couldn't open the sign-in page. Use Open Sign-In Page instead.",
+            );
           } else {
             patch(provider, attempt, {
               deviceCode: { userCode: step.code, verificationUri: step.url },

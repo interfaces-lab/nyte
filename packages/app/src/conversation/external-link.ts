@@ -1,22 +1,23 @@
 import { clientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
+import { toast } from "@nyte-ai/ui/toast";
+import { errorMessage } from "../errors.ts";
 import { preferences } from "../preferences/index.ts";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 
-async function confirmAndOpen(url: URL): Promise<void> {
+/** Ask about a link whose host isn't trusted; true when it should open. */
+async function confirmOpen(url: URL): Promise<boolean> {
   const trusted = preferences.trustedLinkHosts.get();
 
-  if (preferences.confirmExternalLinks.get() && !trusted.includes(url.host)) {
-    const choice = await nyte.host.confirmExternal({ url: url.href });
+  if (!preferences.confirmExternalLinks.get() || trusted.includes(url.host)) return true;
+  const choice = await nyte.host.confirmExternal({ url: url.href });
 
-    if (choice === "cancel") return;
+  if (choice === "copy") await navigator.clipboard.writeText(url.href);
 
-    if (choice === "copy") return navigator.clipboard.writeText(url.href);
+  if (choice === "trust") preferences.trustedLinkHosts.set([...trusted, url.host]);
 
-    if (choice === "trust") preferences.trustedLinkHosts.set([...trusted, url.host]);
-  }
-
-  return nyte.host.openExternal({ url: url.href });
+  return choice === "open" || choice === "trust";
 }
 
 /** Opens a link in the system browser, asking first unless its host was trusted. */
@@ -24,7 +25,17 @@ export function openExternalLink(href: string): void {
   const url = URL.parse(href);
 
   if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) return;
-  void confirmAndOpen(url).catch(() => undefined);
+  void confirmOpen(url).then(
+    (open) => {
+      if (open) openExternal(url.href);
+    },
+    (cause: unknown) =>
+      toast.add({
+        type: "error",
+        title: "Couldn't open the link.",
+        description: errorMessage(cause),
+      }),
+  );
 }
 
 /** Opens a link from conversation content where the user chose: the workbench browser, or the system browser. */

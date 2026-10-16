@@ -24,6 +24,7 @@ import type {
 } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
 import { useHostState } from "../queries.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
@@ -131,10 +132,6 @@ function Group({ label, children }: { readonly label: string; readonly children:
       {children}
     </section>
   );
-}
-
-function openExternal(url: string): void {
-  void nyte.host.openExternal({ url }).catch(() => undefined);
 }
 
 /** The Nyte account signed in on this Mac: an address, or the way to sign in. */

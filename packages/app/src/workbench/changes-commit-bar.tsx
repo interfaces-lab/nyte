@@ -30,6 +30,7 @@ import {
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
 import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -617,8 +618,7 @@ export function ChangesCommitBar({
                   onClick={(event) => {
                     event.preventDefault();
 
-                    if (result.url !== undefined)
-                      void nyte.host.openExternal({ url: result.url }).catch(() => undefined);
+                    if (result.url !== undefined) openExternal(result.url);
                   }}
                 >
                   {result.url}

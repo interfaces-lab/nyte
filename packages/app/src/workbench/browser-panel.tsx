@@ -14,6 +14,7 @@ import { WorkbenchRail } from "./workbench-rail.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte";
+import { openExternal } from "../open-external.ts";
 import { macPlatform } from "../platform.ts";
 import { keys } from "../queries.ts";
 import { displayAddress, parseWebUrl } from "./browser-address.ts";
@@ -643,7 +644,7 @@ export function BrowserPanel({
             aria-label="Open in system browser"
             onClick={(event) => {
               event.preventDefault();
-              void nyte.host.openExternal({ url: currentUrl }).catch(() => undefined);
+              openExternal(currentUrl);
             }}
           />
         ) : (

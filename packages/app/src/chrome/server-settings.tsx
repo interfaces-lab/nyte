@@ -23,6 +23,7 @@ import { Tabs } from "@nyte-ai/ui/tabs";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { MenuItem } from "@nyte-ai/ui/menu";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
 import { keys, useRemoteAccessState } from "../queries.ts";
 import { ConnectionList, ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
@@ -69,12 +70,7 @@ function ServingPanel({ state }: { state: TokenServing }) {
             rel="noreferrer"
             onClick={(event) => {
               event.preventDefault();
-              nyte.host.openExternal({ url: state.pairingUrl }).catch((cause: unknown) => {
-                toast.add({
-                  type: "error",
-                  title: `Couldn't open the link: ${errorMessage(cause)}`,
-                });
-              });
+              openExternal(state.pairingUrl, "Couldn't open the pairing link. Copy it instead.");
             }}
           >
             Open Pairing Link

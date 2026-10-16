@@ -21,6 +21,7 @@ import { useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { ConnectBridge, GitHubBridge } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
 import { useHostState, useUpdateState } from "../queries.ts";
 import { updateLabel } from "../updates.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";
@@ -30,10 +31,6 @@ import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 const FEEDBACK_URL = "https://github.com/interfaces-lab/nyte/issues/new/choose";
 
 const INSTALL_GITHUB_CLI_URL = "https://cli.github.com";
-
-function openExternal(url: string): void {
-  void nyte.host.openExternal({ url }).catch(() => undefined);
-}
 
 /** The GitHub CLI's item: who is signed in, or the one step that gets there. */
 function GitHubGroup({

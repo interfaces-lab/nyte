@@ -335,7 +335,12 @@ export function Composer({
       .session(sessionId)
       .run(liveRun.id)
       .stop()
-      .catch(() => undefined);
+      .catch((cause: unknown) =>
+        setFeedback({
+          kind: "error",
+          message: `Couldn't stop the response: ${errorMessage(cause)}`,
+        }),
+      );
   };
 
   const cancelPending = (item: UserMessage): void => {
