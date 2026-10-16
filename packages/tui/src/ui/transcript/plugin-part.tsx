@@ -1,8 +1,11 @@
+import { isPart } from "@nyte-ai/plugin/client";
+import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { Renderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createMemo, ErrorBoundary, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
+import { GLYPHS } from "../../lib/constants.ts";
 import type { PartMessage } from "../../lib/view-helpers.ts";
 
 function Mounted(props: { readonly node: Renderable }): JSX.Element {
@@ -31,11 +34,29 @@ export function PluginPart(props: { readonly message: PartMessage }): JSX.Elemen
     ),
   );
 
-  const fallback = (): JSX.Element => (
-    <text id={`part:${props.message.id}`} fg={app.kit.theme().dim} wrapMode="word">
-      {`[${props.message.partKind}]`}
-    </text>
-  );
+  const fallback = (): JSX.Element => {
+    const { message } = props;
+
+    if (!isPart(message, canvas))
+      return (
+        <text id={`part:${message.id}`} fg={app.kit.theme().dim} wrapMode="word">
+          {`[${message.partKind}]`}
+        </text>
+      );
+
+    return (
+      <text id={`part:${message.id}`} wrapMode="word">
+        <span
+          style={{ fg: app.kit.theme().foreground }}
+        >{`${GLYPHS.diamond} ${message.state.title}`}</span>
+        <span style={{ fg: app.kit.theme().dim }}>
+          {message.state.error === null
+            ? " · canvas · open this chat in Nyte desktop to view it"
+            : " · canvas failed to render · open this chat in Nyte desktop to see why"}
+        </span>
+      </text>
+    );
+  };
 
   return (
     <ErrorBoundary

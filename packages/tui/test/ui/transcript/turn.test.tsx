@@ -52,6 +52,28 @@ describe("turn", () => {
     expect(frame).not.toContain("run the linter");
   });
 
+  test("a canvas shows its title and where to open it", async () => {
+    const view = viewOf((v) =>
+      v.turn("t1", (t) =>
+        t
+          .user("chart it")
+          .part(
+            "canvas",
+            { runtime: 1, title: "Weekly signups", code: "", height: null, error: null },
+            { role: "answer" },
+          )
+          .ended("completed"),
+      ),
+    );
+
+    await using app = await renderWithApp(stateOf(followed(view)), transcript);
+    const frame = app.captureCharFrame();
+
+    expect(frame).toContain("Weekly signups");
+    expect(frame).toContain("open this chat in Nyte desktop");
+    expect(frame).not.toContain("[canvas]");
+  });
+
   test("blocks keep view order and changing output mode expands the card", async () => {
     const view = viewOf((v) =>
       v.turn("t1", (t) =>
