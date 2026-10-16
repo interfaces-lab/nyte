@@ -107,7 +107,7 @@ async function until(response: Response, done: (frame: Json) => boolean): Promis
 async function sent(
   target: Listener | string,
 ): Promise<{ readonly session: SessionId; readonly receipt: ReceiptId }> {
-  const started = await json(await post(target, "sessions.start", { content: "Hi." }));
+  const started = await json(await post(target, "sessions.start", { id: crypto.randomUUID(), content: "Hi." }));
 
   assert(
     typeof started === "object" &&
@@ -203,7 +203,7 @@ describe("listen", () => {
   it("ends a revoked principal's open head.watch at once, unauthenticated, while another principal's keeps flowing", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
-    const created = await json(await post(listener, "sessions.start", { content: "Hi." }));
+    const created = await json(await post(listener, "sessions.start", { id: crypto.randomUUID(), content: "Hi." }));
     assert(
       typeof created === "object" &&
         created !== null &&

@@ -71,7 +71,7 @@ function changed(change: (opened: StoreConnection) => StoreConnection): Store {
 async function sent(handler: (request: Request) => Promise<Response>) {
   return decodeOutput(
     "sessions.start",
-    await (await post(handler, "sessions.start", { content: "Hi." })).json(),
+    await (await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
   );
 }
 
@@ -249,7 +249,7 @@ describe("handler", () => {
 
     const { session } = decodeOutput(
       "sessions.start",
-      await (await post(handler, "sessions.start", { content: "Hi." })).json(),
+      await (await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
     );
 
     const controller = new AbortController();
@@ -429,7 +429,7 @@ describe("handler", () => {
 
     const { session } = decodeOutput(
       "sessions.start",
-      await (await post(handler, "sessions.start", { content: "Hi." })).json(),
+      await (await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
     );
 
     const created = decodeOutput(
@@ -468,7 +468,7 @@ describe("handler", () => {
 
     const { session } = decodeOutput(
       "sessions.start",
-      await (await post(warm.handler, "sessions.start", { content: "Hi." })).json(),
+      await (await post(warm.handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
     );
 
     const cold = await served({ store, plugins });

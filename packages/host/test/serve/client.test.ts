@@ -44,7 +44,7 @@ describe("transport", () => {
     fake.reply("Hello.");
     const { session, receipt } = decodeOutput(
       "sessions.start",
-      await owner.invoke("sessions.start", { content: "Hi." }),
+      await owner.invoke("sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
     );
 
     expect(
@@ -76,7 +76,7 @@ describe("transport", () => {
     const owner = transport("Bearer owner");
     const { session } = decodeOutput(
       "sessions.start",
-      await owner.invoke("sessions.start", { content: "Hi." }),
+      await owner.invoke("sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
     );
     const { folds } = host.kernel;
     const acquire = folds.acquire.bind(folds);
