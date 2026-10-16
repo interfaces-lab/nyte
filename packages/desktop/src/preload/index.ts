@@ -49,16 +49,12 @@ contextBridge.exposeInMainWorld("nyteAccount", {
   report: (report) => ipcRenderer.send(ACCOUNT_CHANNELS.report, report),
 } satisfies AccountBridge);
 
-// The startup bench reads this to count round trips before the composer accepts input.
-let ipcCalls = 0;
-
-contextBridge.exposeInMainWorld("nyteIpc", { calls: () => ipcCalls });
-
+/**
+ * One host operation. Only Nyte's main process handles CALL_CHANNEL; it decodes the
+ * path's request and answers in the matching `CallReplyFor<P>` envelope.
+ */
 async function call<P extends CallPath>(path: P, input: CallInput<P>): Promise<CallOutput<P>> {
-  ipcCalls++;
-  // SAFETY: only Nyte's main process handles CALL_CHANNEL; it decodes the path-specific
-  // request and echoes that path in the matching CallReplyFor<P> envelope.
-  const result = (await ipcRenderer.invoke(CALL_CHANNEL, { path, input })) as CallReplyFor<P>;
+  const result: CallReplyFor<P> = await ipcRenderer.invoke(CALL_CHANNEL, { path, input });
 
   if (!result.ok) return Promise.reject(bridgeError(result.error));
 

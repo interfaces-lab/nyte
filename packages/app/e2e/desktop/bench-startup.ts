@@ -10,13 +10,7 @@ import { Value } from "typebox/value";
 import { prepareStartupFixture, startupCases } from "./startup-fixture.ts";
 import type { StartupCase, StartupFixture } from "./startup-fixture.ts";
 import { chatTab, clearComposer, composer, messages, openChat } from "./ui.ts";
-
-declare global {
-  interface Window {
-    /** The desktop preload's count of host IPC round trips; builds before it lack the global. */
-    readonly nyteIpc?: { readonly calls: () => number };
-  }
-}
+import { CALL_CHANNEL } from "../../../desktop/src/shared/ipc.ts";
 
 const timeout = 30_000;
 
@@ -105,10 +99,7 @@ type MetricKey = (typeof metricFields)[number]["key"];
 
 type Metrics = Readonly<Record<MetricKey, readonly number[]>>;
 
-const ReadySchema = Type.Object({
-  readyMs: Type.Number(),
-  ipcCalls: Type.Union([Type.Number(), Type.Null()]),
-});
+const ReadySchema = Type.Object({ readyMs: Type.Number() });
 
 interface Build {
   readonly name: "baseline" | "candidate";
@@ -249,6 +240,29 @@ function launchEnvironment(fixture: StartupFixture) {
   };
 }
 
+/**
+ * Records in main when each renderer host call arrives, so any build can be counted without
+ * help from its preload. Electron emits its internal `-ipc-invoke` event on the sender's
+ * session for every `ipcRenderer.invoke`, with the channel after the event; there is no
+ * public event for invokes.
+ */
+async function recordHostCalls(application: ElectronApplication) {
+  return application.evaluateHandle(({ session }, channel) => {
+    const arrivals: number[] = [];
+    const { EventEmitter } = process.getBuiltinModule("node:events");
+
+    EventEmitter.prototype.on.call(
+      session.defaultSession,
+      "-ipc-invoke",
+      (_event: Electron.IpcMainInvokeEvent, name: string) => {
+        if (name === channel) arrivals.push(performance.timeOrigin + performance.now());
+      },
+    );
+
+    return arrivals;
+  }, CALL_CHANNEL);
+}
+
 async function inspectMain(application: ElectronApplication) {
   return application.evaluate(({ app }) => ({
     packaged: app.isPackaged,
@@ -305,7 +319,7 @@ async function waitForComposer(page: Page, expected: StartupFixture["expected"])
       )
         return false;
 
-      return { readyMs: performance.now(), ipcCalls: window.nyteIpc?.calls() ?? null };
+      return { readyMs: performance.now() };
     },
     expected,
     { polling: "raf", timeout },
@@ -562,6 +576,7 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
   const output: string[] = [];
   const errors: string[] = [];
   const application = await launch(identity.build, fixture);
+  const hostCalls = await recordHostCalls(application);
   const captured = new Set<Page>();
 
   const collectPage = (page: Page): void => {
@@ -594,6 +609,12 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
     await clearComposer(page);
     const main = await inspectMain(application);
     const renderer = await inspectRenderer(page, ready.readyMs);
+
+    const ipcCalls = await hostCalls.evaluate(
+      (arrivals, readyEpochMs) => arrivals.filter((at) => at <= readyEpochMs).length,
+      renderer.timeOriginEpochMs + ready.readyMs,
+    );
+
     const processTree = await inspectProcessTree(application.process().pid);
     const cdp = await application.context().newCDPSession(page);
     const rendererHeap = await cdp.send("Runtime.getHeapUsage");
@@ -641,7 +662,7 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
           renderer.longTasks === null
             ? []
             : [Math.max(0, ...longTasks.map((task) => task.duration))],
-        ipcCalls: ready.ipcCalls === null ? [] : [ready.ipcCalls],
+        ipcCalls: [ipcCalls],
         hostRequests: [renderer.hostRequestsBeforeComposer],
         mainHeapBytes: [main.memory.heapUsed],
         rendererHeapBytes: [rendererHeap.usedSize],
@@ -795,7 +816,7 @@ async function run(options: Options): Promise<void> {
       keystroke: `Each of ${typedText.length} characters typed ${keystrokeDelayMs} ms apart right after the composer is ready: keydown timeStamp to the task after the frame that follows the composer's DOM mutation.`,
       splash: "nyte:shell-ready (first frame after the interface replaces #startup) minus FCP.",
       longTasks: "Buffered PerformanceObserver longtask entries that start before composer ready.",
-      ipc: "window.nyteIpc.calls() at composer ready: ipcRenderer.invoke round trips through the desktop preload.",
+      ipc: "Host calls (ipcRenderer.invoke on the call channel) that reached main before composer ready, recorded in main from Electron's session -ipc-invoke event.",
       hostRequests: "Completed fetch resource entries started before composer ready.",
       heap: "Main process.memoryUsage().heapUsed and renderer CDP Runtime.getHeapUsage usedSize after typing.",
       processes: "ps descendants of the Electron main process, including it, with summed RSS.",
