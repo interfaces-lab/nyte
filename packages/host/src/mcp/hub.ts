@@ -1,21 +1,14 @@
-import { unwatchFile, watchFile } from "node:fs";
 import { join } from "node:path";
 import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
 import type { Tool } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import type { OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
 import { SdkError, processEnvironment, closable, dev, isJsonObject } from "@nyte-ai/core";
-import type {
-  Login,
-  McpHub,
-  McpHubFactory,
-  McpServerBrief,
-  McpWorkspace,
-  PluginStorage,
-  ToolDefinition,
-} from "@nyte-ai/core";
+import type { Login, PluginStorage, ToolDefinition } from "@nyte-ai/core";
+import type { McpHub, McpHubFactory, McpServerBrief, McpWorkspace } from "@nyte-ai/core/server";
 import { isJson } from "@nyte-ai/schema";
 import type {
+  Disposer,
   McpChange,
   McpScope,
   McpServerState,
@@ -23,6 +16,7 @@ import type {
   McpView,
   ValidationIssue,
 } from "@nyte-ai/schema";
+import { watchPath } from "../local/tree.ts";
 import { editMcpFile, parseMcpConfig, readMcpFile } from "./config.ts";
 import type { McpConfig, McpFile, McpFileContents, McpServerEntry } from "./config.ts";
 import { connectServer, oauthSettings } from "./connect.ts";
@@ -33,15 +27,16 @@ import type { McpCall } from "./tools.ts";
 
 const STDERR_TAIL = 4000;
 
-const POLL_MS = 1000;
+const WATCH_DELAY_MS = 100;
 
 const LINGER_MS = 30_000;
 
 /**
  * Serves the servers in `<home>/.nyte/mcp.json`, and in a trusted local
- * workspace's `.nyte/mcp.json`, to the host's sessions. Edits to either file
- * apply within a second: a changed server reconnects, an unchanged one keeps
- * its connection. A workspace's connections close 30 seconds after its last
+ * workspace's `.nyte/mcp.json`, to the host's sessions. Each file is watched
+ * (created, edited, replaced or removed) without polling, and an edit applies
+ * once the file system reports it: a changed server reconnects, an unchanged
+ * one keeps its connection. A workspace's connections close 30 seconds after its last
  * watcher stops.
  *
  * @example
@@ -103,7 +98,7 @@ function hub(input: {
 }): McpHub {
   const pools = new Map<string, Pool>();
   const contents = new Map<string, McpFileContents>();
-  const watched = new Set<string>();
+  const watched = new Map<string, Disposer>();
   const userPath = join(input.home, ".nyte", "mcp.json");
   let closed = false;
 
@@ -350,7 +345,7 @@ function hub(input: {
 
   const unfollow = (path: string): void => {
     if ([...pools.values()].some((pool) => pool.files.some((file) => file.path === path))) return;
-    unwatchFile(path);
+    watched.get(path)?.();
     watched.delete(path);
     contents.delete(path);
   };
@@ -402,10 +397,11 @@ function hub(input: {
 
     const unread = files.flatMap((file) => (watched.has(file.path) ? [] : [file.path]));
 
-    for (const path of unread) {
-      watched.add(path);
-      watchFile(path, { interval: POLL_MS, persistent: false }, () => changed(path));
-    }
+    for (const path of unread)
+      watched.set(
+        path,
+        watchPath(path, { delay: WATCH_DELAY_MS }, () => changed(path)),
+      );
 
     const pool: Pool = {
       key,
