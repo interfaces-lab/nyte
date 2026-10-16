@@ -3,6 +3,8 @@ import { expect, it } from "vitest";
 import telemetry from "../src/telemetry.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
 
+const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+
 it("exports nothing while the endpoint is empty, then one span per request to the endpoint as it changes", async () => {
   const received: string[] = [];
 
@@ -19,7 +21,6 @@ it("exports nothing while the endpoint is empty, then one span per request to th
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const base = `http://127.0.0.1:${typeof address === "object" && address !== null ? address.port : 0}`;
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 
   try {
     const fake = fakeModels();
