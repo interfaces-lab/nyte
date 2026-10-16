@@ -11,7 +11,7 @@ import {
   selectQuestionAnswer,
   storeQuestionDraft,
 } from "../question.ts";
-import { runModel, tableInputFor } from "../screen.ts";
+import { runModel, tableInputFor } from "../table-input.ts";
 import type { QuestionTypedDraft, State } from "../state.ts";
 import { andThen, busy, clearDraft, refuse, stay, withLocal, withNotice } from "../step.ts";
 import type { SomeHandlers, Step } from "../step.ts";

@@ -2,9 +2,9 @@ import { availableModels, findModel, modelId } from "../lib/catalog.ts";
 import type { Effect } from "../model/effect.ts";
 import type { Notice } from "../model/state.ts";
 import type { LoginDriver } from "../services/auth.ts";
+import { errorMessage } from "../lib/format.ts";
 import { errorNotice, noticeOf } from "./commands.ts";
-import { messageOf } from "./runner.ts";
-import type { HandlerContext } from "./runner.ts";
+import type { HandlerContext } from "./scope.ts";
 import { fallback, selectionOf } from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
@@ -249,7 +249,7 @@ async function afterCredentials(
     return noticeOf(
       context,
       "warning",
-      `${done}\nModel selection could not refresh: ${messageOf(error)}. Use /model to retry.`,
+      `${done}\nModel selection could not refresh: ${errorMessage(error)}. Use /model to retry.`,
     );
   }
 }

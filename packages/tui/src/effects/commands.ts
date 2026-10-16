@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
 import type { Notice, State } from "../model/state.ts";
-import { messageOf } from "./runner.ts";
-import type { HandlerContext } from "./runner.ts";
+import { errorMessage } from "../lib/format.ts";
+import type { HandlerContext } from "./scope.ts";
 import { fallback, patchOf, refreshWorkspace, selectionOf } from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
@@ -71,7 +71,7 @@ export async function answer(effect: Of<"answer">, context: HandlerContext): Pro
     context.dispatch({
       kind: "answered",
       request,
-      result: { kind: "failed", message: messageOf(cause) },
+      result: { kind: "failed", message: errorMessage(cause) },
       typed: effect.typed,
     });
   }
@@ -284,7 +284,7 @@ export function noticeOf(context: HandlerContext, tone: Notice["tone"], text: st
 }
 
 export function errorNotice(context: HandlerContext, error: unknown): Notice {
-  return noticeOf(context, "error", `error: ${messageOf(error)}`);
+  return noticeOf(context, "error", `error: ${errorMessage(error)}`);
 }
 
 export function rowStatus(

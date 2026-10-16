@@ -8,7 +8,7 @@ import type { ModelRow } from "../model/dialogs/model-picker.ts";
 import type { Effect } from "../model/effect.ts";
 import type { ShellJob } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate as selfUpdateBinary } from "../update.ts";
-import type { HandlerContext } from "./runner.ts";
+import type { HandlerContext } from "./scope.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 

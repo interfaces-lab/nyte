@@ -10,7 +10,7 @@ import {
   storeQuestionDraft,
 } from "../question.ts";
 import { queueRows } from "../queue.ts";
-import { tableInputFor } from "../screen.ts";
+import { tableInputFor } from "../table-input.ts";
 import { applyChoice, settingRows } from "../settings.ts";
 import type { State } from "../state.ts";
 import { andThen, busy, refuse, setDraft, stay, withLocal } from "../step.ts";

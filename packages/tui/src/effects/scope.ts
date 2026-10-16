@@ -1,7 +1,9 @@
 import type { SessionId } from "@nyte-ai/sdk";
 import type { DialogId } from "../model/dialogs/dialog.ts";
+import type { Msg } from "../model/msg.ts";
+import type { State } from "../model/state.ts";
 import type { SessionConfigurator } from "../services/session-config.ts";
-import type { SessionPort } from "./ports.ts";
+import type { Ports, SessionPort } from "./ports.ts";
 
 export interface Followed {
   readonly id: SessionId;
@@ -25,6 +27,19 @@ export interface Scope {
   readonly watches: Set<Promise<void>>;
   catalogGeneration: number;
   readonly exit: PromiseWithResolvers<{ readonly code: number }>;
+}
+
+/** What the app hands the effect runner. */
+export interface RunnerContext {
+  readonly ports: Ports;
+  readonly dispatch: (msg: Msg) => void;
+  readonly read: () => State;
+  readonly signal: AbortSignal;
+}
+
+/** What each effect handler runs with: the runner's context and its shared scope. */
+export interface HandlerContext extends RunnerContext {
+  readonly scope: Scope;
 }
 
 export function createScope(): Scope {

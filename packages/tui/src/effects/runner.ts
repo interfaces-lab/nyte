@@ -1,6 +1,5 @@
+import { errorMessage } from "../lib/format.ts";
 import type { Effect } from "../model/effect.ts";
-import type { Msg } from "../model/msg.ts";
-import type { State } from "../model/state.ts";
 import { login, loginAnswer, logout, mcpAction, mcpLogin, selectAccount } from "./auth.ts";
 import { boot } from "./boot.ts";
 import type { BootOptions } from "./boot.ts";
@@ -41,9 +40,8 @@ import {
   shellStop,
   writeSettings,
 } from "./local.ts";
-import type { Ports } from "./ports.ts";
 import { createScope } from "./scope.ts";
-import type { Scope } from "./scope.ts";
+import type { HandlerContext, RunnerContext, Scope } from "./scope.ts";
 import { follow, loadEarlier } from "./session.ts";
 import { submit } from "./submit.ts";
 
@@ -54,17 +52,6 @@ export interface Runner {
   readonly exited: Promise<{ readonly code: number }>;
   settled(): Promise<void>;
   dispose(): Promise<void>;
-}
-
-export interface RunnerContext {
-  readonly ports: Ports;
-  readonly dispatch: (msg: Msg) => void;
-  readonly read: () => State;
-  readonly signal: AbortSignal;
-}
-
-export interface HandlerContext extends RunnerContext {
-  readonly scope: Scope;
 }
 
 type Handlers = {
@@ -83,7 +70,7 @@ export function createRunner(context: RunnerContext): Runner {
     const task: Promise<void> = work()
       .catch((error: unknown) => {
         context.ports.log.write("effect", error);
-        context.dispatch({ kind: "effect-failed", effect: name, message: messageOf(error) });
+        context.dispatch({ kind: "effect-failed", effect: name, message: errorMessage(error) });
       })
       .finally(() => {
         inFlight.delete(task);
@@ -119,10 +106,6 @@ export function invoke<K extends Effect["kind"]>(
   const handler: Handlers[K] = handlers[effect.kind];
 
   return handler(effect, context);
-}
-
-export function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function shellsDone(scope: Scope): readonly Promise<void>[] {

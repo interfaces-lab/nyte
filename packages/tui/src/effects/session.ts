@@ -8,14 +8,13 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel } from "../lib/catalog.ts";
-import { shortId } from "../lib/format.ts";
+import { errorMessage, shortId } from "../lib/format.ts";
 import { indexedMention } from "../model/completion.ts";
 import type { Selection, State, WorkspaceFacts } from "../model/state.ts";
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
 import { readWorkspaceStatus } from "../services/workspace.ts";
-import { messageOf } from "./runner.ts";
-import type { HandlerContext } from "./runner.ts";
+import type { HandlerContext } from "./scope.ts";
 
 const HISTORY_PAGE = 200;
 
@@ -109,7 +108,7 @@ export async function follow(
       .then(() => ended(null))
       .catch((error: unknown) => {
         ports.log.write("watch", error);
-        ended(messageOf(error));
+        ended(errorMessage(error));
       })
       .finally(() => {
         scope.watches.delete(tracked);

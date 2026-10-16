@@ -117,8 +117,8 @@ export function oneLine(text: string): string {
 
 const MAX_RETRY_CAUSE_CHARS = 80;
 
-export function retryCause(errorMessage: string): string {
-  const collapsed = errorMessage.replaceAll(/\s+/gu, " ").trim();
+export function retryCause(reason: string): string {
+  const collapsed = reason.replaceAll(/\s+/gu, " ").trim();
 
   if (collapsed === "") return "Request failed.";
 
@@ -292,4 +292,9 @@ export function terminalTitle(name: string | undefined): string {
   const room = TERMINAL_TITLE_MAX_CHARS - TERMINAL_TITLE_BASE.length - " - ".length;
 
   return `${TERMINAL_TITLE_BASE} - ${truncateDisplay(clean, room, "…")}`;
+}
+
+/** The message of a thrown value, which need not be an `Error`. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

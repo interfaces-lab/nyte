@@ -2,10 +2,10 @@ import type { BlobId, Delivery, SkillInfo, SubmitDraft, UserContent } from "@nyt
 import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import type { State, Submission } from "../model/state.ts";
+import { errorMessage } from "../lib/format.ts";
 import { rowStatus } from "./commands.ts";
 import type { PluginsPort } from "./ports.ts";
-import { messageOf } from "./runner.ts";
-import type { HandlerContext } from "./runner.ts";
+import type { HandlerContext } from "./scope.ts";
 
 export async function submit(
   submission: Submission,
@@ -88,7 +88,7 @@ export async function submit(
 
     dispatch({ kind: "sent", submission: submission.id, message });
   } catch (error) {
-    refuse(`Message not sent: ${messageOf(error)}. It is back in the composer.`);
+    refuse(`Message not sent: ${errorMessage(error)}. It is back in the composer.`);
     throw error;
   } finally {
     slot.release();
@@ -105,7 +105,7 @@ export async function beforeSubmit(
   try {
     return await plugins.beforeSubmit(draft);
   } catch (error) {
-    return { kind: "reject", reason: messageOf(error) };
+    return { kind: "reject", reason: errorMessage(error) };
   }
 }
 

@@ -18,7 +18,7 @@ import type { Choice, ListDialog, ListPurpose } from "./dialogs/list.ts";
 import { visibleChoices } from "./dialogs/list.ts";
 import { chatCommands, COMMAND_TITLES, interactionsFor } from "./interactions.ts";
 import { placeLabel, queueRows } from "./queue.ts";
-import { tableInputFor } from "./screen.ts";
+import { tableInputFor } from "./table-input.ts";
 import { settingRows, settingValue } from "./settings.ts";
 import type { State } from "./state.ts";
 

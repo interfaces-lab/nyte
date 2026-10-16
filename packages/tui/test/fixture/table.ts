@@ -4,9 +4,9 @@ import type { CompletionModel } from "../../src/model/completion.ts";
 import type { Dialog } from "../../src/model/dialogs/dialog.ts";
 import { draftModel, NO_PARTS } from "../../src/model/draft.ts";
 import type { DraftParts } from "../../src/model/draft.ts";
-import type { TableInput } from "../../src/model/interactions.ts";
+import type { TableInput } from "../../src/model/table-input.ts";
 import type { Place, QueueRow } from "../../src/model/queue.ts";
-import type { Blocked, RunModel } from "../../src/model/screen.ts";
+import type { Blocked, RunModel } from "../../src/model/table-input.ts";
 import type { Draft } from "../../src/model/state.ts";
 
 export interface TableSpec {

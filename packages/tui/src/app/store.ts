@@ -1,6 +1,7 @@
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { Runner, RunnerContext } from "../effects/runner.ts";
+import type { Runner } from "../effects/runner.ts";
+import type { RunnerContext } from "../effects/scope.ts";
 import type { Effect } from "../model/effect.ts";
 import type { Msg } from "../model/msg.ts";
 import { reduce } from "../model/reduce.ts";

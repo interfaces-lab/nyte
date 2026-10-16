@@ -4,7 +4,7 @@ import type { Selection } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate } from "../update.ts";
 import { checkForUpdate } from "../version.ts";
 import { configure } from "./commands.ts";
-import type { HandlerContext } from "./runner.ts";
+import type { HandlerContext } from "./scope.ts";
 import { createSession, fallbackSelection, follow, watchHost } from "./session.ts";
 
 export interface BootOptions {

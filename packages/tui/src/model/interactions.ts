@@ -7,9 +7,7 @@ import { listActions } from "./dialogs/list.ts";
 import type { DraftModel } from "./draft.ts";
 import type { Intent } from "./msg.ts";
 import type { QueueRow } from "./queue.ts";
-import type { QuestionModel } from "./question.ts";
-import type { Blocked, EditingModel, RunModel } from "./screen.ts";
-import type { Draft, ShellJob } from "./state.ts";
+import type { Blocked, TableInput } from "./table-input.ts";
 
 export type CoreCommand = "chat.submit" | "chat.queue.submit" | "chat.interrupt" | "chat.quit";
 
@@ -20,28 +18,6 @@ export interface Interaction {
 }
 
 export type Interactions = Readonly<Record<ChatCommand, Interaction>>;
-
-export interface TableInput {
-  readonly run: RunModel;
-  readonly question: QuestionModel | null;
-  readonly draft: DraftModel;
-  readonly runsCommand: boolean;
-  readonly editing: EditingModel | null;
-  readonly shell: ShellJob | null;
-  readonly completion: CompletionModel | null;
-  readonly dialog: Dialog | null;
-  readonly blocked: Blocked | null;
-  readonly queue: readonly QueueRow[];
-  readonly followUp: "steer" | "queue";
-  readonly tasks: number;
-  readonly now: number;
-  readonly cursor: {
-    readonly row: Draft["row"];
-    readonly atStart: boolean;
-    readonly atEnd: boolean;
-  };
-  readonly browsing: boolean;
-}
 
 type Cell = (input: TableInput) => Interaction | null;
 

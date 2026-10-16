@@ -1,4 +1,3 @@
-import type { RunId } from "@nyte-ai/sdk";
 import {
   ANSWER_COMPOSER_PLACEHOLDER,
   BUSY_COMPOSER_PLACEHOLDER,
@@ -10,23 +9,23 @@ import { unfinishedTask } from "../lib/tasks.ts";
 import type { Task } from "../lib/tasks.ts";
 import { landingMessages } from "../lib/view-helpers.ts";
 import { liveDialog } from "./choices.ts";
-import { runnableCommand, slashNamespace } from "./commands.ts";
-import { completionModel } from "./completion.ts";
 import type { CompletionModel } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
-import { draftModel, liveMarkers } from "./draft.ts";
+import { liveMarkers } from "./draft.ts";
 import type { DraftModel, DraftPart, MarkerSpan } from "./draft.ts";
 import { footerFor, hintsFor, sameHint } from "./footer.ts";
 import type { FooterModel, Hint } from "./footer.ts";
 import { keepEqual } from "./identity.ts";
 import { blockedReason, interactionsFor } from "./interactions.ts";
-import type { Interactions, TableInput } from "./interactions.ts";
-import { queuedCount, queueRows, sameQueueRow } from "./queue.ts";
+import type { Interactions } from "./interactions.ts";
+import { queuedCount, sameQueueRow } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
 import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
 import { followedShells } from "./state.ts";
 import type { FailureReport, Notice, ShellJob, State } from "./state.ts";
+import { tableInputFor } from "./table-input.ts";
+import type { Blocked, EditingModel, RunModel } from "./table-input.ts";
 import { deriveTranscript } from "./transcript.ts";
 import type { TranscriptModel } from "./transcript.ts";
 
@@ -69,81 +68,9 @@ export interface WatchModel {
   readonly failure: string | null;
 }
 
-export type RunModel =
-  | { readonly kind: "idle" }
-  | { readonly kind: "working"; readonly run: RunId; readonly stopping: boolean }
-  | { readonly kind: "waiting"; readonly run: RunId }
-  | {
-      readonly kind: "retrying";
-      readonly run: RunId;
-      readonly until: number;
-      readonly reason: string;
-    };
-
-export interface EditingModel {
-  readonly message: string;
-  readonly delivery: "steer" | "queue";
-  readonly stillPending: boolean;
-}
-
-export type Blocked =
-  | { readonly kind: "starting" }
-  | { readonly kind: "no-session" }
-  | { readonly kind: "switching" }
-  | { readonly kind: "changing-directory" }
-  | { readonly kind: "authenticating"; readonly link: string | null }
-  | { readonly kind: "editor" };
-
 export interface TasksLine {
   readonly text: string;
   readonly attention: boolean;
-}
-
-export function runModel(view: State["facts"]["session"]): RunModel {
-  const execution = view?.view?.execution;
-
-  if (execution === undefined) return { kind: "idle" };
-
-  switch (execution.kind) {
-    case "idle":
-      return { kind: "idle" };
-    case "live":
-      return { kind: "working", run: execution.run.id, stopping: execution.stopping };
-    case "waiting":
-      return { kind: "waiting", run: execution.run.id };
-    case "retrying":
-      return {
-        kind: "retrying",
-        run: execution.run.id,
-        until: execution.until,
-        reason: execution.reason,
-      };
-    default: {
-      const _exhaustive: never = execution;
-
-      return _exhaustive;
-    }
-  }
-}
-
-export function blockedBy(state: State): Blocked | null {
-  const { pending } = state.local;
-
-  if (state.facts.phase.kind === "starting") return { kind: "starting" };
-
-  if (pending.some((op) => op.kind === "switch")) return { kind: "switching" };
-
-  if (state.facts.session === null || state.facts.session.view === null)
-    return { kind: "no-session" };
-
-  if (pending.some((op) => op.kind === "cd")) return { kind: "changing-directory" };
-  const auth = pending.find((op) => op.kind === "auth");
-
-  if (auth?.kind === "auth") return { kind: "authenticating", link: auth.link };
-
-  if (pending.some((op) => op.kind === "editor")) return { kind: "editor" };
-
-  return null;
 }
 
 export function placeholderFor(
@@ -171,10 +98,6 @@ export function placeholderFor(
   return COMPOSER_PLACEHOLDER;
 }
 
-function opening(state: State): boolean {
-  return (state.facts.session?.view ?? null) === null;
-}
-
 function tasksLine(state: State, question: QuestionModel | null): TasksLine | null {
   const active = state.facts.tasks.filter(unfinishedTask).length;
 
@@ -184,51 +107,6 @@ function tasksLine(state: State, question: QuestionModel | null): TasksLine | nu
     return { text: "a background task needs your answer", attention: true };
 
   return { text: `${String(active)} running in background`, attention: false };
-}
-
-export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
-  const { session } = state.facts;
-
-  const question = currentQuestion(
-    session === null ? null : { id: session.id, view: session.view },
-    state.facts.tasks,
-    state.local.question,
-  );
-
-  const queue = queueRows(session, state.local.editing);
-  const { draft } = state.local;
-  const typed = draftModel(draft);
-
-  return {
-    run: runModel(session),
-    question,
-    draft: typed,
-    runsCommand:
-      typed.kind === "message" &&
-      typed.command !== null &&
-      runnableCommand(state, draft.text) !== null,
-    editing: editingModel(state, queue),
-    shell: runningShell(state),
-    completion:
-      dialog === null
-        ? completionModel(state.local.completion, draft, {
-            commands: slashNamespace(state),
-            files: state.facts.workspace.mentions,
-          })
-        : null,
-    dialog,
-    blocked: blockedBy(state),
-    queue,
-    followUp: state.facts.settings.followUp,
-    tasks: state.facts.tasks.length,
-    now: 0,
-    cursor: {
-      row: draft.row,
-      atStart: draft.cursor === 0,
-      atEnd: draft.cursor >= draft.text.length,
-    },
-    browsing: state.local.history !== null,
-  };
 }
 
 export function keyboardDialog(state: State): Dialog | null {
@@ -247,23 +125,11 @@ export function keyboardDialog(state: State): Dialog | null {
   );
 }
 
-function editingModel(state: State, queue: readonly QueueRow[]): EditingModel | null {
-  const { editing } = state.local;
-
-  if (editing === null) return null;
-
-  return {
-    message: editing.message,
-    delivery: editing.delivery,
-    stillPending: queue.some((row) => row.id === editing.message),
-  };
-}
-
 function sameSpan(left: MarkerSpan, right: MarkerSpan): boolean {
   return left.marker === right.marker && left.from === right.from && left.to === right.to;
 }
 
-function previewOf(
+function livePreview(
   state: State,
   markers: readonly MarkerSpan[],
   previous: PreviewModel | null,
@@ -275,10 +141,6 @@ function previewOf(
     return null;
 
   return previous?.marker === marker && previous.part === part ? previous : { marker, part };
-}
-
-function runningShell(state: State): ShellJob | null {
-  return state.facts.shells.find((job) => job.state.kind === "running") ?? null;
 }
 
 export function deriveScreen(state: State, previous: ScreenModel | null): ScreenModel {
@@ -300,13 +162,13 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const markers = keepEqual(previous?.markers, liveMarkers(state.local.draft), sameSpan);
 
   return {
-    opening: opening(state),
+    opening: view === null,
     watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
     run: input.run,
     question,
     draft: input.draft,
     markers,
-    preview: previewOf(state, markers, previous?.preview ?? null),
+    preview: livePreview(state, markers, previous?.preview ?? null),
     editing: input.editing,
     shell: input.shell,
     completion: input.completion,
