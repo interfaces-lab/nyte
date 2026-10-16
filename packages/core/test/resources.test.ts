@@ -266,7 +266,17 @@ describe("resources", () => {
     const { kernel, host, workspace } = await world({
       disk: seeded(),
       home: "/home/ada",
-      plugins: [resourcesPlugin],
+      plugins: [
+        resourcesPlugin,
+        {
+          id: "deploy-kit",
+          contribute: {
+            skills: [
+              { name: "deploy", description: "Ships a release.", location: "/kits/deploy.md" },
+            ],
+          },
+        },
+      ],
     });
 
     const session = await host.sessions.create({ workspace });
@@ -285,6 +295,7 @@ describe("resources", () => {
       "- review: Reviews diffs. (/home/ada/.nyte/skills/review/SKILL.md)",
     );
     expect(skills.text).toContain("- shared: The project's. (.nyte/skills/shared/SKILL.md)");
+    expect(skills.text).toContain("- deploy: Ships a release. (/kits/deploy.md)");
 
     const contributed = registries.skills.list();
     const shared = contributed.find((skill) => skill.name === "shared");

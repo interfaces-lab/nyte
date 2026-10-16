@@ -94,19 +94,6 @@ export const resourcesPlugin: Plugin<"core"> = {
         ].join("\n\n"),
       });
 
-    if (inputs.skills.length > 0)
-      api.contribute.prompt.add({
-        id: "skills",
-        order: 90,
-        text: [
-          "Skills: read a skill's file when its description matches the task.",
-          ...inputs.skills.map(
-            (skill) =>
-              `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.location})`,
-          ),
-        ].join("\n"),
-      });
-
     api.contribute.skills.add((draft) => {
       for (const skill of inputs.skills)
         draft.set(skill.name, {
@@ -114,6 +101,24 @@ export const resourcesPlugin: Plugin<"core"> = {
           description: skill.description,
           location: skill.location,
         });
+    });
+
+    api.contribute.prompt.add((draft, siblings) => {
+      const skills = siblings.skills.list().toSorted((a, b) => a.name.localeCompare(b.name));
+
+      if (skills.length === 0) return;
+
+      draft.set("skills", {
+        id: "skills",
+        order: 90,
+        text: [
+          "Skills: read a skill's file when its description matches the task.",
+          ...skills.map(
+            (skill) =>
+              `- ${skill.name}: ${skill.description === "" ? "(no description)" : skill.description} (${skill.location})`,
+          ),
+        ].join("\n"),
+      });
     });
   },
 };
@@ -262,39 +267,40 @@ async function skillsIn(
   directories: readonly string[],
   scope: Skill["scope"],
 ): Promise<readonly Skill[]> {
-  const found: Skill[] = [];
+  const listed = await Promise.all(
+    directories.map(async (directory) =>
+      (await listDirectChildren(files, directory, "directory")).map((name) => ({
+        name,
+        location: `${directory}/${name}/SKILL.md`,
+      })),
+    ),
+  );
 
-  for (const directory of directories) {
-    for (const name of await listDirectChildren(files, directory, "directory")) {
-      const location = `${directory}/${name}/SKILL.md`;
+  const read = await Promise.all(
+    listed.flat().map(async ({ name, location }) => {
       const content = await readText(files, location);
 
-      if (content !== null) found.push(parseSkillMetadata(content, name, location, scope));
-    }
-  }
+      return content === null ? [] : [parseSkillMetadata(content, name, location, scope)];
+    }),
+  );
 
-  return found;
+  return read.flat();
 }
 
 async function skillsAt(files: FilesApi, paths: readonly string[]): Promise<readonly Skill[]> {
-  const found: Skill[] = [];
+  const found = await Promise.all(
+    paths.map(async (raw): Promise<readonly Skill[]> => {
+      const path = raw.startsWith("~/") ? raw.slice(2) : raw;
 
-  for (const raw of paths) {
-    const path = raw.startsWith("~/") ? raw.slice(2) : raw;
+      if (!path.endsWith(".md")) return skillsIn(files, [path.replace(/\/+$/, "")], "path");
+      const content = await readText(files, path);
+      const name = path.split("/").at(-1)?.slice(0, -".md".length) ?? path;
 
-    if (!path.endsWith(".md")) {
-      found.push(...(await skillsIn(files, [path.replace(/\/+$/, "")], "path")));
+      return content === null ? [] : [parseSkillMetadata(content, name, path, "path")];
+    }),
+  );
 
-      continue;
-    }
-
-    const content = await readText(files, path);
-    const name = path.slice(path.lastIndexOf("/") + 1, -".md".length);
-
-    if (content !== null) found.push(parseSkillMetadata(content, name, path, "path"));
-  }
-
-  return found;
+  return found.flat();
 }
 
 async function promptsIn(files: FilesApi, scope: Prompt["scope"]): Promise<readonly Prompt[]> {
@@ -324,33 +330,35 @@ function parseSkillMetadata(
 }
 
 async function ancestorFiles(files: FilesApi, root: string): Promise<readonly ContextFile[]> {
-  const found: ContextFile[] = [];
-
   try {
-    for (const directory of listAncestorPaths(root)) {
-      const context = await firstContext(files, (name) => join(directory, name));
+    const found = await Promise.all(
+      listAncestorPaths(root).map(async (directory): Promise<readonly ContextFile[]> => {
+        const context = await firstContext(files, (name) => join(directory, name));
 
-      if (context !== null) found.push({ ...context, scope: "ancestor" });
-    }
+        return context === null ? [] : [{ ...context, scope: "ancestor" }];
+      }),
+    );
+
+    return found.flat();
   } catch {
     return [];
   }
-
-  return found;
 }
 
 async function firstContext(
   files: FilesApi,
   at: (name: string) => string,
 ): Promise<{ readonly path: string; readonly content: string } | null> {
-  for (const name of CONTEXT_NAMES) {
-    const path = at(name);
-    const content = await readText(files, path);
+  const read = await Promise.all(
+    CONTEXT_NAMES.map(async (name) => {
+      const path = at(name);
+      const content = await readText(files, path);
 
-    if (content !== null) return { path, content };
-  }
+      return content === null ? null : { path, content };
+    }),
+  );
 
-  return null;
+  return read.find((context) => context !== null) ?? null;
 }
 
 async function listDirectChildren(

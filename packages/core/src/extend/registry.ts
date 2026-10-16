@@ -46,9 +46,9 @@ interface Entry<T> {
 const ORDER = [
   "tools",
   "agents",
+  "skills",
   "prompt",
   "modelContext",
-  "skills",
   "parts",
   "commands",
   "settings",
