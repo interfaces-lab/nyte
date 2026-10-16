@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, writePatch } from "@nyte-ai/schema";
 import type {
   Availability,
   ChangeSet,
@@ -253,7 +253,7 @@ export function fakeProvider(
             kind: "text",
             added: file.added.length,
             removed: file.removed.length,
-            hunks: [
+            patch: writePatch(file.path, file.status, [
               {
                 oldStart: 1,
                 oldLines: file.removed.length,
@@ -265,7 +265,7 @@ export function fakeProvider(
                   ...file.added.map((text) => ({ kind: "add" as const, text })),
                 ],
               },
-            ],
+            ]),
           }));
       },
     }),

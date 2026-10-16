@@ -1,5 +1,5 @@
 import { lineDiff } from "@nyte-ai/core";
-import { asId } from "@nyte-ai/schema";
+import { asId, writePatch } from "@nyte-ai/schema";
 import type {
   Execution,
   Json,
@@ -355,7 +355,19 @@ const filePatch = (
   status: "added" | "modified",
   before: string,
   after: string,
-): PatchEntry => ({ path: file, status, digest: file, kind: "text", ...lineDiff(before, after) });
+): PatchEntry => {
+  const { hunks, added, removed } = lineDiff(before, after);
+
+  return {
+    path: file,
+    status,
+    digest: file,
+    kind: "text",
+    added,
+    removed,
+    patch: writePatch(file, status, hunks),
+  };
+};
 
 function editing(file: string, oldText: string, newText: string): ToolSpec {
   return {

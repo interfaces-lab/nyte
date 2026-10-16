@@ -1,4 +1,4 @@
-import { PatchEntrySchema, standard } from "@nyte-ai/schema";
+import { PatchEntrySchema, standard, writePatch } from "@nyte-ai/schema";
 import type { Infer, PatchEntry, ToolContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Plugin } from "../contract/plugin.ts";
@@ -348,11 +348,19 @@ async function createTextPatch(
 ): Promise<PatchEntry> {
   const status = before === null ? "added" : "modified";
   const digest = await textDigest(`${before ?? ""}\u0000${after}`);
-  const diffed = lineDiff(before ?? "", after);
+  const { hunks, added, removed } = lineDiff(before ?? "", after);
 
-  if (diffed.hunks.length === 0) return { path, status, digest, kind: "empty" };
+  if (hunks.length === 0) return { path, status, digest, kind: "empty" };
 
-  return { path, status, digest, kind: "text", ...diffed };
+  return {
+    path,
+    status,
+    digest,
+    kind: "text",
+    added,
+    removed,
+    patch: writePatch(path, status, hunks),
+  };
 }
 
 function tryReadCwd(env: () => { readonly cwd: string }): string | null {

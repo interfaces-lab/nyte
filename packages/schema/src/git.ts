@@ -119,23 +119,6 @@ export const ChangeSetType = Type.Object({
 
 export type ChangeSet = Decoded<typeof ChangeSetType>;
 
-export const HunkType = Type.Object({
-  oldStart: Type.Number(),
-  oldLines: Type.Number(),
-  newStart: Type.Number(),
-  newLines: Type.Number(),
-  header: nullable(Type.String()),
-  lines: Type.Array(
-    Type.Object({
-      kind: Type.Enum(["context", "add", "remove"]),
-      text: Type.String(),
-      noNewline: Type.Optional(Type.Literal(true)),
-    }),
-  ),
-});
-
-export type Hunk = Decoded<typeof HunkType>;
-
 function patchEntry<Extra extends TProperties>(extra: Extra) {
   const common = { path: Type.String(), status: FileStatusType, digest: Type.String(), ...extra };
 
@@ -145,7 +128,7 @@ function patchEntry<Extra extends TProperties>(extra: Extra) {
       kind: Type.Literal("text"),
       added: Type.Number(),
       removed: Type.Number(),
-      hunks: Type.Array(HunkType),
+      patch: Type.String(),
     }),
     Type.Object({ ...common, kind: Type.Literal("binary") }),
     Type.Object({ ...common, kind: Type.Literal("empty") }),
@@ -156,6 +139,7 @@ function patchEntry<Extra extends TProperties>(extra: Extra) {
 
 export const PatchEntryType = patchEntry({});
 
+/** One file's patch. A `text` one carries `patch`, the file's unified diff: its `diff --git` header and hunks as `git diff` prints them, read with `readHunks`. */
 export type PatchEntry = Decoded<typeof PatchEntryType>;
 
 export const PatchSetWireType = Type.Object({
@@ -198,8 +182,6 @@ export const DiffOptionsSchema: Schema<DiffOptions> = standard(DiffOptionsType);
 export const LineStatSchema: Schema<LineStat> = standard(LineStatType);
 
 export const ChangeSetSchema: Schema<ChangeSet> = standard(ChangeSetType);
-
-export const HunkSchema: Schema<Hunk> = standard(HunkType);
 
 export const PatchEntrySchema: Schema<PatchEntry> = standard(PatchEntryType);
 

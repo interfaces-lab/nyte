@@ -34,6 +34,8 @@ export * from "./models.ts";
 
 export * from "./parts.ts";
 
+export * from "./patch.ts";
+
 export * from "./plugins.ts";
 
 export * from "./primitives.ts";

@@ -22,7 +22,6 @@ import {
   GitScopeSchema,
   GitStatusSchema,
   GitWriteSchema,
-  HunkSchema,
   LineStatSchema,
   PageInfoSchema,
   PageOutcomeSchema,
@@ -54,7 +53,6 @@ import {
   documentRevision,
   identity,
   fileChange,
-  hunk,
   patchEntry,
   pageSnapshot,
 } from "./fixtures.ts";
@@ -161,10 +159,6 @@ export const workspaceCases = {
     { revision: snapshot, files: [{ path: "a.ts", status: "added", stat: { kind: "unknown" } }] },
     { revision: snapshot, files: [{ path: "a.ts" }] },
   ),
-  HunkSchema: sample(HunkSchema, hunk, {
-    ...hunk,
-    lines: [{ kind: "add", text: "b", noNewline: false }],
-  }),
   PatchEntrySchema: sample(PatchEntrySchema, patchEntry, {
     path: "a.ts",
     status: "modified",

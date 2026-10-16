@@ -1,4 +1,4 @@
-import { asId, asSeq } from "../../src/index.ts";
+import { asId, asSeq, writePatch } from "../../src/index.ts";
 import type {
   BackgroundItem,
   Configuration,
@@ -268,7 +268,7 @@ export const patchEntry: PatchEntry = {
   kind: "text",
   added: 1,
   removed: 0,
-  hunks: [hunk],
+  patch: writePatch("a.ts", "modified", [hunk]),
 };
 
 export const pageSnapshot: PageSnapshot = {

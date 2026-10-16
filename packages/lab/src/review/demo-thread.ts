@@ -6,7 +6,7 @@
  */
 import { isToolMessage, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 import { lineDiff } from "@nyte-ai/core";
-import { asId } from "@nyte-ai/schema";
+import { asId, writePatch } from "@nyte-ai/schema";
 import type { Json, Message, PatchEntry, ToolClass, TurnInfo } from "@nyte-ai/sdk";
 
 /** Who answers: a fork of the guide, which only reads, or Nyte, which edits the branch. */
@@ -108,6 +108,7 @@ function script(recipient: Recipient, text: string, paths: readonly string[]): r
     ];
   const oldText = `  ${word}`;
   const newText = `  // ${text.split("\n")[0]?.slice(0, 60) ?? ""}\n  ${word}\n`;
+  const diffed = lineDiff(oldText, newText);
 
   return [
     {
@@ -125,7 +126,9 @@ function script(recipient: Recipient, text: string, paths: readonly string[]): r
         status: "modified",
         digest: first,
         kind: "text",
-        ...lineDiff(oldText, newText),
+        added: diffed.added,
+        removed: diffed.removed,
+        patch: writePatch(first, "modified", diffed.hunks),
       },
     },
     {

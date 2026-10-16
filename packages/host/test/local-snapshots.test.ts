@@ -2,10 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { asId } from "@nyte-ai/schema";
-import type { RunId } from "@nyte-ai/schema";
+import { asId, readHunks } from "@nyte-ai/schema";
+import type { Hunk, PatchEntry, RunId } from "@nyte-ai/schema";
 import type { ExecutionEnv } from "@nyte-ai/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { localExec, localFiles, localSnapshots } from "../src/index.ts";
 import { findExecutable } from "../src/local/command.ts";
 
@@ -24,6 +24,12 @@ async function folder(): Promise<string> {
   folders.push(made);
 
   return made;
+}
+
+function textHunks(entry: PatchEntry | undefined): readonly Hunk[] {
+  assert(entry?.kind === "text");
+
+  return readHunks(entry.patch);
 }
 
 function sh(cwd: string, ...args: string[]): string {
@@ -112,20 +118,20 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
       path: "a.txt",
       status: "modified",
       kind: "text",
-      hunks: [
-        {
-          oldStart: 1,
-          oldLines: 2,
-          newStart: 1,
-          newLines: 2,
-          lines: [
-            { kind: "context", text: "one" },
-            { kind: "remove", text: "two" },
-            { kind: "add", text: "TWO" },
-          ],
-        },
-      ],
     });
+    expect(textHunks(patches[0])).toMatchObject([
+      {
+        oldStart: 1,
+        oldLines: 2,
+        newStart: 1,
+        newLines: 2,
+        lines: [
+          { kind: "context", text: "one" },
+          { kind: "remove", text: "two" },
+          { kind: "add", text: "TWO" },
+        ],
+      },
+    ]);
     expect(patches[1]).toMatchObject({ path: "renamed.txt", status: "renamed", kind: "empty" });
     expect((await snapshots.diff(asId(""), before)).files.map((file) => file.status)).toEqual([
       "added",
@@ -235,25 +241,26 @@ describe("localSnapshots outside a repository", () => {
     expect(patches[0]).toMatchObject({
       added: 1,
       removed: 1,
-      hunks: [
-        {
-          oldStart: 1,
-          oldLines: 3,
-          newStart: 1,
-          newLines: 3,
-          header: null,
-          lines: [
-            { kind: "context", text: "one" },
-            { kind: "remove", text: "two" },
-            { kind: "add", text: "2" },
-            { kind: "context", text: "three" },
-          ],
-        },
-      ],
     });
-    expect(patches[3]).toMatchObject({
-      hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1 }],
-    });
+    expect(textHunks(patches[0])).toMatchObject([
+      {
+        oldStart: 1,
+        oldLines: 3,
+        newStart: 1,
+        newLines: 3,
+        header: null,
+        lines: [
+          { kind: "context", text: "one" },
+          { kind: "remove", text: "two" },
+          { kind: "add", text: "2" },
+          { kind: "context", text: "three" },
+        ],
+      },
+    ]);
+    expect(patches[3]).toMatchObject({});
+    expect(textHunks(patches[3])).toMatchObject([
+      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 1 },
+    ]);
     expect((await snapshots.diff(asId(""), before)).files.map((file) => file.path)).toEqual([
       ".gitignore",
       "a.txt",
@@ -262,6 +269,22 @@ describe("localSnapshots outside a repository", () => {
       "pic.bin",
       "same.txt",
     ]);
+  });
+
+  it("digests a manifest patch per whitespace mode, so one digest never names two patches", async () => {
+    const root = await folder();
+    const store = await folder();
+    await writeFile(join(root, "a.txt"), "a b\nc\n");
+    const snapshots = localSnapshots(envOf(root), { store, git: join(root, "no-git") });
+    const before = await snapshots.before(run);
+    await writeFile(join(root, "a.txt"), "a  b\nd\n");
+    const after = await snapshots.after(run);
+    const [exact] = await snapshots.patches(before, after, ["a.txt"]);
+    const [loose] = await snapshots.patches(before, after, ["a.txt"], { ignoreWhitespace: true });
+
+    expect(textHunks(exact)[0]?.lines).toHaveLength(4);
+    expect(textHunks(loose)[0]?.lines).toHaveLength(3);
+    expect(loose?.digest).not.toBe(exact?.digest);
   });
 
   it("records a walk stopped at its limit as incomplete, so a path it missed is failed, never deleted or added", async () => {

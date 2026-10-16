@@ -1,7 +1,6 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { PatchEntry as HostPatch } from "@nyte-ai/sdk";
-import { formatPatch } from "./patch-text.ts";
 
 export const PATCH_READ_MAX = 50;
 
@@ -57,8 +56,8 @@ const EMPTY: PatchEntry = { kind: "empty" };
 const FAILED: PatchEntry = { kind: "failed" };
 
 /**
- * A host patch as the stack renders it. The renderer reads unified text, so
- * the host's hunks become text and are parsed once. The host's digest names
+ * A host patch as the stack renders it: the host's unified text, parsed once
+ * by the renderer. The host's digest names
  * the patch within its source's lineage (scope and whitespace mode): an
  * unchanged digest keeps the earlier entry, and the pair keys the highlighter.
  */
@@ -73,16 +72,13 @@ function entryFrom(diff: HostPatch, earlier: PatchEntry | undefined, lineage: st
     case "empty":
       return EMPTY;
     case "text": {
-      if (diff.hunks.length === 0) return EMPTY;
-
       if (earlier?.kind === "ready" && earlier.digest === diff.digest) return earlier;
-      const patch = formatPatch(diff);
 
       return {
         kind: "ready",
-        patch,
+        patch: diff.patch,
         digest: diff.digest,
-        files: parsePatchFiles(patch, `${lineage}\u0000${diff.digest}`).flatMap(
+        files: parsePatchFiles(diff.patch, `${lineage}\u0000${diff.digest}`).flatMap(
           (parsed) => parsed.files,
         ),
         added: diff.added,

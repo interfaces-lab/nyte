@@ -1,21 +1,15 @@
 import { lineDiff } from "@nyte-ai/core";
-import { asId } from "@nyte-ai/schema";
-import type {
-  FileStatus,
-  GitRevision,
-  Hunk,
-  LineStat,
-  PatchEntry,
-  SnapshotId,
-} from "@nyte-ai/schema";
+import { asId, writePatch } from "@nyte-ai/schema";
+import type { FileStatus, GitRevision, LineStat, PatchEntry, SnapshotId } from "@nyte-ai/schema";
 import { sha256 } from "../hash.ts";
 import type { Ran } from "./command.ts";
 
-export type ParsedDiff = {
+/** One file's section of `git diff` output: its paths, whether git called it binary, whether it has a hunk, its line counts and its text. */
+type DiffSection = {
   readonly oldPath: string | null;
   readonly newPath: string | null;
   readonly binary: boolean;
-  readonly hunks: readonly Hunk[];
+  readonly hunked: boolean;
   readonly added: number;
   readonly removed: number;
   readonly text: string;
@@ -23,21 +17,29 @@ export type ParsedDiff = {
 
 export const PATCH_LIMIT = 1024 * 1024;
 
+const ESCAPES = new Map([
+  ["a", 7],
+  ["b", 8],
+  ["f", 12],
+  ["n", 10],
+  ["r", 13],
+  ["t", 9],
+  ["v", 11],
+  ['"', 34],
+  ["\\", 92],
+]);
+
 export type Changed = {
   readonly path: string;
   readonly status: FileStatus;
   readonly from?: string;
 };
 
-type Line = Hunk["lines"][number];
-
-const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$/;
-
-export function parseDiff(output: string): readonly ParsedDiff[] {
+function splitDiff(output: string): readonly DiffSection[] {
   const lines = output.split("\n");
 
   if (lines.at(-1) === "") lines.pop();
-  const sections: ParsedDiff[] = [];
+  const sections: DiffSection[] = [];
   let index = 0;
 
   while (index < lines.length) {
@@ -53,41 +55,35 @@ export function parseDiff(output: string): readonly ParsedDiff[] {
     let oldPath: string | null = named?.old ?? null;
     let newPath: string | null = named?.new ?? null;
     let binary = false;
-    const hunks: Hunk[] = [];
+    let hunked = false;
     let added = 0;
     let removed = 0;
     index += 1;
 
     while (index < lines.length && !(lines[index] ?? "").startsWith("diff --git ")) {
       const line = lines[index] ?? "";
-      const hunk = HUNK_HEADER.exec(line);
+      index += 1;
 
-      if (hunk !== null) {
-        const parsed = readHunk(lines, index, hunk);
-        hunks.push(parsed.hunk);
-        added += parsed.hunk.lines.filter((entry) => entry.kind === "add").length;
-        removed += parsed.hunk.lines.filter((entry) => entry.kind === "remove").length;
-        index = parsed.next;
-        continue;
-      }
-
-      if (line.startsWith("--- ")) oldPath = sidePath(line.slice(4), "a/");
+      if (line.startsWith("@@ ")) hunked = true;
+      else if (hunked && line.startsWith("+")) added += 1;
+      else if (hunked && line.startsWith("-")) removed += 1;
+      else if (hunked) continue;
+      else if (line.startsWith("--- ")) oldPath = sidePath(line.slice(4), "a/");
       else if (line.startsWith("+++ ")) newPath = sidePath(line.slice(4), "b/");
-      else if (line.startsWith("rename from ") || line.startsWith("copy from "))
-        oldPath = unquote(line.slice(line.indexOf(" from ") + 6));
-      else if (line.startsWith("rename to ") || line.startsWith("copy to "))
-        newPath = unquote(line.slice(line.indexOf(" to ") + 4));
+      else if (/^(?:rename|copy) from /u.test(line))
+        oldPath = unquote(line.replace(/^(?:rename|copy) from /u, ""));
+      else if (/^(?:rename|copy) to /u.test(line))
+        newPath = unquote(line.replace(/^(?:rename|copy) to /u, ""));
       else if (line.startsWith("new file mode ")) oldPath = null;
       else if (line.startsWith("deleted file mode ")) newPath = null;
       else if (line.startsWith("Binary files ") || line === "GIT binary patch") binary = true;
-      index += 1;
     }
 
     sections.push({
       oldPath,
       newPath,
       binary,
-      hunks,
+      hunked,
       added,
       removed,
       text: `${lines.slice(start, index).join("\n")}\n`,
@@ -97,27 +93,28 @@ export function parseDiff(output: string): readonly ParsedDiff[] {
   return sections;
 }
 
-export function entryOf(path: string, status: FileStatus, parsed: ParsedDiff): PatchEntry {
-  const digest = sha256(parsed.text);
+function sectionEntry(path: string, status: FileStatus, section: DiffSection): PatchEntry {
+  const digest = sha256(section.text);
 
-  if (parsed.binary) return { path, status, digest, kind: "binary" };
+  if (section.binary) return { path, status, digest, kind: "binary" };
 
-  if (parsed.text.length > PATCH_LIMIT)
+  if (section.text.length > PATCH_LIMIT)
     return { path, status, digest, kind: "too-large", limit: PATCH_LIMIT };
 
-  if (parsed.hunks.length === 0) return { path, status, digest, kind: "empty" };
+  if (!section.hunked) return { path, status, digest, kind: "empty" };
 
   return {
     path,
     status,
     digest,
     kind: "text",
-    added: parsed.added,
-    removed: parsed.removed,
-    hunks: parsed.hunks,
+    added: section.added,
+    removed: section.removed,
+    patch: section.text,
   };
 }
 
+/** The entry for two texts diffed on the host: a text entry's digest is its patch's, so it moves with the whitespace mode; an empty one digests both sides and the mode. */
 export function textEntry(
   path: string,
   status: FileStatus,
@@ -125,12 +122,22 @@ export function textEntry(
   after: string | null,
   options?: { readonly ignoreWhitespace?: boolean },
 ): PatchEntry {
-  const digest = sha256(`${before ?? ""}\u0000${after ?? ""}`);
-  const diffed = lineDiff(before ?? "", after ?? "", options);
+  const { hunks, added, removed } = lineDiff(before ?? "", after ?? "", options);
 
-  if (diffed.hunks.length === 0) return { path, status, digest, kind: "empty" };
+  if (hunks.length === 0) {
+    const mode = options?.ignoreWhitespace === true ? "ignore-whitespace" : "";
 
-  return { path, status, digest, kind: "text", ...diffed };
+    return {
+      path,
+      status,
+      digest: sha256(`${mode}\u0000${before ?? ""}\u0000${after ?? ""}`),
+      kind: "empty",
+    };
+  }
+
+  const patch = writePatch(path, status, hunks);
+
+  return { path, status, digest: sha256(patch), kind: "text", added, removed, patch };
 }
 
 export async function readPatches(
@@ -139,7 +146,7 @@ export async function readPatches(
   emptyDigest: (file: Changed) => string,
 ): Promise<readonly PatchEntry[]> {
   const settle = (batch: readonly Changed[], ran: Ran): readonly PatchEntry[] => {
-    const sections = parseDiff(ran.stdout.toString("utf8"));
+    const sections = splitDiff(ran.stdout.toString("utf8"));
 
     return batch.map((file) => {
       const section = sections.find(
@@ -148,7 +155,7 @@ export async function readPatches(
 
       return section === undefined
         ? { path: file.path, status: file.status, digest: emptyDigest(file), kind: "empty" }
-        : entryOf(file.path, file.status, section);
+        : sectionEntry(file.path, file.status, section);
     });
   };
 
@@ -202,63 +209,6 @@ export function snapshotOf(value: string): SnapshotId {
   return asId<"snapshot">(value);
 }
 
-function readHunk(
-  lines: readonly string[],
-  at: number,
-  header: RegExpExecArray,
-): { readonly hunk: Hunk; readonly next: number } {
-  const oldStart = Number(header[1]);
-  const oldLines = header[2] === undefined ? 1 : Number(header[2]);
-  const newStart = Number(header[3]);
-  const newLines = header[4] === undefined ? 1 : Number(header[4]);
-  const body: Line[] = [];
-  let oldSeen = 0;
-  let newSeen = 0;
-  let index = at + 1;
-
-  while (index < lines.length) {
-    const line = lines[index] ?? "";
-
-    if (line.startsWith("\\")) {
-      const last = body.pop();
-
-      if (last !== undefined) body.push({ ...last, noNewline: true });
-      index += 1;
-      continue;
-    }
-
-    if (oldSeen >= oldLines && newSeen >= newLines) break;
-    const mark = line[0];
-
-    if (mark === "+") {
-      body.push({ kind: "add", text: line.slice(1) });
-      newSeen += 1;
-    } else if (mark === "-") {
-      body.push({ kind: "remove", text: line.slice(1) });
-      oldSeen += 1;
-    } else if (mark === " " || line === "") {
-      body.push({ kind: "context", text: line.slice(1) });
-      oldSeen += 1;
-      newSeen += 1;
-    } else break;
-    index += 1;
-  }
-
-  const text = header[5] ?? "";
-
-  return {
-    hunk: {
-      oldStart,
-      oldLines,
-      newStart,
-      newLines,
-      header: text === "" ? null : text,
-      lines: body,
-    },
-    next: index,
-  };
-}
-
 function headerPaths(rest: string): { readonly old: string; readonly new: string } | null {
   if (rest.startsWith('"')) {
     const end = quotedEnd(rest);
@@ -276,9 +226,9 @@ function headerPaths(rest: string): { readonly old: string; readonly new: string
     if (rest.slice(half + 5) === path) return { old: path, new: path };
   }
 
-  const split = rest.indexOf(" b/");
+  const split = /^.{2}(.*?) b\/(.*)$/su.exec(rest);
 
-  return split < 0 ? null : { old: rest.slice(2, split), new: unquote(rest.slice(split + 3)) };
+  return split === null ? null : { old: split[1] ?? "", new: unquote(split[2] ?? "") };
 }
 
 function quotedEnd(text: string): number {
@@ -298,22 +248,10 @@ function sidePath(text: string, prefix: string): string | null {
   return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
-export function unquote(text: string): string {
+function unquote(text: string): string {
   if (!text.startsWith('"') || !text.endsWith('"') || text.length < 2) return text;
   const bytes: number[] = [];
   const encoder = new TextEncoder();
-
-  const escapes: Readonly<Record<string, number>> = {
-    a: 7,
-    b: 8,
-    f: 12,
-    n: 10,
-    r: 13,
-    t: 9,
-    v: 11,
-    '"': 34,
-    "\\": 92,
-  };
 
   for (let index = 1; index < text.length - 1; index += 1) {
     const char = text[index] ?? "";
@@ -332,7 +270,7 @@ export function unquote(text: string): string {
       continue;
     }
 
-    bytes.push(escapes[next] ?? next.charCodeAt(0));
+    bytes.push(ESCAPES.get(next) ?? next.charCodeAt(0));
     index += 1;
   }
 

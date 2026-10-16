@@ -7,6 +7,8 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
+import { readHunks } from "@nyte-ai/schema";
+import type { Hunk } from "@nyte-ai/schema";
 import type { Connection, FileStatus, PatchEntry, PatchSet, SessionId } from "@nyte-ai/sdk";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -31,6 +33,7 @@ type FileSection = {
   removed: number;
   subtitle: string | undefined;
   file: TextPatch;
+  hunks: readonly Hunk[];
   lineCount: number;
 };
 
@@ -40,11 +43,11 @@ const LINE_LIMIT = 400;
 /** How much of one file is on screen. The header toggles, the footer promotes. */
 type FileView = "collapsed" | "head" | "whole";
 
-/** Parsed patch → display lines with new-side (or old-side) line numbers. */
-function linesOf(file: TextPatch, limit: number): Line[] {
+/** A file's hunks → display lines with new-side (or old-side) line numbers. */
+function displayLines(hunks: readonly Hunk[], limit: number): Line[] {
   const out: Line[] = [];
 
-  for (const hunk of file.hunks) {
+  for (const hunk of hunks) {
     if (out.length === limit) return out;
 
     out.push({
@@ -75,6 +78,8 @@ function linesOf(file: TextPatch, limit: number): Line[] {
 }
 
 function fileSection(file: TextPatch, subtitle: string | undefined): FileSection {
+  const hunks = readHunks(file.patch);
+
   return {
     key: file.path + (subtitle ?? ""),
     path: file.path,
@@ -83,7 +88,8 @@ function fileSection(file: TextPatch, subtitle: string | undefined): FileSection
     removed: file.removed,
     subtitle,
     file,
-    lineCount: file.hunks.reduce((count, hunk) => count + hunk.lines.length + 1, 0),
+    hunks,
+    lineCount: hunks.reduce((count, hunk) => count + hunk.lines.length + 1, 0),
   };
 }
 
@@ -355,7 +361,10 @@ function DiffSections({
           data:
             view === "collapsed"
               ? []
-              : linesOf(section.file, view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY),
+              : displayLines(
+                  section.hunks,
+                  view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY,
+                ),
         };
       }),
     [sections, viewOf],

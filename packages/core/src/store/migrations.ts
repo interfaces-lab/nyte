@@ -1,5 +1,6 @@
-import { isJson } from "@nyte-ai/schema";
+import { compile, FileStatusType, HunkType, isJson, writePatch } from "@nyte-ai/schema";
 import type { Json, ObjectId } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import { objectId } from "../util/content.ts";
 import { SdkError } from "../util/error.ts";
 import { isJsonObject } from "../util/json-schema.ts";
@@ -218,6 +219,78 @@ const workspaceTrust: RewriteStep = {
   },
 };
 
+const LEGACY_PATCH = compile(
+  Type.Object({
+    path: Type.String(),
+    status: FileStatusType,
+    kind: Type.Literal("text"),
+    hunks: Type.Array(HunkType),
+  }),
+);
+
+/** An edit tool's output from before patches were text: its hunks become the unified diff they stand for. */
+function unifiedOutput(output: Json | undefined): Json | null {
+  if (!isJsonObject(output) || !LEGACY_PATCH.Check(output)) return null;
+  const { hunks, ...entry } = output;
+
+  return { ...entry, patch: writePatch(output.path, output.status, hunks) };
+}
+
+function withOutput(outcome: Json | undefined): Json | null {
+  if (!isJsonObject(outcome)) return null;
+  const output = unifiedOutput(outcome.output);
+
+  return output === null ? null : { ...outcome, output };
+}
+
+const patchText: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-patch-text",
+  rewrite(object) {
+    if (!isJsonObject(object)) return null;
+
+    switch (object.kind) {
+      case "call":
+        return patched(object, (body) => {
+          const result = withOutput(body.result);
+          const nested = isJsonObject(body.nested) ? body.nested : {};
+
+          const outcomes = Object.fromEntries(
+            Object.entries(nested).map(([key, outcome]) => [key, withOutput(outcome) ?? outcome]),
+          );
+
+          const nestedChanged = Object.keys(nested).some((key) => outcomes[key] !== nested[key]);
+
+          if (result === null && !nestedChanged) return body;
+
+          return {
+            ...body,
+            ...(result !== null && { result }),
+            ...(nestedChanged && { nested: outcomes }),
+          };
+        });
+      case "part":
+        return patched(object, (body) => {
+          const state = body.state;
+
+          if (!isJsonObject(state)) return body;
+          const outcome = withOutput(state.outcome);
+
+          return outcome === null ? body : { ...body, state: { ...state, outcome } };
+        });
+      default:
+        return null;
+    }
+  },
+  rewriteLog: (events) =>
+    events.map((event) => {
+      if (!isJsonObject(event) || event.kind !== "call" || event.change !== "settled") return null;
+      const outcome = withOutput(event.outcome);
+
+      return outcome === null ? null : { ...event, outcome };
+    }),
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -225,6 +298,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   orderedSessionIndex,
   logKindIndex,
   workspaceTrust,
+  patchText,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

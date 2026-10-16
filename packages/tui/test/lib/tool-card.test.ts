@@ -34,19 +34,15 @@ const PATCH: Json = {
   digest: "d",
   added: 1,
   removed: 1,
-  hunks: [
-    {
-      oldStart: 1,
-      oldLines: 1,
-      newStart: 1,
-      newLines: 1,
-      header: null,
-      lines: [
-        { kind: "remove", text: "const a = 1;" },
-        { kind: "add", text: "const a = 2;" },
-      ],
-    },
-  ],
+  patch: [
+    "diff --git a/src/a.ts b/src/a.ts",
+    "--- a/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -1,1 +1,1 @@",
+    "-const a = 1;",
+    "+const a = 2;",
+    "",
+  ].join("\n"),
 };
 
 const UNIFIED = [
