@@ -64,7 +64,7 @@ import { SdkError } from "../util/error.ts";
 import { check, isJsonObject } from "../util/json-schema.ts";
 import { extractUserText } from "../util/text.ts";
 import { charge, complete, requestEvent, rideRef, ZERO_USAGE } from "./request.ts";
-import { projectedCommit, requestBody, tokenEstimate } from "./transcript.ts";
+import { estimateTranscriptTokens, projectedCommit, requestBody } from "./transcript.ts";
 
 type Answer =
   | { readonly kind: "ok"; readonly text: string; readonly usage: Usage; readonly info: ModelInfo }
@@ -140,7 +140,7 @@ export function createCompactor(kernel: Kernel, models: Models): Compactor {
 
     if (split === null) return { kind: "nothing-to-compact" };
     await failLeftoverCompactions(kernel, session, head);
-    const tokensBefore = tokenEstimate(transcript);
+    const tokensBefore = estimateTranscriptTokens(transcript);
     const part = asId<"part">(crypto.randomUUID());
     const state: Json = { summary: null, material: null, tokensBefore, usage: null };
 
@@ -216,7 +216,7 @@ export async function compact(
   | { readonly kind: "failed"; readonly failure: Failure }
 > {
   const { session, head, run } = input;
-  const tokensBefore = tokenEstimate(input.transcript);
+  const tokensBefore = estimateTranscriptTokens(input.transcript);
   const split = splitTranscriptForCompaction(input.transcript, input.info);
   dev("compaction", input.reason, { session, run: run.id, tokensBefore, at: input.info.compactAt });
 

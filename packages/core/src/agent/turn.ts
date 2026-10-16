@@ -15,7 +15,7 @@ import type {
   Usage,
 } from "@nyte-ai/schema";
 import type { Models } from "@nyte-ai/ai";
-import type { AssistantMessageEvent, Failure } from "@nyte-ai/schema/model";
+import type { AssistantMessage, AssistantMessageEvent, Failure } from "@nyte-ai/schema/model";
 import { LOCAL, PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type {
@@ -58,7 +58,7 @@ import {
   ZERO_USAGE,
 } from "./request.ts";
 import { executeCall } from "./tool-runner.ts";
-import { requestBody, tokenEstimate } from "./transcript.ts";
+import { estimateTranscriptTokens, requestBody, withReportedUsage } from "./transcript.ts";
 
 type ThoughtSignature = {
   readonly length: number;
@@ -180,6 +180,7 @@ async function turn(
   let state = await resumed(context, given);
   let charged = { total: ZERO_USAGE, requests: 0 };
   let callIds = new Map<ModelToolCall, CallId>();
+  let reported: AssistantMessage["usage"] | null = null;
 
   const config: LoopConfig<TurnRequest> = {
     attempt: state.attempt,
@@ -197,7 +198,12 @@ async function turn(
         if (configured === null)
           return failedRequest(`No model ${configuration.model.id} is in the catalog.`);
         const input = { session, head, run: state.run, configuration };
-        const body = () => requestBody(kernel, models, runtime, input);
+
+        const body = async () => {
+          const built = await requestBody(kernel, models, runtime, input);
+
+          return { ...built, transcript: withReportedUsage(built.transcript, reported) };
+        };
 
         const compacting = (
           built: Awaited<ReturnType<typeof body>>,
@@ -222,7 +228,7 @@ async function turn(
           built = await body();
         }
 
-        if (tokenEstimate(built.transcript) > configured.compactAt) {
+        if (estimateTranscriptTokens(built.transcript) > configured.compactAt) {
           const compacted = await compacting(built, "threshold");
 
           if (compacted.kind === "compacted") built = await body();
@@ -316,6 +322,7 @@ async function turn(
 
     async finishTurn({ message, calls, usage, prepared }) {
       observe(context, prepared, usage);
+      reported = message.usage;
 
       await changeRun(context, run, async (record) => {
         const next = charge(record, usage, true);

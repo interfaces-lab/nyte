@@ -24,7 +24,7 @@ import type {
   UserMessage,
 } from "@nyte-ai/schema/model";
 import type { Models } from "@nyte-ai/ai";
-import { estimateMessageTokens, estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
+import { estimateContextTokens, estimateTextTokens } from "@nyte-ai/ai/utils/estimate";
 import { LOCAL } from "../contract/host.ts";
 import type { Kernel, PluginRuntime, ToolSource } from "../contract/kernel.ts";
 import { branchSummary, compaction, text, thinking, tool } from "../contract/parts.ts";
@@ -121,11 +121,11 @@ export async function requestBody(
   };
 }
 
-export function tokenEstimate(transcript: Transcript): number {
-  const messages = transcript.messages.reduce(
-    (sum, message) => sum + estimateMessageTokens(message),
-    0,
-  );
+/** The context tokens a transcript fills: the provider's count up to the last response it reported on, plus an estimate of what follows it; without one, an estimate of it all. */
+export function estimateTranscriptTokens(transcript: Transcript): number {
+  const estimate = estimateContextTokens(transcript.messages);
+
+  if (estimate.lastUsageIndex !== null) return estimate.tokens;
 
   return transcript.tools.reduce(
     (sum, info) =>
@@ -133,8 +133,25 @@ export function tokenEstimate(transcript: Transcript): number {
       estimateTextTokens(info.name) +
       estimateTextTokens(info.description) +
       estimateTextTokens(JSON.stringify(info.parameters)),
-    messages,
+    estimate.tokens,
   );
+}
+
+/** The transcript with a response's provider-reported usage on its last assistant message, which a rebuilt transcript leaves at zero, so estimates and the output clamp anchor on the provider's count. */
+export function withReportedUsage(
+  transcript: Transcript,
+  usage: AssistantMessage["usage"] | null,
+): Transcript {
+  const last = transcript.messages.findLastIndex((message) => message.role === "assistant");
+  const message = transcript.messages[last];
+
+  if (usage === null || message?.role !== "assistant") return transcript;
+  const reported: AssistantMessage = { ...message, usage };
+  const commit = projections.get(message);
+
+  if (commit !== undefined) projections.set(reported, commit);
+
+  return { ...transcript, messages: transcript.messages.with(last, reported) };
 }
 
 async function buildContext(

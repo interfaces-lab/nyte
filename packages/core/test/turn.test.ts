@@ -762,6 +762,41 @@ describe("turn", () => {
     ).toEqual(["call_1", "call_2", "dup", "dup_4", "call_1", "call_2", "dup", "dup_4"]);
   });
 
+  it("judges the threshold from the provider's reported usage, not a character count of the history", async () => {
+    const fake = fakeModels();
+
+    const policy: Plugin<"core"> = {
+      id: "policy",
+      contribute: {
+        modelContext: [
+          { model: { provider: "test", id: "model" }, contextWindow: 10_000, compactAt: 2_000 },
+        ],
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "text", text: "First answer." }] },
+      {
+        content: [{ type: "toolCall", id: "a", name: "echo", arguments: { text: "a" } }],
+        usage: { input: 2_500, output: 8 },
+      },
+      { content: [{ type: "text", text: "They asked a first question." }] },
+      { content: [{ type: "text", text: "Done." }] },
+    );
+
+    await using host = await open(fake, { plugins: [recorder().plugin, policy] });
+    const session = await host.sessions.create();
+    await (await session.send("First question?")).settled();
+    expect((await (await session.send("Second question?")).settled()).kind).toBe("completed");
+
+    expect(fake.requests).toHaveLength(4);
+    expect(lastUserText(fake, 2)).toContain("First question?");
+    expect(sent(fake, 3)[1]).toContain("The earlier conversation was summarised");
+    expect(
+      fake.requests[3].context.messages.findLast((message) => message.role === "assistant"),
+    ).toMatchObject({ usage: { input: 2_500, output: 8 } });
+  });
+
   it("fails every call of a response cut off at the output cap, without running any, and goes on", async () => {
     const fake = fakeModels();
 
