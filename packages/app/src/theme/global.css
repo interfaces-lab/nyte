@@ -61,20 +61,13 @@
     scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
   }
 
-  /* Shiki dual-theme output: pick the palette side by the html attribute. */
-  .shiki,
-  .shiki span {
-    color: var(--shiki-light);
+  /* Highlighted code carries both palettes; pick the side by the html attribute. */
+  [data-nyte-code] span {
+    color: var(--diffs-token-light);
   }
 
-  :root[data-display-mode="dark"] .shiki,
-  :root[data-display-mode="dark"] .shiki span {
-    color: var(--shiki-dark);
-  }
-
-  .shiki {
-    margin: 0;
-    background: transparent !important;
+  :root[data-display-mode="dark"] [data-nyte-code] span {
+    color: var(--diffs-token-dark);
   }
 }
 

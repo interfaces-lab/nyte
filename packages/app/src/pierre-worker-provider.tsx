@@ -1,4 +1,5 @@
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import type { ThemedFileResult } from "@pierre/diffs";
 import { WorkerPoolContext } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import type {
@@ -10,6 +11,7 @@ import type {
 import PierreDiffWorkerUrl from "@pierre/diffs/worker/worker-portable.js?url";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { bundledLanguages } from "shiki";
 
 /**
  * At most half the cores, within reason: highlighting shares the machine with
@@ -202,6 +204,73 @@ function retain(): () => void {
     if (entry.surfaces === 0)
       entry.idle = window.setTimeout(() => releaseIdle(entry), POOL_IDLE_MS);
   };
+}
+
+type HighlightNode = ThemedFileResult["code"][number];
+
+const HTML_ESCAPES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+};
+
+function escapeHtml(text: string): string {
+  return text.replaceAll(/[&<>"]/gu, (character) => HTML_ESCAPES[character] ?? character);
+}
+
+/** A line's tokens as HTML: each token a span carrying its `--diffs-token-*` colours. */
+function tokenHtml(node: HighlightNode): string {
+  if (node.type === "text") return escapeHtml(node.value);
+
+  if (node.type !== "element") return "";
+
+  const children = node.children.map(tokenHtml).join("");
+
+  if (node.tagName !== "span") return children;
+
+  const style = node.properties.style;
+
+  return style === undefined || style === null
+    ? `<span>${children}</span>`
+    : `<span style="${escapeHtml(String(style))}">${children}</span>`;
+}
+
+/**
+ * A fenced code block's lines as HTML, highlighted by the pool the diffs and
+ * the editor use: one tokenizer, one theme pair and one set of grammars for
+ * every highlight in the window. Each line is a `div` in Pierre's output; here
+ * lines are joined with newlines for a `pre`, and every text node is escaped.
+ * Undefined when shiki has no grammar for the fence's language or the pool
+ * fails, and the block stays plain.
+ */
+export async function highlightCode(
+  code: string,
+  language: string,
+  cacheKey: string,
+): Promise<string | undefined> {
+  if (!Object.hasOwn(bundledLanguages, language)) return undefined;
+
+  const pool = sharedPool();
+  const release = retain();
+  const file = { name: "code-block", contents: code, lang: language, cacheKey: `code:${cacheKey}` };
+
+  try {
+    await pool.primeFileHighlightCache(file);
+
+    return pool
+      .getFileResultCache(file)
+      ?.result.code.map((line) => {
+        const html = tokenHtml(line);
+
+        return html === "\n" ? "" : html;
+      })
+      .join("\n");
+  } catch {
+    return undefined;
+  } finally {
+    release();
+  }
 }
 
 /**
