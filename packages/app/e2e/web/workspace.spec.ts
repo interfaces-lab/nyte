@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { README_LINE } from "../server/address.ts";
 import { collectErrors } from "../utils/errors.ts";
 import { pair } from "../utils/pairing.ts";
-
-const README_LINE = "workspace.read reached the browser.";
 
 test("a paired browser reads, edits, blames, searches, and mentions workspace files", async ({
   page,

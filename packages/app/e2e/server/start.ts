@@ -9,7 +9,7 @@ import { localProvider, sqliteStore } from "@nyte-ai/host";
 import { fakeModels, testModel } from "@nyte-ai/host/bench";
 import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 import { sdk } from "@nyte-ai/sdk";
-import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN } from "./address.ts";
+import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
 
 /** The echo provider answers `Echo: <message>`; a title request gets `Echo: <first message>`. */
 const { models } = fakeModels({
@@ -76,7 +76,7 @@ async function serveApp(request: Request): Promise<Response | undefined> {
 
 const cwd = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-web-")));
 
-await writeFile(join(cwd, "README.md"), "# E2E workspace\n\nThe workspace reached the browser.\n");
+await writeFile(join(cwd, "README.md"), `# E2E workspace\n\n${README_LINE}\n`);
 
 for (const args of [
   ["init", "-q"],
