@@ -13,6 +13,7 @@ import {
   stopService,
 } from "@nyte-ai/service";
 import type { Registration, ServiceClient } from "@nyte-ai/service";
+import { readCodeId } from "./code-id.ts";
 import { compiled } from "./compiled.ts";
 import { HostFailure, startHostThread } from "./hosting.ts";
 import type { RemoteFacts } from "./model/state.ts";
@@ -21,6 +22,8 @@ import { VERSION } from "./version.ts";
 export interface ServiceSession {
   readonly registration: Registration;
   readonly connection: Connection;
+  /** Resolves once the service stops, or a nyte of another build replaces it; `connection` can't reach it again. */
+  readonly lost: Promise<void>;
 }
 
 function servicePort(
@@ -44,16 +47,19 @@ function serviceCommand(): [string, ...string[]] {
     : [process.execPath, script, "service", "run"];
 }
 
-export function ensureLocalService(): Promise<Registration> {
+export async function ensureLocalService(lost?: () => void): Promise<Registration> {
   return ensureService({
     home: homedir(),
     version: VERSION,
+    code: await readCodeId(),
     command: serviceCommand(),
+    lost,
   });
 }
 
 export async function connectLocalService(): Promise<ServiceSession> {
-  const registration = await ensureLocalService();
+  const lost = Promise.withResolvers<void>();
+  const registration = await ensureLocalService(lost.resolve);
 
   const connection = await sdk.connect({
     url: registration.url,
@@ -61,7 +67,7 @@ export async function connectLocalService(): Promise<ServiceSession> {
     expect: { hostId: asId(registration.hostId) },
   });
 
-  return { registration, connection };
+  return { registration, connection, lost: lost.promise };
 }
 
 interface Output {
@@ -81,15 +87,17 @@ export async function serviceCommandMain(
     case "status": {
       if (rest.length > 0) throw new Error("Usage: nyte service status");
       const running = await findService(home);
+      const build = await serviceBuild(VERSION, await readCodeId());
 
       if (running === undefined) {
-        output.write("Nyte service isn't running. Any nyte command starts it.\n");
+        output.write(
+          `Nyte service isn't running. Any nyte command starts it.\nThis nyte is build ${build}.\n`,
+        );
 
         return;
       }
 
       const header = `Nyte service ${running.version} at ${running.url} (pid ${String(running.pid)})`;
-      const build = await serviceBuild(VERSION);
 
       if (running.version !== build) {
         output.write(

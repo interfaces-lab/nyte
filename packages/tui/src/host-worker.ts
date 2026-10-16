@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import { parentPort } from "node:worker_threads";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { PortInUse, ServiceRunning, portConflict, probePort, startService } from "@nyte-ai/service";
+import { readCodeId } from "./code-id.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import { openTerminalHost } from "./host.ts";
 import { hostMessages } from "./hosting.ts";
@@ -67,6 +68,7 @@ async function open(command: HostCommand): Promise<Opened> {
       home: homedir(),
       port: command.port,
       version: VERSION,
+      code: await readCodeId(),
       connect: readConnectConfig(),
     });
 

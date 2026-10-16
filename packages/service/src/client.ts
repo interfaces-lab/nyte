@@ -25,11 +25,15 @@ const STOP_POLL_MS = 50;
 
 export interface EnsureServiceOptions {
   readonly home: string;
-  /** The client's package version; with the operations digest it forms the build the service must register, see `serviceBuild`. */
+  /** The client's package version; with the operations digest and `code` it forms the build the service must register, see `serviceBuild`. */
   readonly version: string;
+  /** The id of the code the client runs; absent, the build names only the version and the operations digest. */
+  readonly code?: string;
   readonly command: readonly [string, ...string[]];
   /** Ends this client's attachment to the service; absent, the attachment lasts as long as the process. */
   readonly signal?: AbortSignal;
+  /** Called once when the service ends the attachment before `signal` aborts: the service stopped, or a client of another build replaced it. */
+  readonly lost?: () => void;
 }
 
 export async function findService(home: string): Promise<Registration | undefined> {
@@ -47,12 +51,12 @@ export async function findService(home: string): Promise<Registration | undefine
  * process exits, which keeps the service from stopping while idle.
  */
 export async function ensureService(options: EnsureServiceOptions): Promise<Registration> {
-  const build = await serviceBuild(options.version);
+  const build = await serviceBuild(options.version, options.code);
   const found = await findService(options.home);
 
   if (found !== undefined && found.version !== build) await replace(options.home, found, build);
   const registration = found?.version === build ? found : await start(options, build);
-  attach(registration, build, options.signal);
+  attach(registration, build, options.signal, options.lost);
 
   return registration;
 }
@@ -70,19 +74,37 @@ function skew(found: Registration, build: string): string {
 /**
  * Holds a request to the service's attach route open for as long as this client lives.
  * Its socket is unreferenced, so it never keeps the process running, and the service
- * sees the connection end when the process exits.
+ * sees the connection end when the process exits. The connection ending first, before
+ * `signal` aborts, calls `lost`.
  */
-function attach(registration: Registration, build: string, signal: AbortSignal | undefined): void {
+function attach(
+  registration: Registration,
+  build: string,
+  signal: AbortSignal | undefined,
+  lost: (() => void) | undefined,
+): void {
   const url = new URL(SERVICE_ROUTES.attach, registration.url);
   url.searchParams.set("pid", String(process.pid));
   url.searchParams.set("startedAt", String(Math.round(performance.timeOrigin)));
   url.searchParams.set("build", build);
 
   const request = get(url, { headers: { Authorization: `Bearer ${registration.token}` } });
+  let ended = false;
+
+  const end = (): void => {
+    if (ended || signal?.aborted === true) return;
+    ended = true;
+    lost?.();
+  };
+
   signal?.addEventListener("abort", () => request.destroy(), { once: true });
   request.on("socket", (socket) => socket.unref());
-  request.on("response", (response) => response.resume());
-  request.on("error", () => undefined);
+  request.on("response", (response) => {
+    response.resume();
+    response.on("close", end);
+  });
+  request.on("error", end);
+  request.on("close", end);
 }
 
 /** Lists the clients attached to the service. */

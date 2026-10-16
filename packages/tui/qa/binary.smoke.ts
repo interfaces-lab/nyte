@@ -5,11 +5,13 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { openPty } from "./pty.ts";
 import type { Pty } from "./pty.ts";
-import { PLUGIN_ANSWER, serveForBinary } from "./service.ts";
+import { PLUGIN_ANSWER, readBinaryCode, serveForBinary } from "./service.ts";
 import type { TestService } from "./service.ts";
 
 const BINARY =
   process.env["NYTE_BINARY"] ?? fileURLToPath(new URL("../../../bin/nyte", import.meta.url));
+
+const CODE = await readBinaryCode(BINARY);
 
 const RESUME = /To resume previous session\nnyte --session=([^\n]+)\n$/u;
 
@@ -93,7 +95,7 @@ test("--help prints plain usage and exits 0", async () => {
 });
 
 test("-p --json streams text while the provider still streams, then a completed result", async () => {
-  await using service = await serveForBinary({ plugin: false });
+  await using service = await serveForBinary({ plugin: false, code: CODE });
   const release = Promise.withResolvers<void>();
   service.reply({
     content: [{ type: "text", text: "Streaming from the fake provider." }],
@@ -116,7 +118,7 @@ test("-p --json streams text while the provider still streams, then a completed 
 });
 
 test("a provider error exits 1 with a failed result", async () => {
-  await using service = await serveForBinary({ plugin: false });
+  await using service = await serveForBinary({ plugin: false, code: CODE });
   service.reply({ error: "The fake provider failed." });
 
   const run = await print(service, ["-p", "--json", "fail please"]);
@@ -126,7 +128,7 @@ test("a provider error exits 1 with a failed result", async () => {
 });
 
 test("SIGTERM during a run exits 143 with a cancelled result", async () => {
-  await using service = await serveForBinary({ plugin: false });
+  await using service = await serveForBinary({ plugin: false, code: CODE });
   service.reply({
     content: [{ type: "text", text: "Holding the stream open" }],
     hold: true,
@@ -157,7 +159,7 @@ test("SIGTERM during a run exits 143 with a cancelled result", async () => {
 });
 
 test("the TUI asks to trust a folder with project files; trusting it loads the plugin's command", async () => {
-  await using service = await serveForBinary({ plugin: true });
+  await using service = await serveForBinary({ plugin: true, code: CODE });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
 
   await pty.waitFor((screen) => screen.text.includes("Trust this folder"));
@@ -170,7 +172,7 @@ test("the TUI asks to trust a folder with project files; trusting it loads the p
 }, 30_000);
 
 test("the TUI keeps keys typed at launch, streams a reply, and prints the resume command on /quit and SIGTERM", async () => {
-  await using service = await serveForBinary({ plugin: false });
+  await using service = await serveForBinary({ plugin: false, code: CODE });
   service.reply(
     { content: [{ type: "text", text: "Hello from the fake provider." }] },
     { content: [{ type: "text", text: "Resumed and answered." }] },
@@ -217,7 +219,7 @@ test("the TUI keeps keys typed at launch, streams a reply, and prints the resume
 }, 30_000);
 
 test("closing the terminal ends the TUI within 2 s with 129, and the service sees its connection close", async () => {
-  await using service = await serveForBinary({ plugin: false });
+  await using service = await serveForBinary({ plugin: false, code: CODE });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
   await ready(pty);
   const connected = service.disconnects();
@@ -232,7 +234,7 @@ test("closing the terminal ends the TUI within 2 s with 129, and the service see
 }, 30_000);
 
 test("SIGTERM to a TUI whose terminal already closed ends it within 2 s", async () => {
-  await using service = await serveForBinary({ plugin: false });
+  await using service = await serveForBinary({ plugin: false, code: CODE });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
   await ready(pty);
 
@@ -246,7 +248,7 @@ test("SIGTERM to a TUI whose terminal already closed ends it within 2 s", async 
 }, 30_000);
 
 test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", async () => {
-  await using service = await serveForBinary({ plugin: false });
+  await using service = await serveForBinary({ plugin: false, code: CODE });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
   await ready(pty);
 
@@ -256,5 +258,26 @@ test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", as
 
   expect(status).toBe(129);
   expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
+  expect(pty.output()).toMatch(RESUME);
+}, 30_000);
+
+test("the TUI exits 1 within 2 s with the reason and the resume command when its service stops", async () => {
+  await using service = await serveForBinary({ plugin: false, code: CODE });
+  service.reply({ content: [{ type: "text", text: "Answered before the restart." }] });
+  await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
+  await ready(pty);
+  pty.type("hi nyte");
+  pty.press("chat.submit");
+  await pty.waitFor((screen) => screen.text.includes("Answered before the restart."));
+
+  const from = performance.now();
+  await service.stop();
+  const { status, elapsed } = await exitTimed(pty, from);
+
+  expect(status).toBe(1);
+  expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
+  expect(pty.output()).toContain(
+    "The Nyte service stopped, or a nyte of another build replaced it, so this TUI lost its connection.",
+  );
   expect(pty.output()).toMatch(RESUME);
 }, 30_000);

@@ -99,7 +99,7 @@ describe("the service's lifetime", () => {
     await until(async () => (await serviceClients(registration)).length === 1);
 
     expect(await serviceClients(registration)).toEqual([
-      expect.objectContaining({ pid: process.pid, build: await serviceBuild("v1") }),
+      expect.objectContaining({ pid: process.pid, build: await serviceBuild("v1", undefined) }),
     ]);
     expect(clock.pending.size).toBe(0);
 

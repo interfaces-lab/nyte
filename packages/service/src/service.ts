@@ -19,6 +19,8 @@ export interface StartServiceOptions {
   readonly home: string;
   readonly port: number;
   readonly version: string;
+  /** The id of the code the service runs, which goes into its build; see `serviceBuild`. */
+  readonly code?: string;
   readonly connect: HostConnectConfig | undefined;
   /** When the service stops on its own; by default `IDLE_GRACE_MS`, real timers, and `terminate`. */
   readonly lifetime?: Partial<LifetimeOptions>;
@@ -106,7 +108,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       url: listener.address,
       token,
       pid: process.pid,
-      version: await serviceBuild(options.version),
+      version: await serviceBuild(options.version, options.code),
       hostId: host.hostId,
     };
 

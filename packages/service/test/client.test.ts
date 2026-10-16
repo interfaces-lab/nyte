@@ -62,8 +62,8 @@ describe("ensureService", () => {
 
   beforeEach(async () => {
     home = await realpath(await mkdtemp(join(tmpdir(), "nyte-service-")));
-    v1 = await serviceBuild("v1");
-    v2 = await serviceBuild("v2");
+    v1 = await serviceBuild("v1", undefined);
+    v2 = await serviceBuild("v2", undefined);
   });
 
   afterEach(async () => {
@@ -124,6 +124,52 @@ describe("ensureService", () => {
 
     expect(replaced.version).toBe(v1);
     expect(alive(stale.pid)).toBe(false);
+  });
+
+  it("replaces a service of the same version and operations built from other code", async () => {
+    const before = await serviceBuild("v1", "aaaaaaaaaaaa");
+    const after = await serviceBuild("v1", "bbbbbbbbbbbb.0123abcd");
+
+    const old = await ensureService({
+      home,
+      version: "v1",
+      code: "aaaaaaaaaaaa",
+      command: fakeService(before, 0),
+    });
+
+    const replaced = await ensureService({
+      home,
+      version: "v1",
+      code: "bbbbbbbbbbbb.0123abcd",
+      command: fakeService(after, 0),
+    });
+
+    expect(before.split("+").slice(0, 2)).toEqual(after.split("+").slice(0, 2));
+    expect(replaced.version).toBe(after);
+    expect(replaced.pid).not.toBe(old.pid);
+    expect(alive(old.pid)).toBe(false);
+  });
+
+  it("tells a client its service is gone once a client of another build replaces it", async () => {
+    const lost = Promise.withResolvers<void>();
+    let gone = false;
+
+    const old = await ensureService({
+      home,
+      version: "v1",
+      command: fakeService(v1, 0),
+      lost() {
+        gone = true;
+        lost.resolve();
+      },
+    });
+
+    await sleep(100);
+    expect(gone).toBe(false);
+    await ensureService({ home, version: "v2", command: fakeService(v2, 0) });
+
+    await lost.promise;
+    expect(alive(old.pid)).toBe(false);
   });
 
   it(

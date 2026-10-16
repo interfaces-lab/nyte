@@ -2,7 +2,8 @@
  * Stands in for `nyte service run`: takes the service lock, answers `/.nyte/describe` with its
  * host id, and renames its registration, under build `build`, into place `delay` ms after it
  * listens, the way `startService` does. A `stale` service answers every other request the
- * way a host built before an operation answers it; a `stubborn` one also ignores SIGTERM.
+ * way a host built before an operation answers it; a `stubborn` one also ignores SIGTERM. A
+ * `fresh` service holds each attach request open until it exits, as `startService` does.
  * Run from the service home as `node fake-service.ts <build> <delay> [fresh|stale|stubborn]`.
  */
 import { once } from "node:events";
@@ -13,6 +14,7 @@ import { HOST_HEADER } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { acquireLock, removeRegistration, writeRegistration } from "../../src/registration.ts";
+import { SERVICE_ROUTES } from "../../src/routes.ts";
 
 const [build = "v1", delay = "0", mode = "fresh"] = process.argv.slice(2);
 
@@ -37,6 +39,12 @@ const server = createServer((request, response) => {
         message: `No operation answers ${String(request.method)} ${String(request.url)}.`,
       }),
     );
+
+    return;
+  }
+
+  if (request.url?.startsWith(SERVICE_ROUTES.attach) === true) {
+    response.flushHeaders();
 
     return;
   }

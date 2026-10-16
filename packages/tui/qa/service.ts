@@ -22,15 +22,46 @@ export interface TestService extends AsyncDisposable {
   readonly env: Readonly<Record<string, string>>;
   /** How many requests the service saw end because their client went away. */
   disconnects(): number;
+  /** Stops the service, as `nyte service stop` or a nyte of another build replacing it does. */
+  stop(): Promise<void>;
+}
+
+/**
+ * Returns the code id `binary` was built with: the third part of the build `nyte service status`
+ * names when no service runs. A service started with it registers the build the binary expects.
+ */
+export async function readBinaryCode(binary: string): Promise<string | undefined> {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-binary-code-")));
+
+  try {
+    const child = Bun.spawn([binary, "service", "status"], {
+      env: { HOME: home, NYTE_HOME: join(home, ".nyte"), PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+
+    const text = await new Response(child.stdout).text();
+    const build = /^This nyte is build (\S+)\.$/mu.exec(text)?.[1];
+
+    if (build === undefined) throw new Error(`\`nyte service status\` named no build:\n${text}`);
+
+    return build.split("+")[2];
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 }
 
 /**
  * Starts the service the compiled binary finds through `~/.nyte/service.json`, so every
  * binary command connects here, to a real host over the fake provider, instead of starting
- * its own. With `plugin`, the workspace holds a project plugin, which the folder's trust
- * decision gates.
+ * its own. Its build carries `code`, the binary's code id. With `plugin`, the workspace holds
+ * a project plugin, which the folder's trust decision gates.
  */
-export async function serveForBinary(options: { readonly plugin: boolean }): Promise<TestService> {
+export async function serveForBinary(options: {
+  readonly plugin: boolean;
+  readonly code: string | undefined;
+}): Promise<TestService> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-binary-")));
   const home = join(root, "home");
   const cwd = join(root, "workspace");
@@ -104,6 +135,7 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     home,
     port: 0,
     version: VERSION,
+    code: options.code,
     connect: undefined,
   });
 
@@ -112,6 +144,7 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     reply: (...queued) => void replies.push(...queued),
     requests,
     disconnects: () => disconnects,
+    stop: () => service.close(),
     env: {
       HOME: home,
       NYTE_HOME: join(home, ".nyte"),

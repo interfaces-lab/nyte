@@ -2,7 +2,8 @@
  * Compiles the TUI into `bin/nyte`. `Bun.build` rather than the CLI because
  * the Solid JSX transform is a bundler plugin. Worker entries are named from
  * `packages/` so the host can resolve them in the embedded module graph. The
- * binary moves into `bin/` only after compilation and signing succeed.
+ * binary moves into `bin/` only after compilation and signing succeed. It carries the code id
+ * of the tree it was built from, which goes into the service build.
  */
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
@@ -10,6 +11,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
+import { hashSourceTree } from "../src/code-id.ts";
 import { codemodePlugin } from "./codemode-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
 
@@ -46,7 +48,7 @@ try {
     root: packages,
     target: "bun",
     plugins: [solidPlugin, codemodePlugin],
-    define: binaryDefines(process.env),
+    define: binaryDefines(process.env, await hashSourceTree(packages)),
     format: "esm",
     bytecode: true,
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },

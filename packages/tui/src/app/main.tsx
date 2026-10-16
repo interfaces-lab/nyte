@@ -277,11 +277,16 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   };
 }
 
+/** Why the TUI ends when its service goes away: the connection can't follow a service that restarted. */
+const SERVICE_LOST =
+  "error: The Nyte service stopped, or a nyte of another build replaced it, so this TUI lost its connection.";
+
 /**
  * Runs the interactive TUI: connects to the service from the first instruction, holds keys
  * typed before the app mounts, and prints the resume command on exit. The exit text waits
  * for `renderer.closed`, because OpenTUI restores and clears the terminal after `destroy`
- * returns and would wipe anything written before. Resolves with the status to exit with; once
+ * returns and would wipe anything written before. When the service goes away the TUI ends with
+ * status 1, the reason, and the resume command. Resolves with the status to exit with; once
  * the app ends or a signal arrives, shutdown has `SHUTDOWN_DEADLINE_MS` before the process exits.
  */
 export async function runTui(flags: RunFlags): Promise<number> {
@@ -356,7 +361,16 @@ export async function runTui(flags: RunFlags): Promise<number> {
   });
 
   const unhook = installProcessHooks(app.report);
-  const status = await Promise.race([app.closing, signalled.promise.then(exitStatus)]);
+
+  const lost = connecting.then(
+    (service) => service.lost.then(() => "lost" as const),
+    () => new Promise<never>(() => undefined),
+  );
+
+  const ending = await Promise.race([app.closing, signalled.promise.then(exitStatus), lost]);
+  const status = ending === "lost" ? 1 : ending;
+
+  if (ending === "lost") failures.push(SERVICE_LOST);
   stopEnding();
   exitWithin(status);
   const session = app.store.state().facts.session?.id ?? null;
