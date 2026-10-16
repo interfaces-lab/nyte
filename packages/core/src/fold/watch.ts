@@ -31,7 +31,8 @@ import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
 import { closable, DONE } from "../util/iterable.ts";
 import { isJsonObject } from "../util/json-schema.ts";
-import { emptyFold, fold, withPair } from "./fold.ts";
+import { emptyFold, fold } from "./fold.ts";
+import { withPair } from "./project.ts";
 
 type Entry = {
   state: FoldState;

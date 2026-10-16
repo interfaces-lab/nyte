@@ -11,7 +11,7 @@ import type {
 import type { FoldState } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { closable, coalesce, DONE, latest } from "../util/iterable.ts";
-import { project, readSeenCommit } from "./fold.ts";
+import { project, readSeenCommit } from "./project.ts";
 import { seenWriter } from "./seen.ts";
 
 export function watchHead(

@@ -2,35 +2,25 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type {
   Activation,
   BackgroundItem,
-  CallId,
   CommitId,
-  ContextView,
   Delivery,
   Execution,
   HeadInfo,
   HeadName,
-  Json,
-  Message,
   MessageId,
   PartId,
   PartStatus,
-  PartView,
   PatchEvent,
   Placement,
   Position,
   PrincipalId,
-  Revision,
   RunId,
   RunView,
   SessionCatalogView,
   SessionEvent,
   SessionId,
-  SessionView,
-  ToolClass,
-  ToolOutcome,
   TurnId,
   TurnInfo,
-  ViewOptions,
 } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema/model";
 import { INDEX } from "../contract/fold.ts";
@@ -40,30 +30,37 @@ import type {
   FoldInput,
   FoldRun,
   FoldState,
-  FoldTurn,
-  HeadPair,
   Index,
   Logged,
-  Path,
   UserMessage,
 } from "../contract/fold.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
-import { readPositionCommit, START, walkCommitPath } from "../store/session.ts";
+import { readPositionCommit, START } from "../store/session.ts";
 import { isJsonObject } from "../util/json-schema.ts";
-
-const DEFAULT_TAIL = 200;
-
-const IDLE: Execution = { kind: "idle", lastRun: null };
+import { applyCall, describeLiveActivity } from "./calls.ts";
+import {
+  committed,
+  dropFailed,
+  emptyHead,
+  IDLE,
+  liveRun,
+  newPath,
+  openTurn,
+  partView,
+  pendingTurn,
+  setMessage,
+  setTurn,
+  toPartMessageId,
+  turnInfo,
+  updateHead,
+  updatePart,
+  WORKING,
+} from "./draft.ts";
+import { finish } from "./paths.ts";
 
 const INACTIVE: Activation = { kind: "inactive" };
 
-const WORKING: TurnInfo["state"] = { kind: "working", activity: null };
-
 const SINGLE: UserMessage["siblings"] = { index: 0, count: 1, ids: [] };
-
-const UNCONFIGURED: SessionView["configuration"] = { selected: null, effective: null };
-
-const NO_CONTEXT: ContextView = { tokens: 0, window: 0, lastRequest: null };
 
 export const EMPTY_CATALOG: SessionCatalogView = {
   commands: [],
@@ -74,23 +71,6 @@ export const EMPTY_CATALOG: SessionCatalogView = {
 };
 
 const STOPPED: Failure = { class: "aborted", message: "Stopped." };
-
-const UNTOUCHED = { count: 0, paths: [] };
-
-const EMPTY_SUMMARY: TurnInfo["summary"] = {
-  byClass: {
-    read: UNTOUCHED,
-    list: UNTOUCHED,
-    edit: UNTOUCHED,
-    shell: UNTOUCHED,
-    delegate: UNTOUCHED,
-    custom: UNTOUCHED,
-  },
-  failed: 0,
-  stopped: 0,
-  added: 0,
-  removed: 0,
-};
 
 export function emptyFold(input: {
   readonly session: SessionId;
@@ -146,107 +126,6 @@ export function fold(state: FoldState, event: SessionEvent | PatchEvent): FoldSt
   }
 
   return finish(state, draft);
-}
-
-const projections = new WeakMap<FoldHead, Map<PrincipalId, Map<number, SessionView>>>();
-
-const unreads = new WeakMap<
-  readonly HeadInfo[],
-  WeakMap<ReadonlyMap<HeadName, CommitId | null>, readonly HeadInfo[]>
->();
-
-const NOTHING_SEEN: ReadonlyMap<HeadName, CommitId | null> = new Map();
-
-const tails = new WeakMap<readonly Message[], Map<number, readonly Message[]>>();
-
-const snapshots = new WeakMap<
-  readonly TurnInfo[],
-  { readonly turns: readonly TurnInfo[]; readonly stale: boolean }
->();
-
-const absent = new WeakMap<ReadonlyMap<HeadName, FoldHead>, Map<HeadName, FoldHead>>();
-
-export function project(state: FoldState, head: HeadName, options?: ViewOptions): SessionView {
-  const folded = state.heads.get(head) ?? absentHead(state.heads, head);
-  const tail = options?.tail ?? DEFAULT_TAIL;
-  const heads = headsFor(state);
-  const byPrincipal = projections.get(folded) ?? new Map<PrincipalId, Map<number, SessionView>>();
-  const byTail = byPrincipal.get(state.principal) ?? new Map<number, SessionView>();
-  const cached = byTail.get(tail);
-
-  if (
-    cached !== undefined &&
-    cached.seq === state.seq &&
-    cached.activation === state.activation &&
-    cached.parts === state.partViews &&
-    cached.heads === heads &&
-    cached.changes === state.changes &&
-    cached.catalog === state.catalog
-  )
-    return cached;
-
-  const view: SessionView = {
-    revision: folded.revision,
-    seq: state.seq,
-    activation: state.activation,
-    messages: readMessageTail(folded.messages, tail),
-    parts: state.partViews,
-    turns: frozen(folded.turns),
-    execution: folded.info.execution,
-    background: folded.background,
-    configuration: folded.configuration,
-    context: folded.context,
-    heads,
-    changes: state.changes,
-    catalog: state.catalog,
-  };
-
-  byTail.set(tail, view);
-  byPrincipal.set(state.principal, byTail);
-  projections.set(folded, byPrincipal);
-
-  return view;
-}
-
-export function readSeenCommit(state: FoldState, head: HeadName): CommitId | null {
-  return state.seen.get(state.principal)?.get(head) ?? null;
-}
-
-function headsFor(state: FoldState): readonly HeadInfo[] {
-  const seen = state.seen.get(state.principal) ?? NOTHING_SEEN;
-  const known = unreads.get(state.headInfos) ?? new WeakMap();
-  const cached = known.get(seen);
-
-  if (cached !== undefined) return cached;
-
-  const heads = reuse(
-    state.headInfos,
-    state.headInfos.map((info) => {
-      const unread = readPositionCommit(info.tip) !== (seen.get(info.name) ?? null);
-
-      return info.unread === unread ? info : { ...info, unread };
-    }),
-  );
-
-  known.set(seen, heads);
-  unreads.set(state.headInfos, known);
-
-  return heads;
-}
-
-export function withPair(state: FoldState, head: HeadName, pair: HeadPair): FoldState {
-  const tip = readPositionCommit(state.heads.get(head)?.info.tip ?? START);
-
-  return withRevision(state, head, tip === pair.tip ? pair.revision : null);
-}
-
-function withRevision(state: FoldState, head: HeadName, revision: Revision | null): FoldState {
-  const folded = state.heads.get(head);
-
-  if (folded === undefined || folded.revision === revision) return state;
-  state[INDEX].heads.set(head, { ...folded, revision });
-
-  return { ...state };
 }
 
 function open(state: FoldState): Draft {
@@ -407,9 +286,7 @@ function addSibling(
   const prior = draft.siblings.get(parent) ?? [];
   const candidates = [...listed, id];
 
-  const added = candidates.filter(
-    (sibling, index) => !prior.includes(sibling) && candidates.indexOf(sibling) === index,
-  );
+  const added = [...new Set(candidates)].filter((sibling) => !prior.includes(sibling));
 
   if (added.length === 0) return;
   draft.siblings.set(parent, [...prior, ...added]);
@@ -878,202 +755,6 @@ function noteTurn(draft: Draft, head: HeadName, id: PartId, at: number): TurnId 
   return turn;
 }
 
-function updatePart(draft: Draft, id: PartId, change: (part: PartRecord) => PartRecord): void {
-  const current = draft.parts.get(id);
-
-  if (current === undefined) return;
-  const next = change(current);
-
-  if (next === current) return;
-  draft.parts.set(id, next);
-  const message = draft.messages.get(toPartMessageId(id));
-
-  if (message?.kind === "part")
-    return setMessage(draft, {
-      ...message,
-      state: next.state,
-      version: next.version,
-      status: next.status,
-    });
-  const index = draft.partViews.findIndex((view) => view.id === id);
-
-  if (index >= 0) draft.partViews = draft.partViews.with(index, partView(next));
-}
-
-function applyCall(draft: Draft, event: Logged<"call">): void {
-  const call = draft.calls.get(event.call);
-
-  switch (event.change) {
-    case "intent": {
-      draft.calls.set(event.call, {
-        part: event.part,
-        class: event.class,
-        waiting: null,
-        settled: false,
-      });
-
-      updatePart(draft, event.part, (part) => ({
-        ...part,
-        state: {
-          call: event.call,
-          name: event.name,
-          args: event.args,
-          class: event.class,
-          phase: "running",
-          progress: null,
-        },
-        version: part.version + 1,
-      }));
-      const turn = callTurn(draft, event.part, event.head);
-
-      if (turn !== undefined)
-        setTurn(
-          draft,
-          withActivity(draft, {
-            ...turn,
-            live: [...turn.live.filter((id) => id !== event.call), event.call],
-          }),
-        );
-
-      return;
-    }
-
-    case "waiting":
-      if (call !== undefined) draft.calls.set(event.call, { ...call, waiting: event.on });
-
-      return updatePart(draft, event.part, (part) =>
-        (part.status.kind === "live" || part.status.kind === "waiting") && part.status.run !== null
-          ? { ...part, status: { kind: "waiting", run: part.status.run, on: event.on } }
-          : part,
-      );
-    case "settled": {
-      if (call !== undefined)
-        draft.calls.set(event.call, { ...call, waiting: null, settled: true });
-
-      updatePart(draft, event.part, (part) => ({
-        ...part,
-        state: settledState(part.state, event.outcome, event.changes),
-        version: part.version + 1,
-        status:
-          part.status.kind === "waiting" ? { kind: "live", run: part.status.run } : part.status,
-      }));
-      const turn = callTurn(draft, event.part, event.head);
-
-      if (turn === undefined) return;
-
-      const summary =
-        call === undefined
-          ? turn.info.summary
-          : summarise(turn.info.summary, call.class, event.outcome, event.changes);
-
-      setTurn(
-        draft,
-        withActivity(draft, {
-          ...turn,
-          live: turn.live.filter((id) => id !== event.call),
-          info: { ...turn.info, summary },
-        }),
-      );
-    }
-  }
-}
-
-function callTurn(draft: Draft, part: PartId, head: HeadName | null): FoldTurn | undefined {
-  const record = draft.parts.get(part);
-
-  const run =
-    record !== undefined && record.run !== null
-      ? draft.runs.get(record.run)
-      : head === null
-        ? undefined
-        : liveRun(draft, head);
-
-  return run === undefined ? undefined : draft.turns.get(run.turn);
-}
-
-function withActivity(draft: Draft, turn: FoldTurn): FoldTurn {
-  if (turn.info.state.kind !== "working") return turn;
-  const activity = describeLiveActivity(draft, turn.live);
-
-  if (turn.info.state.activity === activity) return turn;
-
-  return { ...turn, info: { ...turn.info, state: { kind: "working", activity } } };
-}
-
-function describeLiveActivity(draft: Draft, live: readonly CallId[]): string | null {
-  const newest = live.at(-1);
-  const call = newest === undefined ? undefined : draft.calls.get(newest);
-
-  if (call === undefined) return null;
-
-  switch (call.class.kind) {
-    case "read":
-    case "list":
-      return "Exploring";
-    case "edit":
-      return "Editing";
-    case "shell":
-      return "Running";
-    case "delegate":
-      return "Delegating";
-    case "custom":
-      return call.class.label;
-  }
-}
-
-function summarise(
-  summary: TurnInfo["summary"],
-  tool: ToolClass,
-  outcome: ToolOutcome,
-  changes: {
-    readonly added: number;
-    readonly removed: number;
-    readonly paths: readonly string[];
-  } | null,
-): TurnInfo["summary"] {
-  const added = summary.added + (changes?.added ?? 0);
-  const removed = summary.removed + (changes?.removed ?? 0);
-
-  if (outcome.kind === "stopped")
-    return { ...summary, stopped: summary.stopped + 1, added, removed };
-
-  if (outcome.kind !== "ok") return { ...summary, failed: summary.failed + 1, added, removed };
-  const kind = tool.kind;
-
-  const entry = summary.byClass[kind];
-  const touched = ["path" in tool ? [tool.path] : [], changes?.paths ?? []].flat();
-
-  const paths = [
-    ...entry.paths,
-    ...touched.filter(
-      (path, index) => !entry.paths.includes(path) && touched.indexOf(path) === index,
-    ),
-  ];
-
-  return {
-    ...summary,
-    added,
-    removed,
-    byClass: { ...summary.byClass, [kind]: { count: entry.count + 1, paths } },
-  };
-}
-
-function settledState(
-  state: Json,
-  outcome: ToolOutcome,
-  changes: {
-    readonly added: number;
-    readonly removed: number;
-    readonly paths: readonly string[];
-  } | null,
-): Json {
-  const fields = isJsonObject(state)
-    ? Object.fromEntries(Object.entries(state).filter(([key]) => key !== "progress"))
-    : {};
-
-  return { ...fields, phase: "settled", outcome, changes };
-}
-
 function applyPatch(draft: Draft, event: PatchEvent): boolean {
   const part = draft.parts.get(event.part);
 
@@ -1084,7 +765,8 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
     if (
       part.status.kind !== "live" ||
       (part.partKind !== "text" && part.partKind !== "thinking") ||
-      !hasMarkdown(state)
+      !isJsonObject(state) ||
+      typeof state.markdown !== "string"
     )
       return false;
 
@@ -1115,345 +797,8 @@ function applyPatch(draft: Draft, event: PatchEvent): boolean {
   return true;
 }
 
-function finish(state: FoldState, draft: Draft): FoldState {
-  for (const name of updatePaths(draft)) {
-    const head = draft.heads.get(name);
-
-    if (head !== undefined) draft.heads.set(name, { ...head });
-  }
-
-  return {
-    [INDEX]: state[INDEX],
-    session: state.session,
-    principal: state.principal,
-    seen: draft.seen,
-    seq: draft.seq,
-    activation: draft.activation,
-    catalog: draft.catalog,
-    changes: draft.changes,
-    heads: draft.heads,
-    headInfos: reuse(
-      state.headInfos,
-      Array.from(draft.heads.values(), (head) => head.info),
-    ),
-    commits: draft.commits,
-    siblings: draft.siblings,
-    inputs: draft.inputs,
-    parts: draft.parts,
-    partViews: draft.partViews,
-    runs: draft.runs,
-    calls: draft.calls,
-    turns: draft.turns,
-    messages: draft.messages,
-  };
-}
-
-function updatePaths(draft: Draft): ReadonlySet<HeadName> {
-  const touched = new Set<HeadName>();
-  const reflows = new Map<HeadName, number>();
-
-  const reflow = (name: HeadName, from: number): void => {
-    reflows.set(name, Math.min(from, reflows.get(name) ?? from));
-    touched.add(name);
-  };
-
-  for (const name of new Set([...draft.walk, ...draft.appended.keys(), ...draft.rebuild])) {
-    const head = draft.heads.get(name);
-    const path = draft.paths.get(name);
-
-    if (head === undefined || path === undefined) continue;
-    const walked = draft.walk.has(name);
-    const appended = draft.appended.get(name);
-    const from = walked ? 0 : path.committed;
-    const commits = walked
-      ? walkCommitPath(draft.commits, readPositionCommit(head.info.tip))
-      : appended === undefined
-        ? []
-        : [appended];
-    truncate(draft, name, path, from);
-
-    for (const commit of commits) {
-      const message = committed(draft, commit);
-
-      if (message !== undefined) push(draft, name, path, message);
-    }
-
-    path.committed = path.messages.length;
-
-    for (const id of [...head.live.map(toPartMessageId), ...head.pending]) {
-      const message = draft.messages.get(id);
-
-      if (message !== undefined) push(draft, name, path, message);
-    }
-
-    reflow(name, from);
-  }
-
-  for (const id of draft.swapped) {
-    const message = draft.messages.get(id);
-
-    if (message === undefined) continue;
-
-    for (const [name, path] of draft.paths) {
-      const position = path.at.get(id);
-
-      if (position === undefined) continue;
-      const previous = path.messages[position];
-
-      if (previous === message) continue;
-      count(draft, name, previous, -1);
-      count(draft, name, message, 1);
-      path.messages[position] = message;
-
-      if (previous.turn === message.turn) touched.add(name);
-      else reflow(name, position);
-    }
-  }
-
-  for (const [id, delta] of draft.steps) {
-    const turn = draft.turns.get(id);
-
-    if (turn === undefined || (delta.steps === 0 && delta.thinking === 0)) continue;
-    const steps = turn.info.steps + delta.steps;
-    const thinking = (draft.thinking.get(id) ?? 0) + delta.thinking;
-    const thinkingOnly = steps > 0 && steps === thinking;
-    draft.thinking.set(id, thinking);
-
-    if (steps !== turn.info.steps || thinkingOnly !== turn.info.thinkingOnly)
-      setTurn(draft, { ...turn, info: { ...turn.info, steps, thinkingOnly } });
-  }
-
-  for (const [name, from] of reflows) {
-    const path = draft.paths.get(name);
-
-    if (path !== undefined) reflowTurns(draft, path, from);
-  }
-
-  for (const id of draft.retitled) {
-    const info = draft.turns.get(id)?.info;
-
-    if (info === undefined) continue;
-
-    for (const [name, path] of draft.paths) {
-      const position = path.turnAt.get(id);
-
-      if (position === undefined || path.turns[position] === info) continue;
-      path.turns[position] = info;
-      stale(path.turns);
-      touched.add(name);
-    }
-  }
-
-  return touched;
-}
-
-function truncate(draft: Draft, head: HeadName, path: Path, length: number): void {
-  path.messages.splice(length).forEach((message, offset) => {
-    if (path.at.get(message.id) === length + offset) path.at.delete(message.id);
-    count(draft, head, message, -1);
-  });
-}
-
-function push(draft: Draft, head: HeadName, path: Path, message: Message): void {
-  path.at.set(message.id, path.messages.length);
-  path.messages.push(message);
-  count(draft, head, message, 1);
-}
-
-function count(draft: Draft, head: HeadName, message: Message, delta: number): void {
-  if (
-    message.kind !== "part" ||
-    message.role !== "step" ||
-    draft.turns.get(message.turn)?.head !== head
-  )
-    return;
-
-  const entry = draft.steps.get(message.turn) ?? { steps: 0, thinking: 0 };
-  entry.steps += delta;
-
-  if (message.partKind === "thinking") entry.thinking += delta;
-  draft.steps.set(message.turn, entry);
-}
-
-function reflowTurns(draft: Draft, path: Path, from: number): void {
-  while ((path.firstAt.at(-1) ?? -1) >= from) {
-    path.firstAt.pop();
-    const info = path.turns.pop();
-
-    if (info !== undefined) path.turnAt.delete(info.id);
-  }
-
-  for (let position = from; position < path.messages.length; position += 1) {
-    const turn = draft.turns.get(path.messages[position].turn);
-
-    if (turn === undefined || path.turnAt.has(turn.info.id)) continue;
-    path.turnAt.set(turn.info.id, path.turns.length);
-    path.turns.push(turn.info);
-    path.firstAt.push(position);
-  }
-
-  stale(path.turns);
-}
-
-function committed(draft: Draft, id: CommitId): Message | undefined {
-  const commit = draft.commits.get(id);
-
-  if (commit === undefined) return undefined;
-  const body = commit.body;
-
-  if (body.kind !== "user") return draft.messages.get(toPartMessageId(body.part));
-  const message = draft.messages.get(body.message);
-
-  if (message?.kind !== "user") return message;
-  const ids = draft.siblings.get(commit.parent) ?? [id];
-  const index = Math.max(0, ids.indexOf(id));
-
-  if (
-    message.siblings.ids === ids &&
-    message.siblings.index === index &&
-    message.siblings.count === ids.length
-  )
-    return message;
-  const next: Message = { ...message, siblings: { index, count: ids.length, ids } };
-  setMessage(draft, next);
-
-  return next;
-}
-
-function setMessage(draft: Draft, message: Message): void {
-  const previous = draft.messages.get(message.id);
-
-  if (previous === message) return;
-  draft.messages.set(message.id, message);
-
-  if (previous === undefined) return;
-  draft.swapped.add(message.id);
-
-  if (previous.turn !== message.turn && previous.turn === pendingTurn(message.id))
-    draft.turns.delete(previous.turn);
-}
-
-function setTurn(draft: Draft, turn: FoldTurn): void {
-  const previous = draft.turns.get(turn.info.id);
-
-  if (previous === turn) return;
-  draft.turns.set(turn.info.id, turn);
-
-  if (previous?.info !== turn.info) draft.retitled.add(turn.info.id);
-}
-
-function openTurn(
-  draft: Draft,
-  id: TurnId,
-  head: HeadName,
-  prompt: MessageId | null,
-  at: number,
-): void {
-  if (!draft.turns.has(id)) setTurn(draft, { info: turnInfo(id, prompt, at), head, live: [] });
-}
-
-function turnInfo(id: TurnId, prompt: MessageId | null, at: number): TurnInfo {
-  return {
-    id,
-    run: null,
-    prompt,
-    state: WORKING,
-    startedAt: at,
-    endedAt: null,
-    steps: 0,
-    thinkingOnly: false,
-    summary: EMPTY_SUMMARY,
-  };
-}
-
-function updateHead(draft: Draft, name: HeadName, change: (head: FoldHead) => FoldHead): void {
-  const current = draft.heads.get(name);
-  const next = change(current ?? createHead(draft, name));
-
-  if (next !== current) draft.heads.set(name, next);
-}
-
 function eachHead(draft: Draft, name: HeadName | null, change: (head: FoldHead) => FoldHead): void {
   for (const head of name === null ? draft.heads.keys() : [name]) updateHead(draft, head, change);
-}
-
-function dropFailed(draft: Draft, name: HeadName): void {
-  const failed = (part: PartId) => draft.parts.get(part)?.status.kind === "failed";
-
-  if (!draft.heads.get(name)?.live.some(failed)) return;
-  updateHead(draft, name, (head) => ({ ...head, live: head.live.filter((part) => !failed(part)) }));
-  draft.rebuild.add(name);
-}
-
-function liveRun(draft: Draft, head: HeadName): FoldRun | undefined {
-  const execution = draft.heads.get(head)?.info.execution;
-
-  return execution === undefined || execution.kind === "idle"
-    ? undefined
-    : draft.runs.get(execution.run.id);
-}
-
-function createHead(draft: Draft, name: HeadName): FoldHead {
-  const path = newPath();
-  draft.paths.set(name, path);
-
-  return emptyHead(name, path);
-}
-
-function newPath(): Path {
-  return { messages: [], committed: 0, at: new Map(), turns: [], turnAt: new Map(), firstAt: [] };
-}
-
-function emptyHead(
-  name: HeadName,
-  path: { readonly messages: readonly Message[]; readonly turns: readonly TurnInfo[] },
-): FoldHead {
-  return {
-    info: { name, tip: START, stack: null, execution: IDLE, unread: false },
-    revision: null,
-    messages: path.messages,
-    live: [],
-    pending: [],
-    turns: path.turns,
-    background: [],
-    configuration: UNCONFIGURED,
-    context: NO_CONTEXT,
-  };
-}
-
-function absentHead(heads: ReadonlyMap<HeadName, FoldHead>, name: HeadName): FoldHead {
-  const known = absent.get(heads) ?? new Map<HeadName, FoldHead>();
-  const head = known.get(name) ?? emptyHead(name, { messages: [], turns: [] });
-  known.set(name, head);
-  absent.set(heads, known);
-
-  return head;
-}
-
-function readMessageTail(messages: readonly Message[], tail: number): readonly Message[] {
-  const known = tails.get(messages) ?? new Map<number, readonly Message[]>();
-  const slice = reuse(known.get(tail) ?? [], messages.slice(Math.max(0, messages.length - tail)));
-  known.set(tail, slice);
-  tails.set(messages, known);
-
-  return slice;
-}
-
-function frozen(turns: readonly TurnInfo[]): readonly TurnInfo[] {
-  const known = snapshots.get(turns);
-
-  if (known !== undefined && !known.stale) return known.turns;
-  const snapshot = reuse(known?.turns ?? [], [...turns]);
-  snapshots.set(turns, { turns: snapshot, stale: false });
-
-  return snapshot;
-}
-
-function stale(turns: readonly TurnInfo[]): void {
-  const known = snapshots.get(turns);
-
-  if (known !== undefined && !known.stale)
-    snapshots.set(turns, { turns: known.turns, stale: true });
 }
 
 function upsert(items: readonly BackgroundItem[], item: BackgroundItem): readonly BackgroundItem[] {
@@ -1473,29 +818,11 @@ function placeAt(
   return [...rest.slice(0, index), id, ...rest.slice(index)];
 }
 
-function partView(part: PartRecord): PartView {
-  return {
-    id: part.id,
-    partKind: part.partKind,
-    placement: part.placement,
-    state: part.state,
-    version: part.version,
-    status: part.status,
-    owner: part.owner,
-  };
-}
-
 function transcriptRole(placement: Placement): "step" | "answer" | "note" | null {
   if (placement.kind !== "transcript") return null;
   const role = placement.role;
 
   return role === "step" || role === "answer" || role === "note" ? role : null;
-}
-
-function reuse<T>(previous: readonly T[], next: readonly T[]): readonly T[] {
-  return previous.length === next.length && previous.every((item, index) => item === next[index])
-    ? previous
-    : next;
 }
 
 function sameEntries<K, V>(left: ReadonlyMap<K, V>, right: ReadonlyMap<K, V>): boolean {
@@ -1523,18 +850,4 @@ function sameTurnState(left: TurnInfo["state"], right: TurnInfo["state"]): boole
   if (left.kind === "waiting" && right.kind === "waiting") return left.on === right.on;
 
   return left === right;
-}
-
-function toPartMessageId(part: PartId): MessageId {
-  return asId<"message">(part);
-}
-
-function pendingTurn(id: MessageId): TurnId {
-  return asId<"turn">(`pending:${id}`);
-}
-
-function hasMarkdown(
-  value: Json,
-): value is { readonly [key: string]: Json; readonly markdown: string } {
-  return isJsonObject(value) && typeof value.markdown === "string";
 }

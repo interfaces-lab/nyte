@@ -1,0 +1,141 @@
+import type {
+  CommitId,
+  HeadInfo,
+  HeadName,
+  Message,
+  PrincipalId,
+  Revision,
+  SessionView,
+  TurnInfo,
+  ViewOptions,
+} from "@nyte-ai/schema";
+import { INDEX } from "../contract/fold.ts";
+import type { FoldHead, FoldState, HeadPair } from "../contract/fold.ts";
+import { readPositionCommit, START } from "../store/session.ts";
+import { emptyHead, reuse, snapshots } from "./draft.ts";
+
+const DEFAULT_TAIL = 200;
+
+const projections = new WeakMap<FoldHead, Map<PrincipalId, Map<number, SessionView>>>();
+
+const unreads = new WeakMap<
+  readonly HeadInfo[],
+  WeakMap<ReadonlyMap<HeadName, CommitId | null>, readonly HeadInfo[]>
+>();
+
+const NOTHING_SEEN: ReadonlyMap<HeadName, CommitId | null> = new Map();
+
+const tails = new WeakMap<readonly Message[], Map<number, readonly Message[]>>();
+
+const absent = new WeakMap<ReadonlyMap<HeadName, FoldHead>, Map<HeadName, FoldHead>>();
+
+export function project(state: FoldState, head: HeadName, options?: ViewOptions): SessionView {
+  const folded = state.heads.get(head) ?? absentHead(state.heads, head);
+  const tail = options?.tail ?? DEFAULT_TAIL;
+  const heads = headsFor(state);
+  const byPrincipal = projections.get(folded) ?? new Map<PrincipalId, Map<number, SessionView>>();
+  const byTail = byPrincipal.get(state.principal) ?? new Map<number, SessionView>();
+  const cached = byTail.get(tail);
+
+  if (
+    cached !== undefined &&
+    cached.seq === state.seq &&
+    cached.activation === state.activation &&
+    cached.parts === state.partViews &&
+    cached.heads === heads &&
+    cached.changes === state.changes &&
+    cached.catalog === state.catalog
+  )
+    return cached;
+
+  const view: SessionView = {
+    revision: folded.revision,
+    seq: state.seq,
+    activation: state.activation,
+    messages: readMessageTail(folded.messages, tail),
+    parts: state.partViews,
+    turns: frozen(folded.turns),
+    execution: folded.info.execution,
+    background: folded.background,
+    configuration: folded.configuration,
+    context: folded.context,
+    heads,
+    changes: state.changes,
+    catalog: state.catalog,
+  };
+
+  byTail.set(tail, view);
+  byPrincipal.set(state.principal, byTail);
+  projections.set(folded, byPrincipal);
+
+  return view;
+}
+
+export function readSeenCommit(state: FoldState, head: HeadName): CommitId | null {
+  return state.seen.get(state.principal)?.get(head) ?? null;
+}
+
+function headsFor(state: FoldState): readonly HeadInfo[] {
+  const seen = state.seen.get(state.principal) ?? NOTHING_SEEN;
+  const known = unreads.get(state.headInfos) ?? new WeakMap();
+  const cached = known.get(seen);
+
+  if (cached !== undefined) return cached;
+
+  const heads = reuse(
+    state.headInfos,
+    state.headInfos.map((info) => {
+      const unread = readPositionCommit(info.tip) !== (seen.get(info.name) ?? null);
+
+      return info.unread === unread ? info : { ...info, unread };
+    }),
+  );
+
+  known.set(seen, heads);
+  unreads.set(state.headInfos, known);
+
+  return heads;
+}
+
+export function withPair(state: FoldState, head: HeadName, pair: HeadPair): FoldState {
+  const tip = readPositionCommit(state.heads.get(head)?.info.tip ?? START);
+
+  return withRevision(state, head, tip === pair.tip ? pair.revision : null);
+}
+
+function withRevision(state: FoldState, head: HeadName, revision: Revision | null): FoldState {
+  const folded = state.heads.get(head);
+
+  if (folded === undefined || folded.revision === revision) return state;
+  state[INDEX].heads.set(head, { ...folded, revision });
+
+  return { ...state };
+}
+
+function absentHead(heads: ReadonlyMap<HeadName, FoldHead>, name: HeadName): FoldHead {
+  const known = absent.get(heads) ?? new Map<HeadName, FoldHead>();
+  const head = known.get(name) ?? emptyHead(name, { messages: [], turns: [] });
+  known.set(name, head);
+  absent.set(heads, known);
+
+  return head;
+}
+
+function readMessageTail(messages: readonly Message[], tail: number): readonly Message[] {
+  const known = tails.get(messages) ?? new Map<number, readonly Message[]>();
+  const slice = reuse(known.get(tail) ?? [], messages.slice(Math.max(0, messages.length - tail)));
+  known.set(tail, slice);
+  tails.set(messages, known);
+
+  return slice;
+}
+
+function frozen(turns: readonly TurnInfo[]): readonly TurnInfo[] {
+  const known = snapshots.get(turns);
+
+  if (known !== undefined && !known.stale) return known.turns;
+  const snapshot = reuse(known?.turns ?? [], [...turns]);
+  snapshots.set(turns, { turns: snapshot, stale: false });
+
+  return snapshot;
+}

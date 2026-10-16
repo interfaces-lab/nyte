@@ -389,10 +389,7 @@ async function workspaceInfo(
   };
 }
 
-async function sessionsOn(
-  kernel: Kernel,
-  workspace: WorkspaceId,
-): Promise<readonly SessionId[]> {
+async function sessionsOn(kernel: Kernel, workspace: WorkspaceId): Promise<readonly SessionId[]> {
   return (await listSessionRecords(kernel)).flatMap((record) =>
     record.workspace === workspace ? [record.id] : [],
   );
