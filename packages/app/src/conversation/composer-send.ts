@@ -1,6 +1,7 @@
 import type { CommandInfo, Delivery, Session, SessionId, UserContent } from "@nyte-ai/sdk";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
+import { admitDraft } from "../client-plugins.tsx";
 import { errorMessage } from "../errors.ts";
 import { COMPACT_COMMAND, workspaceFiles } from "../queries.ts";
 import { connected, sessionWatch } from "../sdk.tsx";
@@ -91,7 +92,7 @@ export function composerSendPlan(input: {
   };
 }
 
-/** Uploads a message's images and sends it, in place of `replacing` when it edits a queued one. */
+/** Uploads a message's images and sends it as the client plugins admit it, in place of `replacing` when it edits a queued one. */
 export async function sendComposerMessage(
   session: Session,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
@@ -103,8 +104,10 @@ export async function sendComposerMessage(
       : { ...plan.content, files: messageFiles(replacing.content) },
   );
 
-  await session.send(content, {
-    delivery: plan.delivery,
+  const draft = await admitDraft({ content, delivery: plan.delivery, session: session.id });
+
+  await session.send(draft.content, {
+    delivery: draft.delivery,
     ...(replacing !== undefined && { replace: replacing.id }),
   });
 }

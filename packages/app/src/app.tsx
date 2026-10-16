@@ -103,7 +103,7 @@ function useHostEvents(router: AppRouter): void {
 }
 
 function useClientPlugins(): void {
-  useMountEffect(() => watchClientPlugins(focusedSession));
+  useMountEffect(() => watchClientPlugins(focusedSession, windowTabs.subscribe));
 }
 
 export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
