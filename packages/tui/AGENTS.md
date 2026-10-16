@@ -2,7 +2,7 @@
 
 - Terminal rendering and keyboard interaction live here; session behavior belongs in core.
 - The interactive app is a Solid app on `@opentui/solid`, started by `runTui` in `src/app/main.tsx`. Print mode (`print.ts`, `print-invocation.ts`) and the CLI (`index.ts`, `flags.ts`, `run.ts`) stay outside it.
-- `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`; from source, `src/binary.ts` installs the same transform before loading the app.
+- `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`, starting at `src/index.ts`; from source, `src/binary.ts` installs the same transform before loading the app.
 
 ## Architecture
 
@@ -29,7 +29,7 @@ Native resources (`SyntaxStyle`, `TextBuffer`) take `renderer.nativeScene` as ow
 
 ## Storage
 
-- Every command but `nyte serve` reaches the host through the user's background service (`@nyte-ai/service`): `src/service.ts` finds or starts it (`nyte service run`, one per home through `~/.nyte/service.lock`, on a free port unless `NYTE_SERVICE_PORT` pins one) and connects with `sdk.connect`. The service runs every session and owns the Nyte Connect link that `nyte account` shares. `nyte serve` opens its own host in-process (`src/host.ts`). Usage history runs through the host package's `UsageScanWorker`.
+- Every command but `nyte serve` reaches the host through the user's background service (`@nyte-ai/service`): `src/service.ts` finds or starts it (`nyte service run`, one per home through `~/.nyte/service.lock`, on a free port unless `NYTE_SERVICE_PORT` pins one) and connects with `sdk.connect`. The service runs every session and owns the Nyte Connect link that `nyte account` shares. `nyte serve` and `nyte service run` run the host on a worker thread: `src/hosting.ts` starts `src/host-worker.ts`, a separate bundle in the binary. The CLI's own graph (`src/index.ts`, the TUI and `@nyte-ai/sdk/client`) never imports `@nyte-ai/host`, so client commands start without loading providers or the store. Usage history runs through the host package's `UsageScanWorker`.
 - Each workspace has one store at `~/.nyte/workspaces/<path-hash>/sessions.db` (`workspaceStorePath` in `@nyte-ai/host`). The TUI attaches as runner only to sessions it opened; children follow their parent.
 
 ## Tests

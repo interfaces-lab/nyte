@@ -1,7 +1,8 @@
 /**
  * Compiles the TUI into `bin/nyte`. `Bun.build` rather than the CLI because
  * the Solid JSX transform is a bundler plugin. Worker entries are named from
- * `packages/` so the host can resolve them in the embedded module graph.
+ * `packages/` so the host can resolve them in the embedded module graph. The
+ * binary moves into `bin/` only after compilation and signing succeed.
  */
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
@@ -10,7 +11,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
 import { codemodePlugin } from "./codemode-plugin.ts";
-import { binaryDefines } from "./defines.ts";
+import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
 
 const destination = fileURLToPath(new URL("../../../bin/", import.meta.url));
 
@@ -41,10 +42,7 @@ try {
   const executable = join(directory, name);
 
   const result = await Bun.build({
-    entrypoints: [
-      join(packages, "tui/src/binary.ts"),
-      join(packages, "tui/src/codemode-worker.ts"),
-    ],
+    entrypoints: BINARY_ENTRYPOINTS.map((entry) => join(packages, entry)),
     root: packages,
     target: "bun",
     plugins: [solidPlugin, codemodePlugin],
@@ -68,7 +66,6 @@ try {
     if (signed.status !== 0) throw new Error(`codesign failed: ${signed.stderr.toString()}`);
   }
 
-  // Publish only after compilation and signing succeed.
   await rename(executable, join(destination, name));
   process.stdout.write(
     `Built bin/${name} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,

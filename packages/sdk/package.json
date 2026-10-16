@@ -19,7 +19,8 @@
       "react-native": "./src/index.web.ts",
       "browser": "./src/index.web.ts",
       "default": "./src/index.ts"
-    }
+    },
+    "./client": "./src/index.client.ts"
   },
   "publishConfig": {
     "access": "public"

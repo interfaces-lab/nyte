@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import solidPlugin from "@opentui/solid/bun-plugin";
 import { Glob } from "bun";
 import { expect, test } from "bun:test";
 
@@ -60,7 +61,8 @@ test("model imports only lib, model, fuzzysort and @nyte-ai types (question rule
     if (entry.target !== null)
       return !(entry.target.startsWith("lib/") || entry.target.startsWith("model/"));
 
-    if (entry.spec === "@nyte-ai/plugin/question/schema" || entry.spec === "fuzzysort") return false;
+    if (entry.spec === "@nyte-ai/plugin/question/schema" || entry.spec === "fuzzysort")
+      return false;
 
     return !entry.spec.startsWith("@nyte-ai/") || entry.value;
   });
@@ -96,4 +98,23 @@ test("no frame callbacks and no raw keyInput listeners", () => {
   );
 
   expect(offending).toEqual([]);
+});
+
+test("the CLI bundle loads no host, provider SDK or Babel; serve and service run reach them on the host thread", async () => {
+  const result = await Bun.build({
+    entrypoints: [join(SRC, "index.ts")],
+    target: "bun",
+    plugins: [solidPlugin],
+    metafile: true,
+    external: ["@opentui/core-*"],
+  });
+
+  const host = Object.keys(result.metafile?.inputs ?? {}).filter((path) =>
+    /(^|\/)host\/src\/|node_modules\/.*(@babel|@anthropic-ai|@google\/genai|openai|sucrase|\/pg\/)/u.test(
+      path,
+    ),
+  );
+
+  expect(result.success).toBe(true);
+  expect(host).toEqual([]);
 });

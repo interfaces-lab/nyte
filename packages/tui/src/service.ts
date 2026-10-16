@@ -2,22 +2,13 @@ import { homedir } from "node:os";
 import process from "node:process";
 import type { ConnectView } from "@nyte-ai/connect";
 import { asId } from "@nyte-ai/schema";
-import { sdk } from "@nyte-ai/sdk";
+import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
-import {
-  ensureService,
-  findService,
-  PortInUse,
-  serviceConnect,
-  ServiceRunning,
-  startService,
-  stopService,
-} from "@nyte-ai/service";
+import { ensureService, findService, serviceConnect, stopService } from "@nyte-ai/service";
 import type { Registration } from "@nyte-ai/service";
-import { compiled } from "./codemode-runtime.ts";
+import { compiled } from "./compiled.ts";
+import { HostFailure, startHostThread } from "./hosting.ts";
 import type { RemoteFacts } from "./model/state.ts";
-import { readConnectConfig } from "./connect-config.ts";
-import { openTerminalHost } from "./host.ts";
 import { VERSION } from "./version.ts";
 
 export interface ServiceSession {
@@ -114,33 +105,28 @@ async function runService(
   signal: AbortSignal,
   output: Output,
 ): Promise<void> {
-  const port = parseRunPort(args);
-  const home = homedir();
-  const service = await startService({
-    open: () => openTerminalHost(),
-    home,
-    port,
-    version: VERSION,
-    connect: readConnectConfig(),
-  }).catch((cause: unknown) => {
-    if (cause instanceof PortInUse)
-      throw new Error(
-        `${cause.message} Free it, or ${args.length === 0 ? "set NYTE_SERVICE_PORT to" : "pass"} another port.`,
-      );
+  const service = await startHostThread({ kind: "service", port: parseRunPort(args) }).catch(
+    (cause: unknown) => {
+      if (!(cause instanceof HostFailure)) throw cause;
 
-    if (cause instanceof ServiceRunning)
-      throw new Error(`${cause.message} Stop it with \`nyte service stop\`.`);
+      if (cause.reason === "port-in-use")
+        throw new Error(
+          `${cause.message} Free it, or ${args.length === 0 ? "set NYTE_SERVICE_PORT to" : "pass"} another port.`,
+        );
 
-    throw cause;
-  });
+      if (cause.reason === "service-running")
+        throw new Error(`${cause.message} Stop it with \`nyte service stop\`.`);
 
-  output.write(
-    `Nyte service at ${service.registration.url} (pid ${String(service.registration.pid)})\n`,
+      throw cause;
+    },
   );
 
-  if (!signal.aborted)
-    await new Promise((done) => signal.addEventListener("abort", done, { once: true }));
-  await service.close();
+  output.write(`Nyte service at ${service.address} (pid ${String(process.pid)})\n`);
+
+  const stopped = new Promise((done) => signal.addEventListener("abort", done, { once: true }));
+
+  if (!signal.aborted) await Promise.race([stopped, service.ended]);
+  await service.stop();
 }
 
 function parseRunPort(args: readonly string[]): number {
@@ -148,7 +134,7 @@ function parseRunPort(args: readonly string[]): number {
 
   if (args.length === 2 && args[0] === "--port") return servicePort(args[1], "--port");
 
-  if (args.length === 1 && args[0]?.startsWith("--port=") === true)
+  if (args.length === 1 && args[0].startsWith("--port="))
     return servicePort(args[0].slice("--port=".length), "--port");
 
   throw new Error("Usage: nyte service run [--port <n>]");
