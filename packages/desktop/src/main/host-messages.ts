@@ -18,6 +18,8 @@ export interface HostProcessOptions {
   readonly rendererOrigin: string;
   /** The account main signed in with, or null in a build without Clerk. */
   readonly account: AccountState | null;
+  /** How long the host waits before it opens; a development build sets it so a test can hold the host. */
+  readonly openDelayMs: number | undefined;
 }
 
 /** Something the host process needs main for: the browser panel or the signed-in account. */

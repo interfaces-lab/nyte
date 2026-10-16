@@ -41,6 +41,10 @@ interface LaunchOptions {
   readonly home: string;
   readonly parentDirectory: string;
   readonly downloadsDirectory?: string;
+  /** Electron's app data, kept across launches when given; a fresh one under the launch otherwise. */
+  readonly appData?: string;
+  /** Hold the host this long before it opens. */
+  readonly hostDelayMs?: number;
 }
 
 interface LaunchedDesktop {
@@ -72,18 +76,23 @@ async function electronExecutable(): Promise<string> {
   return join(electronRoot, "dist", executable.trim());
 }
 
-function launchEnvironment(home: string) {
+function launchEnvironment(home: string, hostDelayMs: number | undefined) {
   const kept = Object.entries(process.env).filter(
     (entry): entry is [string, string] => entry[1] !== undefined && KEPT_VARIABLES.has(entry[0]),
   );
 
-  return { ...Object.fromEntries(kept), HOME: home, USERPROFILE: home };
+  return {
+    ...Object.fromEntries(kept),
+    HOME: home,
+    USERPROFILE: home,
+    NYTE_DESKTOP_HOST_DELAY_MS: hostDelayMs === undefined ? "" : String(hostDelayMs),
+  };
 }
 
 export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDesktop> {
   await assertBuilt();
   const root = await mkdtemp(join(options.parentDirectory, "desktop-"));
-  const appData = join(root, "app-data");
+  const appData = options.appData ?? join(root, "app-data");
   await mkdir(appData, { recursive: true });
   await symlink(
     join(PACKAGES_ROOT, "canvas"),
@@ -122,7 +131,7 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
     executablePath: await electronExecutable(),
     args: [root, "--use-mock-keychain", "--password-store=basic"],
     cwd: DESKTOP_ROOT,
-    env: launchEnvironment(options.home),
+    env: launchEnvironment(options.home, options.hostDelayMs),
     timeout: 30_000,
   });
 

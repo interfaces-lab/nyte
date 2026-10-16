@@ -161,6 +161,11 @@ const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-s
 
 const home = updateTest ? app.getPath("userData") : homedir();
 
+/** A development build can hold the host's open, so a test can prove the first frame never waits for it. */
+const hostDelay = Number.parseInt(process.env["NYTE_DESKTOP_HOST_DELAY_MS"] ?? "", 10);
+
+const hostOpenDelayMs = app.isPackaged || Number.isNaN(hostDelay) ? undefined : hostDelay;
+
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
 
 function send(window: HostWindow, channel: string, payload: HostEvent): void {
@@ -402,6 +407,7 @@ function startHost(): HostProcess {
       home,
       rendererOrigin: rendererOrigin(rendererUrl),
       account: account === undefined ? null : account.state(),
+      openDelayMs: hostOpenDelayMs,
     },
     {
       event: emitHostEvent,

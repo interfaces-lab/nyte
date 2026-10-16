@@ -54,7 +54,6 @@ const metricFields = [
     unit: "ms",
     budget: every(495),
   },
-  { key: "splashMs", label: "Splash visible", unit: "ms", budget: every(225) },
   { key: "keystrokeToPaintMs", label: "Keystroke to paint", unit: "ms", budget: every(16.7) },
   {
     key: "longTasks",
@@ -659,7 +658,6 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
             : sinceSpawn(firstKeystroke.startTime + firstKeystroke.duration),
         spawnToComposerMs: sinceSpawn(ready.readyMs),
         spawnToFirstPaintMs: sinceSpawn(fcp),
-        splashMs: [renderer.shellReadyMs - fcp],
         keystrokeToPaintMs: renderer.keystrokes.map(({ duration }) => duration),
         longTasks: renderer.longTasks === null ? [] : [longTasks.length],
         longTaskMs:
@@ -822,7 +820,6 @@ async function run(options: Options): Promise<void> {
       typedInput:
         "The task after the frame that follows the composer's first DOM mutation for the first typed character (requestAnimationFrame, then a MessageChannel task).",
       keystroke: `Each of ${typedText.length} characters typed ${keystrokeDelayMs} ms apart right after the composer is ready: keydown timeStamp to the task after the frame that follows the composer's DOM mutation.`,
-      splash: "nyte:shell-ready (first frame after the interface replaces #startup) minus FCP.",
       longTasks: "Buffered PerformanceObserver longtask entries that start before composer ready.",
       ipc: "Host calls (ipcRenderer.invoke on the call channel) that reached main before composer ready, recorded in main from Electron's session -ipc-invoke event.",
       hostRequests: "Completed fetch resource entries started before composer ready.",
