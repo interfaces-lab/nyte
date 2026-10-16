@@ -25,7 +25,8 @@ import remarkGfm from "remark-gfm";
 import remend from "remend";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
-import { useMentionFiles } from "../queries.ts";
+import { useQuery } from "@tanstack/react-query";
+import { mentionFilesOptions } from "../queries.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -61,6 +62,20 @@ const InsideLink = createContext(false);
 
 /** True while the message the markdown belongs to is still streaming. */
 const ProseStreaming = createContext(false);
+
+/**
+ * The workspace's file list as conversation content reads it to resolve
+ * citations. It is the composer's query, observed without refetching: spans
+ * and canvases mount and remount as the transcript scrolls, and each mount
+ * must not walk the workspace again. The composer and thread keep it fresh.
+ */
+export function useCitableFiles(enabled: boolean) {
+  return useQuery({
+    ...mentionFilesOptions(enabled),
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+}
 
 /**
  * A file the prose names draws the way Cursor cites one: an inline link led
@@ -129,9 +144,9 @@ function FileCitation({
 
 /**
  * Inline code the workspace can resolve becomes a file citation, so a path the
- * model names opens where a path the reader typed opens. The file list is the
- * composer's own query; a surface with no opener never asks for it and every
- * span stays literal.
+ * model names opens where a path the reader typed opens. The file list is
+ * `useCitableFiles`; a surface with no opener never asks for it and every span
+ * stays literal.
  */
 function MarkdownCode({
   node: _node,
@@ -141,7 +156,7 @@ function MarkdownCode({
   const insideLink = use(InsideLink);
   const referenceOpener = useReferenceOpener();
   const opener = insideLink ? undefined : referenceOpener;
-  const files = useMentionFiles(opener !== undefined);
+  const files = useCitableFiles(opener !== undefined);
 
   const text = nodeText(elementProps.children);
   const reference = opener === undefined ? undefined : inlineCodeReference(text, files.data ?? []);
@@ -193,7 +208,7 @@ function MarkdownLink({
   ...elementProps
 }: ComponentProps<"a"> & ExtraProps): ReactElement {
   const opener = useReferenceOpener();
-  const files = useMentionFiles(opener !== undefined && href !== undefined);
+  const files = useCitableFiles(opener !== undefined && href !== undefined);
 
   if (href?.startsWith(AGENT_LINK) === true) {
     const agent = href.slice(AGENT_LINK.length);
