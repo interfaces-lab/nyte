@@ -1,6 +1,6 @@
 import { createSignal, getOwner, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { Clock } from "../effects/ports.ts";
+import type { Clock } from "@opentui/core";
 
 export interface Tickers {
   ticker(intervalMs: number): Accessor<number>;
@@ -15,10 +15,8 @@ interface Shared {
   stop: (() => void) | null;
 }
 
-export function createTickers(
-  clock: Clock,
-  schedule: (callback: () => void, intervalMs: number) => () => void,
-): Tickers {
+/** Shared interval signals on the renderer's clock: one timer per period, stopped by its last reader. */
+export function createTickers(clock: Clock): Tickers {
   const shared = new Map<number, Shared>();
 
   const release = (entry: Shared): void => {
@@ -36,7 +34,10 @@ export function createTickers(
       shared.set(intervalMs, entry);
       entry.readers += 1;
 
-      if (entry.readers === 1) entry.stop = schedule(entry.advance, intervalMs);
+      if (entry.readers === 1) {
+        const timer = clock.setInterval(entry.advance, intervalMs);
+        entry.stop = () => clock.clearInterval(timer);
+      }
 
       if (getOwner() !== null) onCleanup(() => release(entry));
 

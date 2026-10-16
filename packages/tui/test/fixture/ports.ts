@@ -1,4 +1,5 @@
 import { asId } from "@nyte-ai/schema";
+import { ManualClock } from "@opentui/core/testing";
 import type {
   CommandOutcome,
   HostView,
@@ -346,7 +347,7 @@ export interface FakePorts extends Ports {
   readonly files: FakeFiles;
   readonly plugins: FakePlugins;
   readonly settings: SettingsPort;
-  readonly clock: { now(): number; advance(ms: number): void };
+  readonly clock: ManualClock;
   readonly log: {
     readonly path: string;
     readonly entries: { readonly origin: string; readonly error: unknown }[];
@@ -355,7 +356,8 @@ export interface FakePorts extends Ports {
 }
 
 export function fakePorts(host: FakeHost): FakePorts {
-  let now = 10_000;
+  const clock = new ManualClock();
+  clock.setTime(10_000);
   let settings = SETTINGS;
   const running = new Map<string, { resolve(end: ShellEnd): void; update(output: string): void }>();
 
@@ -471,12 +473,7 @@ export function fakePorts(host: FakeHost): FakePorts {
     plugins,
     shell,
     files,
-    clock: {
-      now: () => now,
-      advance(ms) {
-        now += ms;
-      },
-    },
+    clock,
     log,
   };
 }

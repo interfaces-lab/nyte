@@ -21,7 +21,6 @@ import {
   filesPort,
   settingsPort,
   shellPort,
-  systemClock,
 } from "../effects/local-ports.ts";
 import type { HostPort, Ports } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
@@ -115,11 +114,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 
     const sinks = installSinks(store, ports.terminal);
 
-    const tickers = createTickers(ports.clock, (callback, intervalMs) => {
-      const timer = setInterval(callback, intervalMs);
-
-      return () => clearInterval(timer);
-    });
+    const tickers = createTickers(ports.clock);
 
     const kit = createKit({
       renderer,
@@ -291,7 +286,7 @@ export async function runTui(flags: RunFlags): Promise<TuiExit> {
     settings: settingsPort(),
     shell: shellPort(),
     files: filesPort(),
-    clock: systemClock,
+    clock: renderer.clock,
     log,
   };
 

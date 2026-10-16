@@ -28,6 +28,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
+import type { Clock } from "@opentui/core";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { MentionFile } from "../model/completion.ts";
@@ -190,10 +191,6 @@ export interface FilesPort {
   resolveMention(query: string, cwd: string): Promise<MentionFile | null>;
   readText(path: string): Promise<string | null>;
   editor(text: string, command: string | null): Promise<string | null>;
-}
-
-export interface Clock {
-  now(): number;
 }
 
 export interface CrashLog {

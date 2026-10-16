@@ -1,3 +1,4 @@
+import { ManualClock } from "@opentui/core/testing";
 import type { TestRendererOptions, TestRendererSetup } from "@opentui/core/testing";
 import { useRenderer } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
@@ -14,33 +15,11 @@ import type { ScreenModel } from "../../../src/model/screen.ts";
 import type { State } from "../../../src/model/state.ts";
 import { render } from "../../fixture/render.tsx";
 
-export interface ManualSchedule {
-  readonly schedule: (callback: () => void, intervalMs: number) => () => void;
-  advance(): void;
-  active(): number;
-}
-
-export function manualSchedule(): ManualSchedule {
-  const callbacks = new Set<() => void>();
-
-  return {
-    schedule(callback) {
-      callbacks.add(callback);
-
-      return () => callbacks.delete(callback);
-    },
-    advance() {
-      for (const callback of callbacks) callback();
-    },
-    active: () => callbacks.size,
-  };
-}
-
 export interface TranscriptHarness extends TestRendererSetup {
   readonly dispatched: Msg[];
   readonly screen: Accessor<ScreenModel>;
   readonly setState: (state: State) => void;
-  readonly clock: ManualSchedule;
+  readonly clock: ManualClock;
 }
 
 async function* noBytes(): AsyncIterable<Uint8Array> {
@@ -53,13 +32,13 @@ export async function renderWithApp(
   options?: TestRendererOptions,
 ): Promise<TranscriptHarness> {
   const dispatched: Msg[] = [];
-  const clock = manualSchedule();
+  const clock = new ManualClock();
   const [state, setState] = createSignal(initial);
   const screen = createMemo(() => deriveScreen(state(), null));
 
   const setup = await render(() => {
     const renderer = useRenderer();
-    const tickers = createTickers({ now: () => 0 }, clock.schedule);
+    const tickers = createTickers(renderer.clock);
 
     const kit = createKit({
       renderer,
@@ -78,7 +57,7 @@ export async function renderWithApp(
     const app: App = { screen, dispatch: (msg) => dispatched.push(msg), kit };
 
     return <AppProvider app={app}>{node(app)}</AppProvider>;
-  }, options);
+  }, { clock, ...options });
 
   return { ...setup, dispatched, screen, setState, clock };
 }

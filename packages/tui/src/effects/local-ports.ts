@@ -11,7 +11,7 @@ import { editInExternalEditor, resolveExternalEditor } from "../services/externa
 import { startLocalShell } from "../services/local-shell.ts";
 import type { ShellProcess } from "../services/local-shell.ts";
 import { FileSettingsStore } from "../services/settings.ts";
-import type { Clock, FilesPort, Handle, SettingsPort, ShellEnd, ShellPort } from "./ports.ts";
+import type { FilesPort, Handle, SettingsPort, ShellEnd, ShellPort } from "./ports.ts";
 
 const PASTE_COLLAPSE_LINES = 8;
 
@@ -33,8 +33,6 @@ export function createHandle<T>(): Handle<T> {
     current: () => current,
   };
 }
-
-export const systemClock: Clock = { now: () => Date.now() };
 
 export function shellPort(): ShellPort {
   const processes = new Map<string, ShellProcess>();

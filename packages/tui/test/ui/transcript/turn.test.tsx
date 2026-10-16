@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
 import type { App } from "../../../src/app/context.tsx";
-import { SPINNER_FRAMES } from "../../../src/lib/constants.ts";
+import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../../src/lib/constants.ts";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
 import { stateOf } from "../../fixture/state.ts";
 import { followed, viewOf } from "../../fixture/view.ts";
@@ -106,7 +106,7 @@ describe("turn", () => {
       "status:t1",
     ]);
     expect(app.captureCharFrame()).toContain(`${SPINNER_FRAMES[0]} Working`);
-    app.clock.advance();
+    app.clock.advance(SPINNER_INTERVAL_MS);
     await app.renderOnce();
     expect(app.captureCharFrame()).toContain(`${SPINNER_FRAMES[1]} Working`);
   });
@@ -119,7 +119,7 @@ describe("turn", () => {
     await using app = await renderWithApp(stateOf(followed(view)), transcript);
 
     expect(app.captureCharFrame()).toContain("Retrying in 9s (attempt 0) · rate limited.");
-    expect(app.clock.active()).toBeGreaterThan(0);
+    expect(app.clock.pendingTimerCount).toBeGreaterThan(0);
   });
 
   test("a report row click opens the task", async () => {

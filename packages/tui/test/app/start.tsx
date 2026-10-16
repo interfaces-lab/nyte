@@ -10,7 +10,6 @@ import type { MountedApp } from "../../src/app/main.tsx";
 import type { Store } from "../../src/app/store.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
 import { hostPort } from "../../src/effects/host-port.ts";
-import { systemClock } from "../../src/effects/local-ports.ts";
 import type { Ports } from "../../src/effects/ports.ts";
 import { until } from "../fixture/host.ts";
 import type { TestHost } from "../fixture/host.ts";
@@ -50,7 +49,7 @@ export async function startApp(
   const ports: Ports = {
     ...fakes,
     host: hostPort(fixture.host, null),
-    clock: systemClock,
+    clock: setup.renderer.clock,
     log: openCrashLog(home),
   };
 
