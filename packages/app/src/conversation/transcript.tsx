@@ -11,6 +11,7 @@ import {
   memo,
   useCallback,
   useContext,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -68,7 +69,15 @@ interface TranscriptState extends TranscriptOptions {
   readonly dock: HTMLDivElement | null;
   readonly setDock: (dock: HTMLDivElement | null) => void;
   readonly controlsRef: RefObject<TranscriptControls | null>;
+  /** Stable forwarders to whichever transcript currently fills `controlsRef`. */
+  readonly controls: TranscriptControls;
 }
+
+const NO_CONTROLS: TranscriptControls = {
+  end: () => undefined,
+  hold: () => undefined,
+  page: () => undefined,
+};
 
 const TranscriptContext = createContext<TranscriptState | null>(null);
 
@@ -87,16 +96,7 @@ export function useTranscriptDock(): (dock: HTMLDivElement | null) => void {
 }
 
 export function useTranscriptControls(): TranscriptControls {
-  const controlsRef = useContext(TranscriptContext)?.controlsRef;
-
-  return useMemo(
-    () => ({
-      end: () => controlsRef?.current?.end(),
-      hold: (element) => controlsRef?.current?.hold(element),
-      page: (direction) => controlsRef?.current?.page(direction),
-    }),
-    [controlsRef],
-  );
+  return useContext(TranscriptContext)?.controls ?? NO_CONTROLS;
 }
 
 export function useTranscriptScope():
@@ -121,6 +121,12 @@ export function TranscriptProvider({
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
   const controlsRef = useRef<TranscriptControls | null>(null);
 
+  const [controls] = useState((): TranscriptControls => ({
+    end: () => controlsRef.current?.end(),
+    hold: (element) => controlsRef.current?.hold(element),
+    page: (direction) => controlsRef.current?.page(direction),
+  }));
+
   const transcript = useMemo(
     () => ({
       paneId,
@@ -132,8 +138,9 @@ export function TranscriptProvider({
       dock,
       setDock,
       controlsRef,
+      controls,
     }),
-    [dock, initialPosition, onReachStart, paneId, sessionId, viewportRef, viewStore],
+    [controls, dock, initialPosition, onReachStart, paneId, sessionId, viewportRef, viewStore],
   );
 
   return <TranscriptContext value={transcript}>{children}</TranscriptContext>;
@@ -174,7 +181,6 @@ export const TranscriptContent = memo(function TranscriptContent({
   const opening = useRef(initialPosition.kind === "end");
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
-  const indexOf = (key: string): number => items.findIndex((item) => item.messageId === key);
 
   const [initialOffset] = useState(() => {
     let total = TRANSCRIPT_PADDING_START;
@@ -297,15 +303,24 @@ export const TranscriptContent = memo(function TranscriptContent({
     virtualizer.scrollToEnd();
   };
 
-  useLayoutEffect(() => {
-    if (!ready) return;
+  const restoreHeld = useEffectEvent((): void => {
     const anchor = heldRef.current;
 
     if (anchor === null) {
       virtualizer.scrollToEnd();
-    } else if (anchor.element === undefined && indexOf(anchor.key) >= 0) {
-      virtualizer.scrollToIndex(indexOf(anchor.key), { align: "start" });
+
+      return;
     }
+
+    const index = items.findIndex((item) => item.messageId === anchor.key);
+
+    if (anchor.element === undefined && index >= 0) {
+      virtualizer.scrollToIndex(index, { align: "start" });
+    }
+  });
+
+  useLayoutEffect(() => {
+    if (ready) restoreHeld();
   }, [ready]);
 
   useLayoutEffect(() => {
@@ -332,6 +347,7 @@ export const TranscriptContent = memo(function TranscriptContent({
               )[0];
 
       const row = anchor === null ? top : (rows.find(([key]) => key === anchor.key) ?? top);
+
       const atEnd =
         scroll !== null && scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop <= 1;
 
@@ -349,6 +365,27 @@ export const TranscriptContent = memo(function TranscriptContent({
   );
 
   useLayoutEffect(() => {
+    if (viewport === null) return undefined;
+
+    controlsRef.current = {
+      end,
+      hold,
+      page: (direction) => {
+        release();
+        virtualizer.scrollBy(direction * viewport.clientHeight * 0.9);
+      },
+    };
+
+    return () => {
+      controlsRef.current = null;
+    };
+  });
+
+  const holdRow = useEffectEvent(hold);
+  const releaseHeld = useEffectEvent(release);
+  const presentRows = useEffectEvent((left?: number): void => present(virtualizer, left));
+
+  useLayoutEffect(() => {
     const scroll = viewport;
 
     if (scroll === null) return undefined;
@@ -364,13 +401,13 @@ export const TranscriptContent = memo(function TranscriptContent({
           const left = scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
 
           if (heldRef.current === null && left <= shrunk + 1) virtualizer.scrollToEnd();
-          present(virtualizer, Math.min(left, shrunk + 1 >= left ? 0 : left));
+          presentRows(Math.min(left, shrunk + 1 >= left ? 0 : left));
 
           return;
         }
       }
 
-      present(virtualizer);
+      presentRows();
     });
 
     resize.observe(scroll);
@@ -380,19 +417,12 @@ export const TranscriptContent = memo(function TranscriptContent({
       resize.observe(dock);
     }
 
-    const page = (direction: 1 | -1): void => {
-      release();
-      virtualizer.scrollBy(direction * scroll.clientHeight * 0.9);
-    };
-
-    controlsRef.current = { end, hold, page };
-
     const pressed = (event: PointerEvent): void => {
-      if (event.target === scroll) release();
+      if (event.target === scroll) releaseHeld();
     };
 
     const keyed = (event: KeyboardEvent): void => {
-      if (navigates(event)) release();
+      if (navigates(event)) releaseHeld();
     };
 
     const clicked = (event: MouseEvent): void => {
@@ -401,7 +431,7 @@ export const TranscriptContent = memo(function TranscriptContent({
           ? event.target.closest("[aria-expanded], [data-step-preview] *")
           : null;
 
-      if (control !== null) hold(control);
+      if (control !== null) holdRow(control);
     };
 
     const selected = (): void => {
@@ -419,20 +449,20 @@ export const TranscriptContent = memo(function TranscriptContent({
         content.current?.contains(row) === true &&
         anchor?.element !== row
       )
-        hold(row);
+        holdRow(row);
     };
 
     const wheeledDock = (event: WheelEvent): void => {
       if (dock === null || scrollsWithin(event.target, dock)) return;
-      release();
+      releaseHeld();
       virtualizer.scrollBy(event.deltaY);
     };
 
     const listeners = new AbortController();
     const { signal } = listeners;
-    scroll.addEventListener("scroll", () => present(virtualizer), { passive: true, signal });
-    scroll.addEventListener("wheel", release, { passive: true, signal });
-    scroll.addEventListener("touchmove", release, { passive: true, signal });
+    scroll.addEventListener("scroll", () => presentRows(), { passive: true, signal });
+    scroll.addEventListener("wheel", () => releaseHeld(), { passive: true, signal });
+    scroll.addEventListener("touchmove", () => releaseHeld(), { passive: true, signal });
     scroll.addEventListener("pointerdown", pressed, { signal });
     scroll.addEventListener("keydown", keyed, { signal });
     content.current?.addEventListener("click", clicked, { capture: true, signal });
@@ -442,9 +472,8 @@ export const TranscriptContent = memo(function TranscriptContent({
     return () => {
       listeners.abort();
       resize.disconnect();
-      controlsRef.current = null;
     };
-  }, [controlsRef, dock, viewport, virtualizer]);
+  }, [dock, viewport, virtualizer]);
 
   return (
     <div
