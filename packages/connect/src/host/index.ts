@@ -9,16 +9,10 @@ export { AccountCancelled } from "./account.ts";
 export type { AccountSession, AccountState } from "./account.ts";
 export { ConnectError } from "./errors.ts";
 export { ConnectRuntime } from "./runtime.ts";
-export type {
-  ConnectListen,
-  ConnectListener,
-  ConnectRuntimeOptions,
-  ConnectShare,
-  ConnectTiming,
-  DeviceDecision,
-  HostConnectConfig,
-  LinkAuthorizer,
-} from "./runtime.ts";
+export type { ConnectRuntimeOptions, HostConnectConfig } from "./runtime.ts";
+export type { ConnectTiming } from "./context.ts";
+export type { LinkAuthorizer } from "./link-flow.ts";
+export type { ConnectListen, ConnectListener, ConnectShare, DeviceDecision } from "./serving.ts";
 export {
   CONSUMED_LIMIT,
   ConnectStore,

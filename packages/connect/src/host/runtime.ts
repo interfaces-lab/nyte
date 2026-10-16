@@ -1,152 +1,26 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
-import { scheduler } from "node:timers/promises";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
-import {
-  BrokerError,
-  CLOCK_TOLERANCE_SECONDS,
-  DEVICE_LIMIT,
-  ENROLLMENT_LIFETIME_SECONDS,
-  ENROLLMENT_READINESS_SECONDS,
-  EnrollmentClaims,
-  HEARTBEAT_INTERVAL_SECONDS,
-  LEASE_LIFETIME_SECONDS,
-  LINK_POLL_INTERVAL_SECONDS,
-  LeaseClaims,
-  PROOF_LIFETIME_SECONDS,
-  TOKEN_TYPES,
-  keyFingerprint,
-  randomUserCode,
-} from "../index.ts";
-import type {
-  BrokerKeys,
-  DeviceRole,
-  LinkResponse,
-  LinkTransactionState,
-  PublicJwk,
-  ReceiptClaims,
-} from "../index.ts";
-import { machineName } from "./machine-name.ts";
-import {
-  brokerKey,
-  generateMachineKey,
-  keyThumbprint,
-  nowSeconds,
-  publicKeyOf,
-  randomId,
-  signClaims,
-  verifyClaims,
-} from "../signing.ts";
-import type { PrivateJwk } from "../signing.ts";
-import type {
-  ConnectLease,
-  ConnectLinkFailure,
-  ConnectLinking,
-  ConnectNotice,
-  ConnectUnavailable,
-  ConnectView,
-} from "../view.ts";
+import type { ConnectNotice, ConnectUnavailable, ConnectView } from "../view.ts";
 import { AccountCancelled } from "./account.ts";
 import type { AccountSession } from "./account.ts";
 import { DesktopBroker } from "./broker.ts";
-import type { BrokerFetch, LeaseAnswer } from "./broker.ts";
-import { RelayConnection } from "./relay.ts";
-import type { RelayDial, RelayTiming } from "./relay.ts";
-import { bearerToken, connectRouteHandler, refused, tokenDigest } from "./routes.ts";
-import type { AuthorizingRequest, RouteAnswer } from "./routes.ts";
-import {
-  CONSUMED_LIMIT,
-  ConnectStore,
-  ConnectStoreFailed,
-  REVOCATION_LIMIT,
-  UNLINK_LIMIT,
-} from "./store.ts";
-import type { ConnectFile, LinkKey, StoredDevice, StoredLink } from "./store.ts";
-import { ConnectError } from "./errors.ts";
-
-/**
- * Who a relayed request is, decided here on every request. The embedding
- * turns an allowed device into its own principal; `principal` is a stable
- * name for a server that takes the decision as it is.
- */
-export type DeviceDecision =
-  | {
-      readonly kind: "allow";
-      readonly principal: string;
-      readonly device: { readonly id: string; readonly name: string; readonly role: DeviceRole };
-    }
-  | { readonly kind: "deny"; readonly reason: "unauthorized" | "forbidden" };
-
-/** What the host binds for account remote access. */
-export interface ConnectListen {
-  readonly authorize: (request: AuthorizingRequest) => Promise<DeviceDecision>;
-  readonly handle: (request: Request) => Promise<Response | undefined>;
-}
-
-export interface ConnectListener {
-  /** The ephemeral port it bound on `127.0.0.1`. */
-  readonly port: number;
-  /** Drop every open connection and keep the port bound. */
-  disconnectClients(): void;
-  close(): Promise<void>;
-}
-
-/** Bind the share on an ephemeral `127.0.0.1` port under the host's folder trust. */
-export type ConnectShare = (listen: ConnectListen) => Promise<ConnectListener>;
-
-export interface ConnectTiming {
-  readonly heartbeatMs: number;
-  /** After a failed lease request, how soon to ask again. */
-  readonly retryMs: number;
-  readonly unlinkRetryMs: number;
-  /** Longest a request from a just-enrolled device waits for a fresh lease. */
-  readonly readinessWaitMs: number;
-  /** Least time between two such refreshes for one device once one came back. */
-  readonly readinessThrottleMs: number;
-  /** After one that failed or timed out, least time before the device's next request may try again. */
-  readonly readinessRetryMs: number;
-  /** Least time between two reads of the broker's key set. */
-  readonly keysMs: number;
-  /** How long a self-revocation's own response has before every stream is dropped. */
-  readonly dropDelayMs: number;
-  /** How often a linking host asks the broker whether the owner approved. */
-  readonly linkPollMs: number;
-  readonly relay?: Partial<RelayTiming>;
-}
-
-const READINESS_WINDOW_MS = (ENROLLMENT_LIFETIME_SECONDS + ENROLLMENT_READINESS_SECONDS) * 1_000;
-
-const DEFAULT_TIMING: ConnectTiming = {
-  heartbeatMs: HEARTBEAT_INTERVAL_SECONDS * 1_000,
-  retryMs: 5_000,
-  unlinkRetryMs: 300_000,
-  readinessWaitMs: 5_000,
-  readinessThrottleMs: 30_000,
-  readinessRetryMs: 2_000,
-  keysMs: 300_000,
-  dropDelayMs: 250,
-  linkPollMs: LINK_POLL_INTERVAL_SECONDS * 1_000,
-};
+import type { BrokerFetch } from "./broker.ts";
+import { ConnectFiles, DEFAULT_TIMING } from "./context.ts";
+import type { ConnectTiming } from "./context.ts";
+import { closed, notLinked, originChanged, unavailable } from "./errors.ts";
+import { LinkFlow } from "./link-flow.ts";
+import type { LinkAuthorizer } from "./link-flow.ts";
+import { ConnectOutbox } from "./outbox.ts";
+import type { RelayDial } from "./relay.ts";
+import { ServingSession } from "./serving.ts";
+import type { ConnectShare, ServingOwner } from "./serving.ts";
+import { ConnectStore } from "./store.ts";
+import { BrokerKeyring, LinkTrust } from "./tokens.ts";
 
 /** The broker this runtime talks to. A desktop build adds its Clerk configuration beside it. */
 export interface HostConnectConfig {
   /** A canonical `https://` origin: the broker and its relay. */
   readonly origin: string;
 }
-
-/**
- * How this host gets an owner's approval to link. A desktop asks its own
- * sign-in for a session JWT; a headless host opens a broker transaction and
- * shows the code and fingerprint for the owner to approve elsewhere.
- */
-export type LinkAuthorizer =
-  | { readonly kind: "session"; readonly account: AccountSession }
-  | {
-      readonly kind: "transaction";
-      /** The transaction is open: show where to approve, the code and the fingerprint to compare. */
-      readonly onOpened: (opened: Extract<ConnectLinking, { kind: "awaiting_approval" }>) => void;
-    };
 
 export interface ConnectRuntimeOptions {
   /** Absent in a build without the public connect configuration. */
@@ -165,184 +39,86 @@ export interface ConnectRuntimeOptions {
   readonly timing?: Partial<ConnectTiming>;
 }
 
-interface HeldLease {
-  readonly devices: ReadonlySet<string>;
-  readonly expiresAt: number;
-  readonly sentAt: number;
-}
-
-interface Serving {
-  readonly epoch: number;
-  readonly environmentId: string;
-  readonly controller: AbortController;
-  port: number | undefined;
-  listener: ConnectListener | undefined;
-  relay: RelayConnection | undefined;
-  stopping: boolean;
-  lease: HeldLease | undefined;
-  lapse: "offline" | "owner_disabled" | undefined;
-  resetAt: number;
-  beatTimer: ReturnType<typeof setTimeout> | undefined;
-  expiryTimer: ReturnType<typeof setTimeout> | undefined;
-  readonly refreshes: Map<string, Refresh>;
-}
-
-interface Refresh {
-  readonly at: number;
-  state: "pending" | "renewed" | "failed";
-  done: Promise<void>;
-}
-
-interface HighWater {
-  readonly environmentId: string;
-  readonly generation: number;
-  readonly policy: number;
-  readonly iat: number;
-}
-
-function storeFailed(): ConnectError {
-  return new ConnectError("internal", "Nyte can't use ~/.nyte/connect.json. Remote access is off.");
-}
-
-function unavailable(): ConnectError {
-  return new ConnectError(
-    "denied",
-    "Account remote access isn't available in this build or on this Mac.",
-  );
-}
-
-function notLinked(): ConnectError {
-  return new ConnectError("unknown", "Link this Mac to your account first.");
-}
-
-function closed(): ConnectError {
-  return new ConnectError("unavailable", "Nyte is quitting.");
-}
-
-function originChanged(): ConnectError {
-  return new ConnectError(
-    "denied",
-    "This host is linked through another broker. Unlink it before linking here.",
-  );
-}
-
-class LinkStopped extends Error {
-  readonly state: "pending" | "approved" | "denied" | "expired" | "cancelled";
-
-  constructor(state: "pending" | "approved" | "denied" | "expired" | "cancelled") {
-    super(`Link transaction ${state}`);
-    this.name = "LinkStopped";
-    this.state = state;
-  }
-}
-
-type TransactionLinkKey = Extract<LinkKey, { kind: "transaction" }>;
-
-interface LinkAttempt {
-  readonly controller: AbortController;
-  done: Promise<void>;
-  cancelled: boolean;
-  persisted: string | undefined;
-}
-
-function refusedCode(cause: unknown): string | undefined {
-  return cause instanceof BrokerError && cause.failure.kind === "refused"
-    ? cause.failure.code
-    : undefined;
-}
-
-function within(promise: Promise<void>, ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    void promise.finally(() => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
-}
-
-const SessionClaims = Type.Object({ sub: Type.String({ minLength: 1, maxLength: 128 }) });
-
-function sessionSubject(token: string): string | null {
-  try {
-    const payload: unknown = JSON.parse(
-      Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
-    );
-
-    return Value.Check(SessionClaims, payload) ? payload.sub : null;
-  } catch {
-    return null;
-  }
-}
-
-function linkFailure(cause: unknown, signal: AbortSignal): ConnectLinkFailure {
-  if (signal.aborted || cause instanceof AccountCancelled) return "cancelled";
-
-  if (cause instanceof LinkStopped) {
-    switch (cause.state) {
-      case "denied":
-      case "expired":
-      case "cancelled":
-        return cause.state;
-      default:
-        return "refused";
-    }
-  }
-
-  if (!(cause instanceof BrokerError)) return "refused";
-
-  switch (cause.failure.kind) {
-    case "network":
-      return "network";
-    case "refused":
-      switch (cause.failure.code) {
-        case "limit":
-          return "limit";
-        case "owner_disabled":
-          return "owner_disabled";
-        case "session_revoked":
-          return "session_revoked";
-        default:
-          return "refused";
-      }
-
-    default:
-      return "refused";
-  }
-}
-
+/**
+ * The account remote access lifecycle of one host: linking, serving the
+ * linked environment, and the device and unlink work owed to the broker.
+ * Changes to the link and to serving run one at a time; access is refused at
+ * once, before the change that refuses it lands.
+ */
 export class ConnectRuntime {
   private readonly options: ConnectRuntimeOptions;
   private readonly timing: ConnectTiming;
-  private readonly store: ConnectStore;
+  private readonly files: ConnectFiles;
   private readonly broker: DesktopBroker | undefined;
+  private readonly keyring: BrokerKeyring | undefined;
   private readonly lifetime = new AbortController();
+  private readonly trust = new LinkTrust();
+  private readonly outbox: ConnectOutbox;
+  private readonly links: LinkFlow;
+  private readonly servingOwner: ServingOwner;
   private queue: Promise<unknown> = Promise.resolve();
   private epoch = 0;
-  private serving: Serving | undefined;
-  private linking: ConnectLinking = { kind: "idle" };
-  private linkAttempt: LinkAttempt | undefined;
+  private serving: ServingSession | undefined;
   private readonly accountOpens = new Set<AbortController>();
   private notice: ConnectNotice = { kind: "none" };
-  private readonly denied = new Set<string>();
-  private highWater: HighWater | undefined;
-  private keysReadAt = Number.NEGATIVE_INFINITY;
-  private revocationsSentAt = Number.NEGATIVE_INFINITY;
-  private revoking: Promise<void> | undefined;
-  private revokeAgain = false;
-  private unlinking: Promise<void> | undefined;
-  private unlinkTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
   private closing: Promise<void> | undefined;
 
   constructor(options: ConnectRuntimeOptions) {
     this.options = options;
     this.timing = { ...DEFAULT_TIMING, ...options.timing };
-    this.store = new ConnectStore(options.storePath ?? join(options.home, "connect.json"));
-    this.broker =
+
+    const broker =
       options.config === undefined
         ? undefined
         : new DesktopBroker({ origin: options.config.origin, fetch: options.fetch });
+
+    this.broker = broker;
+
+    this.files = new ConnectFiles(
+      new ConnectStore(options.storePath ?? join(options.home, "connect.json")),
+      broker?.origin,
+      () => this.failClosed(),
+    );
+
+    this.keyring =
+      broker === undefined
+        ? undefined
+        : new BrokerKeyring(broker, this.files, this.timing.keysMs, this.lifetime.signal);
+
+    this.outbox = new ConnectOutbox({
+      files: this.files,
+      broker,
+      unlinkRetryMs: this.timing.unlinkRetryMs,
+      signal: this.lifetime.signal,
+      closed: () => this.closed,
+      changed: () => this.changed(),
+      environmentRevoked: (environmentId) => void this.environmentRevoked(environmentId),
+    });
+
+    this.links = new LinkFlow({
+      files: this.files,
+      broker,
+      authorizer: options.authorizer,
+      name: options.name,
+      linkPollMs: this.timing.linkPollMs,
+      signal: this.lifetime.signal,
+      closed: () => this.closed,
+      serial: (operation) => this.serial(operation),
+      changed: () => this.changed(),
+      outbox: this.outbox,
+      unlink: (environmentId) => this.queueUnlink(environmentId),
+      linked: () => this.forgetLink(),
+    });
+
+    this.servingOwner = {
+      current: (session) => this.current(session),
+      changed: () => this.changed(),
+      environmentRevoked: (environmentId) => void this.environmentRevoked(environmentId),
+      dropStreams: (defer) => this.dropStreams(defer),
+      failClosed: () => this.failClosed(true),
+      release: (deviceId) => this.forgetDevice(deviceId, "release"),
+    };
   }
 
   async view(): Promise<ConnectView> {
@@ -351,7 +127,7 @@ export class ConnectRuntime {
 
     if (broker === undefined || reason !== undefined)
       return { kind: "unavailable", reason: reason ?? "not_configured" };
-    const read = await this.store.read();
+    const read = await this.files.read();
 
     if (read.kind === "failed") return { kind: "unavailable", reason: "store_failed" };
     const account = this.account?.state() ?? { kind: "unavailable" };
@@ -367,7 +143,7 @@ export class ConnectRuntime {
       return {
         kind: "unlinked",
         account,
-        linking: this.linking,
+        linking: this.links.state,
         notice:
           this.notice.kind === "none" && read.file.unlinks.length > 0
             ? { kind: "unlink_pending" }
@@ -387,18 +163,15 @@ export class ConnectRuntime {
         address: broker.address(link.environment.id),
       },
       enabled: read.file.enabled,
-      connection:
-        serving === undefined
-          ? { kind: "stopped" }
-          : (serving.relay?.status() ?? { kind: "connecting" }),
-      lease: this.leaseView(serving),
+      connection: serving === undefined ? { kind: "stopped" } : serving.connection(),
+      lease: serving === undefined ? { kind: "stopped" } : serving.leaseView(),
       devices: link.devices
-        .filter((device) => !this.denied.has(device.id))
+        .filter((device) => !this.trust.denied.has(device.id))
         .map((device) => ({
           id: device.id,
           name: device.name,
           createdAt: device.createdAt,
-          authorized: serving !== undefined && this.listed(serving, device.id),
+          authorized: serving !== undefined && serving.listed(device.id),
         })),
     };
   }
@@ -411,46 +184,14 @@ export class ConnectRuntime {
     await this.requireUsable();
 
     if (this.options.authorizer === undefined) throw unavailable();
-    const pending = this.linkAttempt;
-
-    if (pending !== undefined) {
-      await pending.done;
-
-      return this.view();
-    }
-
-    if ((await this.readyFile()).unlinks.length >= UNLINK_LIMIT) await this.retryUnlinks();
-
-    if ((await this.readyFile()).unlinks.length >= UNLINK_LIMIT) {
-      this.setLinking({ kind: "failed", reason: "refused" });
-
-      return this.view();
-    }
-
-    const controller = new AbortController();
-
-    const attempt: LinkAttempt = {
-      controller,
-      done: Promise.resolve(),
-      cancelled: false,
-      persisted: undefined,
-    };
-
-    this.linkAttempt = attempt;
-    attempt.done = this.runLink(attempt);
-    await attempt.done;
+    await this.links.link();
 
     return this.view();
   }
 
   /** The user gives the link up: the attempt ends and an open transaction is cancelled at the broker. */
-  async cancel(): Promise<void> {
-    const pending = this.linkAttempt;
-
-    if (pending === undefined) return;
-    pending.cancelled = true;
-    pending.controller.abort();
-    await pending.done;
+  cancel(): Promise<void> {
+    return this.links.cancel();
   }
 
   /** Persist the toggle. On serves through `share`; off stops at once. */
@@ -464,21 +205,25 @@ export class ConnectRuntime {
       this.denyAll();
       await this.serial(async () => {
         await this.stopServing();
-        await this.change((file) => (file.enabled ? { ...file, enabled: false } : file));
+        await this.files.change((file) => (file.enabled ? { ...file, enabled: false } : file));
       });
     } else {
       await this.serial(async () => {
         if (this.closed) throw closed();
 
-        const file = await this.readyFile();
+        const file = await this.files.ready();
 
         if (file.link === null) throw notLinked();
-        await this.change((current) => (current.enabled ? current : { ...current, enabled: true }));
+        await this.files.change((current) =>
+          current.enabled ? current : { ...current, enabled: true },
+        );
 
         try {
           await this.startServing(input.share);
         } catch (cause) {
-          await this.change((current) => ({ ...current, enabled: false })).catch(() => undefined);
+          await this.files
+            .change((current) => ({ ...current, enabled: false }))
+            .catch(() => undefined);
           throw cause;
         }
       });
@@ -514,11 +259,11 @@ export class ConnectRuntime {
    * for this run without asking.
    */
   async autostart(share: ConnectShare): Promise<void> {
-    void this.retryUnlinks();
+    void this.outbox.retryUnlinks();
 
     if (this.unavailableReason() !== undefined) return;
     await this.serial(async () => {
-      const read = await this.store.read();
+      const read = await this.files.read();
 
       if (read.kind === "failed" || !read.file.enabled || read.file.link === null) return;
 
@@ -536,40 +281,7 @@ export class ConnectRuntime {
     await this.cancel();
     await this.queueUnlink(undefined);
     this.changed();
-    await this.retryUnlinks();
-  }
-
-  private async queueUnlink(expected: string | undefined): Promise<void> {
-    this.denyAll();
-    await this.serial(async () => {
-      const file = await this.readyFile();
-      const { link } = file;
-
-      if (link === null || (expected !== undefined && link.environment.id !== expected)) return;
-      await this.stopServing();
-      await this.change((current) =>
-        current.link === null
-          ? current
-          : {
-              ...current,
-              enabled: false,
-              link: null,
-              unlinks: [
-                ...current.unlinks.filter(
-                  (pending) => pending.environmentId !== link.environment.id,
-                ),
-                {
-                  origin: link.origin,
-                  environmentId: link.environment.id,
-                  key: link.key,
-                  at: Date.now(),
-                },
-              ],
-            },
-      );
-      this.forgetLink();
-      this.notice = { kind: "none" };
-    });
+    await this.outbox.retryUnlinks();
   }
 
   /** Refuse the device here at once and close every stream, then revoke it at the broker. */
@@ -589,7 +301,7 @@ export class ConnectRuntime {
 
     if (account === undefined) throw unavailable();
 
-    if (this.linkAttempt !== undefined || this.accountOpens.size > 0) {
+    if (this.links.running || this.accountOpens.size > 0) {
       account.focus();
 
       return;
@@ -633,15 +345,8 @@ export class ConnectRuntime {
   resume(): void {
     const serving = this.serving;
 
-    if (serving === undefined || !this.isLive(serving)) return;
-    serving.lease = undefined;
-    serving.lapse = undefined;
-    serving.resetAt = Date.now();
-    clearTimeout(serving.expiryTimer);
-    serving.listener?.disconnectClients();
-    serving.relay?.reconnect();
-    this.changed();
-    void this.beat(serving);
+    if (serving === undefined || !this.current(serving)) return;
+    serving.resume();
   }
 
   /**
@@ -659,476 +364,77 @@ export class ConnectRuntime {
   private async shutDown(): Promise<void> {
     this.closed = true;
     this.denyAll();
-    const attempt = this.linkAttempt;
-    attempt?.controller.abort();
+    const linking = this.links.abort();
 
     for (const controller of this.accountOpens) controller.abort();
-    clearTimeout(this.unlinkTimer);
-    await attempt?.done;
+    await linking;
     this.lifetime.abort();
     await this.serial(() => this.stopServing());
-    await Promise.allSettled([this.unlinking, this.revoking]);
-    await this.store.idle();
+    await this.outbox.close();
+    await this.files.store.idle();
     await this.account?.close();
   }
 
-
-  private async runLink(attempt: LinkAttempt): Promise<void> {
-    const { authorizer } = this.options;
-    const broker = this.broker;
-    const { controller } = attempt;
-
-    try {
-      if (authorizer === undefined || broker === undefined) throw unavailable();
-
-      if (authorizer.kind === "session")
-        await this.linkWithSession(authorizer.account, broker, attempt);
-      else await this.linkWithTransaction(authorizer, broker, attempt);
-
-      if (attempt.cancelled && attempt.persisted !== undefined) {
-        await this.queueUnlink(attempt.persisted);
-        void this.retryUnlinks();
-        this.setLinking({ kind: "failed", reason: "cancelled" });
-      } else this.setLinking({ kind: "idle" });
-    } catch (cause) {
-      if (refusedCode(cause) === "revoked") {
-        await this.change((file) => ({ ...file, linkKey: null })).catch(() => undefined);
-      } else if (authorizer?.kind === "transaction") {
-        if (attempt.cancelled) await this.abandonTransaction(broker);
-        else if (cause instanceof LinkStopped) await this.clearEndedTransaction();
-      }
-
-      this.setLinking({ kind: "failed", reason: linkFailure(cause, controller.signal) });
-    } finally {
-      if (this.linkAttempt?.controller === controller) this.linkAttempt = undefined;
-    }
-  }
-
-  private async clearEndedTransaction(): Promise<void> {
-    await this.change((current) =>
-      current.linkKey?.kind === "transaction"
-        ? {
-            ...current,
-            linkKey: this.nextOperation(current.linkKey),
-          }
-        : current,
-    ).catch(() => undefined);
-  }
-
-  private nextOperation(ended: TransactionLinkKey): TransactionLinkKey {
-    return {
-      ...ended,
-      name: this.options.name ?? machineName(),
-      transaction: null,
-      abandoned: false,
-      ...this.mintOperation(),
-    };
-  }
-
-  private mintOperation(): { readonly operationId: string; readonly userCode: string } {
-    return {
-      operationId: randomId(),
-      userCode: randomUserCode((count) => new Uint8Array(randomBytes(count))),
-    };
-  }
-
-  private async linkWithSession(
-    account: AccountSession,
-    broker: DesktopBroker,
-    attempt: LinkAttempt,
-  ): Promise<void> {
-    const { controller } = attempt;
-    this.setLinking({ kind: "waiting_for_account" });
-    const sessionToken = await account.requestSessionToken({ signal: controller.signal });
-
-    if (controller.signal.aborted) throw new AccountCancelled();
+  /** Unlink as the user would; with `expected`, only while that environment is still the link. */
+  private async queueUnlink(expected: string | undefined): Promise<void> {
+    this.denyAll();
     await this.serial(async () => {
-      if (controller.signal.aborted || this.closed) throw new AccountCancelled();
-      const file = await this.readyFile();
+      const file = await this.files.ready();
+      const { link } = file;
 
-      if (file.link !== null) return;
-      this.setLinking({ kind: "linking" });
-      const owner = sessionSubject(sessionToken);
-      const pending = file.linkKey;
-
-      const resumable =
-        pending !== null &&
-        pending.kind === "session" &&
-        pending.origin === broker.origin &&
-        (pending.owner === null || owner === null || pending.owner === owner);
-
-      const key = resumable ? pending.key : await generateMachineKey();
-
-      if (!resumable)
-        await this.change((current) => ({
-          ...current,
-          linkKey: { kind: "session", origin: broker.origin, key, owner },
-        }));
-
-      const linked = await broker.link({
-        key,
-        name: this.options.name ?? machineName(),
-        sessionToken,
-        signal: controller.signal,
-      });
-
-      if (controller.signal.aborted || this.closed) throw new AccountCancelled();
-      await this.persistLink(linked, key, broker.origin, attempt);
-    });
-  }
-
-  private async linkWithTransaction(
-    authorizer: Extract<LinkAuthorizer, { kind: "transaction" }>,
-    broker: DesktopBroker,
-    attempt: LinkAttempt,
-  ): Promise<void> {
-    this.setLinking({ kind: "linking" });
-    const { signal } = attempt.controller;
-
-    const prepared = await this.serial(async (): Promise<TransactionLinkKey | undefined> => {
-      if (signal.aborted || this.closed) throw new AccountCancelled();
-      const file = await this.readyFile();
-
-      if (file.link !== null) return undefined;
-      let pending = file.linkKey;
-
-      if (pending !== null && pending.origin !== broker.origin) throw originChanged();
-
-      for (;;) {
-        let intent: TransactionLinkKey;
-
-        if (pending === null || pending.kind !== "transaction") {
-          intent = this.freshTransaction(broker.origin, await generateMachineKey());
-        } else {
-          const settled = await this.settleTransaction(pending, broker, signal, attempt);
-
-          switch (settled.kind) {
-            case "linked":
-              return undefined;
-            case "open":
-              return pending;
-            case "opening":
-              intent = pending;
-              break;
-            case "ended":
-              intent = this.nextOperation(pending);
-              break;
-            case "retired":
-              intent = this.freshTransaction(broker.origin, await generateMachineKey());
-              break;
-            default: {
-              const _exhaustive: never = settled.kind;
-
-              return _exhaustive;
-            }
-          }
-        }
-
-        if (intent !== pending) await this.change((current) => ({ ...current, linkKey: intent }));
-        const { kept, state } = await this.open(intent, broker, signal);
-
-        if (state === "pending") return kept;
-        pending = kept;
-      }
-    });
-
-    if (prepared?.transaction === null || prepared?.transaction === undefined) return;
-    const { key, userCode } = prepared;
-    const { transaction } = prepared;
-
-    const awaiting: ConnectLinking = {
-      kind: "awaiting_approval",
-      verifyUrl: transaction.verifyUrl,
-      userCode,
-      fingerprint: keyFingerprint(await keyThumbprint(publicKeyOf(key))),
-      expiresAt: transaction.expiresAt,
-    };
-    this.setLinking(awaiting);
-    authorizer.onOpened(awaiting);
-
-    for (;;) {
-      await scheduler.wait(this.timing.linkPollMs, { signal }).catch(() => {
-        throw new AccountCancelled();
-      });
-      let state: LinkTransactionState;
-
-      try {
-        state = (await broker.pollLinkTransaction({ key, transactionId: transaction.id, signal }))
-          .state;
-      } catch (cause) {
-        if (signal.aborted) throw new AccountCancelled();
-
-        if (Date.now() >= transaction.expiresAt) throw new LinkStopped("expired");
-
-        if (refusedCode(cause) !== undefined) throw cause;
-        continue;
-      }
-
-      if (state === "approved" || state === "consumed") break;
-
-      if (state !== "pending") throw new LinkStopped(state);
-    }
-
-    this.setLinking({ kind: "linking" });
-    await this.serial(async () => {
-      if (signal.aborted || this.closed) throw new AccountCancelled();
-      const file = await this.readyFile();
-
-      if (file.link !== null) return;
-
-      if (file.linkKey?.kind !== "transaction" || file.linkKey.transaction?.id !== transaction.id)
-        throw new AccountCancelled();
-      const completion = await broker.completeLinkTransaction({
-        key,
-        transactionId: transaction.id,
-        signal,
-      });
-
-      if (completion.state !== "consumed") throw new LinkStopped(completion.state);
-
-      if (signal.aborted || this.closed) throw new AccountCancelled();
-      await this.persistLink(completion.link, key, broker.origin, attempt);
-    });
-  }
-
-  private async open(
-    intent: TransactionLinkKey,
-    broker: DesktopBroker,
-    signal: AbortSignal,
-  ): Promise<{ readonly kept: TransactionLinkKey; readonly state: LinkTransactionState }> {
-    const opened = await broker.openLinkTransaction({
-      key: intent.key,
-      name: intent.name,
-      operationId: intent.operationId,
-      userCode: intent.userCode,
-      signal,
-    });
-
-    const transaction = {
-      id: opened.transactionId,
-      verifyUrl: opened.verifyUrl,
-      expiresAt: opened.expiresAt,
-    };
-
-    const kept: TransactionLinkKey = { ...intent, transaction };
-    await this.change((current) =>
-      current.linkKey?.kind === "transaction" &&
-      current.linkKey.operationId === intent.operationId &&
-      current.linkKey.key.x === intent.key.x
-        ? { ...current, linkKey: { ...kept, abandoned: current.linkKey.abandoned } }
-        : current,
-    );
-
-    return { kept, state: opened.state };
-  }
-
-  private freshTransaction(origin: string, key: PrivateJwk): TransactionLinkKey {
-    return {
-      kind: "transaction",
-      origin,
-      key,
-      name: this.options.name ?? machineName(),
-      ...this.mintOperation(),
-      abandoned: false,
-      transaction: null,
-    };
-  }
-
-  private async settleTransaction(
-    pending: TransactionLinkKey,
-    broker: DesktopBroker,
-    signal: AbortSignal,
-    attempt: LinkAttempt | undefined,
-  ): Promise<{ readonly kind: "linked" | "open" | "opening" | "ended" | "retired" }> {
-    if (pending.abandoned) {
-      const known =
-        pending.transaction === null ? (await this.open(pending, broker, signal)).kept : pending;
-
-      const cancelled = await this.cancelTransaction(known, broker, signal);
-
-      return { kind: cancelled === "unlinked" ? "retired" : "ended" };
-    }
-
-    const { transaction, key } = pending;
-
-    if (transaction === null) return { kind: "opening" };
-
-    const status = await broker.pollLinkTransaction({ key, transactionId: transaction.id, signal });
-
-    switch (status.state) {
-      case "pending":
-      case "approved":
-        return { kind: "open" };
-      case "consumed": {
-        const completion = await broker.completeLinkTransaction({
-          key,
-          transactionId: transaction.id,
-          signal,
-        });
-
-        if (completion.state !== "consumed") return { kind: "ended" };
-
-        if (signal.aborted || this.closed) throw new AccountCancelled();
-        await this.persistLink(completion.link, key, broker.origin, attempt);
-
-        return { kind: "linked" };
-      }
-      case "denied":
-      case "expired":
-      case "cancelled":
-        return { kind: "ended" };
-      default: {
-        const _exhaustive: never = status.state;
-
-        return _exhaustive;
-      }
-    }
-  }
-
-  private async abandonTransaction(broker: DesktopBroker | undefined): Promise<void> {
-    if (broker === undefined) return;
-    const read = this.store.snapshot();
-    const pending = read?.kind === "ready" ? read.file.linkKey : null;
-
-    if (pending === null || pending?.kind !== "transaction" || pending.origin !== broker.origin)
-      return;
-    const abandoned: TransactionLinkKey = { ...pending, abandoned: true };
-
-    try {
-      await this.change((current) =>
-        current.linkKey?.kind === "transaction" &&
-        current.linkKey.operationId === pending.operationId &&
-        current.linkKey.key.x === pending.key.x
-          ? { ...current, linkKey: { ...current.linkKey, abandoned: true } }
-          : current,
+      if (link === null || (expected !== undefined && link.environment.id !== expected)) return;
+      await this.stopServing();
+      await this.files.change((current) =>
+        current.link === null
+          ? current
+          : {
+              ...current,
+              enabled: false,
+              link: null,
+              unlinks: [
+                ...current.unlinks.filter(
+                  (pending) => pending.environmentId !== link.environment.id,
+                ),
+                {
+                  origin: link.origin,
+                  environmentId: link.environment.id,
+                  key: link.key,
+                  at: Date.now(),
+                },
+              ],
+            },
       );
-      await this.settleTransaction(abandoned, broker, this.lifetime.signal, undefined);
-    } catch {
-    }
-  }
-
-  private async cancelTransaction(
-    pending: TransactionLinkKey,
-    broker: DesktopBroker,
-    signal: AbortSignal,
-  ): Promise<"cancelled" | "unlinked"> {
-    const { transaction, key } = pending;
-
-    if (transaction === null) return "cancelled";
-    const status = await broker.cancelLinkTransaction({
-      key,
-      transactionId: transaction.id,
-      signal,
+      this.forgetLink();
     });
-
-    if (status.state === "consumed") {
-      const completion = await broker.completeLinkTransaction({
-        key,
-        transactionId: transaction.id,
-        signal,
-      });
-
-      if (completion.state === "consumed") {
-        const { environment } = completion.link;
-        await this.change((current) => ({
-          ...current,
-          linkKey: null,
-          unlinks: [
-            ...current.unlinks.filter((entry) => entry.environmentId !== environment.id),
-            { origin: broker.origin, environmentId: environment.id, key, at: Date.now() },
-          ],
-        }));
-        void this.retryUnlinks();
-
-        return "unlinked";
-      }
-    }
-
-    await this.change((current) =>
-      current.linkKey?.kind === "transaction" && current.linkKey.transaction?.id === transaction.id
-        ? { ...current, linkKey: null }
-        : current,
-    );
-
-    return "cancelled";
   }
-
-  private async persistLink(
-    linked: LinkResponse,
-    key: PrivateJwk,
-    origin: string,
-    attempt: LinkAttempt | undefined,
-  ): Promise<void> {
-    await this.change((current) => {
-      if (current.linkKey === null) throw new AccountCancelled();
-
-      return {
-        ...current,
-        enabled: false,
-        linkKey: null,
-        link: {
-          origin,
-          environment: { id: linked.environment.id, name: linked.environment.name },
-          owner: { id: linked.owner.id, label: linked.owner.label },
-          key,
-          brokerKeys: linked.brokerKeys,
-          devices: [],
-          revocations: [],
-          consumed: [],
-        },
-      };
-    });
-
-    if (attempt !== undefined) attempt.persisted = linked.environment.id;
-    this.forgetLink();
-    this.notice = { kind: "none" };
-  }
-
-  private setLinking(linking: ConnectLinking): void {
-    this.linking = linking;
-    this.changed();
-  }
-
 
   private async startServing(share: ConnectShare): Promise<void> {
     if (this.closed) throw closed();
 
     if (this.serving !== undefined) return;
-    const broker = this.broker;
-    const { link } = await this.readyFile();
+    const { broker, keyring } = this;
+    const { link } = await this.files.ready();
 
-    if (broker === undefined) throw unavailable();
+    if (broker === undefined || keyring === undefined) throw unavailable();
 
     if (link === null) throw notLinked();
 
     if (link.origin !== broker.origin) throw originChanged();
-    const url = broker.relayUrl(link.environment.id);
-    const epoch = this.epoch;
+    const { epoch } = this;
 
-    const serving: Serving = {
+    const session = new ServingSession({
       epoch,
       environmentId: link.environment.id,
-      controller: new AbortController(),
-      port: undefined,
-      listener: undefined,
-      relay: undefined,
-      stopping: false,
-      lease: undefined,
-      lapse: undefined,
-      resetAt: Date.now(),
-      beatTimer: undefined,
-      expiryTimer: undefined,
-      refreshes: new Map(),
-    };
-
-    const local = await share({
-      authorize: (request) => this.authorize(serving, request),
-      handle: connectRouteHandler({
-        host: () => (serving.port === undefined ? undefined : `127.0.0.1:${String(serving.port)}`),
-        enroll: (authorization) => this.enroll(serving, authorization),
-        forget: (digest) => this.forgetPresented(serving, digest),
-      }),
+      files: this.files,
+      broker,
+      keyring,
+      trust: this.trust,
+      outbox: this.outbox,
+      timing: this.timing,
+      owner: this.servingOwner,
     });
+
+    const local = await share(session.listen());
 
     if (epoch !== this.epoch || this.closed) {
       await local.close();
@@ -1136,44 +442,10 @@ export class ConnectRuntime {
       return;
     }
 
-    const relay = new RelayConnection({
-      url,
-      port: local.port,
-      proof: async () => {
-        const current = this.currentLink(serving.environmentId);
-
-        if (current === undefined || !this.isLive(serving)) throw new Error("Not serving");
-
-        return broker.relayProof({
-          key: current.key,
-          environmentId: serving.environmentId,
-        });
-      },
-      dial: this.options.dial,
-      onChange: () => this.changed(),
-      onRevoked: () => {
-        if (this.isLive(serving)) void this.beat(serving);
-      },
-      timing: this.timing.relay,
-    });
-
-    serving.port = local.port;
-    serving.relay = relay;
-    serving.listener = {
-      port: local.port,
-      disconnectClients: () => {
-        relay.dropStreams();
-        local.disconnectClients();
-      },
-      close: async () => {
-        relay.close();
-        await local.close();
-      },
-    };
-    this.serving = serving;
+    session.attach(local, broker.relayUrl(link.environment.id), this.options.dial);
+    this.serving = session;
     this.changed();
-    void this.beat(serving);
-    relay.start();
+    session.start();
   }
 
   private async stopServing(): Promise<void> {
@@ -1181,8 +453,8 @@ export class ConnectRuntime {
 
     if (serving === undefined) return;
     this.serving = undefined;
-    this.halt(serving);
-    await serving.listener?.close();
+    serving.halt();
+    await serving.close();
     this.changed();
   }
 
@@ -1191,512 +463,33 @@ export class ConnectRuntime {
     const serving = this.serving;
 
     if (serving === undefined) return;
-    this.halt(serving);
-    const listener = serving.listener;
+    serving.halt();
 
-    if (dropAfterMs > 0) setTimeout(() => listener?.disconnectClients(), dropAfterMs);
-    else listener?.disconnectClients();
+    if (dropAfterMs > 0) setTimeout(() => serving.disconnectClients(), dropAfterMs);
+    else serving.disconnectClients();
   }
 
-  private halt(serving: Serving): void {
-    serving.stopping = true;
-    serving.lease = undefined;
-    serving.controller.abort();
-    clearTimeout(serving.beatTimer);
-    clearTimeout(serving.expiryTimer);
-  }
-
-  private isLive(serving: Serving): boolean {
+  /** Whether `serving` is still the session this runtime serves through, with a usable store. */
+  private current(serving: ServingSession): boolean {
     return (
       this.serving === serving &&
-      !serving.stopping &&
+      !serving.halted &&
       serving.epoch === this.epoch &&
-      this.store.snapshot()?.kind === "ready"
+      this.files.loaded() !== undefined
     );
   }
 
-  private liveServing(environmentId: string): Serving | undefined {
+  private liveServing(environmentId: string): ServingSession | undefined {
     const serving = this.serving;
 
-    return serving !== undefined && serving.environmentId === environmentId && this.isLive(serving)
+    return serving !== undefined && serving.environmentId === environmentId && this.current(serving)
       ? serving
       : undefined;
   }
 
-
-  private scheduleBeat(serving: Serving, delay: number): void {
-    clearTimeout(serving.beatTimer);
-    serving.beatTimer = setTimeout(() => void this.beat(serving), delay);
-  }
-
-  private async beat(serving: Serving): Promise<"renewed" | "lapsed" | "failed"> {
-    const outcome = await this.renew(serving);
-
-    if (this.isLive(serving))
-      this.scheduleBeat(
-        serving,
-        outcome === "failed" ? this.timing.retryMs : this.timing.heartbeatMs,
-      );
-
-    return outcome;
-  }
-
-  private async renew(serving: Serving): Promise<"renewed" | "lapsed" | "failed"> {
-    const link = this.currentLink(serving.environmentId);
-
-    if (link === undefined || this.broker === undefined) return "failed";
-
-    try {
-      const answer = await this.broker.lease({
-        key: link.key,
-        environmentId: serving.environmentId,
-        signal: serving.controller.signal,
-      });
-
-      return (await this.applyLease(serving, link, answer)) ? "renewed" : "failed";
-    } catch (cause) {
-      if (!this.isLive(serving)) return "failed";
-      const code = refusedCode(cause);
-
-      if (code === "revoked") {
-        void this.environmentRevoked(serving.environmentId);
-
-        return "failed";
-      }
-
-      if (code === "owner_disabled") {
-        this.lapse(serving, "owner_disabled");
-
-        return "lapsed";
-      }
-
-      return "failed";
-    }
-  }
-
-  private async applyLease(
-    serving: Serving,
-    link: StoredLink,
-    answer: LeaseAnswer,
-  ): Promise<boolean> {
-    const config = this.options.config;
-
-    const key =
-      brokerKey(link.brokerKeys, answer.lease) ??
-      (await this.readBrokerKeys(serving.environmentId, answer.lease));
-
-    if (config === undefined || key === undefined) return false;
-    let claims: LeaseClaims;
-
-    try {
-      claims = await verifyClaims({
-        token: answer.lease,
-        key,
-        typ: TOKEN_TYPES.lease,
-        issuer: config.origin,
-        audience: serving.environmentId,
-        schema: LeaseClaims,
-        lifetime: LEASE_LIFETIME_SECONDS,
-      });
-    } catch {
-      return false;
-    }
-
-    if (
-      claims.sub !== link.owner.id ||
-      claims.req !== answer.request ||
-      !this.isLive(serving) ||
-      answer.sentAt < serving.resetAt
-    )
-      return false;
-    const high = this.highWater;
-
-    if (
-      high !== undefined &&
-      high.environmentId === serving.environmentId &&
-      (claims.generation < high.generation ||
-        claims.policy < high.policy ||
-        (claims.policy === high.policy && claims.iat < high.iat))
-    )
-      return false;
-    const now = Date.now();
-    const expiresAt = Math.min(claims.exp * 1_000, answer.sentAt + LEASE_LIFETIME_SECONDS * 1_000);
-
-    if (expiresAt <= now) return false;
-    this.highWater = {
-      environmentId: serving.environmentId,
-      generation: claims.generation,
-      policy: claims.policy,
-      iat: claims.iat,
-    };
-
-    const previous =
-      serving.lease !== undefined && serving.lapse === undefined && now < serving.lease.expiresAt
-        ? serving.lease
-        : undefined;
-
-    const devices = new Set(claims.devices);
-    const lease: HeldLease = { devices, expiresAt, sentAt: answer.sentAt };
-    serving.lease = lease;
-    serving.lapse = undefined;
-    clearTimeout(serving.expiryTimer);
-    serving.expiryTimer = setTimeout(() => this.expire(serving, lease), expiresAt - now);
-    const dropped = previous !== undefined && [...previous.devices].some((id) => !devices.has(id));
-
-    if (dropped) serving.listener?.disconnectClients();
-
-    if (previous === undefined || dropped || [...devices].some((id) => !previous.devices.has(id)))
-      this.changed();
-
-    this.pruneInactive(serving, lease);
-
-    if (link.revocations.length > 0) void this.sendRevocations(false);
-
-    return true;
-  }
-
-  private pruneInactive(serving: Serving, lease: HeldLease): void {
-    const link = this.currentLink(serving.environmentId);
-    const settled = lease.sentAt - (ENROLLMENT_LIFETIME_SECONDS + CLOCK_TOLERANCE_SECONDS) * 1_000;
-
-    const inactive = new Set(
-      (link?.devices ?? [])
-        .filter((device) => !lease.devices.has(device.id) && device.createdAt < settled)
-        .map((device) => device.id),
-    );
-
-    if (inactive.size === 0) return;
-    serving.listener?.disconnectClients();
-    void this.change((file) =>
-      file.link?.environment.id === serving.environmentId
-        ? {
-            ...file,
-            link: {
-              ...file.link,
-              devices: file.link.devices.filter((device) => !inactive.has(device.id)),
-            },
-          }
-        : file,
-    )
-      .then(() => this.changed())
-      .catch(() => undefined);
-  }
-
-  private expire(serving: Serving, lease: HeldLease): void {
-    if (serving.lease !== lease) return;
-    serving.lease = undefined;
-    serving.lapse = "offline";
-    serving.listener?.disconnectClients();
-    this.changed();
-  }
-
-  private lapse(serving: Serving, reason: "offline" | "owner_disabled"): void {
-    const had = serving.lease !== undefined || serving.lapse !== reason;
-    serving.lease = undefined;
-    serving.lapse = reason;
-    clearTimeout(serving.expiryTimer);
-    serving.listener?.disconnectClients();
-
-    if (had) this.changed();
-  }
-
-  private listed(serving: Serving, deviceId: string): boolean {
-    const lease = serving.lease;
-
-    return (
-      this.isLive(serving) &&
-      lease !== undefined &&
-      serving.lapse === undefined &&
-      Date.now() < lease.expiresAt &&
-      lease.devices.has(deviceId)
-    );
-  }
-
-  private leaseView(serving: Serving | undefined): ConnectLease {
-    if (serving === undefined) return { kind: "stopped" };
-
-    if (serving.lapse !== undefined) return { kind: "lapsed", reason: serving.lapse };
-    const lease = serving.lease;
-
-    if (lease === undefined) return { kind: "pending" };
-
-    return Date.now() < lease.expiresAt
-      ? { kind: "current", expiresAt: lease.expiresAt }
-      : { kind: "lapsed", reason: "offline" };
-  }
-
-  private async readBrokerKeys(
-    environmentId: string,
-    token: string,
-  ): Promise<PublicJwk | undefined> {
-    if (this.broker === undefined || Date.now() < this.keysReadAt + this.timing.keysMs)
-      return undefined;
-    this.keysReadAt = Date.now();
-    let keys: BrokerKeys;
-
-    try {
-      keys = await this.broker.keys({ signal: this.lifetime.signal });
-    } catch {
-      return undefined;
-    }
-
-    const key = brokerKey(keys, token);
-
-    if (key === undefined) return undefined;
-    await this.change((file) =>
-      file.link?.environment.id === environmentId
-        ? { ...file, link: { ...file.link, brokerKeys: keys } }
-        : file,
-    ).catch(() => undefined);
-
-    return key;
-  }
-
-
-  private async authorize(serving: Serving, request: AuthorizingRequest): Promise<DeviceDecision> {
-    const token = bearerToken(request);
-
-    if (token === undefined) return { kind: "deny", reason: "unauthorized" };
-    const digest = tokenDigest(token);
-    const device = this.deviceFor(serving, digest);
-
-    if (device === undefined) return { kind: "deny", reason: "forbidden" };
-    const allowed = (): DeviceDecision => ({
-      kind: "allow",
-      principal: `device:${device.id}`,
-      device: { id: device.id, name: device.name, role: device.role },
-    });
-
-    if (this.listed(serving, device.id)) return allowed();
-
-    if (!this.awaitsLease(serving, device)) return { kind: "deny", reason: "forbidden" };
-    await this.refreshFor(serving, device);
-
-    return this.deviceFor(serving, digest)?.id === device.id && this.listed(serving, device.id)
-      ? allowed()
-      : { kind: "deny", reason: "forbidden" };
-  }
-
-  private deviceFor(serving: Serving, digest: Buffer): StoredDevice | undefined {
-    if (!this.isLive(serving)) return undefined;
-    const link = this.currentLink(serving.environmentId);
-
-    if (link === undefined) return undefined;
-    let match: StoredDevice | undefined;
-
-    for (const device of link.devices) {
-      const stored = Buffer.from(device.digest, "base64url");
-
-      if (stored.length === digest.length && timingSafeEqual(stored, digest)) match = device;
-    }
-
-    return match === undefined || this.denied.has(match.id) ? undefined : match;
-  }
-
-  private awaitsLease(serving: Serving, device: StoredDevice): boolean {
-    const lease = serving.lease;
-    const now = Date.now();
-
-    return (
-      lease !== undefined &&
-      serving.lapse === undefined &&
-      now < lease.expiresAt &&
-      (device.createdAt >= lease.sentAt || now - device.createdAt <= READINESS_WINDOW_MS)
-    );
-  }
-
-  private refreshFor(serving: Serving, device: StoredDevice): Promise<void> {
-    const now = Date.now();
-    const previous = serving.refreshes.get(device.id);
-
-    if (previous?.state === "pending") return previous.done;
-
-    if (
-      previous !== undefined &&
-      now <
-        previous.at +
-          (previous.state === "renewed"
-            ? this.timing.readinessThrottleMs
-            : this.timing.readinessRetryMs)
-    )
-      return Promise.resolve();
-    const refresh: Refresh = { at: now, state: "pending", done: Promise.resolve() };
-
-    const answered = this.beat(serving).then((outcome) => {
-      refresh.state = outcome === "renewed" ? "renewed" : "failed";
-    });
-
-    refresh.done = within(answered, this.timing.readinessWaitMs).then(() => {
-      if (refresh.state === "pending") refresh.state = "failed";
-    });
-    serving.refreshes.set(device.id, refresh);
-
-    return refresh.done;
-  }
-
-  private async enroll(serving: Serving, authorization: string): Promise<RouteAnswer> {
-    const config = this.options.config;
-
-    if (config === undefined || !this.isLive(serving)) return refused(403, "forbidden");
-    const link = this.currentLink(serving.environmentId);
-
-    if (link === undefined) return refused(404, "not_found");
-
-    const key =
-      brokerKey(link.brokerKeys, authorization) ??
-      (await this.readBrokerKeys(serving.environmentId, authorization));
-
-    if (key === undefined) return refused(401, "unauthorized");
-    let claims: EnrollmentClaims;
-
-    try {
-      claims = await verifyClaims({
-        token: authorization,
-        key,
-        typ: TOKEN_TYPES.enrollment,
-        issuer: config.origin,
-        audience: serving.environmentId,
-        schema: EnrollmentClaims,
-        lifetime: ENROLLMENT_LIFETIME_SECONDS,
-      });
-    } catch {
-      return refused(401, "unauthorized");
-    }
-
-    const high = this.highWater;
-
-    if (
-      claims.sub !== link.owner.id ||
-      (high?.environmentId === serving.environmentId && claims.generation < high.generation)
-    )
-      return refused(403, "forbidden");
-    let outcome: "recorded" | "replaced" | "gone" | "conflict" | "limit";
-
-    try {
-      outcome = await this.store.update((file) => {
-        const current = file.link;
-
-        if (current === null || current.environment.id !== serving.environmentId)
-          return { file, result: "gone" };
-        const now = Date.now();
-
-        const consumed = current.consumed.filter(
-          (entry) => (entry.exp + CLOCK_TOLERANCE_SECONDS) * 1_000 > now,
-        );
-
-        const existing = current.devices.find((device) => device.id === claims.deviceId);
-
-        if (consumed.some((entry) => entry.jti === claims.jti))
-          return {
-            file,
-            result: existing?.digest === claims.digest ? "recorded" : "conflict",
-          };
-
-        if (
-          existing !== undefined ||
-          current.revocations.some((entry) => entry.deviceId === claims.deviceId) ||
-          current.devices.some((device) => device.digest === claims.digest)
-        )
-          return { file, result: "conflict" };
-        const kept = current.devices.filter((device) => device.clientId !== claims.clientId);
-
-        if (
-          kept.length >= DEVICE_LIMIT ||
-          kept.length + current.revocations.length >= REVOCATION_LIMIT ||
-          consumed.length >= CONSUMED_LIMIT
-        )
-          return { file, result: "limit" };
-
-        const device: StoredDevice = {
-          id: claims.deviceId,
-          clientId: claims.clientId,
-          name: claims.clientName,
-          digest: claims.digest,
-          createdAt: now,
-          role: claims.role ?? "controller",
-        };
-
-        return {
-          file: {
-            ...file,
-            link: {
-              ...current,
-              devices: [...kept, device],
-              consumed: [...consumed, { jti: claims.jti, exp: claims.exp }],
-            },
-          },
-          result: kept.length === current.devices.length ? "recorded" : "replaced",
-        };
-      });
-    } catch {
-      this.failClosed(true);
-
-      return refused(500, "internal");
-    }
-
-    switch (outcome) {
-      case "gone":
-        return refused(404, "not_found");
-      case "conflict":
-        return refused(409, "conflict");
-      case "limit":
-        return refused(429, "limit");
-      case "replaced":
-        this.dropStreams(true);
-        break;
-      case "recorded":
-        break;
-      default: {
-        const _exhaustive: never = outcome;
-
-        return _exhaustive;
-      }
-    }
-
-    this.changed();
-    const iat = nowSeconds();
-
-    const receipt: ReceiptClaims = {
-      iss: serving.environmentId,
-      aud: config.origin,
-      iat,
-      exp: iat + PROOF_LIFETIME_SECONDS,
-      req: claims.jti,
-      nonce: claims.nonce,
-      deviceId: claims.deviceId,
-      digest: claims.digest,
-    };
-
-    return {
-      kind: "json",
-      status: 200,
-      body: {
-        receipt: await signClaims({
-          key: link.key,
-          typ: TOKEN_TYPES.receipt,
-          claims: receipt,
-        }),
-      },
-    };
-  }
-
-  private async forgetPresented(serving: Serving, digest: Buffer): Promise<RouteAnswer> {
-    const device = this.deviceFor(serving, digest);
-
-    if (device === undefined) return refused(403, "forbidden");
-
-    try {
-      await this.forgetDevice(device.id, "release");
-    } catch {
-      return refused(500, "internal");
-    }
-
-    return { kind: "empty" };
-  }
-
   private async forgetDevice(deviceId: string, kind: "release" | "revoke"): Promise<void> {
-    const listener = this.serving?.listener;
-    this.denied.add(deviceId);
+    const serving = this.serving;
+    this.trust.denied.add(deviceId);
 
     if (kind === "revoke") this.dropStreams(false);
     this.changed();
@@ -1708,22 +501,20 @@ export class ConnectRuntime {
     } finally {
       if (kind === "release")
         setTimeout(() => {
-          listener?.disconnectClients();
+          serving?.disconnectClients();
 
-          if (recorded) void this.sendRevocations(true);
+          if (recorded) void this.outbox.sendRevocations(true);
         }, this.timing.dropDelayMs);
     }
 
     this.changed();
 
-    if (kind === "revoke") void this.sendRevocations(true);
+    if (kind === "revoke") void this.outbox.sendRevocations(true);
   }
 
   private async recordRemoval(deviceId: string, kind: "release" | "revoke"): Promise<void> {
-    const read = await this.store.read();
-
-    if (read.kind === "failed") throw storeFailed();
-    await this.change((file) => {
+    await this.files.ready();
+    await this.files.change((file) => {
       const link = file.link;
 
       if (link === null) return file;
@@ -1750,100 +541,23 @@ export class ConnectRuntime {
   }
 
   private dropStreams(defer: boolean): void {
-    const listener = this.serving?.listener;
+    const serving = this.serving;
 
-    if (listener === undefined) return;
+    if (serving === undefined) return;
 
-    if (defer) setTimeout(() => listener.disconnectClients(), this.timing.dropDelayMs);
-    else listener.disconnectClients();
+    if (defer) setTimeout(() => serving.disconnectClients(), this.timing.dropDelayMs);
+    else serving.disconnectClients();
   }
-
-  private sendRevocations(now: boolean): Promise<void> {
-    if (!now && Date.now() < this.revocationsSentAt + 60_000) return Promise.resolve();
-
-    if (this.revoking !== undefined) {
-      this.revokeAgain = true;
-
-      return this.revoking;
-    }
-
-    const pass = async (): Promise<void> => {
-      do {
-        this.revokeAgain = false;
-        await this.sendRevocationsOnce();
-      } while (this.revokeAgain && !this.closed);
-    };
-
-    this.revoking = pass().finally(() => {
-      this.revoking = undefined;
-    });
-
-    return this.revoking;
-  }
-
-  private async sendRevocationsOnce(): Promise<void> {
-    const broker = this.broker;
-
-    if (broker === undefined || this.closed) return;
-    this.revocationsSentAt = Date.now();
-    const read = this.store.snapshot();
-    const stored = read?.kind === "ready" ? read.file.link : null;
-    const link = stored === null ? undefined : this.currentLink(stored.environment.id);
-
-    if (link === undefined || link.revocations.length === 0) return;
-
-    for (const sent of link.revocations) {
-      const input = {
-        key: link.key,
-        environmentId: link.environment.id,
-        deviceId: sent.deviceId,
-        signal: this.lifetime.signal,
-      };
-
-      try {
-        if (sent.kind === "revoke") await broker.revokeDevice(input);
-        else await broker.releaseDevice(input);
-      } catch (cause) {
-        const code = refusedCode(cause);
-
-        if (code === "revoked") {
-          void this.environmentRevoked(link.environment.id);
-
-          return;
-        }
-
-        if (code !== "not_found") return;
-      }
-
-      await this.change((file) =>
-        file.link?.environment.id === link.environment.id
-          ? {
-              ...file,
-              link: {
-                ...file.link,
-                revocations: file.link.revocations.filter(
-                  (entry) =>
-                    entry.deviceId !== sent.deviceId ||
-                    entry.kind !== sent.kind ||
-                    entry.at !== sent.at,
-                ),
-              },
-            }
-          : file,
-      ).catch(() => undefined);
-    }
-  }
-
 
   private environmentRevoked(environmentId: string): Promise<void> {
     if (this.serving?.environmentId === environmentId) this.denyAll();
 
     return this.serial(async () => {
-      const read = await this.store.read();
+      const read = await this.files.read();
 
       if (read.kind === "failed" || read.file.link?.environment.id !== environmentId) return;
       await this.stopServing();
-      await this.change((file) =>
+      await this.files.change((file) =>
         file.link?.environment.id === environmentId
           ? { ...file, enabled: false, link: null }
           : file,
@@ -1854,60 +568,10 @@ export class ConnectRuntime {
     }).catch(() => undefined);
   }
 
-  private retryUnlinks(): Promise<void> {
-    this.unlinking ??= this.sendUnlinks().finally(() => {
-      this.unlinking = undefined;
-    });
-
-    return this.unlinking;
-  }
-
-  private async sendUnlinks(): Promise<void> {
-    const broker = this.broker;
-
-    if (broker === undefined || this.closed) return;
-    const read = await this.store.read();
-
-    if (read.kind === "failed" || read.file.unlinks.length === 0) return;
-    let remaining = 0;
-
-    for (const pending of read.file.unlinks) {
-      if (pending.origin !== broker.origin) continue;
-      let sent: boolean;
-
-      try {
-        await broker.removeEnvironment({
-          key: pending.key,
-          environmentId: pending.environmentId,
-          signal: this.lifetime.signal,
-        });
-        sent = true;
-      } catch (cause) {
-        const code = refusedCode(cause);
-        sent = code === "revoked" || code === "not_found";
-      }
-
-      if (!sent) {
-        remaining += 1;
-        continue;
-      }
-
-      await this.change((file) => ({
-        ...file,
-        unlinks: file.unlinks.filter((entry) => entry.environmentId !== pending.environmentId),
-      })).catch(() => undefined);
-    }
-
-    clearTimeout(this.unlinkTimer);
-
-    if (remaining > 0 && !this.closed)
-      this.unlinkTimer = setTimeout(() => void this.retryUnlinks(), this.timing.unlinkRetryMs);
-    this.changed();
-  }
-
+  /** The link is gone or replaced: forget what it taught, and any notice about the last one. */
   private forgetLink(): void {
-    this.highWater = undefined;
-    this.denied.clear();
+    this.trust.forget();
+    this.notice = { kind: "none" };
   }
 
   private failClosed(defer = false): void {
@@ -1918,7 +582,6 @@ export class ConnectRuntime {
     else stop();
     this.changed();
   }
-
 
   private serial<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation, operation);
@@ -1942,49 +605,16 @@ export class ConnectRuntime {
     if (this.closed) throw closed();
 
     if (this.broker === undefined) throw unavailable();
-    const read = await this.store.read();
+    const file = await this.files.ready();
 
-    if (read.kind === "failed") throw storeFailed();
+    if (file.link !== null && file.link.origin !== this.broker.origin) throw originChanged();
 
-    if (read.file.link !== null && read.file.link.origin !== this.broker.origin)
-      throw originChanged();
-
-    if (read.file.linkKey !== null && read.file.linkKey.origin !== this.broker.origin)
-      throw originChanged();
+    if (file.linkKey !== null && file.linkKey.origin !== this.broker.origin) throw originChanged();
   }
 
   private get account(): AccountSession | undefined {
     const { authorizer } = this.options;
 
     return authorizer?.kind === "session" ? authorizer.account : undefined;
-  }
-
-  private async readyFile(): Promise<ConnectFile> {
-    const read = await this.store.read();
-
-    if (read.kind === "failed") throw storeFailed();
-
-    return read.file;
-  }
-
-  private currentLink(environmentId: string): StoredLink | undefined {
-    const read = this.store.snapshot();
-    const link = read?.kind === "ready" ? read.file.link : null;
-
-    return link !== null &&
-      link.environment.id === environmentId &&
-      link.origin === this.broker?.origin
-      ? link
-      : undefined;
-  }
-
-  private async change(change: (file: ConnectFile) => ConnectFile): Promise<void> {
-    try {
-      await this.store.update((file) => ({ file: change(file), result: undefined }));
-    } catch (cause) {
-      if (!(cause instanceof ConnectStoreFailed)) throw cause;
-      this.failClosed();
-      throw storeFailed();
-    }
   }
 }

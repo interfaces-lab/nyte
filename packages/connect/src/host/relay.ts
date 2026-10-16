@@ -135,7 +135,6 @@ export class RelayConnection {
     this.setStatus({ kind: "stopped" });
   }
 
-
   private async connect(): Promise<void> {
     const dialing = ++this.dialing;
     let proof: string;
@@ -301,7 +300,6 @@ export class RelayConnection {
     this.awaitingPong = true;
     socket.send(RELAY_PING);
   }
-
 
   private open(frame: Extract<RelayFrame, { t: "open" }>): void {
     const local = request({

@@ -1,7 +1,7 @@
 import type { Host } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import type { Authority } from "@nyte-ai/schema";
-import type { ConnectShare } from "./runtime.ts";
+import type { ConnectShare } from "./serving.ts";
 
 const PARTICIPANT: ReadonlySet<Authority> = new Set(["participant"]);
 
