@@ -51,6 +51,7 @@ import { FifoQueue } from "../utils/fifo-queue.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
+import { iterateServerSentEvents } from "../utils/sse.ts";
 import { uuidv7 } from "../utils/uuid.ts";
 import { emptyCost, runAssistantStream } from "./assistant-stream.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
@@ -1521,89 +1522,20 @@ async function* parseSSE(
 ): AsyncGenerator<CodexFrame> {
   if (!response.body) return;
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  let idleTimedOut = false;
+  for await (const { data } of iterateServerSentEvents(response.body, signal, idleTimeoutMs)) {
+    if (data.trim() === "" || data === "[DONE]") continue;
+    let frame: unknown;
 
-  const onAbort = () => {
-    void reader.cancel().catch(() => {});
-  };
-
-  signal?.addEventListener("abort", onAbort, { once: true });
-
-  try {
-    while (true) {
-      if (signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      if (idleTimeoutMs !== undefined && idleTimeoutMs > 0) {
-        idleTimer = setTimeout(() => {
-          idleTimedOut = true;
-          void reader.cancel().catch(() => {});
-        }, idleTimeoutMs);
-      }
-
-      const { done, value } = await reader.read();
-      clearTimeout(idleTimer);
-
-      if (signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      if (idleTimedOut) throw new DOMException("Codex SSE idle timeout", "TimeoutError");
-
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-      buffer = buffer.replace(/\r\n/g, "\n");
-      // Treat EOF as terminating the residual SSE frame.
-      if (done && buffer.trim()) buffer += "\n\n";
-
-      let idx = buffer.indexOf("\n\n");
-
-      while (idx !== -1) {
-        const chunk = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-
-        const dataLines = chunk
-          .split("\n")
-          .filter((l) => l.startsWith("data:"))
-          .map((l) => l.slice(5).trim());
-
-        if (dataLines.length > 0) {
-          const data = dataLines.join("\n").trim();
-
-          if (data && data !== "[DONE]") {
-            try {
-              const frame = JSON.parse(data);
-
-              if (Value.Check(CodexFrameJson, frame)) yield frame;
-            } catch (cause) {
-              throw new CodexProtocolError(`Invalid Codex SSE JSON: ${formatThrownValue(cause)}`, {
-                cause,
-                payload: data,
-              });
-            }
-          }
-        }
-
-        idx = buffer.indexOf("\n\n");
-      }
-
-      if (done) break;
+    try {
+      frame = JSON.parse(data);
+    } catch (cause) {
+      throw new CodexProtocolError(`Invalid Codex SSE JSON: ${formatThrownValue(cause)}`, {
+        cause,
+        payload: data,
+      });
     }
-  } finally {
-    clearTimeout(idleTimer);
-    signal?.removeEventListener("abort", onAbort);
 
-    try {
-      await reader.cancel();
-    } catch {}
-
-    try {
-      reader.releaseLock();
-    } catch {}
+    if (Value.Check(CodexFrameJson, frame)) yield frame;
   }
 }
 

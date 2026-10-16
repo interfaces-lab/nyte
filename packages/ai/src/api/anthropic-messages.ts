@@ -52,6 +52,7 @@ import { parseStreamingJson, parseToolCallArguments, repairJson } from "../utils
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { iterateServerSentEvents } from "../utils/sse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
 import {
@@ -450,178 +451,6 @@ let federationClient:
   | { key: string; fetch: typeof globalThis.fetch | undefined; client: Anthropic }
   | undefined;
 
-interface ServerSentEvent {
-  event: string | null;
-  data: string;
-  raw: string[];
-}
-
-interface SseDecoderState {
-  event: string | null;
-  data: string[];
-  raw: string[];
-}
-
-function flushSseEvent(state: SseDecoderState): ServerSentEvent | null {
-  if (!state.event && state.data.length === 0) {
-    return null;
-  }
-
-  const event: ServerSentEvent = {
-    event: state.event,
-    data: state.data.join("\n"),
-    raw: [...state.raw],
-  };
-
-  state.event = null;
-  state.data = [];
-  state.raw = [];
-
-  return event;
-}
-
-function decodeSseLine(line: string, state: SseDecoderState): ServerSentEvent | null {
-  if (line === "") {
-    return flushSseEvent(state);
-  }
-
-  state.raw.push(line);
-
-  if (line.startsWith(":")) {
-    return null;
-  }
-
-  const delimiterIndex = line.indexOf(":");
-  const fieldName = delimiterIndex === -1 ? line : line.slice(0, delimiterIndex);
-  let value = delimiterIndex === -1 ? "" : line.slice(delimiterIndex + 1);
-
-  if (value.startsWith(" ")) {
-    value = value.slice(1);
-  }
-
-  if (fieldName === "event") {
-    state.event = value;
-  } else if (fieldName === "data") {
-    state.data.push(value);
-  }
-
-  return null;
-}
-
-function nextLineBreakIndex(text: string): number {
-  const carriageReturnIndex = text.indexOf("\r");
-  const newlineIndex = text.indexOf("\n");
-
-  if (carriageReturnIndex === -1) {
-    return newlineIndex;
-  }
-
-  if (newlineIndex === -1) {
-    return carriageReturnIndex;
-  }
-
-  return Math.min(carriageReturnIndex, newlineIndex);
-}
-
-function consumeLine(text: string, final = false): { line: string; rest: string } | null {
-  const lineBreakIndex = nextLineBreakIndex(text);
-
-  if (lineBreakIndex === -1) {
-    return null;
-  }
-
-  let nextIndex = lineBreakIndex + 1;
-
-  // A trailing CR may be the first byte of CRLF in the next chunk.
-  if (!final && text[lineBreakIndex] === "\r" && nextIndex === text.length) return null;
-
-  if (text[lineBreakIndex] === "\r" && text[nextIndex] === "\n") {
-    nextIndex += 1;
-  }
-
-  return {
-    line: text.slice(0, lineBreakIndex),
-    rest: text.slice(nextIndex),
-  };
-}
-
-async function* iterateSseMessages(
-  body: ReadableStream<Uint8Array>,
-  signal?: AbortSignal,
-): AsyncGenerator<ServerSentEvent> {
-  const reader = body.getReader();
-
-  const cancel = () =>
-    reader.cancel().catch(() => {
-      // An aborted transport may already have errored.
-    });
-
-  signal?.addEventListener("abort", cancel, { once: true });
-  const decoder = new TextDecoder();
-  const state: SseDecoderState = { event: null, data: [], raw: [] };
-  let buffer = "";
-
-  try {
-    while (true) {
-      if (signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      const { value, done } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      let consumed = consumeLine(buffer);
-
-      while (consumed) {
-        buffer = consumed.rest;
-        const event = decodeSseLine(consumed.line, state);
-
-        if (event) {
-          yield event;
-        }
-
-        consumed = consumeLine(buffer);
-      }
-    }
-
-    buffer += decoder.decode();
-    let consumed = consumeLine(buffer, true);
-
-    while (consumed) {
-      buffer = consumed.rest;
-      const event = decodeSseLine(consumed.line, state);
-
-      if (event) {
-        yield event;
-      }
-
-      consumed = consumeLine(buffer, true);
-    }
-
-    if (buffer.length > 0) {
-      const event = decodeSseLine(buffer, state);
-
-      if (event) {
-        yield event;
-      }
-    }
-
-    const trailingEvent = flushSseEvent(state);
-
-    if (trailingEvent) {
-      yield trailingEvent;
-    }
-  } finally {
-    signal?.removeEventListener("abort", cancel);
-    await cancel();
-    reader.releaseLock();
-  }
-}
-
 const AccountResetSchema = Type.Optional(Type.Union([Type.Number(), Type.String(), Type.Null()]));
 
 const ClaudeUsageResponseSchema = Type.Record(Type.String(), Type.Unknown());
@@ -827,7 +656,7 @@ async function* iterateAnthropicEvents(
   let sawMessageStart = false;
   let sawMessageEnd = false;
 
-  for await (const sse of iterateSseMessages(response.body, signal)) {
+  for await (const sse of iterateServerSentEvents(response.body, signal)) {
     if (sse.event === "error") {
       throw new Error(sse.data);
     }
