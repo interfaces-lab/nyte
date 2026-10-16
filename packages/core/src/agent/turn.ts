@@ -67,6 +67,8 @@ interface OpenPart {
   readonly part: PartId;
   readonly kind: "text" | "thinking";
   markdown: string;
+  /** The version views show: the created version plus one per patch published, which the settled part's version must pass. */
+  version: number;
   merged: number;
   textSignature: string | null;
   readonly thoughts: ThoughtSignature[];
@@ -542,6 +544,7 @@ function closeThoughts(state: AttemptState): void {
 
 function append(context: Turn, state: AttemptState, target: OpenPart, delta: string): void {
   target.markdown += delta;
+  target.version += 1;
   publishPatch(context.kernel, context.session, state.run.id, {
     kind: "patch",
     part: target.part,
@@ -654,6 +657,7 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
     part,
     kind,
     markdown: "",
+    version: 1,
     merged: 1,
     textSignature: null,
     thoughts: [],
@@ -692,7 +696,7 @@ async function settledParts(
     }
 
     const state = buildPartState(entry);
-    const version = part.record.version + 1;
+    const version = Math.max(part.record.version, entry.version) + 1;
 
     const landed = await settling(kernel.store, {
       session,
@@ -769,7 +773,7 @@ async function keep(
   const name = partRef(session, entry.part);
   const part = entry.part;
   const state = buildPartState(entry);
-  const version = record.version + 1;
+  const version = Math.max(record.version, entry.version) + 1;
   const live = record.status.kind === "live" || record.status.kind === "waiting";
   const status = live ? { kind: "failed", run: record.run, failure } : record.status;
   const target = await put(kernel.store, "part", { ...record, state, version, status });
