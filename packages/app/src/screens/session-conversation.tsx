@@ -44,7 +44,7 @@ import type { ConversationTurn } from "../view-helpers.ts";
 
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
-import { TranscriptProvider } from "../conversation/transcript.tsx";
+import { TranscriptProvider, useTranscriptControls } from "../conversation/transcript.tsx";
 import { QuestionTray } from "../conversation/tray/questions.tsx";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
 import { conversationMessages, transcriptRows } from "../conversation/transcript-rows.ts";
@@ -139,6 +139,40 @@ type SessionConversationProps =
       readonly sessionId: SessionId;
       readonly onOpenSubagentTray: (sessionId: SessionId) => void;
     };
+
+/**
+ * From the composer, PageUp and PageDown page the transcript, as they do in
+ * the TUI; an open suggestion menu takes them first.
+ */
+function ComposerPaging({ column }: { readonly column: HTMLElement | null }): null {
+  const controls = useTranscriptControls();
+
+  useLayoutEffect(() => {
+    if (column === null) return undefined;
+
+    const page = (event: KeyboardEvent): void => {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        (event.key !== "PageUp" && event.key !== "PageDown") ||
+        !(event.target instanceof Element) ||
+        event.target.closest("[data-composer-frame]") === null
+      )
+        return;
+      event.preventDefault();
+      controls.page(event.key === "PageDown" ? 1 : -1);
+    };
+
+    column.addEventListener("keydown", page);
+
+    return () => column.removeEventListener("keydown", page);
+  }, [column, controls]);
+
+  return null;
+}
 
 /**
  * The scrollport arrives as state, so everything below it re-runs on the
@@ -395,6 +429,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
         <div {...props(threadStyles.body)}>
           <div ref={setColumn} {...props(threadStyles.conversation)}>
             <TranscriptProvider paneId={paneId} sessionId={sessionId} viewportRef={setScroll}>
+              {presentation === "full" && <ComposerPaging column={column} />}
               <Timeline
                 sessionId={sessionId}
                 changes={view?.changes ?? NO_CHANGES}

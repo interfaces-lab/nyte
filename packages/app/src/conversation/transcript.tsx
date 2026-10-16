@@ -50,6 +50,8 @@ interface Anchor {
 interface TranscriptControls {
   readonly end: () => void;
   readonly hold: (element: Element) => void;
+  /** Scroll a viewport's height up or down, as a wheel would. */
+  readonly page: (direction: 1 | -1) => void;
 }
 
 interface TranscriptOptions {
@@ -85,10 +87,14 @@ export function useTranscriptDock(): (dock: HTMLDivElement | null) => void {
 export function useTranscriptControls(): TranscriptControls {
   const controlsRef = useContext(TranscriptContext)?.controlsRef;
 
-  return {
-    end: () => controlsRef?.current?.end(),
-    hold: (element) => controlsRef?.current?.hold(element),
-  };
+  return useMemo(
+    () => ({
+      end: () => controlsRef?.current?.end(),
+      hold: (element) => controlsRef?.current?.hold(element),
+      page: (direction) => controlsRef?.current?.page(direction),
+    }),
+    [controlsRef],
+  );
 }
 
 export function useTranscriptScope():
@@ -355,7 +361,12 @@ export const TranscriptContent = memo(function TranscriptContent({
       resize.observe(dock);
     }
 
-    controlsRef.current = { end, hold };
+    const page = (direction: 1 | -1): void => {
+      release();
+      virtualizer.scrollBy(direction * scroll.clientHeight * 0.9);
+    };
+
+    controlsRef.current = { end, hold, page };
 
     const pressed = (event: PointerEvent): void => {
       if (event.target === scroll) release();
