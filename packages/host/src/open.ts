@@ -68,8 +68,8 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
 /**
  * Opens the Node host the sdk's Node `open` calls: `composeHost` with
  * `home` (default `os.homedir()`), `store` (default `<home>/.nyte/nyte.db`,
- * re-read every 500 ms so a second process on the file sees the first one's
- * runs live),
+ * checked every 500 ms for another process's commits, which are then read so
+ * a second process on the file sees the first one's runs live),
  * `workspace` (default the local folder `process.cwd()`), `secrets` (default
  * `defaultSecrets(home)`), `models` (default `nyteModels`), `localProvider`
  * unless a plugin provides the `local` environment, every first-party plugin
