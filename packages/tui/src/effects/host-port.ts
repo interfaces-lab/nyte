@@ -216,23 +216,27 @@ function sessionPort(host: Connection, session: Session): SessionPort {
 
       if (before.kind === "missing") return "gone";
 
-      if (before.kind === "settled") return isWithdrawn(before.outcome) ? "gone" : "landed-first";
+      if (before.kind === "settled")
+        return reportsWithdrawn(before.outcome) ? "gone" : "landed-first";
       const stopped = await receipt.stop();
 
       if (stopped.kind === "missing") return "gone";
 
       if (stopped.kind === "settled")
-        return isWithdrawn(stopped.outcome) ? "withdrawn" : "landed-first";
+        return reportsWithdrawn(stopped.outcome) ? "withdrawn" : "landed-first";
       const after = await receipt.status();
 
-      return after.kind === "settled" && isWithdrawn(after.outcome) ? "withdrawn" : "landed-first";
+      return after.kind === "settled" && reportsWithdrawn(after.outcome)
+        ? "withdrawn"
+        : "landed-first";
     },
     async revise(message, content, options) {
       const status = await receiptOf(message).status();
 
       if (status.kind === "missing") return "gone";
 
-      if (status.kind === "settled") return isWithdrawn(status.outcome) ? "gone" : "landed-first";
+      if (status.kind === "settled")
+        return reportsWithdrawn(status.outcome) ? "gone" : "landed-first";
       await session.send(content, { ...options, replace: message });
 
       return "revised";
@@ -408,7 +412,7 @@ export async function pluginsPort(
   };
 }
 
-function isWithdrawn(outcome: unknown): boolean {
+function reportsWithdrawn(outcome: unknown): boolean {
   return (
     typeof outcome === "object" &&
     outcome !== null &&

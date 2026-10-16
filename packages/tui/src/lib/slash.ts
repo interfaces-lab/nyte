@@ -13,49 +13,16 @@ export type ComposerSubmission =
   | { readonly kind: "prompt"; readonly text: string }
   | { readonly kind: "shell"; readonly command: string; readonly retain: boolean };
 
-function isAsciiLetter(character: string | undefined): boolean {
-  if (character === undefined) return false;
-  const code = character.charCodeAt(0);
-
-  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-}
-
-function isSlashCommandNameCharacter(character: string): boolean {
-  const code = character.charCodeAt(0);
-
-  return isAsciiLetter(character) || (code >= 48 && code <= 57) || character === "-";
-}
+/** A slash command: `/`, a name of ASCII letters, digits and `-` that does not start with `-`, then optionally whitespace and its argument. */
+const SLASH_COMMAND = /^\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\s(.*))?$/su;
 
 function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
   const value = input.trim();
-  const first = value[1];
-
-  if (
-    !value.startsWith("/") ||
-    first === undefined ||
-    first === "-" ||
-    !isSlashCommandNameCharacter(first)
-  ) {
-    return undefined;
-  }
 
   if (value.includes("\n") || value.includes("\r")) return undefined;
+  const [, name, argument = ""] = SLASH_COMMAND.exec(value) ?? [];
 
-  let nameEnd = 2;
-
-  while (nameEnd < value.length) {
-    const character = value[nameEnd];
-
-    if (character === undefined || character.trim() === "") break;
-
-    if (!isSlashCommandNameCharacter(character)) return undefined;
-    nameEnd += 1;
-  }
-
-  return {
-    name: value.slice(1, nameEnd).toLowerCase(),
-    argument: value.slice(nameEnd).trim(),
-  };
+  return name === undefined ? undefined : { name: name.toLowerCase(), argument: argument.trim() };
 }
 
 export function parseComposerSubmission(input: string): ComposerSubmission {

@@ -1,11 +1,7 @@
-/** Guards over parsed JSON, so a file's contents are typed before they are trusted. */
+/** Types for parsed JSON, so a file's contents are typed before they are trusted. */
 import type { Json } from "@nyte-ai/sdk";
 
 export type JsonObject = { readonly [key: string]: Json };
-
-export function isJsonString(value: Json | undefined): value is string {
-  return typeof value === "string";
-}
 
 export function toJson(value: unknown): Json {
   if (

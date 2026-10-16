@@ -95,12 +95,8 @@ export function liveMarkers(draft: Pick<Draft, "text" | "parts">): readonly Mark
   const spans: MarkerSpan[] = [];
 
   for (const marker of draft.parts.keys()) {
-    let from = draft.text.indexOf(marker);
-
-    while (from !== -1) {
-      spans.push({ marker, from, to: from + marker.length });
-      from = draft.text.indexOf(marker, from + marker.length);
-    }
+    for (const { index } of draft.text.matchAll(new RegExp(RegExp.escape(marker), "g")))
+      spans.push({ marker, from: index, to: index + marker.length });
   }
 
   return spans.toSorted((left, right) => left.from - right.from);

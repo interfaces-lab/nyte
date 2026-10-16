@@ -123,7 +123,10 @@ function change(dialog: ModelDialog, delta: -1 | 1): ModelDialog {
   if (field === "fast") drafts.set(modelId(row.ref), { ...draft, fast: delta === 1 });
   else {
     const levels = row.info.thinking;
-    const index = Math.max(0, Math.min(levels.length - 1, levels.indexOf(draft.effort) + delta));
+    const index = Math.max(
+      0,
+      Math.min(levels.length - 1, levels.findIndex((level) => level === draft.effort) + delta),
+    );
     drafts.set(modelId(row.ref), { ...draft, effort: levels[index] ?? draft.effort });
   }
 

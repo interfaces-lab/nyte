@@ -27,8 +27,8 @@ function dropTarget(
   onto: MessageId,
 ): ReorderTo | null {
   const pending = rows.flatMap((row) => (row.withdrawable ? [row.id] : []));
-  const from = pending.indexOf(dragged);
-  const to = pending.indexOf(onto);
+  const from = pending.findIndex((id) => id === dragged);
+  const to = pending.findIndex((id) => id === onto);
 
   if (from === -1 || to === -1 || from === to) return null;
 

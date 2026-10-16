@@ -278,11 +278,11 @@ function parseNamed(
 }
 
 function pair(text: string, flag: string): readonly [string, string] {
-  const at = text.indexOf("=");
+  const [key = "", ...value] = text.split("=");
 
-  if (at <= 0) throw new Error(`${flag} takes KEY=VALUE, not ${text}.`);
+  if (key === "" || value.length === 0) throw new Error(`${flag} takes KEY=VALUE, not ${text}.`);
 
-  return [text.slice(0, at), text.slice(at + 1)];
+  return [key, value.join("=")];
 }
 
 function parseAdd(args: readonly string[]): {
@@ -290,7 +290,7 @@ function parseAdd(args: readonly string[]): {
   readonly config: McpServerConfig;
   readonly scope: McpScope;
 } {
-  const split = args.indexOf("--");
+  const split = args.findIndex((arg) => arg === "--");
   const options = split < 0 ? args : args.slice(0, split);
   const command = split < 0 ? [] : args.slice(split + 1);
   const flags = options;

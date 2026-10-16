@@ -2,7 +2,8 @@ import type { Json, Thinking } from "@nyte-ai/sdk";
 import { isJsonObject } from "@nyte-ai/schema";
 import type { JsonObject } from "../json.ts";
 import { THINKING_LEVELS } from "./constants.ts";
-import { isThemeChoice, type ThemeChoice } from "./theme.ts";
+import { THEME_CHOICES } from "./theme.ts";
+import type { ThemeChoice } from "./theme.ts";
 
 export interface SettingsFile {
   readonly externalEditor?: string;
@@ -26,20 +27,13 @@ export interface ResolvedSettings {
 
 export type SettingsPatch = SettingsFile;
 
-function isNonEmptyString(value: Json | undefined): value is string {
-  return typeof value === "string" && value.trim() !== "";
-}
-
-function isBoolean(value: Json | undefined): value is boolean {
-  return typeof value === "boolean";
-}
-
 function optionalString(object: JsonObject, key: string, path: string): string | undefined {
   const field = object[key];
 
   if (field === undefined) return undefined;
 
-  if (!isNonEmptyString(field)) throw new Error(`${path}.${key} must be a non-empty string`);
+  if (typeof field !== "string" || field.trim() === "")
+    throw new Error(`${path}.${key} must be a non-empty string`);
 
   return field;
 }
@@ -49,7 +43,7 @@ function optionalBoolean(object: JsonObject, key: string, path: string): boolean
 
   if (field === undefined) return undefined;
 
-  if (!isBoolean(field)) throw new Error(`${path}.${key} must be a boolean`);
+  if (typeof field !== "boolean") throw new Error(`${path}.${key} must be a boolean`);
 
   return field;
 }
@@ -89,14 +83,13 @@ export function parseSettingsFile(value: Json, path = "settings"): SettingsFile 
     settings = { ...settings, thinkingLevel: level };
   }
 
-  const theme = value["theme"];
+  const theme = value.theme;
 
   if (theme !== undefined) {
-    if (!isNonEmptyString(theme) || !isThemeChoice(theme)) {
-      throw new Error(`${path}.theme must be auto, dark, or light`);
-    }
+    const choice = THEME_CHOICES.find((candidate) => candidate === theme);
 
-    settings = { ...settings, theme };
+    if (choice === undefined) throw new Error(`${path}.theme must be auto, dark, or light`);
+    settings = { ...settings, theme: choice };
   }
 
   return settings;

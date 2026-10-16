@@ -306,7 +306,7 @@ function select(dialog: TreeDialog, rows: readonly TreeRow[], index: number): Tr
   return row === undefined ? dialog : { ...dialog, selected: row.oid };
 }
 
-function isDescendantOfTip(load: TreeLoad, picked: CommitId): boolean {
+function descendsFromTip(load: TreeLoad, picked: CommitId): boolean {
   if (load.tip === null) return true;
   const parents = new Map(load.view.nodes.map((node) => [node.id, node.parent]));
   const seen = new Set<CommitId>();
@@ -340,7 +340,7 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
 
   const expect = load.view.revision ?? undefined;
 
-  if (isDescendantOfTip(load, row.oid))
+  if (descendsFromTip(load, row.oid))
     return {
       dialog: null,
       intents: [
@@ -396,7 +396,7 @@ function toggleFilter(dialog: TreeDialog, filter: TreeFilter): TreeDialog {
 }
 
 function cycleFilter(dialog: TreeDialog, step: 1 | -1): TreeDialog {
-  const at = FILTER_CYCLE.indexOf(dialog.filter);
+  const at = FILTER_CYCLE.findIndex((filter) => filter === dialog.filter);
 
   return {
     ...dialog,

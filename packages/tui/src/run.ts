@@ -30,9 +30,9 @@ export async function flagConfiguration(
   const configuration: ConfigurationPatch = effort === undefined ? {} : { thinking: effort };
 
   if (requested === undefined) return configuration;
-  const slash = requested.indexOf("/");
-  const provider = flags.provider ?? (slash === -1 ? undefined : requested.slice(0, slash));
-  const id = slash === -1 || flags.provider !== undefined ? requested : requested.slice(slash + 1);
+  const [named, ...rest] = requested.split("/");
+  const provider = flags.provider ?? (rest.length === 0 ? undefined : named);
+  const id = rest.length === 0 || flags.provider !== undefined ? requested : rest.join("/");
 
   if (provider !== undefined) return { ...configuration, model: { provider, id } };
 

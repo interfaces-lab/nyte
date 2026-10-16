@@ -4,9 +4,7 @@ export type ThemeMode = "dark" | "light";
 
 export type ThemeChoice = "auto" | ThemeMode;
 
-export function isThemeChoice(value: string): value is ThemeChoice {
-  return value === "auto" || value === "dark" || value === "light";
-}
+export const THEME_CHOICES = ["auto", "dark", "light"] as const satisfies readonly ThemeChoice[];
 
 /**
  * TUI colors for one terminal mode. Every text color reads at WCAG AA (4.5:1) on `background`

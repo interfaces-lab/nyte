@@ -2,7 +2,7 @@ import process from "node:process";
 import { isJsonObject } from "@nyte-ai/schema";
 import { gt, valid } from "semver";
 import packageMetadata from "../package.json" with { type: "json" };
-import { isJsonString, toJson } from "./json.ts";
+import { toJson } from "./json.ts";
 
 export const REPO = "interfaces-lab/nyte";
 
@@ -18,7 +18,7 @@ interface ReleaseInfo {
   readonly url: string;
 }
 
-export function isNewerVersion(candidate: string, current: string): boolean {
+export function supersedes(candidate: string, current: string): boolean {
   const candidateVersion = valid(candidate.trim());
   const currentVersion = valid(current.trim());
 
@@ -51,14 +51,14 @@ export async function fetchLatestRelease(
     if (!isJsonObject(data)) return undefined;
     const tag = data["tag_name"];
 
-    if (!isJsonString(tag)) return undefined;
+    if (typeof tag !== "string") return undefined;
     const version = valid(tag.trim().replace(/^v/u, ""));
 
     if (version === null) return undefined;
     const html = data["html_url"];
 
     const url =
-      isJsonString(html) && html.startsWith(`https://github.com/${REPO}/releases/`)
+      typeof html === "string" && html.startsWith(`https://github.com/${REPO}/releases/`)
         ? html
         : RELEASES_URL;
 
@@ -81,7 +81,7 @@ export async function checkForUpdate(
 
   const latest = await fetchLatestRelease(fetchFn);
 
-  if (latest === undefined || !isNewerVersion(latest.version, VERSION)) return undefined;
+  if (latest === undefined || !supersedes(latest.version, VERSION)) return undefined;
 
   return latest;
 }

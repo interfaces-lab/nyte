@@ -40,10 +40,14 @@ function Moon(): JSX.Element {
   const app = useApp();
   const tick = app.kit.ticker(MOON_FRAME_MS);
 
-  const shades = createMemo(() =>
-    Array.from({ length: MOON_RAMP.length }, (_, level) =>
-      mix(app.kit.theme().muted, app.kit.theme().moon, (level / (MOON_RAMP.length - 1)) ** 0.7),
-    ),
+  const shades = createMemo(
+    () =>
+      new Map(
+        Array.from(MOON_RAMP, (character, level) => [
+          character,
+          mix(app.kit.theme().muted, app.kit.theme().moon, (level / (MOON_RAMP.length - 1)) ** 0.7),
+        ]),
+      ),
   );
 
   const rows = createMemo(() =>
@@ -51,7 +55,7 @@ function Moon(): JSX.Element {
       const chunks: Chunk[] = [];
 
       for (const character of line) {
-        const fg = shades()[MOON_RAMP.indexOf(character)] ?? app.kit.theme().muted;
+        const fg = shades().get(character) ?? app.kit.theme().muted;
         const last = chunks.at(-1);
 
         if (last?.fg === fg) chunks[chunks.length - 1] = { fg, text: last.text + character };

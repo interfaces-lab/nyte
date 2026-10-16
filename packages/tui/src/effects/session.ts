@@ -73,8 +73,13 @@ export async function follow(
     if (selected !== null) configurator.observeSelected(selected);
     const shown = toSelection(configurator.selected, catalogOf(read()));
     const current = read().facts.session;
+    const unchanged =
+      current !== null &&
+      sameRef(current.selection.model, shown.model) &&
+      current.selection.effort === shown.effort &&
+      current.selection.fast === shown.fast;
 
-    if (current?.id === id && !sameSelection(current.selection, shown))
+    if (current?.id === id && !unchanged)
       dispatch({ kind: "selection", session: id, selection: shown });
 
     if (!first) return;
@@ -313,12 +318,6 @@ function choiceOf(configuration: Configuration | null): RunChoice | null {
 
 function catalogOf(state: State): ModelCatalogView | null {
   return state.facts.catalog.catalog;
-}
-
-function sameSelection(left: Selection, right: Selection): boolean {
-  return (
-    sameRef(left.model, right.model) && left.effort === right.effort && left.fast === right.fast
-  );
 }
 
 function sameRef(left: ModelRef, right: ModelRef): boolean {

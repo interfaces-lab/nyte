@@ -71,6 +71,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
   });
 
   const views = session.watch()[Symbol.asyncIterator]();
+  // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- read through a call: inline, the early return keeps `signal.aborted` narrowed to false across the awaits
   const aborted = (): boolean => options.signal?.aborted === true;
 
   try {
