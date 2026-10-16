@@ -337,7 +337,7 @@ describe("workspaces", () => {
     const env = await kernel.env(session.id);
     const calls: string[] = [];
 
-    kernel.wrapEnv(session.id, (inner) => ({
+    kernel.environments.wrap(session.id, (inner) => ({
       ...inner,
       exec: (command, options) => {
         calls.push("first");
@@ -346,7 +346,7 @@ describe("workspaces", () => {
       },
     }));
 
-    const dispose = kernel.wrapEnv(session.id, (inner) => ({
+    const dispose = kernel.environments.wrap(session.id, (inner) => ({
       ...inner,
       exec: (command, options) => {
         calls.push("second");

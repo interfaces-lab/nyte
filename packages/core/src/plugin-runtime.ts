@@ -1064,7 +1064,7 @@ function build(
       return env.env;
     },
     wrapEnv(wrap) {
-      const dispose = kernel.wrapEnv(session, wrap);
+      const dispose = kernel.environments.wrap(session, wrap);
       input.signal.addEventListener("abort", dispose, { once: true });
 
       return () => {

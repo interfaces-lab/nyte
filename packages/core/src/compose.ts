@@ -1,42 +1,77 @@
 import type { Models } from "@nyte-ai/ai";
-import { asId } from "@nyte-ai/schema";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type {
+  Activation,
+  HeadName,
   HostDescription,
   HostView,
   Json,
-  ModelRequestInput,
-  ModelRequestOutcome,
   Owned,
+  RunId,
+  SessionCatalogView,
   SessionId,
   ValidationIssue,
 } from "@nyte-ai/schema";
+import { createPageTable } from "./browser.ts";
+import type { PageTable } from "./browser.ts";
+import { createBus } from "./bus.ts";
 import { createCompactor, createSummarizer } from "./compaction.ts";
 import { createHost } from "./connection.ts";
-import type { ModelsApi, OpenOptions } from "./connection.ts";
+import type { ModelsApi, OpenOptions, SettingsApi } from "./connection.ts";
 import { dev } from "./dev-log.ts";
+import { runAction } from "./durable.ts";
+import { createEnvironmentRegistry } from "./environment.ts";
+import type { EnvironmentRegistry } from "./environment.ts";
 import { SdkError } from "./error.ts";
-import { driveInProcess } from "./execution.ts";
+import { createExecutionState, driveInProcess } from "./execution.ts";
+import { EMPTY_CATALOG } from "./fold.ts";
+import { gateSubmission } from "./hooks.ts";
 import { createHostState } from "./host.ts";
 import type { Host } from "./host.ts";
-import { createKernel } from "./kernel.ts";
-import type { Kernel } from "./kernel.ts";
-import { createConfigurationResolver, createModelsApi } from "./models.ts";
+import { createJobTable } from "./jobs.ts";
+import type { JobTable } from "./jobs.ts";
+import type { Kernel, RunTable, Wakes } from "./kernel.ts";
 import { readMcpWorkspace } from "./mcp.ts";
-import { checkPlugins, hostPluginRows, pluginSecrets, readKv } from "./plugin-runtime.ts";
+import type { McpHub, McpHubFactory } from "./mcp.ts";
+import { createModelState } from "./model-state.ts";
+import { createConfigurationResolver, createModelsApi } from "./models.ts";
+import { createPartDefinitions } from "./part-definitions.ts";
+import type { PartDefinitions } from "./part-definitions.ts";
+import { createPart, partHandle } from "./part-handle.ts";
+import { createPartTable } from "./parts.ts";
+import {
+  checkPlugins,
+  createPluginRuntime,
+  createPluginState,
+  hostPluginRows,
+  pluginSecrets,
+  readKv,
+  replacePlugins,
+} from "./plugin-runtime.ts";
+import type { PluginRuntime } from "./plugin-runtime.ts";
 import type { Plugin } from "./plugin.ts";
 import { delegationPlugin } from "./plugins/delegation.ts";
 import { environmentPlugin } from "./plugins/environment.ts";
 import { mcpPlugin } from "./plugins/mcp.ts";
 import { systemPromptPlugin } from "./plugins/system-prompt.ts";
+import { CORE_CONTEXT, createConnectionRegistry, createPrincipals } from "./principals.ts";
 import { decodeHostIdentity, envelope } from "./records.ts";
 import type { HostIdentity } from "./records.ts";
 import { hostIdentityRef, kvRef } from "./refs.ts";
+import { bumpGeneration, runCommand, toolSource } from "./registry.ts";
 import { createRequest } from "./request.ts";
-import { resourcesPlugin } from "./resources.ts";
-import { settingInfos } from "./settings.ts";
+import { resourcesPlugin, scanResources } from "./resources.ts";
+import { dispatchHead } from "./session-state.ts";
+import { createSettingsApi, settingInfos } from "./settings.ts";
 import type { StoreConnection } from "./store.ts";
+import { stoppableTool } from "./tool-runner.ts";
 import { createTurnDriver } from "./turn.ts";
-import { pollStore } from "./watch.ts";
+import { createWaitRegistry } from "./waits.ts";
+import type { WaitRegistry } from "./waits.ts";
+import { createFoldCache, pollStore, trackStreams } from "./watch.ts";
+import type { Follow } from "./watch.ts";
+import { createWorkspaceState, createWorkspaces } from "./workspaces.ts";
+import type { Workspaces } from "./workspaces.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
@@ -52,6 +87,20 @@ export type ComposeOptions = OpenOptions & {
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
 
   readonly loadPlugins?: Kernel["loadPlugins"];
+};
+
+const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
+
+const NO_MODELS: ModelsApi = {
+  list: async () => unavailable("models"),
+  accounts: async () => unavailable("models"),
+  selectAccount: async () => unavailable("models"),
+  usage: async () => unavailable("models"),
+  refresh: async () => unavailable("models"),
+  setDefault: async () => unavailable("models"),
+  verify: async () => unavailable("models"),
+  login: () => unavailable("models"),
+  logout: async () => unavailable("models"),
 };
 
 export const BUILTINS: readonly Plugin<"core">[] = [
@@ -217,54 +266,8 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
 
 async function composeKernel(options: ComposeOptions, store: StoreConnection): Promise<Kernel> {
   const identity = await hostIdentity(store);
-  const models = options.models;
-  let composed: Kernel | null = null;
 
-  const bound = <T>(make: (kernel: Kernel, models: Models) => T): (() => T) => {
-    let made: T | null = null;
-
-    return () => {
-      if (made !== null) return made;
-
-      if (composed === null) throw new SdkError("internal", "The kernel is not composed yet.");
-      made = make(composed, models);
-
-      return made;
-    };
-  };
-
-  const turn = bound(createTurnDriver);
-  const summarize = bound(createSummarizer);
-  const compact = bound(createCompactor);
-  const resolve = bound(createConfigurationResolver);
-  const request = bound(createRequest);
-  const api = bound(createModelsApi);
-
-  const secrets = bound((kernel) => pluginSecrets(kernel, "mcp"));
-  const kernel = bound((composedKernel) => composedKernel);
-
-  const mcp =
-    options.mcp?.({
-      secrets: {
-        get: (key) => secrets().get(key),
-        set: (key, value) => secrets().set(key, value),
-        delete: (key) => secrets().delete(key),
-      },
-    }) ?? null;
-
-  const catalog: ModelsApi = {
-    list: () => api().list(),
-    accounts: (provider) => api().accounts(provider),
-    selectAccount: (provider, account) => api().selectAccount(provider, account),
-    usage: () => api().usage(),
-    refresh: (provider) => api().refresh(provider),
-    setDefault: (ref) => api().setDefault(ref),
-    verify: (provider) => api().verify(provider),
-    login: (input) => api().login(input),
-    logout: (provider) => api().logout(provider),
-  };
-
-  composed = createKernel({
+  const kernel = createKernel({
     hostId: identity.id,
     store,
     description: options.description,
@@ -275,19 +278,9 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
       operations: options.operations,
     }),
     execution: options.execution,
-    turn: { run: (input) => turn().run(input) },
-    summarize: (input) => summarize()(input),
-    compact: (input) => compact()(input),
-    resolveConfiguration: (input) => resolve()(input),
-    request<T>(session: SessionId, input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>> {
-      return request()(session, input);
-    },
-    models: catalog,
-    mcp,
-    builtins:
-      mcp === null
-        ? BUILTINS
-        : [...BUILTINS, mcpPlugin(mcp, (id) => readMcpWorkspace(kernel(), id))],
+    models: options.models,
+    mcp: options.mcp,
+    builtins: BUILTINS,
     hostPlugins: options.plugins,
     pluginSources: options.pluginSources,
     secrets: options.secrets,
@@ -296,9 +289,270 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
     loadPlugins: options.loadPlugins,
   });
 
-  composed.host.update({ plugins: hostPluginRows(composed) });
+  kernel.host.update({ plugins: hostPluginRows(kernel) });
 
-  return composed;
+  return kernel;
+}
+
+export type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
+  Partial<
+    Pick<
+      Kernel,
+      | "defaultWorkspace"
+      | "execution"
+      | "turn"
+      | "summarize"
+      | "compact"
+      | "resolveConfiguration"
+      | "admit"
+      | "tools"
+      | "beforeTool"
+      | "afterTool"
+      | "snapshots"
+      | "env"
+      | "resources"
+      | "request"
+      | "home"
+      | "secrets"
+      | "builtins"
+      | "hostPlugins"
+      | "pluginSources"
+      | "loadPlugins"
+    >
+  > & {
+    readonly poll?: number;
+    /** Backs the model ports (turn, summarize, compact, configuration, request and the models API) unless a port is given. */
+    readonly models?: Models;
+    /** Builds the host's MCP hub and adds the `mcp` plugin to the builtins. */
+    readonly mcp?: McpHubFactory;
+  };
+
+export function createKernel(input: KernelOptions): Kernel {
+  const bus = createBus();
+  const streams = trackStreams(bus);
+  const follows = new Map<SessionId, Follow>();
+  const activations = new Map<SessionId, Activation>();
+  const inactive: Activation = { kind: "inactive" };
+  const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
+  const catalogs = new Map<SessionId, SessionCatalogView>();
+  const models = input.models;
+
+  const catalog = (session: SessionId): SessionCatalogView =>
+    catalogs.get(session) ?? EMPTY_CATALOG;
+
+  const runtimes = new Map<SessionId, PluginRuntime>();
+
+  const install = (session: SessionId, previous: PluginRuntime | null): PluginRuntime => {
+    const created = createPluginRuntime(kernel, session, previous);
+    runtimes.set(session, created);
+
+    return created;
+  };
+
+  let turn = input.turn ?? null;
+  let summarize = input.summarize ?? null;
+  let compact = input.compact ?? null;
+  let resolveConfiguration = input.resolveConfiguration ?? null;
+  let request = input.request ?? null;
+  let modelsApi: ModelsApi | null = null;
+  let mcp: McpHub | null | undefined;
+  let builtins: readonly Plugin<"core">[] | null = null;
+  let waits: WaitRegistry | null = null;
+  let definitions: PartDefinitions | null = null;
+  let settings: SettingsApi | null = null;
+  let workspaces: Workspaces | null = null;
+  let environments: EnvironmentRegistry | null = null;
+  let jobs: JobTable | null = null;
+  let pages: PageTable | null = null;
+  let principals: Kernel["principals"] | null = null;
+
+  const kernel: Kernel = {
+    hostId: input.hostId,
+    instance: crypto.randomUUID(),
+    poll: input.poll ?? null,
+    store: input.store,
+    description: input.description,
+    bus,
+    host: input.host,
+    folds: createFoldCache({
+      store: input.store,
+      bus,
+      follows,
+      streams,
+      activation,
+      catalog,
+      get jobs() {
+        return kernel.jobs;
+      },
+      get pages() {
+        return kernel.pages;
+      },
+    }),
+    streams,
+    follows,
+    driving: new Map(),
+    executionState: createExecutionState(),
+    pluginState: createPluginState(),
+    workspaceState: createWorkspaceState(),
+    receipts: new Map(),
+    calls: new Map(),
+    activation,
+    setActivation(session, value) {
+      activations.set(session, value);
+      bus.publish(session, {
+        seq: asSeq(0),
+        at: Date.now(),
+        head: null,
+        kind: "activation",
+        activation: value,
+      });
+    },
+    defaultWorkspace: input.defaultWorkspace ?? null,
+    execution: input.execution ?? RUN_ALL,
+    runs: createRunTable(),
+    wakes: createWakes(),
+    get turn() {
+      return (turn ??=
+        models === undefined
+          ? { run: async () => unavailable("turn") }
+          : createTurnDriver(kernel, models));
+    },
+    get summarize() {
+      return (summarize ??=
+        models === undefined
+          ? async () => unavailable("summarize")
+          : createSummarizer(kernel, models));
+    },
+    get compact() {
+      return (compact ??=
+        models === undefined
+          ? async () => unavailable("compact")
+          : createCompactor(kernel, models));
+    },
+    get resolveConfiguration() {
+      return (resolveConfiguration ??=
+        models === undefined
+          ? async () => unavailable("resolveConfiguration")
+          : createConfigurationResolver(kernel, models));
+    },
+    admit: input.admit ?? ((submission, context) => gateSubmission(kernel, submission, context)),
+    command: (context, session, name, args) => runCommand(kernel, context, session, name, args),
+    get waits() {
+      return (waits ??= createWaitRegistry(kernel));
+    },
+    get models() {
+      return (modelsApi ??= models === undefined ? NO_MODELS : createModelsApi(kernel, models));
+    },
+    modelState: createModelState(() => bumpGeneration(kernel)),
+    get settings() {
+      return (settings ??= createSettingsApi(kernel));
+    },
+    get workspaces() {
+      return (workspaces ??= createWorkspaces(kernel, CORE_CONTEXT));
+    },
+    parts: {
+      create: (context, session, kind, value) => createPart(kernel, context, session, kind, value),
+      part: (context, session, id) => partHandle(kernel, context, session, id),
+    },
+    get partDefinitions() {
+      return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
+    },
+    partTable: createPartTable(),
+    durable: { run: (step) => runAction(kernel, step) },
+    tools: input.tools ?? toolSource,
+    beforeTool:
+      input.beforeTool ??
+      ((call, { runtime, ...context }) =>
+        runtime.hooks.decide("before_tool", call, context, {
+          call: asId<"call">(`hook:before_tool:${call.call}`),
+          run: context.run,
+          head: context.head,
+          part: null,
+          signal: context.signal,
+        })),
+    afterTool:
+      input.afterTool ??
+      ((outcome, { runtime, ...context }) =>
+        runtime.hooks.transform("after_tool", outcome, context)),
+    snapshots: input.snapshots ?? ((session) => kernel.environments.snapshots(session)),
+    env: input.env ?? ((session) => kernel.environments.attach(session)),
+    resources: input.resources ?? ((session) => scanResources(kernel, session)),
+    get request() {
+      return (request ??=
+        models === undefined ? async () => unavailable("request") : createRequest(kernel, models));
+    },
+    home: input.home ?? null,
+    get environments() {
+      return (environments ??= createEnvironmentRegistry(kernel));
+    },
+    get jobs() {
+      return (jobs ??= createJobTable(kernel));
+    },
+    get pages() {
+      return (pages ??= createPageTable(kernel));
+    },
+    connections: createConnectionRegistry(),
+    secrets: input.secrets ?? null,
+    get mcp() {
+      if (mcp === undefined) mcp = input.mcp?.({ secrets: pluginSecrets(kernel, "mcp") }) ?? null;
+
+      return mcp;
+    },
+    get builtins() {
+      const hub = kernel.mcp;
+
+      return (builtins ??=
+        hub === null
+          ? (input.builtins ?? [])
+          : [...(input.builtins ?? []), mcpPlugin(hub, (id) => readMcpWorkspace(kernel, id))]);
+    },
+    hostPlugins: input.hostPlugins ?? [],
+    pluginSources: input.pluginSources ?? new Map(),
+    pluginsFor: (session) => runtimes.get(session) ?? install(session, null),
+    reloadPlugins: (session) => install(session, runtimes.get(session) ?? null).ready,
+    runtimes: () => runtimes,
+    async closePlugins(session) {
+      const runtime = runtimes.get(session);
+
+      if (runtime === undefined) return;
+      runtimes.delete(session);
+      await runtime.close();
+    },
+    catalog,
+    forget(session) {
+      catalogs.delete(session);
+      activations.delete(session);
+    },
+    setCatalog(session, value) {
+      catalogs.set(session, value);
+      bus.publish(session, {
+        seq: asSeq(0),
+        at: Date.now(),
+        head: null,
+        kind: "catalog",
+        catalog: value,
+      });
+    },
+    pluginApi: (owner, session) =>
+      kernel.pluginsFor(session).api(owner) ?? unavailable(`plugin ${owner} in session ${session}`),
+    plugins: {
+      replace: (plugins, scope) => replacePlugins(kernel, plugins, scope),
+      check: async (plugins) => checkPlugins(plugins),
+    },
+    loadPlugins:
+      input.loadPlugins ??
+      (async () => unavailable("plugin files: this host has no plugin loader")),
+    get principals() {
+      return (principals ??= createPrincipals(kernel));
+    },
+  };
+
+  const execution = kernel.execution;
+
+  if (execution.kind === "dispatch")
+    kernel.wakes.subscribe((session, head) => dispatchHead(kernel, execution, session, head));
+
+  return kernel;
 }
 
 async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
@@ -330,4 +584,57 @@ async function storedIdentity(store: StoreConnection): Promise<HostIdentity | nu
   const ref = await store.refs.get(hostIdentityRef());
 
   return ref?.target ? decodeHostIdentity(await store.objects.get(ref.target)) : null;
+}
+
+function createRunTable(): RunTable {
+  const live = new Map<RunId, { readonly controller: AbortController; stopping: boolean }>();
+
+  const enter = (run: RunId): { readonly controller: AbortController; stopping: boolean } => {
+    const entry = live.get(run) ?? { controller: new AbortController(), stopping: false };
+    live.set(run, entry);
+
+    return entry;
+  };
+
+  return {
+    get: (run) => live.get(run),
+    start: (run) => enter(run).controller,
+    markStopping(run) {
+      const entry = enter(run);
+      entry.stopping = true;
+
+      return () => {
+        entry.stopping = false;
+      };
+    },
+    abort(run) {
+      live.get(run)?.controller.abort();
+    },
+    isStopping: (run) => live.get(run)?.stopping ?? false,
+    signal: (run) => live.get(run)?.controller.signal ?? null,
+    end(run) {
+      live.delete(run);
+    },
+  };
+}
+
+function createWakes(): Wakes {
+  const listeners = new Set<(session: SessionId, head: HeadName) => void>();
+
+  return {
+    notify(session, head) {
+      for (const listener of listeners) listener(session, head);
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
+function unavailable(slot: string): never {
+  throw new SdkError("unavailable", `${slot} is not provided`);
 }
