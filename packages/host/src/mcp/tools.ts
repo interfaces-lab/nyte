@@ -15,6 +15,12 @@ import type { McpServerEntry } from "./config.ts";
 
 const NAME_LIMIT = 64;
 
+/** The most result text a session stores and the model sees; the rest is kept as an attachment. */
+const RESULT_CHARS = 32_000;
+
+/** How much of a clipped result's head is kept; the tail keeps the rest of `RESULT_CHARS`. */
+const HEAD_CHARS = 8_000;
+
 /** The longest a call may run in all, however often its progress resets the per-request timeout. */
 const CALL_LIMIT_MS = 10 * 60_000;
 
@@ -161,7 +167,7 @@ function bridge(
         );
       }
 
-      const content = await readToolContent(result, invocation.env);
+      const content = await readToolContent(result, invocation.env, tool.name);
 
       if (result.isError === true)
         throw new Error(
@@ -171,10 +177,14 @@ function bridge(
 
       const structured = result.structuredContent;
 
-      return {
-        content,
-        ...(output !== undefined && isJson(structured) ? { output: structured } : {}),
-      };
+      if (
+        output === undefined ||
+        !isJson(structured) ||
+        JSON.stringify(structured).length > RESULT_CHARS
+      )
+        return { content };
+
+      return { content, output: structured };
     },
   };
 }
@@ -189,7 +199,16 @@ function toolProgress(update: ProgressNotification): ToolProgress {
     : { text, fraction: Math.min(1, update.progress / update.total) };
 }
 
-async function readToolContent(result: CallToolResult, env: ExecutionEnv): Promise<ToolContent[]> {
+/**
+ * The result's blocks as tool content. Text past `RESULT_CHARS` in all keeps
+ * its head and its longer tail around a marker, which is where logs put the
+ * failure, and the whole text is attached once as a file.
+ */
+async function readToolContent(
+  result: CallToolResult,
+  env: ExecutionEnv,
+  tool: string,
+): Promise<readonly ToolContent[]> {
   const content: ToolContent[] = [];
 
   for (const block of result.content) {
@@ -203,7 +222,25 @@ async function readToolContent(result: CallToolResult, env: ExecutionEnv): Promi
     else content.push({ kind: "text", text: JSON.stringify(block) });
   }
 
-  return content;
+  const text = content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n");
+
+  if (text.length <= RESULT_CHARS) return content;
+  const name = `${tool}.txt`;
+  const elided = (text.length - RESULT_CHARS).toLocaleString("en-US");
+
+  return [
+    {
+      kind: "text",
+      text: `${text.slice(0, HEAD_CHARS)}\n\n[${elided} characters cut from the middle; the whole result is attached as ${name}.]\n\n${text.slice(HEAD_CHARS - RESULT_CHARS)}`,
+    },
+    {
+      kind: "file",
+      blob: await env.files.upload(once(new TextEncoder().encode(text))),
+      mime: "text/plain",
+      name,
+    },
+    ...content.filter((item) => item.kind === "file"),
+  ];
 }
 
 function passthrough(json: Record<string, unknown>): Schema<Json> {

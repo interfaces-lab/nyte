@@ -187,3 +187,24 @@ it("shows a server's progress on the running call", async () => {
   );
   await run.settled();
 });
+
+it("keeps a large result's head and failing tail, and attaches the whole of it", async () => {
+  const fake = fakeModels();
+  searchOnce(fake);
+  await using host = await openPlaces(await placesHome({ PLACES_LOG_BYTES: "5000000" }), fake);
+
+  const { outcome } = await settledCall(host, "Why did CI fail?");
+
+  assert(outcome.kind === "ok");
+  const [clipped, attached] = outcome.content;
+
+  assert(clipped?.kind === "text");
+  expect(clipped.text.length).toBeLessThan(33_000);
+  expect(clipped.text).toMatch(/^ok {3}step passed/);
+  expect(clipped.text).toContain("characters cut from the middle");
+  expect(clipped.text).toMatch(/FAILED test\/places\.test\.ts .*\n$/);
+  expect(attached).toMatchObject({ kind: "file", mime: "text/plain" });
+  expect(JSON.stringify(fake.requests[1]?.context.messages)).toContain(
+    "FAILED test/places.test.ts",
+  );
+});
