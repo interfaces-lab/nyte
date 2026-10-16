@@ -1,5 +1,5 @@
 import { openAICodexResponsesApi } from "../api/openai-codex-responses.lazy.ts";
-import { fetchOpenAICodexAccountLimits } from "../api/deferred.ts";
+import { fetchOpenAICodexAccountLimits } from "./openai-codex-limits.ts";
 import { lazyOAuth } from "../auth/helpers.ts";
 import { loadOpenAICodexOAuth } from "../auth/oauth/load.ts";
 import { createProvider, type Provider } from "../models.ts";

@@ -11,12 +11,10 @@ import { describe, expect, test } from "vitest";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Context, JsonValue, Model } from "../src/types.ts";
-import {
-  compactOpenAICodexContext,
-  OpenAICodexCompactionError,
-  fetchOpenAICodexAccountLimits,
-  stream,
-} from "../src/api/openai-codex-responses.ts";
+import { compactOpenAICodexContext } from "../src/api/openai-codex-compact.ts";
+import { OpenAICodexCompactionError } from "../src/api/openai-codex-compaction-error.ts";
+import { stream } from "../src/api/openai-codex-responses.ts";
+import { fetchOpenAICodexAccountLimits } from "../src/providers/openai-codex-limits.ts";
 
 // Behavior references, not a vendored suite:
 // https://github.com/openai/codex/tree/121f91fd5d9dc66017866ce9bdc49f1e182721df/codex-rs

@@ -3,11 +3,8 @@ import { arch, platform, release } from "node:os";
 import { zstdDecompressSync } from "node:zlib";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  closeOpenAICodexWebSocketSessions,
-  stream,
-  streamSimple,
-} from "../src/api/openai-codex-responses.ts";
+import { stream, streamSimple } from "../src/api/openai-codex-responses.ts";
+import { closeOpenAICodexWebSocketSessions } from "../src/api/openai-codex-websocket.ts";
 import type { Context, Model } from "../src/types.ts";
 
 afterEach(() => {

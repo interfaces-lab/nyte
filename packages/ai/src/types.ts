@@ -15,7 +15,7 @@ import type {
 } from "@nyte-ai/schema/model";
 import type { AnthropicOptions } from "./api/anthropic-messages.ts";
 import type { GoogleOptions } from "./api/google-generative-ai.ts";
-import type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
+import type { OpenAICodexResponsesOptions } from "./api/openai-codex-protocol.ts";
 import type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
 import type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 import type { AssistantMessageEventStream } from "./utils/event-stream.ts";
