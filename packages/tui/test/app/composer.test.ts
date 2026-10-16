@@ -1,5 +1,9 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
+import { resolveMention } from "../../src/effects/local-ports.ts";
+import { openTestHost, testEnvironment } from "../fixture/host.ts";
 import { composerShows, cursorCell, startTui } from "../harness/tui.ts";
 
 const FRAME_MS = 1000 / 60;
@@ -101,3 +105,32 @@ test("keys typed while the host opens stay in the composer through boot", async 
   await tui.ready();
   expect(tui.store.state().local.draft.text).toBe("typed while starting");
 });
+
+test("an @./ path is offered as its file, and the file's text rides with the message", async () => {
+  await using fixture = await openTestHost({ environment: testEnvironment(refuseExec) });
+  await using tui = await startTui({ fixture });
+  await tui.ready();
+  await mkdir(join(tui.home, "notes"), { recursive: true });
+  await writeFile(join(tui.home, "notes", "mention.md"), "Mention body\n");
+  tui.files.resolveMention = resolveMention;
+
+  await tui.mockInput.typeText("@./notes/mention.md");
+  await tui.frame((frame) =>
+    frame
+      .split("\n")
+      .some((line) => line.includes("❯ mention.md") && line.includes("notes/mention.md")),
+  );
+  tui.press("completion.accept");
+  await tui.frame((frame) => composerShows(frame, "[File mention.md] "));
+  fixture.reply({ content: [{ type: "text", text: "The note arrived." }] });
+  await tui.send("summarize the note");
+  await tui.frame((frame) => frame.includes("The note arrived."));
+
+  expect(JSON.stringify(fixture.requests[0]?.context.messages)).toContain(
+    String.raw`notes/mention.md\">\nMention body\n\n</file>`,
+  );
+});
+
+async function refuseExec(): Promise<never> {
+  throw new Error("No processes in this test.");
+}

@@ -17,7 +17,7 @@ import { hostPort } from "../../src/effects/host-port.ts";
 import { openTestHost } from "../fixture/host.ts";
 import type { TestHost } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
-import type { FakePlugins, FakeShell, FakeTerminal } from "../fixture/ports.ts";
+import type { FakeFiles, FakePlugins, FakeShell, FakeTerminal } from "../fixture/ports.ts";
 
 process.env["NYTE_SKIP_VERSION_CHECK"] = "1";
 
@@ -46,6 +46,7 @@ export interface Tui extends TestRendererSetup {
   readonly clock: ManualClock;
   readonly recorder: TestRecorder;
   readonly terminal: FakeTerminal;
+  readonly files: FakeFiles;
   readonly plugins: FakePlugins;
   readonly shell: FakeShell;
   readonly home: string;
@@ -151,6 +152,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     clock,
     recorder,
     terminal: fakes.terminal,
+    files: fakes.files,
     plugins: fakes.plugins,
     shell: fakes.shell,
     home,

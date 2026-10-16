@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
+import type { Job } from "@nyte-ai/core";
 import { testModel } from "@nyte-ai/host/bench";
+import { asId } from "@nyte-ai/schema";
+import type { JobEnd, Json } from "@nyte-ai/schema";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
-import { openTestHost } from "../fixture/host.ts";
+import { openTestHost, testEnvironment } from "../fixture/host.ts";
 import type { ProviderRequest } from "../fixture/host.ts";
 import { composerShows, footerShows, startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
@@ -38,6 +41,9 @@ const askReply = (label: string, options: readonly string[]) => ({
   ],
   stopReason: "toolUse" as const,
 });
+
+const row = (frame: string, text: string): string =>
+  frame.split("\n").find((line) => line.includes(text)) ?? "";
 
 const users = (request: ProviderRequest | undefined): number =>
   (request?.context.messages ?? []).filter((message) => message.role === "user").length;
@@ -255,3 +261,183 @@ test("a new session's first message lands in the transcript at once at the level
   expect([...pending]).toEqual([]);
   expect(fixture.requests[0]?.options?.reasoning).toBe("low");
 });
+
+test("a background subagent's report wakes the finished parent and shows as a report, not a user message", async () => {
+  await using tui = await startTui();
+  await tui.ready();
+  const release = Promise.withResolvers<void>();
+
+  const route = (request: ProviderRequest) => {
+    const seen = transcript(request);
+    const child = /Created subagent (\S+?)\./u.exec(seen)?.[1];
+
+    if (!seen.includes("start a background helper"))
+      return {
+        content: [{ type: "text" as const, text: "Child finished the task." }],
+        until: release.promise,
+      };
+
+    if (seen.includes("Child finished the task."))
+      return { content: [{ type: "text" as const, text: "The helper reported back." }] };
+
+    if (seen.includes("Sent to subagent"))
+      return { content: [{ type: "text" as const, text: "Helper started in the background." }] };
+
+    if (child !== undefined)
+      return toolCall("send", { session: child, prompt: "do the child task" });
+
+    return toolCall("create", { title: "Helper" });
+  };
+
+  tui.fixture.reply(route, route, route, route, route);
+  await tui.send("start a background helper");
+  await tui.frame((frame) => frame.includes("Helper started in the background."));
+  await idle(tui);
+  release.resolve();
+  await tui.frame(
+    (frame) =>
+      frame.includes("The helper reported back.") &&
+      frame.split("\n").some((line) => line.trim() === "↳ Finished Helper"),
+  );
+  await idle(tui);
+
+  const woken = tui.fixture.requests.find((request) =>
+    transcript(request).includes("Child finished the task."),
+  );
+
+  expect(tui.captureCharFrame()).not.toMatch(/Child \S+ completed:/u);
+  expect(woken?.context.messages.some((message) => message.role === "user")).toBe(true);
+  expect(transcript(woken)).toContain("Child finished the task.");
+});
+
+test("Esc stops a run while its bash tool streams; the process ends, the draft stays and nothing more is asked", async () => {
+  const stopped = Promise.withResolvers<void>();
+
+  await using fixture = await openTestHost({
+    environment: testEnvironment(async (_command, options) => heartbeat(options?.signal, stopped)),
+  });
+
+  await using tui = await startTui({ fixture });
+  await tui.ready();
+
+  fixture.reply(toolCall("bash", { command: "heartbeat" }));
+  await tui.send("run the heartbeat");
+  await tui.frame((frame) => frame.includes("tick 2"));
+  await tui.mockInput.typeText("keep this draft");
+  tui.press("chat.interrupt");
+  await stopped.promise;
+  await idle(tui);
+  await tui.frame((frame) => composerShows(frame, "keep this draft"));
+  await tui.store.settled();
+
+  expect(fixture.requests).toHaveLength(1);
+});
+
+test("a grouped question takes several picks on one question, keeps them through Back, and sends them all", async () => {
+  await using tui = await startTui();
+  await tui.ready();
+
+  tui.fixture.reply(
+    toolCall("question", {
+      questions: [
+        {
+          question: "Pick toppings",
+          header: "Toppings",
+          options: ["Cheese", "Olives", "Basil"].map((label) => ({ label, description: "" })),
+          multiple: true,
+        },
+        {
+          question: "Pick a size",
+          header: "Size",
+          options: ["Small", "Large"].map((label) => ({ label, description: "" })),
+        },
+      ],
+    }),
+    { content: [{ type: "text", text: "Order placed." }] },
+  );
+  await tui.send("order a pizza");
+  await tui.frame((frame) => frame.includes("1/2 · Pick toppings"));
+  tui.press("picker.accept");
+  await tui.frame((frame) => row(frame, "Cheese").includes("✓"));
+  tui.press("picker.next");
+  tui.press("picker.next");
+  tui.press("picker.accept");
+  await tui.frame((frame) => row(frame, "Basil").includes("✓"));
+  tui.press("picker.next");
+  tui.press("picker.next");
+  tui.press("picker.accept");
+  await tui.frame((frame) => frame.includes("2/2 · Pick a size") && frame.includes("Back"));
+
+  for (let step = 0; step < 4; step++) tui.press("picker.next");
+  await tui.frame((frame) => /❯.*Back/u.test(row(frame, "Back")));
+  tui.press("picker.accept");
+  await tui.frame(
+    (frame) =>
+      frame.includes("1/2 · Pick toppings") &&
+      row(frame, "Cheese").includes("✓") &&
+      row(frame, "Basil").includes("✓") &&
+      !row(frame, "Olives").includes("✓"),
+  );
+
+  for (let step = 0; step < 4; step++) tui.press("picker.next");
+  tui.press("picker.accept");
+  await tui.frame((frame) => frame.includes("2/2 · Pick a size"));
+  tui.press("picker.next");
+  tui.press("picker.accept");
+  await tui.frame((frame) => frame.includes("Order placed."));
+  await idle(tui);
+
+  const result = tui.fixture.requests[1]?.context.messages.find(
+    (message) => message.role === "toolResult",
+  );
+
+  expect(JSON.stringify(result?.content)).toBe(
+    JSON.stringify([{ type: "text", text: "Pick toppings: Basil, Cheese\nPick a size: Large" }]),
+  );
+});
+
+function toolCall(name: string, args: Readonly<Record<string, Json>>) {
+  return {
+    content: [{ type: "toolCall" as const, id: `call-${name}`, name, arguments: args }],
+    stopReason: "toolUse" as const,
+  };
+}
+
+function heartbeat(signal: AbortSignal | undefined, stopped: PromiseWithResolvers<void>): Job {
+  const ended = Promise.withResolvers<JobEnd>();
+  const stop = new AbortController();
+  const done = AbortSignal.any(signal === undefined ? [stop.signal] : [stop.signal, signal]);
+
+  done.addEventListener(
+    "abort",
+    () => {
+      stopped.resolve();
+      ended.resolve({ kind: "exited", code: null, reason: "terminated" });
+    },
+    { once: true },
+  );
+
+  return {
+    id: asId("job-heartbeat"),
+    key: null,
+    write: async () => undefined,
+    async *output() {
+      for (let tick = 1; !done.aborted; tick++) {
+        yield { kind: "bytes", data: new TextEncoder().encode(`tick ${String(tick)}\n`) };
+        await Bun.sleep(5);
+      }
+
+      yield { kind: "exit", code: null };
+    },
+    resize: async () => ({ kind: "not-pty" }),
+    idle: async () => false,
+    async stop() {
+      stop.abort();
+
+      return { kind: "settled", outcome: await ended.promise };
+    },
+    settled: () => ended.promise,
+    close: async () => stop.abort(),
+    [Symbol.asyncDispose]: async () => stop.abort(),
+  };
+}

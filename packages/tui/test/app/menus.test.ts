@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
+import { openTestHost } from "../fixture/host.ts";
 import { belowComposer, composerShows, startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 
@@ -104,4 +105,46 @@ test("/tree opens under the composer, Enter on the latest message says it is alr
   await tui.frame(
     (frame) => !frame.includes("Session Tree") && composerShows(frame, COMPOSER_PLACEHOLDER),
   );
+});
+
+test("/accounts switches the login the next request uses, without asking the provider", async () => {
+  await using fixture = await openTestHost();
+
+  for (const [label, key] of [
+    ["Primary", "sk-primary"],
+    ["Secondary", "sk-secondary"],
+  ] as const)
+    await fixture.models.models.login(
+      "test",
+      "api_key",
+      { prompt: async () => key, notify: () => undefined },
+      label,
+    );
+  await fixture.models.models.selectAccount(
+    "test",
+    (await fixture.models.models.listAccounts("test")).find(
+      (account) => account.label === "Primary",
+    )?.id ?? "",
+  );
+  await using tui = await startTui({ fixture });
+  await tui.ready();
+
+  await tui.send("/accounts");
+  await tui.frame(
+    (frame) =>
+      belowComposer(frame, "Primary") &&
+      belowComposer(frame, "Secondary") &&
+      frame.split("\n").some((line) => /❯.*Primary/u.test(line)),
+  );
+  tui.press("picker.next");
+  await tui.frame((frame) => frame.split("\n").some((line) => /❯.*Secondary/u.test(line)));
+  tui.press("picker.accept");
+  await tui.frame((frame) => frame.includes("Using Secondary."));
+
+  const active = (await fixture.models.models.listAccounts("test")).find(
+    (account) => account.active,
+  );
+
+  expect(active?.label).toBe("Secondary");
+  expect(fixture.requests).toHaveLength(0);
 });
