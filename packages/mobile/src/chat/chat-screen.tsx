@@ -45,7 +45,6 @@ type ChatScreenProps = {
   delegateNames: ReadonlyMap<SessionId, string>;
   changes: SessionView["changes"] | undefined;
   onAskMerge: () => void;
-  prefill: { text: string; nonce: number } | undefined;
 };
 
 export function ChatScreen({
@@ -65,7 +64,6 @@ export function ChatScreen({
   delegateNames,
   changes,
   onAskMerge,
-  prefill,
 }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   // The glass header floats over the list; start the transcript below it.
@@ -142,7 +140,6 @@ export function ChatScreen({
                 onChooseHead,
               }}
               placeholder="Follow up…"
-              prefill={prefill}
               gutters={{ left: layout.paddingLeft, right: layout.paddingRight }}
             />
           </View>

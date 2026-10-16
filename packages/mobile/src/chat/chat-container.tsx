@@ -18,6 +18,7 @@ import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
 import { ModelPickerSheet } from "./model-selector.tsx";
 import { ChatScreen } from "./chat-screen.tsx";
 import { indexDelegateNames } from "./delegate-names.ts";
+import { useChatDraft } from "./drafts.ts";
 
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const { client } = useHost();
@@ -37,7 +38,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const childSessions = children.kind === "ready" ? children.value : undefined;
   const delegateNames = useMemo(() => indexDelegateNames(childSessions ?? []), [childSessions]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [prefill, setPrefill] = useState<{ text: string; nonce: number }>();
+  const [, setDraft] = useChatDraft(sessionId);
   const execution = chat.state?.execution;
   const finished = execution?.kind === "idle" && execution.lastRun !== null;
   const waiting = chat.state === undefined ? undefined : openQuestion(chat.state);
@@ -178,15 +179,10 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           onChooseHead={setHead}
           delegateNames={delegateNames}
           changes={review}
-          prefill={prefill}
           onAskMerge={() =>
             confirmMergeRequest({
               onSend: sendMerge,
-              onEdit: () =>
-                setPrefill((current) => ({
-                  text: MERGE_PROMPT,
-                  nonce: (current?.nonce ?? 0) + 1,
-                })),
+              onEdit: () => setDraft(MERGE_PROMPT),
             })
           }
         />
