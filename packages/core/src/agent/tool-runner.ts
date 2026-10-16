@@ -181,10 +181,11 @@ export async function owedCalls(
 
   for (const record of records)
     if (record.waiting !== null && record.result === null)
-      for (const prefix of callPrefixes(stripHookPrefix(record))) parked.add(prefix);
+      for (const id of [stripHookPrefix(record), ...enclosingCalls(stripHookPrefix(record))])
+        parked.add(id);
 
   const owes = (record: CallRecord): boolean =>
-    record.result === null && !callPrefixes(record.id).slice(0, -1).some((id) => ids.has(id));
+    record.result === null && !enclosingCalls(record.id).some((id) => ids.has(id));
 
   const opened = records.filter((record) => record.kind === "tool" && owes(record));
 
@@ -231,11 +232,11 @@ export async function readToolInput(
     : { ...caller, name: checked.value.name, args: checked.value.args };
 }
 
-/** `id` and each call id it is nested under: its `:`-separated prefixes, shortest first. */
-function callPrefixes(id: string): readonly string[] {
+/** The call ids `id` is nested under: its proper `:`-separated prefixes. */
+function enclosingCalls(id: string): readonly string[] {
   const segments = id.split(":");
 
-  return segments.map((_segment, at) => segments.slice(0, at + 1).join(":"));
+  return segments.slice(1).map((_segment, at) => segments.slice(0, at + 1).join(":"));
 }
 
 export function stoppableTool(kernel: Kernel): typeof tool {
