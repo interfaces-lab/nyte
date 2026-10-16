@@ -147,7 +147,7 @@ async function route(
     try {
       await connect.unlink();
     } catch (cause) {
-      return Response.json({ message: messageOf(cause) }, { status: 409 });
+      return Response.json({ message: describeError(cause) }, { status: 409 });
     }
 
     return Response.json(await connect.view());
@@ -252,7 +252,7 @@ class Sharing {
       if (this.#holders === 0 || this.#closed) return;
       await this.#connect.serve(this.#share);
     } catch (cause) {
-      this.#emit({ kind: "error", message: messageOf(cause) });
+      this.#emit({ kind: "error", message: describeError(cause) });
     }
   }
 
@@ -261,7 +261,7 @@ class Sharing {
       await this.#connect.cancel();
       await this.#connect.stop();
     } catch (cause) {
-      this.#emit({ kind: "error", message: messageOf(cause) });
+      this.#emit({ kind: "error", message: describeError(cause) });
     }
   }
 }
@@ -270,6 +270,6 @@ function sha256(text: string): Buffer {
   return createHash("sha256").update(text).digest();
 }
 
-function messageOf(error: unknown): string {
+function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
