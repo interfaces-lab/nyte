@@ -118,7 +118,7 @@ function UserMessage({
                   />
                 ) : (
                   <html.p key={index} style={[textStyles.body, styles.outgoingText]}>
-                    {`@${part.path}`}
+                    {part.kind === "skill" ? `/${part.name}` : `@${part.path}`}
                   </html.p>
                 ),
               )
