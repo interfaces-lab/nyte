@@ -147,12 +147,15 @@ const styles = create({
   },
 });
 
-/** Format/reload are ordinary undoable edits; they do not recreate the editor or its history. */
+/**
+ * Format/reload are ordinary undoable edits; they do not recreate the editor or
+ * its history. CodeView exposes the Editor before its first document has
+ * attached, and positions cannot address the middle of a CRLF pair.
+ */
 function replaceContents(
   editor: Pick<Editor, "getFile" | "getText" | "applyEdits">,
   contents: string,
 ): void {
-  // CodeView exposes the Editor before its first document has attached.
   if (editor.getFile() === undefined) return;
   const previous = editor.getText();
 
@@ -169,7 +172,6 @@ function replaceContents(
     nextEnd -= 1;
   }
 
-  // Positions cannot address the middle of a CRLF pair.
   if (start > 0 && previous[start - 1] === "\r" && previous[start] === "\n") start -= 1;
 
   if (end > 0 && previous[end - 1] === "\r" && previous[end] === "\n") {
@@ -230,6 +232,12 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   );
 }
 
+/**
+ * The autosave timer is armed inside the buffer subscription, which is bound
+ * once per buffer; it reads the current save and the preference at fire time,
+ * so turning Auto Save off also drops a pending save. Formatting lands as an
+ * ordinary edit, so it stays on the undo stack.
+ */
 function TextFileEditor({
   ref,
   viewKey,
@@ -310,8 +318,6 @@ function TextFileEditor({
         : undefined,
     });
 
-  // The autosave timer is armed inside the buffer subscription, which is bound
-  // once per buffer; it reads the current save and the preference at fire time.
   const autosave = useRef({ enabled: autoSave, save });
   useLayoutEffect(() => {
     autosave.current = { enabled: autoSave, save };
@@ -348,7 +354,6 @@ function TextFileEditor({
           timer = undefined;
           const pending = autosave.current;
 
-          // Read at fire time: turning Auto Save off also drops a pending save.
           if (pending.enabled) void pending.save();
         }, 1000);
       }
@@ -418,7 +423,6 @@ function TextFileEditor({
           },
         ]);
     },
-    // Everything else this reads is a ref, stable for the life of the tab.
     [buffer, file.path],
   );
 
@@ -446,7 +450,6 @@ function TextFileEditor({
     buffer.discard(result.data);
   };
 
-  /** Formatting lands as an ordinary edit, so it stays on the undo stack. */
   const format = async (): Promise<void> => {
     const current = buffer.getSnapshot();
 

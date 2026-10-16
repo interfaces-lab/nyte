@@ -93,6 +93,11 @@ interface ScrollReport {
   path: string | undefined;
 }
 
+/**
+ * The first header starts flush with the file tree's filter row. React clears
+ * the viewer ref on unmount, so a scroll report timer that outlives the stack
+ * writes nothing.
+ */
 export function ChangesStack({
   items,
   collapsedPaths,
@@ -146,7 +151,6 @@ export function ChangesStack({
         loadDiffFiles,
         expansionLineCount: EXPANSION_LINE_COUNT,
         stickyHeaders: true,
-        // The first header starts flush with the file tree's filter row.
         layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
         unsafeCSS: STACK_CSS,
         onPostRender: (node, _instance, phase) => {
@@ -252,7 +256,6 @@ export function ChangesStack({
         onScroll={(top, instance) => {
           const report = scrollReport.current;
           report.top = top;
-          // React clears the viewer ref on unmount; a timer that outlives the stack writes nothing.
           window.clearTimeout(report.timer);
           report.timer = window.setTimeout(() => {
             report.timer = undefined;

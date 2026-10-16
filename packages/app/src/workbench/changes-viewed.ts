@@ -99,6 +99,7 @@ export class ChangesViewedStore {
   readonly #listeners = new Set<() => void>();
   #viewed: ChangesViewed = EMPTY_CHANGES_VIEWED;
 
+  /** Corrupt or unavailable storage must not prevent reviewing changes in this window. */
   constructor(options: ChangesViewedOptions = {}) {
     this.#storage = options.storage;
     this.#now = options.now ?? Date.now;
@@ -107,9 +108,7 @@ export class ChangesViewedStore {
 
     try {
       this.#viewed = this.#prune(decodeChangesViewed(this.#storage?.getItem(STORAGE_KEY) ?? null));
-    } catch {
-      // Corrupt or unavailable storage must not prevent reviewing changes in this window.
-    }
+    } catch {}
   }
 
   getSnapshot = (): ChangesViewed => this.#viewed;
@@ -168,6 +167,7 @@ export class ChangesViewedStore {
     return viewed === files.length ? "all" : "some";
   }
 
+  /** The marks hold for this window even when persistence is unavailable. */
   #commit(root: string, files: Record<string, ViewedMark>): void {
     const bounded = this.#evictOldest(files);
 
@@ -180,9 +180,7 @@ export class ChangesViewedStore {
 
     try {
       this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#viewed));
-    } catch {
-      // Keep the marks for this window even when persistence is unavailable.
-    }
+    } catch {}
 
     for (const listener of this.#listeners) listener();
   }

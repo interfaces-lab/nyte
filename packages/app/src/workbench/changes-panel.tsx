@@ -258,6 +258,26 @@ interface ChangesPanelViewProps extends ChangesPanelProps {
   readonly workspace: WorkspaceId | undefined;
 }
 
+/**
+ * The Changes tab for one scope.
+ *
+ * - Closing the revert confirmation returns focus to the affordance that opened it.
+ * - Collapse state belongs to the panel so the toolbar can command it, but it
+ *   describes one scope's files: switching scope starts over rather than
+ *   collapsing same-named files in the scope that replaced them.
+ * - A stored turn the transcript no longer holds collapses to the working tree.
+ * - View options follow the repository; a turn shares the layout chosen for the
+ *   tree it belongs to. Review marks do not: the same path carries a different
+ *   patch in each scope, and a mark from one must not read as stale in another.
+ * - A turn's own files are loaded, so its emptiness is a fact that a stale
+ *   background failure cannot change.
+ * - Only a working tree has both sides of a file to widen a gap with, and a
+ *   state to revert to. A turn's patch and a commit's are records of an edit,
+ *   and the files have moved on. Pierre re-renders every visible file when
+ *   expandability changes, so it does not follow the revision.
+ * - A reverted file no longer has the patch its review mark was filed under,
+ *   so the mark clears.
+ */
 function ChangesPanelView({
   visible = true,
   scope,
@@ -280,16 +300,12 @@ function ChangesPanelView({
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
-  // The affordance that opened the confirmation, so closing it returns focus there.
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | undefined>(undefined);
   const [reverting, setReverting] = useState(false);
   const [revertError, setRevertError] = useState<string | undefined>(undefined);
   const [appliedReveal, setAppliedReveal] = useState({ scope: "", revision: 0 });
 
-  // Collapse state belongs to the panel so the toolbar can command it, but it
-  // describes one scope's files: switching scope starts over rather than
-  // collapsing same-named files in the scope that replaced them.
   const [collapsedSections, setCollapsedSections] = useState<{
     readonly scope: string;
     readonly paths: readonly string[];
@@ -300,7 +316,6 @@ function ChangesPanelView({
       ? turnOptions.find((option) => option.scope.turnId === scope.turnId)
       : undefined;
 
-  // A stored turn the transcript no longer holds collapses to the working tree.
   const activeScope: WorkbenchChangesScope =
     scope.kind === "turn" && selectedTurn === undefined ? UNCOMMITTED_SCOPE : scope;
 
@@ -315,9 +330,6 @@ function ChangesPanelView({
     changesViewed.getSnapshot,
   );
 
-  // Options follow the repository; a turn shares the layout chosen for the tree
-  // it belongs to. Review marks do not: the same path carries a different patch
-  // in each scope, and a mark from one must not read as stale in another.
   const optionsScopeId = root ?? "workspace";
   const options = useChangesViewOptions(optionsScopeId);
 
@@ -570,8 +582,6 @@ function ChangesPanelView({
       ? (transcriptFailure ?? vcsFailure)
       : (manifestFailure ?? vcsFailure ?? transcriptFailure);
 
-  // The turn's own files are loaded, so its emptiness is a fact that a stale
-  // background failure cannot change.
   const emptyState: { readonly text: string; readonly detail?: string } =
     selectedTurn !== undefined
       ? { text: "This turn made no file changes" }
@@ -664,10 +674,6 @@ function ChangesPanelView({
     [setViewed],
   );
 
-  // Only a working tree has both sides of a file to widen a gap with. A turn's
-  // patch and a commit's are records of an edit, and the files have moved on.
-  // Pierre re-renders every visible file when this changes, so it must not
-  // follow the revision.
   const expandable = repository !== undefined && workingScope;
 
   const loadDiffFiles = useMemo(
@@ -713,8 +719,6 @@ function ChangesPanelView({
     requestAnimationFrame(() => focusFileFilter(filterInput.current));
   };
 
-  // Only a working tree has a state to go back to: a turn's patch and a
-  // commit's are records, and the file has moved on since.
   const askToRevert = useCallback(
     (path: string): void => {
       const row = rowByPath.get(path);
@@ -766,7 +770,6 @@ function ChangesPanelView({
         return;
       }
 
-      // The file no longer has the patch its review mark was filed under.
       changesViewed.clearViewed(viewedScopeId, target.path);
       void refreshVcs();
       setRevertTarget(undefined);

@@ -132,6 +132,12 @@ function sendInput(id: string, data: string): Promise<void> {
   });
 }
 
+/**
+ * Ghostty's compatibility container is editable; only its input should accept
+ * native text and IME. The fit addon defers a fit that lands while a previous
+ * one settles, so the PTY follows the terminal's own resize event rather than
+ * a read after fit().
+ */
 async function createView(id: string): Promise<TerminalView | undefined> {
   const engine = await loadGhostty();
   const existing = views.get(id);
@@ -169,7 +175,6 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   terminal.open(element);
 
   if (commandOutput) terminal.write("\u001b[?25l");
-  // Ghostty's compatibility container is editable; only its input should accept native text/IME.
   element.removeAttribute("contenteditable");
   element.removeAttribute("role");
   element.removeAttribute("aria-label");
@@ -199,8 +204,6 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   let resizeFrame = 0;
   let lastSize = "";
 
-  // The fit addon defers a fit that lands while a previous one settles, so the
-  // PTY follows the terminal's own resize event rather than a read after fit().
   const syncSize = (): void => {
     const size = String(terminal.cols) + ":" + String(terminal.rows);
     const tab = getTerminal(id);

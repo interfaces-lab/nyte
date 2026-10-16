@@ -1,10 +1,10 @@
+/** The Electron preload is absent in Node. React, styles and query observers run unchanged. */
 import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, test, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { WorkspaceSearchResults } from "./workspace-search.tsx";
 
-// The Electron preload is absent in Node. React, styles and query observers run unchanged.
 vi.hoisted(() => vi.stubGlobal("window", { nyte: {} }));
 
 afterAll(() => vi.unstubAllGlobals());
@@ -160,8 +160,11 @@ test("partial results never claim a complete workspace search", () => {
 
   assert.match(html, /3 matches in 2 files/);
   assert.match(html, /Search limit reached. Narrow your query or filters/);
-  // ripgrep cannot count what it skipped, so the panel never claims a number.
-  assert.doesNotMatch(html, /files skipped/);
+  assert.doesNotMatch(
+    html,
+    /files skipped/,
+    "ripgrep cannot count what it skipped, so the panel never claims a number",
+  );
   assert.match(html, /<mark[^>]*>Hello<\/mark>/);
 
   const empty = renderResults({

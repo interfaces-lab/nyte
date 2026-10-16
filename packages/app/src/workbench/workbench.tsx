@@ -49,9 +49,11 @@ import { Deferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
 
-// Views visited since launch stay mounted so a dev server terminal or a
-// browser page in another folder survives switching away and back, and a
-// trip through Settings that unmounts the stage.
+/**
+ * Views visited since launch stay mounted so a dev server terminal or a
+ * browser page in another folder survives switching away and back, and a
+ * trip through Settings that unmounts the stage.
+ */
 let visitedViews: readonly WorkbenchViewKey[] = Object.freeze([]);
 
 const visitedListeners = new Set<() => void>();

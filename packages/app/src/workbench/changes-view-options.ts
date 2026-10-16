@@ -67,6 +67,7 @@ export class ChangesViewOptionsStore {
   readonly #listeners = new Set<() => void>();
   #stored: StoredChangesViewOptions = EMPTY_CHANGES_VIEW_OPTIONS;
 
+  /** A corrupt preference must not prevent opening the Changes tab. */
   constructor(options: ChangesViewOptionsStoreOptions = {}) {
     this.#storage = options.storage;
     this.#now = options.now ?? Date.now;
@@ -74,9 +75,7 @@ export class ChangesViewOptionsStore {
 
     try {
       this.#stored = decodeChangesViewOptions(this.#storage?.getItem(STORAGE_KEY) ?? null);
-    } catch {
-      // A corrupt preference must not prevent opening the Changes tab.
-    }
+    } catch {}
   }
 
   getSnapshot = (): StoredChangesViewOptions => this.#stored;
@@ -110,14 +109,13 @@ export class ChangesViewOptionsStore {
     this.#commit(next);
   }
 
+  /** The chosen view holds for this window even when persistence is unavailable. */
   #commit(stored: StoredChangesViewOptions): void {
     this.#stored = this.#evictOldest(stored);
 
     try {
       this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#stored));
-    } catch {
-      // Keep the chosen view for this window even when persistence is unavailable.
-    }
+    } catch {}
 
     for (const listener of this.#listeners) listener();
   }

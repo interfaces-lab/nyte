@@ -89,6 +89,10 @@ function visit(
  * File tabs' runtime over the workbench controller's tabs. Opening a file
  * changes both stores; the controller's notifications wait until the file's
  * line has landed too, so a reader never sees the new tab at its old line.
+ *
+ * Restored tabs have no runtime until they are opened again. A view snapshot
+ * is stable until either store changes, so it can serve `useSyncExternalStore`.
+ * An edit pins a preview tab, so the next preview cannot replace it.
  */
 export function createFileTabStore(
   controller: Pick<WorkbenchController, "actions" | "getView" | "subscribe"> = workbenchController,
@@ -107,7 +111,6 @@ export function createFileTabStore(
 
   const getRuntimeView = (key: WorkbenchViewKey): FileViewRuntime => views.get(key) ?? EMPTY_VIEW;
 
-  // Restored tabs have no runtime until they are opened again.
   const runtime = (id: WorkbenchTabId): FileRuntime =>
     documents.get(id) ?? {
       navigationRevision: 0,
@@ -141,7 +144,6 @@ export function createFileTabStore(
       ];
     });
 
-  /** Stable until either store changes, so it can serve as a `useSyncExternalStore` snapshot. */
   const getView = (key: WorkbenchViewKey): FileTabs => {
     const controllerView = controller.getView(key);
     const cached = snapshots.get(key);
@@ -298,7 +300,6 @@ export function createFileTabStore(
       documents.set(tab.id, { ...runtime(tab.id), saving });
       publish(key, getRuntimeView(key));
     },
-    /** An edit pins a preview tab, so the next preview cannot replace it. */
     setDraft(key: WorkbenchViewKey, path: string, draft: FileDraft | undefined): void {
       const tab = find(key, path);
 

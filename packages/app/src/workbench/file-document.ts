@@ -24,7 +24,12 @@ export interface FileDocumentSnapshot {
   readonly status: FileSaveState;
 }
 
-/** A save acknowledges only the captured text, never edits made while the write is pending. */
+/**
+ * A save acknowledges only the captured text, never edits made while the write
+ * is pending. Formatting may take seconds, so it does not replace text typed in
+ * the meantime, and a refetch cannot move the save baseline underneath an
+ * unsaved draft.
+ */
 export function createFileDocument(document: TextFile, draft?: string) {
   let snapshot: FileDocumentSnapshot = {
     contents: draft ?? document.contents,
@@ -60,7 +65,6 @@ export function createFileDocument(document: TextFile, draft?: string) {
         status: snapshot.status.kind === "saved" ? { kind: "idle" } : snapshot.status,
       });
     },
-    /** Refetches cannot move the save baseline underneath an unsaved draft. */
     observeDisk(next: TextFile): void {
       if (snapshot.status.kind === "saving" || snapshot.contents !== snapshot.savedContents) return;
 
@@ -106,7 +110,6 @@ export function createFileDocument(document: TextFile, draft?: string) {
           return;
         }
 
-        // Formatting may take seconds. Do not replace text typed in the meantime.
         if (snapshot.revision !== captured.revision) {
           publish({ ...snapshot, status: { kind: "idle" } });
 

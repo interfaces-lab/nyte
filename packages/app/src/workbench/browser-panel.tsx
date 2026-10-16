@@ -166,8 +166,10 @@ const styles = create({
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },
-  // Sits under the native view at all times, so hiding the page reveals a
-  // still frame that is already painted rather than an empty panel.
+  /**
+   * Sits under the native view at all times, so hiding the page reveals a
+   * still frame that is already painted rather than an empty panel.
+   */
   frozenFrame: {
     position: "absolute",
     inset: 0,
@@ -214,6 +216,11 @@ function releaseSurface(surface: string): void {
     .catch(() => undefined);
 }
 
+/**
+ * The page composites above the renderer, so it steps aside while a menu or a
+ * dialog overlaps it. The overlay store already batches to a frame, so an
+ * overlay change applies at once rather than a frame after the popup painted.
+ */
 function useSurfaceBounds(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
@@ -231,8 +238,6 @@ function useSurfaceBounds(
       frame = undefined;
       const rect = element.getBoundingClientRect();
 
-      // The page composites above the renderer, so it has to step aside while a
-      // menu or a dialog overlaps it.
       const overlapped = overlayCovers({
         left: rect.left,
         top: rect.top,
@@ -278,8 +283,6 @@ function useSurfaceBounds(
 
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", scrolled, { capture: true, passive: true });
-    // The overlay store already batches to a frame, so this applies at once
-    // rather than a frame after the popup painted.
     const unsubscribe = subscribeOverlayRects(measure);
     measure();
 
@@ -306,16 +309,16 @@ function useSurfaceBounds(
  * The page's last pixels, painted in the slot the native view sits over and
  * refreshed whenever an overlay forces the page to hide, so an open menu leaves
  * a still frame behind it instead of an empty panel. A frame belongs to the url
- * it was taken from; after a navigation the old one is not shown again.
+ * it was taken from; after a navigation the old one is not shown again. A page
+ * re-covered later needs a fresh capture, and a frame is page-sized pixels, so
+ * none is kept once nothing shows it.
  */
 function usePageFrame(surface: string, url: string, covered: boolean): string | undefined {
   const frame = useQuery({
     queryKey: keys.browserFrame(surface, url),
     queryFn: () => browserBridge().captureFrame({ surface }),
     enabled: covered && url !== "",
-    // A page re-covered later needs a fresh capture.
     staleTime: 0,
-    // A frame is page-sized pixels; nothing shows one from a url the panel left.
     gcTime: 0,
   });
 
@@ -353,6 +356,14 @@ interface BrowserPanelProps {
   readonly workspacePath: string | null;
 }
 
+/**
+ * The surface hold lasts as long as the panel shows this surface for this
+ * owner. Navigation never ends it; only leaving does, and that is the one
+ * close. The first open retains the view holder in main. Later runs ask for a
+ * page only when the tab url moved away from what the page shows: an address
+ * the user entered, a bookmark, a history entry. A url that arrived from the
+ * page itself (a link, back, forward, a redirect) is already where it points.
+ */
 export function BrowserPanel({
   surface,
   visible,
@@ -383,8 +394,6 @@ export function BrowserPanel({
 
   const holdRef = useRef<SurfaceHold | undefined>(undefined);
 
-  // The hold lasts as long as the panel shows this surface for this owner.
-  // Navigation never ends it; only leaving does, and that is the one close.
   useEffect(() => {
     const hold: SurfaceHold = { opened: false, url: undefined, released: false };
     holdRef.current = hold;
@@ -396,10 +405,6 @@ export function BrowserPanel({
     };
   }, [surface, workspacePath]);
 
-  // The first open retains the view holder in main. Later runs ask for a page
-  // only when the tab url moved away from what the page shows: an address the
-  // user entered, a bookmark, a history entry. A url that arrived from the page
-  // itself (a link, back, forward, a redirect) is already where it points.
   useEffect(() => {
     const hold = holdRef.current;
 

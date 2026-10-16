@@ -136,6 +136,7 @@ export function sidebarCountLabel(total: number, shown: number, filtered: boolea
   return `${String(shown)} of ${filesChangedLabel(total)}`;
 }
 
+/** The filter sits outside the tree: focus inside it makes the tree pull focus back to a row as the rows change. */
 export const ChangesSidebar = memo(function ChangesSidebar({
   files,
   activePath,
@@ -270,7 +271,6 @@ export const ChangesSidebar = memo(function ChangesSidebar({
 
   return (
     <WorkbenchRail>
-      {/* Outside the tree: focus inside it makes the tree pull focus back to a row as the rows change. */}
       <div {...props(styles.search)}>
         <Input
           ref={filterInputRef}

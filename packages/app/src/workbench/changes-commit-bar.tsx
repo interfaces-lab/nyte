@@ -296,12 +296,11 @@ function readStoredAction(actions: readonly CommitAction[]): CommitAction {
   }
 }
 
+/** Remembering the last action is a convenience, never a reason to fail one. */
 function storeAction(action: CommitAction): void {
   try {
     if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, action);
-  } catch {
-    // Remembering the last action is a convenience, never a reason to fail one.
-  }
+  } catch {}
 }
 
 const styles = create({
@@ -345,6 +344,7 @@ interface RunOptions {
   readonly skipCommit?: boolean;
 }
 
+/** The branch prompt stays until the branch exists, so a taken or invalid name can be corrected without retyping either field. */
 export function ChangesCommitBar({
   scope,
   branch,
@@ -403,8 +403,6 @@ export function ChangesCommitBar({
 
         expect = created.revision;
 
-        // The prompt stays until the branch exists, so a taken or invalid name
-        // can be corrected without retyping either field.
         setBranchPrompt(undefined);
         setBranchName("");
         reported.push(outcome.text);
