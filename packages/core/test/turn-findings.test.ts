@@ -5,6 +5,7 @@ import type { Infer, RunId, SessionId } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { requestBody } from "../src/agent/transcript.ts";
 import { createPluginRuntime } from "../src/extend/plugin-runtime.ts";
+import { toolSource } from "../src/extend/registry.ts";
 import { publishSet } from "../src/fold/watch.ts";
 import { compaction, isPart } from "../src/index.ts";
 import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.ts";
@@ -113,8 +114,7 @@ describe("turn findings (CORE-DIET D3)", () => {
 
     expect(transcript.tools.map((info) => info.name)).toContain("marker");
     expect(
-      host.kernel
-        .tools(host.kernel.plugins.runtime(session.id))
+      toolSource(host.kernel.plugins.runtime(session.id))
         .list()
         .map((info) => info.name),
     ).not.toContain("marker");

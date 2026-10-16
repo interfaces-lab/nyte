@@ -68,7 +68,7 @@ import {
   hostPluginRows,
   replacePlugins,
 } from "./extend/plugin-runtime.ts";
-import { bumpGeneration, toolSource } from "./extend/registry.ts";
+import { bumpGeneration } from "./extend/registry.ts";
 import { dropScans, resourcesPlugin } from "./extend/resources.ts";
 import { settingInfos } from "./extend/setting-layers.ts";
 import { createSettingsApi } from "./extend/settings.ts";
@@ -394,7 +394,6 @@ export function createKernel(input: KernelOptions): Kernel {
     }),
     executionState: createExecutionState(),
     workspaceState: createWorkspaceState(),
-    calls: new Map(),
     sessions,
     execution: input.execution ?? RUN_ALL,
     runs: createRunTable(bus),
@@ -433,17 +432,6 @@ export function createKernel(input: KernelOptions): Kernel {
       return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
     },
     partTable: createPartTable(bus),
-    tools: toolSource,
-    beforeTool: (call, { runtime, ...context }) =>
-      runtime.hooks.decide("before_tool", call, context, {
-        call: asId<"call">(`hook:before_tool:${call.call}`),
-        run: context.run,
-        head: context.head,
-        part: null,
-        signal: context.signal,
-      }),
-    afterTool: (outcome, { runtime, ...context }) =>
-      runtime.hooks.transform("after_tool", outcome, context),
     get request() {
       return (request ??=
         models === undefined ? async () => unavailable("request") : createRequest(kernel, models));

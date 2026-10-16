@@ -30,9 +30,7 @@ import type {
   RunView,
   SessionCatalogView,
   SessionId,
-  ToolCall,
   ToolInfo,
-  ToolOutcome,
   Usage,
   ValidationIssue,
 } from "@nyte-ai/schema";
@@ -99,8 +97,6 @@ export interface Kernel {
   readonly executionState: ExecutionState;
   readonly workspaceState: WorkspaceState;
 
-  readonly calls: Map<string, Set<AbortController>>;
-
   readonly sessions: SessionDirectory;
 
   readonly execution: NonNullable<OpenOptions["execution"]>;
@@ -124,12 +120,6 @@ export interface Kernel {
   readonly partDefinitions: PartDefinitions;
 
   readonly partTable: PartTable;
-
-  tools(runtime: PluginRuntime): ToolSource;
-
-  readonly beforeTool: ToolGate;
-
-  readonly afterTool: ToolOutcomeRewriter;
 
   readonly home: string | null;
 
@@ -285,34 +275,6 @@ export interface ConfigurationResolver {
     readonly patch: Configuration | ConfigurationPatch | null;
     readonly contributions: Contributions;
   }): Promise<Configuration | Exclude<ConfigureOutcome, { readonly kind: "configured" }>>;
-}
-
-export interface ToolGate {
-  (
-    call: ToolCall,
-    context: {
-      readonly session: SessionId;
-      readonly head: HeadName;
-      readonly run: RunId;
-      readonly principal: PrincipalId;
-      readonly signal: AbortSignal;
-      readonly runtime: PluginRuntime;
-    },
-  ): Promise<StepOutcome<Decision<ToolCall>>>;
-}
-
-export interface ToolOutcomeRewriter {
-  (
-    outcome: ToolOutcome,
-    context: {
-      readonly session: SessionId;
-      readonly head: HeadName;
-      readonly run: RunId;
-      readonly call: CallId;
-      readonly principal: PrincipalId;
-      readonly runtime: PluginRuntime;
-    },
-  ): Promise<ToolOutcome>;
 }
 
 export type StepEnd<T> =

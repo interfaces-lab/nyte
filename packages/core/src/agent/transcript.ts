@@ -38,6 +38,7 @@ import { readPositionCommit, requireSession, START, walkCommitPath } from "../st
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
+import { toolSource } from "../extend/registry.ts";
 
 interface Step {
   readonly commit: CommitId;
@@ -112,7 +113,7 @@ export async function requestBody(
     agent: agent?.prompt ?? null,
   });
 
-  const source = kernel.tools(runtime);
+  const source = toolSource(runtime);
   const named = agent?.tools;
 
   const tools = source

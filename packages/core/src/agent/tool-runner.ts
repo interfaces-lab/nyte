@@ -40,6 +40,7 @@ import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.
 import type { ExecutionEnv } from "../contract/workspace.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { publishPatch } from "../engine/runs.ts";
+import { toolSource } from "../extend/registry.ts";
 import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
 import { partRef, runRef } from "../store/refs.ts";
@@ -135,13 +136,26 @@ const CONTINUE: Decision<ToolCall> = { action: "continue" };
 
 const outcomes = compile(withJson(ToolOutcomeType));
 
+const liveCalls = new WeakMap<Kernel, Map<string, Set<AbortController>>>();
+
+/** The abort controllers of each call this kernel is running, which a stop aborts. */
+function runningCalls(kernel: Kernel): Map<string, Set<AbortController>> {
+  const found = liveCalls.get(kernel);
+
+  if (found !== undefined) return found;
+  const calls = new Map<string, Set<AbortController>>();
+  liveCalls.set(kernel, calls);
+
+  return calls;
+}
+
 export async function executeCall(
   kernel: Kernel,
   input: Where & { readonly args: Json; readonly runtime: PluginRuntime },
 ): Promise<ToolOutcome | typeof PARKED> {
   const { session, call } = input;
   const controller = new AbortController();
-  const live = kernel.calls;
+  const live = runningCalls(kernel);
   const controllers = live.get(call) ?? new Set<AbortController>();
   controllers.add(controller);
   live.set(call, controllers);
@@ -247,7 +261,7 @@ export function stoppableTool(kernel: Kernel): typeof tool {
     ) => Awaitable<ActionOutput<(typeof tool.actions)[A]>>;
   } = {
     async stop(_input, context) {
-      const running = kernel.calls.get(context.part.id);
+      const running = runningCalls(kernel).get(context.part.id);
 
       if (running !== undefined && running.size > 0) {
         for (const controller of running) controller.abort();
@@ -329,7 +343,7 @@ async function plan(
 ): Promise<Plan | typeof PARKED> {
   const { session, head, run, call, name } = where;
   const custom: ToolClass = { kind: "custom", label: name };
-  const definition = kernel.tools(where.runtime).get(name)?.definition;
+  const definition = toolSource(where.runtime).get(name)?.definition;
 
   if (definition === undefined)
     return {
@@ -354,14 +368,12 @@ async function plan(
     class: classifyToolCall(definition, where.args, call) ?? custom,
   };
 
-  const gated = await kernel.beforeTool(proposed, {
-    session,
-    head,
-    run,
-    principal: intent.principal,
-    signal: where.signal,
-    runtime: where.runtime,
-  });
+  const gated = await where.runtime.hooks.decide(
+    "before_tool",
+    proposed,
+    { session, head, run, principal: intent.principal },
+    { call: asId<"call">(`${HOOK}${call}`), run, head, part: null, signal: where.signal },
+  );
 
   if (gated.kind === "parked") return PARKED;
   const gate = gated.kind === "done" ? gated.value : CONTINUE;
@@ -539,16 +551,13 @@ async function conclude(
   ended: StepEnd<ToolOutcome>,
   snapshotted: boolean,
 ): Promise<Settled> {
-  const { session, head, run, call } = where;
+  const { session, head, run } = where;
 
-  const outcome = await kernel.afterTool(ended.kind === "done" ? ended.value : INTERRUPTED, {
-    session,
-    head,
-    run,
-    call,
-    principal: where.context.principal,
-    runtime: where.runtime,
-  });
+  const outcome = await where.runtime.hooks.transform(
+    "after_tool",
+    ended.kind === "done" ? ended.value : INTERRUPTED,
+    { session, head, run, principal: where.context.principal },
+  );
 
   const snapshots =
     snapshotted && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
@@ -773,7 +782,7 @@ export function createInvocation(
     },
   };
 
-  const source = kernel.tools(input.runtime);
+  const source = toolSource(input.runtime);
   const sdk = kernel.handles.connection(context);
 
   return {

@@ -3,6 +3,7 @@ import type { SessionCatalogView } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
+import { toolSource } from "../src/extend/registry.ts";
 import { LOCAL, text } from "../src/index.ts";
 import type { Plugin, PluginApi } from "../src/index.ts";
 import { main, setup } from "../src/harness.ts";
@@ -72,8 +73,7 @@ describe("plugin runtime", () => {
     expect(deactivated?.aborted).toBe(true);
     expect(runtime.api("broken")).toBeUndefined();
     expect(
-      kernel
-        .tools(kernel.plugins.runtime(session.id))
+      toolSource(kernel.plugins.runtime(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["echo"]);
@@ -377,8 +377,7 @@ describe("plugin api", () => {
 
     expect(passes).toBe(before + 1);
     expect(
-      kernel
-        .tools(kernel.plugins.runtime(session.id))
+      toolSource(kernel.plugins.runtime(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["a", "b"]);
