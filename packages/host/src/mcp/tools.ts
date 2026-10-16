@@ -29,6 +29,13 @@ const CALL_LIMIT_MS = 10 * 60_000;
 
 const DRAFT_2020_12 = Meta["https://json-schema.org/draft/2020-12/schema"];
 
+/** JSON Schema draft-04 through 2020-12, by `$schema` URI without its scheme or empty fragment; draft-03's boolean `required` is no provider's. */
+const DRAFTS = new Map(
+  Object.entries(Meta)
+    .filter(([uri]) => !uri.includes("draft-03"))
+    .map(([uri, meta]) => [draftKey(uri), meta] as const),
+);
+
 /** The exposure `entry` gives `tool`: an exact `toolExposure` key, else the first matching pattern, else the server's. */
 export function toolExposure(entry: McpServerEntry, tool: string): McpExposure {
   const exact = entry.toolExposure.find(([pattern]) => pattern === tool);
@@ -74,11 +81,19 @@ export function checkToolSchemas(server: string, tools: readonly Tool[]): Checke
   return { usable, issues };
 }
 
+/**
+ * Checks `schema` against the draft its `$schema` names, or when it names none typebox knows,
+ * against every draft: servers emit draft-07 tuples and draft-04 boolean bounds without saying
+ * so. Errors are reported against the named draft, else 2020-12.
+ */
 function findSchemaProblem(schema: Tool["inputSchema"]): string | null {
   if (schema["type"] !== "object") return 'its type is not "object"';
-  const [valid, errors] = Errors(Meta, DRAFT_2020_12, schema);
+  const declared = schema["$schema"];
+  const named = typeof declared === "string" ? DRAFTS.get(draftKey(declared)) : undefined;
+  const drafts = named === undefined ? [...DRAFTS.values()] : [named];
 
-  if (valid) return null;
+  if (drafts.some((meta) => Errors(Meta, meta, schema)[0])) return null;
+  const [, errors] = Errors(Meta, named ?? DRAFT_2020_12, schema);
   const first = new Map<string, string>();
 
   for (const error of errors)
@@ -86,6 +101,10 @@ function findSchemaProblem(schema: Tool["inputSchema"]): string | null {
       first.set(error.instancePath, `${error.instancePath || "/"} ${error.message}`);
 
   return [...first.values()].slice(0, 3).join("; ");
+}
+
+function draftKey(uri: string): string {
+  return uri.replace(/^https?:\/\//, "").replace(/#$/, "");
 }
 
 /** Calls one of the server's tools over its live connection; throws when the server is not connected. */
