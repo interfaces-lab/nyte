@@ -350,6 +350,7 @@ describe("shell commands", () => {
 
     expect(first.effects).toEqual([
       { kind: "composer", op: { kind: "insert", text: "[Shell echo kept] ", at: "start" } },
+      { kind: "refresh-workspace", cwd: "/w" },
     ]);
     expect(first.state.local.draft.parts.get("[Shell echo kept]")).toEqual({
       kind: "shell",
@@ -374,7 +375,7 @@ describe("shell commands", () => {
 
     const step = play(ready(working), { kind: "shell-job", job: other });
 
-    expect(step.effects).toEqual([]);
+    expect(step.effects).toEqual([{ kind: "refresh-workspace", cwd: "/w" }]);
     expect(deriveScreen(step.state, null).welcome).toBe(false);
     expect(
       deriveScreen(step.state, null).transcript.rows.some((row) => row.key.includes("shell-9")),
@@ -401,7 +402,10 @@ describe("shell commands", () => {
           job: { ...base, id: "k", include: true, state: { kind: "cancelled" } },
         },
       ).effects,
-    ).toEqual([]);
+    ).toEqual([
+      { kind: "refresh-workspace", cwd: "/w" },
+      { kind: "refresh-workspace", cwd: "/w" },
+    ]);
   });
 });
 

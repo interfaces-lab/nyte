@@ -356,6 +356,7 @@ function landHandback(next: State, now: number): Step {
     : { ...landed, state: withNotice(landed.state, head.notice, "ok", now) };
 }
 
+/** Records a `!` command's report; one that ended rereads the branch and dirty mark it may have changed. */
 function shellReported(state: State, job: ShellJob): Step {
   const known = state.facts.shells.find((candidate) => candidate.id === job.id);
   const reported = { ...job, delivered: known?.delivered ?? job.delivered };
@@ -365,7 +366,18 @@ function shellReported(state: State, job: ShellJob): Step {
       ? [...state.facts.shells, reported]
       : state.facts.shells.map((candidate) => (candidate.id === job.id ? reported : candidate));
 
-  return deliverShells(withFacts(state, { shells }));
+  const delivered = deliverShells(withFacts(state, { shells }));
+
+  if (job.state.kind === "running" || (known !== undefined && known.state.kind !== "running"))
+    return delivered;
+
+  return {
+    ...delivered,
+    effects: [
+      ...delivered.effects,
+      { kind: "refresh-workspace", cwd: delivered.state.facts.workspace.cwd },
+    ],
+  };
 }
 
 function deliverShells(state: State): Step {
