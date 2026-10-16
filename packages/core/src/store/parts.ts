@@ -11,6 +11,7 @@ import type {
   WaitOutcome,
 } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema/model";
+import type { SessionBus } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { tool } from "../contract/parts.ts";
 import type { Answered, PartTable } from "../contract/parts.ts";
@@ -21,8 +22,16 @@ import { headRef, parseSessionRef, partRef } from "./refs.ts";
 import { load, put, readCall, readRefExpectation, toCommitObjectId } from "./session.ts";
 import type { Tip } from "./session.ts";
 
-export function createPartTable(): PartTable {
-  return { waiters: new Map(), acting: new Map() };
+/** The host's part waiters and actions; a waiter on a part that fails is answered null, from the bus, wherever the failure was written. */
+export function createPartTable(bus: SessionBus): PartTable {
+  const table: PartTable = { waiters: new Map(), acting: new Map() };
+
+  bus.subscribeAll((session, event) => {
+    if (event.kind === "part" && event.change === "failed")
+      dismiss(table, partRef(session, event.part));
+  });
+
+  return table;
 }
 
 export function settle(table: PartTable, name: string, answer: Answered): void {

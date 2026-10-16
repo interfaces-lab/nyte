@@ -1,7 +1,6 @@
 import type { CallId, DurableEvent, RefUpdate, SessionId, SetOutcome } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import type { CallRecord, ReceiptRecord } from "../contract/records.ts";
-import { dismiss } from "../store/parts.ts";
 import { callRef, receiptRef } from "../store/refs.ts";
 import { put, readCall, readRefExpectation } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
@@ -15,6 +14,10 @@ export interface CallChange {
 }
 
 const CALL_TRIES = 8;
+
+const PUBLISH_RETRIES = 6;
+
+const PUBLISH_BACKOFF_MS = 50;
 
 export async function writeReceipt(
   kernel: Kernel,
@@ -32,23 +35,34 @@ export async function writeReceipt(
   if (outcome.kind === "stale") throw new SdkError("stale", `Receipt ${record.id} already exists.`);
 }
 
+/** Sets refs in one compare-and-set write, then publishes what landed to the session bus. */
 export async function commit(kernel: Kernel, updates: readonly RefUpdate[]): Promise<SetOutcome> {
   const outcome = await kernel.store.refs.set(updates);
   dev("store", "refs.set", { names: updates.map(({ name }) => name), outcome });
+  await publish(kernel, updates, outcome, 0);
 
-  if (outcome.kind === "set")
-    for (const { name, event } of updates)
-      if (event?.kind === "part" && event.change === "failed") dismiss(kernel.partTable, name);
+  return outcome;
+}
 
+/** A landed write's events reach watchers through the bus. The write already landed, so a failed publish is not the writer's failure: it is retried with backoff, from where the session's log was last published. */
+async function publish(
+  kernel: Kernel,
+  updates: readonly RefUpdate[],
+  outcome: SetOutcome,
+  retry: number,
+): Promise<void> {
   try {
     await publishSet(kernel, updates, outcome);
   } catch (error) {
-    dev("store", "publish failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+    const message = error instanceof Error ? error.message : String(error);
+    dev("store", "publish failed", { retry, error: message });
 
-  return outcome;
+    if (retry < PUBLISH_RETRIES)
+      setTimeout(
+        () => void publish(kernel, updates, outcome, retry + 1),
+        PUBLISH_BACKOFF_MS * 2 ** retry,
+      );
+  }
 }
 
 export function changeCall(

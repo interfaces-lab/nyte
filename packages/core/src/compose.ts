@@ -457,7 +457,7 @@ export function createKernel(input: KernelOptions): Kernel {
     get partDefinitions() {
       return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
     },
-    partTable: createPartTable(),
+    partTable: createPartTable(bus),
     durable: { run: (step) => runAction(kernel, step) },
     tools: input.tools ?? toolSource,
     beforeTool:

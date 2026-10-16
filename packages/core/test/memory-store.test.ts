@@ -2,7 +2,9 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { memoryStore, objectId } from "../src/index.ts";
+import type { StoreConnection } from "../src/index.ts";
 import { attempt, STALE } from "../src/store/session.ts";
+import { setup, until } from "./harness.ts";
 
 const session: SessionId = asId("s1");
 
@@ -225,5 +227,36 @@ describe("attempt", () => {
       message: "Racing lost to concurrent writes 8 times.",
     });
     expect(tries).toBe(8);
+  });
+});
+
+describe("commit", () => {
+  it("publishes a landed write whose first publish failed, so watchers still see it", async () => {
+    const store = await memoryStore().open();
+    let failing = true;
+
+    const flaky: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        async log(session, after, limit) {
+          if (failing) {
+            failing = false;
+
+            throw new Error("The log read failed.");
+          }
+
+          return store.refs.log(session, after, limit);
+        },
+      },
+    };
+
+    const { kernel, host } = await setup({ store: flaky });
+    const seen: string[] = [];
+    kernel.bus.subscribeAll((_session, event) => seen.push(event.kind));
+    await host.sessions.create();
+
+    expect(failing).toBe(false);
+    expect(await until(() => (seen.includes("session") ? seen : undefined))).toContain("session");
   });
 });
