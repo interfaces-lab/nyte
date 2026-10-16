@@ -10,7 +10,7 @@ import { expireLease, main, recording, setup, until } from "../src/harness.ts";
 import {
   echoes,
   echo,
-  source,
+  toolPlugin,
   slowTool,
   liveRun,
   call,
@@ -40,7 +40,7 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ text: string }>;
 
-    const built = await setup({ store: recorded.store, tools: source([watched]) });
+    const built = await setup({ store: recorded.store, plugins: [toolPlugin([watched])] });
     kernel = built.kernel;
     session = await built.host.sessions.create();
     const run = await liveRun(kernel, session.id);
@@ -101,14 +101,17 @@ describe("tool calls", () => {
 
   it("fails an unknown tool and invalid arguments, and rejects at before_tool without running", async () => {
     const { kernel, host } = await setup({
-      tools: source([echo]),
-      beforeTool: async (proposed) => ({
-        kind: "done",
-        value:
-          JSON.stringify(proposed.args) === JSON.stringify({ text: "forbidden" })
-            ? { action: "reject", reason: "Not that." }
-            : { action: "continue" },
-      }),
+      plugins: [
+        {
+          ...toolPlugin([echo]),
+          hooks: {
+            before_tool: (proposed) =>
+              JSON.stringify(proposed.args) === JSON.stringify({ text: "forbidden" })
+                ? { action: "reject", reason: "Not that." }
+                : { action: "continue" },
+          },
+        },
+      ],
     });
 
     const session = await host.sessions.create();
@@ -154,11 +157,17 @@ describe("tool calls", () => {
 
   it("rewrites the outcome through after_tool before it is recorded", async () => {
     const { kernel, host } = await setup({
-      tools: source([echo]),
-      afterTool: async (outcome) =>
-        outcome.kind === "ok"
-          ? { ...outcome, content: [{ kind: "text", text: "[redacted]" }] }
-          : outcome,
+      plugins: [
+        {
+          ...toolPlugin([echo]),
+          hooks: {
+            after_tool: (outcome) =>
+              outcome.kind === "ok"
+                ? { ...outcome, content: [{ kind: "text", text: "[redacted]" }] }
+                : outcome,
+          },
+        },
+      ],
     });
 
     const session = await host.sessions.create();
@@ -205,7 +214,7 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ until: number }>;
 
-    const { kernel, host } = await setup({ tools: source([echo, parent]) });
+    const { kernel, host } = await setup({ plugins: [toolPlugin([echo, parent])] });
     const session = await host.sessions.create();
     const run = await liveRun(kernel, session.id);
     const at = Date.now() + 60_000;
@@ -265,7 +274,7 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ until: number }>;
 
-    const { kernel, host } = await setup({ tools: source([spawn]) });
+    const { kernel, host } = await setup({ plugins: [toolPlugin([spawn])] });
     const session = await host.sessions.create();
     const run = await liveRun(kernel, session.id);
     const at = Date.now() + 60_000;
@@ -318,8 +327,8 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ text: string }>;
 
-    const tools = source([safe, never]);
-    const first = await setup({ store, tools });
+    const plugins = [toolPlugin([safe, never])];
+    const first = await setup({ store, plugins });
     const session = await first.host.sessions.create();
     await session.send("Go.");
     void first.host.execution.advance({ session: session.id, head: main });
@@ -331,7 +340,7 @@ describe("tool calls", () => {
     await until(() => (executions.safe === 1 && executions.never === 1 ? true : undefined));
 
     await expireLease(store, session.id, main);
-    const second = await setup({ store, tools });
+    const second = await setup({ store, plugins });
     const step = second.host.execution.advance({ session: session.id, head: main });
     const resumed = await second.script.started(1);
 
@@ -359,7 +368,7 @@ describe("tool calls", () => {
   it("settles stopped when the run's signal aborts or the part's stop action runs", async () => {
     const started: string[] = [];
     const slow = slowTool(started);
-    const { kernel, host } = await setup({ tools: source([slow]) });
+    const { kernel, host } = await setup({ plugins: [toolPlugin([slow])] });
     const session = await host.sessions.create();
     const run = await liveRun(kernel, session.id);
     const controller = new AbortController();
@@ -398,7 +407,7 @@ describe("tool calls", () => {
 
   it("keeps the stop-wired tool built-in whatever else registers its kind", async () => {
     const started: string[] = [];
-    const { kernel, host } = await setup({ tools: source([slowTool(started)]) });
+    const { kernel, host } = await setup({ plugins: [toolPlugin([slowTool(started)])] });
     const wired = kernel.partDefinitions.get(tool.kind);
 
     expect(wired?.owner).toBeNull();
@@ -451,7 +460,7 @@ describe("tool calls", () => {
       },
     };
 
-    const { kernel, host } = await setup({ store, tools: source([echo]) });
+    const { kernel, host } = await setup({ store, plugins: [toolPlugin([echo])] });
     const session = await host.sessions.create();
     const run = await liveRun(kernel, session.id);
     crash = callRef(session.id, asId("w1"));

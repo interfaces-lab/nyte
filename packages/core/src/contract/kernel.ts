@@ -30,7 +30,6 @@ import type {
   RunView,
   SessionCatalogView,
   SessionId,
-  Submission,
   ToolCall,
   ToolInfo,
   ToolOutcome,
@@ -123,8 +122,6 @@ export interface Kernel {
   readonly compact: Compactor;
 
   readonly resolveConfiguration: ConfigurationResolver;
-
-  readonly admit: AdmissionGate;
 
   readonly waits: WaitRegistry;
 
@@ -301,20 +298,6 @@ export interface ConfigurationResolver {
     readonly patch: Configuration | ConfigurationPatch | null;
     readonly contributions: Contributions;
   }): Promise<Configuration | Exclude<ConfigureOutcome, { readonly kind: "configured" }>>;
-}
-
-export interface AdmissionGate {
-  (
-    submission: Submission,
-    context: {
-      readonly session: SessionId;
-      readonly head: HeadName;
-      readonly principal: PrincipalId;
-      readonly run: RunId | null;
-      readonly message: MessageId;
-      readonly signal: AbortSignal;
-    },
-  ): Promise<Decision<Submission>>;
 }
 
 export interface ToolGate {

@@ -18,12 +18,13 @@ import {
   runRef,
 } from "../src/store.ts";
 import { failedParts } from "../src/store/parts.ts";
-import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
 import type { ActionContext, ActionOutput, Durable, ToolDefinition } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
 import { commit } from "../src/fold/commit.ts";
 import { put } from "../src/store/session.ts";
 import { configuration, main, setup, startRun, until } from "../src/harness.ts";
+import { toolPlugin } from "./tool-support.ts";
 
 /** The earliest time a wait on the main head is due, read from its parked calls. */
 async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
@@ -233,13 +234,6 @@ function restart(kernel: Kernel): Kernel {
   });
 }
 
-function tools(definition: ToolDefinition): () => ToolSource {
-  return () => ({
-    get: (name) => (name === definition.name ? { definition, owner: "test" } : undefined),
-    list: () => [],
-  });
-}
-
 async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
   const run = await startRun(
     kernel,
@@ -258,7 +252,7 @@ const yes = { action: "answer", input: { choice: "yes" } };
 
 describe("waits as store facts", () => {
   it("stops a call parked on another instance through the store: its holder's poll wakes it and repair finds the run (ADV E N4)", async () => {
-    const holder = await setup({ tools: tools(parker) });
+    const holder = await setup({ plugins: [toolPlugin([parker])] });
     const other = await setup({ store: holder.kernel.store });
     const session = await holder.host.sessions.create();
     const head = { session: session.id, head: main };
@@ -309,7 +303,7 @@ describe("waits as store facts", () => {
   });
 
   it("ends a stopped run's parked waits from any instance, and repair re-dispatches a stop whose dispatch was lost (ADV E-3 X1)", async () => {
-    const holder = await setup({ tools: tools(parker) });
+    const holder = await setup({ plugins: [toolPlugin([parker])] });
     const other = await setup({ store: holder.kernel.store });
     const session = await holder.host.sessions.create();
     const head = { session: session.id, head: main };
@@ -350,7 +344,7 @@ describe("waits as store facts", () => {
   });
 
   it("wakes no head when its turn parks: the advance reports waiting itself (ADV E-2 N7)", async () => {
-    const { kernel, host, script } = await setup({ tools: tools(parker) });
+    const { kernel, host, script } = await setup({ plugins: [toolPlugin([parker])] });
     const session = await host.sessions.create();
     await session.send("Wait.");
     const notified: string[] = [];

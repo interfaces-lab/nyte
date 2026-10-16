@@ -177,7 +177,11 @@ describe("admission", () => {
   });
 
   it("refuses a send `before_send` rejects", async () => {
-    const { host } = await setup({ admit: async () => ({ action: "reject", reason: "No." }) });
+    const { host } = await setup({
+      plugins: [
+        { id: "gate", hooks: { before_send: () => ({ action: "reject", reason: "No." }) } },
+      ],
+    });
     const session = await host.sessions.create();
 
     await expect(session.send("Hello.")).rejects.toMatchObject({ code: "invalid", message: "No." });

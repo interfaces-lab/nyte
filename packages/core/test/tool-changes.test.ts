@@ -8,7 +8,7 @@ import { configuration, recording, setup, startRun } from "../src/harness.ts";
 import {
   caller,
   echo,
-  source,
+  toolPlugin,
   liveRun,
   call,
   readRun,
@@ -30,7 +30,7 @@ describe("tool changes", () => {
 
     const { kernel, host } = await setup({
       store: recorded.store,
-      tools: source([edit]),
+      plugins: [toolPlugin([edit])],
       snapshots: scripted(taken),
     });
 
@@ -72,7 +72,7 @@ describe("tool changes", () => {
 
     const restarted = await setup({
       store: recorded.store,
-      tools: source([edit]),
+      plugins: [toolPlugin([edit])],
       snapshots: scripted(retaken),
     });
 
@@ -109,8 +109,8 @@ describe("tool changes", () => {
       class: () => ({ kind: "edit", path: "a.ts" }),
     } satisfies ToolDefinition<{ text: string }>;
 
-    const a = await setup({ store, tools: source([edit]), snapshots: touching("a.ts") });
-    const b = await setup({ store, tools: source([edit]), snapshots: touching("b.ts") });
+    const a = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("a.ts") });
+    const b = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("b.ts") });
     const session = await a.host.sessions.create();
     const run = await liveRun(a.kernel, session.id);
     const args = { text: "x" };
@@ -150,8 +150,8 @@ describe("tool changes", () => {
       class: () => ({ kind: "edit", path: "a.ts" }),
     } satisfies ToolDefinition<{ text: string }>;
 
-    const a = await setup({ store, tools: source([edit]), snapshots: touching("a.ts") });
-    const b = await setup({ store, tools: source([edit]), snapshots: touching("b.ts") });
+    const a = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("a.ts") });
+    const b = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("b.ts") });
     const session = await a.host.sessions.create();
     const side = asId<"head">("side");
     await session.heads.create(side);
@@ -164,6 +164,8 @@ describe("tool changes", () => {
       { kind: "continuation", from: "wake" },
       configuration,
     );
+
+    await b.kernel.plugins.runtime(session.id).ready;
 
     await Promise.all([
       call(a.kernel, {

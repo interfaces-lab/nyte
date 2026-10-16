@@ -23,6 +23,7 @@ import type {
   EnvironmentProvider,
   ExecutionEnv,
   Host,
+  Plugin,
   SnapshotsApi,
   StoreConnection,
 } from "./index.ts";
@@ -133,19 +134,12 @@ export async function setup(
   options?: Partial<
     Pick<
       Kernel,
-      | "summarize"
-      | "execution"
-      | "admit"
-      | "hostId"
-      | "store"
-      | "tools"
-      | "beforeTool"
-      | "afterTool"
-      | "secrets"
-      | "resolveConfiguration"
+      "summarize" | "execution" | "hostId" | "store" | "secrets" | "resolveConfiguration"
     >
   > & {
     readonly script?: Script;
+    /** Plugins every session loads after the test environment, for the tools and hooks a test needs. */
+    readonly plugins?: readonly Plugin<"core">[];
     readonly poll?: number;
     /** The snapshots the workspace's environment takes; default none. */
     readonly snapshots?: SnapshotsApi;
@@ -168,12 +162,11 @@ export async function setup(
     resolveConfiguration: options?.resolveConfiguration ?? (async () => configuration),
     summarize: options?.summarize ?? (async () => ({ kind: "ok", markdown: "Summary.", usage })),
     execution: options?.execution,
-    admit: options?.admit,
-    tools: options?.tools,
-    beforeTool: options?.beforeTool,
-    afterTool: options?.afterTool,
     secrets: options?.secrets,
-    builtins: [{ id: "test-environment", environment: provider(options?.snapshots) }],
+    builtins: [
+      { id: "test-environment", environment: provider(options?.snapshots) },
+      ...(options?.plugins ?? []),
+    ],
     poll: options?.poll,
   });
 

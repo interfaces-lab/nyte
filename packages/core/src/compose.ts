@@ -60,7 +60,6 @@ import { createPageTable } from "./env/browser.ts";
 import { createEnvironmentRegistry } from "./env/environment.ts";
 import { readMcpWorkspace } from "./env/mcp.ts";
 import { createWorkspaces, createWorkspaceState } from "./env/workspaces.ts";
-import { gateSubmission } from "./extend/hooks.ts";
 import { createConfigurationResolver, createModelsApi } from "./extend/models.ts";
 import { pluginSecrets } from "./extend/plugin-api.ts";
 import {
@@ -323,10 +322,6 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
       | "summarize"
       | "compact"
       | "resolveConfiguration"
-      | "admit"
-      | "tools"
-      | "beforeTool"
-      | "afterTool"
       | "request"
       | "home"
       | "secrets"
@@ -429,7 +424,6 @@ export function createKernel(input: KernelOptions): Kernel {
           ? async () => unavailable("resolveConfiguration")
           : createConfigurationResolver(kernel, models));
     },
-    admit: input.admit ?? ((submission, context) => gateSubmission(kernel, submission, context)),
     get waits() {
       return (waits ??= createWaitRegistry(kernel, (session, call) =>
         rerunAction(kernel, session, call),
@@ -449,21 +443,17 @@ export function createKernel(input: KernelOptions): Kernel {
       return (definitions ??= createPartDefinitions({ tool: stoppableTool(kernel) }));
     },
     partTable: createPartTable(bus),
-    tools: input.tools ?? toolSource,
-    beforeTool:
-      input.beforeTool ??
-      ((call, { runtime, ...context }) =>
-        runtime.hooks.decide("before_tool", call, context, {
-          call: asId<"call">(`hook:before_tool:${call.call}`),
-          run: context.run,
-          head: context.head,
-          part: null,
-          signal: context.signal,
-        })),
-    afterTool:
-      input.afterTool ??
-      ((outcome, { runtime, ...context }) =>
-        runtime.hooks.transform("after_tool", outcome, context)),
+    tools: toolSource,
+    beforeTool: (call, { runtime, ...context }) =>
+      runtime.hooks.decide("before_tool", call, context, {
+        call: asId<"call">(`hook:before_tool:${call.call}`),
+        run: context.run,
+        head: context.head,
+        part: null,
+        signal: context.signal,
+      }),
+    afterTool: (outcome, { runtime, ...context }) =>
+      runtime.hooks.transform("after_tool", outcome, context),
     get request() {
       return (request ??=
         models === undefined ? async () => unavailable("request") : createRequest(kernel, models));

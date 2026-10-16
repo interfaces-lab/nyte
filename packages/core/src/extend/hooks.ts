@@ -1,4 +1,4 @@
-import { asId, compile, SdkError, SubmissionType, ToolCallType, withJson } from "@nyte-ai/schema";
+import { compile, SdkError, SubmissionType, ToolCallType, withJson } from "@nyte-ai/schema";
 import type {
   Awaitable,
   Decision,
@@ -7,14 +7,12 @@ import type {
   PrincipalId,
   RunId,
   SessionId,
-  Submission,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type {
-  AdmissionGate,
   CoreHook,
   HookContext,
   HookDispatch,
@@ -25,8 +23,6 @@ import type {
 import type { HookHandler, HookName, PluginApi } from "../contract/plugin.ts";
 import type { Durable } from "../contract/tools.ts";
 import { signalsPark, runStep } from "../engine/durable.ts";
-import { commit } from "../fold/commit.ts";
-import { callRef } from "../store/refs.ts";
 import { readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { stepPluginApi } from "./plugin-api.ts";
@@ -264,57 +260,6 @@ export function namesCoreHook(name: string): name is HookName<"core"> {
     Object.hasOwn(transformers, name) ||
     Object.hasOwn(deciders, name)
   );
-}
-
-export async function gateSubmission(
-  kernel: Kernel,
-  submission: Submission,
-  context: Parameters<AdmissionGate>[1],
-): Promise<Decision<Submission>> {
-  const { session } = context;
-  const call = asId<"call">(`hook:before_send:${context.message}`);
-
-  if (submission.replace === context.message) {
-    const found = await readCall(kernel.store, session, call);
-
-    if (found !== null && found.record.result !== null)
-      await commit(kernel, [
-        { name: callRef(session, call), target: null, expect: found.ref.revision },
-      ]);
-  }
-
-  const { signal } = context;
-  let woken = Promise.withResolvers<void>();
-  const dispose = kernel.waits.onWoken(session, call, () => woken.resolve());
-  const abort = (): void => woken.resolve();
-  signal.addEventListener("abort", abort, { once: true });
-
-  try {
-    for (;;) {
-      woken = Promise.withResolvers<void>();
-
-      const outcome = await kernel.plugins
-        .runtime(session)
-        .hooks.decide(
-          "before_send",
-          submission,
-          { session, head: context.head, run: context.run, principal: context.principal },
-          { call, run: null, head: null, part: null, signal },
-        );
-
-      if (outcome.kind === "done") return outcome.value;
-
-      if (outcome.kind === "interrupted") return CONTINUE;
-
-      if (!signal.aborted) await woken.promise;
-
-      if (signal.aborted)
-        return { action: "error", message: "The kernel closed before before_send decided." };
-    }
-  } finally {
-    signal.removeEventListener("abort", abort);
-    dispose();
-  }
 }
 
 function stepContext(session: SessionId, step: HookStep): ConnectionContext {

@@ -398,13 +398,20 @@ describe("liveness across instances (D2)", () => {
 
     const { kernel, host } = await setup({
       execution: { kind: "admit-only" },
-      admit: async () => {
-        const pending = land;
-        land = null;
-        await pending?.();
+      plugins: [
+        {
+          id: "gate",
+          hooks: {
+            async before_send() {
+              const pending = land;
+              land = null;
+              await pending?.();
 
-        return { action: "continue" };
-      },
+              return { action: "continue" };
+            },
+          },
+        },
+      ],
     });
 
     const session = await host.sessions.create();

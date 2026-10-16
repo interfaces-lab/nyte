@@ -3,6 +3,7 @@ import type {
   CommitId,
   Configuration,
   ConfigurationPatch,
+  Decision,
   Delivery,
   HeadName,
   MessageId,
@@ -24,7 +25,7 @@ import type { CommitRecord, RunRecord } from "../contract/records.ts";
 import type { SendReceipt } from "../contract/session.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
-import { headRef, inboxRef, receiptRef } from "../store/refs.ts";
+import { callRef, headRef, inboxRef, receiptRef } from "../store/refs.ts";
 import {
   attempt,
   guard,
@@ -32,6 +33,7 @@ import {
   coveredHere,
   liveRun,
   put,
+  readCall,
   readInbox,
   readReceipt,
   readRefExpectation,
@@ -643,14 +645,7 @@ async function gate(
   message: MessageId,
   submission: Submission,
 ): Promise<Submission> {
-  const decision = await sending.kernel.admit(submission, {
-    session: sending.session,
-    head: sending.head,
-    principal: sending.context.principal,
-    run: sending.context.origin?.run ?? null,
-    message,
-    signal: sending.kernel.executionState.closing.signal,
-  });
+  const decision = await decideBeforeSend(sending, message, submission);
 
   if (decision.action === "reject") {
     dev("admission", "refused", { session: sending.session, message });
@@ -665,6 +660,61 @@ async function gate(
     ...admitted,
     content: await freezeMentions(sending.kernel, sending.session, admitted.content),
   };
+}
+
+/** Decides the submission through the session's `before_send` hooks, one durable step keyed by the message; a parked hook holds the send until its wait wakes or the kernel closes. */
+async function decideBeforeSend(
+  sending: Sending,
+  message: MessageId,
+  submission: Submission,
+): Promise<Decision<Submission>> {
+  const { kernel, session } = sending;
+  const call = asId<"call">(`hook:before_send:${message}`);
+
+  if (submission.replace === message) {
+    const found = await readCall(kernel.store, session, call);
+
+    if (found !== null && found.record.result !== null)
+      await commit(kernel, [
+        { name: callRef(session, call), target: null, expect: found.ref.revision },
+      ]);
+  }
+
+  const { signal } = kernel.executionState.closing;
+  let woken = Promise.withResolvers<void>();
+  const dispose = kernel.waits.onWoken(session, call, () => woken.resolve());
+  const abort = (): void => woken.resolve();
+  signal.addEventListener("abort", abort, { once: true });
+
+  try {
+    for (;;) {
+      woken = Promise.withResolvers<void>();
+
+      const outcome = await kernel.plugins.runtime(session).hooks.decide(
+        "before_send",
+        submission,
+        {
+          session,
+          head: sending.head,
+          run: sending.context.origin?.run ?? null,
+          principal: sending.context.principal,
+        },
+        { call, run: null, head: null, part: null, signal },
+      );
+
+      if (outcome.kind === "done") return outcome.value;
+
+      if (outcome.kind === "interrupted") return { action: "continue" };
+
+      if (!signal.aborted) await woken.promise;
+
+      if (signal.aborted)
+        return { action: "error", message: "The kernel closed before before_send decided." };
+    }
+  } finally {
+    signal.removeEventListener("abort", abort);
+    dispose();
+  }
 }
 
 async function resolve(

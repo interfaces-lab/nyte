@@ -8,7 +8,7 @@ import { stopRun } from "../src/engine/fence.ts";
 import { move } from "../src/engine/move.ts";
 import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
 import { callRef, headRef, memoryStore, partRef } from "../src/store.ts";
-import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
 import type {
   ConnectionContext,
   Plugin,
@@ -20,6 +20,7 @@ import type {
 import { readInbox } from "../src/store/session.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import { configuration, main, setup, startRun, until, usage } from "../src/harness.ts";
+import { toolPlugin } from "./tool-support.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -43,13 +44,6 @@ function writer(ran: string[]): ToolDefinition<{ readonly text: string }> {
   };
 }
 
-function source(definition: ToolDefinition): () => ToolSource {
-  return () => ({
-    get: (name) => (name === definition.name ? { definition, owner: "test" } : undefined),
-    list: () => [],
-  });
-}
-
 describe("ADV A-3", () => {
   it("answers a tool step stopped, recording nothing and running nothing, once another instance fenced its run, and aborts the run here (A-3 S1, probe a3e)", async () => {
     const ran: string[] = [];
@@ -57,7 +51,7 @@ describe("ADV A-3", () => {
 
     const a = await setup({
       store,
-      tools: source(writer(ran)),
+      plugins: [toolPlugin([writer(ran)])],
       execution: { kind: "admit-only" },
     });
 

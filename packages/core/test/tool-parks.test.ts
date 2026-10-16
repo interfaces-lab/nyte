@@ -6,7 +6,7 @@ import { definePart } from "../src/index.ts";
 import { decodePartRecord, envelope, memoryStore, partRef } from "../src/store.ts";
 import type { StoreConnection, ToolDefinition } from "../src/index.ts";
 import { expireLease, main, setup, until } from "../src/harness.ts";
-import { echo, source, liveRun, call, readCall, readRun, toolPart } from "./tool-support.ts";
+import { echo, toolPlugin, liveRun, call, readCall, readRun, toolPart } from "./tool-support.ts";
 
 describe("parked tool calls", () => {
   it("parks a call through advance, reports its deadline, and resumes the run once it wakes", async () => {
@@ -26,7 +26,7 @@ describe("parked tool calls", () => {
       }),
     } satisfies ToolDefinition<{ until: number }>;
 
-    const { kernel, host, script } = await setup({ tools: source([parker]) });
+    const { kernel, host, script } = await setup({ plugins: [toolPlugin([parker])] });
     const session = await host.sessions.create();
     const head = { session: session.id, head: main };
     const at = Date.now() + 60_000;
@@ -84,7 +84,7 @@ describe("parked tool calls", () => {
       },
     } satisfies ToolDefinition<object>;
 
-    const { kernel, host, script } = await setup({ tools: source([parker]) });
+    const { kernel, host, script } = await setup({ plugins: [toolPlugin([parker])] });
     const session = await host.sessions.create();
     const head = { session: session.id, head: main };
     await session.send("Wait.");
@@ -161,7 +161,7 @@ describe("parked tool calls", () => {
       },
     };
 
-    const first = await setup({ store, tools: source([ask]), poll: 10 });
+    const first = await setup({ store, plugins: [toolPlugin([ask])], poll: 10 });
     const second = await setup({ store: spied });
     const third = await setup({ store, poll: 10 });
     const session = await first.host.sessions.create();
@@ -231,7 +231,7 @@ describe("parked tool calls", () => {
       },
     } satisfies ToolDefinition<object>;
 
-    const { kernel, host } = await setup({ tools: source([parker]) });
+    const { kernel, host } = await setup({ plugins: [toolPlugin([parker])] });
     const session = await host.sessions.create();
     const run = await liveRun(kernel, session.id);
     const notified: string[] = [];
@@ -272,8 +272,8 @@ describe("parked tool calls", () => {
       },
     } satisfies ToolDefinition<{ text: string }>;
 
-    const tools = source([flaky]);
-    const first = await setup({ store, tools });
+    const plugins = [toolPlugin([flaky])];
+    const first = await setup({ store, plugins });
     const session = await first.host.sessions.create();
     await session.send("Go.");
     void first.host.execution.advance({ session: session.id, head: main });
@@ -297,7 +297,7 @@ describe("parked tool calls", () => {
     ]);
 
     await expireLease(store, session.id, main);
-    const second = await setup({ store, tools });
+    const second = await setup({ store, plugins });
 
     expect(await second.host.execution.advance({ session: session.id, head: main })).toEqual({
       kind: "idle",

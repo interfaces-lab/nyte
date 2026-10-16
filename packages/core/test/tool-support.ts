@@ -5,8 +5,8 @@ import { assert } from "vitest";
 import { executeCall } from "../src/agent/tool-runner.ts";
 import { ALL_AUTHORITY, LOCAL, isPart, tool } from "../src/index.ts";
 import { callRef, decodeCallRecord, decodeRunRecord, runRef } from "../src/store.ts";
-import type { Kernel, ToolSource } from "../src/contract/kernel.ts";
-import type { ConnectionContext, Session, ToolDefinition } from "../src/index.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ConnectionContext, Plugin, Session, ToolDefinition } from "../src/index.ts";
 import type { CallRecord } from "../src/store.ts";
 import { configuration, main, setup, startRun } from "../src/harness.ts";
 
@@ -32,15 +32,9 @@ export const echo = {
   },
 } satisfies ToolDefinition<{ text: string }>;
 
-export function source(definitions: readonly ToolDefinition[]): () => ToolSource {
-  return () => ({
-    get(name) {
-      const definition = definitions.find((candidate) => candidate.name === name);
-
-      return definition === undefined ? undefined : { definition, owner: "test" };
-    },
-    list: () => [],
-  });
+/** A plugin that contributes `definitions` as its tools. */
+export function toolPlugin(definitions: readonly ToolDefinition[]): Plugin<"core"> {
+  return { id: "test", contribute: { tools: definitions } };
 }
 
 export function slowTool(started: string[]) {
@@ -71,7 +65,8 @@ export async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId
   return run.id;
 }
 
-export function call(
+/** Runs a tool call on the session's plugin runtime once it has loaded the session's tools. */
+export async function call(
   kernel: Kernel,
   input: {
     readonly session: SessionId;
@@ -83,9 +78,12 @@ export function call(
     readonly signal?: AbortSignal;
   },
 ) {
+  const runtime = kernel.plugins.runtime(input.session);
+  await runtime.ready;
+
   return executeCall(kernel, {
     session: input.session,
-    runtime: kernel.plugins.runtime(input.session),
+    runtime,
     head: main,
     run: input.run,
     call: asId(input.call),
