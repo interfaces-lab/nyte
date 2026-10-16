@@ -6,6 +6,7 @@ import { isJsonObject } from "../util/json-schema.ts";
 
 export type StoreDialect = "sqlite" | "postgres";
 
+/** Adds structure or rebuilds tables derived from refs and objects; a change to stored records is a `RewriteStep`. */
 interface SchemaStep {
   readonly kind: "schema";
   readonly name: string;
@@ -55,7 +56,13 @@ export interface MigrationTarget {
   stamp(): Promise<StoreStamp>;
   records(): Promise<readonly StoredRecord[]>;
   commit(change: StoreChange): Promise<CommitOutcome>;
-  backup?(from: number, to: number): Promise<void>;
+  /**
+   * Saves the current rows of `refs`, the refs the next commit repoints, before
+   * it runs. Called only when a rewrite changes records: schema steps touch
+   * derived tables alone, and objects are never deleted, so these rows are
+   * enough to restore the records as they were.
+   */
+  backup?(from: number, to: number, refs: readonly string[]): Promise<void>;
 }
 
 const metaTable =
@@ -214,17 +221,23 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
     if (stamp.version === STORE_VERSION) return;
     const steps = STORE_STEPS.slice(stamp.version);
 
-    if (attempt === 0 && !stamp.empty) await target.backup?.(stamp.version, STORE_VERSION);
     const rewrites = steps.flatMap((step) => (step.kind === "rewrite" ? [step] : []));
+
+    const moved =
+      stamp.empty || rewrites.length === 0 ? [] : await repoints(rewrites, await target.records());
+
+    if (moved.length > 0)
+      await target.backup?.(
+        stamp.version,
+        STORE_VERSION,
+        moved.map((repoint) => repoint.name),
+      );
 
     const outcome = await target.commit({
       from: stamp.version,
       to: STORE_VERSION,
       sql: steps.flatMap((step) => (step.kind === "schema" ? step.sql[target.dialect] : [])),
-      repoints:
-        stamp.empty || rewrites.length === 0
-          ? []
-          : await repoints(rewrites, await target.records()),
+      repoints: moved,
       reindexSessions: steps.includes(sessionIndex) || steps.includes(orderedSessionIndex),
     });
 

@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -72,7 +72,7 @@ it("backfills existing session roots and pending work within the store migration
 });
 
 it.each(["activity", "sort_at"] as const)(
-  "upgrades the version-3 %s index without changing canonical data, once, with a backup",
+  "upgrades the version-3 %s index without changing canonical data, once, without a backup",
   async (column) => {
     const directory = await folder();
     const path = join(directory, "nyte.db");
@@ -185,25 +185,7 @@ it.each(["activity", "sort_at"] as const)(
       log: probe.prepare("SELECT * FROM log ORDER BY session, seq").all(),
     }).toEqual(canonical);
     probe.close();
-
-    const backups = (await readdir(join(directory, "backups"))).filter((file) =>
-      file.endsWith(".db"),
-    );
-
-    expect(backups).toHaveLength(1);
-
-    const backup = new DatabaseSync(join(directory, "backups", backups[0] ?? ""), {
-      readOnly: true,
-    });
-
-    expect(backup.prepare("SELECT version FROM store_meta").get()).toEqual({ version: 3 });
-    expect(backup.prepare("SELECT * FROM refs ORDER BY name").all()).toEqual(canonical.refs);
-    backup.close();
-    await store.open();
-    await store.close();
-    expect(
-      (await readdir(join(directory, "backups"))).filter((file) => file.endsWith(".db")),
-    ).toEqual(backups);
+    expect(await readdir(directory)).not.toContain("backups");
   },
 );
 
@@ -398,25 +380,19 @@ describe("sqliteStore", () => {
     ]);
     probe.close();
 
-    const backups = (await readdir(join(dir, "backups"))).filter((file) => file.endsWith(".db"));
+    const backups = await readdir(join(dir, "backups"));
 
     expect(backups).toHaveLength(1);
-    const backup = new DatabaseSync(join(dir, "backups", backups[0] ?? ""), { readOnly: true });
-
-    expect(
-      backup.prepare("SELECT target FROM refs WHERE name = ?").get("sessions/s1/calls/c1"),
-    ).toEqual({
-      target: "old-call",
-    });
-    backup.close();
+    expect(JSON.parse(await readFile(join(dir, "backups", backups[0] ?? ""), "utf8"))).toEqual([
+      { name: "sessions/s1/calls/c1", target: "old-call", revision: "r0" },
+      { name: "sessions/s1/inbox", target: "old-inbox", revision: "r0" },
+    ]);
 
     const again = sqliteStore({ path });
     await again.open();
     await again.close();
 
-    expect(
-      (await readdir(join(dir, "backups"))).filter((file) => file.endsWith(".db")),
-    ).toHaveLength(1);
+    expect(await readdir(join(dir, "backups"))).toEqual(backups);
   });
 
   it("opens a store an older Nyte migrated, keeping its rows, its log and its migrations table", async () => {

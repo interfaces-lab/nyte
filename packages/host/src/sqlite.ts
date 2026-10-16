@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SQLInputValue, StatementSync } from "node:sqlite";
@@ -39,7 +39,7 @@ const BACKUPS_KEPT = 3;
 const PUT_BODY =
   "INSERT INTO objects (id, body) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL";
 
-/** Returns a `Store` over one `node:sqlite` `DatabaseSync`: a file at `path` (WAL mode, a busy timeout so a second process waits rather than fails) or an in-memory database. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore` (core's `objects`, `refs`, `log` and `store_meta` tables; each commit one `BEGIN IMMEDIATE`), a file store holding refs first copied to `backups/store-<time>-<pid>-<uuid>-v<from>-v<to>.db` beside it with the newest three such copies kept, and rejects with `SdkError("unavailable")` for a store a newer Nyte migrated; a `migrations` table an older Nyte left is kept and ignored. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once; an object and a blob that share an id share the row, each column filled once (§41f); `blob` reads the bytes back with their size and a null mime. `refs.set` is one `BEGIN IMMEDIATE` transaction with `RefStore.set`'s semantics, each revision a random UUID, that first rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store since it opened. `list(prefix)` reads the name range from `prefix` in name order (BINARY, by code point); `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0. File stores run `list` and `log` on a read-only worker and WAL checkpoints on a separate worker, checking at 1,000 frames and after 100 ms idle with a 10,000-frame writer backstop; unavailable workers warn and fall back to the main connection. Checkpoints use fullfsync on macOS, WAL reuse retains at most 32 MiB, and opening refreshes planner statistics. Writes binding more than 64 KiB use uncached statements. Every `open()` returns a connection over the one writer; `close()` waits for opening and worker shutdown before closing it, and an open during close waits to reopen. */
+/** Returns a `Store` over one `node:sqlite` `DatabaseSync`: a file at `path` (WAL mode, a busy timeout so a second process waits rather than fails) or an in-memory database. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore` (core's `objects`, `refs`, `log` and `store_meta` tables; each commit one `BEGIN IMMEDIATE`), a file store whose migration rewrites records first saving those refs' rows (name, target, revision; objects are never deleted, so the rows restore them) to `backups/store-<time>-<pid>-<uuid>-v<from>-v<to>.json` beside it, keeping the newest three backups, and rejects with `SdkError("unavailable")` for a store a newer Nyte migrated; a `migrations` table an older Nyte left is kept and ignored. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once; an object and a blob that share an id share the row, each column filled once (§41f); `blob` reads the bytes back with their size and a null mime. `refs.set` is one `BEGIN IMMEDIATE` transaction with `RefStore.set`'s semantics, each revision a random UUID, that first rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store since it opened. `list(prefix)` reads the name range from `prefix` in name order (BINARY, by code point); `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0. File stores run `list` and `log` on a read-only worker and WAL checkpoints on a separate worker, checking at 1,000 frames and after 100 ms idle with a 10,000-frame writer backstop; unavailable workers warn and fall back to the main connection. Checkpoints use fullfsync on macOS, WAL reuse retains at most 32 MiB, and opening refreshes planner statistics. Writes binding more than 64 KiB use uncached statements. Every `open()` returns a connection over the one writer; `close()` waits for opening and worker shutdown before closing it, and an open during close waits to reopen. */
 export function sqliteStore(input: { readonly path: string } | { readonly memory: true }): Store {
   let database: DatabaseSync | null = null;
   let opening: Promise<StoreConnection> | null = null;
@@ -116,7 +116,7 @@ function storedVersion(database: DatabaseSync): number {
 }
 
 function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTarget {
-  return {
+  const target: MigrationTarget = {
     dialect: "sqlite",
     async stamp() {
       return {
@@ -184,20 +184,39 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
         throw error;
       }
     },
-    ...(path === null ? {} : { backup: async (from, to) => backup(database, path, from, to) }),
   };
+
+  if (path === null) return target;
+
+  return { ...target, backup: async (from, to, names) => backup(database, path, from, to, names) };
 }
 
-function backup(database: DatabaseSync, path: string, from: number, to: number): void {
+function backup(
+  database: DatabaseSync,
+  path: string,
+  from: number,
+  to: number,
+  names: readonly string[],
+): void {
   const folder = join(dirname(path), "backups");
   mkdirSync(folder, { recursive: true, mode: 0o700 });
   const at = new Date().toISOString().replaceAll(":", "-");
-  database
-    .prepare("VACUUM INTO ?")
-    .run(join(folder, `store-${at}-${process.pid}-${crypto.randomUUID()}-v${from}-v${to}.db`));
+  const read = database.prepare("SELECT name, target, revision FROM refs WHERE name = ?");
+
+  const rows = names.flatMap((name) => {
+    const row = read.get(name);
+
+    return row === undefined ? [] : [refOf(row)];
+  });
+
+  writeFileSync(
+    join(folder, `store-${at}-${process.pid}-${crypto.randomUUID()}-v${from}-v${to}.json`),
+    JSON.stringify(rows),
+    { mode: 0o600 },
+  );
 
   const copies = readdirSync(folder)
-    .filter((file) => /^store-.+-v\d+-v\d+\.db$/u.test(file))
+    .filter((file) => /^store-.+-v\d+-v\d+\.(?:db|json)$/u.test(file))
     .sort();
 
   for (const file of copies.slice(0, -BACKUPS_KEPT)) rmSync(join(folder, file), { force: true });
