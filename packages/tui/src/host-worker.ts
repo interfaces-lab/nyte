@@ -4,7 +4,8 @@ import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { PortInUse, ServiceRunning, portConflict, probePort, startService } from "@nyte-ai/service";
 import { readConnectConfig } from "./connect-config.ts";
 import { openTerminalHost } from "./host.ts";
-import type { HostCommand, HostFailureReason, HostMessage, HostReport } from "./hosting.ts";
+import { hostMessages } from "./hosting.ts";
+import type { HostCommand, HostFailureReason, HostReport } from "./hosting.ts";
 import { VERSION } from "./version.ts";
 
 interface Opened {
@@ -22,7 +23,17 @@ const report = (message: HostReport): void => port.postMessage(message);
 
 let opening: Promise<Opened | null> = Promise.resolve(null);
 
-port.on("message", (message: HostMessage) => {
+port.on("message", (message) => {
+  if (!hostMessages.Check(message)) {
+    report({
+      kind: "failed",
+      reason: "other",
+      message: "The CLI sent a message the host thread does not know.",
+    });
+
+    return;
+  }
+
   if (message.kind !== "stop") {
     opening = open(message).then(
       (opened) => {

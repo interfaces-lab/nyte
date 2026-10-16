@@ -1,22 +1,50 @@
 import { Worker } from "node:worker_threads";
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import { Compile } from "typebox/compile";
 import { compiled } from "./compiled.ts";
 
-/** What the host thread runs: `nyte serve`'s listener or `nyte service run`'s background service. */
-export type HostCommand =
-  | { readonly kind: "serve"; readonly port: number; readonly token: string }
-  | { readonly kind: "service"; readonly port: number };
+const PortType = Type.Integer({ minimum: 0, maximum: 65_535 });
 
-/** Messages the CLI thread sends the host thread. */
-export type HostMessage = HostCommand | { readonly kind: "stop" };
+const HostCommandType = Type.Union([
+  Type.Object({ kind: Type.Literal("serve"), port: PortType, token: Type.String() }),
+  Type.Object({ kind: Type.Literal("service"), port: PortType }),
+]);
+
+const HostFailureReasonType = Type.Union([
+  Type.Literal("port-in-use"),
+  Type.Literal("service-running"),
+  Type.Literal("other"),
+]);
+
+/** What the host thread runs: `nyte serve`'s listener or `nyte service run`'s background service. */
+export type HostCommand = Static<typeof HostCommandType>;
 
 /** Why the host thread could not start, when the CLI words the failure itself. */
-export type HostFailureReason = "port-in-use" | "service-running" | "other";
+export type HostFailureReason = Static<typeof HostFailureReasonType>;
+
+const HostMessageType = Type.Union([HostCommandType, Type.Object({ kind: Type.Literal("stop") })]);
+
+const HostReportType = Type.Union([
+  Type.Object({ kind: Type.Literal("listening"), address: Type.String() }),
+  Type.Object({
+    kind: Type.Literal("failed"),
+    reason: HostFailureReasonType,
+    message: Type.String(),
+  }),
+  Type.Object({ kind: Type.Literal("closed") }),
+]);
+
+/** Messages the CLI thread sends the host thread: a command, or stop. */
+export type HostMessage = Static<typeof HostMessageType>;
 
 /** Messages the host thread sends back. */
-export type HostReport =
-  | { readonly kind: "listening"; readonly address: string }
-  | { readonly kind: "failed"; readonly reason: HostFailureReason; readonly message: string }
-  | { readonly kind: "closed" };
+export type HostReport = Static<typeof HostReportType>;
+
+/** Checks a message from the CLI thread on the host thread. */
+export const hostMessages = Compile(HostMessageType);
+
+const hostReports = Compile(HostReportType);
 
 /** A host command that failed on the host thread. */
 export class HostFailure extends Error {
@@ -61,7 +89,14 @@ export async function startHostThread(command: HostCommand): Promise<HostThread>
     ended.reject(cause);
   };
 
-  worker.on("message", (report: HostReport) => {
+  worker.on("message", (report) => {
+    if (!hostReports.Check(report)) {
+      fail(new Error("The host thread sent a message the CLI does not know."));
+      void worker.terminate();
+
+      return;
+    }
+
     if (report.kind === "listening") {
       listening.resolve(report.address);
 
