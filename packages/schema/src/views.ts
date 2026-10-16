@@ -127,6 +127,15 @@ function viewSplice<T extends TSchema>(item: T) {
   return Type.Object({ runs: Type.Array(Type.Number()), items: Type.Array(item) });
 }
 
+export const ViewAppendType = Type.Object({
+  at: Type.Number(),
+  append: Type.String(),
+  version: Type.Number(),
+});
+
+/** Text a streaming part streamed since the previous frame: the message at `at` of the spliced messages, its `state.markdown` grown by `append`, now at `version`. */
+export type ViewAppend = Decoded<typeof ViewAppendType>;
+
 export const ViewFrameType = Type.Union([
   Type.Object({ kind: Type.Literal("view"), view: SessionViewType }),
   Type.Object({
@@ -135,9 +144,7 @@ export const ViewFrameType = Type.Union([
     revision: Type.Optional(VIEW.revision),
     activation: Type.Optional(VIEW.activation),
     messages: Type.Optional(viewSplice(MessageType)),
-    appends: Type.Optional(
-      Type.Array(Type.Object({ at: Type.Number(), append: Type.String(), version: Type.Number() })),
-    ),
+    appends: Type.Optional(Type.Array(ViewAppendType)),
     parts: Type.Optional(viewSplice(PartViewType)),
     turns: Type.Optional(viewSplice(TurnInfoType)),
     execution: Type.Optional(VIEW.execution),
@@ -167,6 +174,3 @@ export const ViewFrameSchema: Schema<ViewFrame> = standard(withJson(ViewFrameTyp
 
 /** One array of a view as the previous frame's array spliced: `runs` holds `[from, count]` pairs, each copying `count` items of the previous array from `from`, or with `from` -1 taking the next `count` of `items`. */
 export type ViewSplice<T> = { readonly runs: readonly number[]; readonly items: readonly T[] };
-
-/** Text a streaming part streamed since the previous frame: the message at `at` of the spliced messages, its `state.markdown` grown by `append`, now at `version`. */
-export type ViewAppend = { readonly at: number; readonly append: string; readonly version: number };
