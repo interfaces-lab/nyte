@@ -15,7 +15,7 @@ import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
 import { readWorkspaceStatus } from "../services/workspace.ts";
-import type { HandlerContext } from "./scope.ts";
+import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 
 const HISTORY_PAGE = 200;
 
@@ -227,7 +227,7 @@ export async function watchHost(context: HandlerContext): Promise<void> {
 }
 
 export async function refreshWorkspace(
-  context: HandlerContext,
+  context: LocalHandlerContext,
   cwd: string,
   options?: {
     readonly mentions: { mentions(signal: AbortSignal): Promise<readonly string[]> };

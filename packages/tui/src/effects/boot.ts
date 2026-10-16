@@ -19,18 +19,9 @@ export interface BootOptions {
   readonly effort: Thinking | null;
 }
 
-/**
- * Starts the app: lists models as soon as `opened` says the host is reachable, and follows the session to resume or opens a blank chat. A failed
- * `opened` fails boot.
- */
-export async function boot(
-  options: BootOptions,
-  opened: Promise<void>,
-  context: HandlerContext,
-): Promise<void> {
+/** Starts the app once the host opens: lists models, then follows the session to resume or opens a blank chat. */
+export async function boot(options: BootOptions, context: HandlerContext): Promise<void> {
   const { dispatch, ports, scope } = context;
-
-  if (!(await reachable(opened, context.signal))) return;
   const catalog = await ports.host.listModels();
   const { settings } = context.read().facts;
   dispatch({ kind: "catalog", generation: (scope.catalogGeneration += 1), catalog });
@@ -97,14 +88,6 @@ export async function boot(
     });
 
   await checkUpdate(settings.autoUpdate, context);
-}
-
-function reachable(opened: Promise<void>, signal: AbortSignal): Promise<boolean> {
-  const aborted = new Promise<boolean>((resolve) =>
-    signal.addEventListener("abort", () => resolve(false), { once: true }),
-  );
-
-  return signal.aborted ? Promise.resolve(false) : Promise.race([opened.then(() => true), aborted]);
 }
 
 /** The session to resume, or `null` for a blank chat. */

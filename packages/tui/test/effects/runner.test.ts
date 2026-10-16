@@ -26,12 +26,13 @@ afterAll(() => {
 interface Harness {
   readonly runner: Runner;
   readonly ports: FakePorts;
+  readonly controller: AbortController;
   readonly dispatched: Msg[];
   set(state: State): void;
   received<K extends Msg["kind"]>(kind: K): Promise<Extract<Msg, { readonly kind: K }>>;
 }
 
-function harness(initial: State): Harness {
+function harness(initial: State, opened: Promise<void> = Promise.resolve()): Harness {
   const host = fakeHost();
   const ports = fakePorts(host);
   const dispatched: Msg[] = [];
@@ -45,6 +46,7 @@ function harness(initial: State): Harness {
     },
     read: () => state,
     signal: controller.signal,
+    opened,
   });
 
   const received = <K extends Msg["kind"]>(kind: K): Promise<Extract<Msg, { readonly kind: K }>> =>
@@ -55,6 +57,7 @@ function harness(initial: State): Harness {
   return {
     runner,
     ports,
+    controller,
     dispatched,
     set: (next) => {
       state = next;
@@ -481,10 +484,13 @@ test("at boot --effort wins over the remembered level, and a resumed session kee
 
   for (const blank of blanks) {
     const app = harness(remembering("low"));
-    app.runner.boot(
-      { home: "/tmp", cwd: "/tmp", target: { kind: "new" }, model: null, effort: blank.effort },
-      Promise.resolve(),
-    );
+    app.runner.boot({
+      home: "/tmp",
+      cwd: "/tmp",
+      target: { kind: "new" },
+      model: null,
+      effort: blank.effort,
+    });
     await app.runner.settled();
     expect(await app.received("blank-opened")).toMatchObject({
       chat: { selection: { effort: blank.shown } },
@@ -493,16 +499,13 @@ test("at boot --effort wins over the remembered level, and a resumed session kee
   }
 
   const app = harness(remembering("high"));
-  app.runner.boot(
-    {
-      home: "/tmp",
-      cwd: "/tmp",
-      target: { kind: "session", id: asId("s1") },
-      model: null,
-      effort: null,
-    },
-    Promise.resolve(),
-  );
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "session", id: asId("s1") },
+    model: null,
+    effort: null,
+  });
   await app.runner.settled();
   expect(await app.received("session-opened")).toMatchObject({ session: asId("s1") });
   expect(app.ports.host.sessions.get("s1")?.calls.configure).toEqual([]);
@@ -591,6 +594,41 @@ test("a local shell reports its job as facts from start to end and can be stoppe
   });
 });
 
+test("before the host opens, local effects run at once and host effects wait, then start in order", async () => {
+  const opening = Promise.withResolvers<void>();
+  const app = harness(buildState(followed(LANDED)), opening.promise);
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  app.runner.run({ kind: "copy", text: "now" });
+  app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
+  await Bun.sleep(5);
+
+  expect(app.ports.terminal.copies).toEqual(["now"]);
+  expect(app.dispatched).toEqual([]);
+
+  opening.resolve();
+  await app.runner.settled();
+  expect(app.dispatched.map((msg) => msg.kind).slice(0, 2)).toEqual([
+    "blank-opened",
+    "session-opened",
+  ]);
+});
+
+test("a runner stopped before the host opens drops its waiting host effects and settles", async () => {
+  const app = harness(buildState(followed(LANDED)), new Promise(() => undefined));
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  app.controller.abort();
+  await app.runner.dispose();
+
+  expect(app.dispatched).toEqual([]);
+});
+
 test("exit resolves the runner's exited promise with the code", async () => {
   const app = harness(buildState(null));
   app.runner.run({ kind: "exit", code: 3 });
@@ -643,16 +681,13 @@ test("a rename of the followed chat in the session directory reaches its info, s
   const app = harness(state);
   const info = followedSession(state)?.info;
 
-  app.runner.boot(
-    {
-      home: "/tmp",
-      cwd: "/tmp",
-      target: { kind: "session", id: asId("s1") },
-      model: null,
-      effort: null,
-    },
-    Promise.resolve(),
-  );
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "session", id: asId("s1") },
+    model: null,
+    effort: null,
+  });
 
   if (info === undefined) throw new Error("The fixture follows s1.");
   app.ports.host.publishSessions([info]);

@@ -5,7 +5,7 @@ import type { Effect } from "../model/effect.ts";
 import { followedSession } from "../model/state.ts";
 import type { Notice, Selection, State } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
-import type { HandlerContext } from "./scope.ts";
+import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 import {
   fallback,
   buildConfigPatch,
@@ -276,7 +276,7 @@ export async function changeDirectory(
 
 export async function refreshWorkspaceFacts(
   effect: Of<"refresh-workspace">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   await refreshWorkspace(context, effect.cwd);
 }

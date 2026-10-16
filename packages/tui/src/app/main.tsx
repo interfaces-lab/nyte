@@ -88,6 +88,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const [fallen, setFallen] = createSignal<(() => void) | null>(null);
   let startupError: string | null = null;
   let opened: OpenedHost | null = null;
+  const hostOpened = Promise.withResolvers<void>();
+  hostOpened.promise.catch(() => undefined);
 
   const reachable = (): OpenedHost => {
     if (opened === null) throw new Error("The host is still opening.");
@@ -127,6 +129,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
           ports,
           read: context.read,
           signal: controller.signal,
+          opened: hostOpened.promise,
           dispatch(msg) {
             if (msg.kind === "effect-failed" && msg.effect === "boot") {
               startupError = msg.message;
@@ -169,11 +172,12 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 
   const opening = options.open(store.dispatch).then((host) => {
     opened = host;
+    hostOpened.resolve();
 
     return host;
   });
 
-  opening.catch(() => undefined);
+  opening.catch((cause: unknown) => hostOpened.reject(cause));
   const uninstallKeymap = installKeymap({ renderer, store, fallen, quit });
 
   const syncTerminal = (): void => {
@@ -248,10 +252,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   );
 
   options.typeahead?.release();
-  store.runner.boot(
-    options.boot,
-    opening.then(() => undefined),
-  );
+  store.runner.boot(options.boot);
 
   return {
     store,

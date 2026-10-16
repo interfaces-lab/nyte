@@ -37,11 +37,18 @@ export interface RunnerContext {
   readonly dispatch: (msg: Msg) => void;
   readonly read: () => State;
   readonly signal: AbortSignal;
+  /** Settles once `ports.host` and `ports.plugins` are reachable, or rejects when the host can't open. */
+  readonly opened: Promise<void>;
 }
 
 /** What each effect handler runs with: the runner's context and its shared scope. */
 export interface HandlerContext extends RunnerContext {
   readonly scope: Scope;
+}
+
+/** What a handler that runs before the host opens gets: every port but the host and its plugins. */
+export interface LocalHandlerContext extends Omit<HandlerContext, "ports"> {
+  readonly ports: Omit<Ports, "host" | "plugins">;
 }
 
 export function createScope(): Scope {
