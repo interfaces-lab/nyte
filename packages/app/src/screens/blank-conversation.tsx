@@ -82,7 +82,9 @@ function useBlankViewBinding(
 
 /**
  * A new chat: the draft composer until the first message starts the chat
- * and the pane moves to it once its first view arrived. A failed start's raw
+ * and the pane moves to it once its first view arrived. A failed start that
+ * left a chat under the draft's id opens that chat; when another start took
+ * the id, the message waits in that chat's composer. A failed start's raw
  * cause is diagnostic only: it rides in `title`, never in body copy.
  */
 export function BlankConversation({
@@ -174,8 +176,27 @@ export function BlankConversation({
 
       return true;
     } catch (cause: unknown) {
-      viewStore.restoreBlank(paneId, submitted);
+      const started = await connected()
+        .then((connection) => connection.session(id).info())
+        .then(
+          () => true,
+          () => false,
+        );
+
       setSending(false);
+
+      if (started) {
+        if (cause instanceof SdkError && cause.code === "invalid")
+          viewStore.updateSession(id, paneId, (state) => ({
+            ...state,
+            composer: submitted.composer,
+          }));
+        actions.openSessionInPane(paneId, id);
+
+        return true;
+      }
+
+      viewStore.restoreBlank(paneId, submitted);
 
       setStartFailure(
         cause instanceof SdkError && cause.code === "invalid"
