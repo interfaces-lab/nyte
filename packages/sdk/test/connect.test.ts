@@ -6,7 +6,7 @@ import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection } from "@nyte-ai/core";
 import { listenFetch } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
 import { BASE, TOKEN_SECRET, operationOf, served } from "./served.ts";
@@ -254,14 +254,10 @@ describe("connect", () => {
     expect(await two.host.sessions.list()).toMatchObject({ items: [] });
   });
 
-  it("ends a stream opened before a revoke on another instance within the 60 s window, the link revoked (ADV C N2, probe N1)", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
+  it("ends a stream opened before a revoke on another instance once this one's store poll reads it, the link revoked (ADV C N2, probe N1)", async () => {
     const store = memoryStore();
 
-    const compose = () =>
+    const compose = (poll?: number) =>
       composeHost({
         store,
         models: fakeModels().models,
@@ -269,10 +265,11 @@ describe("connect", () => {
         workspace: { kind: "chat-only", locator: null },
         home: null,
         description: { name: "test", platform: "darwin", version: "0.1.0" },
+        poll,
       });
 
     const a = await compose();
-    const b = await compose();
+    const b = await compose(10);
     cleanups.push(
       () => a.close(),
       () => b.close(),
@@ -307,8 +304,6 @@ describe("connect", () => {
 
       return "ended";
     })();
-
-    await vi.advanceTimersByTimeAsync(60_000);
 
     expect(await ended).toBe("ended");
     expect(await lastLink(hostViews)).toEqual({ kind: "closed", reason: "revoked" });
