@@ -1,7 +1,10 @@
+import { homedir } from "node:os";
+import process from "node:process";
 import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
 import type { Reply } from "@nyte-ai/host/bench";
 import type { ToolResultMessage } from "@nyte-ai/schema/model";
 import type { ModelRef } from "@nyte-ai/schema";
+import { restaurantReplies, restaurantSkill } from "@nyte-ai/app/e2e/scenario-u-fixture";
 
 export const E2E_PROVIDER = "e2e";
 
@@ -127,11 +130,20 @@ function delegationStep(results: readonly ToolResultMessage[]): Reply {
 }
 
 export function e2eModels() {
+  const restaurant = restaurantReplies({
+    skill: restaurantSkill(homedir()),
+    origin: process.env.NYTE_E2E_PLACES_ORIGIN,
+    log: true,
+  });
+
   return fakeModels({
     id: E2E_PROVIDER,
     name: "E2E",
     models: [testModel(E2E_MODEL.id, { name: "Scripted", provider: E2E_PROVIDER })],
     fallback: (request): Reply => {
+      const pick = restaurant(request);
+
+      if (pick !== null) return pick;
       const text = lastUserText(request);
 
       const answered = request.context.messages.findLastIndex(

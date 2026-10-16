@@ -41,6 +41,10 @@ interface LaunchOptions {
   readonly home: string;
   readonly parentDirectory: string;
   readonly downloadsDirectory?: string;
+  /** The app-data folder to keep across launches, as a relaunch reuses its profile; default a new one removed on close. */
+  readonly appData?: string;
+  /** Variables set over the kept ones, such as `NYTE_TRACE`. */
+  readonly environment?: Readonly<Record<string, string>>;
 }
 
 interface LaunchedDesktop {
@@ -72,18 +76,18 @@ async function electronExecutable(): Promise<string> {
   return join(electronRoot, "dist", executable.trim());
 }
 
-function launchEnvironment(home: string) {
+function launchEnvironment(home: string, environment?: Readonly<Record<string, string>>) {
   const kept = Object.entries(process.env).filter(
     (entry): entry is [string, string] => entry[1] !== undefined && KEPT_VARIABLES.has(entry[0]),
   );
 
-  return { ...Object.fromEntries(kept), HOME: home, USERPROFILE: home };
+  return { ...Object.fromEntries(kept), ...environment, HOME: home, USERPROFILE: home };
 }
 
 export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDesktop> {
   await assertBuilt();
   const root = await mkdtemp(join(options.parentDirectory, "desktop-"));
-  const appData = join(root, "app-data");
+  const appData = options.appData ?? join(root, "app-data");
   await mkdir(appData, { recursive: true });
   await symlink(
     join(PACKAGES_ROOT, "canvas"),
@@ -122,7 +126,7 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
     executablePath: await electronExecutable(),
     args: [root, "--use-mock-keychain", "--password-store=basic"],
     cwd: DESKTOP_ROOT,
-    env: launchEnvironment(options.home),
+    env: launchEnvironment(options.home, options.environment),
     timeout: 30_000,
   });
 
