@@ -100,13 +100,16 @@ describe("the store is the truth", () => {
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
     await step;
+    const side = asId<"head">("side");
+    await session.heads.create(side, { from: (await session.tree()).tip });
+    const head = session.head(side);
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
 
-    expect((await session.view()).revision).not.toBe("");
-    expect((await (await session.move({ kind: "start" })).settled()).kind).toBe("moved");
-    expect(await kernel.store.refs.get(headRef(session.id, main))).toBeNull();
-    expect((await session.view()).revision).toBe("");
+    expect((await head.view()).revision).not.toBe("");
+    expect((await (await head.move({ kind: "start" })).settled()).kind).toBe("moved");
+    expect(await kernel.store.refs.get(headRef(session.id, side))).toBeNull();
+    expect((await head.view()).revision).toBe("");
     hold.release();
   });
 
@@ -203,7 +206,9 @@ describe("the store is the truth", () => {
       shown.done !== true &&
         (
           await (
-            await session.move({ kind: "start" }, { expect: shown.value.revision ?? undefined })
+            await session.move(shown.value.heads[0]?.tip ?? { kind: "start" }, {
+              expect: shown.value.revision ?? undefined,
+            })
           ).settled()
         ).kind,
     ).toBe("moved");

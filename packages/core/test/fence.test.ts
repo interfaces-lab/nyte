@@ -285,25 +285,29 @@ describe("move receipts and summary guards (ADV F-2)", () => {
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const { session, receipt: base } = await a.host.sessions.start({ content: "Base." });
     await landing(a.kernel, session.id, main, [base.message], null);
+    const next = await session.send("Next.");
+    await landing(a.kernel, session.id, main, [next.message], null);
+    const { tip, nodes } = await session.tree();
     const id = asId<"receipt">("crash");
 
-    await expect(move(a.kernel, session.id, main, { kind: "start" }, { id })).rejects.toThrow(
+    await expect(move(a.kernel, session.id, main, tip, { id })).rejects.toThrow(
       "The host crashed.",
     );
 
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
-    const replay = await move(b.kernel, session.id, main, { kind: "start" }, { id });
+    const replay = await move(b.kernel, session.id, main, tip, { id });
+    const landed = await memory.refs.get(headRef(session.id, main));
     const moved = {
       kind: "moved",
-      revision: "",
-      position: { kind: "start" },
+      revision: landed?.revision,
+      position: { kind: "commit", id: nodes[0]?.id },
       summary: null,
-      handback: null,
+      handback: "Next.",
     };
 
     expect(await replay.status()).toEqual({ kind: "settled", outcome: moved });
     expect(await replay.settled()).toEqual(moved);
-    expect(await memory.refs.get(headRef(session.id, main))).toBeNull();
+    expect(landed?.target).toBe(nodes[0]?.id);
   });
 
   it("refuses a summary move whose head got pending input while it summarised (F-2 2, N2)", async () => {
@@ -322,15 +326,14 @@ describe("move receipts and summary guards (ADV F-2)", () => {
 
     const { session, receipt: base } = await host.sessions.start({ content: "Base." });
     await landing(kernel, session.id, main, [base.message], null);
+    const next = await session.send("Next.");
+    await landing(kernel, session.id, main, [next.message], null);
     const tip = await kernel.store.refs.get(headRef(session.id, main));
 
-    const receipt = await move(
-      kernel,
-      session.id,
-      main,
-      { kind: "start" },
-      { expect: tip?.revision, abandoned: { summarize: {} } },
-    );
+    const receipt = await move(kernel, session.id, main, (await session.tree()).tip, {
+      expect: tip?.revision,
+      abandoned: { summarize: {} },
+    });
 
     await entered.promise;
     const queued = await session.send("Queued.", { delivery: "queue" });

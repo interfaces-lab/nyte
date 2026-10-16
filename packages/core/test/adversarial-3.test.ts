@@ -310,9 +310,11 @@ describe("ADV F-3", () => {
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const { session, receipt: first } = await a.host.sessions.start({ content: "Base." });
     await landing(a.kernel, session.id, main, [first.message], null);
+    await land(a.kernel, session, "Next.");
+    const { tip, nodes } = await session.tree();
     const id = asId<"receipt">("crash");
 
-    await expect(move(a.kernel, session.id, main, { kind: "start" }, { id })).rejects.toThrow(
+    await expect(move(a.kernel, session.id, main, tip, { id })).rejects.toThrow(
       "The host crashed.",
     );
 
@@ -326,10 +328,10 @@ describe("ADV F-3", () => {
 
     const moved = {
       kind: "moved",
-      revision: "",
-      position: { kind: "start" },
+      revision: (await memory.refs.get(headRef(session.id, main)))?.revision,
+      position: { kind: "commit", id: nodes[0]?.id },
       summary: null,
-      handback: null,
+      handback: "Next.",
     };
 
     expect(await receipt.status()).toEqual({ kind: "settled", outcome: moved });
@@ -341,24 +343,26 @@ describe("ADV F-3", () => {
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const { session, receipt: first } = await a.host.sessions.start({ content: "Base." });
     await landing(a.kernel, session.id, main, [first.message], null);
+    await land(a.kernel, session, "Next.");
+    const { tip, nodes } = await session.tree();
     const id = asId<"receipt">("crash");
 
-    await expect(move(a.kernel, session.id, main, { kind: "start" }, { id })).rejects.toThrow(
+    await expect(move(a.kernel, session.id, main, tip, { id })).rejects.toThrow(
       "The host crashed.",
     );
 
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
     await land(b.kernel, b.host.session(session.id), "Later.");
     const later = await memory.refs.get(headRef(session.id, main));
-    const replay = await move(b.kernel, session.id, main, { kind: "start" }, { id });
+    const replay = await move(b.kernel, session.id, main, tip, { id });
     const log = await memory.refs.log(session.id, asSeq(0), 1000);
 
     expect(await replay.settled()).toEqual({
       kind: "moved",
       revision: later?.revision,
-      position: { kind: "start" },
+      position: { kind: "commit", id: nodes[0]?.id },
       summary: null,
-      handback: null,
+      handback: "Next.",
     });
     expect(log.filter((event) => event.kind === "head" && event.reason === "moved")).toHaveLength(
       1,

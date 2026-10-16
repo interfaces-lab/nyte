@@ -145,6 +145,8 @@ export async function retrySend(session: Session, savedId: string) {
 /**
  * Editing replaces a MessageId with the new input. A landed edit can stop
  * the active run, move history and retain or summarize the abandoned path.
+ * It is the one way to rewrite a chat's first message: main never moves
+ * before that message on its own, since the chat would be empty.
  * `expect` comes from a current view. When its revision is null, read again
  * before editing so the mutation keeps its concurrency check.
  */

@@ -71,7 +71,9 @@ function changed(change: (opened: StoreConnection) => StoreConnection): Store {
 async function sent(handler: (request: Request) => Promise<Response>) {
   return decodeOutput(
     "sessions.start",
-    await (await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
+    await (
+      await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
+    ).json(),
   );
 }
 
@@ -249,7 +251,9 @@ describe("handler", () => {
 
     const { session } = decodeOutput(
       "sessions.start",
-      await (await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
+      await (
+        await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
+      ).json(),
     );
 
     const controller = new AbortController();
@@ -429,7 +433,9 @@ describe("handler", () => {
 
     const { session } = decodeOutput(
       "sessions.start",
-      await (await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
+      await (
+        await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
+      ).json(),
     );
 
     const created = decodeOutput(
@@ -468,7 +474,9 @@ describe("handler", () => {
 
     const { session } = decodeOutput(
       "sessions.start",
-      await (await post(warm.handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })).json(),
+      await (
+        await post(warm.handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
+      ).json(),
     );
 
     const cold = await served({ store, plugins });
@@ -517,7 +525,11 @@ describe("handler", () => {
     fake.reply("One.");
     const { session, receipt } = await sent(handler);
     await post(handler, "receipt.settled", { session, receipt });
-    const move = { session, head: main, position: { kind: "start" }, id: "move-1" };
+    const { tip } = decodeOutput(
+      "head.tree",
+      await (await post(handler, "head.tree", { session, head: main })).json(),
+    );
+    const move = { session, head: main, position: tip, id: "move-1" };
     const moved = await post(handler, "head.move", move);
     const again = await post(handler, "head.move", move);
     const reused = await post(handler, "head.move", { ...move, options: { running: "stop" } });

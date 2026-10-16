@@ -21,6 +21,7 @@ import {
   createPosition,
   EMPTY_REVISION,
   guard,
+  MAIN,
   put,
   readReceipt,
   readRefExpectation,
@@ -35,6 +36,9 @@ import { objectId } from "../util/content.ts";
 import { holdSummary, summarizedMove, summaryHeld } from "./branch-summary.ts";
 import { fence, finishFence } from "./fence.ts";
 import { known, reserve, settleReceipt, typedReceipt } from "./receipts.ts";
+
+const EMPTY_CHAT =
+  "Main can't move before its first message with nothing queued: the chat would be empty. Send a replacement for that message instead.";
 
 interface Plan {
   readonly landing: CommitId | null;
@@ -198,6 +202,9 @@ async function decide(
     );
 
     if (plan === null) return { kind: "failed", outcome: { kind: "missing-target" } };
+
+    if (head === MAIN && plan.landing === null && checked.inbox.messages.length === 0)
+      throw new SdkError("invalid", EMPTY_CHAT);
     const abandoned = options.abandoned;
 
     if (typeof abandoned === "object" && plan.abandoned.length > 0)

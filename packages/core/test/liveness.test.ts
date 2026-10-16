@@ -443,19 +443,16 @@ describe("liveness across instances (D2)", () => {
   it("5.6 (F F1): a duplicate move with the same id replays the first receipt and moves once", async () => {
     const store = await memoryStore().open();
     const { kernel, host } = await setup({ store, execution: { kind: "admit-only" } });
-    const { session } = await host.sessions.start({ content: "One." });
-    await landing(
-      kernel,
-      session.id,
-      main,
-      (await session.view()).messages.map((entry) => asId(entry.id)),
-      null,
-    );
+    const { session, receipt } = await host.sessions.start({ content: "One." });
+    await landing(kernel, session.id, main, [receipt.message], null);
+    const two = await session.send("Two.");
+    await landing(kernel, session.id, main, [two.message], null);
+    const { tip } = await session.tree();
     const id = asId<"receipt">("move-1");
 
     const [first, second] = await Promise.all([
-      move(kernel, session.id, main, { kind: "start" }, { id }),
-      move(kernel, session.id, main, { kind: "start" }, { id }),
+      move(kernel, session.id, main, tip, { id }),
+      move(kernel, session.id, main, tip, { id }),
     ]);
 
     expect(await first.settled()).toMatchObject({ kind: "moved" });
@@ -474,22 +471,19 @@ describe("liveness across instances (D2)", () => {
       store: wrapped.store,
       execution: { kind: "admit-only" },
     });
-    const { session } = await host.sessions.start({ content: "One." });
-    await landing(
-      kernel,
-      session.id,
-      main,
-      (await session.view()).messages.map((entry) => asId(entry.id)),
-      null,
-    );
+    const { session, receipt } = await host.sessions.start({ content: "One." });
+    await landing(kernel, session.id, main, [receipt.message], null);
+    const two = await session.send("Two.");
+    await landing(kernel, session.id, main, [two.message], null);
     const tip = await memory.refs.get(`sessions/${session.id}/heads/${main}`);
+    const target = (await session.tree()).tip;
 
     wrapped.arm(
       (names) => names.includes(receiptRef(session.id, asId("move-2"))),
       () => session.send("Queued.", { delivery: "queue" }),
     );
 
-    const moved = await move(kernel, session.id, main, { kind: "start" }, { id: asId("move-2") });
+    const moved = await move(kernel, session.id, main, target, { id: asId("move-2") });
 
     expect(await moved.settled()).toMatchObject({ kind: "pending-input" });
     expect((await memory.refs.get(`sessions/${session.id}/heads/${main}`))?.revision).toBe(
@@ -584,6 +578,9 @@ describe("liveness across instances (D2)", () => {
     const b = await setup({ store, execution: { kind: "admit-only" } });
     const { session, receipt: sent } = await b.host.sessions.start({ content: "One." });
     await landing(b.kernel, session.id, main, [sent.message], null);
+    const next = await session.send("Next.");
+    await landing(b.kernel, session.id, main, [next.message], null);
+    const target = (await session.tree()).tip;
     const moved = await startRun(
       b.kernel,
       session.id,
@@ -591,7 +588,7 @@ describe("liveness across instances (D2)", () => {
       { kind: "continuation", from: "wake" },
       configuration,
     );
-    const receipt = await move(a.kernel, session.id, main, { kind: "start" }, { running: "stop" });
+    const receipt = await move(a.kernel, session.id, main, target, { running: "stop" });
 
     expect(await receipt.settled()).toMatchObject({ kind: "moved" });
     await endRun(b.kernel, session.id, moved.id, { kind: "stopped" });

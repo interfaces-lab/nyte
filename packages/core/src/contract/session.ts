@@ -156,6 +156,7 @@ export interface Head {
 
   tree(): Promise<TreeView>;
 
+  /** Moves the head to `position`; a user commit lands on its parent and hands its content back. Main never lands before its first message with nothing queued, since the chat would be empty: that move is refused as invalid, and `send(content, { replace })` rewrites the first message in one step instead. */
   move(position: Position, options?: MoveOptions): Promise<Receipt<MoveOutcome>>;
 
   compact(input?: {
