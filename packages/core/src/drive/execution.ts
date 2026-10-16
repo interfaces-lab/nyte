@@ -42,6 +42,7 @@ import {
 import type { Found } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
+import type { StoreConnection } from "../contract/store.ts";
 
 const RENEW_MS = 10_000;
 
@@ -524,7 +525,7 @@ async function settleLive(
   const run = live.record.view.id;
 
   if (kernel.driving.has(run))
-    return (await holding(kernel, session, live.record)) ?? { kind: "idle" };
+    return (await holding(kernel.store, session, live.record)) ?? { kind: "idle" };
 
   if (live.record.stopping) {
     kernel.runs.start(session, run).abort();
@@ -548,19 +549,18 @@ async function settleLive(
   if (record === undefined) return null;
 
   return (
-    (await holding(kernel, session, record)) ??
+    (await holding(kernel.store, session, record)) ??
     (await drive(kernel, session, head, record.view)) ??
     next(kernel, session, head)
   );
 }
 
 async function holding(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   record: RunRecord,
 ): Promise<AdvanceReport | null> {
-  if (record.parked.length > 0 || record.waiting !== null)
-    return waitingOn(kernel, session, record);
+  if (record.parked.length > 0 || record.waiting !== null) return waitingOn(store, session, record);
 
   return record.retrying !== null && record.retrying.until > Date.now()
     ? { kind: "retry", until: record.retrying.until }
@@ -789,7 +789,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   if (record.stopping || calls.some((call) => !call.parked)) return { kind: "continue" };
 
-  if (record.waiting !== null || calls.length > 0) return waitingOn(kernel, session, record);
+  if (record.waiting !== null || calls.length > 0) return waitingOn(kernel.store, session, record);
 
   if (record.retrying !== null && record.retrying.until > Date.now())
     return { kind: "retry", until: record.retrying.until };
@@ -798,7 +798,7 @@ async function next(kernel: Kernel, session: SessionId, head: HeadName): Promise
 }
 
 async function waitingOn(
-  kernel: Kernel,
+  store: StoreConnection,
   session: SessionId,
   record: RunRecord,
 ): Promise<AdvanceReport> {
@@ -807,7 +807,7 @@ async function waitingOn(
   return {
     kind: "waiting",
     until:
-      (await earliestWake(kernel.store, session, record.parked)) ??
+      (await earliestWake(store, session, record.parked)) ??
       (waiting === null
         ? null
         : waiting.kind === "timer"
