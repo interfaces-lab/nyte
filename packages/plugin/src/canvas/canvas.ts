@@ -81,7 +81,7 @@ export const CANVAS_DESCRIPTION = [
   "Render a React canvas inline in the chat. `source` is one TSX module whose default export is a component.",
   `Only two imports exist: \`react\` and \`${KIT_SPECIFIER}\`; nothing else resolves (no npm packages, no URLs, no fetch, no relative files). \`eval\` and \`new Function\` are unavailable at run time.`,
   `The canvas runs sandboxed with no network, sized to its content (up to ${CANVAS_MAX_HEIGHT} px, then it scrolls), on the chat's background with the user's theme applied through the kit.`,
-  "Use the kit for layout, text, data and charts; never hard-code colours, fonts or backgrounds. Links to http(s) URLs open in the user's browser. Pass `canvas` to replace an earlier canvas in place.",
+  "Use the kit for layout, text, data and charts; never hard-code colours, fonts or backgrounds. An `<a href>` to an http(s) URL opens in the user's browser, and one to a workspace path such as `src/app.ts:42` opens that file at that line; other schemes are refused. Pass `canvas` to replace an earlier canvas in place.",
   "",
   "Charts: `StackedBars` and `Sparkline` are compact and axis-free, for a figure that sits beside its own number (a Stat, a Table row); use them first. `LineChart`, `BarChart` and `PieChart` are full charts with axes, gridlines and a readout, for a series that needs reading on its own. All of them share one look; give each series a `tint` only when a hue carries meaning, or leave the order to the kit.",
   `Tint = ${TINTS.map((tint) => `"${tint}"`).join(" | ")}.`,
