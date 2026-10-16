@@ -3,26 +3,11 @@
  * package root does not bundle every SDK.
  */
 import { providerRequest } from "../model-variants.ts";
-import type {
-  AccountLimits,
-  AccountLimitsFetchOptions,
-  AccountLimitsTarget,
-  Context,
-  Model,
-} from "../types.ts";
+import type { Context, Model } from "../types.ts";
 import type { OpenAICompactResult } from "./openai-compact.ts";
 import type { OpenAICodexCompactResult } from "./openai-codex-compact.ts";
 import type { OpenAICodexResponsesOptions } from "./openai-codex-protocol.ts";
 import type { OpenAIResponsesOptions } from "./openai-responses.ts";
-
-export async function fetchAnthropicAccountLimits(
-  model: AccountLimitsTarget,
-  options?: AccountLimitsFetchOptions,
-): Promise<AccountLimits> {
-  const api = await import("./anthropic-messages.ts");
-
-  return api.fetchAnthropicAccountLimits(model, options);
-}
 
 export async function compactOpenAICodexContext(
   selected: Model<"openai-codex-responses">,

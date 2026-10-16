@@ -136,6 +136,8 @@ export { openaiCodexProvider } from "./providers/openai-codex.ts";
 
 export { fetchOpenAICodexAccountLimits } from "./providers/openai-codex-limits.ts";
 
+export { fetchAnthropicAccountLimits } from "./providers/anthropic-limits.ts";
+
 export { openrouterProvider } from "./providers/openrouter.ts";
 
 export { vercelAiGatewayProvider } from "./providers/vercel-ai-gateway.ts";
