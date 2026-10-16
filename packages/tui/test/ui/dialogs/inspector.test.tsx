@@ -98,7 +98,7 @@ test("the host resolves the task from the screen, with its elapsed time", async 
   const frame = app.frame();
 
   expect(frame).not.toContain("Loading…");
-  expect(frame).toContain("running · 1m5s");
+  expect(frame).toContain("running · 1m 5s");
   expect(frame).toContain("first output line");
 });
 

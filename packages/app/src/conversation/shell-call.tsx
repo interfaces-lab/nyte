@@ -3,12 +3,12 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
 import {
   condensedCommand,
+  formatDuration,
   toolOutput,
   toolStatus,
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
 import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
-import { formatToolDuration } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -245,7 +245,7 @@ function outputTail(text: string) {
 
 /** How long core measured the command took; a cut output already says so in its own last line. */
 function Facts({ durationMs }: { readonly durationMs: number }): ReactElement {
-  return <span {...props(styles.facts)}>{formatToolDuration(durationMs)}</span>;
+  return <span {...props(styles.facts)}>{formatDuration(durationMs)}</span>;
 }
 
 function CommandCode({

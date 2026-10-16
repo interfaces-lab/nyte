@@ -2,6 +2,7 @@ import { pathToFiletype } from "@opentui/core";
 import type { ToolClass } from "@nyte-ai/sdk";
 import {
   delegateSubject,
+  formatDuration,
   toolNoun,
   toolOutput,
   toolStatus,
@@ -18,7 +19,6 @@ import {
 } from "./constants.ts";
 import {
   earlierLinesLabel,
-  formatDuration,
   lowerFirst,
   omittedLabel,
   previewLines,
@@ -167,7 +167,7 @@ function partClock(message: ToolMessage): string | undefined {
   const { status } = message;
 
   return message.state.class.kind === "shell" && status.kind === "settled"
-    ? formatDuration(Math.max(0, status.endedAt - message.at))
+    ? formatDuration(status.endedAt - message.at)
     : undefined;
 }
 
@@ -416,7 +416,7 @@ export function shellCard(job: ShellJob, now: number, expanded: boolean): ToolCa
       [
         resultSummary(job.output),
         outcome,
-        running ? formatDuration(Math.max(0, now - job.startedAt)) : undefined,
+        running ? formatDuration(now - job.startedAt) : undefined,
         job.include ? undefined : "not sent to model",
       ],
       job.command,

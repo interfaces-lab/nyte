@@ -12,7 +12,8 @@ import {
   GLYPHS,
   RECOVERY_STEPS,
 } from "../../lib/constants.ts";
-import { clockDuration, formatDuration, retryCause } from "../../lib/format.ts";
+import { formatDuration } from "@nyte-ai/plugin/client/presentation";
+import { clockDuration, retryCause } from "../../lib/format.ts";
 import type { CliTheme } from "../../lib/theme.ts";
 import type { TurnStatus } from "../../model/transcript.ts";
 import { Spinner } from "../chrome/spinner.tsx";
@@ -25,7 +26,7 @@ interface Line {
 
 const CLOCK_INTERVAL_MS = 1_000;
 
-function lineOf(status: TurnStatus, theme: CliTheme, now: number): Line {
+function statusLine(status: TurnStatus, theme: CliTheme, now: number): Line {
   switch (status.kind) {
     case "unanswered":
       return { text: "", color: theme.dim, spinner: null };
@@ -90,7 +91,7 @@ export function TurnStatusRow(props: {
     });
   });
 
-  const line = createMemo(() => lineOf(props.status, kit.theme(), now()));
+  const line = createMemo(() => statusLine(props.status, kit.theme(), now()));
 
   return (
     <box

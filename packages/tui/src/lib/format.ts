@@ -1,5 +1,5 @@
 import type { Thinking, ToolClass, UserContent } from "@nyte-ai/sdk";
-import { toolTitle } from "@nyte-ai/plugin/client/presentation";
+import { formatDuration, toolTitle } from "@nyte-ai/plugin/client/presentation";
 import type { ToolTense } from "@nyte-ai/plugin/client/presentation";
 import type { RemoteFacts } from "../model/state.ts";
 import { GLYPHS } from "./constants.ts";
@@ -17,26 +17,13 @@ export function toolLine(toolClass: ToolClass, tense: ToolTense): string {
   return tense === "none" ? title : lowerFirst(title);
 }
 
-export function formatDuration(ms: number): string {
-  const seconds = ms / 1000;
-
-  if (seconds < 10) return `${seconds.toFixed(1)}s`;
-
-  if (seconds < 60) return `${String(Math.floor(seconds))}s`;
-  const minutes = Math.floor(seconds / 60);
-
-  if (minutes < 60) return `${String(minutes)}m${String(Math.floor(seconds % 60))}s`;
-
-  return `${String(Math.floor(minutes / 60))}h${String(minutes % 60)}m`;
-}
-
 export interface Timing {
   readonly startedAt: number;
   readonly endedAt: number | null;
 }
 
 export function formatTiming(timing: Timing, now: number): string {
-  return formatDuration(Math.max(0, (timing.endedAt ?? now) - timing.startedAt));
+  return formatDuration((timing.endedAt ?? now) - timing.startedAt);
 }
 
 export function resultSummary(text: string): string | undefined {

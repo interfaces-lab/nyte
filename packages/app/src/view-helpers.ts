@@ -68,19 +68,6 @@ export function conversationTurns(view: SessionView): ConversationTurns {
   return grouped;
 }
 
-export function formatToolDuration(ms: number): string {
-  const seconds = Math.max(0, ms) / 1000;
-
-  if (seconds < 10) return `${seconds.toFixed(1)}s`;
-
-  if (seconds < 60) return `${String(Math.floor(seconds))}s`;
-  const minutes = Math.floor(seconds / 60);
-
-  if (minutes < 60) return `${String(minutes)}m ${String(Math.floor(seconds % 60))}s`;
-
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
-}
-
 export function workspacePath(workspace: Pick<WorkspaceInfo, "target">): string | null {
   const { target } = workspace;
 

@@ -548,6 +548,25 @@ export function condensedCommand(command: string, cwd: string | undefined): stri
 }
 
 /**
+ * An elapsed time as a tool or turn shows it: 4.2s, 42s, 5m 3s, 1h 12m. A
+ * negative span reads as zero.
+ *
+ * @category presentation
+ */
+export function formatDuration(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+
+  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+
+  if (seconds < 60) return `${String(Math.floor(seconds))}s`;
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) return `${String(minutes)}m ${String(Math.floor(seconds % 60))}s`;
+
+  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
+}
+
+/**
  * A subject short enough for a narrow line, with the full one as `title`
  * when they differ.
  *
