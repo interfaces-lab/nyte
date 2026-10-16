@@ -275,8 +275,10 @@ export async function lookupOwner(context: Context, userId: string): Promise<Own
 
 /**
  * Ask Clerk to revoke a denied session, then either confirm the denial's
- * expiry or schedule another attempt. Until Clerk confirms, the D1 denial
- * never lapses; past `SESSION_REVOKE_ATTEMPTS` it is simply kept for good.
+ * expiry or schedule another attempt. A session Clerk no longer has (404,
+ * 410) counts as revoked; any other failure is retried. Until Clerk confirms,
+ * the D1 denial never lapses; past `SESSION_REVOKE_ATTEMPTS` it is simply kept
+ * for good.
  */
 export async function settleSessionRevocation(
   context: Context,
@@ -294,9 +296,7 @@ export async function settleSessionRevocation(
       if (answer === undefined) return false;
       const { status } = answer;
 
-      if (status >= 200 && status < 300) return true;
-      // Already gone. Anything else is retried; the D1 denial holds meanwhile.
-      if (status === 404 || status === 410) return true;
+      if ((status >= 200 && status < 300) || status === 404 || status === 410) return true;
       context.log.warn("session.revoke_failed", { status, attempts: input.attempts });
 
       return false;
