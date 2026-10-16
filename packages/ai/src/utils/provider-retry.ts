@@ -21,7 +21,7 @@ interface ProviderError extends Error {
   headers: Headers | undefined;
 }
 
-function isProviderError(error: unknown): error is ProviderError {
+function carriesHttpStatus(error: unknown): error is ProviderError {
   if (!(error instanceof Error) || !("status" in error) || !("headers" in error)) return false;
 
   return (
@@ -31,7 +31,7 @@ function isProviderError(error: unknown): error is ProviderError {
 }
 
 /** Mirrors the pinned OpenAI/Anthropic SDK retry policy; review when either SDK is upgraded. */
-function isRetryableProviderError(error: ProviderError): boolean {
+function sdkPolicyRetries(error: ProviderError): boolean {
   const shouldRetry = error.headers?.get("x-should-retry");
 
   if (shouldRetry === "true") return true;
@@ -104,7 +104,8 @@ function createAbortError(): Error {
  * wrap the request with this helper. Provider-requested delays above
  * `maxRetryDelayMs` fail immediately with a {@link RetryDelayExceededError} (60
  * seconds by default); set it to zero to disable the limit. Adapters without an SDK
- * throw errors carrying `status` and `headers` to take part in the same policy.
+ * throw errors carrying `status` and `headers` to take part in the same policy. Each retry is a
+ * fresh SDK request, so X-Stainless-Retry-Count stays zero.
  */
 export async function retryProviderRequest<T>(
   request: () => Promise<T>,
@@ -115,15 +116,14 @@ export async function retryProviderRequest<T>(
 
   for (;;) {
     try {
-      // Each retry is a fresh SDK request, so X-Stainless-Retry-Count remains zero.
       return await request();
     } catch (error) {
       if (options.signal?.aborted) throw createAbortError();
 
       if (
         retriesRemaining <= 0 ||
-        !isProviderError(error) ||
-        !isRetryableProviderError(error) ||
+        !carriesHttpStatus(error) ||
+        !sdkPolicyRetries(error) ||
         options.retryable?.(error) === false
       )
         throw error;
