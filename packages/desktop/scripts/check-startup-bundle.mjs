@@ -1,5 +1,5 @@
 import { glob, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { failure, formatSize, green, red, table } from "./terminal.mjs";
 
 const KIB = 1_024;
@@ -7,11 +7,14 @@ const KIB = 1_024;
 /**
  * Grammars live in the worker, the terminal wasm is its own asset, and provider SDKs load on
  * first request. Clerk has a separate entry loaded by an account command. Each budget ratchets
- * about 2% above the 0.0.18 audit build so growth fails here; lower it when an entry shrinks.
- * `css` is the render-blocking stylesheet the startup HTML links.
+ * about 2% above the build that set it so growth fails here; lower it when an entry shrinks.
+ * `main` is every chunk main's entry loads before its first window, and `host` the same for the
+ * host process, which loads beside it. `css` is the render-blocking stylesheet the startup HTML
+ * links.
  */
 const budgets = {
-  main: 630 * KIB,
+  main: 125 * KIB,
+  host: 1_020 * KIB,
   preload: 8 * KIB,
   renderer: 4_900 * KIB,
   css: 190 * KIB,
@@ -29,13 +32,38 @@ for await (const path of glob("src/**/*.{ts,tsx}", { cwd: desktopRoot })) {
   }
 }
 
-// Workspace packages ship TypeScript source, which Node cannot load from node_modules.
+/** Workspace packages ship TypeScript source, which Node cannot load from node_modules. */
+const workspaceImport = /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u;
+
 for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {
   const source = await readFile(join(desktopRoot, path), "utf8");
 
-  if (/(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u.test(source)) {
+  if (workspaceImport.test(source)) {
     problems.push(`${path} imports unbundled workspace TypeScript; bundle all @nyte-ai packages`);
   }
+}
+
+/** `entry` and every chunk it imports statically, which all load before its body runs. */
+async function staticGraph(entry) {
+  const files = new Set([entry]);
+
+  for (const file of files) {
+    const source = await readFile(file, "utf8");
+
+    for (const [, specifier] of source.matchAll(
+      /(?:^|[;}\s])(?:import|export)\s*(?:[\w$*{},\s]+?\s*from\s*)?["'](\.{1,2}\/[^"']+)["']/gu,
+    ))
+      files.add(join(dirname(file), specifier));
+  }
+
+  return [...files];
+}
+
+async function graphSize(entry) {
+  const files = await staticGraph(join(desktopRoot, "out", "main", entry));
+  const sizes = await Promise.all(files.map(async (file) => (await stat(file)).size));
+
+  return sizes.reduce((total, size) => total + size, 0);
 }
 
 const rendererRoot = join(desktopRoot, "out", "renderer");
@@ -101,7 +129,8 @@ const rendererSizes = await Promise.all(
 );
 
 const sizes = {
-  main: (await stat(join(desktopRoot, "out", "main", "index.js"))).size,
+  main: await graphSize("index.js"),
+  host: await graphSize("host-entry.js"),
   preload: (await stat(preloadPath)).size,
   renderer: rendererSizes.reduce((total, size) => total + size, 0),
   css: (
@@ -118,6 +147,7 @@ for (const [name, budget] of Object.entries(budgets)) {
   if (over && !process.argv.includes("--warn-budgets")) {
     problems.push(`${name} startup entry is over budget`);
   }
+
   rows.push([
     name,
     formatSize(size),
