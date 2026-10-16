@@ -3,8 +3,10 @@ import type { CliRenderer, NativeResourceOwner, Renderable } from "@opentui/core
 import { createEffect, createSignal, on } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { CliTheme } from "../lib/theme.ts";
+import { displayWidth } from "../lib/width.ts";
 import type { PartMessage } from "../lib/view-helpers.ts";
 import type { FailureReport } from "../model/state.ts";
+import { createDiagrams } from "../services/diagrams.ts";
 import { LabelSyntax } from "../services/label-syntax.ts";
 import type { Kit } from "./context.tsx";
 import type { Tickers } from "./ticker.ts";
@@ -47,6 +49,7 @@ export function createKit(options: KitOptions): OwnedKit {
   );
 
   const labels = new LabelSyntax();
+  const diagrams = createDiagrams();
 
   return {
     theme: options.theme,
@@ -57,10 +60,19 @@ export function createKit(options: KitOptions): OwnedKit {
     highlight(text, filetype) {
       return labels.chunks(text, filetype, syntax().normal, waitForLabel) ?? null;
     },
+    async diagram(source) {
+      const text = await diagrams.draw(source);
+      const lines = text.split("\n");
+
+      return { text, height: lines.length, width: Math.max(1, ...lines.map(displayWidth)) };
+    },
     blob: options.blob,
     drawPart: options.drawPart,
     attach: options.attach,
-    dispose: () => destroyPair(current),
+    dispose() {
+      destroyPair(current);
+      diagrams.dispose();
+    },
   };
 }
 

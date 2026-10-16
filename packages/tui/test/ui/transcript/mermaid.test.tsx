@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { App } from "../../../src/app/context.tsx";
 import { splitMermaid } from "../../../src/ui/transcript/markdown.tsx";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
+import { frameShowing } from "../../fixture/render.tsx";
 import { stateOf } from "../../fixture/state.ts";
 import { followed, viewOf } from "../../fixture/view.ts";
 import { renderWithApp } from "./harness.tsx";
@@ -47,7 +48,7 @@ describe("mermaid", () => {
     const view = viewOf((v) => v.turn("t1", (t) => t.user("draw").text(TEXT).ended("completed")));
     const state = stateOf(followed(view));
     await using app = await renderWithApp(state, transcript);
-    const frame = app.captureCharFrame();
+    const frame = await frameShowing(app, "mermaid · click for source");
 
     expect(frame).toContain("mermaid · click for source");
     expect(frame).toContain("Start");

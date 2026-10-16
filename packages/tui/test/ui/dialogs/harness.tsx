@@ -57,6 +57,7 @@ export async function renderDialog(
     now: () => 0,
     report: () => undefined,
     highlight: () => null,
+    diagram: () => Promise.reject(new Error("dialogs draw no diagrams")),
     blob: () => {
       throw new Error("dialogs read no blobs");
     },
