@@ -16,10 +16,10 @@ import {
   recordFirstFrame,
   seedFirstFrame,
   startRendererStartup,
+  StartupFailure,
   startWindowTabs,
   windowTabRoute,
 } from "@nyte-ai/app";
-import { applyStartupTheme } from "@nyte-ai/app/theme/startup.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
 
@@ -34,6 +34,17 @@ export const router = createAppRouter({
 const container = document.getElementById("root");
 
 if (container === null) throw new Error("Missing #root");
+
+const root = createRoot(container);
+
+/** Main keeps the window hidden until the interface has drawn its first frame. */
+const firstFrame = new PerformanceObserver((list) => {
+  if (list.getEntriesByName("nyte:shell-ready").length === 0) return;
+  firstFrame.disconnect();
+  window.nyte.windowPainted();
+});
+
+firstFrame.observe({ entryTypes: ["mark"] });
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {
@@ -52,22 +63,13 @@ focusManager.setEventListener((setFocused) => {
   };
 });
 
-// The startup shell in index.html owns the window until the first complete frame.
-const startupShell = document.getElementById("startup");
-
-const startupMessage = document.getElementById("startup-message");
-
-const startupRetry = document.getElementById("startup-retry");
-
-applyStartupTheme({ shell: startupShell, retry: startupRetry });
-
 performance.mark("nyte:startup");
 
 startRendererStartup({
   fonts: ['13px "Inter Variable"', '12px "JetBrains Mono Variable"'],
   router,
   mountShell: () => {
-    createRoot(container).render(
+    root.render(
       <StrictMode>
         <AccountProvider>
           <App appIcon={appIcon} router={router} />
@@ -78,16 +80,7 @@ startRendererStartup({
   connect: () =>
     connectLocalHost().then((connection) => recordFirstFrame("local", connection.hostId)),
   showError: (retry) => {
-    startupShell?.setAttribute("data-state", "error");
-
-    if (startupMessage !== null) startupMessage.textContent = "Couldn\u2019t open your workspace.";
-    startupRetry?.addEventListener(
-      "click",
-      () => {
-        startupShell?.setAttribute("data-state", "loading");
-        retry();
-      },
-      { once: true },
-    );
+    root.render(<StartupFailure message="Couldn’t open your workspace." onRetry={retry} />);
+    requestAnimationFrame(() => window.nyte.windowPainted());
   },
 });

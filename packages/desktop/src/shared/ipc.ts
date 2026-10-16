@@ -1,7 +1,5 @@
 import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
-import { Type } from "typebox";
-import type { Static } from "typebox";
 
 export const CALL_CHANNEL = "nyte:call";
 
@@ -17,21 +15,15 @@ export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
+export const WINDOW_PAINTED_CHANNEL = "nyte:window-painted";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
-export const LAUNCH_ARGUMENT = "--nyte-launch";
+/** This computer's name, which main reads when it creates a window so the first frame never asks. */
+export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
 
-/** What main knows when it creates a window, handed to the preload so the first frame never asks. */
-export const LaunchFactsType = Type.Object(
-  {
-    machineName: Type.String({ minLength: 1 }),
-    /** No other window of this launch is open, so this one adopts the strip the last one saved. */
-    firstWindow: Type.Boolean(),
-  },
-  { additionalProperties: false },
-);
-
-export type LaunchFacts = Static<typeof LaunchFactsType>;
+/** Present when no other window of this launch was open: the window adopts the strip the last one saved. */
+export const FIRST_WINDOW_ARGUMENT = "--nyte-first-window";
 
 /** Operations main answers itself: native dialogs and menus, fonts, updates and the browser panel. */
 export const MAIN_OPERATION_PATHS = [
@@ -100,6 +92,8 @@ export type DesktopBridge = {
   readonly platform: NyteBridge["platform"];
   readonly machineName: NyteBridge["machineName"];
   readonly firstWindow: boolean;
+  /** The interface drew its first frame, so main can show the window without a blank flash. */
+  windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: Pick<
     HostBridge,

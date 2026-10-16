@@ -8,4 +8,6 @@ export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
 
 export { startRendererStartup } from "./startup.ts";
 
+export { StartupFailure } from "./startup-failure.tsx";
+
 export { recordFirstFrame, seedFirstFrame } from "./first-frame.ts";

@@ -6,20 +6,18 @@ import "@fontsource-variable/jetbrains-mono/wght.css";
 import "../theme/boot.ts";
 import "../theme/focus-modality.ts";
 import "../theme/global.css";
-import { create, props } from "@stylexjs/stylex";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { createBrowserHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { Button } from "@nyte-ai/ui/button";
 import { App } from "../app.tsx";
 import { loadLocalResources } from "../queries.ts";
 import { createAppRouter } from "../router.tsx";
 import { connection as installedConnection, connectionProblem } from "../sdk.tsx";
 import { recordFirstFrame, seedFirstFrame } from "../first-frame.ts";
 import { startRendererStartup } from "../startup.ts";
+import { StartupFailure } from "../startup-failure.tsx";
 import type { Connection } from "./bridge.ts";
 import { AddFolderDialogHost } from "./add-folder.tsx";
 import { connectAddress, connectFailure, ConnectScreen } from "./connect-screen.tsx";
@@ -36,18 +34,6 @@ import {
   readPairingRequest,
   saveConnection,
 } from "./connection.ts";
-
-const styles = create({
-  failure: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.s3,
-    height: "100%",
-    overflowWrap: "anywhere",
-  },
-});
 
 const container = document.getElementById("root");
 
@@ -100,10 +86,10 @@ function start(
       ),
     showError: (retry) => {
       mount(
-        <main {...props(styles.failure)}>
-          <p role="alert">Couldn’t open the workspace on {displayAddress(connection)}.</p>
-          <Button onClick={retry}>Try Again</Button>
-        </main>,
+        <StartupFailure
+          message={`Couldn’t open the workspace on ${displayAddress(connection)}.`}
+          onRetry={retry}
+        />,
       );
     },
   });
