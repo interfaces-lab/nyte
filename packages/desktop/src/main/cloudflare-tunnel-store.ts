@@ -10,7 +10,7 @@
  * accepted and nothing is overwritten until the user fixes it and restarts.
  */
 import { open, readFile, rm } from "node:fs/promises";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { dirname } from "node:path";
 import { writePrivateFile } from "@nyte-ai/connect/private-file";
 import { Type } from "typebox";

@@ -1,5 +1,5 @@
 import { readFile, rm } from "node:fs/promises";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { writePrivateFile } from "@nyte-ai/connect/private-file";

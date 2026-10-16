@@ -1,7 +1,7 @@
 import { FitAddon, Ghostty, Terminal } from "ghostty-web";
 import type { ITheme } from "ghostty-web";
 import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { toast } from "@nyte-ai/ui/toast";
 import { preferences } from "../preferences/index.ts";
 import { errorMessage } from "../errors.ts";

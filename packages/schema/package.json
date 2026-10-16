@@ -16,7 +16,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./model": "./src/model/index.ts"
+    "./model": "./src/model/index.ts",
+    "./serial": "./src/serial.ts"
   },
   "publishConfig": {
     "access": "public"

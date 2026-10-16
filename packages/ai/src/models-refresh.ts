@@ -3,7 +3,7 @@
  * publications apply in order and only for the current run, and the cached catalog is restored
  * before credentials are resolved or the network is used.
  */
-import { keyedSerial } from "@nyte-ai/schema";
+import { keyedSerial } from "@nyte-ai/schema/serial";
 import { ModelsError } from "./auth/resolve.ts";
 import type { Credential, CredentialAccounts } from "./auth/types.ts";
 import type { ModelsStore } from "./models-store.ts";

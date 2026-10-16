@@ -4,7 +4,7 @@
  * hosts. Writes run one at a time per provider, and queued work can be
  * cancelled before it runs.
  */
-import { keyedSerial } from "@nyte-ai/schema";
+import { keyedSerial } from "@nyte-ai/schema/serial";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import type {
   AuthOperationOptions,

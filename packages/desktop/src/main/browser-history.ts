@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { BrowserHistoryEntry } from "@nyte-ai/app/bridge.ts";

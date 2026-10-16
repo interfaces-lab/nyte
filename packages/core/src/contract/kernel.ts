@@ -16,7 +16,6 @@ import type {
   JobEnd,
   JobId,
   Json,
-  KeyedSerial,
   MessageId,
   MessageSource,
   ModelRequestInput,
@@ -34,6 +33,7 @@ import type {
   Usage,
   ValidationIssue,
 } from "@nyte-ai/schema";
+import type { KeyedSerial } from "@nyte-ai/schema/serial";
 import type { FoldCache, LogPublisher, SessionBus } from "./fold.ts";
 import type {
   Connection,

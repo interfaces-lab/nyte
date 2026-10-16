@@ -17,7 +17,8 @@ import {
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
-import { asId, SdkError, serial } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type {
   ByteReader,
   FileEntryView,

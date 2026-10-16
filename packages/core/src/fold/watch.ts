@@ -1,4 +1,5 @@
-import { asId, asSeq, isJsonObject, serial } from "@nyte-ai/schema";
+import { asId, asSeq, isJsonObject } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type {
   Disposer,
   HeadName,
@@ -8,11 +9,11 @@ import type {
   PrincipalId,
   Ref,
   RefUpdate,
-  Serial,
   SessionEvent,
   SessionId,
   SetOutcome,
 } from "@nyte-ai/schema";
+import type { Serial } from "@nyte-ai/schema/serial";
 import type {
   FeedItem,
   FoldCache,

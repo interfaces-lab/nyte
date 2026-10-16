@@ -1,4 +1,4 @@
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type { CommitId, HeadName, PrincipalId, SessionId } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import { decodeSeenRecord } from "../contract/records.ts";

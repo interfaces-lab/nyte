@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";

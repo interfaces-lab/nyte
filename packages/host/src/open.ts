@@ -7,7 +7,8 @@ import type { Models, Provider } from "@nyte-ai/ai";
 import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
-import { isJson, serial } from "@nyte-ai/schema";
+import { isJson } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type {
   HostDescription,
   HostView,

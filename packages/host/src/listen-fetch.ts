@@ -1,4 +1,5 @@
-import { SdkError, serial } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";

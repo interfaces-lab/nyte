@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type { ConnectNotice, ConnectUnavailable, ConnectView } from "../view.ts";
 import { AccountCancelled } from "./account.ts";
 import type { AccountSession } from "./account.ts";

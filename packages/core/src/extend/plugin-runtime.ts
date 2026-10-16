@@ -1,4 +1,5 @@
-import { SdkError, serial } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type {
   Awaitable,
   Disposer,

@@ -44,8 +44,6 @@ export * from "./runs.ts";
 
 export * from "./schema.ts";
 
-export * from "./serial.ts";
-
 export * from "./sessions.ts";
 
 export * from "./store.ts";

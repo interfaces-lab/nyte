@@ -1,4 +1,5 @@
-import { asId, keyedSerial, SdkError } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
+import { keyedSerial } from "@nyte-ai/schema/serial";
 import type {
   AdvanceReport,
   Cursor,

@@ -4,7 +4,7 @@ import { app, dialog } from "electron";
 import type { MenuItem } from "electron";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { createUpdateController } from "./update-controller.ts";
 import type { UpdateLogDetails } from "./update-controller.ts";
 import { updateLabel } from "@nyte-ai/app/updates.ts";

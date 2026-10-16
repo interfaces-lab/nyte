@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import type { Models } from "@nyte-ai/ai";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type { Api, Model } from "@nyte-ai/schema/model";
 import { readNyteUsage } from "./store-usage.ts";
 import { createUsageScanCaches, readLocalUsage } from "./usage.ts";

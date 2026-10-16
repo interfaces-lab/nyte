@@ -1,5 +1,5 @@
 import { open } from "node:fs/promises";
-import { serial } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
 import { Compile } from "typebox/compile";
