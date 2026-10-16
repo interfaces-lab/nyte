@@ -153,7 +153,8 @@ function turnRows(view: SessionView): readonly Row[] {
 
     if (message.turn !== current) {
       current = message.turn;
-      slot = (indexes.get(current) ?? -1) - first;
+      const index = indexes.get(current);
+      slot = index === undefined ? -1 : index - first;
     }
 
     if (slot < 0) continue;
