@@ -21,7 +21,7 @@ it("keeps every stored shape until a store change is decided", () => {
   ).toEqual({
     SessionEvent: "86f2ec4eb44f31e3",
     WaitOutcome: "2164fa1f0aafd2a7",
-    call: "6f82fa38020a43fc",
+    call: "c84b5d8ecc0de059",
     commit: "5771ce57e4bdf687",
     identity: "7a36a42575ab463a",
     inbox: "5441cda17aa278c8",

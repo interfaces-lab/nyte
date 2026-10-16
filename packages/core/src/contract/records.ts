@@ -181,7 +181,8 @@ const WaitOutcomeRef = Type.Unsafe<WaitOutcome>(Type.Ref("WaitOutcome"));
 
 const CallRecordType = record({
   id: idSchema<"call">(),
-  kind: Type.Enum(["tool", "action", "hook"]),
+  /** `intent` is a tool call recorded with the response that asked for it, before its step opens it as a `tool` call. */
+  kind: Type.Enum(["tool", "action", "hook", "intent"]),
   run: nullable(idSchema<"run">()),
   head: nullable(idSchema<"head">()),
   part: nullable(idSchema<"part">()),

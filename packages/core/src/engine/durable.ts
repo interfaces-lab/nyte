@@ -92,7 +92,7 @@ export async function runStep<T>(
   let record = created;
 
   const opened = await changeCall(kernel, session, call, async (current) => {
-    if (current !== null && !(current.kind === "tool" && current.part === null)) {
+    if (current !== null && current.kind !== "intent") {
       record = current;
 
       return null;
@@ -588,14 +588,14 @@ async function modalsWaiting(
   return updates;
 }
 
-/** A tool call recorded with the response that asked for it, before its step opens, so a host stop in between still owes it. A tool record without a part is an intent its step has not opened; the step opens it as if new. */
+/** A tool call recorded with the response that asked for it, before its step opens, so a host stop in between still owes it. Its step replaces the intent with a `tool` call as if new; an intent has run nothing, so it replays safely. */
 export function intendedCall(input: {
   readonly call: CallId;
   readonly run: RunId;
   readonly head: HeadName;
   readonly intent: Json;
 }): CallRecord {
-  return callRecord({ ...input, kind: "tool", part: null, replay: "safe" });
+  return callRecord({ ...input, kind: "intent", part: null, replay: "safe" });
 }
 
 function callRecord(input: {

@@ -216,11 +216,7 @@ async function unopenedCalls(
   );
 
   return found.flatMap(({ ref, call }) =>
-    call !== null &&
-    call.record.run === run &&
-    call.record.kind === "tool" &&
-    call.record.part === null &&
-    call.record.result === null
+    call !== null && call.record.run === run && call.record.kind === "intent"
       ? [{ name: ref.name, target: null, expect: ref.revision }]
       : [],
   );

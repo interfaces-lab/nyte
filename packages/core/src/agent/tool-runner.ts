@@ -165,7 +165,7 @@ export async function owedCalls(
   return ids.flatMap((id) => {
     if (ids.some((other) => id.startsWith(`${other}:`))) return [];
     const own = records.filter((record) => stripHookPrefix(record) === id);
-    const step = own.find((record) => record.kind === "tool");
+    const step = own.find((record) => record.kind === "tool" || record.kind === "intent");
 
     if (step !== undefined && step.result !== null) return [];
     const intent = decodeToolIntent((step ?? own[0]).intent);
@@ -312,10 +312,7 @@ async function plan(
   if (gated.kind === "parked") return PARKED;
   const gate = gated.kind === "done" ? gated.value : CONTINUE;
 
-  if (
-    where.signal.aborted &&
-    ((await readCall(kernel, session, call))?.record.part ?? null) === null
-  )
+  if (where.signal.aborted && (await readCall(kernel, session, call))?.record.kind !== "tool")
     return { kind: "settle", outcome: STOPPED, args: where.args, class: proposed.class };
 
   if (gate.action === "reject")
