@@ -1,7 +1,9 @@
 /**
  * Stands in for `nyte service run`: takes the service lock, answers `/.nyte/describe` with its
- * host id, and renames its registration into place `delay` ms after it listens, the way
- * `startService` does. Run from the service home as `node fake-service.ts <version> <delay>`.
+ * host id, and renames its registration, under build `build`, into place `delay` ms after it
+ * listens, the way `startService` does. A `stale` service answers every other request the
+ * way a host built before an operation answers it; a `stubborn` one also ignores SIGTERM.
+ * Run from the service home as `node fake-service.ts <build> <delay> [fresh|stale|stubborn]`.
  */
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -12,7 +14,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { acquireLock, removeRegistration, writeRegistration } from "../../src/registration.ts";
 
-const [version = "v1", delay = "0"] = process.argv.slice(2);
+const [build = "v1", delay = "0", mode = "fresh"] = process.argv.slice(2);
 
 const home = process.cwd();
 
@@ -25,8 +27,20 @@ if (lock.kind === "held") {
 
 const hostId = `host-${String(process.pid)}`;
 
-const server = createServer((_request, response) => {
+const server = createServer((request, response) => {
   response.setHeader(HOST_HEADER, hostId);
+
+  if (mode !== "fresh" && request.url !== "/.nyte/describe") {
+    response.statusCode = 404;
+    response.end(
+      JSON.stringify({
+        message: `No operation answers ${String(request.method)} ${String(request.url)}.`,
+      }),
+    );
+
+    return;
+  }
+
   response.end();
 });
 
@@ -41,7 +55,9 @@ const stop = async (): Promise<never> => {
   process.exit(0);
 };
 
-process.once("SIGTERM", () => void stop());
+process.on("SIGTERM", () => {
+  if (mode !== "stubborn") void stop();
+});
 
 setTimeout(() => void stop(), 30_000);
 
@@ -51,6 +67,6 @@ await writeRegistration(home, {
   url: `http://127.0.0.1:${String(port)}`,
   token: "t".repeat(32),
   pid: process.pid,
-  version,
+  version: build,
   hostId,
 });

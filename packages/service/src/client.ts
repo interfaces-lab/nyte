@@ -1,17 +1,20 @@
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { mkdir, open, readFile, stat } from "node:fs/promises";
+import { get } from "node:http";
 import { basename, dirname } from "node:path";
 import process from "node:process";
 import { scheduler } from "node:timers/promises";
 import { ConnectViewSchema } from "@nyte-ai/connect";
 import type { ConnectView } from "@nyte-ai/connect";
 import { HOST_HEADER } from "@nyte-ai/protocol";
+import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { serviceBuild } from "./build.ts";
 import { alive, lockHolder, logPath, readRegistration, registrationPath } from "./registration.ts";
 import type { Registration } from "./registration.ts";
-import { SERVICE_ROUTES, ServiceEventSchema } from "./routes.ts";
-import type { ServiceEvent } from "./routes.ts";
+import { SERVICE_ROUTES, ServiceClientSchema, ServiceEventSchema } from "./routes.ts";
+import type { ServiceClient, ServiceEvent } from "./routes.ts";
 
 const START_TIMEOUT_MS = 20_000;
 
@@ -22,8 +25,11 @@ const STOP_POLL_MS = 50;
 
 export interface EnsureServiceOptions {
   readonly home: string;
+  /** The client's package version; with the operations digest it forms the build the service must register, see `serviceBuild`. */
   readonly version: string;
   readonly command: readonly [string, ...string[]];
+  /** Ends this client's attachment to the service; absent, the attachment lasts as long as the process. */
+  readonly signal?: AbortSignal;
 }
 
 export async function findService(home: string): Promise<Registration | undefined> {
@@ -34,14 +40,62 @@ export async function findService(home: string): Promise<Registration | undefine
   return (await answers(registration)) ? registration : undefined;
 }
 
+/**
+ * Returns the running service of this client's build, starting one when none runs. A
+ * service of another build is stopped and replaced; one that won't stop fails with the
+ * build skew and the fix. The client then stays attached until `signal` aborts or the
+ * process exits, which keeps the service from stopping while idle.
+ */
 export async function ensureService(options: EnsureServiceOptions): Promise<Registration> {
+  const build = await serviceBuild(options.version);
   const found = await findService(options.home);
 
-  if (found?.version === options.version) return found;
+  if (found !== undefined && found.version !== build) await replace(options.home, found, build);
+  const registration = found?.version === build ? found : await start(options, build);
+  attach(registration, build, options.signal);
 
-  if (found !== undefined) await stopService(options.home);
+  return registration;
+}
 
-  return start(options);
+async function replace(home: string, found: Registration, build: string): Promise<void> {
+  const stopped = await stopService(home).catch(() => false);
+
+  if (!stopped && alive(found.pid)) throw new Error(skew(found, build));
+}
+
+function skew(found: Registration, build: string): string {
+  return `The Nyte service (pid ${String(found.pid)}) runs build ${found.version} but this nyte is build ${build}; stop it with \`nyte service stop\` and try again.`;
+}
+
+/**
+ * Holds a request to the service's attach route open for as long as this client lives.
+ * Its socket is unreferenced, so it never keeps the process running, and the service
+ * sees the connection end when the process exits.
+ */
+function attach(registration: Registration, build: string, signal: AbortSignal | undefined): void {
+  const url = new URL(SERVICE_ROUTES.attach, registration.url);
+  url.searchParams.set("pid", String(process.pid));
+  url.searchParams.set("startedAt", String(Math.round(performance.timeOrigin)));
+  url.searchParams.set("build", build);
+
+  const request = get(url, { headers: { Authorization: `Bearer ${registration.token}` } });
+  signal?.addEventListener("abort", () => request.destroy(), { once: true });
+  request.on("socket", (socket) => socket.unref());
+  request.on("response", (response) => response.resume());
+  request.on("error", () => undefined);
+}
+
+/** Lists the clients attached to the service. */
+export async function serviceClients(
+  registration: Registration,
+): Promise<readonly ServiceClient[]> {
+  const response = await fetch(new URL(SERVICE_ROUTES.clients, registration.url), {
+    headers: { Authorization: `Bearer ${registration.token}` },
+  });
+
+  if (!response.ok) throw new Error(`The Nyte service answered ${String(response.status)}.`);
+
+  return Value.Parse(Type.Array(ServiceClientSchema), await response.json());
 }
 
 export async function stopService(home: string): Promise<boolean> {
@@ -72,7 +126,7 @@ export async function stopService(home: string): Promise<boolean> {
  * signal: the service renames it into place once it listens, so each change to it (or the
  * child exiting) wakes one check instead of a timer polling for it.
  */
-async function start(options: EnsureServiceOptions): Promise<Registration> {
+async function start(options: EnsureServiceOptions, build: string): Promise<Registration> {
   const log = logPath(options.home);
   const registration = registrationPath(options.home);
   await mkdir(dirname(log), { recursive: true, mode: 0o700 });
@@ -113,7 +167,9 @@ async function start(options: EnsureServiceOptions): Promise<Registration> {
         const exitedBefore = gone;
         const found = await findService(options.home);
 
-        if (found?.version === options.version) return found;
+        if (found?.version === build) return found;
+
+        if (found !== undefined) throw new Error(skew(found, build));
 
         if (exitedBefore && (await lockHolder(options.home)) === undefined)
           throw new Error(`${await failureIn(log, offset)} See ${log}.`);
