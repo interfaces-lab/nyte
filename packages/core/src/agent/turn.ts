@@ -365,7 +365,7 @@ async function turn(
               ? [{ head, kind: "run", run, change: "phase", phase: "executing" } as const]
               : []),
           ],
-          updates: [...(await settledParts(context, state.opened)), ...intents],
+          updates: [...(await settledParts(context, state.opened, usage)), ...intents],
         };
       });
 
@@ -651,10 +651,11 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
   return opened;
 }
 
-/** The writes that settle a response's open parts on the head, each in its own commit; a part the stop fence already failed keeps its text. */
+/** The writes that settle a response's open parts on the head, each in its own commit, the last carrying the response's `usage`; a part the stop fence already failed keeps its text. */
 async function settledParts(
   context: Turn,
   opened: readonly OpenPart[],
+  usage: Usage,
 ): Promise<readonly RefUpdate[]> {
   const { kernel, session, head } = context;
 
@@ -678,7 +679,7 @@ async function settledParts(
       continue;
     }
 
-    const state = buildPartState(entry);
+    const state = buildPartState(entry, entry === opened.at(-1) ? usage : null);
     const version = part.record.version + 1;
 
     const landed = await settling(kernel.store, {
@@ -723,8 +724,13 @@ function assignCallIds(
   );
 }
 
-function buildPartState(entry: OpenPart): Json {
-  if (entry.kind === "text") return { markdown: entry.markdown, signature: entry.textSignature };
+function buildPartState(entry: OpenPart, usage: Usage | null): Json {
+  if (entry.kind === "text")
+    return {
+      markdown: entry.markdown,
+      signature: entry.textSignature,
+      ...(usage !== null && { usage }),
+    };
 
   return {
     markdown: entry.markdown,
@@ -732,6 +738,7 @@ function buildPartState(entry: OpenPart): Json {
     signature: entry.thoughts.some((thought) => thought.signature !== null || thought.redacted)
       ? entry.thoughts.map((thought) => ({ ...thought }))
       : null,
+    ...(usage !== null && { usage }),
   };
 }
 
@@ -755,7 +762,7 @@ async function keep(
   const { record } = found;
   const name = partRef(session, entry.part);
   const part = entry.part;
-  const state = buildPartState(entry);
+  const state = buildPartState(entry, null);
   const version = record.version + 1;
   const live = record.status.kind === "live" || record.status.kind === "waiting";
   const status = live ? { kind: "failed", run: record.run, failure } : record.status;

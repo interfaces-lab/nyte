@@ -259,7 +259,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     };
 
     fake.reply(
-      { content: [{ type: "text", text: "First answer." }] },
+      { content: [{ type: "text", text: "First answer." }], usage: { input: 150, output: 5 } },
       {
         content: [{ type: "text", text: "Half" }],
         error: "503 Service Unavailable",

@@ -129,10 +129,21 @@ const EMPTY_INPUT: Schema<Record<string, never>> = {
   },
 };
 
+/** The provider's usage for the response a text or thinking part ended: set on the last such part a response settles, so a rebuilt transcript anchors its token estimate on the provider's count. */
+const ResponseUsageType = Type.Optional(UsageType);
+
 export const text = definePart({
   kind: "text",
   state: standard(
-    withJson(Type.Immutable(Type.Object({ markdown: Type.String(), signature: SignatureType }))),
+    withJson(
+      Type.Immutable(
+        Type.Object({
+          markdown: Type.String(),
+          signature: SignatureType,
+          usage: ResponseUsageType,
+        }),
+      ),
+    ),
   ),
   actions: {},
   fallback: (state, { id }) => `${clip(state.markdown)} [${id}]`,
@@ -143,7 +154,12 @@ export const thinking = definePart({
   state: standard(
     withJson(
       Type.Immutable(
-        Type.Object({ markdown: Type.String(), merged: Type.Number(), signature: SignatureType }),
+        Type.Object({
+          markdown: Type.String(),
+          merged: Type.Number(),
+          signature: SignatureType,
+          usage: ResponseUsageType,
+        }),
       ),
     ),
   ),

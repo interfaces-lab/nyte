@@ -10,6 +10,37 @@ afterEach(() => {
 });
 
 describe("turn compaction", () => {
+  it("anchors a run's first estimate on the usage its last response stored, not on the transcript's characters", async () => {
+    const fake = fakeModels();
+
+    const policy: Plugin<"core"> = {
+      id: "policy",
+      contribute: {
+        modelContext: [
+          { model: { provider: "test", id: "model" }, contextWindow: 100_000, compactAt: 5_000 },
+        ],
+      },
+    };
+
+    fake.reply(
+      { content: [{ type: "text", text: "Short." }], usage: { input: 6_000, output: 5 } },
+      { content: [{ type: "text", text: "They asked once." }] },
+      { content: [{ type: "text", text: "Second answer." }] },
+    );
+
+    await using host = await open(fake, { plugins: [policy] });
+    const session = await host.sessions.create();
+    await (await session.send("First?")).settled();
+    await (await session.send("Second?")).settled();
+
+    expect(fake.requests).toHaveLength(3);
+    expect(sent(fake, 2)).toEqual([
+      "system",
+      "user:The earlier conversation was summarised to fit the context window. The summary:\n\nThey asked once.",
+      "user:Second?",
+    ]);
+  });
+
   it("compacts at the threshold and writes the part and its commit", async () => {
     const fake = fakeModels();
     const { plugin, seen } = recorder();
@@ -24,7 +55,7 @@ describe("turn compaction", () => {
     };
 
     fake.reply(
-      { content: [{ type: "text", text: "First answer." }] },
+      { content: [{ type: "text", text: "First answer." }], usage: { input: 150, output: 5 } },
       {
         content: [{ type: "text", text: "They asked a first question." }],
         usage: { input: 40, output: 8 },

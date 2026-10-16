@@ -13,6 +13,7 @@ import type {
   SessionId,
   ToolPartState,
   Transcript,
+  Usage,
   UserContent,
 } from "@nyte-ai/schema";
 import type {
@@ -52,6 +53,8 @@ interface Group {
   readonly model: ModelRef | null;
   readonly at: number;
   response: string | null;
+  /** The provider's usage for the group's latest response, from the part that ended it. */
+  usage: Usage | null;
   readonly content: AssistantMessage["content"];
   readonly calls: {
     readonly created: number;
@@ -318,14 +321,7 @@ async function conversation(
           api: identity.api,
           provider: identity.provider,
           model: identity.model,
-          usage: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 0,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-          },
+          usage: modelUsage(current.usage),
           stopReason: ordered.length > 0 ? "toolUse" : "stop",
           timestamp: current.at,
         },
@@ -400,9 +396,12 @@ async function conversation(
         model: step.model,
         at: step.record.at,
         response: null,
+        usage: null,
         content: [],
         calls: [],
       };
+
+      group.usage = blocks.usage ?? group.usage;
 
       if (call === null) {
         group.content.push(...blocks.content);
@@ -439,12 +438,13 @@ async function assistantBlocks(
 ): Promise<{
   readonly content: AssistantMessage["content"];
   readonly call: Settled | null;
+  readonly usage: Usage | null;
 }> {
   if (part.partKind === "text") {
     const checked = await check(text.state, part.state);
 
     if (checked.kind === "invalid" || checked.value.markdown === "")
-      return { content: [], call: null };
+      return { content: [], call: null, usage: null };
     const signature = checked.value.signature;
 
     return {
@@ -456,6 +456,7 @@ async function assistantBlocks(
         },
       ],
       call: null,
+      usage: checked.value.usage ?? null,
     };
   }
 
@@ -463,17 +464,18 @@ async function assistantBlocks(
     const checked = await check(thinking.state, part.state);
 
     return checked.kind === "invalid"
-      ? { content: [], call: null }
+      ? { content: [], call: null, usage: null }
       : {
           content: reconstructThinkingContent(checked.value.markdown, checked.value.signature),
           call: null,
+          usage: checked.value.usage ?? null,
         };
   }
 
   const checked = await check(tool.state, part.state);
 
   if (checked.kind === "invalid" || checked.value.phase !== "settled")
-    return { content: [], call: null };
+    return { content: [], call: null, usage: null };
   const settled = checked.value;
 
   return {
@@ -486,6 +488,29 @@ async function assistantBlocks(
       },
     ],
     call: settled,
+    usage: null,
+  };
+}
+
+/** A stored response usage as the model's message carries it; none reads as zero, which no estimate anchors on. */
+function modelUsage(usage: Usage | null): AssistantMessage["usage"] {
+  if (usage === null)
+    return {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
+
+  return {
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheWrite,
+    totalTokens: usage.total,
+    cost: { ...usage.cost },
   };
 }
 
