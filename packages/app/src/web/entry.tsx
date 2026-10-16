@@ -17,7 +17,8 @@ import { Button } from "@nyte-ai/ui/button";
 import { App } from "../app.tsx";
 import { loadLocalResources } from "../queries.ts";
 import { createAppRouter } from "../router.tsx";
-import { connectionProblem } from "../sdk.tsx";
+import { connection as installedConnection, connectionProblem } from "../sdk.tsx";
+import { recordFirstFrame, seedFirstFrame } from "../first-frame.ts";
 import { startRendererStartup } from "../startup.ts";
 import type { Connection } from "./bridge.ts";
 import { AddFolderDialogHost } from "./add-folder.tsx";
@@ -80,6 +81,7 @@ function start(
   });
 
   performance.mark("nyte:startup");
+  seedFirstFrame(connection.url);
 
   startRendererStartup({
     fonts: ['13px "Inter Variable"', '12px "JetBrains Mono Variable"'],
@@ -92,7 +94,10 @@ function start(
         </StrictMode>,
       );
     },
-    connect: loadLocalResources,
+    connect: () =>
+      loadLocalResources().then(() =>
+        recordFirstFrame(connection.url, installedConnection().hostId),
+      ),
     showError: (retry) => {
       mount(
         <main {...props(styles.failure)}>

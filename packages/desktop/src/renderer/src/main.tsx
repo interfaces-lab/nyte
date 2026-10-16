@@ -13,6 +13,8 @@ import {
   App,
   connectLocalHost,
   createAppRouter,
+  recordFirstFrame,
+  seedFirstFrame,
   startRendererStartup,
   startWindowTabs,
   windowTabRoute,
@@ -22,6 +24,8 @@ import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
 
 startWindowTabs(window.nyte.firstWindow);
+
+seedFirstFrame("local");
 
 export const router = createAppRouter({
   history: createMemoryHistory({ initialEntries: [windowTabRoute()] }),
@@ -71,7 +75,8 @@ startRendererStartup({
       </StrictMode>,
     );
   },
-  connect: () => connectLocalHost().then(() => undefined),
+  connect: () =>
+    connectLocalHost().then((connection) => recordFirstFrame("local", connection.hostId)),
   showError: (retry) => {
     startupShell?.setAttribute("data-state", "error");
 

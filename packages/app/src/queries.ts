@@ -1,5 +1,6 @@
 import {
   QueryClient,
+  skipToken,
   useMutation,
   useMutationState,
   useQuery,
@@ -277,17 +278,21 @@ export function useForgetWorkspace() {
   });
 }
 
+/** The live directory's roots; until it arrives, the ones the last run recorded. */
 function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
   const all = useWatch(directoryWatch("all")).value;
 
-  return useMemo(
-    () =>
-      all === undefined
-        ? undefined
-        : projection.list(all.filter((session) => session.parent === null)),
-    [all, projection],
-  );
+  const recorded = useQuery<readonly SessionInfo[]>({
+    queryKey: keys.firstFrameRoots,
+    queryFn: skipToken,
+  }).data;
+
+  return useMemo(() => {
+    if (all !== undefined) return projection.list(all.filter((session) => session.parent === null));
+
+    return recorded === undefined ? undefined : projection.list(recorded);
+  }, [all, projection, recorded]);
 }
 
 const NO_SESSIONS: ReadonlySet<SessionId> = new Set();

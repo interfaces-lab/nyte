@@ -7,3 +7,5 @@ export { connectLocalHost, queryClient, setUpdateStateForDemo } from "./queries.
 export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
 
 export { startRendererStartup } from "./startup.ts";
+
+export { recordFirstFrame, seedFirstFrame } from "./first-frame.ts";
