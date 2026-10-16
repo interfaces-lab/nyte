@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId } from "@nyte-ai/schema";
-import { pagedViews } from "@nyte-ai/sdk/client";
+import { foldJobs, pagedViews } from "@nyte-ai/sdk/client";
 import type { Connection, MessageId, PagedViews, Session } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
@@ -131,6 +131,7 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
 
                   const opened = new TaskIndex(info, {
                     connection: host,
+                    jobs: foldJobs(host.workspace(info.workspace).jobs.watch()),
                     onChange() {
                       latest = opened.tasks;
                       wake();

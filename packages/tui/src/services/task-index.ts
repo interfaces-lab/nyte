@@ -1,4 +1,3 @@
-import { foldJobs } from "@nyte-ai/sdk";
 import type { Connection, JobView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
@@ -11,6 +10,8 @@ interface Child {
 
 interface TaskIndexOptions {
   readonly connection: Connection;
+  /** The session's workspace's job list after each change. */
+  readonly jobs: AsyncIterable<readonly JobView[]>;
   readonly onChange: () => void;
   readonly onError: (error: unknown) => void;
 }
@@ -32,7 +33,7 @@ export class TaskIndex {
         options.onError,
       ),
       follow(
-        foldJobs(connection.workspace(session.workspace).jobs.watch()),
+        options.jobs,
         (jobs) => {
           this.jobs = jobs.filter((job) => job.session === session.id);
           options.onChange();
