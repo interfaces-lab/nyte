@@ -372,6 +372,7 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
       return held === null ? read([]) : reading;
     },
     async refresh() {
+      mark = await kernel.store.commitMark?.();
       let cursor = through;
 
       while (open) {
