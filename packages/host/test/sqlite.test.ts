@@ -548,7 +548,7 @@ describe("sqliteStore", () => {
       "INSERT INTO refs VALUES ('sessions/s1/calls/c1', 'old-call', 'r1'), ('sessions/s1/parts/c1', 'old-part', 'r2')",
     );
     seeded.prepare("INSERT INTO log VALUES ('s1', 1, 5, ?)").run(JSON.stringify(settled));
-    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 4)}`);
+    seeded.exec("UPDATE store_meta SET version = 6");
     seeded.close();
 
     const store = sqliteStore({ path });
@@ -637,7 +637,7 @@ describe("sqliteStore", () => {
     logged.forEach((event, index) => insert.run(index + 1, JSON.stringify(event)));
     seeded.exec(`INSERT INTO objects (id, body) VALUES ('o1', '{"kept":true}')`);
     seeded.exec("INSERT INTO refs VALUES ('kv/a', 'o1', 'r1')");
-    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 3)}`);
+    seeded.exec("UPDATE store_meta SET version = 7");
     seeded.close();
 
     const store = sqliteStore({ path });
@@ -682,7 +682,7 @@ describe("sqliteStore", () => {
     seeded.exec(
       "INSERT INTO refs VALUES ('workspaces/a', 'trusted', 'r1'), ('workspaces/b', 'declined', 'r2')",
     );
-    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 5)}`);
+    seeded.exec("UPDATE store_meta SET version = 5");
     seeded.close();
 
     const read = async () => {
