@@ -10,7 +10,8 @@ export interface Lease {
 /**
  * Renews a claim every `every` ms until stopped. `renew` answers whether the claim is still this
  * holder's. A refusal, or `lapse` ms without a renewal that landed, aborts `signal`, so the work
- * stops once another holder may take the claim; a renewal that throws is retried at the next tick.
+ * stops once another holder may take the claim, whether the last renewal threw or still hangs; a
+ * renewal that throws is retried at the next tick.
  */
 export function holdLease(
   what: string,
@@ -30,12 +31,16 @@ export function holdLease(
   };
 
   const timer = setInterval(() => {
+    if (Date.now() - renewed >= timing.lapse) return lose("lapsed");
+
     if (renewing) return;
     renewing = true;
 
     renew()
       .then(
         (held) => {
+          if (lost.signal.aborted) return;
+
           if (!held) return lose("refused");
           renewed = Date.now();
         },
@@ -44,8 +49,6 @@ export function holdLease(
             what,
             error: error instanceof Error ? error.message : String(error),
           });
-
-          if (Date.now() - renewed >= timing.lapse) lose("lapsed");
         },
       )
       .finally(() => {

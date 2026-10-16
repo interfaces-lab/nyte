@@ -883,7 +883,7 @@ describe("durable steps", () => {
 });
 
 describe("holdLease", () => {
-  it("aborts its work once a renewal is refused, or none lands before the claim lapses", async () => {
+  it("aborts its work once a renewal is refused, or none lands before the claim lapses, even while one hangs", async () => {
     vi.useFakeTimers();
 
     try {
@@ -910,6 +910,16 @@ describe("holdLease", () => {
       expect(failing.signal.aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(10);
       expect(failing.signal.aborted).toBe(true);
+
+      const hanging = holdLease("hanging", () => new Promise<boolean>(() => {}), {
+        every: 10,
+        lapse: 35,
+      });
+
+      await vi.advanceTimersByTimeAsync(30);
+      expect(hanging.signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(hanging.signal.aborted).toBe(true);
     } finally {
       vi.useRealTimers();
     }
