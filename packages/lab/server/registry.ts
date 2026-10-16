@@ -37,13 +37,16 @@ const RecordSchema = Type.Object({
   author: Type.Optional(AuthorSchema),
   /** Oldest first; an approval counts only while the head it names is current. */
   approvals: Type.Optional(Type.Array(ApprovalSchema)),
-  /** The core head holding each revision's brief, by revision head; absent means none yet. */
+  /** The core head holding each revision's brief, by revision head; a revision without one has no brief yet. A file from before this map reads as each revision's `briefName`, the only name a brief had then. */
   briefHeads: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 
 export type ReviewRecord = Static<typeof RecordSchema>;
 
 const FileSchema = Type.Object({ reviews: Type.Array(RecordSchema) });
+
+/** The core head a revision's first brief is cut on, unless it started the review's session on `main`. */
+export const briefName = (head: string): string => `brief-${head.slice(0, 12)}`;
 
 /** The reviews file, read once on open and rewritten whole, atomically, on every change. */
 export class Registry {
@@ -87,6 +90,7 @@ export class Registry {
       headRef: input.headRef,
       createdAt: Date.now(),
       revisions: [input.revision],
+      briefHeads: {},
     };
 
     if (input.task !== undefined) record.task = input.task;
@@ -146,7 +150,18 @@ function readReviews(path: string): ReviewRecord[] {
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
 
-    return Value.Check(FileSchema, parsed) ? parsed.reviews : [];
+    if (!Value.Check(FileSchema, parsed)) return [];
+
+    return parsed.reviews.map((review) =>
+      review.briefHeads === undefined
+        ? {
+            ...review,
+            briefHeads: Object.fromEntries(
+              review.revisions.map((revision) => [revision.head, briefName(revision.head)]),
+            ),
+          }
+        : review,
+    );
   } catch {
     return [];
   }

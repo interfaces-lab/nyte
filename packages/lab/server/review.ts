@@ -66,6 +66,7 @@ import {
 import type { Repo } from "./git.ts";
 import { CACHE_DIR, type ReviewHost } from "./host.ts";
 import { briefPrompt, totals, updatePrompt, type Reads } from "./review-prompts.ts";
+import { briefName } from "./registry.ts";
 import type { Author as AuthorRecord, Registry, ReviewRecord } from "./registry.ts";
 import { AUTHOR_AGENT, AUTHOR_PREFIX, REVIEW_AGENT, REVIEWER_VERSION } from "./reviewer.ts";
 
@@ -73,8 +74,6 @@ import { AUTHOR_AGENT, AUTHOR_PREFIX, REVIEW_AGENT, REVIEWER_VERSION } from "./r
 const DRAWN_PATCH = 400_000;
 
 class BadRequest extends Error {}
-
-const briefName = (head: string): string => `brief-${head.slice(0, 12)}`;
 
 /** A review's session, named for the reviewer version so a new reviewer starts afresh. */
 const reviewSessionId = (record: ReviewRecord): SessionId =>
