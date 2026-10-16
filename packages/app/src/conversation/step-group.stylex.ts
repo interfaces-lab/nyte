@@ -1,6 +1,6 @@
 /** A run of steps folded under one verb, and the thinking line. */
 import { create } from "@stylexjs/stylex";
-import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -12,7 +12,7 @@ export const stepGroupStyles = create({
     contain: "layout",
     "--_group-chevron-opacity": {
       default: 0,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":hover": { [media.hover]: 1 },
       ":focus-within": 1,
     },
   },
@@ -39,7 +39,7 @@ export const stepGroupStyles = create({
     userSelect: "none",
     "--_group-chevron-color": {
       default: role.contentTertiary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentSecondary },
+      ":hover": { [media.hover]: role.contentSecondary },
       "[data-panel-open]": role.contentSecondary,
     },
     "--_group-chevron-opacity": { default: null, "[data-panel-open]": 1 },

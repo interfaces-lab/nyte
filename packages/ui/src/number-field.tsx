@@ -1,4 +1,4 @@
-import { radius, target } from "./styles/schema.stylex.ts";
+import { media, radius, target } from "./styles/schema.stylex.ts";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
@@ -39,14 +39,14 @@ const styles = create({
     backgroundImage: {
       default: "none",
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.layerHover,
+        [media.hover]: role.layerHover,
       },
       ":active:not([data-disabled])": role.layerPressed,
     },
     color: {
       default: role.contentSecondary,
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.contentPrimary,
+        [media.hover]: role.contentPrimary,
       },
       "[data-disabled]": role.contentDisabled,
     },

@@ -1,4 +1,4 @@
-import { glyph, input, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, input, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
@@ -112,17 +112,17 @@ const styles = create({
   searchField: {
     "--_search-options-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-within": "1",
     },
     "--_search-options-events": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "auto" },
+      ":hover": { [media.hover]: "auto" },
       ":focus-within": "auto",
     },
     "--_search-options-space": {
       default: "0px",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": `calc(3 * ${target.min} + 2px)` },
+      ":hover": { [media.hover]: `calc(3 * ${target.min} + 2px)` },
       ":focus-within": `calc(3 * ${target.min} + 2px)`,
     },
     position: "relative",
@@ -200,7 +200,7 @@ const styles = create({
     borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentSecondary,
   },

@@ -35,7 +35,7 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
-import { button, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, media, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -478,7 +478,7 @@ const styles = create({
     borderRadius: button.radiusMd,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentSecondary,
   },
@@ -528,7 +528,7 @@ const styles = create({
     borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentSecondary,
     opacity: { default: 0, ":focus-visible": 1 },

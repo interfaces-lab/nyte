@@ -13,7 +13,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -109,15 +109,15 @@ const styles = create({
     backgroundColor: role.bgBase,
     "--_icon-default": {
       default: "inline-flex",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
+      ":hover": { [media.hover]: "none" },
     },
     "--_icon-hover": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
+      ":hover": { [media.hover]: "inline-flex" },
     },
     "--_actions": {
       default: 0,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":hover": { [media.hover]: 1 },
       ":focus-within": 1,
     },
   },

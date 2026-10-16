@@ -4,7 +4,7 @@ import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export function Shelf({
@@ -57,7 +57,7 @@ const styles = create({
     lineHeight: type.leadingBase,
     "--_shelf-chevron-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
     },
   },

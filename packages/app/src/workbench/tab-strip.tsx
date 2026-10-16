@@ -21,7 +21,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { useSession } from "../queries.ts";
-import { button, glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -66,19 +66,19 @@ const styles = create({
   item: {
     "--_tab-close-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":has(:focus-visible)": "1",
       "@media (hover: none)": "1",
     },
     "--_tab-close-pointer-events": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "auto" },
+      ":hover": { [media.hover]: "auto" },
       ":has(:focus-visible)": "auto",
       "@media (hover: none)": "auto",
     },
     "--_tab-content-mask": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": TAB_CONTENT_FADE },
+      ":hover": { [media.hover]: TAB_CONTENT_FADE },
       ":has(:focus-visible)": TAB_CONTENT_FADE,
       "@media (hover: none)": TAB_CONTENT_FADE,
     },
@@ -93,7 +93,7 @@ const styles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentInteractiveSecondary,
   },
@@ -128,7 +128,7 @@ const styles = create({
   agentTerminal: {
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
       ":focus-within": role.contentPrimary,
     },
   },

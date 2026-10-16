@@ -1,6 +1,6 @@
 /** Rendered markdown and its code blocks. */
 import { create } from "@stylexjs/stylex";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -82,7 +82,7 @@ export const proseStyles = create({
     backgroundColor: {
       default: "transparent",
       ":hover": {
-        "@media (hover: hover) and (pointer: fine)": role.bgInteractiveSecondaryTranslucent,
+        [media.hover]: role.bgInteractiveSecondaryTranslucent,
       },
     },
     display: "inline",
@@ -200,7 +200,7 @@ export const codeBlockStyles = create({
     backgroundColor: role.bgBase,
     "--_code-copy-opacity": {
       default: 0,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":hover": { [media.hover]: 1 },
       ":focus-within": 1,
       ":has([data-copied])": 1,
     },

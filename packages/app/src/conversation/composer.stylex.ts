@@ -5,6 +5,7 @@ import {
   clipboardPreview,
   glyph,
   layer,
+  media,
   menu,
   row,
   radius,
@@ -139,7 +140,7 @@ export const composerStyles = create({
   queueRow: {
     "--_queue-actions-display": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "flex" },
+      ":hover": { [media.hover]: "flex" },
       ":focus-within": "flex",
       "[data-editing='true']": "flex",
       "[data-error='true']": "flex",
@@ -156,7 +157,7 @@ export const composerStyles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
       ":focus-within": role.bgHover,
       "[data-editing='true']": role.bgInteractiveSecondaryTranslucent,
     },
@@ -229,7 +230,7 @@ export const composerStyles = create({
     borderStyle: "solid",
     borderColor: {
       default: role.borderSecondaryTranslucent,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent },
+      ":hover": { [media.hover]: role.borderPrimaryTranslucent },
       ":focus-within": role.borderPrimaryTranslucent,
     },
     backgroundColor: role.bgElevated,
@@ -291,7 +292,7 @@ export const composerStyles = create({
     flexShrink: 0,
     "--_attachment-remove-opacity": {
       default: 0,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":hover": { [media.hover]: 1 },
       ":focus-within": 1,
       "@media (hover: none)": 1,
     },
@@ -458,19 +459,19 @@ export const composerStyles = create({
   mentionChipRemovable: {
     "--_chip-remove-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":has(:focus-visible)": "1",
       "@media (hover: none)": "1",
     },
     "--_chip-remove-pointer-events": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "auto" },
+      ":hover": { [media.hover]: "auto" },
       ":has(:focus-visible)": "auto",
       "@media (hover: none)": "auto",
     },
     "--_chip-label-mask": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": CHIP_LABEL_FADE },
+      ":hover": { [media.hover]: CHIP_LABEL_FADE },
       ":has(:focus-visible)": CHIP_LABEL_FADE,
       "@media (hover: none)": CHIP_LABEL_FADE,
     },
@@ -585,7 +586,7 @@ export const composerStyles = create({
     },
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
       "[aria-selected='true']": role.contentPrimary,
     },
     cursor: appearance.cursorInteractive,

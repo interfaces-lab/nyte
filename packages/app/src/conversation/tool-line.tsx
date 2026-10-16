@@ -4,7 +4,7 @@ import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useMemo, useState } from "react";
@@ -70,15 +70,15 @@ export const toolLineStyles = create({
     cursor: appearance.cursorInteractive,
     "--_action": {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
     "--_details": {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
     "--_chevron": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
       "[data-panel-open]": "1",
     },

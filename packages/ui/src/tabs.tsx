@@ -3,7 +3,7 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { button, radius, space, target } from "./styles/schema.stylex.ts";
+import { button, media, radius, space, target } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { text } from "./styles/text.stylex.ts";
@@ -74,7 +74,7 @@ const tabs = create({
     borderRadius: button.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover:not([data-active])": { [media.hover]: role.bgHover },
       "[data-active]": role.bgElevated,
     },
     boxShadow: { default: "none", "[data-active]": shadow.shadowSm },
@@ -99,7 +99,7 @@ const tabs = create({
     backgroundColor: "transparent",
     color: {
       default: role.contentInteractiveSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentInteractivePrimary },
+      ":hover": { [media.hover]: role.contentInteractivePrimary },
       "[data-active]": role.contentPrimary,
     },
     fontFamily: type.fontSans,
@@ -131,7 +131,7 @@ const tabs = create({
     },
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover:not([data-active])": { [media.hover]: role.bgHover },
       "[data-active]": role.bgInteractiveSecondaryTranslucent,
     },
     color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
@@ -150,7 +150,7 @@ const tabs = create({
     borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover:not([data-active])": { [media.hover]: role.bgHover },
       "[data-active]": role.bgInteractiveSecondaryTranslucent,
     },
     color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },

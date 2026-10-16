@@ -1,6 +1,6 @@
 /** Diffs, wherever a patch is drawn: edit calls, the Changes stack, and the file editor. */
 import { create } from "@stylexjs/stylex";
-import { glyph, row, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, media, row, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { diffView } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -43,12 +43,12 @@ export const diffStyles = create({
   stackHeader: {
     "--_stack-icon-display": {
       default: "flex",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
+      ":hover": { [media.hover]: "none" },
       "[aria-expanded='false']": "none",
     },
     "--_stack-chevron-display": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "flex" },
+      ":hover": { [media.hover]: "flex" },
       "[aria-expanded='false']": "flex",
     },
     appearance: "none",

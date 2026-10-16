@@ -1,6 +1,6 @@
 /** The transcript's scroll frame. */
 import { create } from "@stylexjs/stylex";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -74,12 +74,12 @@ export const messageScrollerStyles = create({
     borderStyle: "solid",
     borderColor: {
       default: role.borderSecondaryTranslucent,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent },
+      ":hover": { [media.hover]: role.borderPrimaryTranslucent },
     },
     backgroundColor: role.bgElevated,
     backgroundImage: {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
+      ":hover": { [media.hover]: "none" },
       ":active": "none",
     },
     boxShadow: "none",

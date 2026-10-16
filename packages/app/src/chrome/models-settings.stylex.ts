@@ -1,5 +1,5 @@
 /** Settings › Models geometry beyond the shared settings patterns. */
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { settings } from "../theme/schema.stylex.ts";
@@ -100,7 +100,7 @@ export const modelsSettingsStyles = create({
     color: role.contentPrimary,
     textDecorationLine: {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "underline" },
+      ":hover": { [media.hover]: "underline" },
     },
     textUnderlineOffset: 3,
   },

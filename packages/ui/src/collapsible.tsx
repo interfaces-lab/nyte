@@ -3,7 +3,7 @@ import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { space, target } from "./styles/schema.stylex.ts";
+import { media, space, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
@@ -33,7 +33,7 @@ const styles = create({
     minWidth: 0,
     color: {
       default: role.contentInteractiveSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentInteractivePrimary },
+      ":hover": { [media.hover]: role.contentInteractivePrimary },
     },
     userSelect: "none",
     transitionProperty: "color",

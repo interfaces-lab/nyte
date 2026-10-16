@@ -9,7 +9,7 @@ import { Input } from "./input.tsx";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { choiceInput } from "./styles/questionnaire.stylex.ts";
-import { checkbox, radius, row, space } from "./styles/schema.stylex.ts";
+import { checkbox, media, radius, row, space } from "./styles/schema.stylex.ts";
 import { text } from "./styles/text.stylex.ts";
 import { appearance, role, type } from "./styles/vars.stylex.ts";
 import { intent } from "./surface-theme.ts";
@@ -75,7 +75,7 @@ const styles = create({
     backgroundColor: {
       default: role.bgMutedTranslucent,
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.bgHover,
+        [media.hover]: role.bgHover,
       },
       "[data-checked]": role.bgInteractiveSecondaryTranslucent,
     },

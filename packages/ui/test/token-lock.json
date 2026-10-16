@@ -964,6 +964,7 @@
       "tooltip",
       "workbench"
     ],
+    "ui/src/styles/schema.stylex.ts media": ["hover"],
     "ui/src/styles/schema.stylex.ts menu": [
       "itemGap",
       "itemHeight",

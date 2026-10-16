@@ -12,7 +12,7 @@ import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
-import { glyph, layer, menu, radius, space, switchControl } from "./styles/schema.stylex.ts";
+import { glyph, layer, media, menu, radius, space, switchControl } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StateStyledProps, type StyledProps, type XStyle } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
 import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
@@ -202,7 +202,7 @@ const itemVariants = create({
   quiet: {
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
       "[data-highlighted]": role.contentPrimary,
       "[data-disabled]": role.contentDisabled,
     },

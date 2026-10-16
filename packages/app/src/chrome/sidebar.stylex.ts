@@ -2,7 +2,7 @@
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
-import { glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -58,7 +58,7 @@ export const sidebarStyles = create({
     "--_row-padding-inline": sidebar.rowPaddingInline,
     "--_shortcut-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
     },
     fontSize: type.fontBase,
@@ -100,7 +100,7 @@ export const sidebarStyles = create({
   sectionHeader: {
     "--_section-chevron-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-within": "1",
     },
     display: "flex",
@@ -162,12 +162,12 @@ export const sidebarStyles = create({
   workspaceRow: {
     "--_workspace-folder-display": {
       default: "inline-flex",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
+      ":hover": { [media.hover]: "none" },
       ":focus-within": "none",
     },
     "--_workspace-chevron-display": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
+      ":hover": { [media.hover]: "inline-flex" },
       ":focus-within": "inline-flex",
     },
     cursor: appearance.cursorInteractive,
@@ -181,7 +181,7 @@ export const sidebarStyles = create({
     "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
       ":focus-within": role.bgHover,
     },
     cursor: appearance.cursorInteractive,
@@ -341,12 +341,12 @@ export const sidebarStyles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentSecondary,
     "--_shelf-chevron-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
     },
   },
@@ -381,7 +381,7 @@ export const sidebarStyles = create({
   showMore: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     "--_row-padding-inline": `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     borderRadius: radius.control,

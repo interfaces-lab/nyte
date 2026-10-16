@@ -1,6 +1,6 @@
 /** A turn: the user's bubble, the response, and what the turn changed. */
 import { create } from "@stylexjs/stylex";
-import { glyph, layer, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { glyph, layer, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -52,7 +52,7 @@ export const bubbleStyles = create({
       default: role.borderSecondaryTranslucent,
       ":has(:focus-visible)": role.borderPrimaryTranslucent,
       ':hover:has([data-slot="row-primary"])': {
-        "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent,
+        [media.hover]: role.borderPrimaryTranslucent,
       },
     },
     borderRadius: radius.card,
@@ -169,7 +169,7 @@ export const turnStyles = create({
   changesFile: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
       ":focus-within": role.bgHover,
       ":active": role.bgPressed,
     },

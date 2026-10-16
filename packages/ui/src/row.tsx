@@ -5,7 +5,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { glyph, row, space, target } from "./styles/schema.stylex.ts";
+import { glyph, media, row, space, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps, type XStyle } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
@@ -45,14 +45,14 @@ const styles = create({
   interactive: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
       ":focus-within": role.bgHover,
     },
   },
   nav: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     flexShrink: 0,
     margin: 0,
@@ -60,7 +60,7 @@ const styles = create({
     borderRadius: row.radius,
     color: {
       default: role.contentChrome,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
       ":focus-visible": role.contentPrimary,
       ":disabled": role.contentDisabled,
       "[data-disabled]": role.contentDisabled,
@@ -91,13 +91,13 @@ const styles = create({
   revealActions: {
     "--_row-actions-display": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
+      ":hover": { [media.hover]: "inline-flex" },
       ":focus-within": "inline-flex",
       "@media (hover: none), (pointer: coarse)": "inline-flex",
     },
     "--_row-actions-opacity": {
       default: 0,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":hover": { [media.hover]: 1 },
       ":focus-within": 1,
       "@media (hover: none), (pointer: coarse)": 1,
     },

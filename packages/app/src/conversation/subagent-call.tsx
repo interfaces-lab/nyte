@@ -21,7 +21,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Row } from "@nyte-ai/ui/row";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   useCatalog,
@@ -65,13 +65,13 @@ const lineStyles = create({
     textDecorationLine: "underline",
     textDecorationColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "currentColor" },
+      ":hover": { [media.hover]: "currentColor" },
       ":focus-visible": "currentColor",
     },
     transitionProperty: "text-decoration-color",
     transitionDuration: {
       default: motion.durationFast,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "0s" },
+      ":hover": { [media.hover]: "0s" },
       ":focus-visible": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },

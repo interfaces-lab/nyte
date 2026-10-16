@@ -7,6 +7,7 @@ import {
   button,
   glyph,
   layer,
+  media,
   radius,
   space,
   target,
@@ -152,7 +153,7 @@ const styles = create({
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
     backgroundImage: {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.layerHover },
+      ":hover": { [media.hover]: role.layerHover },
     },
     color: role.contentPrimary,
     fontFamily: type.fontSans,
@@ -185,11 +186,11 @@ const styles = create({
     borderRadius: button.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: {
       default: role.contentInteractiveSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentInteractivePrimary },
+      ":hover": { [media.hover]: role.contentInteractivePrimary },
     },
     cursor: appearance.cursorInteractive,
     scale: { default: 1, ":active": 0.96 },

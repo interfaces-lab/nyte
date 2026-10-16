@@ -13,7 +13,7 @@ import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { layer } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, media } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
 import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -66,7 +66,7 @@ const styles = create({
     },
     ":hover::after": {
       backgroundColor: {
-        "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent,
+        [media.hover]: role.borderPrimaryTranslucent,
       },
     },
     ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
