@@ -1,4 +1,4 @@
-import { isJsonObject, SdkError, SdkErrorWireSchema } from "@nyte-ai/schema";
+import { isJsonObject, SdkError, SdkErrorWireSchema, SdkErrorWireType } from "@nyte-ai/schema";
 import type { ByteReader, Json, OutputFrame, SdkErrorCode, SdkErrorWire } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import { parseJson } from "./json.ts";
@@ -59,10 +59,9 @@ export function decodeError(value: Json, status?: number): SdkError {
 export function statusCode(status: number): SdkErrorCode {
   if (status === 413) return "invalid";
 
-  for (const [code, known] of Object.entries(errorStatus))
-    if (known === status && isCode(code)) return code;
-
-  return "internal";
+  return (
+    SdkErrorWireType.properties.code.enum.find((code) => errorStatus[code] === status) ?? "internal"
+  );
 }
 
 /** Frames JSON values as server-sent events, each one `data:` line; a `: ping` comment every `heartbeatMs` while it waits; an error the source throws is the last frame, an `error` event carrying the wire error. Cancelling the stream returns the source. */
@@ -285,12 +284,13 @@ export function withInputHeader(
     headers: { "Content-Type": "application/octet-stream", [INPUT_HEADER]: base64url(input) },
     ...(body instanceof ReadableStream
       ? { body, duplex: "half" as const }
-      : { body: ownsBuffer(body) ? body : body.slice() }),
+      : {
+          body:
+            body.buffer instanceof ArrayBuffer
+              ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+              : body.slice(),
+        }),
   };
-}
-
-function ownsBuffer(bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> {
-  return bytes.buffer instanceof ArrayBuffer;
 }
 
 /** Returns the JSON input a request carries in `X-Nyte-Input`, or null when it carries none; a header that is not base64url JSON throws `SdkError("invalid")`. */
@@ -317,10 +317,6 @@ export function asSdkError(error: unknown): SdkError {
   return new SdkError("internal", "The host failed to answer.", {
     correlation: crypto.randomUUID(),
   });
-}
-
-function isCode(code: string): code is SdkErrorCode {
-  return Object.hasOwn(errorStatus, code);
 }
 
 function parseEventBlock(block: string): { readonly data: Json } | null {
