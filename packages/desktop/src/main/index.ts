@@ -11,7 +11,7 @@ import {
   screen,
   shell,
 } from "electron";
-import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
+import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -20,11 +20,13 @@ import {
   CALL_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
+  MAIN_OPERATION_PATHS,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
-import type { HostEvent, UpdateState } from "@nyte-ai/app/bridge.ts";
+import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
+import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {
   applicationMenuTemplate,
@@ -38,9 +40,9 @@ import { safeExternalUrl } from "./external-url.ts";
 import { BrowserSurfaces } from "./browser.ts";
 import { BrowserHistoryStore } from "./browser-history.ts";
 import { showContextMenu } from "./context-menu.ts";
-import { callIpc } from "./ipc-call.ts";
+import { callIpc, callTable } from "./ipc-call.ts";
+import type { CallRoute } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
-import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { registerAccount } from "./account.ts";
 import type { AccountSession } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
@@ -49,13 +51,11 @@ import { canvasShellUrl, registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
-import { ConnectRuntime } from "@nyte-ai/connect/host";
-import { dev } from "@nyte-ai/core";
-import { defaultSecrets } from "@nyte-ai/host";
-import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
-import { DesktopHost, type DesktopHostDependencies } from "./host.ts";
+import { ExpectedHostError } from "./errors.ts";
+import { answerAccount } from "./host-account.ts";
+import { answerAgent } from "./host-browser-agent.ts";
+import { HostProcess } from "./host-process.ts";
 import type { HostWindow } from "./host-window.ts";
-import { models } from "./models.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
 import { LaunchStateStore } from "./launch-state.ts";
 import { registerUpdates } from "./updates.ts";
@@ -76,18 +76,18 @@ interface NyteWindow {
 /** Keyed by the renderer's webContents id; ordered by focus, most recent last. */
 const windows = new Map<HostWindow, NyteWindow>();
 
-let desktopHost: DesktopHost | undefined;
+/** Forked when Electron is ready, before the first window; the primary instance only. */
+let hostProcess: HostProcess | undefined;
 
-/** Account remote access; created in the primary instance only. */
-let connect: ConnectRuntime | undefined;
+/** Settles once the host process is forked, for work that may start before Electron is ready. */
+const hostStarted = Promise.withResolvers<HostProcess>();
+
+/** The Nyte account's sign-in, in a build with Clerk; created in the primary instance only. */
+let account: AccountSession | undefined;
 
 let rendererUrl: string;
 
 let canvasShell: string;
-
-registerBunOAuthFlows();
-
-if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "desktop");
 
 function macOSTrafficLightPosition(zoomFactor: number) {
   const diameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
@@ -276,79 +276,112 @@ let updates: ReturnType<typeof registerUpdates> | undefined;
 
 let awakeBlocker: number | undefined;
 
-const hostDependencies = {
-  home,
-  models,
-  usageScan: new UsageScanWorker(home, new URL("./usage-worker.js", import.meta.url)),
-  settingsChanged: (next) => {
-    settings = next;
-    browserSurfaces.settingsChanged();
+function keepAwake(awake: boolean): void {
+  if (awake) {
+    awakeBlocker ??= powerSaveBlocker.start("prevent-app-suspension");
+
+    return;
+  }
+
+  if (awakeBlocker === undefined) return;
+  powerSaveBlocker.stop(awakeBlocker);
+  awakeBlocker = undefined;
+}
+
+function startedHost(): HostProcess {
+  if (hostProcess === undefined) throw new Error("The host process starts when Electron is ready.");
+
+  return hostProcess;
+}
+
+async function confirmExternal(url: string, id: HostWindow) {
+  const window = windows.get(id)?.window;
+
+  const options: Electron.MessageBoxOptions = {
+    type: "question",
+    message: "Do you want Nyte to open the external website?",
+    detail: url,
+    buttons: ["Open", "Copy", `Always Open ${new URL(url).host}`, "Cancel"],
+    defaultId: 0,
+    cancelId: 3,
+    noLink: true,
+  };
+
+  const { response } =
+    window === undefined
+      ? await dialog.showMessageBox(options)
+      : await dialog.showMessageBox(window, options);
+
+  return (["open", "copy", "trust", "cancel"] as const)[response] ?? "cancel";
+}
+
+async function pickFolder(id: HostWindow): Promise<string | undefined> {
+  const window = windows.get(id)?.window;
+
+  const options: Electron.OpenDialogOptions = {
+    properties: ["openDirectory", "createDirectory"],
+    message: "Open a workspace folder",
+  };
+
+  const result =
+    window === undefined
+      ? await dialog.showOpenDialog(options)
+      : await dialog.showOpenDialog(window, options);
+
+  return result.canceled ? undefined : result.filePaths[0];
+}
+
+/** The operations main answers; the host process answers the rest (`HOST_PROCESS_PATHS`). */
+const mainCalls: CallTable = {
+  "host.fonts": () => localFonts(),
+  "host.pickWorkspace": async (window) => {
+    const picked = await pickFolder(window);
+
+    if (picked === undefined) return { kind: "cancelled" };
+
+    const reply = await startedHost().call(window, {
+      path: "host.openWorkspace",
+      input: { path: picked },
+    });
+
+    if (!reply.ok) throw new ExpectedHostError(reply.error);
+
+    if (reply.path !== "host.openWorkspace")
+      throw new Error("The host answered another operation.");
+
+    return reply.value;
   },
-  keepAwake: (awake: boolean) => {
-    if (awake) {
-      awakeBlocker ??= powerSaveBlocker.start("prevent-app-suspension");
-
-      return;
-    }
-
-    if (awakeBlocker === undefined) return;
-    powerSaveBlocker.stop(awakeBlocker);
-    awakeBlocker = undefined;
-  },
-  updates: {
-    state: async (): Promise<UpdateState> => updates?.state() ?? { kind: "idle" },
-    check: async () => updates?.click(),
-  },
-  // Built-in plugins, registered here; nothing is loaded or discovered at run time.
-  remoteAccessPlugins: { cloudflare: new CloudflareTunnelPlugin({ home: join(home, ".nyte") }) },
-  emitHostEvent,
-  openExternal: (url) => void shell.openExternal(url),
-  confirmExternal: async (url, id) => {
-    const window = windows.get(id)?.window;
-
-    const options: Electron.MessageBoxOptions = {
-      type: "question",
-      message: "Do you want Nyte to open the external website?",
-      detail: url,
-      buttons: ["Open", "Copy", `Always Open ${new URL(url).host}`, "Cancel"],
-      defaultId: 0,
-      cancelId: 3,
-      noLink: true,
-    };
-
-    const { response } =
-      window === undefined
-        ? await dialog.showMessageBox(options)
-        : await dialog.showMessageBox(window, options);
-
-    return (["open", "copy", "trust", "cancel"] as const)[response] ?? "cancel";
-  },
-  revealPath: (path) => shell.showItemInFolder(path),
-  openPath: async (path) => {
-    const failure = await shell.openPath(path);
+  "host.updates.state": async () => updates?.state() ?? { kind: "idle" },
+  "host.updates.check": async () => updates?.click(),
+  "host.openExternal": async (_window, { url }) => void shell.openExternal(safeExternalUrl(url)),
+  "host.confirmExternal": (window, { url }) => confirmExternal(safeExternalUrl(url), window),
+  "host.revealPath": async (_window, { path }) => shell.showItemInFolder(path),
+  "host.openPluginsFolder": async () => {
+    const folder = join(home, ".nyte", "plugins");
+    await mkdir(folder, { recursive: true });
+    const failure = await shell.openPath(folder);
 
     if (failure !== "") throw new Error(failure);
   },
-  showContextMenu: (input, window) =>
+  "host.contextMenu": (window, input) =>
     showContextMenu({ window: windows.get(window)?.window, input }),
-  browser: browserSurfaces,
-  listFonts: localFonts,
-  pickFolder: async (id) => {
-    const window = windows.get(id)?.window;
+  "host.browser.open": async (window, input) => browserSurfaces.open(input, window),
+  "host.browser.navigate": async (_window, input) => browserSurfaces.navigate(input),
+  "host.browser.menu": (window, input) => browserSurfaces.menu(input, window),
+  "host.browser.perform": (window, input) => browserSurfaces.perform(input, window),
+  "host.browser.close": async (_window, input) => browserSurfaces.close(input),
+  "host.browser.captureFrame": (_window, input) => browserSurfaces.captureFrame(input),
+  "host.browser.find": (_window, input) => browserSurfaces.find(input),
+  "host.browser.cancelDownload": async (_window, input) => browserSurfaces.cancelDownload(input),
+  "host.browser.login": async (_window, input) => browserSurfaces.login(input),
+  "host.browser.history": (_window, input) => browserSurfaces.history(input),
+  "host.browser.forgetHistory": (_window, input) => browserSurfaces.forgetHistory(input),
+  "host.browser.focusPage": async (_window, input) => browserSurfaces.focusPage(input),
+} satisfies { readonly [P in MainCallPath]: CallHandler<P> };
 
-    const options: Electron.OpenDialogOptions = {
-      properties: ["openDirectory", "createDirectory"],
-      message: "Open a workspace folder",
-    };
+const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, window, path, input);
 
-    const result =
-      window === undefined
-        ? await dialog.showOpenDialog(options)
-        : await dialog.showOpenDialog(window, options);
-
-    return result.canceled ? undefined : result.filePaths[0];
-  },
-} satisfies Omit<DesktopHostDependencies, "rendererOrigin" | "connect">;
+const mainPaths: ReadonlySet<string> = new Set(MAIN_OPERATION_PATHS);
 
 /** Returns the renderer's origin as Chromium sends it, `scheme://host`; Node reports a custom scheme's `URL.origin` as opaque. */
 function rendererOrigin(url: string): string {
@@ -357,40 +390,62 @@ function rendererOrigin(url: string): string {
   return `${parsed.protocol}//${parsed.host}`;
 }
 
-function getHost(): DesktopHost {
-  desktopHost ??= new DesktopHost({
-    ...hostDependencies,
-    connect,
-    rendererOrigin: rendererOrigin(rendererUrl),
-  });
+function startHost(): HostProcess {
+  return new HostProcess(
+    join(import.meta.dirname, "host-entry.js"),
+    {
+      home,
+      rendererOrigin: rendererOrigin(rendererUrl),
+      account: account === undefined ? null : account.state(),
+    },
+    {
+      event: emitHostEvent,
+      awake: keepAwake,
+      settings: (next) => {
+        settings = next;
+        browserSurfaces.settingsChanged();
+      },
+      answer: async (request, signal) => {
+        if (request.kind === "agent")
+          return { kind: "agent", answer: await answerAgent(browserSurfaces.agent, request.call) };
 
-  return desktopHost;
+        if (account === undefined) throw new Error("This build has no Nyte account.");
+
+        return { kind: "account", answer: await answerAccount(account, request.call, signal) };
+      },
+    },
+  );
 }
 
-function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
-  let account: AccountSession | undefined;
+function createAccount(config: ConnectConfig | undefined): AccountSession | undefined {
+  let session: AccountSession | undefined;
 
   if (config !== undefined) {
     try {
-      account = registerAccount({
+      session = registerAccount({
         publishableKey: config.clerk.publishableKey,
         scheme: accountScheme({ packaged: app.isPackaged, updateTest }),
         window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
-        onChange: () => connect?.accountChanged(),
+        onChange: () => {
+          if (session !== undefined) hostProcess?.accountChanged(session.state());
+        },
         store: new AccountStore({
           path: join(app.getPath("userData"), "account.json"),
-          secrets: defaultSecrets(home),
+          sealer: {
+            seal: async (plain) => (await hostStarted.promise).seal(plain),
+            open: async (sealed) => (await hostStarted.promise).open(sealed),
+          },
         }),
       });
     } catch {
-      account = undefined;
+      session = undefined;
       process.emitWarning("Account sign-in could not be registered; linking is unavailable.", {
         code: "NYTE_ACCOUNT_UNAVAILABLE",
       });
     }
   }
 
-  if (account === undefined) {
+  if (session === undefined) {
     ipcMain.handle(ACCOUNT_CHANNELS.config, (event) => {
       senderWindow(event);
 
@@ -398,12 +453,7 @@ function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
     });
   }
 
-  return new ConnectRuntime({
-    config,
-    home: join(home, ".nyte"),
-    authorizer: account === undefined ? undefined : { kind: "session", account },
-    onChange: () => broadcast({ kind: "remote_access_changed" }),
-  });
+  return session;
 }
 
 function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): NyteWindow {
@@ -471,10 +521,12 @@ function registerIpc(): void {
     }
   });
 
-  ipcMain.handle(CALL_CHANNEL, async (event, request) => {
+  ipcMain.handle(CALL_CHANNEL, async (event, request: CallRequest) => {
     senderWindow(event);
 
-    return callIpc(getHost, event.sender.id, request);
+    return mainPaths.has(request.path)
+      ? callIpc(mainRoute, event.sender.id, request)
+      : startedHost().call(event.sender.id, request);
   });
 }
 
@@ -515,6 +567,13 @@ function openingFrame(): OpeningFrame {
   };
 }
 
+/**
+ * Opens a Nyte window, shown at its first paint. Its host work is released when the renderer
+ * goes away or a committed main-frame navigation leaves the document behind; the navigation's
+ * start event fires before `will-navigate` can cancel, so it would tear down under a renderer
+ * that stays. A link that would open a window goes to the system browser instead, and an
+ * invalid one stays closed.
+ */
 function createWindow(): NyteWindow {
   const frame = openingFrame();
 
@@ -553,7 +612,7 @@ function createWindow(): NyteWindow {
   });
 
   const releaseRendererWork = (): void => {
-    desktopHost?.releaseWindow(id);
+    hostProcess?.release(id);
   };
 
   created.webContents.on("render-process-gone", releaseRendererWork);
@@ -571,9 +630,6 @@ function createWindow(): NyteWindow {
   created.on("enter-full-screen", fullscreenChanged);
   created.on("leave-full-screen", fullscreenChanged);
   screen.on("display-metrics-changed", placeButtons);
-  // Only a committed main-frame navigation has left the document behind. The
-  // start event fires before `will-navigate` can cancel, and would tear down
-  // under a renderer that stays.
   created.webContents.on("did-navigate", () => {
     releaseRendererWork();
     entry.menuCommands.reset();
@@ -600,11 +656,7 @@ function createWindow(): NyteWindow {
   });
 
   created.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      void shell.openExternal(safeExternalUrl(url));
-    } catch {
-      // Invalid renderer URLs stay closed.
-    }
+    void Promise.try(() => shell.openExternal(safeExternalUrl(url))).catch(() => undefined);
 
     return { action: "deny" };
   });
@@ -649,7 +701,7 @@ function createWindow(): NyteWindow {
     screen.off("display-metrics-changed", placeButtons);
     windows.delete(id);
     browserSurfaces.releaseWindow(id);
-    desktopHost?.releaseWindow(id);
+    hostProcess?.release(id);
   });
 
   return entry;
@@ -665,7 +717,7 @@ let shutDown = false;
 /** Flushes browser history and closes the host, once; quit and relaunch both wait for it. */
 function shutdown(): Promise<void> {
   shuttingDown ??= Promise.race([
-    Promise.allSettled([browserHistory.flush(), desktopHost?.close()]),
+    Promise.allSettled([browserHistory.flush(), hostProcess?.close(SHUTDOWN_LIMIT_MS)]),
     new Promise((resolve) => setTimeout(resolve, SHUTDOWN_LIMIT_MS)),
   ]).then(() => {
     shutDown = true;
@@ -690,12 +742,12 @@ if (!hasSingleInstanceLock) {
       : join(app.getAppPath(), "..", "canvas", "dist", "shell"),
   });
   canvasShell = canvasShellUrl(scheme);
-  connect = createConnect(config);
+  account = createAccount(config);
 
   app.on("second-instance", (_event, argv) => {
-    // Clerk focuses the window that requested the OAuth callback.
-    if (argv.some((arg) => arg.startsWith(`${scheme}:`))) return;
-    reveal((currentWindow() ?? createWindow()).window);
+    const clerkCallback = argv.some((arg) => arg.startsWith(`${scheme}:`));
+
+    if (!clerkCallback) reveal((currentWindow() ?? createWindow()).window);
   });
 
   void app.whenReady().then(async () => {
@@ -703,23 +755,19 @@ if (!hasSingleInstanceLock) {
     nativeTheme.themeSource = launchState.theme();
     registerIpc();
 
-    // Packaged apps use the bundle ICNS. The dev PNG shares its macOS inset.
-    if (!app.isPackaged && process.platform === "darwin") {
-      app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
-    }
+    const devDockIcon = !app.isPackaged && process.platform === "darwin";
 
+    if (devDockIcon) app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
+
+    hostProcess = startHost();
+    hostStarted.resolve(hostProcess);
     createWindow();
-    void getHost()
-      .autostartConnect()
-      .catch(() => undefined);
-    // A lease held before sleep says nothing about now.
-    powerMonitor.on("resume", () => connect?.resume());
+    powerMonitor.on("resume", () => hostProcess?.resume());
 
     const menu = Menu.buildFromTemplate(
       applicationMenuTemplate({
         platform: process.platform,
         name: app.getName(),
-        // A command with no window open reopens one, as the single window did.
         dispatch: (command) => (currentWindow() ?? createWindow()).menuCommands.dispatch(command),
         newWindow: createWindow,
         developer: !app.isPackaged,
@@ -752,7 +800,7 @@ if (!hasSingleInstanceLock) {
       updates = registerUpdates({
         publish: (state) => broadcast({ kind: "update_changed", state }),
         item: updateItem,
-        activity: () => getHost().updateActivity(),
+        activity: () => startedHost().activity(),
         beforeRelaunch: shutdown,
       });
     Menu.setApplicationMenu(menu);

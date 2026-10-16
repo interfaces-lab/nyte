@@ -157,11 +157,13 @@ function sessionBrowser(agent: BrowserAgent, session: SessionId, owner: BrowserO
       );
     },
     console: async (input) =>
-      agent.console({ session, limit: input?.limit ?? 50, clear: input?.clear }).map((entry) => ({
-        level: entry.level === "warning" ? "warn" : entry.level === "debug" ? "log" : entry.level,
-        text: entry.message,
-        at: entry.at,
-      })),
+      (await agent.console({ session, limit: input?.limit ?? 50, clear: input?.clear })).map(
+        (entry) => ({
+          level: entry.level === "warning" ? "warn" : entry.level === "debug" ? "log" : entry.level,
+          text: entry.message,
+          at: entry.at,
+        }),
+      ),
     async capture() {
       const bytes = await agent.capture({ session });
 

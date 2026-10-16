@@ -166,7 +166,7 @@ export interface BrowserAgent {
     readonly session: SessionId;
     readonly limit: number;
     readonly clear?: boolean;
-  }): readonly BrowserConsoleEntry[];
+  }): Promise<readonly BrowserConsoleEntry[]>;
   evaluate(input: {
     readonly session: SessionId;
     readonly expression: string;

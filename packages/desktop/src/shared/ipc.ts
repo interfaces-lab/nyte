@@ -17,17 +17,39 @@ export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
-export const HOST_OPERATION_PATHS = [
-  "host.endpoint",
-  "host.state",
+/** Operations main answers itself: native dialogs and menus, fonts, updates and the browser panel. */
+export const MAIN_OPERATION_PATHS = [
   "host.fonts",
-  "host.usage",
-  "host.openWorkspace",
   "host.pickWorkspace",
-  "host.trustWorkspace",
-  "host.closeWorkspace",
   "host.updates.state",
   "host.updates.check",
+  "host.openExternal",
+  "host.confirmExternal",
+  "host.revealPath",
+  "host.openPluginsFolder",
+  "host.contextMenu",
+  "host.browser.open",
+  "host.browser.navigate",
+  "host.browser.menu",
+  "host.browser.perform",
+  "host.browser.close",
+  "host.browser.captureFrame",
+  "host.browser.find",
+  "host.browser.cancelDownload",
+  "host.browser.login",
+  "host.browser.history",
+  "host.browser.forgetHistory",
+  "host.browser.focusPage",
+] as const;
+
+/** Operations the host process answers: the Nyte host, its listeners, remote access and terminals. */
+export const HOST_PROCESS_PATHS = [
+  "host.endpoint",
+  "host.state",
+  "host.usage",
+  "host.openWorkspace",
+  "host.trustWorkspace",
+  "host.closeWorkspace",
   "host.server.state",
   "host.server.connect",
   "host.server.disconnect",
@@ -46,23 +68,6 @@ export const HOST_OPERATION_PATHS = [
   "host.connect.revokeDevice",
   "host.connect.openAccount",
   "host.connect.signOut",
-  "host.openExternal",
-  "host.confirmExternal",
-  "host.revealPath",
-  "host.openPluginsFolder",
-  "host.contextMenu",
-  "host.browser.open",
-  "host.browser.navigate",
-  "host.browser.menu",
-  "host.browser.perform",
-  "host.browser.close",
-  "host.browser.captureFrame",
-  "host.browser.find",
-  "host.browser.cancelDownload",
-  "host.browser.login",
-  "host.browser.history",
-  "host.browser.forgetHistory",
-  "host.browser.focusPage",
   "host.terminal.create",
   "host.terminal.write",
   "host.terminal.resize",
@@ -71,9 +76,15 @@ export const HOST_OPERATION_PATHS = [
   "host.terminal.close",
 ] as const;
 
+export const HOST_OPERATION_PATHS = [...MAIN_OPERATION_PATHS, ...HOST_PROCESS_PATHS] as const;
+
 export type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
 
 export type CallPath = HostOperationPath;
+
+export type MainCallPath = (typeof MAIN_OPERATION_PATHS)[number];
+
+export type HostCallPath = (typeof HOST_PROCESS_PATHS)[number];
 
 export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
@@ -140,3 +151,12 @@ export type CallReplyFor<P extends CallPath> =
   | { readonly ok: false; readonly error: IpcFailure };
 
 export type CallReply = { readonly [P in CallPath]: CallReplyFor<P> }[CallPath];
+
+/** Answers one operation for a window, its input already decoded. */
+export type CallHandler<P extends CallPath> = (
+  window: number,
+  input: CallInput<P>,
+) => Promise<CallOutput<P>>;
+
+/** The operations one process answers; a path it does not answer is absent. */
+export type CallTable = { readonly [P in CallPath]?: CallHandler<P> };

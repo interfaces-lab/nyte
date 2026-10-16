@@ -2,8 +2,6 @@ import { readFile, rm } from "node:fs/promises";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { writePrivateFile } from "@nyte-ai/connect/host";
-import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
-import type { SecretsSource } from "@nyte-ai/host";
 
 const savedSignIn = Compile(
   Type.Object(
@@ -15,14 +13,21 @@ const savedSignIn = Compile(
   ),
 );
 
+/** Seals text under this Mac's secrets key and opens it again; the host owns the key. */
+export interface SecretSealer {
+  seal(plain: string): Promise<string>;
+  /** Rejects when the text was sealed under another key or the key cannot be read now. */
+  open(sealed: string): Promise<string>;
+}
+
 export class AccountStore {
   private readonly path: string;
-  private readonly secrets: SecretsSource;
+  private readonly sealer: SecretSealer;
   private writes: Promise<unknown> = Promise.resolve();
 
-  constructor(options: { readonly path: string; readonly secrets: SecretsSource }) {
+  constructor(options: { readonly path: string; readonly sealer: SecretSealer }) {
     this.path = options.path;
-    this.secrets = options.secrets;
+    this.sealer = options.sealer;
   }
 
   /** The saved sign-in, its token still sealed; undefined when there is none to restore. */
@@ -36,7 +41,7 @@ export class AccountStore {
 
   /** The token a saved sign-in sealed; rejects when the keychain cannot open it now. */
   open(sealed: string): Promise<string> {
-    return openSecret(this.secrets, sealed);
+    return this.sealer.open(sealed);
   }
 
   /**
@@ -46,7 +51,7 @@ export class AccountStore {
   save(signIn: { readonly token: string; readonly label: string } | undefined): Promise<void> {
     const run = this.writes.then(async () => {
       if (signIn === undefined) return rm(this.path, { force: true });
-      const sealed = await sealSecret(this.secrets, signIn.token);
+      const sealed = await this.sealer.seal(signIn.token);
 
       return writePrivateFile({
         path: this.path,

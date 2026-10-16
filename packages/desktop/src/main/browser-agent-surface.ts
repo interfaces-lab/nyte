@@ -204,7 +204,9 @@ export class SurfaceAgent implements BrowserAgent {
     );
   }
 
-  console(input: Parameters<BrowserAgent["console"]>[0]): ReturnType<BrowserAgent["console"]> {
+  async console(
+    input: Parameters<BrowserAgent["console"]>[0],
+  ): ReturnType<BrowserAgent["console"]> {
     const surface = this.#session(input.session);
 
     if (surface === undefined) return [];

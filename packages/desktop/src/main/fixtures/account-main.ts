@@ -6,7 +6,7 @@ import { app, BrowserWindow, shell } from "electron";
 import type { WebContents } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openSecret } from "@nyte-ai/host/credentials";
+import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { ACCOUNT_CHANNELS } from "../../account/protocol.ts";
 import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { registerAccount } from "../account.ts";
@@ -48,7 +48,13 @@ class CountingStore extends AccountStore {
   }
 }
 
-const store = new CountingStore({ path: saved, secrets });
+const store = new CountingStore({
+  path: saved,
+  sealer: {
+    seal: (plain) => sealSecret(secrets, plain),
+    open: (sealed) => openSecret(secrets, sealed),
+  },
+});
 
 async function until(check: () => boolean | Promise<boolean>, message: string): Promise<void> {
   for (let attempt = 0; !(await check()); attempt += 1) {

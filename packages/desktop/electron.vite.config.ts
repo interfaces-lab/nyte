@@ -40,6 +40,7 @@ const config = (mode: string): UserConfig => ({
       rolldownOptions: {
         input: {
           index: resolve("src/main/index.ts"),
+          "host-entry": resolve("src/main/host-entry.ts"),
           "usage-worker": resolve("src/main/usage-worker.ts"),
           "codemode-worker": resolve("src/main/codemode-worker.ts"),
           "codemode-runtime": resolve("src/main/codemode-runtime.ts"),

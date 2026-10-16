@@ -3,6 +3,7 @@ import { afterEach, test } from "vitest";
 import { SdkError } from "@nyte-ai/sdk";
 import { bridgeError, errorMessage } from "@nyte-ai/app/errors.ts";
 import { ipcDiagnostics, ipcResult } from "./errors.ts";
+import { throwForRenderer } from "./host.ts";
 import { callIpc } from "./ipc-call.ts";
 import { CALL_INPUT_SCHEMAS } from "./ipc-inputs.ts";
 import { Type } from "typebox";
@@ -42,11 +43,11 @@ test("operation validation names no input values or property names", async () =>
   assert.equal(ipcDiagnostics.size, 0);
 });
 
-test("an sdk failure keeps its code and message and leaves no diagnostic", async () => {
+test("an sdk failure keeps its code and message through the host process and leaves no diagnostic", async () => {
   for (const code of ["unknown", "stale", "unavailable", "denied"] as const) {
-    const result = await ipcResult(() => {
-      throw new SdkError(code, "The host answered.");
-    });
+    const result = await ipcResult(() =>
+      throwForRenderer(new SdkError(code, "The host answered.")),
+    );
 
     assert.equal(result.ok, false);
     assert.equal(result.error.code, code);
@@ -96,11 +97,12 @@ test("unexpected TypeError is captured once with its original cause and opaque r
 });
 
 test("safe bridge failure is plain cloneable data with a wire cause, not a local exception", async () => {
-  const result = await ipcResult(() => {
-    throw new SdkError("stale", "The host moved on.");
-  });
+  const result = await ipcResult(() =>
+    throwForRenderer(new SdkError("stale", "The host moved on.")),
+  );
 
   assert.equal(result.ok, false);
+  assert.equal(result.error.code, "stale");
   const copied = structuredClone(bridgeError(result.error));
   assert.equal(copied instanceof Error, false);
   assert.deepEqual(copied.cause, result.error);

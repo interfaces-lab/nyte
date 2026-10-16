@@ -23,6 +23,7 @@
     "./identity": "./src/identity.ts",
     "./listen-fetch": "./src/listen-fetch.ts",
     "./providers": "./src/providers.ts",
+    "./secrets": "./src/secrets.ts",
     "./shell-env": "./src/shell-env.ts",
     "./usage": "./src/usage.ts",
     "./store-usage": "./src/store-usage.ts",

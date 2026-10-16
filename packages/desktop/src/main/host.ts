@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { mkdir } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
@@ -9,12 +8,10 @@ import { childEnvironment } from "@nyte-ai/core";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Host, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
-import { hostShare, machineName } from "@nyte-ai/connect/host";
+import { ConnectError, hostShare, machineName } from "@nyte-ai/connect/host";
 import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
 import type {
-  HostBridge,
   HostEvent,
-  LocalFontCatalog,
   OpenWorkspaceOutcome,
   RemoteAccessPluginId,
   RemoteAccessState,
@@ -24,19 +21,23 @@ import type {
   ServerState,
   TailnetAvailability,
 } from "@nyte-ai/app/bridge.ts";
-import type { CallInput, CallOutput, CallPath } from "../shared/ipc.ts";
-import type { BrowserPanels } from "./browser.ts";
+import type {
+  CallHandler,
+  CallInput,
+  CallOutput,
+  CallPath,
+  CallTable,
+  HostCallPath,
+} from "../shared/ipc.ts";
+import type { BrowserAgent } from "./browser-agent.ts";
 import type { HostWindow } from "./host-window.ts";
 import { desktopBrowserPlugin } from "./browser-tools.ts";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
-import {
-  DEFAULT_DESKTOP_SETTINGS,
-  desktopSettings,
-  desktopSettingsPlugin,
-} from "./desktop-settings.ts";
+import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
+import { desktopSettings, desktopSettingsPlugin } from "./host-settings.ts";
 import { ExpectedHostError, retainDiagnostic } from "./errors.ts";
-import { safeExternalUrl } from "./external-url.ts";
+import { callTable } from "./ipc-call.ts";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { SavedServer } from "./server-settings.ts";
@@ -57,38 +58,21 @@ export interface DesktopHostDependencies {
   readonly usageScan?: UsageScanReader;
   readonly rendererOrigin: string;
   /**
-   * The built-in remote-access plugins `index.ts` registers. Without them, as
+   * The built-in remote-access plugins the host process registers. Without them, as
    * in tests that never serve through one, their reaches are refused.
    */
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
-  readonly updates?: HostBridge["updates"];
   readonly keepAwake?: (awake: boolean) => void;
   readonly settingsChanged?: (settings: DesktopSettings) => void;
   /** Push a host event to one window, or to every window when `window` is omitted. */
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
-  openExternal(url: string): void;
-  /** Native prompt before a conversation link leaves the app. */
-  confirmExternal(url: string, window: HostWindow): ReturnType<HostBridge["confirmExternal"]>;
-  /** Show a file or folder in the system file manager. */
-  revealPath(path: string): void;
-  /** Open a folder in the system file manager. Absent, the host reveals it instead. */
-  readonly openPath?: (path: string) => Promise<void>;
-  /** Native right-click menu, with the renderer's own signature. */
-  showContextMenu(
-    input: CallInput<"host.contextMenu">,
-    window: HostWindow,
-  ): Promise<CallOutput<"host.contextMenu">>;
-  browser: BrowserPanels;
-  listFonts(): Promise<LocalFontCatalog>;
-  /** Native folder picker; resolves undefined on cancel. */
-  pickFolder(window: HostWindow): Promise<string | undefined>;
+  /** The browser panel's pages, which the desktop browser tools drive. */
+  readonly agent: BrowserAgent;
 }
 
-/** One handler per renderer operation, so a missing or misshapen one is a type error. */
-type CallHandlers = {
-  readonly [P in CallPath]: (window: HostWindow, input: CallInput<P>) => Promise<CallOutput<P>>;
-};
+/** One handler per operation the host process answers, so a missing or misshapen one is a type error. */
+type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
 
 interface Opened {
   readonly host: Host;
@@ -220,6 +204,21 @@ function serverProblem(cause: unknown): ServerConnectionProblem {
   return { kind: "server", message: "The server could not answer. Try again later." };
 }
 
+/**
+ * Rethrows a host failure in the form the renderer may see: an SDK failure keeps its code and
+ * message and a Connect failure reads as unavailable. Anything else is rethrown as it is, to
+ * get a diagnostic ID.
+ */
+export function throwForRenderer(cause: unknown): never {
+  if (cause instanceof ConnectError)
+    throw new ExpectedHostError({ code: "unavailable", message: cause.message });
+
+  if (cause instanceof SdkError)
+    throw new ExpectedHostError({ code: cause.code, message: cause.message });
+
+  throw cause;
+}
+
 async function probeServer(url: string, token: string, hostId?: SavedServer["hostId"]) {
   const connection = await sdk.connect({
     url,
@@ -299,10 +298,11 @@ export class DesktopHost {
       workspace: { kind: "local", path: home },
       plugins: [
         desktopSettingsPlugin,
-        desktopBrowserPlugin(this.#deps.browser.agent, home),
+        desktopBrowserPlugin(this.#deps.agent, home),
         codemodePlugin(codemodeRuntimeOptions()),
       ],
     });
+
     performance.mark("nyte:host-opened");
 
     const token = newToken();
@@ -312,6 +312,7 @@ export class DesktopHost {
       auth: { kind: "token", token },
       origins: [this.#deps.rendererOrigin],
     });
+
     performance.mark("nyte:endpoint-ready");
 
     return { host, listener, url: listenerAddress(listener), token };
@@ -361,16 +362,16 @@ export class DesktopHost {
     this.#deps.keepAwake?.(awake);
   }
 
-  /** The one renderer entry point: an operation path and its input, already decoded at the IPC boundary. */
+  /** The host process's entry point: an operation path and its input, already decoded at the IPC boundary. */
   call<P extends CallPath>(
     window: HostWindow,
     path: P,
     input: CallInput<P>,
   ): Promise<CallOutput<P>> {
-    return this.#handlers[path](window, input);
+    return callTable(this.#handlers, window, path, input);
   }
 
-  readonly #handlers: CallHandlers = {
+  readonly #handlers: CallTable = {
     "host.endpoint": async () => {
       const { host, url, token } = await this.#opened;
 
@@ -395,14 +396,6 @@ export class DesktopHost {
         catalog: this.#deps.models === undefined ? undefined : catalogForUsage(this.#deps.models),
       });
     },
-    "host.fonts": () => this.#deps.listFonts(),
-    "host.pickWorkspace": async (window) => {
-      const picked = await this.#deps.pickFolder(window);
-
-      return picked === undefined ? { kind: "cancelled" } : this.#openWorkspace(window, picked);
-    },
-    "host.updates.state": async () => this.#deps.updates?.state() ?? { kind: "idle" },
-    "host.updates.check": async () => this.#deps.updates?.check(),
     "host.server.state": () => this.#serverState(),
     "host.server.connect": (_window, input) => this.#connectServer(input),
     "host.server.disconnect": async () => {
@@ -438,31 +431,6 @@ export class DesktopHost {
     "host.connect.revokeDevice": (_window, input) => this.#connect().revokeDevice(input),
     "host.connect.openAccount": () => this.#connect().openAccount(),
     "host.connect.signOut": () => this.#connect().signOut(),
-    "host.openExternal": async (_window, { url }) => this.#deps.openExternal(safeExternalUrl(url)),
-    "host.confirmExternal": (window, { url }) =>
-      this.#deps.confirmExternal(safeExternalUrl(url), window),
-    "host.revealPath": async (_window, { path }) => this.#deps.revealPath(path),
-    "host.openPluginsFolder": async () => {
-      const folder = join(this.#deps.home, ".nyte", "plugins");
-      await mkdir(folder, { recursive: true });
-
-      if (this.#deps.openPath === undefined) this.#deps.revealPath(folder);
-      else await this.#deps.openPath(folder);
-    },
-    "host.contextMenu": (window, input) => this.#deps.showContextMenu(input, window),
-    "host.browser.open": async (window, input) => this.#deps.browser.open(input, window),
-    "host.browser.navigate": async (_window, input) => this.#deps.browser.navigate(input),
-    "host.browser.menu": (window, input) => this.#deps.browser.menu(input, window),
-    "host.browser.perform": (window, input) => this.#deps.browser.perform(input, window),
-    "host.browser.close": async (_window, input) => this.#deps.browser.close(input),
-    "host.browser.captureFrame": (_window, input) => this.#deps.browser.captureFrame(input),
-    "host.browser.find": (_window, input) => this.#deps.browser.find(input),
-    "host.browser.cancelDownload": async (_window, input) =>
-      this.#deps.browser.cancelDownload(input),
-    "host.browser.login": async (_window, input) => this.#deps.browser.login(input),
-    "host.browser.history": (_window, input) => this.#deps.browser.history(input),
-    "host.browser.forgetHistory": (_window, input) => this.#deps.browser.forgetHistory(input),
-    "host.browser.focusPage": async (_window, input) => this.#deps.browser.focusPage(input),
     "host.terminal.create": async (window, { id, workspacePath }) => {
       const terminals = this.#windowTerminals(window);
       await childEnvironment();
@@ -478,7 +446,7 @@ export class DesktopHost {
       this.#windowTerminals(window).acknowledge(input),
     "host.terminal.idle": async (window, input) => this.#windowTerminals(window).idle(input),
     "host.terminal.close": async (window, input) => this.#windowTerminals(window).close(input),
-  };
+  } satisfies HostCalls;
 
   releaseWindow(window: HostWindow): void {
     this.#selections.delete(window);

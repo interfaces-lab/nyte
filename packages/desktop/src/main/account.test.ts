@@ -9,7 +9,8 @@ import { build, defaultClientConditions } from "vite";
 import { stylex } from "@nyte-ai/app/vite";
 import { deferredClerk } from "../../account.vite.ts";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
-import { defaultSecrets, sealSecret } from "@nyte-ai/host";
+import { defaultSecrets, openSecret, sealSecret } from "@nyte-ai/host";
+import type { SecretsSource } from "@nyte-ai/host";
 import { AccountOperations } from "../account/operations.ts";
 import {
   rendererContentSecurityPolicy,
@@ -23,6 +24,7 @@ import { accountScheme } from "../account/scheme.ts";
 import { createSignInKeeper } from "./account-keeper.ts";
 import { AccountCancelled } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
+import type { SecretSealer } from "./account-store.ts";
 
 const HOST = "clerk.example.com";
 
@@ -273,17 +275,24 @@ describe("account operations", () => {
 
 const execute = promisify(execFile);
 
+function sealerFor(secrets: SecretsSource): SecretSealer {
+  return {
+    seal: (plain) => sealSecret(secrets, plain),
+    open: (sealed) => openSecret(secrets, sealed),
+  };
+}
+
 test("a secrets key that cannot be read keeps the saved sign-in", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
   const path = join(directory, "account.json");
 
   const store = new AccountStore({
     path,
-    secrets: {
+    sealer: sealerFor({
       key: async () => {
         throw new Error("No key.");
       },
-    },
+    }),
   });
 
   try {
@@ -312,7 +321,7 @@ test("a saved sign-in the keychain cannot open stays until this run signs in or 
     }
   }
 
-  const store = new RecordingStore({ path, secrets: defaultSecrets(directory) });
+  const store = new RecordingStore({ path, sealer: sealerFor(defaultSecrets(directory)) });
   const saved = JSON.stringify({ sealed: "unopenable", label: "ada@example.com" });
 
   try {
@@ -351,13 +360,13 @@ test("a saved sign-in loads at boot without the secrets key, which is read when 
   const store = () =>
     new AccountStore({
       path,
-      secrets: {
+      sealer: sealerFor({
         key: () => {
           reads += 1;
 
           return file.key();
         },
-      },
+      }),
     });
 
   try {

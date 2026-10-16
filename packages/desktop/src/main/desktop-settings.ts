@@ -1,11 +1,8 @@
-import { standard } from "@nyte-ai/schema";
-import type { Plugin } from "@nyte-ai/plugin/core";
-import type { HostView } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import type { Static } from "typebox";
-import { Value } from "typebox/value";
 
-const schemas = {
+/** The desktop's host settings, `desktop.<key>`; main reads the decoded values the host process sends. */
+export const DESKTOP_SETTING_SCHEMAS = {
   keepAwake: Type.Boolean(),
   terminalShell: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   blockAds: Type.Boolean(),
@@ -13,7 +10,9 @@ const schemas = {
   upgradeToHttps: Type.Boolean(),
 };
 
-export type DesktopSettings = { readonly [K in keyof typeof schemas]: Static<(typeof schemas)[K]> };
+export type DesktopSettings = {
+  readonly [K in keyof typeof DESKTOP_SETTING_SCHEMAS]: Static<(typeof DESKTOP_SETTING_SCHEMAS)[K]>;
+};
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   keepAwake: false,
@@ -22,75 +21,3 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   adblockAllowedHosts: [],
   upgradeToHttps: true,
 };
-
-export const desktopSettingsPlugin = {
-  id: "desktop",
-  contribute: {
-    settings: [
-      {
-        id: "desktop.keepAwake",
-        label: "Keep awake while working",
-        schema: standard(schemas.keepAwake),
-        default: DEFAULT_DESKTOP_SETTINGS.keepAwake,
-        scope: "host",
-      },
-      {
-        id: "desktop.terminalShell",
-        label: "Terminal shell",
-        schema: standard(schemas.terminalShell),
-        default: DEFAULT_DESKTOP_SETTINGS.terminalShell,
-        scope: "host",
-      },
-      {
-        id: "desktop.blockAds",
-        label: "Block ads",
-        schema: standard(schemas.blockAds),
-        default: DEFAULT_DESKTOP_SETTINGS.blockAds,
-        scope: "host",
-      },
-      {
-        id: "desktop.adblockAllowedHosts",
-        label: "Shield paused on",
-        schema: standard(schemas.adblockAllowedHosts),
-        default: [],
-        scope: "host",
-      },
-      {
-        id: "desktop.upgradeToHttps",
-        label: "Upgrade to HTTPS",
-        schema: standard(schemas.upgradeToHttps),
-        default: DEFAULT_DESKTOP_SETTINGS.upgradeToHttps,
-        scope: "host",
-      },
-    ],
-  },
-} satisfies Plugin;
-
-export function desktopSettings(view: Pick<HostView, "settings">): DesktopSettings {
-  const value = (key: keyof DesktopSettings) =>
-    view.settings.find((setting) => setting.id === `desktop.${key}`)?.value;
-
-  const keepAwake = value("keepAwake");
-  const terminalShell = value("terminalShell");
-  const blockAds = value("blockAds");
-  const adblockAllowedHosts = value("adblockAllowedHosts");
-  const upgradeToHttps = value("upgradeToHttps");
-
-  return {
-    keepAwake: Value.Check(schemas.keepAwake, keepAwake)
-      ? keepAwake
-      : DEFAULT_DESKTOP_SETTINGS.keepAwake,
-    terminalShell: Value.Check(schemas.terminalShell, terminalShell)
-      ? terminalShell
-      : DEFAULT_DESKTOP_SETTINGS.terminalShell,
-    blockAds: Value.Check(schemas.blockAds, blockAds)
-      ? blockAds
-      : DEFAULT_DESKTOP_SETTINGS.blockAds,
-    adblockAllowedHosts: Value.Check(schemas.adblockAllowedHosts, adblockAllowedHosts)
-      ? adblockAllowedHosts
-      : DEFAULT_DESKTOP_SETTINGS.adblockAllowedHosts,
-    upgradeToHttps: Value.Check(schemas.upgradeToHttps, upgradeToHttps)
-      ? upgradeToHttps
-      : DEFAULT_DESKTOP_SETTINGS.upgradeToHttps,
-  };
-}

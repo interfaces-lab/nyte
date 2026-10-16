@@ -128,20 +128,17 @@ test("connecting a server proves the token, pins the host that answered and reme
   assert.deepEqual(await made.host.call(1, "host.server.state", undefined), { kind: "none" });
 });
 
-test("picking a folder registers it and selects it for that window only; cancelling changes nothing", async () => {
-  const picked: (string | undefined)[] = [undefined];
+test("opening a folder registers it and selects it for that window only; a failed open changes nothing", async () => {
   const received: { readonly event: HostEvent; readonly window: number | undefined }[] = [];
+
   const made = await desktop({
-    pickFolder: async () => picked.shift(),
     emitHostEvent: (event, window) => received.push({ event, window }),
   });
+
   const folder = join(made.home, "project");
   await mkdir(folder);
 
-  assert.deepEqual(await made.host.call(1, "host.pickWorkspace", undefined), { kind: "cancelled" });
-  assert.deepEqual(received, []);
-  picked.push(folder);
-  const opened = await made.host.call(1, "host.pickWorkspace", undefined);
+  const opened = await made.host.call(1, "host.openWorkspace", { path: folder });
 
   if (opened.kind !== "opened") throw new Error("The folder did not open");
   assert.deepEqual(opened.workspace, { id: opened.workspace.id, path: folder, name: "project" });
@@ -215,6 +212,7 @@ test("a key login over the loopback listener connects the provider, and the reop
       method: { kind: "key" },
       label: "Work",
     });
+
     const steps: string[] = [];
 
     for await (const step of login.steps()) {
