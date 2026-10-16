@@ -141,12 +141,14 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
       if (channel !== null || stream !== null) {
         if (channel === null || stream === null)
           throw new SdkError("invalid", "A shared stream needs its channel and identifier.");
+        const value = await readBody(request, limit);
+
         response = await channels.start(
           authenticated.connection,
           channel,
           stream,
           request.signal,
-          (signal) => serve(binding, name, request, limit, signal),
+          (signal) => answer(binding, name, value, request, signal),
         );
       } else response = await serve(binding, name, request, limit);
 
@@ -162,17 +164,27 @@ async function serve(
   name: OperationName,
   request: Request,
   limit: number,
-  signal = request.signal,
 ): Promise<Response> {
-  const context: BindingRequest = { body: null, signal };
-
   if (UPLOADS.has(name) && answersOnce(name)) {
     const body = limited(request, limit);
 
-    return json(await call(binding, name, readInputHeader(request) ?? {}, { ...context, body }));
+    return json(
+      await call(binding, name, readInputHeader(request) ?? {}, { body, signal: request.signal }),
+    );
   }
 
-  const value = await readBody(request, limit);
+  return answer(binding, name, await readBody(request, limit), request, request.signal);
+}
+
+/** Answers `name` with its input `value`, already read from `request`: a shared stream's exchange ends with its 202, after which the request's body can no longer be read. */
+async function answer(
+  binding: Binding,
+  name: OperationName,
+  value: Json,
+  request: Request,
+  signal: AbortSignal,
+): Promise<Response> {
+  const context: BindingRequest = { body: null, signal };
 
   if (answersOnce(name)) return json(await call(binding, name, value, context));
 
