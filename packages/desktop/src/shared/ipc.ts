@@ -39,7 +39,6 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.login",
   "host.browser.history",
   "host.browser.forgetHistory",
-  "host.browser.focusPage",
 ] as const;
 
 /** Operations the host process answers: the Nyte host, its listeners and remote access. */

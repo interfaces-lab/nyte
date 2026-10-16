@@ -121,12 +121,13 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     this.reclaimIdle();
   }
 
-  place(surface: Surface): void {
+  /** Lays the surface out in its window; `focus` hands the page keyboard focus if this shows it. */
+  place(surface: Surface, focus = false): void {
     if (surface.destroyed) return;
     const window = this.dependencies.window(surface.home);
 
     if (window === undefined || window.isDestroyed()) return;
-    placeSurface(surface, window);
+    placeSurface(surface, window, focus);
   }
 
   /** A state the surface's window already has is not sent again. */
@@ -429,16 +430,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     return this.dependencies.history.remove(readOwner(input.owner), input.url);
   }
 
-  focusPage(input: Parameters<BrowserBridge["focusPage"]>[0]): void {
-    const surface = this.#surfaces.get(input.surface);
-    const contents = surface?.view.webContents;
-
-    if (surface === undefined || contents === undefined || contents.isDestroyed()) return;
-
-    if (surface.view.getVisible()) contents.focus();
-    else surface.focusWhenShown = true;
-  }
-
   /** A visible placement moves the page into the reporting window, which then needs its state. */
   setBounds(message: BrowserBoundsMessage, window: HostWindow): void {
     const surface = this.#surfaces.get(message.surface);
@@ -460,7 +451,7 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
 
     if (bounds.width > 0 && bounds.height > 0) surface.lastBounds = bounds;
 
-    this.place(surface);
+    this.place(surface, message.focus);
 
     if (moved) this.publish(surface);
   }
@@ -473,9 +464,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     }
 
     this.#chromeFocus.set(window, message.surface);
-    const taken = this.#surfaces.get(message.surface);
-
-    if (taken !== undefined) taken.focusWhenShown = false;
     const host = this.dependencies.window(window);
 
     if (host !== undefined && !host.isDestroyed() && !host.webContents.isFocused())
@@ -559,7 +547,6 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
       popup: undefined,
       visited: undefined,
       paused: false,
-      focusWhenShown: false,
       pressed: [],
       published: undefined,
     };

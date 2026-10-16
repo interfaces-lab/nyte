@@ -83,7 +83,6 @@ export interface Surface {
   popup: BrowserWindow | undefined;
   visited: string | undefined;
   paused: boolean;
-  focusWhenShown: boolean;
   readonly pressed: BrowserKey[];
   /** The state the renderer last received and where it went, so an unchanged state is not resent. */
   published:
@@ -182,20 +181,19 @@ function hide(surface: Surface, window: BrowserWindow): void {
   if (held) window.webContents.focus();
 }
 
-function show(surface: Surface): void {
+function show(surface: Surface, focus: boolean): void {
   surface.view.setVisible(true);
 
-  if (!surface.focusWhenShown) return;
-  surface.focusWhenShown = false;
-  surface.view.webContents.focus();
+  if (focus) surface.view.webContents.focus();
 }
 
 /**
  * Attach the view to `window` and lay it out from the surface's bounds, visibility, and holders.
  * A zero-sized view lays the page out at a 0-wide viewport, which changes what is visible and
  * ruins screenshots, so an unplaced or unmeasured surface is parked off-screen at a real size.
+ * `focus` hands the page keyboard focus when this shows it.
  */
-export function placeSurface(surface: Surface, window: BrowserWindow): void {
+export function placeSurface(surface: Surface, window: BrowserWindow, focus: boolean): void {
   if (surface.attachedTo !== window) {
     if (surface.attachedTo !== undefined && !surface.attachedTo.isDestroyed()) {
       surface.attachedTo.contentView.removeChildView(surface.view);
@@ -210,7 +208,7 @@ export function placeSurface(surface: Surface, window: BrowserWindow): void {
   if (surface.fullscreen && placed) {
     const { width, height } = window.getContentBounds();
     surface.view.setBounds({ x: 0, y: 0, width, height });
-    show(surface);
+    show(surface, focus);
 
     return;
   }
@@ -229,6 +227,6 @@ export function placeSurface(surface: Surface, window: BrowserWindow): void {
 
   surface.view.setBounds(surface.bounds);
 
-  if (surface.visible && surface.error === undefined) show(surface);
+  if (surface.visible && surface.error === undefined) show(surface, focus);
   else hide(surface, window);
 }

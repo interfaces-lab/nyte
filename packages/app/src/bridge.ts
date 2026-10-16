@@ -591,6 +591,8 @@ export interface BrowserBoundsMessage {
   readonly surface: string;
   readonly bounds: BrowserBounds;
   readonly visible: boolean;
+  /** The page takes keyboard focus as this message shows it. */
+  readonly focus: boolean;
 }
 
 /** Keyboard focus entered or left a panel's own controls: the address bar, the toolbar, find. */
@@ -694,8 +696,6 @@ export interface BrowserBridge {
   /** A cookie jar's history, newest first; `browser_history_changed` carries every change after. */
   history(input: { owner: string | null }): Promise<readonly BrowserHistoryEntry[]>;
   forgetHistory(input: { owner: string | null; url: string }): Promise<void>;
-  /** Hands keyboard focus to the page, as dismissing the address bar or find does. */
-  focusPage(input: { surface: string }): Promise<void>;
   setBounds(message: BrowserBoundsMessage): void;
   /** Main moves native focus off the page when the panel's controls take it, and menu commands follow it. */
   setFocus(message: BrowserFocusMessage): void;

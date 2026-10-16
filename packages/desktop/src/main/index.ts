@@ -376,7 +376,6 @@ const mainCalls: CallTable = {
   "host.browser.login": async (_window, input) => browserSurfaces.login(input),
   "host.browser.history": (_window, input) => browserSurfaces.history(input),
   "host.browser.forgetHistory": (_window, input) => browserSurfaces.forgetHistory(input),
-  "host.browser.focusPage": async (_window, input) => browserSurfaces.focusPage(input),
 } satisfies { readonly [P in MainCallPath]: CallHandler<P> };
 
 const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, window, path, input);

@@ -221,7 +221,6 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.browser.forgetHistory": compile(
     strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
   ),
-  "host.browser.focusPage": compile(strict({ surface: nonEmpty })),
 };
 
 const callRequest = compile(
@@ -238,6 +237,7 @@ const browserBounds = compile(
     surface: nonEmpty,
     bounds: strict({ x: Type.Number(), y: Type.Number(), width: size, height: size }),
     visible: Type.Boolean(),
+    focus: Type.Boolean(),
   }),
 );
 

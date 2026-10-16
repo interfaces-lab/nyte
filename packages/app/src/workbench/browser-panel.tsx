@@ -21,6 +21,7 @@ import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
+import { keyOwner } from "../shell/focus-owner.ts";
 import { overlayCovers, subscribeOverlayRects } from "./browser-occlusion.ts";
 import {
   applyBrowserEvent,
@@ -216,18 +217,30 @@ function releaseSurface(surface: string): void {
     .catch(() => undefined);
 }
 
+/** Where the page sits and whether it takes the keys as it shows. */
+interface SurfacePlacement {
+  /** An overlay hides the page, so its last frame stands in for it. */
+  readonly covered: boolean;
+  /** The page takes the keys once a placement shows it, unless something else owns them by then. */
+  readonly focus: () => void;
+  /** The panel's own controls took the keys, so a pending page focus is dropped. */
+  readonly cancelFocus: () => void;
+}
+
 /**
  * The page composites above the renderer, so it steps aside while a menu or a
  * dialog overlaps it. The overlay store already batches to a frame, so an
  * overlay change applies at once rather than a frame after the popup painted.
  */
-function useSurfaceBounds(
+function useSurfacePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
   visible: boolean,
-): boolean {
+): SurfacePlacement {
   const [covered, setCovered] = useState(false);
   const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
+  const pageFocus = useRef(false);
+  const placeRef = useRef<() => void>(() => undefined);
   useLayoutEffect(() => {
     const element = slot.current;
 
@@ -246,11 +259,16 @@ function useSurfaceBounds(
       });
 
       setCovered(overlapped);
+      const shown = visible && !overlapped && rect.width > 0 && rect.height > 0;
+      const focus = shown && pageFocus.current && keyOwner() === undefined;
+
+      if (shown) pageFocus.current = false;
 
       const message: BrowserBoundsMessage = {
         surface,
         bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-        visible: visible && !overlapped && rect.width > 0 && rect.height > 0,
+        visible: shown,
+        focus,
       };
 
       const last = lastRef.current;
@@ -263,7 +281,7 @@ function useSurfaceBounds(
         last.bounds.width === message.bounds.width &&
         last.bounds.height === message.bounds.height;
 
-      if (unchanged) return;
+      if (unchanged && !focus) return;
       lastRef.current = message;
       browserBridge().setBounds(message);
     };
@@ -285,9 +303,11 @@ function useSurfaceBounds(
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", scrolled, { capture: true, passive: true });
     const unsubscribe = subscribeOverlayRects(measure);
+    placeRef.current = schedule;
     measure();
 
     return () => {
+      placeRef.current = () => undefined;
       observer.disconnect();
       unsubscribe();
       window.removeEventListener("resize", schedule);
@@ -297,13 +317,22 @@ function useSurfaceBounds(
       const last = lastRef.current;
 
       if (last !== undefined && last.visible) {
-        lastRef.current = { ...last, visible: false };
+        lastRef.current = { ...last, visible: false, focus: false };
         browserBridge().setBounds(lastRef.current);
       }
     };
   }, [slot, surface, visible]);
 
-  return covered;
+  return {
+    covered,
+    focus: () => {
+      pageFocus.current = true;
+      placeRef.current();
+    },
+    cancelFocus: () => {
+      pageFocus.current = false;
+    },
+  };
 }
 
 /**
@@ -390,8 +419,8 @@ export function BrowserPanel({
   const hasPage = state !== undefined && state.url !== "";
   const showSurface = visible && hasPage && state.error === undefined;
 
-  const covered = useSurfaceBounds(slotRef, surface, showSurface);
-  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", covered);
+  const page = useSurfacePlacement(slotRef, surface, showSurface);
+  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", page.covered);
 
   const holdRef = useRef<SurfaceHold | undefined>(undefined);
 
@@ -474,12 +503,9 @@ export function BrowserPanel({
       .catch(() => undefined);
   };
 
-  const focusControls = (): void => browserBridge().setFocus({ surface, focused: true });
-
-  const focusPage = (): void => {
-    void browserBridge()
-      .focusPage({ surface })
-      .catch(() => undefined);
+  const focusControls = (): void => {
+    page.cancelFocus();
+    browserBridge().setFocus({ surface, focused: true });
   };
 
   const runShortcut = (shortcut: BrowserShortcut): boolean => {
@@ -643,7 +669,7 @@ export function BrowserPanel({
           bookmarks={bookmarks.items}
           onOpen={go}
           onForget={forget}
-          onDismiss={focusPage}
+          onDismiss={page.focus}
         >
           {secure === "https" && draft === undefined && (
             <span {...props(styles.addressIcon)} title="Secure connection">
@@ -749,7 +775,7 @@ export function BrowserPanel({
           ))}
         </div>
       )}
-      {finding && hasPage && <FindBar ref={findRef} surface={surface} onClose={focusPage} />}
+      {finding && hasPage && <FindBar ref={findRef} surface={surface} onClose={page.focus} />}
       <DownloadsBar surface={surface} downloads={downloads} />
       {login !== undefined && (
         <LoginDialog key={login.host} surface={surface} host={login.host} realm={login.realm} />
@@ -759,7 +785,7 @@ export function BrowserPanel({
           {pageFrame !== undefined && (
             <img src={pageFrame} alt="" aria-hidden="true" {...props(styles.frozenFrame)} />
           )}
-          {covered && pageFrame !== undefined && <div {...props(styles.frozenVeil)} />}
+          {page.covered && pageFrame !== undefined && <div {...props(styles.frozenVeil)} />}
           {!hasPage && failure === undefined && (
             <div {...props(styles.message)}>
               <span {...props(styles.messageTitle)}>Type an address or a search</span>
