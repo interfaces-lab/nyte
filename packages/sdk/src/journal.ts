@@ -97,7 +97,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
     const all = [...held.values()];
 
     const later = all
-      .slice(all.indexOf(current) + 1)
+      .slice(all.findIndex((row) => row === current) + 1)
       .filter(
         ({ entry }) =>
           entry.session === current.entry.session &&
