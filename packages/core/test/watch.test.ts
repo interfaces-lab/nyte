@@ -48,7 +48,7 @@ const configuration = {
   settingsVersion: "1",
 } as const;
 
-async function kernelOf(): Promise<Kernel> {
+async function createMemoryKernel(): Promise<Kernel> {
   return createKernel({
     hostId: asId("h1"),
     store: await memoryStore().open(),
@@ -234,7 +234,7 @@ describe("watch", () => {
   });
 
   it("advances the principal's seen mark to each tip it yields", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "triage", 1);
     const c1 = await land(kernel, first, "m1", null);
 
@@ -260,7 +260,7 @@ describe("watch", () => {
   });
 
   it("shares one fold between watchers of the same session and principal", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "triage", 1);
     await admit(kernel, first, "m1");
 
@@ -332,7 +332,7 @@ describe("watch", () => {
   });
 
   it("releases the fold within a tick when a watcher returns while a pull is pending", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "triage", 1);
     await admit(kernel, first, "m1");
     let released = 0;
@@ -377,7 +377,7 @@ describe("watch", () => {
   });
 
   it("re-yields the directory when a session publishes", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "first", 1);
     const directory = watchSessions(kernel, ada)[Symbol.asyncIterator]();
     const before = await directory.next();
@@ -394,7 +394,7 @@ describe("watch", () => {
   });
 
   it("yields the host view again when the host state updates", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     const authority: ReadonlySet<Authority> = new Set(["participant", "owner"]);
     const host = watchHost(kernel, { principal: ada, authority })[Symbol.asyncIterator]();
     const before = await host.next();

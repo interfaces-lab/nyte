@@ -219,7 +219,7 @@ async function partStatus(kernel: Kernel, session: SessionId, part: PartId) {
   return decodePartRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null)?.status;
 }
 
-async function runOf(kernel: Kernel, session: SessionId, run: RunId) {
+async function readRunRecord(kernel: Kernel, session: SessionId, run: RunId) {
   const ref = await kernel.store.refs.get(runRef(session, run));
 
   return decodeRunRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
@@ -293,7 +293,10 @@ describe("waits as store facts", () => {
       waiting: null,
       waits: [{ kind: "stopped" }],
     });
-    expect(await runOf(other.kernel, session.id, run)).toMatchObject({ parked: [], waiting: null });
+    expect(await readRunRecord(other.kernel, session.id, run)).toMatchObject({
+      parked: [],
+      waiting: null,
+    });
     expect(await other.host.execution.repair({ limit: 10 })).toMatchObject({ runnable: [head] });
 
     await holder.kernel.waits.refresh();
@@ -332,7 +335,7 @@ describe("waits as store facts", () => {
     await step;
 
     expect(await other.host.session(session.id).run(run).stop()).toEqual({ kind: "requested" });
-    expect(await runOf(other.kernel, session.id, run)).toMatchObject({
+    expect(await readRunRecord(other.kernel, session.id, run)).toMatchObject({
       stopping: true,
       parked: [],
     });
@@ -754,7 +757,10 @@ describe("waits as store facts", () => {
     expect((await readCall(other.kernel, session.id, "c2")).waits).toEqual([
       { kind: "part", part: part.id, answer: null },
     ]);
-    expect(await runOf(other.kernel, session.id, run)).toMatchObject({ parked: [], waiting: null });
+    expect(await readRunRecord(other.kernel, session.id, run)).toMatchObject({
+      parked: [],
+      waiting: null,
+    });
 
     await holder.kernel.waits.refresh();
 

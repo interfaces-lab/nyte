@@ -88,7 +88,7 @@ export function createDisk(): Disk {
       minted += 1;
       files.set(normalize(path), { contents, version: asId<"file-version">(`v${minted}`) });
 
-      for (const parent of parentsOf(normalize(path))) directories.add(parent);
+      for (const parent of listParentDirectories(normalize(path))) directories.add(parent);
 
       for (const heard of watchers) heard(normalize(path));
     },
@@ -203,7 +203,7 @@ export function fakeProvider(
       }
     },
     inspect: async (target) => ({
-      identity: asId<"environment-identity">(`id:${pathOf(target)}`),
+      identity: asId<"environment-identity">(`id:${readTargetPath(target)}`),
       availability: provider.availability ?? { kind: "available" },
       projectSources: [".nyte/plugins/x.ts"],
     }),
@@ -211,7 +211,7 @@ export function fakeProvider(
       if (provider.failure !== null) throw new Error(provider.failure);
       provider.attaches += 1;
 
-      return env(provider, pathOf(target), options?.confined === true);
+      return env(provider, readTargetPath(target), options?.confined === true);
     },
     snapshots: (attached) => ({
       async before(run) {
@@ -460,7 +460,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
       const files = [...disk.files.keys()].filter((path) => path.startsWith(`${base}/`));
 
       const directories = new Set(
-        [...disk.directories, ...files.flatMap(parentsOf)].filter((path) =>
+        [...disk.directories, ...files.flatMap(listParentDirectories)].filter((path) =>
           path.startsWith(`${base}/`),
         ),
       );
@@ -727,7 +727,7 @@ function fakeGit(): GitApi {
   };
 }
 
-function pathOf(target: WorkspaceTarget): string {
+function readTargetPath(target: WorkspaceTarget): string {
   return "path" in target && typeof target.path === "string" ? target.path : "/remote";
 }
 
@@ -744,7 +744,7 @@ function normalize(path: string): string {
   return `/${parts.join("/")}`;
 }
 
-function parentsOf(path: string): readonly string[] {
+function listParentDirectories(path: string): readonly string[] {
   const parts = path.split("/").filter((part) => part !== "");
 
   return parts.slice(0, -1).map((_part, index) => `/${parts.slice(0, index + 1).join("/")}`);
