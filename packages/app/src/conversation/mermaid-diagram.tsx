@@ -102,18 +102,17 @@ export function renderMermaid(source: string, signal: AbortSignal): Promise<Diag
   });
 }
 
-/** A Mermaid fence is a diagram first, with its source available on demand. */
+/**
+ * A Mermaid fence is a diagram first, with its source available on demand.
+ * Prose draws a fence as source until its message settles, so each diagram
+ * renders once; the same source always renders the same svg, so the result
+ * stays cached past unmount and a row that scrolls back paints it at once.
+ */
 export function MermaidDiagram({ source }: { readonly source: string }): ReactElement {
   const render = useQuery({
     queryKey: keys.mermaid(source),
     queryFn: ({ signal }) => renderMermaid(source, signal),
-    // Same source always renders the same svg, so it never refetches while
-    // mounted. The key holds the whole source and the result holds the svg, and
-    // a streamed fence leaves one abandoned key per delta, so the entry goes
-    // when its last observer does: the signal ends the worker and the cache
-    // drops the key together.
     staleTime: Infinity,
-    gcTime: 0,
   });
 
   const [sourceVisible, setSourceVisible] = useState(false);

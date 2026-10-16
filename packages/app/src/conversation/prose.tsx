@@ -1,9 +1,9 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * LobeHub Streamdown renders Markdown with raw HTML disabled. Nyte supplies the
  * semantic components so links still cross the desktop host boundary and
  * fenced code paints immediately and highlights in a worker.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { props } from "@stylexjs/stylex";
@@ -14,6 +14,7 @@ import {
   isValidElement,
   memo,
   use,
+  useState,
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -57,6 +58,9 @@ function nodeText(node: ReactNode): string {
 const AGENT_LINK = "agent:";
 
 const InsideLink = createContext(false);
+
+/** True while the message the markdown belongs to is still streaming. */
+const ProseStreaming = createContext(false);
 
 /**
  * A file the prose names draws the way Cursor cites one: an inline link led
@@ -249,6 +253,7 @@ function MarkdownPre({
   node: _node,
   ...elementProps
 }: ComponentProps<"pre"> & ExtraProps): ReactElement {
+  const streaming = use(ProseStreaming);
   const child = Children.toArray(children)[0];
 
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
@@ -261,7 +266,8 @@ function MarkdownPre({
         .find((name) => name.startsWith("language-"))
         ?.slice("language-".length) ?? "";
 
-    if (language.toLocaleLowerCase() === "mermaid") return <MermaidDiagram source={code} />;
+    if (!streaming && language.toLocaleLowerCase() === "mermaid")
+      return <MermaidDiagram source={code} />;
 
     return <CodeBlock code={code} lang={language} />;
   }
@@ -345,6 +351,19 @@ function subscribeReducedMotion(onChange: () => void): () => void {
   return () => reducedMotionQuery.removeEventListener("change", onChange);
 }
 
+/** Reference definitions and footnotes resolve across blocks, so only a whole-document parse draws them. */
+const CROSS_BLOCK = /^ {0,3}\[[^\]\n]+\]:/mu;
+
+/**
+ * A message's markdown. While it streams, Streamdown parses block by block, so
+ * a delta reparses only the open block; a whole-document parse per frame
+ * costs 11 ms at 13 K characters and 92 ms at 51 K. A message that streamed in
+ * this mount keeps that renderer when it settles, so nothing under it
+ * remounts: selection, code-block scroll and diagrams stay put. Only a message
+ * whose reference links or footnotes span blocks switches to the
+ * whole-document parse at settle, and a settled mount or reduced motion uses
+ * that parse from the start.
+ */
 export const Prose = memo(function Prose({
   markdown,
   streaming = false,
@@ -358,27 +377,32 @@ export const Prose = memo(function Prose({
     () => true,
   );
 
+  const [streamedHere] = useState(streaming);
+
+  const blockwise = !reducedMotion && (streaming || (streamedHere && !CROSS_BLOCK.test(markdown)));
+
   return (
-    <div {...props(proseStyles.root)}>
-      {streaming && !reducedMotion ? (
-        <Streamdown
-          content={markdown}
-          components={markdownComponents}
-          remarkPlugins={remarkPlugins}
-          urlTransform={urlTransform}
-          skipHtml
-        />
-      ) : (
-        // Whole-document parsing preserves reference links and footnotes in saved turns.
-        <CachedMarkdown
-          components={markdownComponents}
-          remarkPlugins={remarkPlugins}
-          urlTransform={urlTransform}
-          skipHtml
-        >
-          {streaming ? remend(markdown) : markdown}
-        </CachedMarkdown>
-      )}
-    </div>
+    <ProseStreaming value={streaming}>
+      <div {...props(proseStyles.root)}>
+        {blockwise ? (
+          <Streamdown
+            content={markdown}
+            components={markdownComponents}
+            remarkPlugins={remarkPlugins}
+            urlTransform={urlTransform}
+            skipHtml
+          />
+        ) : (
+          <CachedMarkdown
+            components={markdownComponents}
+            remarkPlugins={remarkPlugins}
+            urlTransform={urlTransform}
+            skipHtml
+          >
+            {streaming ? remend(markdown) : markdown}
+          </CachedMarkdown>
+        )}
+      </div>
+    </ProseStreaming>
   );
 });
