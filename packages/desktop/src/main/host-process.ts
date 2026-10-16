@@ -5,12 +5,15 @@ import type { CallReply, CallRequest } from "../shared/ipc.ts";
 import type { AccountState } from "./account-session.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
 import type {
+  HostAnswer,
+  HostAsk,
   HostMessage,
   HostProcessOptions,
-  HostRequest,
   MainAnswer,
+  MainAsk,
   MainMessage,
 } from "./host-messages.ts";
+import { Rpc } from "./host-rpc.ts";
 import type { DesktopUpdateActivity } from "./host.ts";
 import type { HostWindow } from "./host-window.ts";
 
@@ -20,14 +23,14 @@ export interface HostProcessHandlers {
   awake(awake: boolean): void;
   settings(settings: DesktopSettings): void;
   /** Answers a request for the browser panel or the account; `signal` aborts when the host gives up on it. */
-  answer(request: HostRequest, signal: AbortSignal): Promise<MainAnswer>;
+  answer(ask: HostAsk, signal: AbortSignal): Promise<MainAnswer>;
 }
 
-type Answered = Extract<HostMessage, { kind: "reply" | "activity" | "secret" }>;
+const STOPPED_MESSAGE = "The Nyte host stopped.";
 
 const STOPPED: CallReply = {
   ok: false,
-  error: { code: "unavailable", message: "The Nyte host stopped. Quit and reopen Nyte." },
+  error: { code: "unavailable", message: `${STOPPED_MESSAGE} Quit and reopen Nyte.` },
 };
 
 /**
@@ -38,25 +41,22 @@ const STOPPED: CallReply = {
 export class HostProcess {
   readonly #child: UtilityProcess;
   readonly #handlers: HostProcessHandlers;
-  readonly #waiting = new Map<number, (message: Answered | undefined) => void>();
-  readonly #requests = new Map<number, AbortController>();
+  readonly #rpc: Rpc<MainAsk, HostAnswer, HostAsk, MainAnswer>;
   readonly #exited: Promise<void>;
-  #next = 0;
   #running = true;
 
   constructor(entry: string, options: HostProcessOptions, handlers: HostProcessHandlers) {
     this.#handlers = handlers;
+    this.#rpc = new Rpc(
+      (message) => this.#post(message),
+      (ask, signal) => handlers.answer(ask, signal),
+    );
     this.#child = utilityProcess.fork(entry, [], { serviceName: "Nyte Host" });
     this.#child.on("message", (message: HostMessage) => this.#receive(message));
     this.#exited = new Promise((resolve) => {
       this.#child.once("exit", () => {
         this.#running = false;
-
-        for (const settle of this.#waiting.values()) settle(undefined);
-        this.#waiting.clear();
-
-        for (const request of this.#requests.values()) request.abort();
-        this.#requests.clear();
+        this.#rpc.close(STOPPED_MESSAGE);
         resolve();
       });
     });
@@ -64,25 +64,25 @@ export class HostProcess {
   }
 
   /** Forwards one renderer request; the host process decodes and answers it. */
-  call(window: HostWindow, request: CallRequest): Promise<CallReply> {
-    return new Promise((resolve) => {
-      const id = this.#wait((message) =>
-        resolve(message?.kind === "reply" ? message.reply : STOPPED),
-      );
+  async call(window: HostWindow, request: CallRequest): Promise<CallReply> {
+    const answer = await this.#rpc.ask({ kind: "call", window, request }).catch(() => undefined);
 
-      this.#post({ kind: "call", id, window, request });
-    });
+    return answer?.kind === "call" ? answer.reply : STOPPED;
   }
 
-  /** Running sessions and terminal commands, asked when called so a relaunch never trusts a stale count. */
-  activity(): Promise<DesktopUpdateActivity> {
-    return new Promise((resolve) => {
-      const id = this.#wait((message) =>
-        resolve(message?.kind === "activity" ? message.activity : { kind: "idle" }),
-      );
+  /** Running sessions and terminal commands, asked when called so a relaunch never trusts a stale count; a stopped host runs nothing. */
+  async activity(): Promise<DesktopUpdateActivity> {
+    try {
+      const answer = await this.#rpc.ask({ kind: "activity" });
 
-      this.#post({ kind: "activity", id });
-    });
+      if (answer.kind !== "activity") throw new Error("The host answered another question.");
+
+      return answer.activity;
+    } catch (cause) {
+      if (!this.#running) return { kind: "idle" };
+
+      throw cause;
+    }
   }
 
   /** Seals `plain` under the host's secrets key; the host reads the key only when asked. */
@@ -119,25 +119,12 @@ export class HostProcess {
     clearTimeout(timer);
   }
 
-  #secret(seal: boolean, text: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const id = this.#wait((message) => {
-        if (message?.kind !== "secret") reject(new Error("The Nyte host stopped."));
-        else if (message.outcome.ok) resolve(message.outcome.text);
-        else reject(new Error(message.outcome.message));
-      });
+  async #secret(seal: boolean, text: string): Promise<string> {
+    const answer = await this.#rpc.ask({ kind: "secret", seal, text });
 
-      this.#post({ kind: "secret", id, seal, text });
-    });
-  }
+    if (answer.kind !== "secret") throw new Error("The host answered another question.");
 
-  #wait(settle: (message: Answered | undefined) => void): number {
-    const id = ++this.#next;
-
-    if (this.#running) this.#waiting.set(id, settle);
-    else settle(undefined);
-
-    return id;
+    return answer.text;
   }
 
   #post(message: MainMessage): void {
@@ -162,19 +149,10 @@ export class HostProcess {
         performance.mark(message.name, { startTime: message.at - performance.timeOrigin });
 
         return;
-      case "reply":
-      case "activity":
-      case "secret":
-        this.#waiting.get(message.id)?.(message);
-        this.#waiting.delete(message.id);
-
-        return;
-      case "request":
-        this.#answer(message.id, message.request);
-
-        return;
+      case "ask":
       case "abort":
-        this.#requests.get(message.id)?.abort();
+      case "settle":
+        this.#rpc.receive(message);
 
         return;
       case "closed":
@@ -185,23 +163,5 @@ export class HostProcess {
         return _exhaustive;
       }
     }
-  }
-
-  #answer(id: number, request: HostRequest): void {
-    const controller = new AbortController();
-    this.#requests.set(id, controller);
-
-    void this.#handlers
-      .answer(request, controller.signal)
-      .then(
-        (answer) => this.#post({ kind: "answer", id, outcome: { ok: true, answer } }),
-        (cause: unknown) =>
-          this.#post({
-            kind: "answer",
-            id,
-            outcome: { ok: false, message: cause instanceof Error ? cause.message : String(cause) },
-          }),
-      )
-      .finally(() => this.#requests.delete(id));
   }
 }

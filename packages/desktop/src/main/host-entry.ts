@@ -18,12 +18,15 @@ import type { AccountAnswer, AccountCall } from "./host-account.ts";
 import { remoteAgent } from "./host-browser-agent.ts";
 import type { AgentAnswer, AgentCall } from "./host-browser-agent.ts";
 import type {
+  HostAnswer,
+  HostAsk,
   HostMessage,
   HostProcessOptions,
-  HostRequest,
   MainAnswer,
+  MainAsk,
   MainMessage,
 } from "./host-messages.ts";
+import { Rpc } from "./host-rpc.ts";
 import { DesktopHost, throwForRenderer } from "./host.ts";
 import type { CallRoute } from "./ipc-call.ts";
 import { callIpc } from "./ipc-call.ts";
@@ -44,49 +47,28 @@ const marks = new PerformanceObserver((list) => {
 
 marks.observe({ entryTypes: ["mark"] });
 
-let asked = 0;
-
-const answers = new Map<
-  number,
-  (outcome: Extract<MainMessage, { kind: "answer" }>["outcome"]) => void
->();
-
-/** Asks main for `request`; an aborted `signal` tells main to give up on it. */
-function ask(request: HostRequest, signal?: AbortSignal): Promise<MainAnswer> {
-  const id = ++asked;
-  const abort = (): void => post({ kind: "abort", id });
-
-  return new Promise<MainAnswer>((resolve, reject) => {
-    answers.set(id, (outcome) => {
-      signal?.removeEventListener("abort", abort);
-
-      if (outcome.ok) resolve(outcome.answer);
-      else reject(new Error(outcome.message));
-    });
-    signal?.addEventListener("abort", abort, { once: true });
-    post({ kind: "request", id, request });
-  });
-}
-
-async function askAgent(call: AgentCall): Promise<AgentAnswer> {
-  const answered = await ask({ kind: "agent", call });
-
-  if (answered.kind !== "agent") throw new Error("Main answered a browser call about the account.");
-
-  return answered.answer;
-}
-
-async function askAccount(call: AccountCall, signal?: AbortSignal): Promise<AccountAnswer> {
-  const answered = await ask({ kind: "account", call }, signal);
-
-  if (answered.kind !== "account")
-    throw new Error("Main answered an account call about the browser.");
-
-  return answered.answer;
-}
-
 function open(options: HostProcessOptions): void {
   const { home } = options;
+
+  const rpc = new Rpc<HostAsk, MainAnswer, MainAsk, HostAnswer>(post, (ask) => answer(ask));
+
+  const askAgent = async (call: AgentCall): Promise<AgentAnswer> => {
+    const answered = await rpc.ask({ kind: "agent", call });
+
+    if (answered.kind !== "agent")
+      throw new Error("Main answered a browser call about the account.");
+
+    return answered.answer;
+  };
+
+  const askAccount = async (call: AccountCall, signal?: AbortSignal): Promise<AccountAnswer> => {
+    const answered = await rpc.ask({ kind: "account", call }, signal);
+
+    if (answered.kind !== "account")
+      throw new Error("Main answered an account call about the browser.");
+
+    return answered.answer;
+  };
 
   const account =
     options.account === null ? undefined : new RemoteAccount(options.account, askAccount);
@@ -116,35 +98,33 @@ function open(options: HostProcessOptions): void {
   const route: CallRoute = (window, path, input) =>
     host.call(window, path, input).catch(throwForRenderer);
 
+  const answer = async (ask: MainAsk): Promise<HostAnswer> => {
+    switch (ask.kind) {
+      case "call":
+        return { kind: "call", reply: await callIpc(route, ask.window, ask.request) };
+      case "activity":
+        return { kind: "activity", activity: await host.updateActivity() };
+      case "secret":
+        return {
+          kind: "secret",
+          text: await (ask.seal ? sealSecret(secrets, ask.text) : openSecret(secrets, ask.text)),
+        };
+      default: {
+        const _exhaustive: never = ask;
+
+        return _exhaustive;
+      }
+    }
+  };
+
   void host.autostartConnect().catch(() => undefined);
 
   port.on("message", ({ data }: { readonly data: MainMessage }) => {
     switch (data.kind) {
-      case "call":
-        void callIpc(route, data.window, data.request).then((reply) =>
-          post({ kind: "reply", id: data.id, reply }),
-        );
-
-        return;
-      case "activity":
-        void host
-          .updateActivity()
-          .then((activity) => post({ kind: "activity", id: data.id, activity }));
-
-        return;
-      case "secret":
-        void (data.seal ? sealSecret(secrets, data.text) : openSecret(secrets, data.text)).then(
-          (text) => post({ kind: "secret", id: data.id, outcome: { ok: true, text } }),
-          (cause: unknown) =>
-            post({
-              kind: "secret",
-              id: data.id,
-              outcome: {
-                ok: false,
-                message: cause instanceof Error ? cause.message : String(cause),
-              },
-            }),
-        );
+      case "ask":
+      case "abort":
+      case "settle":
+        rpc.receive(data);
 
         return;
       case "release":
@@ -158,11 +138,6 @@ function open(options: HostProcessOptions): void {
       case "account":
         account?.changed(data.state);
         connect.accountChanged();
-
-        return;
-      case "answer":
-        answers.get(data.id)?.(data.outcome);
-        answers.delete(data.id);
 
         return;
       case "close":

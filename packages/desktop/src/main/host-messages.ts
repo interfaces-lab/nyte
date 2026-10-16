@@ -11,6 +11,7 @@ import type { AccountAnswer, AccountCall } from "./host-account.ts";
 import type { AgentAnswer, AgentCall } from "./host-browser-agent.ts";
 import type { DesktopUpdateActivity } from "./host.ts";
 import type { HostWindow } from "./host-window.ts";
+import type { RpcMessage } from "./host-rpc.ts";
 
 export interface HostProcessOptions {
   readonly home: string;
@@ -20,7 +21,7 @@ export interface HostProcessOptions {
 }
 
 /** Something the host process needs main for: the browser panel or the signed-in account. */
-export type HostRequest =
+export type HostAsk =
   | { readonly kind: "agent"; readonly call: AgentCall }
   | { readonly kind: "account"; readonly call: AccountCall };
 
@@ -28,27 +29,24 @@ export type MainAnswer =
   | { readonly kind: "agent"; readonly answer: AgentAnswer }
   | { readonly kind: "account"; readonly answer: AccountAnswer };
 
+/** Something main asks the host process for. */
+export type MainAsk =
+  | { readonly kind: "call"; readonly window: HostWindow; readonly request: CallRequest }
+  | { readonly kind: "activity" }
+  /** Seal `text` under the host's secrets key, or open text sealed under it. */
+  | { readonly kind: "secret"; readonly seal: boolean; readonly text: string };
+
+export type HostAnswer =
+  | { readonly kind: "call"; readonly reply: CallReply }
+  | { readonly kind: "activity"; readonly activity: DesktopUpdateActivity }
+  | { readonly kind: "secret"; readonly text: string };
+
 export type MainMessage =
   | { readonly kind: "open"; readonly options: HostProcessOptions }
-  | {
-      readonly kind: "call";
-      readonly id: number;
-      readonly window: HostWindow;
-      readonly request: CallRequest;
-    }
-  | { readonly kind: "activity"; readonly id: number }
-  /** Seal `text` under the host's secrets key, or open text sealed under it. */
-  | { readonly kind: "secret"; readonly id: number; readonly seal: boolean; readonly text: string }
+  | RpcMessage<MainAsk, MainAnswer>
   | { readonly kind: "release"; readonly window: HostWindow }
   | { readonly kind: "resume" }
   | { readonly kind: "account"; readonly state: AccountState }
-  | {
-      readonly kind: "answer";
-      readonly id: number;
-      readonly outcome:
-        | { readonly ok: true; readonly answer: MainAnswer }
-        | { readonly ok: false; readonly message: string };
-    }
   | { readonly kind: "close" };
 
 export type HostMessage =
@@ -58,16 +56,5 @@ export type HostMessage =
   | { readonly kind: "settings"; readonly settings: DesktopSettings }
   /** A `performance.mark` in the host process, `at` in epoch milliseconds. */
   | { readonly kind: "mark"; readonly name: string; readonly at: number }
-  | { readonly kind: "reply"; readonly id: number; readonly reply: CallReply }
-  | { readonly kind: "activity"; readonly id: number; readonly activity: DesktopUpdateActivity }
-  | {
-      readonly kind: "secret";
-      readonly id: number;
-      readonly outcome:
-        | { readonly ok: true; readonly text: string }
-        | { readonly ok: false; readonly message: string };
-    }
-  | { readonly kind: "request"; readonly id: number; readonly request: HostRequest }
-  /** The host no longer needs the answer to request `id`. */
-  | { readonly kind: "abort"; readonly id: number }
+  | RpcMessage<HostAsk, HostAnswer>
   | { readonly kind: "closed" };
