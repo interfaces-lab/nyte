@@ -333,7 +333,8 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
       await Promise.all(due);
     },
     async refresh() {
-      await loadWaits(kernel);
+      for (const { session, record } of await pendingCalls(kernel))
+        if (record.waiting === null) wake(kernel, session, record);
 
       await Promise.all(
         [...resumers.values()].map(async (resumer) => {

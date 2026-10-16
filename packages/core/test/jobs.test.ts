@@ -503,6 +503,26 @@ describe("jobs", () => {
     });
     expect(woken).toEqual([`${session.id}/${main}`]);
   });
+  it("leaves a wait on a job this instance does not hold parked when another kernel sees a commit", async () => {
+    const { kernel, host, provider, workspace } = await world();
+    const session = await host.sessions.create({ workspace });
+    const job = await host
+      .workspace(workspace)
+      .jobs.start({ command: "make", session: session.id });
+    const call: CallId = asId("c1");
+
+    await parkOn(
+      kernel,
+      session.id,
+      call,
+      async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
+    );
+
+    await kernelOver(kernel.store, provider).waits.refresh();
+
+    expect(await readCall(kernel, session.id, call)).toMatchObject({ waits: [] });
+  });
+
   it("answers a step's recorded job as lost after a restart, spawning nothing again (B F1, P1)", async () => {
     const { kernel, host, provider, workspace } = await world();
     const session = await host.sessions.create({ workspace });
