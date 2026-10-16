@@ -92,7 +92,7 @@ export async function run(): Promise<string> {
           viewKey={viewKey}
           view={workbenchController.getView(viewKey)}
           scope={{ kind: "project" }}
-          capabilities={{ terminal: true, browser: true }}
+          capabilities={{ browser: true }}
           workspacePath="/workspace"
         />,
       ),

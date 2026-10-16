@@ -13,7 +13,6 @@ export interface SettingsContext {
   readonly mac: boolean;
   /** The built-in browser panel exists. */
   readonly browser: boolean;
-  readonly terminal: boolean;
   /** Sign-ins and model defaults change here: the desktop, or a server environment not reached over the relay. */
   readonly providers: boolean;
   readonly account: boolean;
@@ -28,13 +27,12 @@ export type Capability = keyof SettingsContext;
  */
 export function settingsContext(): SettingsContext {
   const ownEnvironment = nyte.clientSurface === "desktop";
-  const { browser, terminal } = clientCapabilities(nyte.host);
+  const { browser } = clientCapabilities(nyte.host);
 
   return {
     hostSettings: nyte.host.settings !== undefined,
     mac: typeof document !== "undefined" && macPlatform(undefined),
     browser,
-    terminal,
     providers: ownEnvironment,
     account: ownEnvironment,
     usage: nyte.host.usage !== undefined,

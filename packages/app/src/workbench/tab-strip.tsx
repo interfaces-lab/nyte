@@ -466,14 +466,12 @@ export function WorkbenchTabStrip({
                     <ContextMenu>
                       <ContextMenuTrigger render={trigger} />
                       <ContextMenuContent aria-label={`${label} actions`}>
-                        {capabilities.terminal && (
-                          <ContextMenuItem
-                            icon="console"
-                            onClick={() => newTerminal(viewKey, workspacePath)}
-                          >
-                            New Terminal
-                          </ContextMenuItem>
-                        )}
+                        <ContextMenuItem
+                          icon="console"
+                          onClick={() => newTerminal(viewKey, workspacePath)}
+                        >
+                          New Terminal
+                        </ContextMenuItem>
                         <ContextMenuItem
                           icon="copy"
                           onClick={() => readDeferred("workbench")?.copyTerminal(terminal.id)}

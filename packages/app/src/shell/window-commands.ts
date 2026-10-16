@@ -98,7 +98,7 @@ function toggleTerminal(): void {
 }
 
 export function runWindowCommand(router: RegisteredRouter, command: AppMenuAction): boolean {
-  const { terminal, browser } = clientCapabilities(nyte.host);
+  const { browser } = clientCapabilities(nyte.host);
 
   switch (command) {
     case "new-chat":
@@ -155,13 +155,11 @@ export function runWindowCommand(router: RegisteredRouter, command: AppMenuActio
 
       return true;
     case "terminal":
-      if (!terminal) return false;
       uncoverPanes(router);
       toggleTerminal();
 
       return true;
     case "new-terminal":
-      if (!terminal) return false;
       uncoverPanes(router);
       openTerminal();
 

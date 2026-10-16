@@ -14,7 +14,7 @@ const key = workbenchViewKey("/workspace");
 
 describe("file runtime store", () => {
   test("documents use controller tab IDs while order and activation stay in the controller", () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const controller = createWorkbenchController(() => ({ browser: true }));
     const store = createFileTabStore(controller);
 
     const changes = controller.actions.openTab({
@@ -46,7 +46,7 @@ describe("file runtime store", () => {
   });
 
   test("drafts survive tab switches and remain isolated by tab ID", () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const controller = createWorkbenchController(() => ({ browser: true }));
     const store = createFileTabStore(controller);
     const other = workbenchViewKey("/other-workspace");
     store.actions.open(key, first);
@@ -69,7 +69,7 @@ describe("file runtime store", () => {
   });
 
   test("dirty close retains the controller tab until explicit discard", () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const controller = createWorkbenchController(() => ({ browser: true }));
     const store = createFileTabStore(controller);
     store.actions.open(key, first);
     store.actions.setDraft(key, first.path, {
@@ -88,7 +88,7 @@ describe("file runtime store", () => {
   });
 
   test("clean previews replace each other while pinned files remain", () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const controller = createWorkbenchController(() => ({ browser: true }));
     const store = createFileTabStore(controller);
     store.actions.open(key, { ...first, preview: true });
     store.actions.open(key, { ...second, preview: true });
@@ -105,7 +105,7 @@ describe("file runtime store", () => {
   });
 
   test("history restores file locations without owning tab activation", () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const controller = createWorkbenchController(() => ({ browser: true }));
     const store = createFileTabStore(controller);
     store.actions.open(key, { ...first, line: 10 });
     store.actions.open(key, { ...first, line: 20 });
@@ -118,7 +118,7 @@ describe("file runtime store", () => {
   });
 
   test("opening a file at a line publishes once, with the tab and its line together", () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const controller = createWorkbenchController(() => ({ browser: true }));
     const store = createFileTabStore(controller);
     store.actions.open(key, first);
     const seen: [string | undefined, number | undefined][] = [];

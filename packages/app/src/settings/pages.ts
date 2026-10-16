@@ -133,7 +133,7 @@ export const SETTINGS_PAGES = {
     icon: "console",
     title: "Terminal",
     group: "tools",
-    needs: ["terminal"],
+    needs: [],
     keywords: ["shell", "scrollback", "cursor", "blink"],
     Page: TerminalSettings,
   },

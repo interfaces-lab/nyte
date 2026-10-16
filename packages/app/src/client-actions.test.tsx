@@ -9,7 +9,7 @@ import {
   resolveTabShortcut,
 } from "./client-actions.ts";
 
-const capabilities = { terminal: true, browser: true };
+const capabilities = { browser: true };
 
 function resolveAction(
   event: Parameters<typeof resolveClientAction>[0],

@@ -9,13 +9,12 @@ type ActionChord =
 type ClientStage = "workspace" | "customize" | "environments" | "settings";
 
 export interface ClientCapabilities {
-  readonly terminal: boolean;
   readonly browser: boolean;
 }
 
-/** What the client can show: a terminal on every host (a pty job there), a browser only where the desktop gives it a native view. */
+/** What the client can show beyond what every host backs: a browser only where the desktop gives it a native view. */
 export function clientCapabilities(host: { readonly browser?: unknown }): ClientCapabilities {
-  return { terminal: true, browser: host.browser !== undefined };
+  return { browser: host.browser !== undefined };
 }
 
 interface ActionDetails {
@@ -181,7 +180,6 @@ export const clientActions = {
     key: "`",
     chord: "control",
     scope: "workspace",
-    capability: "terminal",
   },
   newTerminal: {
     id: "new-terminal",
@@ -189,7 +187,6 @@ export const clientActions = {
     key: "`",
     chord: "control-shift",
     scope: "workspace",
-    capability: "terminal",
   },
   newBrowser: {
     id: "new-browser",

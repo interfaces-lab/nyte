@@ -264,7 +264,7 @@ describe("shell terminals", () => {
       },
     };
 
-    const capabilities = () => ({ terminal: true, browser: true });
+    const capabilities = () => ({ browser: true });
     const view = workbenchViewKey("/workspace");
     const before = createWorkbenchController(capabilities, persistence);
 
@@ -290,7 +290,7 @@ describe("shell terminals", () => {
 
 describe("agent job terminals", () => {
   test("a job opens in the workspace view and streams the job's output, read-only", async () => {
-    const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+    const controller = createWorkbenchController(() => ({ browser: true }));
     const view = workbenchViewKey("/workspace/displayed");
     const otherView = workbenchViewKey("/workspace/other");
     next = fakeJob("agent");

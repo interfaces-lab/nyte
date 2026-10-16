@@ -159,7 +159,7 @@ export function workbenchTabAvailable(
     case "browser":
       return capabilities.browser;
     case "terminal":
-      return capabilities.terminal;
+      return true;
     case "file":
     case "files":
     case "changes":
