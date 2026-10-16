@@ -6,7 +6,7 @@ import { ResponsivePie } from "@nivo/pie";
 import type { PieTooltipProps } from "@nivo/pie";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, useContext, useState } from "react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { platformScopes } from "@nyte-ai/ui/platform-colors";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -226,6 +226,22 @@ function Empty({ height }: { readonly height: number }): ReactElement {
   return <div {...props(text.sm, styles.empty(height))}>No data</div>;
 }
 
+function Plot({
+  height,
+  label,
+  children,
+}: {
+  readonly height: number;
+  readonly label: string;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <div role="img" aria-label={label} {...props(styles.plot(height))}>
+      {children}
+    </div>
+  );
+}
+
 function Readout({
   title,
   rows,
@@ -367,7 +383,10 @@ export function LineChart({
           layers: entries.map((entry) => ({ key: entry.id, label: entry.id, tint: entry.tint })),
         }}
       >
-        <div {...props(styles.plot(height))}>
+        <Plot
+          height={height}
+          label={`Line chart of ${entries.map((entry) => entry.id).join(", ")}`}
+        >
           <ResponsiveLine
             onResize={(size) => setWidth(size.width)}
             data={series.map((serie) => ({
@@ -434,9 +453,8 @@ export function LineChart({
             sliceTooltip={SliceTip}
             animate={false}
             theme={theme}
-            role="img"
           />
-        </div>
+        </Plot>
       </ReadoutContext.Provider>
       {legend ? <Legend entries={entries} /> : null}
     </div>
@@ -517,7 +535,7 @@ export function BarChart({
   return (
     <div {...props(styles.chart)}>
       <ReadoutContext.Provider value={{ format, layers }}>
-        <div {...props(styles.plot(height))}>
+        <Plot height={height} label={`Bar chart of ${entries.map((entry) => entry.id).join(", ")}`}>
           <ResponsiveBar
             onResize={(size) => setWidth(size.width)}
             data={data.map((datum) => ({ ...datum }))}
@@ -564,9 +582,8 @@ export function BarChart({
             tooltip={BarTip}
             animate={false}
             theme={theme}
-            role="img"
           />
-        </div>
+        </Plot>
       </ReadoutContext.Provider>
       {legend ? <Legend entries={entries} /> : null}
     </div>
@@ -621,7 +638,10 @@ export function PieChart({
           layers: slices.map((slice) => ({ key: slice.id, label: slice.label, tint: slice.tint })),
         }}
       >
-        <div {...props(styles.plot(height))}>
+        <Plot
+          height={height}
+          label={`Pie chart: ${entries.map((entry) => `${entry.id} ${entry.value}`).join(", ")}`}
+        >
           <ResponsivePie
             data={data.map((datum) => ({
               id: datum.id,
@@ -640,9 +660,8 @@ export function PieChart({
             tooltip={PieTip}
             animate={false}
             theme={theme}
-            role="img"
           />
-        </div>
+        </Plot>
       </ReadoutContext.Provider>
       {legend ? <Legend entries={entries} /> : null}
     </div>
