@@ -14,4 +14,6 @@ export { parseJson } from "./json.ts";
 
 export { streamBuffer } from "./stream-buffer.ts";
 
+export { createStreamClient } from "./stream-client.ts";
+
 export { abortable, mapped } from "./streams.ts";

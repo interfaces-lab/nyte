@@ -16,6 +16,7 @@ type Post = (
   init: RequestInit & { readonly headers: Readonly<Record<string, string>> },
 ) => Promise<Response>;
 
+/** Multiplex streams over one channel opened through `post`; the channel closes when its last stream is released. */
 export function createStreamClient(post: Post) {
   type Stream = {
     readonly buffer: ReturnType<typeof streamBuffer>;

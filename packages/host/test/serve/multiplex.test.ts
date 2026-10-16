@@ -6,12 +6,12 @@ import {
   CHANNEL_HEADER,
   CHANNEL_PATH,
   STREAM_HEADER,
+  createStreamClient,
   createTransport,
   decodeOutput,
   parseSse,
   sseFrames,
 } from "@nyte-ai/protocol";
-import { createStreamClient } from "../../../protocol/src/stream-client.ts";
 import { createStreamChannels } from "../../src/serve/stream-server.ts";
 import { served, post } from "./fakes.ts";
 
