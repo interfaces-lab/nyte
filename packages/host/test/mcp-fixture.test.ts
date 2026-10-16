@@ -5,7 +5,7 @@ import process from "node:process";
 import { isPart, memoryStore, tool } from "@nyte-ai/core";
 import type { Host } from "@nyte-ai/core";
 import type { McpView } from "@nyte-ai/schema";
-import { afterEach, assert, expect, it } from "vitest";
+import { afterEach, assert, expect, it, vi } from "vitest";
 import { createMcpHub, openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
 import type { FakeModels, Request } from "../src/bench/fake-models.ts";
@@ -162,4 +162,28 @@ it("leaves out a tool whose input schema is not JSON Schema, and says why", asyn
     ],
   });
   await views.return?.();
+});
+
+it("shows a server's progress on the running call", async () => {
+  const fake = fakeModels();
+  searchOnce(fake);
+  await using host = await openPlaces(
+    await placesHome({ PLACES_PROGRESS: "1", PLACES_DELAY_MS: "900" }),
+    fake,
+  );
+  const session = await host.sessions.create();
+  const run = await session.send("Find a place nearby.");
+
+  await vi.waitFor(
+    async () => {
+      const running = (await session.view()).messages.find(
+        (message) => isPart(message, tool) && message.state.phase === "running",
+      );
+
+      assert(running !== undefined && isPart(running, tool) && running.state.phase === "running");
+      expect(running.state.progress).toMatchObject({ text: expect.stringMatching(/^Page \d$/) });
+    },
+    { timeout: 3000, interval: 20 },
+  );
+  await run.settled();
 });

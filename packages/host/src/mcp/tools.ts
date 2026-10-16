@@ -1,12 +1,22 @@
 import { createHash } from "node:crypto";
-import type { CallToolResult, McpClient, Tool } from "@earendil-works/pi-mcp";
+import type { CallToolResult, McpClient, ProgressNotification, Tool } from "@earendil-works/pi-mcp";
 import type { ExecutionEnv, ToolDefinition } from "@nyte-ai/core";
 import { isJson } from "@nyte-ai/schema";
-import type { Json, McpExposure, Schema, ToolContent, ValidationIssue } from "@nyte-ai/schema";
+import type {
+  Json,
+  McpExposure,
+  Schema,
+  ToolContent,
+  ToolProgress,
+  ValidationIssue,
+} from "@nyte-ai/schema";
 import { Errors, Meta } from "typebox/schema";
 import type { McpServerEntry } from "./config.ts";
 
 const NAME_LIMIT = 64;
+
+/** The longest a call may run in all, however often its progress resets the per-request timeout. */
+const CALL_LIMIT_MS = 10 * 60_000;
 
 const DRAFT_2020_12 = Meta["https://json-schema.org/draft/2020-12/schema"];
 
@@ -131,11 +141,25 @@ function bridge(
         ? "safe"
         : "never",
     async execute(args, invocation) {
-      const result = await client.callTool(tool.name, isObject(args) ? args : {}, {
-        signal: invocation.signal,
-        timeoutMs: entry.timeoutMs,
-        onProgress: () => undefined,
-      });
+      const limitMs = Math.max(entry.timeoutMs, CALL_LIMIT_MS);
+      const limit = AbortSignal.timeout(limitMs);
+
+      let result: CallToolResult;
+
+      try {
+        result = await client.callTool(tool.name, isObject(args) ? args : {}, {
+          signal: AbortSignal.any([invocation.signal, limit]),
+          timeoutMs: entry.timeoutMs,
+          onProgress: (update) => invocation.progress(toolProgress(update)),
+        });
+      } catch (error) {
+        if (!limit.aborted || invocation.signal.aborted) throw error;
+
+        throw new Error(
+          `${tool.name} was still running after ${limitMs / 60_000} minutes, so it was cancelled.`,
+          { cause: error },
+        );
+      }
 
       const content = await readToolContent(result, invocation.env);
 
@@ -153,6 +177,16 @@ function bridge(
       };
     },
   };
+}
+
+function toolProgress(update: ProgressNotification): ToolProgress {
+  const step =
+    update.total === undefined ? `${update.progress}` : `${update.progress} of ${update.total}`;
+  const text = update.message ?? step;
+
+  return update.total === undefined || update.total <= 0
+    ? { text }
+    : { text, fraction: Math.min(1, update.progress / update.total) };
 }
 
 async function readToolContent(result: CallToolResult, env: ExecutionEnv): Promise<ToolContent[]> {
