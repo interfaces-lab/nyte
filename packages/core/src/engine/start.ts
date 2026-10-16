@@ -10,19 +10,10 @@ import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
 import { releaseParts } from "../store/parts.ts";
 import { inboxRef, sessionRef } from "../store/refs.ts";
-import {
-  attempt,
-  coveredHere,
-  MAIN,
-  readInbox,
-  readSession,
-  sessionEvent,
-  STALE,
-} from "../store/session.ts";
+import { attempt, MAIN, readInbox, readSession, sessionEvent, STALE } from "../store/session.ts";
 import type { Found, Inbox } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
-import { admitted, chooseSendSchedule, gate, resolve } from "./admission.ts";
-import type { MessageRecord, Sending } from "./admission.ts";
+import { readmitDeciding } from "./admission.ts";
 import { listSessionWaits } from "./waits.ts";
 
 const STOPPED = "The chat was stopped before its first message was decided.";
@@ -176,65 +167,8 @@ async function admitDecided(
 
   if (input === null) return;
 
-  const sending: Sending = {
-    kernel,
-    session,
-    head: MAIN,
-    context,
-    content: input.content,
-    options: {},
-    stop,
-  };
-
-  const submission = await gate(sending, input.id, {
-    content: input.content,
-    source: input.source,
-    delivery: input.delivery,
-    configuration: null,
-    replace: null,
-  });
-
-  const covered = await coveredHere(kernel, session);
-
-  const released = await attempt(`Starting ${session}`, async () => {
-    const [inbox, configuration] = await Promise.all([
-      readInbox(kernel.store, session, MAIN),
-      resolve(sending, submission.configuration),
-    ]);
-
-    const position = inbox.messages.findIndex((message) => message === input.id);
-
-    if (position < 0) return null;
-
-    if ((await findDeciding(kernel, session, inbox))?.id !== input.id) return input.id;
-
-    const message: MessageRecord = {
-      id: input.id,
-      at: Date.now(),
-      content: submission.content,
-      source: submission.source,
-      delivery: submission.delivery,
-      schedule: await chooseSendSchedule(submission.delivery, configuration, null),
-      covered,
-      configuration,
-      replaced: null,
-      position,
-    };
-
-    const outcome = await commit(kernel, [
-      await admitted(kernel.store, session, MAIN, inbox, inbox.messages, message),
-    ]);
-
-    if (outcome.kind === "stale") return STALE;
-
-    if (covered) kernel.wakes.notify(session, MAIN);
-    await kernel.waits.inputAdmitted(session, MAIN, message.id);
-    dev("admission", "started", { session, message: message.id, covered });
-
-    return message.id;
-  });
-
-  if (released === null) throw new SdkError("invalid", STOPPED);
+  if ((await readmitDeciding(kernel, context, session, input, stop)) === null)
+    throw new SdkError("invalid", STOPPED);
 }
 
 async function findDeciding(

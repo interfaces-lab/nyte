@@ -24,8 +24,7 @@ import type { Part, PartDefinition } from "../contract/parts.ts";
 import { decodeSeenRecord, decodeSessionRecord } from "../contract/records.ts";
 import type { HeadRecord, RunRecord, SessionRecord } from "../contract/records.ts";
 import type { Head, Session, Sessions } from "../contract/session.ts";
-import { admitted, pendingReceipt, sendNow, USER } from "../engine/admission.ts";
-import type { MessageRecord } from "../engine/admission.ts";
+import { admitDeciding, sendNow } from "../engine/admission.ts";
 import { refusalError, staticContributions } from "../engine/contributions.ts";
 import { recordAcquisition } from "../engine/durable.ts";
 import { stopRun } from "../engine/fence.ts";
@@ -406,19 +405,6 @@ async function start(
         prompt: input.prompt ?? null,
       };
 
-      const message: MessageRecord = {
-        id: asId<"message">(id),
-        at,
-        content: input.content,
-        source: USER,
-        delivery: "steer",
-        schedule: { kind: "deciding", principal: context.principal },
-        covered: await coversRecord(kernel, record),
-        configuration: effective,
-        replaced: null,
-        position: 0,
-      };
-
       const outcome = await commit(kernel, [
         {
           name: sessionRef(id),
@@ -429,15 +415,14 @@ async function start(
             { head: MAIN, kind: "configured", selected, effective },
           ],
         },
-        await admitted(
-          kernel.store,
-          id,
-          MAIN,
-          await readInbox(kernel.store, id, MAIN),
-          [message.id],
-          message,
-        ),
-        await pendingReceipt(kernel.store, id, receipt, digest, "absent"),
+        ...(await admitDeciding(kernel, id, {
+          content: input.content,
+          configuration: effective,
+          covered: await coversRecord(kernel, record),
+          at,
+          digest,
+          principal: context.principal,
+        })),
       ]);
 
       return outcome.kind === "set" ? id : STALE;
