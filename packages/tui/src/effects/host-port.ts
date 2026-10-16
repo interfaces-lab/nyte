@@ -1,8 +1,15 @@
 import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId } from "@nyte-ai/schema";
-import { pagedViews } from "@nyte-ai/sdk/client";
-import type { Connection, MessageId, PagedViews, Session } from "@nyte-ai/sdk";
+import {
+  followedTrace,
+  followTrace,
+  pagedViews,
+  startSpan,
+  traced,
+  tracing,
+} from "@nyte-ai/sdk/client";
+import type { Connection, MessageId, PagedViews, Session, SessionView } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
@@ -11,9 +18,19 @@ import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
 import type { HostPort, PluginsPort, SessionPort } from "./ports.ts";
 
-export function hostPort(host: Connection, folder: string | null): HostPort {
+/**
+ * The app's port to `host`, creating sessions in `folder` when it is not null. A submit is
+ * traced as `composer.submit` under its receipt id, and while tracing is on each message a
+ * view brings is a `client.paint` span that ends when `painted` (the renderer's next frame)
+ * resolves.
+ */
+export function hostPort(
+  host: Connection,
+  folder: string | null,
+  painted: () => Promise<void> = () => Promise.resolve(),
+): HostPort {
   return {
-    session: (id) => sessionPort(host, host.session(id)),
+    session: (id) => sessionPort(host, host.session(id), painted),
     async create(input) {
       const workspace = input.workspace ?? (folder === null ? null : await addFolder(host, folder));
       const session = await host.sessions.create({
@@ -184,13 +201,21 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
   };
 }
 
-function sessionPort(host: Connection, session: Session): SessionPort {
+function sessionPort(
+  host: Connection,
+  session: Session,
+  painted: () => Promise<void>,
+): SessionPort {
   const readReceipt = (message: MessageId) => session.receipt(asId(message));
   let views: PagedViews | null = null;
 
   return {
     id: session.id,
-    watch: () => (views = pagedViews(session)),
+    watch() {
+      views = pagedViews(session);
+
+      return tracePaints(views, session.id, painted);
+    },
     earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
     info: () => session.info(),
     async workspace() {
@@ -206,7 +231,12 @@ function sessionPort(host: Connection, session: Session): SessionPort {
       };
     },
     async send(content, options) {
-      const receipt = await session.send(content, options);
+      const id = options.id ?? asId<"receipt">(crypto.randomUUID());
+      followTrace(session.id, id);
+
+      const receipt = await traced("composer.submit", id, { session: session.id }, () =>
+        session.send(content, { ...options, id }),
+      );
 
       return { message: receipt.message };
     },
@@ -343,6 +373,40 @@ function sessionPort(host: Connection, session: Session): SessionPort {
       return found;
     },
   };
+}
+
+/** `views`, each message after the first view timed as a `client.paint` span until `painted` resolves; a user message is its own submit's trace, a part joins the one the session followed last. */
+async function* tracePaints(
+  views: AsyncIterable<SessionView>,
+  session: Session["id"],
+  painted: () => Promise<void>,
+): AsyncIterable<SessionView> {
+  let seen: Set<string> | null = null;
+
+  for await (const view of views) {
+    if (!tracing.enabled) {
+      yield view;
+      continue;
+    }
+
+    const known: Set<string> = seen ?? new Set(view.messages.map((message) => message.id));
+
+    for (const message of view.messages) {
+      if (known.has(message.id)) continue;
+      known.add(message.id);
+      const user = message.kind === "user";
+
+      const ended = startSpan("client.paint", user ? message.id : followedTrace(session), {
+        session,
+        kind: user ? "user" : message.partKind,
+      });
+
+      void painted().then(() => ended());
+    }
+
+    seen = known;
+    yield view;
+  }
 }
 
 export async function pluginsPort(

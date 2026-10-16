@@ -409,7 +409,7 @@ async function openService(input: {
   });
 
   return {
-    host: hostPort(connection, input.cwd),
+    host: hostPort(connection, input.cwd, () => nextFrame(input.renderer)),
     plugins,
     drawPart: (message) => drawnPart(input.renderer, plugins.draw(message)),
     async close() {
@@ -441,6 +441,11 @@ export function exitText(input: {
 /** The renderable a client plugin drew for a part, or null when none drew one and the transcript shows its fallback. */
 export function drawnPart(renderer: CliRenderer, drawn: unknown): Renderable | null {
   return drawn === undefined || drawn === null ? null : maybeMakeRenderable(renderer, drawn);
+}
+
+/** Resolves once `renderer` has painted its next frame. */
+export function nextFrame(renderer: CliRenderer): Promise<void> {
+  return new Promise((resolve) => renderer.once(CliRenderEvents.FRAME, () => resolve()));
 }
 
 function terminalFacts(renderer: CliRenderer): TerminalFacts {
