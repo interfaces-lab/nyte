@@ -198,15 +198,20 @@ function scheduleSessionWebSocketExpiry(
 }
 
 /**
- * A socket on the runtime's `WebSocket`, which browsers, Node and Bun all expose. Bun also
- * honors an undici-style `proxy` option, which carries the provider's HTTP proxy.
+ * A socket on the runtime's `WebSocket`, which browsers, Node and Bun all expose. Node and Bun
+ * take an init object with `headers`, and Bun also honors an undici-style `proxy`, which carries
+ * the provider's HTTP proxy. The DOM typing of the constructor admits only protocols as its second
+ * argument, and which typing applies depends on the consumer's lib, so it is constructed through
+ * `Reflect.construct` against the structural {@link WebSocketLike} it is used as.
  */
 function openWebSocket(
   url: string,
   headers: Record<string, string>,
   env: ProviderEnv | undefined,
 ): WebSocketLike {
-  if (typeof globalThis.WebSocket !== "function") {
+  const WebSocketClass: unknown = globalThis.WebSocket;
+
+  if (typeof WebSocketClass !== "function") {
     throw new Error("WebSocket transport is not available in this runtime");
   }
 
@@ -221,7 +226,9 @@ function openWebSocket(
     if (proxyUrl) init.proxy = proxyUrl.href;
   }
 
-  return new globalThis.WebSocket(url, init);
+  const socket: WebSocketLike = Reflect.construct(WebSocketClass, [url, init]);
+
+  return socket;
 }
 
 async function connectWebSocket(
