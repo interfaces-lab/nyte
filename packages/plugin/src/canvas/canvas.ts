@@ -110,7 +110,7 @@ const render: ToolDefinition<Infer<typeof parameters>> = {
     label: args.canvas === undefined ? `Rendering ${args.title}` : `Updating ${args.title}`,
   }),
   effects: "none",
-  replay: "never",
+  replay: "safe",
   async execute(args, invocation) {
     const compiled = await compileCanvas(args.source);
 
