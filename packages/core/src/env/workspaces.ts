@@ -329,12 +329,13 @@ export function workspaceHandle(
       await kernel.environments.detachWorkspace(id);
 
       for (const session of await sessionsOn(kernel.store, id)) {
-        if (kernel.activation(session).kind !== "active") await kernel.environments.detach(session);
+        if (kernel.sessions.activation(session).kind !== "active")
+          await kernel.environments.detach(session);
 
         if (
           kernel.runtimes().has(session) ||
           kernel.folds.folding(session) ||
-          kernel.activation(session).kind !== "inactive"
+          kernel.sessions.activation(session).kind !== "inactive"
         )
           await kernel.reloadPlugins(session).catch(() => undefined);
       }
@@ -405,8 +406,8 @@ export function settle(
   workspace: WorkspaceId,
   activation: Activation,
 ): void {
-  if (JSON.stringify(kernel.activation(session)) === JSON.stringify(activation)) return;
-  kernel.setActivation(session, activation);
+  if (JSON.stringify(kernel.sessions.activation(session)) === JSON.stringify(activation)) return;
+  kernel.sessions.setActivation(session, activation);
   changed(kernel, workspace);
 }
 

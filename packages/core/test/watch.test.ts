@@ -107,7 +107,7 @@ async function createSession(
           info: {
             ...record,
             call: null,
-            activation: kernel.activation(id),
+            activation: kernel.sessions.activation(id),
             heads: [
               {
                 name: main,

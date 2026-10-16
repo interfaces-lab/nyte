@@ -343,9 +343,12 @@ export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void
     .then(async () => {
       const catalog = await sessionCatalog(kernel, session);
 
-      if (catalog === null || JSON.stringify(catalog) === JSON.stringify(kernel.catalog(session)))
+      if (
+        catalog === null ||
+        JSON.stringify(catalog) === JSON.stringify(kernel.sessions.catalog(session))
+      )
         return;
-      kernel.setCatalog(session, catalog);
+      kernel.sessions.setCatalog(session, catalog);
       bumpGeneration(kernel);
     });
 

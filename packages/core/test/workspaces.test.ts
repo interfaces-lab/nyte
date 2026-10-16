@@ -234,7 +234,7 @@ describe("workspaces", () => {
     const session = await host.sessions.create({ workspace });
     await expect(kernel.pluginsFor(session.id).ready).rejects.toThrow("The sandbox did not boot.");
 
-    expect(kernel.activation(session.id)).toEqual({
+    expect(kernel.sessions.activation(session.id)).toEqual({
       kind: "failed",
       message: "The sandbox did not boot.",
     });

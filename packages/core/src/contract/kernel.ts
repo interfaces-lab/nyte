@@ -113,9 +113,7 @@ export interface Kernel {
 
   readonly calls: Map<string, Set<AbortController>>;
 
-  activation(session: SessionId): Activation;
-
-  setActivation(session: SessionId, activation: Activation): void;
+  readonly sessions: SessionDirectory;
 
   defaultWorkspace: WorkspaceId | null;
 
@@ -193,12 +191,6 @@ export interface Kernel {
 
   closePlugins(session: SessionId): Promise<void>;
 
-  catalog(session: SessionId): SessionCatalogView;
-
-  setCatalog(session: SessionId, catalog: SessionCatalogView): void;
-
-  forget(session: SessionId): void;
-
   pluginApi(owner: string, session: SessionId): PluginApi<"core">;
 
   readonly plugins: {
@@ -215,6 +207,20 @@ export interface Kernel {
 
   /** Builds the public connection and session handles, so engine and plugin code never import the api layer. */
   readonly handles: Handles;
+}
+
+/** This process's activation and catalog of each session, each change published on the session's bus. */
+export interface SessionDirectory {
+  activation(session: SessionId): Activation;
+
+  setActivation(session: SessionId, activation: Activation): void;
+
+  catalog(session: SessionId): SessionCatalogView;
+
+  setCatalog(session: SessionId, catalog: SessionCatalogView): void;
+
+  /** Drops a removed session's activation and catalog. */
+  forget(session: SessionId): void;
 }
 
 export interface Handles {

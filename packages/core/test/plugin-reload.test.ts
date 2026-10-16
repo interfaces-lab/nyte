@@ -206,7 +206,10 @@ describe("plugin reload (D4)", () => {
     });
 
     await expect(kernel.reloadPlugins(session.id)).rejects.toThrow("The scan failed.");
-    expect(kernel.activation(session.id)).toEqual({ kind: "failed", message: "The scan failed." });
+    expect(kernel.sessions.activation(session.id)).toEqual({
+      kind: "failed",
+      message: "The scan failed.",
+    });
     await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
 
     kernel.workspaceState.scans.delete(session.id);

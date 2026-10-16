@@ -187,7 +187,7 @@ describe("composeHost", () => {
         .plugins()
         .map((plugin) => plugin.id),
     ).toEqual(["system-prompt", "environment", "resources", "delegation", "chat-only", "extra"]);
-    expect(host.kernel.activation(session.id)).toEqual({ kind: "active" });
+    expect(host.kernel.sessions.activation(session.id)).toEqual({ kind: "active" });
   });
 
   it("serves the host view: plugins and settings", async () => {

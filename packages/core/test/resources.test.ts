@@ -153,7 +153,7 @@ describe("resources", () => {
     const session = await host.sessions.create({ workspace });
     await kernel.pluginsFor(session.id).ready;
     const names = (): readonly string[] =>
-      kernel.catalog(session.id).skills.map((skill) => skill.name);
+      kernel.sessions.catalog(session.id).skills.map((skill) => skill.name);
 
     expect(names()).not.toContain("fresh");
     await until(() => (disk.watchers.size === 2 ? true : undefined));

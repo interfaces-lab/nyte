@@ -196,7 +196,7 @@ async function describeSession(
     workspace: record.workspace,
     pinned: record.pinned,
     archived: record.archived,
-    activation: kernel.activation(id),
+    activation: kernel.sessions.activation(id),
     heads,
     createdAt: record.createdAt,
     lastActivityAt: record.lastActivityAt,
@@ -278,7 +278,7 @@ export function watchSessions(
             rows.map(async ({ ref, version }) => {
               const id = asId<"session">(ref.name.slice("sessions/".length));
               const previous = cached.get(id);
-              const activation = kernel.activation(id);
+              const activation = kernel.sessions.activation(id);
 
               if (previous?.version === version && previous.activation === activation) {
                 next.set(id, previous);
@@ -528,7 +528,7 @@ async function remove(
     kernel.pluginState.assigned.delete(session);
     dropScans(kernel, (key) => key === session);
     await kernel.closePlugins(session);
-    kernel.forget(session);
+    kernel.sessions.forget(session);
     releaseParts(kernel.partTable, session);
 
     await Promise.allSettled([

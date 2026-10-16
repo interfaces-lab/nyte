@@ -52,7 +52,7 @@ interface FoldFeed {
 
 type Feeds = Pick<
   Kernel,
-  "store" | "bus" | "publisher" | "streams" | "activation" | "catalog" | "jobs" | "pages"
+  "store" | "bus" | "publisher" | "streams" | "sessions" | "jobs" | "pages"
 >;
 
 /** One session's publishing: the last seq on the bus, the highest this process logged, and the publishes in line. */
@@ -447,8 +447,13 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
       const seed = { seq: asSeq(0), at: Date.now() };
 
       const events: SessionEvent[] = [
-        { ...seed, head: null, kind: "activation", activation: kernel.activation(session) },
-        { ...seed, head: null, kind: "catalog", catalog: kernel.catalog(session) },
+        {
+          ...seed,
+          head: null,
+          kind: "activation",
+          activation: kernel.sessions.activation(session),
+        },
+        { ...seed, head: null, kind: "catalog", catalog: kernel.sessions.catalog(session) },
         ...[...kernel.jobs.background(session), ...kernel.pages.background(session)].map(
           ({ head, item }): SessionEvent => ({ ...seed, head, kind: "background", item }),
         ),

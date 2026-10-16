@@ -380,7 +380,7 @@ export async function sessionEvent(
       workspace: record.workspace,
       pinned: record.pinned,
       archived: record.archived,
-      activation: kernel.activation(record.id),
+      activation: kernel.sessions.activation(record.id),
       heads,
       createdAt: record.createdAt,
       lastActivityAt: record.lastActivityAt,

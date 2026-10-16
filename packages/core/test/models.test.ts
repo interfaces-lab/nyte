@@ -139,7 +139,9 @@ describe("models", () => {
     const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 };
     const generation = () => host.kernel.host.current().catalog;
 
-    await until(() => (host.kernel.catalog(session.id).tools.length > 0 ? true : undefined));
+    await until(() =>
+      host.kernel.sessions.catalog(session.id).tools.length > 0 ? true : undefined,
+    );
 
     fake.reply(
       { content: [{ type: "text", text: "Plain." }] },

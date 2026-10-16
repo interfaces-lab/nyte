@@ -28,7 +28,14 @@ import { systemPromptPlugin } from "./builtins/system-prompt.ts";
 import type { SessionBus } from "./contract/fold.ts";
 import { CORE_CONTEXT } from "./contract/host.ts";
 import type { ModelsApi, OpenOptions, SettingsApi } from "./contract/host.ts";
-import type { Kernel, PluginRuntime, RunTable, WaitRegistry, Wakes } from "./contract/kernel.ts";
+import type {
+  Kernel,
+  PluginRuntime,
+  RunTable,
+  SessionDirectory,
+  WaitRegistry,
+  Wakes,
+} from "./contract/kernel.ts";
 import type { PartDefinitions } from "./contract/parts.ts";
 import type { ServedHost } from "./contract/server.ts";
 import type { Plugin } from "./contract/plugin.ts";
@@ -92,6 +99,8 @@ export type ComposeOptions = OpenOptions & {
 };
 
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
+
+const INACTIVE: Activation = { kind: "inactive" };
 
 const NO_MODELS: ModelsApi = {
   list: async () => unavailable("models"),
@@ -338,14 +347,8 @@ export function createKernel(input: KernelOptions): Kernel {
   const bus = createBus();
   const publisher = createLogPublisher({ store: input.store, bus });
   const streams = trackStreams(bus);
-  const activations = new Map<SessionId, Activation>();
-  const inactive: Activation = { kind: "inactive" };
-  const activation = (session: SessionId): Activation => activations.get(session) ?? inactive;
-  const catalogs = new Map<SessionId, SessionCatalogView>();
+  const sessions = createSessionDirectory(bus);
   const models = input.models;
-
-  const catalog = (session: SessionId): SessionCatalogView =>
-    catalogs.get(session) ?? EMPTY_CATALOG;
 
   const runtimes = new Map<SessionId, PluginRuntime>();
 
@@ -388,8 +391,7 @@ export function createKernel(input: KernelOptions): Kernel {
       bus,
       publisher,
       streams,
-      activation,
-      catalog,
+      sessions,
       get jobs() {
         return kernel.jobs;
       },
@@ -404,17 +406,7 @@ export function createKernel(input: KernelOptions): Kernel {
     workspaceState: createWorkspaceState(),
     receipts: new Map(),
     calls: new Map(),
-    activation,
-    setActivation(session, value) {
-      activations.set(session, value);
-      bus.publish(session, {
-        seq: asSeq(0),
-        at: Date.now(),
-        head: null,
-        kind: "activation",
-        activation: value,
-      });
-    },
+    sessions,
     defaultWorkspace: input.defaultWorkspace ?? null,
     execution: input.execution ?? RUN_ALL,
     runs: createRunTable(bus),
@@ -524,21 +516,6 @@ export function createKernel(input: KernelOptions): Kernel {
       runtimes.delete(session);
       await runtime.close();
     },
-    catalog,
-    forget(session) {
-      catalogs.delete(session);
-      activations.delete(session);
-    },
-    setCatalog(session, value) {
-      catalogs.set(session, value);
-      bus.publish(session, {
-        seq: asSeq(0),
-        at: Date.now(),
-        head: null,
-        kind: "catalog",
-        catalog: value,
-      });
-    },
     pluginApi: (owner, session) =>
       kernel.pluginsFor(session).api(owner) ?? unavailable(`plugin ${owner} in session ${session}`),
     plugins: {
@@ -632,6 +609,29 @@ function createRunTable(bus: SessionBus): RunTable {
     end(run) {
       live.get(run)?.unsubscribe();
       live.delete(run);
+    },
+  };
+}
+
+function createSessionDirectory(bus: SessionBus): SessionDirectory {
+  const activations = new Map<SessionId, Activation>();
+  const catalogs = new Map<SessionId, SessionCatalogView>();
+  const now = () => ({ seq: asSeq(0), at: Date.now(), head: null });
+
+  return {
+    activation: (session) => activations.get(session) ?? INACTIVE,
+    setActivation(session, activation) {
+      activations.set(session, activation);
+      bus.publish(session, { ...now(), kind: "activation", activation });
+    },
+    catalog: (session) => catalogs.get(session) ?? EMPTY_CATALOG,
+    setCatalog(session, catalog) {
+      catalogs.set(session, catalog);
+      bus.publish(session, { ...now(), kind: "catalog", catalog });
+    },
+    forget(session) {
+      catalogs.delete(session);
+      activations.delete(session);
     },
   };
 }
