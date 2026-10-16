@@ -1,5 +1,6 @@
 import type { Api, AssistantMessage, Model, ProviderStreams } from "../types.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { emptyAssistantOutput } from "./assistant-stream.ts";
 
 /**
  * Returns a stream synchronously while running async setup (auth resolution,
@@ -19,22 +20,9 @@ export function lazyStream(
     })
     .catch((cause) => {
       const message: AssistantMessage = {
-        role: "assistant",
-        content: [],
-        api: model.api,
-        provider: model.provider,
-        model: model.id,
-        usage: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        },
+        ...emptyAssistantOutput(model),
         stopReason: "error",
         errorMessage: cause instanceof Error ? cause.message : String(cause),
-        timestamp: Date.now(),
       };
 
       outer.push({ type: "error", reason: "error", error: message });

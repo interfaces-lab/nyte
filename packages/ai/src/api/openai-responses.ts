@@ -1,9 +1,7 @@
 import OpenAI from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import { clampThinkingLevel } from "../models.ts";
 import { applyServiceTierPricing } from "../model-pricing.ts";
 import type {
-  AssistantMessage,
   CacheRetention,
   Context,
   Model,
@@ -25,10 +23,11 @@ import {
   resolveTranscriptTools,
 } from "../utils/transcript.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { getClientApiKey, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { runAssistantStream } from "./assistant-stream.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
@@ -36,11 +35,10 @@ import {
   convertResponsesMessages,
   convertResponsesTools,
   processResponsesStream,
-  stripStreamingScratchState,
   withPriorityTier,
 } from "./openai-responses-shared.ts";
 import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
-import { buildBaseOptions } from "./simple-options.ts";
+import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 
@@ -174,33 +172,17 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
   requested?: OpenAIResponsesOptions,
 ): AssistantMessageEventStream => {
   const options = withPriorityTier(requested);
-  const stream = new AssistantMessageEventStream();
 
   const normalizedContext = resolveTranscript(
     context,
     getCompat(model).supportsMidConvoSystemMessages,
   );
 
-  (async () => {
-    const output: AssistantMessage = {
-      role: "assistant",
-      content: [],
-      api: model.api,
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "pending",
-      timestamp: Date.now(),
-    };
-
-    try {
+  return runAssistantStream(
+    model,
+    options?.signal,
+    "OpenAI Responses",
+    async (output, stream) => {
       const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
       const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
       const compat = getCompat(model);
@@ -257,35 +239,13 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         applyServiceTierPricing: (usage, serviceTier) =>
           applyServiceTierPricing(usage, serviceTier, model),
       });
-
-      if (options?.signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      if (output.stopReason === "pending") {
-        throw new Error("OpenAI Responses stream ended without a stop reason");
-      }
-
-      if (output.stopReason === "aborted" || output.stopReason === "error") {
-        throw new Error(output.errorMessage || "An unknown error occurred");
-      }
-
-      stream.push({ type: "done", reason: output.stopReason, message: output });
-      stream.end();
-    } catch (error) {
-      stripStreamingScratchState(output.content);
-
-      output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatProviderError(
+    },
+    (error) =>
+      formatProviderError(
         normalizeProviderError(error),
         `${model.provider === "openai" ? "OpenAI" : model.provider} API error`,
-      );
-      stream.push({ type: "error", reason: output.stopReason, error: output });
-      stream.end();
-    }
-  })();
-
-  return stream;
+      ),
+  );
 };
 
 export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOptions> = (
@@ -295,21 +255,10 @@ export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOption
 ): AssistantMessageEventStream => {
   getClientApiKey(model.provider, options?.apiKey, options?.headers);
 
-  const base = {
-    ...buildBaseOptions(model, context, options, options?.apiKey),
-    toolChoice: options?.toolChoice,
-  } satisfies OpenAIResponsesOptions;
-
-  const clampedReasoning = options?.reasoning
-    ? clampThinkingLevel(model, options.reasoning)
-    : undefined;
-
-  const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
-
   return stream(model, context, {
-    ...base,
-    reasoningEffort,
-  } satisfies OpenAIResponsesOptions);
+    ...buildBaseOptions(model, context, options),
+    reasoningEffort: simpleReasoningEffort(model, options?.reasoning),
+  });
 };
 
 function createClient(input: {

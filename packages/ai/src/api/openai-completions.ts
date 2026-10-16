@@ -17,7 +17,7 @@ import type {
   ChatCompletionSystemMessageParam,
   ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions.js";
-import { calculateCost, clampThinkingLevel } from "../models.ts";
+import { calculateCost } from "../models.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
   AssistantMessage,
@@ -41,7 +41,7 @@ import type {
   TranscriptContext,
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { getClientApiKey, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
 import { parseStreamingJson, parseToolCallArguments } from "../utils/json-parse.ts";
@@ -54,6 +54,7 @@ import {
   resolveTranscript,
   resolveTranscriptTools,
 } from "../utils/transcript.ts";
+import { emptyCost, runAssistantStream } from "./assistant-stream.ts";
 import {
   appendGrammarToolInputJsonDelta,
   createGrammarToolInputProperties,
@@ -68,6 +69,7 @@ import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import {
   buildBaseOptions,
   clampThinkingBudgetToAnswerRoom,
+  simpleReasoningEffort,
   thinkingBudgetForLevel,
 } from "./simple-options.ts";
 import { NullableTokenCount } from "./token-count.ts";
@@ -357,56 +359,40 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
   context: TranscriptContext,
   options?: OpenAICompletionsOptions,
 ): AssistantMessageEventStream => {
-  const stream = new AssistantMessageEventStream();
-
   const normalizedContext = resolveTranscript(
     context,
     resolveCompat(model).supportsMidConvoSystemMessages,
   );
 
-  (async () => {
-    interface StreamingToolCallBlock extends ToolCall {
-      partialArgs?: string;
-      customInput?: {
-        property: string;
-        input: string;
-        jsonBuffer: GrammarToolInputJsonBuffer;
+  return runAssistantStream(
+    model,
+    options?.signal,
+    "OpenAI Completions",
+    async (output, stream) => {
+      interface StreamingToolCallBlock extends ToolCall {
+        partialArgs?: string;
+        customInput?: {
+          property: string;
+          input: string;
+          jsonBuffer: GrammarToolInputJsonBuffer;
+        };
+        streamIndex?: number;
+      }
+
+      type StreamingBlock = TextContent | ThinkingContent | StreamingToolCallBlock;
+
+      const blocks: StreamingBlock[] = [];
+      output.content = blocks;
+
+      // `reasoning_details` are replay metadata, not user-visible stream deltas.
+      // Keep them in memory during streaming and serialize once when the block is finalized.
+      let streamedReasoningDetails: OpenAIReasoningDetail[] | undefined;
+
+      const applyStreamedReasoningDetails = (block: ThinkingContent) => {
+        if (streamedReasoningDetails === undefined) return;
+        block.thinkingSignature = JSON.stringify(streamedReasoningDetails);
       };
-      streamIndex?: number;
-    }
 
-    type StreamingBlock = TextContent | ThinkingContent | StreamingToolCallBlock;
-
-    const blocks: StreamingBlock[] = [];
-
-    const output: AssistantMessage = {
-      role: "assistant",
-      content: blocks,
-      api: model.api,
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "pending",
-      timestamp: Date.now(),
-    };
-
-    // `reasoning_details` are replay metadata, not user-visible stream deltas.
-    // Keep them in memory during streaming and serialize once when the block is finalized.
-    let streamedReasoningDetails: OpenAIReasoningDetail[] | undefined;
-
-    const applyStreamedReasoningDetails = (block: ThinkingContent) => {
-      if (streamedReasoningDetails === undefined) return;
-      block.thinkingSignature = JSON.stringify(streamedReasoningDetails);
-    };
-
-    try {
       const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
       const compat = resolveCompat(model);
 
@@ -521,7 +507,6 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
             partial: output,
           });
         } else if (block.type === "thinking") {
-          applyStreamedReasoningDetails(block);
           stream.push({
             type: "thinking_end",
             contentIndex,
@@ -665,171 +650,169 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
         return block;
       };
 
-      for await (const chunk of result.data) {
-        if (!chunk) continue;
+      try {
+        for await (const chunk of result.data) {
+          if (!chunk) continue;
 
-        // OpenAI documents ChatCompletionChunk.id as the unique chat completion identifier,
-        // and each chunk in a streamed completion carries the same id.
-        output.responseId ||= chunk.id;
+          // OpenAI documents ChatCompletionChunk.id as the unique chat completion identifier,
+          // and each chunk in a streamed completion carries the same id.
+          output.responseId ||= chunk.id;
 
-        if (chunk.model && chunk.model !== model.id) {
-          output.responseModel ||= chunk.model;
-        }
-
-        if (chunk.usage) {
-          output.usage = parseChunkUsage(chunk.usage, model);
-        }
-
-        const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
-
-        if (!choice) continue;
-
-        // Fallback: some providers (e.g., Moonshot) return usage
-        // in choice.usage instead of the standard chunk.usage
-        if (!chunk.usage && Value.Check(ChoiceUsageSchema, choice)) {
-          output.usage = parseChunkUsage(choice.usage, model);
-        }
-
-        if (choice.finish_reason) {
-          output.rawStopReason = choice.finish_reason;
-          const finishReasonResult = mapStopReason(choice.finish_reason);
-          output.stopReason = finishReasonResult.stopReason;
-
-          if (finishReasonResult.errorMessage) {
-            output.errorMessage = finishReasonResult.errorMessage;
+          if (chunk.model && chunk.model !== model.id) {
+            output.responseModel ||= chunk.model;
           }
 
-          hasFinishReason = true;
-        }
-
-        if (choice.delta) {
-          if (
-            choice.delta.content !== null &&
-            choice.delta.content !== undefined &&
-            choice.delta.content.length > 0
-          ) {
-            const block = ensureTextBlock();
-            block.text += choice.delta.content;
-            stream.push({
-              type: "text_delta",
-              contentIndex: getContentIndex(block),
-              delta: choice.delta.content,
-              partial: output,
-            });
+          if (chunk.usage) {
+            output.usage = parseChunkUsage(chunk.usage, model);
           }
 
-          // Some endpoints return reasoning in reasoning_content (llama.cpp),
-          // or reasoning (other openai compatible endpoints)
-          // Use the first non-empty reasoning field to avoid duplication
-          // (e.g., chutes.ai returns both reasoning_content and reasoning with same content)
-          const deltaFields = choice.delta;
+          const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
 
-          for (const { field, schema } of REASONING_DELTA_SCHEMAS) {
-            if (!Value.Check(schema, deltaFields)) continue;
-            const delta = deltaFields[field];
+          if (!choice) continue;
 
-            const thinkingSignature =
-              model.provider === "opencode-go" && field === "reasoning"
-                ? "reasoning_content"
-                : field;
-
-            const block = ensureThinkingBlock(thinkingSignature);
-            block.thinking += delta;
-            stream.push({
-              type: "thinking_delta",
-              contentIndex: getContentIndex(block),
-              delta,
-              partial: output,
-            });
-            break;
+          // Fallback: some providers (e.g., Moonshot) return usage
+          // in choice.usage instead of the standard chunk.usage
+          if (!chunk.usage && Value.Check(ChoiceUsageSchema, choice)) {
+            output.usage = parseChunkUsage(choice.usage, model);
           }
 
-          // Copilot may deliver the opaque state in the same chunk as the first
-          // text delta, or after all reasoning text; it is never a display delta.
-          // It lives in the thinking signature, which later reasoning text
-          // never rewrites because `ensureThinkingBlock` keeps an existing block.
-          // One response carries one state, as in OpenCode's Copilot adapter.
-          if (
-            model.provider === "github-copilot" &&
-            Value.Check(CopilotReasoningOpaqueSchema, deltaFields)
-          ) {
-            const reasoningOpaque = deltaFields.reasoning_opaque;
+          if (choice.finish_reason) {
+            output.rawStopReason = choice.finish_reason;
+            const finishReasonResult = mapStopReason(choice.finish_reason);
+            output.stopReason = finishReasonResult.stopReason;
 
-            if (
-              copilotReasoningOpaque !== undefined &&
-              copilotReasoningOpaque !== reasoningOpaque
-            ) {
-              throw new Error(
-                "GitHub Copilot sent multiple reasoning_opaque values in one response",
-              );
+            if (finishReasonResult.errorMessage) {
+              output.errorMessage = finishReasonResult.errorMessage;
             }
 
-            copilotReasoningOpaque = reasoningOpaque;
-            const block = ensureThinkingBlock("");
-            block.thinkingSignature = JSON.stringify({ reasoning_opaque: reasoningOpaque });
+            hasFinishReason = true;
           }
 
-          if (choice?.delta?.tool_calls) {
-            const toolCalls: StreamingToolCallDelta[] = choice.delta.tool_calls;
-
-            for (const toolCall of toolCalls) {
-              const block = ensureToolCallBlock(toolCall);
-
-              if (!block.id && toolCall.id) {
-                block.id = toolCall.id;
-                toolCallBlocksById.set(toolCall.id, block);
-              }
-
-              const name = toolCall.function?.name ?? toolCall.custom?.name;
-
-              if (!block.name && name) {
-                block.name = name;
-              }
-
-              let delta = "";
-
-              if (toolCall.function?.arguments) {
-                delta = toolCall.function.arguments;
-                block.partialArgs = (block.partialArgs ?? "") + toolCall.function.arguments;
-                block.arguments = parseStreamingJson(block.partialArgs);
-              } else if (toolCall.custom?.input) {
-                const nextInput = (block.customInput?.input ?? "") + toolCall.custom.input;
-                delta = appendCustomToolCallInput(block, nextInput, false) ?? "";
-              }
-
+          if (choice.delta) {
+            if (
+              choice.delta.content !== null &&
+              choice.delta.content !== undefined &&
+              choice.delta.content.length > 0
+            ) {
+              const block = ensureTextBlock();
+              block.text += choice.delta.content;
               stream.push({
-                type: "toolcall_delta",
+                type: "text_delta",
+                contentIndex: getContentIndex(block),
+                delta: choice.delta.content,
+                partial: output,
+              });
+            }
+
+            // Some endpoints return reasoning in reasoning_content (llama.cpp),
+            // or reasoning (other openai compatible endpoints)
+            // Use the first non-empty reasoning field to avoid duplication
+            // (e.g., chutes.ai returns both reasoning_content and reasoning with same content)
+            const deltaFields = choice.delta;
+
+            for (const { field, schema } of REASONING_DELTA_SCHEMAS) {
+              if (!Value.Check(schema, deltaFields)) continue;
+              const delta = deltaFields[field];
+
+              const thinkingSignature =
+                model.provider === "opencode-go" && field === "reasoning"
+                  ? "reasoning_content"
+                  : field;
+
+              const block = ensureThinkingBlock(thinkingSignature);
+              block.thinking += delta;
+              stream.push({
+                type: "thinking_delta",
                 contentIndex: getContentIndex(block),
                 delta,
                 partial: output,
               });
+              break;
             }
-          }
 
-          if (Value.Check(ReasoningDetailsDeltaSchema, deltaFields)) {
-            for (const detail of deltaFields.reasoning_details) {
-              if (!Value.Check(OpenAIReasoningDetailSchema, detail)) continue;
-              ensureThinkingBlock("");
-              streamedReasoningDetails ??= [];
-              // Keep provider replay data in the existing signature slot. OpenRouter streams
-              // reasoning_details as deltas: consecutive text/summary deltas are merged into
-              // logical entries, while encrypted entries remain opaque and discrete.
-              appendOpenAIReasoningDetail(streamedReasoningDetails, detail);
+            // Copilot may deliver the opaque state in the same chunk as the first
+            // text delta, or after all reasoning text; it is never a display delta.
+            // It lives in the thinking signature, which later reasoning text
+            // never rewrites because `ensureThinkingBlock` keeps an existing block.
+            // One response carries one state, as in OpenCode's Copilot adapter.
+            if (
+              model.provider === "github-copilot" &&
+              Value.Check(CopilotReasoningOpaqueSchema, deltaFields)
+            ) {
+              const reasoningOpaque = deltaFields.reasoning_opaque;
+
+              if (
+                copilotReasoningOpaque !== undefined &&
+                copilotReasoningOpaque !== reasoningOpaque
+              ) {
+                throw new Error(
+                  "GitHub Copilot sent multiple reasoning_opaque values in one response",
+                );
+              }
+
+              copilotReasoningOpaque = reasoningOpaque;
+              const block = ensureThinkingBlock("");
+              block.thinkingSignature = JSON.stringify({ reasoning_opaque: reasoningOpaque });
+            }
+
+            if (choice?.delta?.tool_calls) {
+              const toolCalls: StreamingToolCallDelta[] = choice.delta.tool_calls;
+
+              for (const toolCall of toolCalls) {
+                const block = ensureToolCallBlock(toolCall);
+
+                if (!block.id && toolCall.id) {
+                  block.id = toolCall.id;
+                  toolCallBlocksById.set(toolCall.id, block);
+                }
+
+                const name = toolCall.function?.name ?? toolCall.custom?.name;
+
+                if (!block.name && name) {
+                  block.name = name;
+                }
+
+                let delta = "";
+
+                if (toolCall.function?.arguments) {
+                  delta = toolCall.function.arguments;
+                  block.partialArgs = (block.partialArgs ?? "") + toolCall.function.arguments;
+                  block.arguments = parseStreamingJson(block.partialArgs);
+                } else if (toolCall.custom?.input) {
+                  const nextInput = (block.customInput?.input ?? "") + toolCall.custom.input;
+                  delta = appendCustomToolCallInput(block, nextInput, false) ?? "";
+                }
+
+                stream.push({
+                  type: "toolcall_delta",
+                  contentIndex: getContentIndex(block),
+                  delta,
+                  partial: output,
+                });
+              }
+            }
+
+            if (Value.Check(ReasoningDetailsDeltaSchema, deltaFields)) {
+              for (const detail of deltaFields.reasoning_details) {
+                if (!Value.Check(OpenAIReasoningDetailSchema, detail)) continue;
+                ensureThinkingBlock("");
+                streamedReasoningDetails ??= [];
+                // Keep provider replay data in the existing signature slot. OpenRouter streams
+                // reasoning_details as deltas: consecutive text/summary deltas are merged into
+                // logical entries, while encrypted entries remain opaque and discrete.
+                appendOpenAIReasoningDetail(streamedReasoningDetails, detail);
+              }
             }
           }
+        }
+      } finally {
+        for (const block of blocks) {
+          if (block.type === "thinking") applyStreamedReasoningDetails(block);
         }
       }
 
       for (const block of blocks) {
         finishBlock(block);
-      }
-
-      if (options?.signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      if (output.stopReason === "aborted") {
-        throw new Error("Request was aborted");
       }
 
       if (!hasFinishReason && !compat.supportsFinishReason) {
@@ -838,47 +821,28 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
           : "stop";
       }
 
-      if (output.stopReason === "error") {
-        throw new Error(output.errorMessage || "Provider returned an error stop reason");
-      }
-
-      if ((compat.supportsFinishReason && !hasFinishReason) || output.stopReason === "pending") {
+      if (compat.supportsFinishReason && !hasFinishReason) {
         throw new Error("Stream ended without finish_reason");
       }
-
-      stream.push({ type: "done", reason: output.stopReason, message: output });
-      stream.end();
-    } catch (error) {
-      for (const block of blocks) {
-        if (block.type === "thinking") applyStreamedReasoningDetails(block);
-        if (block.type !== "toolCall") continue;
-        delete block.partialArgs;
-        delete block.customInput;
-        delete block.streamIndex;
-      }
-
-      output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatProviderError(normalizeProviderError(error));
-
-      // Some providers via OpenRouter give additional information in this field.
-      // normalizeProviderError already stringifies the parsed body (error.error)
-      // into errorMessage, so only append the raw metadata when it is not already
-      // present to avoid double-printing it.
-      const rawMetadata = Value.Check(OpenRouterErrorMetadataSchema, error)
-        ? error.error.metadata.raw
-        : undefined;
-
-      if (rawMetadata && !output.errorMessage.includes(String(rawMetadata))) {
-        output.errorMessage += `\n${rawMetadata}`;
-      }
-
-      stream.push({ type: "error", reason: output.stopReason, error: output });
-      stream.end();
-    }
-  })();
-
-  return stream;
+    },
+    formatCompletionsError,
+  );
 };
+
+/**
+ * OpenRouter forwards the upstream provider's raw error in `error.metadata.raw`. The normalized
+ * message already carries the parsed body, so the raw metadata is appended only when it adds text.
+ */
+function formatCompletionsError(error: unknown): string {
+  const message = formatProviderError(normalizeProviderError(error));
+  const rawMetadata = Value.Check(OpenRouterErrorMetadataSchema, error)
+    ? error.error.metadata.raw
+    : undefined;
+
+  return rawMetadata && !message.includes(String(rawMetadata))
+    ? `${message}\n${rawMetadata}`
+    : message;
+}
 
 export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOptions> = (
   model: Model<"openai-completions">,
@@ -887,22 +851,11 @@ export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOpti
 ): AssistantMessageEventStream => {
   getClientApiKey(model.provider, options?.apiKey, options?.headers);
 
-  const base = {
-    ...buildBaseOptions(model, context, options, options?.apiKey),
-    toolChoice: options?.toolChoice,
-  } satisfies OpenAICompletionsOptions;
-
-  const clampedReasoning = options?.reasoning
-    ? clampThinkingLevel(model, options.reasoning)
-    : undefined;
-
-  const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
-
   return stream(model, context, {
-    ...base,
-    reasoningEffort,
+    ...buildBaseOptions(model, context, options),
+    reasoningEffort: simpleReasoningEffort(model, options?.reasoning),
     thinkingBudgets: options?.thinkingBudgets,
-  } satisfies OpenAICompletionsOptions);
+  });
 };
 
 function createClient(input: {
@@ -1820,7 +1773,7 @@ function parseChunkUsage(
     cacheWrite: cacheWriteTokens,
     reasoning: rawUsage.completion_tokens_details?.reasoning_tokens || 0,
     totalTokens: input + outputTokens + cacheReadTokens + cacheWriteTokens,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    cost: emptyCost(),
   };
 
   calculateCost(model, usage);

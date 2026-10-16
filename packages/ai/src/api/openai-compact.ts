@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { applyServiceTierPricing } from "../model-pricing.ts";
 import { calculateCost } from "../models.ts";
+import { emptyCost } from "./assistant-stream.ts";
 import type { Api, JsonValue, Model, Usage } from "../types.ts";
 
 const tokenCount = Type.Number({ minimum: 0 });
@@ -68,7 +69,7 @@ export async function readOpenAICompactResponse(
     cacheWrite: written,
     reasoning: decoded.usage.output_tokens_details?.reasoning_tokens ?? 0,
     totalTokens: decoded.usage.total_tokens,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    cost: emptyCost(),
   };
 
   calculateCost(model, usage);

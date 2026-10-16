@@ -53,6 +53,7 @@ import {
   resolveGrammarConstrainedSampling,
   resolveJsonSchemaStrictSampling,
 } from "./constrained-sampling.ts";
+import { emptyCost, stripStreamingScratchState } from "./assistant-stream.ts";
 import { TokenCount } from "./token-count.ts";
 import { transformMessages } from "./transform-messages.ts";
 
@@ -541,19 +542,6 @@ type StreamingToolCall = ToolCall & {
   };
 };
 
-/**
- * Strips the streaming scratch fields that accumulate on tool-call blocks while
- * arguments are still arriving. They are parsing state, never conversation
- * content, so adapters call this before persisting or emitting a failed message.
- */
-export function stripStreamingScratchState(content: AssistantMessage["content"]): void {
-  for (const block of content) {
-    if ("partialJson" in block) delete block.partialJson;
-
-    if ("customInput" in block) delete block.customInput;
-  }
-}
-
 function appendCustomToolCallInput(
   block: StreamingToolCall,
   nextInput: string,
@@ -773,7 +761,7 @@ export async function processResponsesStream<TApi extends Api>(
         cacheWrite: cacheWriteTokens,
         reasoning: usage.output_tokens_details?.reasoning_tokens ?? 0,
         totalTokens: usage.total_tokens ?? 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        cost: emptyCost(),
       };
     }
 
@@ -928,10 +916,7 @@ export async function processResponsesStream<TApi extends Api>(
         slot?.type === "toolCall" &&
         slot.block.partialJson !== undefined
       ) {
-        Object.assign(
-          slot.block,
-          parseToolCallArguments(item.arguments || slot.block.partialJson),
-        );
+        Object.assign(slot.block, parseToolCallArguments(item.arguments || slot.block.partialJson));
 
         if (item.namespace !== undefined) slot.block.namespace = item.namespace;
         // Finalize in-place and strip the scratch buffer so replay only

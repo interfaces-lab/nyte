@@ -27,7 +27,6 @@ import type {
   AccountLimits,
   AccountLimitsFetchOptions,
   AccountLimitsTarget,
-  AssistantMessage,
   CacheRetention,
   ImageContent,
   Message,
@@ -47,7 +46,7 @@ import type {
   Usage,
 } from "../types.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { hasHeader, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
 import { parseStreamingJson, parseToolCallArguments, repairJson } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
@@ -63,6 +62,7 @@ import {
   resolveTranscript,
 } from "../utils/transcript.ts";
 
+import { runAssistantStream } from "./assistant-stream.ts";
 import {
   AnthropicEventSchema,
   AnthropicEventTypeSchema,
@@ -883,8 +883,6 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       ? { ...requested, speed: "fast" as const }
       : requested;
 
-  const stream = new AssistantMessageEventStream();
-
   const normalizedContext = resolveTranscript(
     context,
     getAnthropicCompat(model).supportsMidConvoSystemMessages,
@@ -893,26 +891,11 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
   const currentTools = getCurrentTools(normalizedContext.messages);
   const nativeToolChanges = usesNativeToolChanges(model, normalizedContext);
 
-  (async () => {
-    const output: AssistantMessage = {
-      role: "assistant",
-      content: [],
-      api: model.api,
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "pending",
-      timestamp: Date.now(),
-    };
-
-    try {
+  return runAssistantStream(
+    model,
+    options?.signal,
+    "Anthropic",
+    async (output, stream) => {
       if (options?.speed === "fast" && !supportsAnthropicFastMode(model)) {
         throw new Error(`Anthropic fast mode is not available for ${model.provider}/${model.id}`);
       }
@@ -1186,30 +1169,9 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
           applyAnthropicFastModePricing(output.usage, usedFastMode);
         }
       }
-
-      if (options?.signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      if (output.stopReason === "pending") {
-        throw new Error("Anthropic stream ended without a stop reason");
-      }
-
-      if (output.stopReason === "aborted" || output.stopReason === "error") {
-        throw new Error(output.errorMessage || "An unknown error occurred");
-      }
-
-      stream.push({ type: "done", reason: output.stopReason, message: output });
-      stream.end();
-    } catch (error) {
-      output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      stream.push({ type: "error", reason: output.stopReason, error: output });
-      stream.end();
-    }
-  })();
-
-  return stream;
+    },
+    (error) => (error instanceof Error ? error.message : JSON.stringify(error)),
+  );
 };
 
 /**
@@ -1248,10 +1210,7 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
     assertRequestAuth(model.provider, options?.apiKey, options?.headers);
   }
 
-  const base: AnthropicOptions = {
-    ...buildBaseOptions(model, context, options, options?.apiKey),
-    toolChoice: options?.toolChoice,
-  };
+  const base: AnthropicOptions = buildBaseOptions(model, context, options);
 
   if (!options?.reasoning) {
     return stream(model, context, {

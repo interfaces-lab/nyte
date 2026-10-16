@@ -145,7 +145,10 @@ export function parseToolCallArguments(
     try {
       value = JSON.parse(repairJson(json));
     } catch {
-      return unparsedToolCallArguments(error instanceof Error ? error.message : String(error), json);
+      return unparsedToolCallArguments(
+        error instanceof Error ? error.message : String(error),
+        json,
+      );
     }
   }
 

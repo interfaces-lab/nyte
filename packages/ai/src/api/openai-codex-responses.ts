@@ -11,7 +11,7 @@ import type {
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
-import { calculateCost, clampThinkingLevel } from "../models.ts";
+import { calculateCost } from "../models.ts";
 import { applyServiceTierPricing } from "../model-pricing.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
@@ -46,13 +46,13 @@ import {
   createAssistantMessageDiagnostic,
   formatThrownValue,
 } from "../utils/diagnostics.ts";
-import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { FifoQueue } from "../utils/fifo-queue.ts";
 import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { uuidv7 } from "../utils/uuid.ts";
+import { emptyCost, runAssistantStream } from "./assistant-stream.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import type { OpenAICompactResult } from "./openai-compact.ts";
@@ -62,10 +62,9 @@ import {
   processResponsesStream,
   type ResponsesStreamEvent,
   ResponsesUsageError,
-  stripStreamingScratchState,
   withPriorityTier,
 } from "./openai-responses-shared.ts";
-import { buildBaseOptions } from "./simple-options.ts";
+import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
 /**
  * The fields this adapter acts on in a raw Codex SSE/WebSocket frame. Frames
@@ -182,20 +181,6 @@ interface RequestBody {
   text?: { verbosity?: string };
   include?: string[];
   prompt_cache_key?: string;
-}
-
-type SuccessfulAssistantMessage = AssistantMessage & { stopReason: "stop" | "length" | "toolUse" };
-
-function assertSuccessfulOutput(
-  output: AssistantMessage,
-): asserts output is SuccessfulAssistantMessage {
-  if (output.stopReason === "pending") {
-    throw new Error("Codex stream ended without a stop reason");
-  }
-
-  if (output.stopReason === "error" || output.stopReason === "aborted") {
-    throw new Error(output.errorMessage || "An unknown error occurred");
-  }
 }
 
 function isTerminalRateLimitError(errorText: string): boolean {
@@ -318,312 +303,263 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
   requested?: OpenAICodexResponsesOptions,
 ): AssistantMessageEventStream => {
   const options = withPriorityTier(requested);
-  const stream = new AssistantMessageEventStream();
   const normalizedContext = resolveTranscript(
     context,
     model.compat?.supportsMidConvoSystemMessages,
   );
 
-  (async () => {
-    const output: AssistantMessage = {
-      role: "assistant",
-      content: [],
-      api: "openai-codex-responses",
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "pending",
-      timestamp: Date.now(),
-    };
+  return runAssistantStream(model, options?.signal, "Codex", async (output, stream) => {
+    const apiKey = options?.apiKey;
 
-    try {
-      const apiKey = options?.apiKey;
+    if (!apiKey) {
+      throw new Error(`No API key for provider: ${model.provider}`);
+    }
 
-      if (!apiKey) {
-        throw new Error(`No API key for provider: ${model.provider}`);
-      }
+    const accountId = extractAccountId(apiKey);
 
-      const accountId = extractAccountId(apiKey);
+    const grammarToolInputProperties = createGrammarToolInputProperties(
+      getDeclaredTools(normalizedContext.messages),
+      model.compat?.supportsOpenAIGrammarTools ?? false,
+    );
 
-      const grammarToolInputProperties = createGrammarToolInputProperties(
-        getDeclaredTools(normalizedContext.messages),
-        model.compat?.supportsOpenAIGrammarTools ?? false,
-      );
+    const cacheSessionId = options?.cacheRetention === "none" ? undefined : options?.sessionId;
+    const codexSessionId = clampOpenAIPromptCacheKey(cacheSessionId);
 
-      const cacheSessionId = options?.cacheRetention === "none" ? undefined : options?.sessionId;
-      const codexSessionId = clampOpenAIPromptCacheKey(cacheSessionId);
+    const body = buildRequestBody(
+      model,
+      normalizedContext,
+      options,
+      codexSessionId,
+      grammarToolInputProperties,
+    );
 
-      const body = buildRequestBody(
-        model,
-        normalizedContext,
-        options,
-        codexSessionId,
-        grammarToolInputProperties,
-      );
+    await options?.onPayload?.(body, model);
 
-      await options?.onPayload?.(body, model);
+    const websocketRequestId = codexSessionId || uuidv7();
 
-      const websocketRequestId = codexSessionId || uuidv7();
+    const sseHeaders = buildSSEHeaders(
+      model.headers,
+      options?.headers,
+      accountId,
+      apiKey,
+      codexSessionId,
+    );
 
-      const sseHeaders = buildSSEHeaders(
-        model.headers,
-        options?.headers,
-        accountId,
-        apiKey,
-        codexSessionId,
-      );
+    const websocketHeaders = buildWebSocketHeaders(
+      model.headers,
+      options?.headers,
+      accountId,
+      apiKey,
+      websocketRequestId,
+    );
 
-      const websocketHeaders = buildWebSocketHeaders(
-        model.headers,
-        options?.headers,
-        accountId,
-        apiKey,
-        websocketRequestId,
-      );
+    const bodyJson = JSON.stringify(body);
+    const httpTimeoutMs = normalizeTimeoutMs(options?.timeoutMs);
+    const websocketConnectTimeoutMs = normalizeTimeoutMs(options?.websocketConnectTimeoutMs);
+    const transport = options?.transport || "auto";
+    let startEmitted = false;
 
-      const bodyJson = JSON.stringify(body);
-      const httpTimeoutMs = normalizeTimeoutMs(options?.timeoutMs);
-      const websocketConnectTimeoutMs = normalizeTimeoutMs(options?.websocketConnectTimeoutMs);
-      const transport = options?.transport || "auto";
-      let startEmitted = false;
+    const websocketDisabledForSession =
+      transport !== "sse" && isWebSocketSseFallbackActive(cacheSessionId);
 
-      const websocketDisabledForSession =
-        transport !== "sse" && isWebSocketSseFallbackActive(cacheSessionId);
+    if (transport !== "sse" && !websocketDisabledForSession) {
+      let websocketStarted = false;
+      let retriedWebSocketConnectionLimit = false;
+      let retriedMissingWebSocketContinuation = false;
 
-      if (transport !== "sse" && !websocketDisabledForSession) {
-        let websocketStarted = false;
-        let retriedWebSocketConnectionLimit = false;
-        let retriedMissingWebSocketContinuation = false;
-
-        while (true) {
-          websocketStarted = false;
-
-          try {
-            await processWebSocketStream(
-              resolveCodexWebSocketUrl(model.baseUrl),
-              body,
-              websocketHeaders,
-              output,
-              stream,
-              model,
-              () => {
-                websocketStarted = true;
-
-                if (!startEmitted) {
-                  startEmitted = true;
-                  stream.push({ type: "start", partial: output });
-                }
-              },
-              httpTimeoutMs,
-              websocketConnectTimeoutMs,
-              cacheSessionId,
-              accountId,
-              grammarToolInputProperties,
-              options,
-            );
-
-            if (options?.signal?.aborted) {
-              throw new Error("Request was aborted");
-            }
-
-            assertSuccessfulOutput(output);
-            stream.push({
-              type: "done",
-              reason: output.stopReason,
-              message: output,
-            });
-            stream.end();
-
-            return;
-          } catch (error) {
-            const aborted = options?.signal?.aborted;
-
-            const connectionLimitBeforeStart =
-              !websocketStarted && isWebSocketConnectionLimitReachedError(error);
-
-            const previousResponseNotFound = isPreviousResponseNotFoundError(error);
-
-            if (!aborted && previousResponseNotFound && !retriedMissingWebSocketContinuation) {
-              retriedMissingWebSocketContinuation = true;
-              continue;
-            }
-
-            if (!aborted && connectionLimitBeforeStart && !retriedWebSocketConnectionLimit) {
-              retriedWebSocketConnectionLimit = true;
-              continue;
-            }
-
-            if (aborted || (isCodexNonTransportError(error) && !connectionLimitBeforeStart)) {
-              throw error;
-            }
-
-            appendAssistantMessageDiagnostic(
-              output,
-              createAssistantMessageDiagnostic("provider_transport_failure", error, {
-                configuredTransport: transport,
-                fallbackTransport: websocketStarted ? undefined : "sse",
-                eventsEmitted: websocketStarted,
-                phase: websocketStarted
-                  ? "after_message_stream_start"
-                  : "before_message_stream_start",
-                requestBytes: new TextEncoder().encode(bodyJson).byteLength,
-              }),
-            );
-            if (cacheSessionId) websocketSseFallbackSessions.add(cacheSessionId);
-
-            if (websocketStarted) {
-              throw error;
-            }
-
-            break;
-          }
-        }
-      }
-
-      // Compress the request body once for the SSE path. The Codex backend
-      // decodes Content-Encoding: zstd; the WebSocket transport above sends the
-      // uncompressed JSON frame, matching the official Codex client.
-      const compressedBody = compressRequestBodyZstd(bodyJson);
-
-      if (compressedBody) {
-        sseHeaders.set("content-encoding", "zstd");
-      }
-
-      const sseBody = compressedBody ? new Uint8Array(compressedBody) : bodyJson;
-
-      let response: Response | undefined;
-      let lastError: Error | undefined;
-      const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
-
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        if (options?.signal?.aborted) {
-          throw new Error("Request was aborted");
-        }
+      while (true) {
+        websocketStarted = false;
 
         try {
-          const headerTimeout = new AbortController();
-          const headerTimer =
-            httpTimeoutMs !== undefined && httpTimeoutMs > 0
-              ? setTimeout(() => headerTimeout.abort(), httpTimeoutMs)
-              : undefined;
+          await processWebSocketStream(
+            resolveCodexWebSocketUrl(model.baseUrl),
+            body,
+            websocketHeaders,
+            output,
+            stream,
+            model,
+            () => {
+              websocketStarted = true;
 
-          const signal = options?.signal
-            ? AbortSignal.any([options.signal, headerTimeout.signal])
-            : headerTimeout.signal;
+              if (!startEmitted) {
+                startEmitted = true;
+                stream.push({ type: "start", partial: output });
+              }
+            },
+            httpTimeoutMs,
+            websocketConnectTimeoutMs,
+            cacheSessionId,
+            accountId,
+            grammarToolInputProperties,
+            options,
+          );
 
-          try {
-            response = await (options?.fetch ?? globalThis.fetch)(resolveCodexUrl(model.baseUrl), {
-              method: "POST",
-              headers: sseHeaders,
-              body: sseBody,
-              signal,
-            });
-          } catch (error) {
-            if (headerTimeout.signal.aborted && !options?.signal?.aborted) {
-              throw new Error(`Codex SSE response headers timed out after ${httpTimeoutMs}ms`);
-            }
-
-            throw error;
-          } finally {
-            clearTimeout(headerTimer);
-          }
-
-          const responseHeaders = headersToRecord(response.headers);
-          await options?.onResponse?.({ status: response.status, headers: responseHeaders }, model);
-
-          if (response.ok) {
-            if (options?.onAccountLimits !== undefined) {
-              const limits = codexHeaderLimits(responseHeaders, model.provider);
-
-              if (limits !== undefined) await options.onAccountLimits(limits, model);
-            }
-
-            break;
-          }
-
-          const errorText = await response.text();
-
-          if (attempt < maxRetries && isRetryableError(response.status, errorText)) {
-            const retryAfterDelayMs = getRetryAfterDelayMs(response.headers);
-
-            const delayMs =
-              retryAfterDelayMs === undefined
-                ? BASE_DELAY_MS * 2 ** attempt
-                : validateRetryDelayMs(retryAfterDelayMs, options);
-
-            await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
-            continue;
-          }
-
-          const fakeResponse = new Response(errorText, {
-            status: response.status,
-            statusText: response.statusText,
-          });
-
-          const info = await parseErrorResponse(fakeResponse);
-          throw new Error(info.friendlyMessage || info.message);
+          return;
         } catch (error) {
-          if (error instanceof Error) {
-            if (error.name === "AbortError" || error.message === "Request was aborted") {
-              throw new Error("Request was aborted");
-            }
-          }
+          const aborted = options?.signal?.aborted;
 
-          lastError = error instanceof Error ? error : new Error(String(error));
+          const connectionLimitBeforeStart =
+            !websocketStarted && isWebSocketConnectionLimitReachedError(error);
 
-          if (
-            attempt < maxRetries &&
-            !(lastError instanceof RetryDelayExceededError) &&
-            !lastError.message.includes("usage limit")
-          ) {
-            const delayMs = BASE_DELAY_MS * 2 ** attempt;
-            await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
+          const previousResponseNotFound = isPreviousResponseNotFoundError(error);
+
+          if (!aborted && previousResponseNotFound && !retriedMissingWebSocketContinuation) {
+            retriedMissingWebSocketContinuation = true;
             continue;
           }
 
-          throw lastError;
+          if (!aborted && connectionLimitBeforeStart && !retriedWebSocketConnectionLimit) {
+            retriedWebSocketConnectionLimit = true;
+            continue;
+          }
+
+          if (aborted || (isCodexNonTransportError(error) && !connectionLimitBeforeStart)) {
+            throw error;
+          }
+
+          appendAssistantMessageDiagnostic(
+            output,
+            createAssistantMessageDiagnostic("provider_transport_failure", error, {
+              configuredTransport: transport,
+              fallbackTransport: websocketStarted ? undefined : "sse",
+              eventsEmitted: websocketStarted,
+              phase: websocketStarted
+                ? "after_message_stream_start"
+                : "before_message_stream_start",
+              requestBytes: new TextEncoder().encode(bodyJson).byteLength,
+            }),
+          );
+          if (cacheSessionId) websocketSseFallbackSessions.add(cacheSessionId);
+
+          if (websocketStarted) {
+            throw error;
+          }
+
+          break;
         }
       }
+    }
 
-      if (!response?.ok) {
-        throw lastError ?? new Error("Failed after retries");
-      }
+    // Compress the request body once for the SSE path. The Codex backend
+    // decodes Content-Encoding: zstd; the WebSocket transport above sends the
+    // uncompressed JSON frame, matching the official Codex client.
+    const compressedBody = compressRequestBodyZstd(bodyJson);
 
-      if (!response.body) {
-        throw new Error("No response body");
-      }
+    if (compressedBody) {
+      sseHeaders.set("content-encoding", "zstd");
+    }
 
-      if (!startEmitted) {
-        startEmitted = true;
-        stream.push({ type: "start", partial: output });
-      }
+    const sseBody = compressedBody ? new Uint8Array(compressedBody) : bodyJson;
 
-      await processStream(response, output, stream, model, grammarToolInputProperties, options);
+    let response: Response | undefined;
+    let lastError: Error | undefined;
+    const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
 
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (options?.signal?.aborted) {
         throw new Error("Request was aborted");
       }
 
-      assertSuccessfulOutput(output);
-      stream.push({ type: "done", reason: output.stopReason, message: output });
-      stream.end();
-    } catch (error) {
-      stripStreamingScratchState(output.content);
-      output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatProviderError(normalizeProviderError(error));
-      stream.push({ type: "error", reason: output.stopReason, error: output });
-      stream.end();
-    }
-  })();
+      try {
+        const headerTimeout = new AbortController();
+        const headerTimer =
+          httpTimeoutMs !== undefined && httpTimeoutMs > 0
+            ? setTimeout(() => headerTimeout.abort(), httpTimeoutMs)
+            : undefined;
 
-  return stream;
+        const signal = options?.signal
+          ? AbortSignal.any([options.signal, headerTimeout.signal])
+          : headerTimeout.signal;
+
+        try {
+          response = await (options?.fetch ?? globalThis.fetch)(resolveCodexUrl(model.baseUrl), {
+            method: "POST",
+            headers: sseHeaders,
+            body: sseBody,
+            signal,
+          });
+        } catch (error) {
+          if (headerTimeout.signal.aborted && !options?.signal?.aborted) {
+            throw new Error(`Codex SSE response headers timed out after ${httpTimeoutMs}ms`);
+          }
+
+          throw error;
+        } finally {
+          clearTimeout(headerTimer);
+        }
+
+        const responseHeaders = headersToRecord(response.headers);
+        await options?.onResponse?.({ status: response.status, headers: responseHeaders }, model);
+
+        if (response.ok) {
+          if (options?.onAccountLimits !== undefined) {
+            const limits = codexHeaderLimits(responseHeaders, model.provider);
+
+            if (limits !== undefined) await options.onAccountLimits(limits, model);
+          }
+
+          break;
+        }
+
+        const errorText = await response.text();
+
+        if (attempt < maxRetries && isRetryableError(response.status, errorText)) {
+          const retryAfterDelayMs = getRetryAfterDelayMs(response.headers);
+
+          const delayMs =
+            retryAfterDelayMs === undefined
+              ? BASE_DELAY_MS * 2 ** attempt
+              : validateRetryDelayMs(retryAfterDelayMs, options);
+
+          await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
+          continue;
+        }
+
+        const fakeResponse = new Response(errorText, {
+          status: response.status,
+          statusText: response.statusText,
+        });
+
+        const info = await parseErrorResponse(fakeResponse);
+        throw new Error(info.friendlyMessage || info.message);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.name === "AbortError" || error.message === "Request was aborted") {
+            throw new Error("Request was aborted");
+          }
+        }
+
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        if (
+          attempt < maxRetries &&
+          !(lastError instanceof RetryDelayExceededError) &&
+          !lastError.message.includes("usage limit")
+        ) {
+          const delayMs = BASE_DELAY_MS * 2 ** attempt;
+          await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
+          continue;
+        }
+
+        throw lastError;
+      }
+    }
+
+    if (!response?.ok) {
+      throw lastError ?? new Error("Failed after retries");
+    }
+
+    if (!response.body) {
+      throw new Error("No response body");
+    }
+
+    if (!startEmitted) {
+      startEmitted = true;
+      stream.push({ type: "start", partial: output });
+    }
+
+    await processStream(response, output, stream, model, grammarToolInputProperties, options);
+  });
 };
 
 export const streamSimple: StreamFunction<"openai-codex-responses", SimpleStreamOptions> = (
@@ -631,27 +567,12 @@ export const streamSimple: StreamFunction<"openai-codex-responses", SimpleStream
   context: TranscriptContext,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
-  const apiKey = options?.apiKey;
-
-  if (!apiKey) {
-    throw new Error(`No API key for provider: ${model.provider}`);
-  }
-
-  const base = {
-    ...buildBaseOptions(model, context, options, apiKey),
-    toolChoice: options?.toolChoice,
-  } satisfies OpenAICodexResponsesOptions;
-
-  const clampedReasoning = options?.reasoning
-    ? clampThinkingLevel(model, options.reasoning)
-    : undefined;
-
-  const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
+  if (!options?.apiKey) throw new Error(`No API key for provider: ${model.provider}`);
 
   return stream(model, context, {
-    ...base,
-    reasoningEffort,
-  } satisfies OpenAICodexResponsesOptions);
+    ...buildBaseOptions(model, context, options),
+    reasoningEffort: simpleReasoningEffort(model, options.reasoning),
+  });
 };
 
 function buildRequestBody(
@@ -1003,7 +924,7 @@ export async function compactOpenAICodexContext(
                 cacheWrite: written,
                 reasoning: tokens.output_tokens_details?.reasoning_tokens ?? 0,
                 totalTokens: tokens.total_tokens,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                cost: emptyCost(),
               };
 
               calculateCost(model, reported);
