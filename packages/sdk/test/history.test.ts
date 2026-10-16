@@ -29,7 +29,9 @@ it("pages a head's older messages into its views and keeps them while new ones s
   cleanups.push(() => connection.close());
   const session = await connection.sessions.create();
   host.fake.reply(
-    ...["One.", "Two.", "Three.", "Four."].map((text) => ({ content: [{ type: "text", text }] })),
+    ...["One.", "Two.", "Three.", "Four."].map((text) => ({
+      content: [{ type: "text" as const, text }],
+    })),
   );
 
   for (const text of ["First.", "Second.", "Third."])
