@@ -137,7 +137,7 @@ async function importPlugin(
         ? imported.default
         : undefined;
 
-    return isCorePlugin(exported)
+    return fitsCorePlugin(exported)
       ? { plugin: exported }
       : { reason: "Its default export is not a core plugin (an object with a string id)." };
   } catch (error) {
@@ -145,7 +145,7 @@ async function importPlugin(
   }
 }
 
-function isCorePlugin(value: unknown): value is Plugin<"core"> {
+function fitsCorePlugin(value: unknown): value is Plugin<"core"> {
   if (
     typeof value !== "object" ||
     value === null ||

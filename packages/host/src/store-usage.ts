@@ -63,17 +63,6 @@ function add(totals: UsageTotals, usage: Usage): UsageTotals {
   };
 }
 
-function reported(usage: Usage): boolean {
-  return (
-    usage.total > 0 ||
-    usage.input > 0 ||
-    usage.output > 0 ||
-    usage.cacheRead > 0 ||
-    usage.cacheWrite > 0 ||
-    usage.cost.total > 0
-  );
-}
-
 export const USAGE_EVENTS =
   "SELECT session, seq, at, event FROM log WHERE json_extract(event, '$.kind') = 'request' OR (json_extract(event, '$.kind') = 'run' AND json_extract(event, '$.change') = 'started') ORDER BY session, seq";
 
@@ -139,7 +128,17 @@ export function projectUsageReport(
       let spentInWindow = false;
 
       for (const spend of session.records) {
-        if (!reported(spend.usage)) continue;
+        const { usage } = spend;
+        const amounts = [
+          usage.total,
+          usage.input,
+          usage.output,
+          usage.cacheRead,
+          usage.cacheWrite,
+          usage.cost.total,
+        ];
+
+        if (!amounts.some((amount) => amount > 0)) continue;
         const day = localDay(spend.at);
 
         if (earliestDay === undefined || day < earliestDay) earliestDay = day;

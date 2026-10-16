@@ -812,18 +812,10 @@ function splitFields(
   token: string,
   count: number,
 ): { readonly fields: readonly string[]; readonly rest: string } {
-  const fields: string[] = [];
-  let at = 0;
+  const parts = token.split(" ");
+  const fields = parts.slice(0, Math.min(count, parts.length - 1));
 
-  for (let field = 0; field < count; field += 1) {
-    const space = token.indexOf(" ", at);
-
-    if (space < 0) break;
-    fields.push(token.slice(at, space));
-    at = space + 1;
-  }
-
-  return { fields, rest: token.slice(at) };
+  return { fields, rest: parts.slice(fields.length).join(" ") };
 }
 
 function parseBlame(path: string, output: string): BlameView {

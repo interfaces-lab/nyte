@@ -28,6 +28,8 @@ import type {
 } from "@nyte-ai/schema";
 import type { FileBatch, FilesApi } from "@nyte-ai/core";
 import { serial } from "@nyte-ai/core/server";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { sha256 } from "../hash.ts";
 import { findExecutable, run } from "./command.ts";
 import type { Ran } from "./command.ts";
@@ -513,6 +515,19 @@ async function* search(
   }
 }
 
+/** The `match` records `rg --json` prints, the fields a search frame takes from them. */
+const RipgrepMatchSchema = Type.Object({
+  type: Type.Literal("match"),
+  data: Type.Object({
+    path: Type.Object({ text: Type.String() }),
+    lines: Type.Object({ text: Type.String() }),
+    line_number: Type.Number(),
+    submatches: Type.Optional(Type.Array(Type.Unknown())),
+  }),
+});
+
+const SubmatchSchema = Type.Object({ start: Type.Number() });
+
 function ripgrepMatch(line: string): Extract<SearchFrame, { readonly kind: "match" }> | null {
   let record: unknown;
 
@@ -522,14 +537,10 @@ function ripgrepMatch(line: string): Extract<SearchFrame, { readonly kind: "matc
     return null;
   }
 
-  if (!isRecord(record) || record.type !== "match" || !isRecord(record.data)) return null;
+  if (!Value.Check(RipgrepMatchSchema, record)) return null;
   const { path, lines, line_number: number, submatches } = record.data;
-
-  if (!isRecord(path) || typeof path.text !== "string") return null;
-
-  if (!isRecord(lines) || typeof lines.text !== "string" || typeof number !== "number") return null;
-  const first = Array.isArray(submatches) ? submatches[0] : undefined;
-  const offset = isRecord(first) && typeof first.start === "number" ? first.start : 0;
+  const first = submatches?.[0];
+  const offset = Value.Check(SubmatchSchema, first) ? first.start : 0;
   const text = lines.text.replace(/\r?\n$/, "");
   const before = new TextDecoder().decode(new TextEncoder().encode(text).subarray(0, offset));
 
@@ -540,10 +551,6 @@ function ripgrepMatch(line: string): Extract<SearchFrame, { readonly kind: "matc
     column: before.length + 1,
     text: text.slice(0, SEARCH_LINE),
   };
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function* scanText(root: string, query: string, limit: number): AsyncGenerator<SearchFrame> {
@@ -562,9 +569,10 @@ async function* scanText(root: string, query: string, limit: number): AsyncGener
       if (text === null) continue;
 
       for (const [index, line] of text.split("\n").entries()) {
-        const column = (sensitive ? line : line.toLowerCase()).indexOf(needle);
+        const [before = "", ...after] = (sensitive ? line : line.toLowerCase()).split(needle);
 
-        if (column < 0) continue;
+        if (after.length === 0) continue;
+        const column = before.length;
 
         if (count >= limit) {
           yield { kind: "truncated", limit };

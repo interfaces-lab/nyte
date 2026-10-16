@@ -23,7 +23,7 @@ export type McpConnector = (
     readonly workspace: McpWorkspace;
     readonly home: string;
     readonly secrets: PluginStorage["secrets"];
-    challenged(challenge: OAuthChallenge): void;
+    readonly challenged: (challenge: OAuthChallenge) => void;
   },
 ) => McpTransport;
 

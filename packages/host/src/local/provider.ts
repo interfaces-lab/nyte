@@ -131,7 +131,7 @@ async function projectSources(root: string): Promise<readonly string[]> {
       left < right ? -1 : left > right ? 1 : 0,
     );
 
-  const isFile = async (path: string): Promise<boolean> =>
+  const fileExists = async (path: string): Promise<boolean> =>
     (await stat(join(root, path)).catch(() => null))?.isFile() === true;
 
   const plugins = (
@@ -139,10 +139,10 @@ async function projectSources(root: string): Promise<readonly string[]> {
       (await names(".nyte/plugins")).map(async (name) => {
         const path = `.nyte/plugins/${name}`;
 
-        if (PLUGIN_FILE.test(name) && (await isFile(path))) return [path];
+        if (PLUGIN_FILE.test(name) && (await fileExists(path))) return [path];
 
         for (const index of ["index.ts", "index.mts", "index.js", "index.mjs"])
-          if (await isFile(`${path}/${index}`)) return [`${path}/${index}`];
+          if (await fileExists(`${path}/${index}`)) return [`${path}/${index}`];
 
         return [];
       }),
@@ -157,7 +157,7 @@ async function projectSources(root: string): Promise<readonly string[]> {
             (await names(directory)).map(async (name) => {
               const path = `${directory}/${name}/SKILL.md`;
 
-              return (await isFile(path)) ? [path] : [];
+              return (await fileExists(path)) ? [path] : [];
             }),
           )
         ).flat(),
@@ -170,7 +170,7 @@ async function projectSources(root: string): Promise<readonly string[]> {
     .map((name) => `.nyte/prompts/${name}`);
 
   const present = await Promise.all(
-    ROOT_SOURCES.map(async (path) => ((await isFile(path)) ? [path] : [])),
+    ROOT_SOURCES.map(async (path) => ((await fileExists(path)) ? [path] : [])),
   );
 
   return [...plugins, ...skills, ...prompts, ...present.flat()];

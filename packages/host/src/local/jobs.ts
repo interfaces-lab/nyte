@@ -39,7 +39,7 @@ const ESC = "\u001b";
 
 const BEL = "\u0007";
 
-const PROMPT_MARKER = `${ESC}]133;`;
+const PROMPT_MARKER = new RegExp(`${ESC}\\]133;([ABCD])`, "g");
 
 let loaded: PtyModule | null | undefined;
 
@@ -334,15 +334,7 @@ async function terminal(
 }
 
 function lastMarker(text: string): string | null {
-  let found: string | null = null;
-
-  for (let at = text.indexOf(PROMPT_MARKER); at >= 0; at = text.indexOf(PROMPT_MARKER, at + 1)) {
-    const letter = text[at + PROMPT_MARKER.length] ?? "";
-
-    if ("ABCD".includes(letter) && letter !== "") found = letter;
-  }
-
-  return found;
+  return Array.from(text.matchAll(PROMPT_MARKER), (match) => match[1]).at(-1) ?? null;
 }
 
 function withoutEscapes(text: string): string {
@@ -385,13 +377,15 @@ function ptyFrom(load: () => unknown): PtyModule | null {
   try {
     const required = load();
 
-    return isPtyModule(required) ? required : null;
+    return fitsPtyModule(required) ? required : null;
   } catch {
     return null;
   }
 }
 
-function isPtyModule(value: unknown): value is PtyModule {
+/** Whether a required module exports `spawn`, as `@lydell/node-pty` does. */
+// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- a guard: inlined, the check narrows `spawn` to Function, not to the module's typed signature
+function fitsPtyModule(value: unknown): value is PtyModule {
   return (
     typeof value === "object" &&
     value !== null &&
