@@ -534,6 +534,20 @@ export type McpWorkspace = {
 };
 
 /**
+ * One MCP server as the model hears of it: the `instructions` it sent when
+ * it connected, and `unavailable` when it has no tools because it failed to
+ * connect or waits for the user to sign in.
+ *
+ * @category mcp
+ * @since 0.1.0
+ */
+export interface McpServerBrief {
+  readonly name: string;
+  readonly instructions: string | null;
+  readonly unavailable: "failed" | "needs-sign-in" | null;
+}
+
+/**
  * The host's MCP servers. Implement it once per host and pass its factory as
  * `OpenOptions.mcp`; core then puts the tools in every session (plugin id
  * `mcp`) and serves {@link McpApi} as `workspace(id).mcp` to clients. A host
@@ -578,6 +592,15 @@ export interface McpHub {
    * first request after launch carries the servers' tools.
    */
   ready(workspace: WorkspaceId, signal: AbortSignal): Promise<void>;
+
+  /**
+   * What the model is told about each of the workspace's servers besides its
+   * tools, sorted by name, or `[]` when nothing watches the workspace.
+   * Synchronous like {@link McpHub.tools}. A server keeps its last listing's
+   * tools and instructions while it reconnects, so a dropped connection does
+   * not change the session's tools or prompt.
+   */
+  briefs(workspace: McpWorkspace): readonly McpServerBrief[];
 
   /** See {@link McpApi.reconnect}. */
   reconnect(workspace: McpWorkspace, server: string): Promise<McpChange>;

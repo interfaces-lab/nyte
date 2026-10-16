@@ -9,6 +9,7 @@ import type {
   Login,
   McpHub,
   McpHubFactory,
+  McpServerBrief,
   McpWorkspace,
   PluginStorage,
   ToolDefinition,
@@ -28,6 +29,7 @@ import { connectServer, oauthSettings } from "./connect.ts";
 import type { McpConnector } from "./connect.ts";
 import { oauthKey, oauthStore, signIn } from "./oauth.ts";
 import { bridgeTools, checkToolSchemas, toolExposure } from "./tools.ts";
+import type { McpCall } from "./tools.ts";
 
 const STDERR_TAIL = 4000;
 
@@ -64,10 +66,14 @@ type LinkState =
   | { readonly kind: "needs-sign-in" }
   | { readonly kind: "failed"; readonly message: string; readonly stderr: string | null };
 
+/** A server's last successful listing, kept while it reconnects so its sessions' tools and prompt do not change. */
+type Listing = { readonly tools: readonly Tool[]; readonly instructions: string | null };
+
 type Link = {
   readonly key: string;
   entry: McpServerEntry;
   readonly state: () => LinkState;
+  readonly brief: () => McpServerBrief;
   /** The server's last OAuth challenge, which a sign-in follows for its scope and metadata. */
   readonly challenge: () => OAuthChallenge | null;
   readonly tools: () => readonly ToolDefinition[];
@@ -133,8 +139,10 @@ function hub(input: {
 
   const openLink = (entry: McpServerEntry, pool: Pool): Link => {
     let state: LinkState = { kind: "connecting" };
+    let listed: Listing | null = null;
     let bridged: {
       readonly entry: McpServerEntry;
+      readonly listed: Listing;
       readonly tools: readonly ToolDefinition[];
     } | null = null;
     let client: McpClient | null = null;
@@ -148,7 +156,6 @@ function hub(input: {
     const set = (next: LinkState): void => {
       if (ended) return;
       state = next;
-      bridged = null;
 
       if (next.kind !== "connecting") attempted.resolve();
       notify(pool);
@@ -222,12 +229,13 @@ function hub(input: {
         }
 
         const refresh = async (): Promise<void> => {
-          const listed = await next.listTools();
+          const offered = await next.listTools();
 
           if (client !== next) return;
-          const { usable, issues } = checkToolSchemas(entry.name, listed);
+          const { usable, issues } = checkToolSchemas(entry.name, offered);
 
           dev("mcp", "tools listed", { server: entry.name, tools: usable.length });
+          listed = { tools: usable, instructions: next.instructions ?? null };
           set({ kind: "connected", tools: usable, issues });
         };
 
@@ -260,16 +268,34 @@ function hub(input: {
       }
     };
 
+    const call: McpCall = (name, args, options) => {
+      if (client === null) throw new Error(notConnected(entry.name, state));
+
+      return client.callTool(name, args, options);
+    };
+
     const link: Link = {
       key: linkKey(entry),
       entry,
       state: () => state,
+      brief: () => ({
+        name: entry.name,
+        instructions: listed?.instructions ?? null,
+        unavailable:
+          listed === null && (state.kind === "failed" || state.kind === "needs-sign-in")
+            ? state.kind
+            : null,
+      }),
       challenge: () => challenge,
       tools() {
-        if (client === null || state.kind !== "connected") return [];
+        if (listed === null) return [];
 
-        if (bridged?.entry !== link.entry)
-          bridged = { entry: link.entry, tools: bridgeTools(link.entry, state.tools, client) };
+        if (bridged?.entry !== link.entry || bridged.listed !== listed)
+          bridged = {
+            entry: link.entry,
+            listed,
+            tools: bridgeTools(link.entry, listed.tools, call),
+          };
 
         return bridged.tools;
       },
@@ -523,6 +549,15 @@ function hub(input: {
 
       return pool === undefined ? [] : [...pool.links.values()].flatMap((link) => link.tools());
     },
+    briefs(workspace) {
+      const pool = pools.get(poolKey(workspace));
+
+      return pool === undefined
+        ? []
+        : [...pool.links.values()]
+            .map((link) => link.brief())
+            .toSorted((a, b) => a.name.localeCompare(b.name));
+    },
     async ready(workspace, signal) {
       const attempts = Promise.all(
         [...pools.values()].flatMap((pool) =>
@@ -691,6 +726,15 @@ function serverState(entry: McpServerEntry, state: LinkState): McpServerState {
       exposure: toolExposure(entry, tool.name),
     })),
   };
+}
+
+function notConnected(server: string, state: LinkState): string {
+  if (state.kind === "failed") return `${server} is not connected: ${state.message}`;
+
+  if (state.kind === "needs-sign-in")
+    return `${server} needs the user to sign in again before its tools work.`;
+
+  return `${server} is reconnecting; try the call again shortly.`;
 }
 
 function poolKey(workspace: McpWorkspace): string {

@@ -138,6 +138,7 @@ export type {
   McpApi,
   McpHub,
   McpHubFactory,
+  McpServerBrief,
   McpWorkspace,
   Page,
   Resources,

@@ -54,6 +54,12 @@ function requestTools(request: Request | undefined): readonly string[] {
   );
 }
 
+function systemPrompt(request: Request | undefined): string {
+  const system = request?.context.messages[0];
+
+  return system?.role === "system" && typeof system.content === "string" ? system.content : "";
+}
+
 function searchOnce(fake: FakeModels): void {
   fake.reply(
     {
@@ -111,6 +117,7 @@ it("does not hold the first request for a server that crashed, and shows it fail
 
   expect(performance.now() - started).toBeLessThan(4000);
   expect(requestTools(fake.requests[0])).not.toContain(SEARCH);
+  expect(systemPrompt(fake.requests[0])).toContain("## places\nNot connected: it failed to start");
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -132,6 +139,24 @@ it("fails the call, not the turn, when the server exits mid-call", async () => {
 
   expect(outcome).toMatchObject({ kind: "failed" });
   expect(fake.requests).toHaveLength(2);
+  expect(requestTools(fake.requests[1])).toContain(SEARCH);
+  expect(systemPrompt(fake.requests[1])).toBe(systemPrompt(fake.requests[0]));
+});
+
+it("tells the model a server's instructions", async () => {
+  const fake = fakeModels();
+  fake.reply({ content: [{ type: "text", text: "Noted." }] });
+  await using host = await openPlaces(
+    await placesHome({ PLACES_INSTRUCTIONS: "Search before you recommend a place." }),
+    fake,
+  );
+  const session = await host.sessions.create();
+
+  await (await session.send("Find a place nearby.")).settled();
+
+  expect(systemPrompt(fake.requests[0])).toContain(
+    "## places\nSearch before you recommend a place.",
+  );
 });
 
 it("leaves out a tool whose input schema is not JSON Schema, and says why", async () => {

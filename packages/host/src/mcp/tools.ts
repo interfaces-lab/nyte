@@ -85,11 +85,14 @@ function findSchemaProblem(schema: Tool["inputSchema"]): string | null {
   return [...first.values()].slice(0, 3).join("; ");
 }
 
+/** Calls one of the server's tools over its live connection; throws when the server is not connected. */
+export type McpCall = McpClient["callTool"];
+
 /** Turns a server's listed tools into session tools named `mcp__<server>__<tool>`. */
 export function bridgeTools(
   entry: McpServerEntry,
   tools: readonly Tool[],
-  client: McpClient,
+  call: McpCall,
 ): ToolDefinition[] {
   const names = tools.map((tool) => toolName(entry.name, tool.name));
   const counts = Map.groupBy(names, (name) => name);
@@ -98,7 +101,7 @@ export function bridgeTools(
     const name = names[index];
     const unique = (counts.get(name)?.length ?? 0) > 1 ? hashed(name, tool.name) : name;
 
-    return bridge(entry, tool, client, unique);
+    return bridge(entry, tool, call, unique);
   });
 }
 
@@ -125,12 +128,7 @@ function globMatches(pattern: string, value: string): boolean {
   return new RegExp(`^${source}$`).test(value);
 }
 
-function bridge(
-  entry: McpServerEntry,
-  tool: Tool,
-  client: McpClient,
-  name: string,
-): ToolDefinition {
+function bridge(entry: McpServerEntry, tool: Tool, call: McpCall, name: string): ToolDefinition {
   const output = tool.outputSchema;
 
   return {
@@ -153,7 +151,7 @@ function bridge(
       let result: CallToolResult;
 
       try {
-        result = await client.callTool(tool.name, isObject(args) ? args : {}, {
+        result = await call(tool.name, isObject(args) ? args : {}, {
           signal: AbortSignal.any([invocation.signal, limit]),
           timeoutMs: entry.timeoutMs,
           onProgress: (update) => invocation.progress(toolProgress(update)),
