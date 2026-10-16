@@ -713,7 +713,8 @@ function BlankConversation({
     });
 
     try {
-      const session = await (await connected()).sessions.create({
+      const connection = await connected();
+      const session = await connection.sessions.create({
         ...(workspace === undefined ? {} : { workspace: workspace.id }),
         ...(defaults === undefined
           ? {}
@@ -727,7 +728,7 @@ function BlankConversation({
             }),
       });
 
-      await sendComposerMessage(session.id, plan);
+      await sendComposerMessage(connection.session(session.id), plan);
       setAttachmentError(undefined);
       setSending(false);
       actions.openSessionInPane(paneId, session.id);

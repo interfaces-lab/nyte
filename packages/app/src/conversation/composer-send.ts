@@ -1,4 +1,4 @@
-import type { CommandInfo, Delivery, SessionId, UserContent } from "@nyte-ai/sdk";
+import type { CommandInfo, Delivery, Session, SessionId, UserContent } from "@nyte-ai/sdk";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import { errorMessage } from "../errors.ts";
 import { COMPACT_COMMAND, workspaceFiles } from "../queries.ts";
@@ -86,12 +86,22 @@ export function composerSendPlan(input: {
   };
 }
 
+/** Uploads a message's images and sends it, in place of `replacing` when it edits a queued one. */
 export async function sendComposerMessage(
-  sessionId: SessionId,
+  session: Session,
   plan: Extract<ComposerSendPlan, { kind: "message" }>,
+  replacing?: UserMessage,
 ): Promise<void> {
-  const content = await uploadComposerContent(plan.content);
-  await (await connected()).session(sessionId).send(content, { delivery: plan.delivery });
+  const content = await uploadComposerContent(
+    replacing === undefined
+      ? plan.content
+      : { ...plan.content, files: messageFiles(replacing.content) },
+  );
+
+  await session.send(content, {
+    delivery: plan.delivery,
+    ...(replacing !== undefined && { replace: replacing.id }),
+  });
 }
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
@@ -171,57 +181,33 @@ export async function deliverSubmission(input: ComposerDelivery): Promise<Delive
           : "Commands can't run from a queued message.",
     };
 
-  await connected();
+  const session = (await connected()).session(sessionId);
   input.onLeave();
 
-  if (plan.kind === "message") return deliverMessage(sessionId, plan, replacing);
-
-  try {
-    return await runCommand(sessionId, plan.command);
-  } catch (cause: unknown) {
-    return { kind: "refused", message: errorMessage(cause) };
-  }
-}
-
-async function deliverMessage(
-  sessionId: SessionId,
-  plan: Extract<ComposerSendPlan, { readonly kind: "message" }>,
-  replacing: UserMessage | undefined,
-): Promise<DeliveryOutcome> {
-  if (replacing === undefined) {
+  if (plan.kind === "command") {
     try {
-      await sendComposerMessage(sessionId, plan);
-
-      return { kind: "sent", note: undefined };
+      return await runCommand(session, plan.command);
     } catch (cause: unknown) {
-      return { kind: "refused", message: `Couldn't send the message: ${errorMessage(cause)}` };
+      return { kind: "refused", message: errorMessage(cause) };
     }
   }
 
   try {
-    const content = await uploadComposerContent({
-      ...plan.content,
-      files: messageFiles(replacing.content),
-    });
-
-    await (
-      await connected()
-    )
-      .session(sessionId)
-      .send(content, { replace: replacing.id, delivery: plan.delivery });
+    await sendComposerMessage(session, plan, replacing);
 
     return { kind: "sent", note: undefined };
   } catch (cause: unknown) {
-    return { kind: "refused", message: `Couldn't update the message: ${errorMessage(cause)}` };
+    const failed =
+      replacing === undefined ? "Couldn't send the message" : "Couldn't update the message";
+
+    return { kind: "refused", message: `${failed}: ${errorMessage(cause)}` };
   }
 }
 
 async function runCommand(
-  sessionId: SessionId,
+  session: Session,
   { name, argument }: ParsedPluginCommand,
 ): Promise<DeliveryOutcome> {
-  const session = (await connected()).session(sessionId);
-
   if (name === COMPACT_COMMAND.name) {
     const outcome = await session.compact(argument === "" ? {} : { instructions: argument });
 
