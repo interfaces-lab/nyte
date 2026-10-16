@@ -1,6 +1,9 @@
 interface RendererStartupOptions {
-  /** Replace the startup shell with the interface. Runs once, when the local work below has landed. */
-  readonly mountShell: () => void;
+  /**
+   * Replace the startup shell with the interface, and call `mounted` once it has committed. Runs
+   * once, when the local work below has landed.
+   */
+  readonly mountShell: (mounted: () => void) => void;
   /** What the first frame needs that no host connection gates: fonts, the window's tabs, host state. */
   readonly loadResources: () => Promise<void>;
   readonly loadRouter: () => Promise<void>;
@@ -81,9 +84,8 @@ export function startRendererStartup(options: RendererStartupOptions): void {
       }
 
       loading = false;
-      options.mountShell();
+      options.mountShell(open);
       options.onReady?.();
-      open();
     })();
   };
 

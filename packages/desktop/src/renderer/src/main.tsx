@@ -5,7 +5,8 @@ import "./install-bridge.ts";
 import "@nyte-ai/app/theme/boot.ts";
 import "@nyte-ai/app/theme/focus-modality.ts";
 import "@nyte-ai/app/theme/global.css";
-import { StrictMode } from "react";
+import { StrictMode, startTransition } from "react";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import {
   windowTabRoute,
 } from "@nyte-ai/app";
 import { applyStartupTheme } from "@nyte-ai/app/theme/startup.ts";
+import { useMountEffect } from "@nyte-ai/app/use-mount-effect.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
 
@@ -33,6 +35,8 @@ export const router = createAppRouter({
 const container = document.getElementById("root");
 
 if (container === null) throw new Error("Missing #root");
+
+const root = createRoot(container);
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {
@@ -60,18 +64,35 @@ const startupRetry = document.getElementById("startup-retry");
 
 applyStartupTheme({ shell: startupShell, retry: startupRetry });
 
+/** Calls `onMount` once its tree has committed. It sits outside StrictMode, which would call it twice. */
+function Mounted({ onMount, children }: { onMount: () => void; children: ReactNode }): ReactNode {
+  useMountEffect(onMount);
+
+  return children;
+}
+
+/**
+ * Renders the interface as a transition, which React renders in slices that yield to the
+ * browser, so the shell's first mount is no long task. `mounted` runs once it has committed.
+ */
+function mountShell(mounted: () => void): void {
+  startTransition(() =>
+    root.render(
+      <Mounted onMount={mounted}>
+        <StrictMode>
+          <AccountProvider>
+            <App appIcon={appIcon} router={router} />
+          </AccountProvider>
+        </StrictMode>
+      </Mounted>,
+    ),
+  );
+}
+
 performance.mark("nyte:startup");
 
 startRendererStartup({
-  mountShell: () => {
-    createRoot(container).render(
-      <StrictMode>
-        <AccountProvider>
-          <App appIcon={appIcon} router={router} />
-        </AccountProvider>
-      </StrictMode>,
-    );
-  },
+  mountShell,
   loadResources: () =>
     Promise.all([
       Promise.all([loadHostState(), windowTabsReady]).then(restoreFocusedFolder),
