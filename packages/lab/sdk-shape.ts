@@ -14,7 +14,7 @@
  */
 import { definePart, isPart, memoryStore, text, tool } from "@nyte-ai/core";
 import { asId, asSeq, standard } from "@nyte-ai/schema";
-import { createSendJournal, sdk, SdkError } from "@nyte-ai/sdk";
+import { createSendJournal, pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
 import type {
   Connection,
   ConnectOptions,
@@ -180,7 +180,8 @@ export async function forkHead(session: Session, source: Head, name: string) {
  * The view owns conversation order, turns, execution, configuration,
  * background work, changes and the catalog. Idle carries lastRun; a live
  * execution carries run and phase. Read history before a MessageId when a
- * bounded tail needs older messages. Tree nodes expose the commit DAG.
+ * bounded tail needs older messages, or watch through `pagedViews`, whose
+ * `earlier` pages them into the views. Tree nodes expose the commit DAG.
  */
 export async function readConversation(head: Head) {
   const view = await head.view({ tail: 100 });
@@ -194,6 +195,16 @@ export async function readConversation(head: Head) {
   );
 
   return { view, answers, tools };
+}
+
+export async function readOlderMessages(head: Head) {
+  const views = pagedViews(head, { tail: 50 });
+
+  for await (const view of views) {
+    if ((await views.earlier(50)) === 0) return view.messages;
+  }
+
+  return [];
 }
 
 /** Runs and reacquired receipts bind without I/O, just like sessions. */
@@ -467,10 +478,11 @@ export async function inspectSession(
 
 
 /**
- * Durable events carry seq and at. The same fold builds host and SDK views.
+ * Durable events carry seq and at. The host's fold builds every view; a
+ * client of another process applies the changes the host sends after the
+ * first whole view, and a reconnect starts again from the current view.
  * Part-created/updated/settled and answered events own part state; run
- * events own execution. A patch is transient text or progress, so resumed
- * streams seed their current state before yielding new patches.
+ * events own execution. A patch is transient text or progress.
  *
  * SdkError is the one acquisition, defect and transport error. Domain
  * outcomes remain values. Catch at the application boundary and keep the
