@@ -1,7 +1,8 @@
 import process from "node:process";
+import { isJsonObject } from "@nyte-ai/schema";
 import { gt, valid } from "semver";
 import packageMetadata from "../package.json" with { type: "json" };
-import { isJsonObject, isJsonString, toJson } from "./json.ts";
+import { isJsonString, toJson } from "./json.ts";
 
 export const REPO = "interfaces-lab/nyte";
 
