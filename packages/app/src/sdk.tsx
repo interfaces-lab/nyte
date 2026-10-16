@@ -1,4 +1,4 @@
-import { sdk, SdkError } from "@nyte-ai/sdk";
+import { foldJobs, sdk, SdkError } from "@nyte-ai/sdk";
 import type {
   ConnectOptions,
   Connection,
@@ -358,7 +358,7 @@ export const sessionWatch = watchFamily((current, session: SessionId): AsyncIter
 
 export const jobsWatch = watchFamily(
   (current, workspace: WorkspaceId): AsyncIterable<readonly JobView[]> =>
-    current.workspace(workspace).jobs.watch(),
+    foldJobs(current.workspace(workspace).jobs.watch()),
 );
 
 export const gitStatusWatch = watchFamily(

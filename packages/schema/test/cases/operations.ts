@@ -449,7 +449,11 @@ export const operations = {
   "jobs.list input": operation(OPERATIONS["jobs.list"].input, workspaceInput, {}),
   "jobs.list output": operation(OPERATIONS["jobs.list"].output, [jobView], [{ id: job }]),
   "jobs.watch input": operation(OPERATIONS["jobs.watch"].input, workspaceInput, {}),
-  "jobs.watch output": operation(OPERATIONS["jobs.watch"].output, [], [1]),
+  "jobs.watch output": operation(
+    OPERATIONS["jobs.watch"].output,
+    { kind: "job", job: jobView },
+    [jobView],
+  ),
   "job.write input": operation(OPERATIONS["job.write"].input, jobInput, { workspace }),
   "job.write output": operation(OPERATIONS["job.write"].output, null, 1),
   "job.output input": operation(OPERATIONS["job.output"].input, jobInput, { job }),

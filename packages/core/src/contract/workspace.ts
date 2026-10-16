@@ -29,9 +29,11 @@ import type {
   GitStatus,
   GitWrite,
   HeadName,
+  JobChange,
   JobEnd,
   JobId,
   JobKey,
+  JobsChange,
   JobView,
   Json,
   McpChange,
@@ -111,7 +113,8 @@ export interface Jobs {
 
   list(): Promise<readonly JobView[]>;
 
-  watch(): AsyncIterable<readonly JobView[]>;
+  /** Yields the workspace's jobs whole first, then each job that moved alone (a job's own changes coalesced while the reader is behind), so a job's output costs its own view, not the list's. */
+  watch(): AsyncIterable<JobsChange>;
 }
 
 export interface Job {
@@ -170,7 +173,7 @@ export interface JobTable {
   start(id: JobId, digest: string, spawn: () => Promise<void>): Promise<void>;
   add(entry: JobEntry): void;
   update(id: JobId, change: (view: JobView) => JobView): void;
-  subscribe(workspace: WorkspaceId, listener: (views: readonly JobView[]) => void): Disposer;
+  subscribe(workspace: WorkspaceId, listener: (change: JobChange) => void): Disposer;
   background(
     session: SessionId,
   ): readonly { readonly head: HeadName; readonly item: BackgroundItem }[];

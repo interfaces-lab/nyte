@@ -41,6 +41,24 @@ export const JobViewType = Type.Object({
 
 export type JobView = Decoded<typeof JobViewType>;
 
+const JobMovedType = Type.Object({ kind: Type.Literal("job"), job: JobViewType });
+
+const JobForgottenType = Type.Object({ kind: Type.Literal("forgotten"), id: idSchema<"job">() });
+
+/** One job's move in a workspace's job list: its new view, or its removal once the list stops keeping it. */
+export const JobChangeType = Type.Union([JobMovedType, JobForgottenType]);
+
+export type JobChange = Decoded<typeof JobChangeType>;
+
+/** A frame of `jobs.watch`: the whole list first (and again after a reconnect), then each job that moved, alone. */
+export const JobsChangeType = Type.Union([
+  Type.Object({ kind: Type.Literal("jobs"), jobs: Type.Array(JobViewType) }),
+  JobMovedType,
+  JobForgottenType,
+]);
+
+export type JobsChange = Decoded<typeof JobsChangeType>;
+
 export const OutputFrameType = Type.Union([
   Type.Object({ kind: Type.Literal("bytes"), data: base64Bytes }),
   Type.Object({ kind: Type.Literal("gap") }),

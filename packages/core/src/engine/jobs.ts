@@ -2,8 +2,10 @@ import { asId, asSeq } from "@nyte-ai/schema";
 import type {
   BackgroundItem,
   CallId,
+  JobChange,
   JobEnd,
   JobId,
+  JobsChange,
   JobView,
   OutputFrame,
   RequestOptions,
@@ -17,7 +19,7 @@ import type { Job, JobEntry, JobOutput, Jobs, JobTable } from "../contract/works
 import { MAIN, readSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
-import { closable, coalesce, latest } from "../util/iterable.ts";
+import { closable } from "../util/iterable.ts";
 import { send } from "./admission.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
 import { waitFor } from "./waits.ts";
@@ -33,28 +35,28 @@ const ENDED_KEPT = 32;
 export function createJobTable(kernel: Kernel): JobTable {
   const entries = new Map<JobId, JobEntry>();
   const starts = new Map<JobId, { readonly digest: string; readonly started: Promise<void> }>();
-  const listeners = new Map<WorkspaceId, Set<(views: readonly JobView[]) => void>>();
+  const listeners = new Map<WorkspaceId, Set<(change: JobChange) => void>>();
 
   const list = (workspace: WorkspaceId): readonly JobEntry[] =>
     [...entries.values()].filter((entry) => entry.workspace === workspace);
+
+  const tell = (workspace: WorkspaceId, change: JobChange): void => {
+    for (const listener of listeners.get(workspace) ?? []) listener(change);
+  };
 
   const forgetEnded = (workspace: WorkspaceId): void => {
     const ended = list(workspace)
       .filter((entry) => entry.view.state.kind !== "running")
       .sort((left, right) => (left.view.endedAt ?? 0) - (right.view.endedAt ?? 0));
 
-    for (const entry of ended.slice(0, Math.max(0, ended.length - ENDED_KEPT)))
+    for (const entry of ended.slice(0, Math.max(0, ended.length - ENDED_KEPT))) {
       entries.delete(entry.view.id);
+      tell(workspace, { kind: "forgotten", id: entry.view.id });
+    }
   };
 
   const announce = (entry: JobEntry, previous: JobEntry | null): void => {
-    const watching = listeners.get(entry.workspace);
-
-    if (watching !== undefined) {
-      const views = list(entry.workspace).map((known) => known.view);
-
-      for (const listener of watching) listener(views);
-    }
+    tell(entry.workspace, { kind: "job", job: entry.view });
 
     const item = createJobBackgroundItem(entry);
     const before = previous === null ? null : createJobBackgroundItem(previous);
@@ -99,13 +101,13 @@ export function createJobTable(kernel: Kernel): JobTable {
       if (previous === undefined) return;
       const next = { ...previous, view: change(previous.view) };
       entries.set(id, next);
+      announce(next, previous);
 
       if (previous.view.state.kind === "running" && next.view.state.kind !== "running")
         forgetEnded(next.workspace);
-      announce(next, previous);
     },
     subscribe(workspace, listener) {
-      const known = listeners.get(workspace) ?? new Set<(views: readonly JobView[]) => void>();
+      const known = listeners.get(workspace) ?? new Set<(change: JobChange) => void>();
       known.add(listener);
       listeners.set(workspace, known);
 
@@ -146,10 +148,57 @@ export function createJobs(
       return jobHandle(kernel, entry.view.id);
     },
     list: async () => views(),
-    watch() {
-      return coalesce(latest(views(), (push) => kernel.jobs.subscribe(workspace, push)));
-    },
+    watch: () => watchJobs(kernel, workspace),
   };
+}
+
+function watchJobs(kernel: Kernel, workspace: WorkspaceId): AsyncIterable<JobsChange> {
+  return closable<JobsChange>(() => {
+    let whole: JobsChange | null = {
+      kind: "jobs",
+      jobs: kernel.jobs.list(workspace).map((entry) => entry.view),
+    };
+
+    const moved = new Map<JobId, JobChange>();
+    let wake: (() => void) | null = null;
+    let closed = false;
+
+    const unsubscribe = kernel.jobs.subscribe(workspace, (change) => {
+      const id = change.kind === "job" ? change.job.id : change.id;
+      moved.delete(id);
+      moved.set(id, change);
+      wake?.();
+    });
+
+    return {
+      async pull() {
+        if (whole !== null) {
+          const value = whole;
+          whole = null;
+
+          return { done: false, value };
+        }
+
+        while (moved.size === 0 && !closed)
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+
+        wake = null;
+        const [first] = moved;
+
+        if (first === undefined) return { done: true, value: undefined };
+        moved.delete(first[0]);
+
+        return { done: false, value: first[1] };
+      },
+      close() {
+        closed = true;
+        unsubscribe();
+        wake?.();
+      },
+    };
+  });
 }
 
 export function jobHandle(kernel: Kernel, id: JobId): Job {

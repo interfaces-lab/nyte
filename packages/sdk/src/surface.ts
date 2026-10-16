@@ -266,6 +266,8 @@ export { dev, SdkError } from "@nyte-ai/core";
 
 export { pagedViews } from "./history.ts";
 
+export { foldJobs } from "./workspace.ts";
+
 export type { PagedViews } from "./history.ts";
 
 export type { DevRow } from "@nyte-ai/core";

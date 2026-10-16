@@ -1,7 +1,13 @@
 import { Type } from "typebox";
 import { ChangeSetSchema, DiffOptionsType, PatchSetWireSchema } from "../../git.ts";
 import { idSchema } from "../../ids.ts";
-import { JobEndSchema, JobEndType, JobViewType, OutputFrameSchema } from "../../jobs.ts";
+import {
+  JobEndSchema,
+  JobEndType,
+  JobsChangeType,
+  JobViewType,
+  OutputFrameSchema,
+} from "../../jobs.ts";
 import { McpChangeSchema, McpServerConfigType, McpViewSchema } from "../../mcp.ts";
 import { nullable } from "../nullable.ts";
 import { CapabilityWireSchema } from "../../primitives.ts";
@@ -156,7 +162,12 @@ export const WORKSPACE_OPERATIONS = {
     ),
   },
   "jobs.list": { ...PARTICIPANT, kind: "query", input: ON_WORKSPACE, output: JOBS },
-  "jobs.watch": { ...PARTICIPANT, kind: "watch", input: ON_WORKSPACE, output: JOBS },
+  "jobs.watch": {
+    ...PARTICIPANT,
+    kind: "watch",
+    input: ON_WORKSPACE,
+    output: wireSchema(JobsChangeType),
+  },
   "job.write": {
     ...PARTICIPANT,
     kind: "command",

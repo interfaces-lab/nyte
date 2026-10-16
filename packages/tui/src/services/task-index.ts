@@ -1,3 +1,4 @@
+import { foldJobs } from "@nyte-ai/sdk";
 import type { Connection, JobView, SessionId, SessionInfo, SessionView } from "@nyte-ai/sdk";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
@@ -31,7 +32,7 @@ export class TaskIndex {
         options.onError,
       ),
       follow(
-        connection.workspace(session.workspace).jobs.watch(),
+        foldJobs(connection.workspace(session.workspace).jobs.watch()),
         (jobs) => {
           this.jobs = jobs.filter((job) => job.session === session.id);
           options.onChange();

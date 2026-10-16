@@ -3,6 +3,8 @@ import type {
   BlobId,
   JobId,
   JobKey,
+  JobsChange,
+  JobView,
   OutputFrame,
   PageId,
   PatchSet,
@@ -211,6 +213,26 @@ function jobsApi(rows: Rows, workspace: WorkspaceId): Jobs {
     list: () => rows.call("jobs.list", { workspace }),
     watch: () => rows.watch("jobs.watch", { workspace }),
   };
+}
+
+/** Folds a `jobs.watch` back into the workspace's whole job list after each change, keeping the view object of every job that did not move. */
+export async function* foldJobs(
+  changes: AsyncIterable<JobsChange>,
+): AsyncIterable<readonly JobView[]> {
+  let jobs: readonly JobView[] = [];
+
+  for await (const change of changes) {
+    if (change.kind === "jobs") jobs = change.jobs;
+    else if (change.kind === "forgotten") jobs = jobs.filter((job) => job.id !== change.id);
+    else {
+      const moved = change.job;
+      jobs = jobs.some((job) => job.id === moved.id)
+        ? jobs.map((job) => (job.id === moved.id ? moved : job))
+        : [...jobs, moved];
+    }
+
+    yield jobs;
+  }
 }
 
 function jobHandle(rows: Rows, workspace: WorkspaceId, job: JobId, key: JobKey | null): Job {

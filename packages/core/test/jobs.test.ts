@@ -302,24 +302,37 @@ describe("jobs", () => {
     });
   });
 
-  it("yields the job list as it changes", async () => {
+  it("yields the job list whole, then each job that moves alone, and forgets ended jobs past 32", async () => {
     const { host, provider, workspace } = await world();
     const jobs = host.workspace(workspace).jobs;
+    const server = await jobs.start({ command: "pnpm dev" });
+    await started(provider.processes, 1);
     const watched = jobs.watch()[Symbol.asyncIterator]();
     const opened = await watched.next();
 
-    assert(!opened.done);
-    expect(opened.value).toEqual([]);
+    assert(!opened.done && opened.value.kind === "jobs");
+    expect(opened.value.jobs.map((job) => job.id)).toEqual([server.id]);
+    provider.processes[0]?.emit("listening\n");
     await jobs.start({ command: "echo hi" });
-    await started(provider.processes, 1);
 
     const ended = await until(async () => {
       const next = await watched.next();
+      assert(!next.done && next.value.kind === "job");
 
-      return !next.done && next.value[0]?.state.kind === "exited" ? next.value : undefined;
+      return next.value.job.state.kind === "exited" ? next.value.job : undefined;
     });
 
-    expect(ended[0]).toMatchObject({ command: "echo hi", tail: "hi\n" });
+    expect(ended).toMatchObject({ command: "echo hi", tail: "hi\n" });
+
+    for (let index = 0; index < 32; index += 1) await jobs.start({ command: `echo ${index}` });
+    const forgotten = await until(async () => {
+      const next = await watched.next();
+      assert(!next.done && next.value.kind !== "jobs");
+
+      return next.value.kind === "forgotten" ? next.value.id : undefined;
+    });
+
+    expect(forgotten).toBe(ended.id);
     await watched.return?.();
   });
 

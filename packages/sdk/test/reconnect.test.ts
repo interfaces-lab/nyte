@@ -11,7 +11,7 @@ it("reports each lost watch and backs off before reopening it, restoring the lin
   vi.useFakeTimers();
   const link = createLink();
   const transport = createTransport({ url: "http://unused.test", headers: async () => ({}) });
-  const attempts: Json[][] = [[[]], [], [], [[]]];
+  const attempts: Json[][] = [[{ kind: "jobs", jobs: [] }], [], [], [{ kind: "jobs", jobs: [] }]];
   let opened = 0;
 
   const rows = createRows(
@@ -36,7 +36,7 @@ it("reports each lost watch and backs off before reopening it, restoring the lin
     [Symbol.asyncIterator]();
 
   try {
-    expect(await watching.next()).toEqual({ done: false, value: [] });
+    expect(await watching.next()).toEqual({ done: false, value: { kind: "jobs", jobs: [] } });
     expect(link.current()).toEqual({ kind: "connected" });
 
     let returned = false;
@@ -54,7 +54,7 @@ it("reports each lost watch and backs off before reopening it, restoring the lin
     await vi.advanceTimersByTimeAsync(499);
     expect(returned).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
-    expect(await second).toEqual({ done: false, value: [] });
+    expect(await second).toEqual({ done: false, value: { kind: "jobs", jobs: [] } });
     expect(link.current()).toEqual({ kind: "connected" });
     expect(opened).toBe(4);
   } finally {
