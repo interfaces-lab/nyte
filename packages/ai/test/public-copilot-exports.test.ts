@@ -74,7 +74,6 @@ test("public Copilot composition bundles and logs in without Node globals", asyn
         crypto: globalThis.crypto,
         structuredClone,
         postMessage: (message: unknown) => {
-          // A real browser bridge clones messages into the receiving realm.
           const received: unknown = structuredClone(message);
           events.push(received);
           if (

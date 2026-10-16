@@ -253,8 +253,7 @@ describe("file credential store", () => {
     expect(readdirSync(home)).toEqual(["auth.json"]);
   });
 
-  test("takes over an aged-out lock whose owner cannot be checked", async () => {
-    // Another machine's pid on a shared home directory, and a pid this machine reused.
+  test("takes over an aged-out lock whose owner cannot be checked: another machine's pid on a shared home, or a pid this machine reused", async () => {
     for (const owner of [`${process.pid} other-host`, `${process.pid} ${hostname()}`]) {
       writeFileSync(lockPath(), owner);
       ageLock(120);
@@ -283,13 +282,12 @@ describe("file credential store", () => {
     expect(readFileSync(lockPath(), "utf8")).toBe(`${process.pid} other-host`);
   });
 
-  test("refuses to write once a second write in this process took over its aged lock", async () => {
+  test("refuses to write once a second write in this process took over its lock, aged as suspend/resume or an untimed refresh ages it", async () => {
     const store = new FileCredentialStore(authPath());
     await store.modify("openai", async () => storedAccounts({ type: "api_key", key: "kept" }));
     let sibling: Promise<unknown> = Promise.resolve();
 
     const reclaimed = store.modify("anthropic", async () => {
-      // Suspend/resume and a refresh without its own timeout both age a held lock.
       ageLock(300);
       sibling = store.modify("github-copilot", async () => {
         await new Promise((resolve) => setTimeout(resolve, 150));

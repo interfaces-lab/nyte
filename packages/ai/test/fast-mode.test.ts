@@ -1,5 +1,5 @@
-import { normalizeContext } from "@nyte-ai/schema/model";
 /** `fast` is the user-facing name; OpenAI receives its existing priority tier. */
+import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { streamSimple as streamCodex } from "../src/api/openai-codex-responses.ts";

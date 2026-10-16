@@ -50,12 +50,10 @@ function errorMessage(text: string): AssistantMessage {
 }
 
 describe("provider retry classification", () => {
-  test("retries provider overload, rate limiting, and explicit retry guidance", () => {
+  test("retries provider overload, rate limiting, and explicit retry guidance (#9669, #9627)", () => {
     assert.equal(failedTransiently(errorMessage(openAIExplicitRetryMessage)), true);
     assert.equal(failedTransiently(errorMessage(nvidiaNIMResourceExhaustedMessage)), true);
-    // Regression for #9669.
     assert.equal(failedTransiently(errorMessage(azurePeakLoadError)), true);
-    // Regression for #9627.
     assert.equal(failedTransiently(errorMessage("520 status code (no body)")), true);
   });
 
@@ -113,13 +111,12 @@ describe("retryAssistantCall", () => {
       onRetryFinished,
     });
     assert.equal(res.stopReason, "error");
-    assert.equal(produce.mock.calls.length, 4); // 1 initial + 3 retries
+    assert.equal(produce.mock.calls.length, 1 + enabled.maxRetries);
     assert.equal(onRetryScheduled.mock.calls.length, 3);
     assert.deepEqual(onRetryFinished.mock.calls.at(-1), [false, 3, "terminated"]);
   });
 
-  test("caps agent retry delay", async () => {
-    // Regression for #8826.
+  test("caps agent retry delay (#8826)", async () => {
     assert.equal(retryDelayMs({ baseDelayMs: 2000 }, 6), 60000);
     assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 5000 }, 5), 5000);
     assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 0 }, 5), 0);
@@ -215,7 +212,6 @@ describe("retryAssistantCall", () => {
     const policy: RetryPolicy = { enabled: true, maxRetries: 5, baseDelayMs: 10_000 };
     const onRetryFinished = vi.fn();
     const p = retryAssistantCall(produce, policy, controller.signal, { onRetryFinished });
-    // Let one error call resolve and the first backoff sleep start, then abort.
     while (produce.mock.calls.length === 0) await new Promise((resolve) => setTimeout(resolve, 1));
     await new Promise((resolve) => setTimeout(resolve, 1));
     controller.abort();

@@ -81,7 +81,6 @@ describe("GitHub Copilot device sign-in", () => {
         expiresInSeconds: 900,
       },
     ]);
-    // Interval 1s, then GitHub asked for 2s after slow_down.
     await vi.advanceTimersByTimeAsync(1000);
     assert.equal(polls, 1);
     await vi.advanceTimersByTimeAsync(1000);
@@ -227,14 +226,7 @@ describe("GitHub Copilot device sign-in", () => {
     const controller = new AbortController();
     const transport = fakeFetch({
       [DEVICE]: () =>
-        new Response(
-          new ReadableStream({
-            start() {
-              // Never enqueue: headers arrive, the body does not.
-            },
-          }),
-          { headers: { "content-type": "application/json" } },
-        ),
+        new Response(new ReadableStream(), { headers: { "content-type": "application/json" } }),
     });
     const login = githubCopilotOAuth({ fetch: transport.fetch, clientId: "c" }).login(
       interaction(controller.signal),

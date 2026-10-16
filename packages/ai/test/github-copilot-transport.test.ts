@@ -166,7 +166,7 @@ describe("GitHub Copilot transport", () => {
     assert.equal(last.tool_call_id, "call_1");
   });
 
-  test("an explicit budget chat definition sends thinking_budget and clamps unavailable effort", async () => {
+  test("an explicit budget chat definition sends thinking_budget and clamps unavailable effort to the highest offered level", async () => {
     const transport = fakeFetch({
       [`POST ${ORIGIN}/chat/completions`]: () =>
         sse([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]),
@@ -182,7 +182,6 @@ describe("GitHub Copilot transport", () => {
         maxTokensField: "max_tokens",
       },
     };
-    // `high` (16384 tokens) exceeds the range and clamps to the highest offered level.
     await completions
       .streamSimple(model, normalizeContext({ messages: [user("hi", 0)] }), {
         apiKey: SESSION_TOKEN,
@@ -464,7 +463,7 @@ describe("GitHub Copilot transport", () => {
     assert.equal(last.content[0].type, "tool_result");
   });
 
-  test("a budget Messages definition sends token thinking and clamps unavailable effort", async () => {
+  test("a budget Messages definition sends token thinking and clamps unavailable effort to the low budget", async () => {
     const transport = fakeFetch({
       [`POST ${ORIGIN}/v1/messages?beta=true`]: () =>
         anthropicSse([
@@ -508,7 +507,6 @@ describe("GitHub Copilot transport", () => {
     const body = requestBody(request.body);
     assert.ok(matchesRecord(body.thinking));
     assert.equal(body.thinking.type, "enabled");
-    // `high` is outside the 4000-token range, so the request carries the `low` budget.
     assert.equal(body.thinking.budget_tokens, 2048);
   });
 });
