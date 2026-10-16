@@ -7,6 +7,7 @@ import { dev } from "@nyte-ai/core";
 import { idSchema } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
+// oxlint-disable-next-line nyte-code/no-cross-package-relative-imports -- desktop depends on app, so app's desktop e2e suite cannot import desktop by name
 import { E2E_MODEL, e2eModels } from "../../../desktop/src/main/fixtures/e2e-models.ts";
 
 const APP_ROOT = resolve(import.meta.dirname, "../..");
