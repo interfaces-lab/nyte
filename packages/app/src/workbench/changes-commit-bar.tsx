@@ -11,7 +11,7 @@
  * records of an edit, so the bar is not rendered for those scopes at all.
  */
 import { create, props } from "@stylexjs/stylex";
-import { Fragment, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -357,6 +357,11 @@ export function ChangesCommitBar({
   const [action, setAction] = useState<CommitAction>(() => readStoredAction(actions));
   const [branchName, setBranchName] = useState("");
   const [branchPrompt, setBranchPrompt] = useState<CommitAction | undefined>(undefined);
+  const branchField = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    if (branchPrompt !== undefined) branchField.current?.focus();
+  }, [branchPrompt]);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<CommitBarResult | undefined>(undefined);
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
@@ -528,6 +533,7 @@ export function ChangesCommitBar({
       {branchPrompt !== undefined && (
         <div {...props(styles.actions)}>
           <Input
+            ref={branchField}
             type="text"
             aria-label="New branch name"
             placeholder="fix/tab-close"
@@ -567,7 +573,7 @@ export function ChangesCommitBar({
               />
             }
           />
-          <MenuContent align="end">
+          <MenuContent align="end" finalFocus={() => branchField.current ?? true}>
             <MenuRadioGroup value={action}>
               {actions.map((candidate, index) => {
                 const previous = actions[index - 1];
