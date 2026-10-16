@@ -196,6 +196,10 @@ export interface LoggedItem {
 export interface LogPublisher {
   /** Publishes `items`, ascending, after everything handed over for the session before them. */
   publish(session: SessionId, items: readonly LoggedItem[]): Promise<void>;
+  /** Notes that this process logged the session's events through `seq`, before they reach the bus. */
+  logged(session: SessionId, seq: number): void;
+  /** The highest seq this process has logged for the session, or 0: a fold behind it has events to read even when no other process committed. */
+  loggedThrough(session: SessionId): number;
 }
 
 export interface SessionBus {

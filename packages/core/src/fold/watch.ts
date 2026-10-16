@@ -56,6 +56,9 @@ type Feeds = Pick<
   "store" | "bus" | "publisher" | "streams" | "activation" | "catalog" | "jobs" | "pages"
 >;
 
+/** One session's publishing: the last seq on the bus, the highest this process logged, and the publishes in line. */
+type Sequence = { published: number | null; logged: number; queue: Promise<void> };
+
 const LOG_PAGE = 512;
 
 const FOLD_LINGER = 30_000;
@@ -185,6 +188,9 @@ export async function publishSet(
   }
 
   for (const [session, events] of logged)
+    kernel.publisher.logged(session, Math.max(...events.map((event) => event.seq)));
+
+  for (const [session, events] of logged)
     await kernel.publisher.publish(
       session,
       await paired(kernel, session, events, written.get(session) ?? NO_PAIRS),
@@ -193,48 +199,58 @@ export async function publishSet(
 
 /** Returns the kernel's {@link LogPublisher} over `bus`, reading gaps from `store`'s log. */
 export function createLogPublisher(kernel: Pick<Kernel, "store" | "bus">): LogPublisher {
-  const sessions = new Map<SessionId, { published: number | null; queue: Promise<void> }>();
+  const sessions = new Map<SessionId, Sequence>();
 
-  const emit = (session: SessionId, sequence: { published: number | null }, item: LoggedItem) => {
-    if (sequence.published !== null && item.event.seq <= sequence.published) return;
-    sequence.published = item.event.seq;
+  const sequence = (session: SessionId): Sequence => {
+    const found = sessions.get(session);
+
+    if (found !== undefined) return found;
+    const created: Sequence = { published: null, logged: 0, queue: Promise.resolve() };
+    sessions.set(session, created);
+
+    return created;
+  };
+
+  const emit = (session: SessionId, state: Sequence, item: LoggedItem): void => {
+    if (state.published !== null && item.event.seq <= state.published) return;
+    state.published = item.event.seq;
     kernel.bus.publish(session, item.event, item.head);
   };
 
-  const fill = async (
-    session: SessionId,
-    sequence: { published: number | null },
-    before: number,
-  ): Promise<void> => {
-    for (let from = sequence.published; from !== null && from + 1 < before;) {
+  const fill = async (session: SessionId, state: Sequence, before: number): Promise<void> => {
+    for (let from = state.published; from !== null && from + 1 < before;) {
       const events = await kernel.store.refs.log(session, asSeq(from), LOG_PAGE);
       const missing = events.filter((event) => event.seq < before);
 
       for (const item of await paired(kernel, session, missing, NO_PAIRS))
-        emit(session, sequence, item);
+        emit(session, state, item);
 
       if (missing.length < LOG_PAGE) return;
-      from = sequence.published;
+      from = state.published;
     }
   };
 
   return {
+    logged(session, seq) {
+      const state = sequence(session);
+      state.logged = Math.max(state.logged, seq);
+    },
+    loggedThrough: (session) => sessions.get(session)?.logged ?? 0,
     publish(session, items) {
-      const sequence = sessions.get(session) ?? { published: null, queue: Promise.resolve() };
-      sessions.set(session, sequence);
+      const state = sequence(session);
 
-      const published = sequence.queue.then(async () => {
+      const published = state.queue.then(async () => {
         for (const item of items) {
-          if (sequence.published !== null && item.event.seq > sequence.published + 1)
-            await fill(session, sequence, item.event.seq).catch((error) =>
+          if (state.published !== null && item.event.seq > state.published + 1)
+            await fill(session, state, item.event.seq).catch((error) =>
               dev("bus", "gap read failed", { session, error: String(error) }),
             );
 
-          emit(session, sequence, item);
+          emit(session, state, item);
         }
       });
 
-      sequence.queue = published.catch(() => undefined);
+      state.queue = published.catch(() => undefined);
 
       return published;
     },
@@ -418,7 +434,12 @@ function openFoldFeed(kernel: Feeds, session: SessionId, push: (item: FeedItem) 
     async sync() {
       if (held !== null) return reading;
 
-      if (mark !== undefined && mark === (await kernel.store.commitMark?.())) return;
+      if (
+        mark !== undefined &&
+        through >= kernel.publisher.loggedThrough(session) &&
+        mark === (await kernel.store.commitMark?.())
+      )
+        return;
 
       return held === null ? read([]) : reading;
     },
