@@ -255,8 +255,8 @@ describe("commit", () => {
     kernel.bus.subscribeAll((_session, event) => {
       if (event.kind === "session") seen.push(event.seq);
     });
+    const { session } = await host.sessions.start({ content: "Hi." });
     reads = 0;
-    const session = await host.sessions.create();
     await session.update({ name: "Renamed" });
 
     expect(seen).toHaveLength(2);
@@ -284,7 +284,7 @@ describe("commit", () => {
     };
 
     const { kernel, host } = await setup({ store: flaky });
-    const created = await host.sessions.create();
+    const { session: created } = await host.sessions.start({ content: "Hi." });
     const seen: string[] = [];
     kernel.bus.subscribe(created.id, (event) => seen.push(event.kind));
     const lines: string[] = [];
@@ -310,7 +310,7 @@ describe("commit", () => {
 
   it("puts each logged event on the bus once and in seq order, reading a gap from the log", async () => {
     const { kernel, host } = await setup();
-    const created = await host.sessions.create();
+    const { session: created } = await host.sessions.start({ content: "Hi." });
     const seqs: number[] = [];
 
     kernel.bus.subscribe(created.id, (event) => {

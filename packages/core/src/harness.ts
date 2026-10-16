@@ -24,6 +24,7 @@ import type {
   ExecutionEnv,
   Host,
   Plugin,
+  Session,
   SnapshotsApi,
   StoreConnection,
 } from "./index.ts";
@@ -226,6 +227,21 @@ function provider(snapshots: SnapshotsApi | undefined): EnvironmentProvider {
   };
 
   return { ...base, attach: async () => folder, snapshots: () => snapshots };
+}
+
+/** Starts a chat and drives its first message's run to completion, for a test that needs an idle chat with nothing pending. */
+export async function settledChat(
+  host: Pick<Host, "sessions" | "execution">,
+  turns: Script,
+  input?: Omit<Parameters<Host["sessions"]["start"]>[0], "content">,
+): Promise<Session> {
+  const { session, receipt } = await host.sessions.start({ ...input, content: "Hi." });
+  const step = host.execution.advance({ session: session.id, head: main });
+  (await turns.started(turns.turns.length + 1)).finish();
+  await step;
+  await receipt.settled();
+
+  return session;
 }
 
 export async function startRun(

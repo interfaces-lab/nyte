@@ -20,6 +20,7 @@ import {
   label,
   livePart,
   main,
+  settledChat,
   setup,
   startRun,
   usage,
@@ -96,9 +97,9 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     await using host = await open(fake, { store });
-    const session = await host.sessions.create();
-    stop = (run) => (run === null ? Promise.resolve() : session.run(run).stop());
-    const receipt = await session.send("Go.");
+    const id = asId<"session">("fenced");
+    stop = (run) => (run === null ? Promise.resolve() : host.session(id).run(run).stop());
+    const { session, receipt } = await host.sessions.start({ id, content: "Go." });
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
     expect(await stopped.promise).toEqual({ kind: "requested" });
@@ -125,9 +126,9 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     await using host = await open(fake, { store });
-    const session = await host.sessions.create();
-    stop = (run) => (run === null ? Promise.resolve() : session.run(run).stop());
-    const receipt = await session.send("Go.");
+    const id = asId<"session">("fenced");
+    stop = (run) => (run === null ? Promise.resolve() : host.session(id).run(run).stop());
+    const { session, receipt } = await host.sessions.start({ id, content: "Go." });
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
     expect(stopped).toEqual({ kind: "requested" });
@@ -154,7 +155,7 @@ describe("the stop fence (ADV round 2)", () => {
       };
 
       const { kernel, host } = await setup({ store: counted, execution: { kind: "admit-only" } });
-      const session = await host.sessions.create();
+      const { session } = await host.sessions.start({ content: "Hi." });
       const old = asId<"run">("old");
 
       for (let index = 0; index < count; index += 1)
@@ -182,7 +183,7 @@ describe("the stop fence (ADV round 2)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "Hi." });
     const first = await b.host.session(session.id).send("First.");
     const step = b.host.execution.advance({ session: session.id, head: main });
     const turn = await b.script.started(1);
@@ -217,8 +218,7 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     const { kernel, host, script } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     const run = (await script.started(1)).input.run.id;
 
@@ -247,8 +247,7 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     const { kernel, host, script } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const run = turn.input.run.id;
@@ -284,8 +283,7 @@ describe("move receipts and summary guards (ADV F-2)", () => {
     });
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
-    const base = await session.send("Base.");
+    const { session, receipt: base } = await a.host.sessions.start({ content: "Base." });
     await landing(a.kernel, session.id, main, [base.message], null);
     const id = asId<"receipt">("crash");
 
@@ -322,8 +320,7 @@ describe("move receipts and summary guards (ADV F-2)", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    const base = await session.send("Base.");
+    const { session, receipt: base } = await host.sessions.start({ content: "Base." });
     await landing(kernel, session.id, main, [base.message], null);
     const tip = await kernel.store.refs.get(headRef(session.id, main));
 
@@ -350,7 +347,7 @@ describe("integration of round 2 (§61–§63)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "Hi." });
     await b.host.session(session.id).send("First.");
     const step = b.host.execution.advance({ session: session.id, head: main });
     const turn = await b.script.started(1);
@@ -384,8 +381,7 @@ describe("integration of round 2 (§61–§63)", () => {
     });
 
     const { host, script } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    const sent = await session.send("Go.");
+    const { session, receipt: sent } = await host.sessions.start({ content: "Go." });
     withdraw = () => sent.stop();
 
     expect(await host.execution.advance({ session: session.id, head: main })).toEqual({
@@ -415,9 +411,8 @@ describe("integration of round 2 (§61–§63)", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session, receipt: original } = await a.host.sessions.start({ content: "Original." });
     sessionName = receiptRef(session.id, id);
-    const original = await session.send("Original.");
     await landing(a.kernel, session.id, main, [original.message], null);
     const old = await memory.refs.get(headRef(session.id, main));
 
@@ -462,8 +457,8 @@ describe("integration of round 2 (§61–§63)", () => {
     );
 
     await using host = await open(fake, { plugins: [observer] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     observed.length = 0;
     const original = fake.models.streamSimple.bind(fake.models);
     let stop: () => Promise<unknown> = async () => undefined;
@@ -517,7 +512,7 @@ describe("integration of round 2 (§61–§63)", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const session = await settledChat(a.host, a.script);
     const head = { session: session.id, head: main };
     lease = leaseRef(session.id, main);
     const reports: string[] = [];

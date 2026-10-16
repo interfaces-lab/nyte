@@ -6,7 +6,17 @@ import { createSendJournal, journalLoop } from "../src/journal.ts";
 import { createLink, createRows } from "../src/rows.ts";
 import { createHeadViews, watchHead } from "../src/watch.ts";
 import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
-import { answer, cleanups, client, closeOpened, open, tapped, text, users } from "./connection.ts";
+import {
+  answer,
+  cleanups,
+  client,
+  closeOpened,
+  open,
+  settledChat,
+  tapped,
+  text,
+  users,
+} from "./connection.ts";
 
 afterEach(closeOpened);
 
@@ -14,7 +24,7 @@ describe("client streaming", () => {
   it("streams a reply's text as appends on the message the first frame sent, never the whole text again", async () => {
     const host = await open();
     const connection = await client(host);
-    const session = await connection.sessions.create();
+    const session = await settledChat(host, connection);
     const heads = new Set<string>();
     const appended: string[] = [];
 
@@ -50,7 +60,7 @@ describe("client streaming", () => {
     const done = until(session.watch(), (view) => {
       views.push(view);
 
-      return view.execution.kind === "idle" && view.messages.length === 2;
+      return view.execution.kind === "idle" && view.messages.length === 4;
     });
 
     await (await session.send("Stream.")).settled();
@@ -67,8 +77,10 @@ describe("client streaming", () => {
       const host = await open();
       const connection = await client(host);
       host.fake.reply(text("One."), text("Two."));
-      const session = await connection.sessions.create();
-      await (await session.send("First.")).settled();
+      const { session, receipt: started } = await connection.sessions.start({
+        content: "First.",
+      });
+      await started.settled();
       const opens: string[][] = [];
       const heads = new Map<string, string[]>();
       let firstHead: string | undefined;
@@ -144,7 +156,7 @@ describe("client streaming", () => {
   it("shows a head.watch that starts mid-stream the text streamed before it", async () => {
     const host = await open();
     const writer = await client(host);
-    const session = await writer.sessions.create();
+    const { session } = await writer.sessions.start({ content: "Hi." });
     const halfway = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<void>();
 
@@ -171,7 +183,7 @@ describe("client streaming", () => {
   it("resumes a head.watch mid-stream with the text streamed in the gap, none of it twice", async () => {
     const host = await open();
     const connection = await client(host);
-    const session = await connection.sessions.create();
+    const { session } = await connection.sessions.start({ content: "Hi." });
     const first = Promise.withResolvers<void>();
     const gap = Promise.withResolvers<void>();
     const paused = Promise.withResolvers<void>();
@@ -228,8 +240,8 @@ describe("client streaming", () => {
   it("shares one fold per head: two watchers open one head.watch and see the same views, and the last leaving closes it", async () => {
     const host = await open();
     const connection = await client(host);
+    const session = await settledChat(host, connection);
     host.fake.reply(text("Shared."));
-    const session = await connection.sessions.create();
     let opened = 0;
     let closed = 0;
 
@@ -247,7 +259,7 @@ describe("client streaming", () => {
     });
 
     const done = (view: SessionView): boolean =>
-      view.execution.kind === "idle" && view.messages.length === 2;
+      view.execution.kind === "idle" && view.messages.length === 4;
 
     const first = until(session.watch(), done);
     const second = until(connection.session(session.id).watch(), done);

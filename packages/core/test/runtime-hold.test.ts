@@ -88,8 +88,7 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
       const plugins =
         order === "slow-first" ? [held, provider, gate(seen)] : [provider, held, gate(seen)];
       await using host = await open(fake, { plugins });
-      const session = await host.sessions.create();
-      const receipt = await session.send("Go.");
+      const { session, receipt } = await host.sessions.start({ content: "Go." });
       await until(() => (fake.requests.length === 1 ? true : undefined));
       void host.kernel.plugins.reload(session.id);
       await until(() => (held.activations() === 2 ? true : undefined));
@@ -116,8 +115,8 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     );
 
     await using host = await open(fake, { plugins: [provider, gate(seen)] });
-    const session = await host.sessions.create();
-    await (await session.send("Go.")).settled();
+    const { receipt: started } = await host.sessions.start({ content: "Go." });
+    await started.settled();
     const result = fake.requests[1]?.context.messages.find((m) => m.role === "toolResult");
 
     expect(seen).toEqual(["before_tool:echo"]);
@@ -135,8 +134,7 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
 
     fake.reply({ content: [{ type: "text", text: "Answer." }], until: streaming.promise });
     await using host = await open(fake, { plugins: [held, observer(seen)] });
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     await until(() => (fake.requests.length === 1 ? true : undefined));
     void host.kernel.plugins.reload(session.id);
     await until(() => (held.activations() === 2 ? true : undefined));
@@ -156,8 +154,7 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
 
     fake.reply({ content: [{ type: "text", text: "Answer." }], until: streaming.promise });
     await using host = await open(fake, { plugins: [observer(seen)] });
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     await until(() => (fake.requests.length === 1 ? true : undefined));
     await host.kernel.plugins.reload(session.id);
     await sleep(20);
@@ -181,7 +178,10 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
       ],
     });
 
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
     const old = fixture.kernel.plugins.runtime(session.id);
     await old.ready;
     const release = old.hold();
@@ -221,8 +221,8 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     );
 
     await using host = await open(fake, { plugins: [watcher] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     const end = await (await session.send("Second?")).settled();
 
     expect(end.kind).toBe("failed");
@@ -234,19 +234,20 @@ describe("runtime hold (ADV D-2 N1, N2, N4; E-2 N3)", () => {
     expect(seen).toEqual(["assistant:15", "compaction:200", "assistant:44"]);
   });
 
-  it("E N3: a transient attach failure is retried by the next send, and a provider's plain Error is unavailable", async () => {
+  it("E N3: a transient attach failure fails a start and leaves nothing, a retry under its id starts it, and a provider's plain Error is unavailable", async () => {
     const { kernel, host, provider, workspace } = await world();
+    const id = asId<"session">("retried");
     provider.failure = "The sandbox did not boot.";
-    const session = await host.sessions.create({ workspace });
 
-    await expect(session.send("Go.")).rejects.toMatchObject({
+    await expect(host.sessions.start({ id, workspace, content: "Go." })).rejects.toMatchObject({
       code: "unavailable",
       message: "The sandbox did not boot.",
     });
+    expect((await host.sessions.list()).items).toEqual([]);
 
     provider.failure = null;
-    await until(() => (kernel.plugins.runtimes().has(session.id) ? undefined : true));
-    const receipt = await session.send("Go.");
+    await until(() => (kernel.plugins.runtimes().has(id) ? undefined : true));
+    const { session, receipt } = await host.sessions.start({ id, workspace, content: "Go." });
 
     expect(receipt.message).toBeDefined();
     expect((await session.info()).activation).toEqual({ kind: "active" });

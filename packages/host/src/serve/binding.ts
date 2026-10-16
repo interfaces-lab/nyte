@@ -253,7 +253,6 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "workspaces.forget": ({ id }) => connection.workspaces.forget(id),
 
     "sessions.watch": async (input) => connection.sessions.watch(input),
-    "sessions.create": async (input) => ({ session: (await connection.sessions.create(input)).id }),
     "sessions.start": async (input) => {
       const { session, receipt } = await connection.sessions.start(input);
 

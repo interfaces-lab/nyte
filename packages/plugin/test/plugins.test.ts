@@ -57,7 +57,7 @@ describe("the plugins", () => {
 
   it("activate together in one session without issues", async () => {
     await using host = await open(fakeModels(), core);
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     await host.kernel.plugins.runtime(session.id).ready;
 
     expect(host.kernel.host.current().plugins.filter((row) => row.issues.length > 0)).toEqual([]);

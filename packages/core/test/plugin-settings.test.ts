@@ -36,7 +36,7 @@ describe("settings", () => {
       },
     ]);
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     expect((await session.view()).catalog.settings).toEqual([
       expect.objectContaining({ id: "theme", value: "dark", from: "host" }),
@@ -124,7 +124,7 @@ describe("settings", () => {
     expect((await session.view()).catalog.settings).toEqual([
       expect.objectContaining({ id: "volume", value: 4, from: "session" }),
     ]);
-    expect((await host.sessions.create()).id).not.toBe(session.id);
+    expect((await host.sessions.start({ content: "Hi." })).session.id).not.toBe(session.id);
   });
 
   it("announces a client's configure of a session-scope setting to watchers and the catalog", async () => {
@@ -242,7 +242,7 @@ describe("plugin storage", () => {
     ])
       expect(await kernel.store.refs.get(name)).not.toBeNull();
 
-    await host.sessions.create();
+    await host.sessions.start({ content: "Hi." });
     const other = storages[1];
     assert(other !== undefined);
 

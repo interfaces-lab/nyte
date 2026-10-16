@@ -70,8 +70,7 @@ describe("composeHost", () => {
     );
 
     await using warm = await open(fake, { store, plugins: [plugin] });
-    const session = await warm.sessions.create();
-    const receipt = await session.send("Ask.");
+    const { session, receipt } = await warm.sessions.start({ content: "Ask." });
     const asked = await until(async () =>
       (await session.view()).parts.find((part) => part.partKind === ask.kind),
     );
@@ -120,7 +119,7 @@ describe("composeHost", () => {
 
   it("resolves a fresh session's effective configuration at creation, with nothing selected (§48c)", async () => {
     await using host = await open(fakeModels());
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     expect((await session.view()).configuration).toEqual({
       selected: null,
@@ -139,8 +138,7 @@ describe("composeHost", () => {
       usage: { input: 12, output: 3 },
     });
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const receipt = await session.send("Hi.");
+    const { session, receipt } = await host.sessions.start({ content: "Hi." });
     const end = await receipt.settled();
 
     assert(end.kind === "completed");
@@ -182,7 +180,7 @@ describe("composeHost", () => {
 
   it("loads the built-ins first, in decision 13's order, then the host's plugins", async () => {
     await using host = await open(fakeModels(), { plugins: [{ id: "extra" }] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     expect(
       host.kernel.plugins
@@ -195,7 +193,7 @@ describe("composeHost", () => {
 
   it("serves the host view: plugins and settings", async () => {
     await using host = await open(fakeModels());
-    await host.sessions.create();
+    await host.sessions.start({ content: "Hi." });
     const iterator = host.watch()[Symbol.asyncIterator]();
     const first = await iterator.next();
     await iterator.return?.();
@@ -243,7 +241,7 @@ describe("composeHost", () => {
     assert(first.done !== true);
     expect(first.value.plugins).toEqual(seeded);
 
-    await host.sessions.create();
+    await host.sessions.start({ content: "Hi." });
     assert(api !== undefined);
     api.report({ severity: "warning", path: ["server"], message: "Server went away." });
 
@@ -267,8 +265,8 @@ describe("composeHost", () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Done." }] });
     const host = await open(fake, { store });
-    const session = await host.sessions.create();
-    await (await session.send("Go.")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "Go." });
+    await started.settled();
     const connection = await store.open();
 
     expect(await connection.refs.list(`sessions/${session.id}/leases/`)).toHaveLength(1);
@@ -292,8 +290,7 @@ describe("composeHost", () => {
     );
 
     const host = await open(first, { store, plugins: [echoing] });
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
 
     const run = await until(async () => {
       const execution = (await session.view()).execution;
@@ -336,7 +333,7 @@ describe("composeHost", () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Half an answer" }], hold: true });
     const host = await open(fake, { store });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const logged: string[] = [];
 
     host.kernel.bus.subscribe(session.id, (event) => {
@@ -488,7 +485,7 @@ describe("composeHost", () => {
       issues: [expect.objectContaining({ severity: "error", path: ["id"] })],
     });
 
-    await host.sessions.create();
+    await host.sessions.start({ content: "Hi." });
 
     expect(
       host.kernel.host.current().plugins.some((row) => row.id === "/home/.nyte/plugins/bad.ts"),

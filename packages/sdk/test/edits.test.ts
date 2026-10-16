@@ -76,9 +76,8 @@ describe("edits", () => {
   it("lands a revise of a queued message once: its own id resent after the message landed replays the target's receipt, and the target's own send still replays (ADV A N1, probe /tmp/adv-a2 N1)", async () => {
     const host = await open();
     const connection = await client(host);
-    const session = await connection.sessions.create();
     const script = paused(host, "Second answer.", "Third answer.");
-    const first = await session.send("First.");
+    const { session, receipt: first } = await connection.sessions.start({ content: "First." });
     await script.halfway;
     const second = await session.send("Second.", { delivery: "queue" });
     const R = asId<"receipt">(crypto.randomUUID());
@@ -108,9 +107,8 @@ describe("edits", () => {
     const host = await open();
     const journal = createSendJournal();
     const connection = await client(host, undefined, journal);
-    const session = await connection.sessions.create();
     const script = paused(host, "Second answer.", "Third answer.", "Again.");
-    const first = await session.send("First.");
+    const { session, receipt: first } = await connection.sessions.start({ content: "First." });
     await script.halfway;
     const second = await session.send("Second.", { delivery: "queue" });
     const revised = await session.send("Second v2.", { replace: second.message });
@@ -136,7 +134,7 @@ describe("edits", () => {
     await watching.return?.();
     const after = await host.view(session.id);
 
-    expect(posts).toBe(4);
+    expect(posts).toBe(3);
     expect([after.revision, users(after)]).toEqual([before.revision, users(before)]);
     expect(users(before)).toEqual(["First.#landed", "Second v2.#landed", "Third.#landed"]);
     expect(host.fake.requests.length).toBe(requests);
@@ -147,8 +145,9 @@ describe("edits", () => {
     const journal = createSendJournal();
     const connection = await client(host, undefined, journal);
     host.fake.reply(text("One."), text("Two."));
-    const session = await connection.sessions.create();
-    const first = await session.send("Draft.");
+    const { session, receipt: first } = await connection.sessions.start({
+      content: "Draft.",
+    });
     await first.settled();
     await session.view();
     host.intercept(failing);
@@ -167,8 +166,9 @@ describe("edits", () => {
   it("keeps an edit of a landed message unsent in its place across a revoke and a re-pair, until it lands (ADV C N1, probe /tmp/adversarial-c2-probe J2b)", async () => {
     const host = await open();
     const owner = await client(host);
-    host.fake.reply(text("One."), text("Two."));
-    const session = await owner.sessions.create();
+    host.fake.reply(text("Ready."), text("One."), text("Two."));
+    const { session, receipt: ready } = await owner.sessions.start({ content: "Hi." });
+    await ready.settled();
     const journal = createSendJournal();
     const one = await host.host.principals.pair({ authority: new Set(["participant"]) });
     const first = await client(host, { kind: "pairing", code: one.code }, journal);
@@ -179,7 +179,7 @@ describe("edits", () => {
     const edit = first.session(session.id).send("Final.", { replace: sent.message });
     await expect.poll(async () => (await journal.load()).length).toBe(1);
 
-    expect(users(await first.session(session.id).view())).toEqual(["Final.#unsent"]);
+    expect(users(await first.session(session.id).view())).toEqual(["Hi.#landed", "Final.#unsent"]);
     await host.host.principals.revoke(first.principal);
     host.intercept(null);
     await expect(edit).rejects.toBeInstanceOf(SdkError);
@@ -188,19 +188,19 @@ describe("edits", () => {
     host.intercept(failing);
     const second = await client(host, { kind: "pairing", code: two.code }, journal);
 
-    expect(users(await second.session(session.id).view())).toEqual(["Final.#unsent"]);
+    expect(users(await second.session(session.id).view())).toEqual(["Hi.#landed", "Final.#unsent"]);
     host.intercept(null);
     await until(
       second.session(session.id).watch(),
-      (view) => users(view).join() === "Final.#landed" && view.execution.kind === "idle",
+      (view) => users(view).join() === "Hi.#landed,Final.#landed" && view.execution.kind === "idle",
     );
-    expect(users(await host.view(session.id))).toEqual(["Final.#landed"]);
+    expect(users(await host.view(session.id))).toEqual(["Hi.#landed", "Final.#landed"]);
   });
 
   it("admits every plain send racing on one head from several clients: a lost inbox write is retried, never answered stale (ADV A N5, probe /tmp/adv-a2 N8)", async () => {
     const host = await open();
     const clients = await Promise.all(Array.from({ length: 6 }, () => client(host)));
-    const session = await clients[0].sessions.create();
+    const { session } = await clients[0].sessions.start({ content: "Hi." });
     const texts = clients.map((_, index) => `Send ${index}.`);
 
     const sent = await Promise.allSettled(
@@ -211,6 +211,10 @@ describe("edits", () => {
 
     expect(sent.map((result) => result.status)).toEqual(texts.map(() => "fulfilled"));
     const pending = await host.view(session.id);
-    expect([...users(pending)].sort()).toEqual(texts.map((entry) => `${entry}#pending`));
+    expect(
+      users(pending)
+        .filter((entry) => entry.startsWith("Send"))
+        .sort(),
+    ).toEqual(texts.map((entry) => `${entry}#pending`));
   });
 });

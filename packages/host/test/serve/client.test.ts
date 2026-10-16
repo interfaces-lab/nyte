@@ -42,11 +42,9 @@ describe("transport", () => {
     const { transport, fake } = await served();
     const owner = transport("Bearer owner");
     fake.reply("Hello.");
-    const { session } = decodeOutput("sessions.create", await owner.invoke("sessions.create", {}));
-
-    const { receipt } = decodeOutput(
-      "head.send",
-      await owner.invoke("head.send", { session, head: "main", content: "Hi." }),
+    const { session, receipt } = decodeOutput(
+      "sessions.start",
+      await owner.invoke("sessions.start", { content: "Hi." }),
     );
 
     expect(
@@ -76,7 +74,10 @@ describe("transport", () => {
   it("aborts a watch's request at once when it returns, even while a pull waits (§40x)", async () => {
     const { transport, host } = await served();
     const owner = transport("Bearer owner");
-    const { session } = decodeOutput("sessions.create", await owner.invoke("sessions.create", {}));
+    const { session } = decodeOutput(
+      "sessions.start",
+      await owner.invoke("sessions.start", { content: "Hi." }),
+    );
     const { folds } = host.kernel;
     const acquire = folds.acquire.bind(folds);
     let held = 0;

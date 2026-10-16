@@ -7,9 +7,9 @@ import { fakeModels, open } from "./fake-models.ts";
 
 it("notifies once when a root session's run ends and stays quiet for a child", async () => {
   await using host = await open(fakeModels(), []);
-  const root = await host.sessions.create();
+  const { session: root } = await host.sessions.start({ content: "Hi." });
   await root.update({ name: "Release" });
-  const child = await host.sessions.create({ parent: root.id });
+  const { session: child } = await host.sessions.start({ parent: root.id, content: "Hi." });
   const notified: Parameters<ClientApi["ui"]["notify"]>[0][] = [];
   const api = clientApi(host, notified);
   const handler = notifications.hooks.run_ended_anywhere;

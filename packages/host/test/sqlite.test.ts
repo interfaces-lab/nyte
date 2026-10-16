@@ -371,7 +371,7 @@ describe("sqliteStore", () => {
 
     await using reader = await host(20);
     await using writer = await host();
-    const created = await writer.sessions.create({ name: "Before" });
+    const { session: created } = await writer.sessions.start({ name: "Before", content: "Hi." });
     const directory = reader.sessions.watch()[Symbol.asyncIterator]();
     const views = reader.session(created.id).watch()[Symbol.asyncIterator]();
     await views.next();
@@ -385,10 +385,10 @@ describe("sqliteStore", () => {
 
     let viewed = await views.next();
 
-    while (viewed.done !== true && viewed.value.messages.length === 0) viewed = await views.next();
+    while (viewed.done !== true && viewed.value.messages.length < 2) viewed = await views.next();
 
     assert(listed.done !== true && viewed.done !== true);
-    expect(viewed.value.messages[0]).toMatchObject({ kind: "user", content: "From the writer." });
+    expect(viewed.value.messages[1]).toMatchObject({ kind: "user", content: "From the writer." });
     await directory.return?.();
     await views.return?.();
   });

@@ -11,7 +11,6 @@ import type {
   Paged,
   ParentFilter,
   PrincipalId,
-  RefUpdate,
   RemoveSessionOutcome,
   Revision,
   RunId,
@@ -156,8 +155,6 @@ export function activationSession(
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   return {
     watch: (input) => watchSessions(kernel, context.principal, input),
-    create: async (input) =>
-      sessionHandle(kernel, context, await create(kernel, context, input ?? {})),
     async start(input) {
       const id = await start(kernel, context, input);
 
@@ -330,88 +327,6 @@ export function watchSessions(
       },
     };
   });
-}
-
-async function create(
-  kernel: Kernel,
-  context: ConnectionContext,
-  input: NonNullable<Parameters<Sessions["create"]>[0]>,
-): Promise<SessionId> {
-  const origin = context.origin;
-  const minted = input.id ?? asId<"session">(crypto.randomUUID());
-
-  const acquired =
-    origin === null || origin.call === null
-      ? minted
-      : await recordAcquisition(
-          kernel,
-          { session: origin.session, call: origin.call },
-          input.id ?? `acq:${origin.sequence.next()}`,
-          minted,
-        );
-
-  const id = typeof acquired === "string" ? asId<"session">(acquired) : minted;
-
-  if ((await readSession(kernel.store, id)) !== null) return id;
-  const parent =
-    input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
-  const workspace =
-    input.workspace ?? parent?.record.workspace ?? kernel.host.current().defaultWorkspace;
-
-  if (workspace === null)
-    throw new SdkError("unknown", "No workspace was named and the host has none by default.");
-
-  if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
-    throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);
-
-  const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
-  const at = Date.now();
-
-  const record: SessionRecord = {
-    id,
-    name: input.name ?? null,
-    parent: input.parent ?? null,
-    origin:
-      origin === null || origin.run === null || origin.head === null
-        ? null
-        : { run: origin.run, head: origin.head, call: origin.call },
-    workspace,
-    pinned: false,
-    archived: false,
-    createdAt: at,
-    lastActivityAt: at,
-    heads: [{ name: MAIN, stack: null, selected, lastRun: null }],
-    prompt: input.prompt ?? null,
-  };
-
-  const target = await put(kernel.store, "session", record, at);
-  const fallback = selected === null ? await defaults(kernel, id) : null;
-  const effective = selected ?? (fallback?.kind === "exact" ? fallback : null);
-
-  const configured: readonly RefUpdate[] =
-    effective === null
-      ? []
-      : [
-          {
-            name: sessionRef(id),
-            target,
-            events: [{ head: MAIN, kind: "configured", selected, effective }],
-          },
-        ];
-
-  const outcome = await commit(kernel, [
-    {
-      name: sessionRef(id),
-      target,
-      expect: "absent",
-      events: [await sessionEvent(kernel, record)],
-    },
-    ...configured,
-  ]);
-
-  if (outcome.kind === "set") await Promise.allSettled([kernel.plugins.runtime(id).ready]);
-
-  return id;
 }
 
 /** Starts the chat `input` describes: one commit stores the session with its first message deciding, then before_send releases it. A replay under the same id and input returns the same chat. */

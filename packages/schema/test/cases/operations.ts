@@ -152,19 +152,6 @@ export const operations = {
     [sessionInfo],
     [{ id: session }],
   ),
-  "sessions.create input": operation(
-    OPERATIONS["sessions.create"].input,
-    {
-      id: session,
-      name: "Parser",
-      workspace,
-      parent: session,
-      configuration: { thinking: "high" },
-      prompt: { kind: "layer", text: "Be brief.", order: 2 },
-    },
-    { prompt: { kind: "append", text: "x" } },
-  ),
-  "sessions.create output": operation(OPERATIONS["sessions.create"].output, sessionInput, {}),
   "sessions.start input": operation(
     OPERATIONS["sessions.start"].input,
     {

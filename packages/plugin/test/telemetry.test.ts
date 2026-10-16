@@ -25,7 +25,7 @@ it("exports nothing while the endpoint is empty, then one span per request to th
   try {
     const fake = fakeModels();
     await using host = await open(fake, [telemetry]);
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     fake.reply({ content: [{ type: "text", text: "One." }] });
     await (await session.send("Hi.")).settled();

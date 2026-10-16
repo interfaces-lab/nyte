@@ -102,7 +102,7 @@ describe("models", () => {
       input: ["text", "image"],
       cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const runtime = host.kernel.plugins.runtime(session.id);
     await runtime.ready;
 
@@ -134,7 +134,7 @@ describe("models", () => {
   it("moves the catalog generation when a response changes a provider's account limits", async () => {
     const fake = catalog();
     await using host = await open(fake);
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const messages = [{ role: "user" as const, content: "Hi.", timestamp: 0 }];
     const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 };
     const generation = () => host.kernel.host.current().catalog;
@@ -184,7 +184,7 @@ describe("models", () => {
     expect(host.kernel.host.current().catalog).not.toBe(before);
     expect((await host.models.list()).default).toEqual(smart);
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     expect(
       await host.kernel.resolveConfiguration({
@@ -503,7 +503,7 @@ describe("resolveConfiguration", () => {
   it("resolves patches field by field and checks exact configurations", async () => {
     const fake = catalog();
     await using host = await open(fake, { plugins: [extras] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const resolve = (
       patch: Configuration | Parameters<typeof host.kernel.resolveConfiguration>[0]["patch"],
@@ -599,7 +599,7 @@ describe("request", () => {
     };
 
     await using host = await open(fake, { plugins: [watcher] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const output = standard(Type.Object({ title: Type.String() }));
     const events: string[] = [];
 

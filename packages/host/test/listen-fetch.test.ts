@@ -85,8 +85,7 @@ describe("listenFetch", () => {
     );
 
     cleanups.push(() => listener.close());
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
 
     expect(covered).toEqual([]);
     expect(dispatched).toEqual([session.id]);

@@ -34,7 +34,7 @@ describe("tool changes", () => {
       snapshots: scripted(taken),
     });
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
 
     await call(kernel, { session: session.id, run, call: "e1", name: "edit", args: { text: "x" } });
@@ -111,7 +111,7 @@ describe("tool changes", () => {
 
     const a = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("a.ts") });
     const b = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("b.ts") });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "Hi." });
     const run = await liveRun(a.kernel, session.id);
     const args = { text: "x" };
 
@@ -152,7 +152,7 @@ describe("tool changes", () => {
 
     const a = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("a.ts") });
     const b = await setup({ store, plugins: [toolPlugin([edit])], snapshots: touching("b.ts") });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "Hi." });
     const side = asId<"head">("side");
     await session.heads.create(side);
     const first = await liveRun(a.kernel, session.id);

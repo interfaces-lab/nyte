@@ -11,7 +11,7 @@ describe("head revisions across instances", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, poll: 10, execution: { kind: "admit-only" } });
     const b = await setup({ store, poll: 10, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "Hi." });
     const hold = a.kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
     const sent = await session.send("From A.");

@@ -44,8 +44,7 @@ describe("owed calls", () => {
     );
 
     const stopped = await open(fake, { store: crashing, plugins: [recorder().plugin] });
-    const session = await stopped.sessions.create();
-    await session.send("Go.");
+    const { session } = await stopped.sessions.start({ content: "Go." });
     await until(() => (crashed ? true : undefined));
     await stopped.close();
     await expireLease(backing, session.id, main);

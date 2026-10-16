@@ -9,7 +9,7 @@ import { main, setup } from "../src/harness.ts";
 it("keeps the revision and log for unchanged session updates, and publishes changed fields", async () => {
   const store = memoryStore();
   await using host = await open(fakeModels(), { store });
-  const session = await host.sessions.create({ name: "SQLite review" });
+  const { session } = await host.sessions.start({ name: "SQLite review", content: "Hi." });
   const connection = await store.open();
   const before = await connection.refs.get(sessionRef(session.id));
   const tail = await connection.refs.tail(session.id);
@@ -34,7 +34,7 @@ it("updates directory rows from another host while keeping unread state specific
   const writer = await setup({ store });
   const reader = await setup({ store, poll: 5 });
   const unpoll = pollStore(reader.kernel);
-  const session = await writer.host.sessions.create({ name: "Shared" });
+  const { session } = await writer.host.sessions.start({ name: "Shared", content: "Hi." });
   const local = watchSessions(reader.kernel, asId("local"))[Symbol.asyncIterator]();
   const other = watchSessions(reader.kernel, asId("other"))[Symbol.asyncIterator]();
 
@@ -60,7 +60,10 @@ it("updates directory rows from another host while keeping unread state specific
     ]);
     expect((await read).value).toMatchObject([{ heads: [{ unread: false }] }]);
     expect(await store.refs.get(sessionRef(session.id))).toEqual(root);
-    const newSession = await writer.host.sessions.create({ name: "Second" });
+    const { session: newSession } = await writer.host.sessions.start({
+      name: "Second",
+      content: "Hi.",
+    });
     const changed = await other.next();
     assert(!changed.done);
     expect(changed.value.find((row) => row.id === session.id)?.heads[0]?.unread).toBe(true);

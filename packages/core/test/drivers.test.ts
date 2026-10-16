@@ -84,13 +84,13 @@ function deferred(): {
 describe("coverage (§42a, §42t)", () => {
   it("counts a cover's sessions as covered on an admit-only kernel until it closes", async () => {
     const { kernel, host } = await setup({ execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const notified: string[] = [];
     kernel.wakes.subscribe((woken, head) => notified.push(`${woken}/${head}`));
     const owned = await host.execution.cover({ kind: "sessions", sessions: [session.id] });
     await session.send("One.");
 
-    expect((await session.view()).messages[0]).toMatchObject({
+    expect((await session.view()).messages[1]).toMatchObject({
       status: { kind: "pending", covered: true },
     });
     expect(notified).toEqual([`${session.id}/${main}`]);
@@ -98,7 +98,7 @@ describe("coverage (§42a, §42t)", () => {
     await owned.close();
     await session.send("Two.", { delivery: "queue" });
 
-    expect((await session.view()).messages[1]).toMatchObject({
+    expect((await session.view()).messages[2]).toMatchObject({
       status: { kind: "pending", covered: false },
     });
     expect(notified).toHaveLength(1);
@@ -106,17 +106,17 @@ describe("coverage (§42a, §42t)", () => {
 
   it("covers the named sessions and their descendants (§42ac)", async () => {
     const { host } = await setup({ execution: { kind: "admit-only" } });
-    const parent = await host.sessions.create();
-    const child = await host.sessions.create({ parent: parent.id });
-    const unrelated = await host.sessions.create();
+    const { session: parent } = await host.sessions.start({ content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: parent.id, content: "Hi." });
+    const { session: unrelated } = await host.sessions.start({ content: "Hi." });
     const owned = await host.execution.cover({ kind: "sessions", sessions: [parent.id] });
     await parent.send("Parent.");
     await child.send("Child.");
     await unrelated.send("Unrelated.");
 
-    expect((await parent.view()).messages[0]).toMatchObject({ status: { covered: true } });
-    expect((await child.view()).messages[0]).toMatchObject({ status: { covered: true } });
-    expect((await unrelated.view()).messages[0]).toMatchObject({ status: { covered: false } });
+    expect((await parent.view()).messages[1]).toMatchObject({ status: { covered: true } });
+    expect((await child.view()).messages[1]).toMatchObject({ status: { covered: true } });
+    expect((await unrelated.view()).messages[1]).toMatchObject({ status: { covered: false } });
     await owned.close();
   });
 
@@ -140,7 +140,7 @@ describe("coverage (§42a, §42t)", () => {
     );
 
     const seed = await open(fake, { store, execution: { kind: "admit-only" } });
-    const created = await seed.sessions.create();
+    const { session: created } = await seed.sessions.start({ content: "Delegate it." });
     await seed.close();
 
     const host = await open(fake, {
@@ -148,7 +148,7 @@ describe("coverage (§42a, §42t)", () => {
       execution: { kind: "run", coverage: { kind: "sessions", sessions: [created.id] } },
     });
 
-    const receipt = await host.session(created.id).send("Delegate it.");
+    const receipt = host.session(created.id).receipt(asId<"receipt">(created.id));
 
     expect(await receipt.settled()).toMatchObject({ kind: "completed" });
     expect(fake.requests).toHaveLength(3);
@@ -165,7 +165,7 @@ describe("coverage (§42a, §42t)", () => {
     const store = await memoryStore().open();
     const x = await setup({ store, execution: { kind: "admit-only" } });
     const y = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await x.host.sessions.create();
+    const { session } = await x.host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     await session.send("Go.");
     const owned = await x.host.execution.cover({ kind: "sessions", sessions: [session.id] });
@@ -194,8 +194,8 @@ describe("coverage (§42a, §42t)", () => {
   it("claims no lease and reads only the named sessions' calls when it covers", async () => {
     const recorded = counting(await memoryStore().open());
     const { host } = await setup({ store: recorded.store, execution: { kind: "admit-only" } });
-    const covered = await host.sessions.create();
-    await host.sessions.create();
+    const { session: covered } = await host.sessions.start({ content: "Hi." });
+    await host.sessions.start({ content: "Hi." });
     recorded.lists.length = 0;
     recorded.sets.length = 0;
     const owned = await host.execution.cover({ kind: "sessions", sessions: [covered.id] });
@@ -209,7 +209,7 @@ describe("coverage (§42a, §42t)", () => {
     const store = await memoryStore().open();
     const x = await setup({ store, execution: { kind: "admit-only" } });
     const y = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await x.host.sessions.create();
+    const { session } = await x.host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     await session.send("Go.");
     const first = x.host.execution.advance(head);
@@ -235,8 +235,8 @@ describe("coverage (§42a, §42t)", () => {
     const store = await memoryStore().open();
     const x = await setup({ store, execution: { kind: "admit-only" } });
     const y = await setup({ store, execution: { kind: "admit-only" } });
-    const first = await x.host.sessions.create();
-    const second = await x.host.sessions.create();
+    const { session: first } = await x.host.sessions.start({ content: "Hi." });
+    const { session: second } = await x.host.sessions.start({ content: "Hi." });
     await first.send("One.");
     await first.send("Two.", { delivery: "queue" });
     const other = await x.host.execution.cover({ kind: "sessions", sessions: [second.id] });
@@ -261,7 +261,7 @@ describe("coverage (§42a, §42t)", () => {
 
   it("holds no lease for a head parked on a wait (§42y)", async () => {
     const { kernel, host } = await setup({ execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const owned = await host.execution.cover({ kind: "all" });
 
     const run = await startRun(
@@ -289,8 +289,7 @@ describe("coverage (§42a, §42t)", () => {
   it("re-steps a head busy under a crashed process's lease once it expires, without new input (§42y)", async () => {
     const store = await memoryStore().open();
     const crashed = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await crashed.host.sessions.create();
-    await session.send("Go.");
+    const { session } = await crashed.host.sessions.start({ content: "Go." });
     void crashed.host.execution.advance({ session: session.id, head: main });
     await crashed.script.started(1);
     const expiresAt = Date.now() + 300;
@@ -319,7 +318,7 @@ describe("coverage (§42a, §42t)", () => {
 
   it("claims the lease when it advances a head, holds it through the turn and releases it on idle", async () => {
     const { kernel, host, script } = await setup({ execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const owned = await host.execution.cover({ kind: "all" });
     await session.send("Go.");
 
@@ -355,8 +354,7 @@ describe("dispatch (§42p, §42s)", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     await until(() => (calls.length === 1 ? true : undefined));
 
     expect((await session.view()).messages[0]).toMatchObject({
@@ -380,8 +378,7 @@ describe("dispatch (§42p, §42s)", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    await session.send("One.");
+    const { session } = await host.sessions.start({ content: "One." });
     await session.send("Two.");
     await until(() => (calls.length === 1 ? true : undefined));
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -409,8 +406,7 @@ describe("dispatch (§42p, §42s)", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     await until(() => (attempts === 2 ? true : undefined));
 
     expect(await host.execution.repair({ limit: 10 })).toEqual({
@@ -427,8 +423,7 @@ describe("dispatch (§42p, §42s)", () => {
       execution: { kind: "dispatch", dispatch: () => gate.promise },
     });
 
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
 
     expect(await coveredHere(kernel, session.id)).toBe(true);
     gate.resolve();
@@ -440,7 +435,7 @@ describe("poll (§42h, §42u)", () => {
     const store = await memoryStore().open();
     const writer = await setup({ store });
     const reader = await setup({ store, poll: 10 });
-    const session = await writer.host.sessions.create();
+    const { session } = await writer.host.sessions.start({ content: "Hi." });
     const views = reader.host.session(session.id).watch()[Symbol.asyncIterator]();
     await views.next();
     const unpoll = pollStore(reader.kernel);
@@ -470,8 +465,11 @@ describe("poll (§42h, §42u)", () => {
     const store = await memoryStore().open();
     const writer = await setup({ store });
     const reader = await setup({ store, poll: 10 });
-    const parent = await writer.host.sessions.create();
-    const child = await writer.host.sessions.create({ parent: parent.id });
+    const { session: parent } = await writer.host.sessions.start({ content: "Hi." });
+    const { session: child } = await writer.host.sessions.start({
+      parent: parent.id,
+      content: "Hi.",
+    });
 
     const run = await startRun(
       writer.kernel,
@@ -501,7 +499,7 @@ describe("poll (§42h, §42u)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, poll: 200, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "From B." });
     const unpoll = pollStore(a.kernel);
     const watch = a.host.session(session.id).head(main).watch()[Symbol.asyncIterator]();
     let shown = -1;
@@ -516,7 +514,6 @@ describe("poll (§42h, §42u)", () => {
     })();
 
     await until(() => (shown >= 0 ? true : undefined));
-    await b.host.session(session.id).send("From B.", { delivery: "queue" });
     await a.host.session(session.id).send("From A.", { delivery: "queue" });
     await until(() => (shown === 2 ? true : undefined), 3000);
 
@@ -540,8 +537,7 @@ describe("poll (§42h, §42u)", () => {
     const store = await memoryStore().open();
     const writer = await setup({ store });
     const driver = await setup({ store, poll: 10 });
-    const session = await writer.host.sessions.create();
-    await session.send("Go.");
+    const { session } = await writer.host.sessions.start({ content: "Go." });
     const unpoll = pollStore(driver.kernel);
     const step = driver.host.execution.advance({ session: session.id, head: main });
     const turn = await driver.script.started(1);

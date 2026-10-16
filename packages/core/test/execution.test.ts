@@ -13,14 +13,14 @@ import {
   sessionRef,
 } from "../src/store.ts";
 import type { StoreConnection } from "../src/index.ts";
-import { completed, expireLease, main, setup, until } from "../src/harness.ts";
+import { completed, expireLease, main, settledChat, setup, until } from "../src/harness.ts";
 
 describe("execution", () => {
   it("answers busy for a lease another host holds mid-turn and fenced once this host's lease is taken", async () => {
     const store = await memoryStore().open();
     const first = await setup({ store, hostId: asId("first") });
     const second = await setup({ store, hostId: asId("second") });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     const owned = await first.host.execution.cover({ kind: "all" });
 
@@ -91,9 +91,8 @@ describe("execution", () => {
     };
 
     const { host, script } = await setup({ store: failing });
-    const session = await host.sessions.create();
     const owned = await host.execution.cover({ kind: "all" });
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
 
@@ -109,7 +108,7 @@ describe("execution", () => {
     const store = await memoryStore().open();
     const first = await setup({ store });
     const second = await setup({ store });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
 
     expect(first.kernel.hostId).toBe(second.kernel.hostId);
@@ -134,7 +133,7 @@ describe("execution", () => {
 
   it("reports continue while a steer or queue input waits, then idle", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     await session.send("One.");
     await session.send("Two.", { delivery: "queue" });
@@ -153,9 +152,8 @@ describe("execution", () => {
 
   it("pages through heads owed a step that no wake reached", async () => {
     const { host, script } = await setup({ execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await host.sessions.create();
-    const receipt = await session.send("Go.");
+    await settledChat(host, script);
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
 
     expect((await session.view()).messages[0]).toMatchObject({
       status: { kind: "pending", covered: false },
@@ -170,7 +168,7 @@ describe("execution", () => {
     });
 
     const step = host.execution.advance({ session: session.id, head: main });
-    (await script.started(1)).finish();
+    (await script.started(2)).finish();
     await step;
 
     expect(await receipt.settled()).toEqual(completed);
@@ -179,9 +177,8 @@ describe("execution", () => {
 
   it("drives a queued input end to end in process", async () => {
     const { kernel, host, script } = await setup();
-    const session = await host.sessions.create();
+    const { session, receipt: first } = await host.sessions.start({ content: "Go." });
     const driver = driveInProcess(kernel, { kind: "all" });
-    const first = await session.send("Go.");
     const queued = await session.send("Then this.", { delivery: "queue" });
     (await script.started(1)).finish();
     (await script.started(2)).finish();
@@ -201,12 +198,12 @@ describe("execution", () => {
   it("recovers only the sessions and children a sessions coverage names when its driver starts", async () => {
     const store = await memoryStore().open();
     const admitting = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await admitting.host.sessions.create();
-    const child = await admitting.host.sessions.create({ parent: session.id });
-    const other = await admitting.host.sessions.create();
-    const first = await session.send("Go.");
-    const report = await child.send("Child.");
-    await other.send("Not here.");
+    const { session, receipt: first } = await admitting.host.sessions.start({ content: "Go." });
+    const { receipt: report } = await admitting.host.sessions.start({
+      parent: session.id,
+      content: "Child.",
+    });
+    const { session: other } = await admitting.host.sessions.start({ content: "Not here." });
     const listed: string[] = [];
 
     const counted: StoreConnection = {
@@ -248,10 +245,11 @@ describe("execution", () => {
   it("drives a session covered after open, its children and a child spawned under it", async () => {
     const store = await memoryStore().open();
     const admitting = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await admitting.host.sessions.create();
-    const child = await admitting.host.sessions.create({ parent: session.id });
-    const first = await session.send("Go.");
-    const report = await child.send("Child.");
+    const { session, receipt: first } = await admitting.host.sessions.start({ content: "Go." });
+    const { receipt: report } = await admitting.host.sessions.start({
+      parent: session.id,
+      content: "Child.",
+    });
     const coverage: ExecutionCoverage = { kind: "sessions", sessions: [] };
     const { kernel, host, script } = await setup({ store, execution: { kind: "run", coverage } });
     const driver = driveInProcess(kernel, coverage);
@@ -274,9 +272,12 @@ describe("execution", () => {
       () => [first.message, report.message].every((id) => started().includes(id)) || undefined,
     );
 
-    const spawned = await host.sessions.create({ parent: session.id });
+    const { receipt: spawned } = await host.sessions.start({
+      parent: session.id,
+      content: "Spawned.",
+    });
 
-    expect(await (await spawned.send("Spawned.")).settled()).toEqual(completed);
+    expect(await spawned.settled()).toEqual(completed);
     expect(await (await host.session(session.id).send("Again.")).settled()).toEqual(completed);
 
     clearInterval(finishing);
@@ -286,9 +287,8 @@ describe("execution", () => {
 
   it("inspects a session's refs, objects and log, and verifies them", async () => {
     const { kernel, host, script } = await setup();
-    const session = await host.sessions.create();
     const owned = await host.execution.cover({ kind: "all" });
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
     await step;
@@ -320,6 +320,7 @@ describe("execution", () => {
       "session",
       "configured",
       "input",
+      "input",
       "run",
       "input",
       "commit",
@@ -342,8 +343,7 @@ describe("execution", () => {
     const { kernel, host, script } = await setup();
     const driver = driveInProcess(kernel, { kind: "all" });
     await new Promise((resolve) => setTimeout(resolve, 20));
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     await script.started(1);
 
     expect(await kernel.store.refs.get(leaseRef(session.id, main))).not.toBeNull();
@@ -354,8 +354,8 @@ describe("execution", () => {
   });
 
   it("releases the lease of an advance run with no coverage open", async () => {
-    const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { kernel, host, script } = await setup();
+    const session = await settledChat(host, script);
 
     expect(await host.execution.advance({ session: session.id, head: main })).toEqual({
       kind: "idle",
@@ -366,8 +366,9 @@ describe("execution", () => {
   it("reads a commit back by its id on a fresh kernel, storing nothing again", async () => {
     const store = await memoryStore().open();
     const first = await setup({ store });
-    const session = await first.host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await first.host.sessions.start({
+      content: "Go.",
+    });
     const step = first.host.execution.advance({ session: session.id, head: main });
     (await first.script.started(1)).finish();
     await step;

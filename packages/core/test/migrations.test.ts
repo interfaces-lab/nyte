@@ -15,7 +15,7 @@ import { configuration, main, setup, startRun } from "../src/harness.ts";
 
 it("gives an older store's unstopped runs their live ref and its parked calls their wait index", async () => {
   const { kernel, host } = await setup();
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const run = await startRun(
     kernel,
@@ -106,7 +106,7 @@ async function landChange(kernel: Kernel, change: StoreChange): Promise<"committ
 
 it("moves a tool call's name and args to its part alone, which recovery then replays", async () => {
   const { kernel, host } = await setup();
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const run = await startRun(
     kernel,
@@ -193,7 +193,7 @@ it("moves a tool call's name and args to its part alone, which recovery then rep
 
 it("gives an older Nyte's unopened tool call position 0, so recovery still owes it", async () => {
   const { kernel, host } = await setup();
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const run = await startRun(
     kernel,
@@ -236,7 +236,7 @@ it("gives an older Nyte's unopened tool call position 0, so recovery still owes 
 
 it("indexes as woken a call an older Nyte woke and had not stepped since", async () => {
   const { kernel, host } = await setup();
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const soon = Date.now() + 1;
 
   for (const call of ["woken", "parked"])
@@ -278,7 +278,7 @@ it("indexes as woken a call an older Nyte woke and had not stepped since", async
 
 it("keeps a before_tool hook call's principal and changed args alone, which its replay still reads", async () => {
   const { kernel, host } = await setup();
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const call = asId<"call">("hook:before_tool:toolu_01");
   const proposed = {
     call: asId<"call">("toolu_01"),

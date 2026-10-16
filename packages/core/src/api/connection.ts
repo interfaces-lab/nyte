@@ -120,7 +120,6 @@ export function createConnection(
     credential: context.credential,
     sessions: {
       watch: (input) => track(sessions.watch(input)),
-      create: async (input) => session(await sessions.create(input)),
       async start(input) {
         const started = await sessions.start(input);
 

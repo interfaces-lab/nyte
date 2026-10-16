@@ -125,8 +125,8 @@ it("routes web_search by its declared host setting, read through settings.value 
 
   await using host = await open(fake, [webSearch]);
   expect(await host.settings.apply("web_search.provider", "tavily")).toEqual({ kind: "applied" });
-  const session = await host.sessions.create();
-  await (await session.send("Search.")).settled();
+  const { session, receipt: started } = await host.sessions.start({ content: "Search." });
+  await started.settled();
 
   const call = (await session.view()).messages.find((message) => isPart(message, tool));
 

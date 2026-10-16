@@ -46,7 +46,7 @@ describe("revoke fence", () => {
     });
 
     try {
-      const session = await host.sessions.create();
+      const { session } = await host.sessions.start({ content: "Hi." });
       const { code } = await host.principals.pair({ authority: new Set(["participant"]) });
       const device = await host.server.redeem(code);
       assert(device !== null);
@@ -74,9 +74,11 @@ describe("revoke fence", () => {
 
       expect([first.status, second.status]).toEqual([401, 401]);
       expect(await host.principals.list()).toEqual([]);
-      expect((await session.view()).messages.filter((message) => message.kind === "user")).toEqual(
-        [],
-      );
+      expect(
+        (await session.view()).messages.filter(
+          (message) => message.kind === "user" && message.content === "after revoke",
+        ),
+      ).toEqual([]);
     } finally {
       await listener.close();
       await host.close();

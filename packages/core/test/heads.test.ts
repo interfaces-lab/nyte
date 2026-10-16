@@ -20,6 +20,10 @@ async function exchange(
   content: string,
 ): Promise<void> {
   await head.send(content);
+  await advanced(host, turns, head);
+}
+
+async function advanced(host: Omit<Host, "listen">, turns: Script, head: Head): Promise<void> {
   const count = turns.turns.length + 1;
   const step = host.execution.advance({ session: head.sessionId, head: head.name });
   (await turns.started(count)).finish();
@@ -78,7 +82,7 @@ describe("heads", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: raw, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "Hi." });
     await land(a.kernel, session.id, "A");
     const hold = a.kernel.folds.acquire(session.id, LOCAL);
 
@@ -98,8 +102,8 @@ describe("heads", () => {
 
   it("creates, merges and removes heads with each outcome", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    await exchange(host, script, session, "One.");
+    const { session } = await host.sessions.start({ content: "One." });
+    await advanced(host, script, session);
     const tip = (await session.info()).heads[0]?.tip;
     assert(tip !== undefined);
 
@@ -150,8 +154,8 @@ describe("heads", () => {
 
   it("projects every branch as rows, parents first, with the head's path active", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    await exchange(host, script, session, "One.");
+    const { session } = await host.sessions.start({ content: "One." });
+    await advanced(host, script, session);
     await exchange(host, script, session, "Two.");
     const two = (await session.view()).messages[1];
     assert(two !== undefined);
@@ -186,8 +190,8 @@ describe("heads", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    await exchange(host, script, session, "One.");
+    const { session } = await host.sessions.start({ content: "One." });
+    await advanced(host, script, session);
     await exchange(host, script, session, "Two.");
     const before = await session.tree();
     const [one, two] = before.nodes;
@@ -259,8 +263,7 @@ describe("heads", () => {
   it("moves with `running: stop` in one set, the fence then the head move, without waiting", async () => {
     const recorder = recording(await memoryStore().open());
     const { kernel, host, script } = await setup({ store: recorder.store });
-    const session = await host.sessions.create();
-    await session.send("One.");
+    const { session } = await host.sessions.start({ content: "One." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const before = await kernel.store.refs.tail(session.id);

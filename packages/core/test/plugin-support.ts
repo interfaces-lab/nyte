@@ -117,7 +117,7 @@ export async function loaded(
 ) {
   const built = await setup(options);
   built.kernel.plugins.host = plugins;
-  const session = await built.host.sessions.create();
+  const { session } = await built.host.sessions.start({ content: "Hi." });
 
   return { ...built, session, runtime: built.kernel.plugins.runtime(session.id) };
 }

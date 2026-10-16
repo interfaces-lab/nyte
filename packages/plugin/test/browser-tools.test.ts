@@ -94,8 +94,8 @@ it("drives the workspace browser: open, click, type, console and evaluate", asyn
   );
 
   await using host = await open(fake, [browserTools], { browser });
-  const session = await host.sessions.create();
-  await (await session.send("Browse.")).settled();
+  const { session, receipt: started } = await host.sessions.start({ content: "Browse." });
+  await started.settled();
 
   expect(calls).toEqual([
     "open https://nyte.test",

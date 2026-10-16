@@ -49,8 +49,9 @@ describe("delegation", () => {
     );
 
     await using host = await open(fake);
-    const parent = await host.sessions.create();
-    const receipt = await parent.send("Delegate it.");
+    const { session: parent, receipt } = await host.sessions.start({
+      content: "Delegate it.",
+    });
 
     await until(async () => {
       const execution = (await parent.view()).execution;
@@ -102,7 +103,7 @@ describe("delegation", () => {
     });
 
     await using host = await open(fake);
-    const parent = await host.sessions.create();
+    const parent = asId<"session">("parent");
     let child = "";
 
     const parentScript: readonly ((request: Request) => Reply)[] = [
@@ -147,17 +148,17 @@ describe("delegation", () => {
     let childTurn = 0;
 
     const dispatch = (request: Request): Reply => {
-      const script = request.options?.sessionId === parent.id ? parentScript : childScript;
+      const script = request.options?.sessionId === parent ? parentScript : childScript;
       const index = script === parentScript ? parentTurn++ : childTurn++;
 
       return script[index]?.(request) ?? { error: "Nothing more was scripted." };
     };
 
     fake.reply(dispatch, dispatch, dispatch, dispatch, dispatch, dispatch);
-    const receipt = await parent.send("Get it counted.");
+    const { receipt } = await host.sessions.start({ id: parent, content: "Get it counted." });
 
     await until(async () => {
-      const execution = (await parent.view()).execution;
+      const execution = (await host.session(parent).view()).execution;
 
       return execution.kind === "waiting" ? true : undefined;
     });
@@ -165,7 +166,7 @@ describe("delegation", () => {
     release();
     expect(await receipt.settled()).toMatchObject({ kind: "completed" });
 
-    const messages = (await parent.view()).messages;
+    const messages = (await host.session(parent).view()).messages;
 
     expect(settledCall(messages, "call-send").outcome).toMatchObject({
       kind: "ok",
@@ -186,11 +187,18 @@ describe("delegation", () => {
 
   it("reads a child's conversation with read_agent", async () => {
     const fake = fakeModels();
-    fake.reply({ content: [{ type: "text", text: "Hi from the child." }] });
+    fake.reply(
+      { content: [{ type: "text", text: "Ready." }] },
+      { content: [{ type: "text", text: "Hi from the child." }] },
+    );
     await using host = await open(fake);
-    const parent = await host.sessions.create();
-    const child = await host.sessions.create({ parent: parent.id });
-    await (await child.send("Hello child.")).settled();
+    const { session: parent, receipt: ready } = await host.sessions.start({ content: "Hi." });
+    await ready.settled();
+    const { session: child, receipt: started } = await host.sessions.start({
+      parent: parent.id,
+      content: "Hello child.",
+    });
+    await started.settled();
 
     fake.reply(
       {
@@ -208,7 +216,7 @@ describe("delegation", () => {
 
     await (await parent.send("What did it say?")).settled();
 
-    expect(lastResult(fake.requests[2])).toBe(
+    expect(lastResult(fake.requests[3])).toBe(
       `Subagent ${child.id} is idle.\n\nUser: Hello child.\n\nAssistant: Hi from the child.`,
     );
   });
@@ -216,8 +224,9 @@ describe("delegation", () => {
   it("fails a call naming a session that is not its child", async () => {
     const fake = fakeModels();
     await using host = await open(fake);
-    const parent = await host.sessions.create();
-    const stranger = await host.sessions.create();
+    fake.reply({ content: [{ type: "text", text: "Hello." }] });
+    const { session: stranger, receipt: greeted } = await host.sessions.start({ content: "Hi." });
+    await greeted.settled();
 
     fake.reply(
       {
@@ -233,7 +242,8 @@ describe("delegation", () => {
       { content: [{ type: "text", text: "Could not." }] },
     );
 
-    await (await parent.send("Read it.")).settled();
+    const { session: parent, receipt: read } = await host.sessions.start({ content: "Read it." });
+    await read.settled();
     const state = settledCall((await parent.view()).messages, "call-read");
 
     expect(state.outcome).toEqual({
@@ -244,14 +254,18 @@ describe("delegation", () => {
 
   it("stops a child's live run with stop", async () => {
     const fake = fakeModels();
-    fake.reply({ content: [{ type: "text", text: "Working on it forever" }], hold: true });
+    fake.reply({ content: [{ type: "text", text: "Ready." }] });
     await using host = await open(fake);
-    const parent = await host.sessions.create();
-    const child = await host.sessions.create({ parent: parent.id });
-    const working = await child.send("Work.");
+    const { session: parent, receipt: ready } = await host.sessions.start({ content: "Hi." });
+    await ready.settled();
+    fake.reply({ content: [{ type: "text", text: "Working on it forever" }], hold: true });
+    const { session: child, receipt: working } = await host.sessions.start({
+      parent: parent.id,
+      content: "Work.",
+    });
 
     await until(async () =>
-      (await child.view()).execution.kind === "live" && fake.requests.length === 1
+      (await child.view()).execution.kind === "live" && fake.requests.length === 2
         ? true
         : undefined,
     );
@@ -268,7 +282,7 @@ describe("delegation", () => {
     await (await parent.send("Stop the child.")).settled();
 
     expect(await working.settled()).toEqual({ kind: "stopped" });
-    expect(lastResult(fake.requests[2])).toBe(
+    expect(lastResult(fake.requests[3])).toBe(
       `Stopped 1 run of subagent ${child.id} and withdrew 0 pending messages.`,
     );
     expect(settledCall((await parent.view()).messages, "call-stop").class).toEqual({

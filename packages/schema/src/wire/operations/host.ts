@@ -27,7 +27,7 @@ import {
   WorkspaceInspectionSchema,
   WorkspaceTargetType,
 } from "../../workspaces.ts";
-import { BYTES, NOTHING, ON_SESSION, SESSION, wireObject, wireSchema } from "./fields.ts";
+import { BYTES, NOTHING, SESSION, wireObject, wireSchema } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
 
 const PARTICIPANT = { authority: "participant", scope: "host" } as const;
@@ -196,20 +196,6 @@ export const HOST_OPERATIONS = {
       limit: Type.Optional(Type.Number()),
     }),
     output: wireSchema(Type.Array(SessionInfoType)),
-  },
-  "sessions.create": {
-    ...PARTICIPANT,
-    kind: "command",
-    recovery: "replay",
-    input: wireObject({
-      id: Type.Optional(idSchema<"session">()),
-      name: Type.Optional(Type.String()),
-      workspace: Type.Optional(idSchema<"workspace">()),
-      parent: Type.Optional(idSchema<"session">()),
-      configuration: Type.Optional(Type.Union([ConfigurationType, ConfigurationPatchType])),
-      prompt: Type.Optional(PromptOverrideType),
-    }),
-    output: ON_SESSION,
   },
   "sessions.start": {
     ...PARTICIPANT,

@@ -106,19 +106,23 @@ export async function readProviderUsage(connection: Connection, provider: string
 }
 
 /**
+ * A chat starts with its first message: `sessions.start` creates the session
+ * and admits that message in one commit, so no session exists without one.
+ * Until then the chat is the client's draft, stored and synced nowhere.
+ * `id` keys the draft and makes the start idempotent: the same id and input
+ * return the same start. The receipt and the first message share that id.
+ * Start resolves once the session's before_send hooks decided the message;
+ * a refusal removes the session and throws.
+ *
  * A Session extends the main Head and adds management, heads, runs,
  * receipts and parts. Directory rows use `id`; handles use `id` and
- * `sessionId`. A head name is branded at the boundary.
- *
- * Configure takes a ConfigurationPatch. A send can pin its own exact
+ * `sessionId`. A head name is branded at the boundary. Configure takes a
+ * ConfigurationPatch, and a start or send can pin its own exact
  * Configuration. `thinking` names effort, and `agent` selects a declared
- * agent. No parallel messages, runs or heads namespaces exist on Connection.
+ * agent. Sessions, heads, runs and messages hang off one Connection tree.
  */
-export async function startSession(connection: Connection, name: string): Promise<Session> {
-  const session = await connection.sessions.create({ name });
-  await session.send("Explain the current change.", { delivery: "queue" });
-
-  return session;
+export async function startSession(connection: Connection, name: string) {
+  return connection.sessions.start({ name, content: "Explain the current change." });
 }
 
 /**
@@ -414,7 +418,9 @@ export const referencePlugin = {
  * Client plugins declare renderers for a part kind and framework, palette
  * commands, settings and keybindings. api.session is the one on screen,
  * or null. App lifecycle hooks and before_submit belong to the client side;
- * core hooks and environment access cannot be used by a client plugin.
+ * before_submit sees `session: null` for a draft that starts a chat, and
+ * session_opened fires once a started chat is open. Core hooks and
+ * environment access cannot be used by a client plugin.
  */
 export const noteRenderer: Renderer<typeof note, string> = {
   kind: note,

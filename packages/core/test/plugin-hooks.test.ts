@@ -226,7 +226,8 @@ describe("hooks", () => {
       {
         id: "consent",
         hooks: {
-          before_send: async (_submission, context) => {
+          before_send: async (submission, context) => {
+            if (submission.content !== "hello") return { action: "continue" };
             const part = await context.api.session.parts.create(approve, {
               state: { tool: "send" },
               placement: { kind: "modal" },

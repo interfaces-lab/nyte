@@ -113,7 +113,7 @@ describe("plugin reload (D4)", () => {
     );
 
     await using host = await open(fake, { plugins: [v1] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const before = host.kernel.plugins.runtime(session.id).ready;
 
     replace = async () => {
@@ -157,7 +157,7 @@ describe("plugin reload (D4)", () => {
       },
     ];
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const old = kernel.plugins.runtime(session.id);
     const reloaded = kernel.plugins.reload(session.id);
 
@@ -175,7 +175,7 @@ describe("plugin reload (D4)", () => {
 
   it("3.4 / E E4 (P3): a session replace on an instance that never activated the session reports what HostView shows", async () => {
     const first = await setup();
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const other = await setup({ store: first.kernel.store });
 
     expect(other.kernel.plugins.runtimes().size).toBe(0);
@@ -200,7 +200,7 @@ describe("plugin reload (D4)", () => {
     const { kernel, host } = await controlled(async () => env);
 
     kernel.plugins.host = [{ id: "kept" }];
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     await kernel.plugins.runtime(session.id).ready;
     const unreadable = Promise.reject(new Error("The scan failed."));
     unreadable.catch(() => undefined);
@@ -226,7 +226,7 @@ describe("plugin reload (D4)", () => {
 
   it("E E5 (P5): a host-wide replace resolves when another instance removed a session this one holds a runtime for", async () => {
     const first = await setup();
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const other = await setup({ store: first.kernel.store });
 
     expect(await other.host.session(session.id).remove()).toEqual({ kind: "removed" });
@@ -240,13 +240,21 @@ describe("plugin reload (D4)", () => {
   it("E E7 (runtime side) + D D13: a failed attach rejects ready with its own error and shows failed; no plugin activates on a null env", async () => {
     const reads: unknown[] = [];
 
+    let failing = false;
+
     const { kernel, host } = await controlled(async () => {
-      throw new Error("The disk is gone.");
+      if (failing) throw new Error("The disk is gone.");
+
+      return env;
     });
 
     kernel.plugins.host = [{ id: "reader", activate: (api) => void reads.push(api.env) }];
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
+    failing = true;
+    reads.splice(0);
+    await kernel.environments.detach(session.id);
+    await Promise.allSettled([kernel.plugins.reload(session.id)]);
 
     await expect(kernel.plugins.runtime(session.id).ready).rejects.toThrow("The disk is gone.");
     expect((await session.info()).activation).toEqual({
@@ -278,7 +286,10 @@ describe("plugin reload (D4)", () => {
       ],
     });
 
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
     const old = fixture.kernel.plugins.runtime(session.id);
     await fixture.kernel.plugins.reload(session.id);
 
@@ -314,7 +325,10 @@ describe("plugin reload (D4)", () => {
       ],
     });
 
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
     const old = fixture.kernel.plugins.runtime(session.id);
 
     const running = old.hooks.transform(
@@ -339,7 +353,10 @@ describe("plugin reload (D4)", () => {
   it("audit 2 (same-object-preflight): replacing with the running version twice keeps it running, kept-previous", async () => {
     const previous: Plugin<"core"> = { id: "same" };
     const fixture = await world({ plugins: [previous] });
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
 
     const report = await fixture.host.plugins.replace([previous, previous], {
       session: session.id,
@@ -374,7 +391,10 @@ describe("plugin reload (D4)", () => {
     };
 
     const fixture = await world({ plugins: [previous] });
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
     await until(() => (counts.length === 2 ? true : undefined));
 
     const report = await fixture.host.plugins.replace([{ id: "retained" }, { id: "retained" }], {
@@ -400,7 +420,10 @@ describe("plugin reload (D4)", () => {
 
   it("audit 4 (host-replace-failed-session): an existing session whose activation fails rejects the replacement's plugins with its failure", async () => {
     const fixture = await world();
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
     await fixture.kernel.environments.detach(session.id);
     fixture.provider.failure = "Offline now.";
 

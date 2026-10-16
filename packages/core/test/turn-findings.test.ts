@@ -70,14 +70,15 @@ describe("turn findings (CORE-DIET D3)", () => {
     );
 
     await using host = await open(fake, { plugins: [slow] });
-    const session = await host.sessions.create();
+    const id = asId<"session">("chat");
 
     reload = () => {
-      void host.kernel.plugins.reload(session.id);
+      void host.kernel.plugins.reload(id);
       setTimeout(() => gate.resolve(), 20);
     };
 
-    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+    const { receipt: first } = await host.sessions.start({ id, content: "Go." });
+    expect((await first.settled()).kind).toBe("completed");
     expect(seen).toEqual(["before_request:1", "before_request:2"]);
 
     const system = fake.requests[1].context.messages[0];
@@ -99,7 +100,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     };
 
     await using host = await open(fake);
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     await host.kernel.plugins.runtime(session.id).ready;
     const given = createPluginRuntime(host.kernel, session.id, null);
     await given.ready;
@@ -141,8 +142,8 @@ describe("turn findings (CORE-DIET D3)", () => {
     );
 
     await using host = await open(fake, { plugins: [failing] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     const end = await (await session.send("Second?")).settled();
 
     expect(end).toMatchObject({ kind: "failed", failure: { class: "runner" } });
@@ -208,11 +209,12 @@ describe("turn findings (CORE-DIET D3)", () => {
     };
 
     await using host = await open(fake, { store, plugins: [observer] });
-    const session = await host.sessions.create();
-    const logged = events(host.kernel, session.id);
-    stop = (run) => session.run(run).stop();
+    const id = asId<"session">("chat");
+    const logged = events(host.kernel, id);
+    stop = (run) => host.session(id).run(run).stop();
 
-    expect(await (await session.send("Go.")).settled()).toEqual({ kind: "stopped" });
+    const { session, receipt: first } = await host.sessions.start({ id, content: "Go." });
+    expect(await first.settled()).toEqual({ kind: "stopped" });
 
     const run = landedRun((await session.view()).messages);
 
@@ -269,8 +271,8 @@ describe("turn findings (CORE-DIET D3)", () => {
     );
 
     await using host = await open(fake, { plugins: [material] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     const logged = events(host.kernel, session.id);
     const receipt = await session.send("Second?");
 
@@ -321,8 +323,8 @@ describe("turn findings (CORE-DIET D3)", () => {
     );
 
     await using host = await open(fake, { plugins: [observer] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     observed.length = 0;
     const logged = events(host.kernel, session.id);
     const receipt = await session.send("Second?");
@@ -383,9 +385,10 @@ describe("turn findings (CORE-DIET D3)", () => {
     );
 
     await using host = await open(fake, { plugins: [plugin] });
-    const session = await host.sessions.create();
-    const logged = events(host.kernel, session.id);
-    const unauthorized = await (await session.send("First?")).settled();
+    const id = asId<"session">("chat");
+    const logged = events(host.kernel, id);
+    const { session, receipt: first } = await host.sessions.start({ id, content: "First?" });
+    const unauthorized = await first.settled();
     const overflowed = await (await session.send("Second?")).settled();
 
     expect(unauthorized).toMatchObject({ kind: "failed" });
@@ -438,8 +441,8 @@ describe("turn findings (CORE-DIET D3)", () => {
       { content: [{ type: "text", text: "Second answer." }] },
     );
     await using host = await open(fake, { plugins: [broken] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     const end = await (await session.send("Second?")).settled();
 
     expect(end.kind).toBe("completed");
@@ -486,8 +489,8 @@ describe("turn findings (CORE-DIET D3)", () => {
     };
 
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const end = await (await session.send("Go.")).settled();
+    const { session, receipt: first } = await host.sessions.start({ content: "Go." });
+    const end = await first.settled();
 
     expect(end).toMatchObject({ kind: "failed", failure: { class: "provider" } });
     expect(
@@ -529,8 +532,8 @@ describe("turn findings (CORE-DIET D3)", () => {
     );
 
     await using host = await open(fake, { plugins: [material] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     expect((await (await session.send("Second?")).settled()).kind).toBe("completed");
     expect(fake.requests[2].context.checkpoint).toMatchObject({ provider: "test" });
 
@@ -580,7 +583,7 @@ describe("turn findings (CORE-DIET D3)", () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Never sent." }] });
     await using host = await open(fake);
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const unreadable = Promise.reject(new Error("The workspace is unreachable."));
     unreadable.catch(() => undefined);
 
@@ -632,8 +635,8 @@ describe("turn findings (CORE-DIET D3)", () => {
 
     fake.reply({ content: [{ type: "text", text: "An answer." }] });
     await using host = await open(fake, { store });
-    const session = await host.sessions.create();
-    const end = await (await session.send("Go.")).settled();
+    const { session, receipt: first } = await host.sessions.start({ content: "Go." });
+    const end = await first.settled();
     const run = landedRun((await session.view()).messages);
 
     expect(end).toMatchObject({ kind: "failed", failure: { class: "runner" } });

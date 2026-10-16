@@ -123,7 +123,7 @@ describe("connection gate (§52 rule 5)", () => {
 
   it("denies every row the schema table marks above participant, to a connection and to a tool's invocation, from that one table (D6 audit 1, §56)", async () => {
     const { kernel, host, workspace: at } = await world();
-    const session = await host.sessions.create({ workspace: at });
+    const { session } = await host.sessions.start({ workspace: at, content: "Hi." });
     const elevated = Object.entries(OPERATIONS).flatMap(([name, row]) =>
       row.authority === "participant" ? [] : [name],
     );

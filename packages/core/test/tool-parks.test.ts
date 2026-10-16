@@ -27,7 +27,7 @@ describe("parked tool calls", () => {
     } satisfies ToolDefinition<{ until: number }>;
 
     const { kernel, host, script } = await setup({ plugins: [toolPlugin([parker])] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     const at = Date.now() + 60_000;
     const receipt = await session.send("Wait for it.");
@@ -85,7 +85,7 @@ describe("parked tool calls", () => {
     } satisfies ToolDefinition<object>;
 
     const { kernel, host, script } = await setup({ plugins: [toolPlugin([parker])] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     await session.send("Wait.");
     const step = host.execution.advance(head);
@@ -164,7 +164,7 @@ describe("parked tool calls", () => {
     const first = await setup({ store, plugins: [toolPlugin([ask])], poll: 10 });
     const second = await setup({ store: spied });
     const third = await setup({ store, poll: 10 });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const run = await liveRun(first.kernel, session.id);
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
     const notified: string[] = [];
@@ -232,7 +232,7 @@ describe("parked tool calls", () => {
     } satisfies ToolDefinition<object>;
 
     const { kernel, host } = await setup({ plugins: [toolPlugin([parker])] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const notified: string[] = [];
     kernel.wakes.subscribe((woken, head) => notified.push(`${woken}/${head}`));
@@ -274,8 +274,7 @@ describe("parked tool calls", () => {
 
     const plugins = [toolPlugin([flaky])];
     const first = await setup({ store, plugins });
-    const session = await first.host.sessions.create();
-    await session.send("Go.");
+    const { session } = await first.host.sessions.start({ content: "Go." });
     void first.host.execution.advance({ session: session.id, head: main });
     const run = (await first.script.started(1)).input.run.id;
     void call(first.kernel, {

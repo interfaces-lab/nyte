@@ -107,27 +107,18 @@ async function until(response: Response, done: (frame: Json) => boolean): Promis
 async function sent(
   target: Listener | string,
 ): Promise<{ readonly session: SessionId; readonly receipt: ReceiptId }> {
-  const created = await json(await post(target, "sessions.create", {}));
-  assert(
-    typeof created === "object" &&
-      created !== null &&
-      "session" in created &&
-      typeof created.session === "string",
-  );
-  const session: SessionId = asId(created.session);
-
-  const receipt = await json(
-    await post(target, "head.send", { session, head: main, content: "Hi." }),
-  );
+  const started = await json(await post(target, "sessions.start", { content: "Hi." }));
 
   assert(
-    typeof receipt === "object" &&
-      receipt !== null &&
-      "receipt" in receipt &&
-      typeof receipt.receipt === "string",
+    typeof started === "object" &&
+      started !== null &&
+      "session" in started &&
+      typeof started.session === "string" &&
+      "receipt" in started &&
+      typeof started.receipt === "string",
   );
 
-  return { session, receipt: asId(receipt.receipt) };
+  return { session: asId(started.session), receipt: asId(started.receipt) };
 }
 
 async function pair(host: Composed, authority: readonly Authority[]): Promise<string> {
@@ -212,7 +203,7 @@ describe("listen", () => {
   it("ends a revoked principal's open head.watch at once, unauthenticated, while another principal's keeps flowing", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
-    const created = await json(await post(listener, "sessions.create", {}));
+    const created = await json(await post(listener, "sessions.start", { content: "Hi." }));
     assert(
       typeof created === "object" &&
         created !== null &&
@@ -293,7 +284,7 @@ describe("listen", () => {
     const device = { Authorization: `Bearer ${token}` };
 
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    const created = await host.sessions.create();
+    const { session: created } = await host.sessions.start({ content: "Hi." });
     const watch = await post(listener, "head.watch", { session: created.id, head: main }, device);
 
     assert(watch.body !== null);
@@ -317,7 +308,7 @@ describe("listen", () => {
     const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const watch = await post(
       listener,
@@ -521,7 +512,10 @@ describe("listen", () => {
 
   it("limits the body to maxBodyBytes", async () => {
     const listener = await serve(await compose(fakeModels()), { maxBodyBytes: 64 });
-    const response = await post(listener, "sessions.create", { title: "x".repeat(200) });
+    const response = await post(listener, "sessions.start", {
+      content: "Hi.",
+      title: "x".repeat(200),
+    });
 
     expect([response.status, await readErrorCode(response)]).toEqual([413, "invalid"]);
   });

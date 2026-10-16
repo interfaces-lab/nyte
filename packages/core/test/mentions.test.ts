@@ -56,16 +56,16 @@ it("shows the model a mentioned file as it was at send, and a skill as a pointer
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 
-  const session = await host.sessions.create();
-
-  await (
-    await session.send([
+  const { session, receipt } = await host.sessions.start({
+    content: [
       { kind: "skill", name: "review", location: "/skills/review/SKILL.md" },
       { kind: "text", text: "Read " },
       { kind: "reference", path: "/work/plan.md" },
       { kind: "reference", path: "/work/missing.md" },
-    ])
-  ).settled();
+    ],
+  });
+
+  await receipt.settled();
   files.set("/work/plan.md", "Ship on Monday.");
   await (await session.send("And now?")).settled();
 

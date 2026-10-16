@@ -43,7 +43,7 @@ it("supplies the compact endpoint's window as material for an OpenAI Responses m
 
   const plugin = openaiCompaction(models);
   await using host = await open(fakeModels(), [plugin]);
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const runtime = host.kernel.plugins.runtime(session.id);
   await runtime.ready;
   const api = runtime.api("openai-compaction");

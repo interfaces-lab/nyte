@@ -1,5 +1,5 @@
 import { asId, asSeq, SdkError } from "@nyte-ai/schema";
-import type { Authority, CallId, Json, PatchSet, RunId } from "@nyte-ai/schema";
+import type { Authority, CallId, Json, PatchSet, RunId, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createInvocation } from "../src/agent/tool-runner.ts";
 import { createHost } from "../src/api/connection.ts";
@@ -99,7 +99,7 @@ describe("workspaces", () => {
 
   it("forgets a workspace only once no session uses it", async () => {
     const { host, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     expect(await host.workspace(workspace).info()).toMatchObject({ sessions: 1, writers: [] });
     expect(await host.workspaces.forget(workspace)).toEqual({
@@ -128,7 +128,7 @@ describe("workspaces", () => {
 
   it("keeps a participant-only tool from committing through its invocation's workspace (§52 rule 5)", async () => {
     const { kernel, host, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const memo: Durable["memo"] = async (_name, compute) => compute();
 
     const invocation = createInvocation(kernel, {
@@ -161,13 +161,20 @@ describe("workspaces", () => {
   });
 
   it("activates a session: active, unavailable while unreachable, failed when attach throws, and reload retries", async () => {
-    const { host, provider, workspace } = await world();
-    const served = await host.sessions.create({ workspace });
+    const { kernel, host, provider, workspace } = await world();
+    const { session: served } = await host.sessions.start({ workspace, content: "Hi." });
+    const { session: unreachable } = await host.sessions.start({ workspace, content: "Hi." });
+    const { session: broken } = await host.sessions.start({ workspace, content: "Hi." });
+
+    const reactivate = async (session: SessionId): Promise<void> => {
+      await kernel.environments.detach(session);
+      await Promise.allSettled([kernel.plugins.reload(session)]);
+    };
 
     expect((await served.info()).activation).toEqual({ kind: "active" });
 
     provider.availability = { kind: "unavailable", reason: "unreachable" };
-    const unreachable = await host.sessions.create({ workspace });
+    await reactivate(unreachable.id);
 
     expect((await unreachable.info()).activation).toEqual({
       kind: "unavailable",
@@ -177,7 +184,7 @@ describe("workspaces", () => {
 
     provider.availability = null;
     provider.failure = "The disk is gone.";
-    const broken = await host.sessions.create({ workspace });
+    await reactivate(broken.id);
 
     expect((await broken.info()).activation).toEqual({
       kind: "failed",
@@ -230,8 +237,11 @@ describe("workspaces", () => {
       return attach(target);
     };
 
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    seen.splice(0);
     provider.failure = "The sandbox did not boot.";
-    const session = await host.sessions.create({ workspace });
+    await kernel.environments.detach(session.id);
+    await Promise.allSettled([kernel.plugins.reload(session.id)]);
     await expect(kernel.plugins.runtime(session.id).ready).rejects.toThrow(
       "The sandbox did not boot.",
     );
@@ -324,7 +334,7 @@ describe("workspaces", () => {
 
   it("applies wraps in order and lazily, a wrap's browser served as the capability", async () => {
     const { kernel, host, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const env = await kernel.environments.attach(session.id);
     const calls: string[] = [];
 
@@ -604,7 +614,7 @@ describe("activation (§37j–m)", () => {
 
   it("gates a pre-existing session's first send and command on a new kernel behind its activation", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     const gate: Plugin<"core"> = {
       id: "gate",
@@ -630,7 +640,7 @@ describe("activation (§37j–m)", () => {
 
   it("lets a plugin send and run a prompt command from its own activate without waiting on that activation", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     const chatty: Plugin<"core"> = {
       id: "chatty",
@@ -657,12 +667,12 @@ describe("activation (§37j–m)", () => {
       (await fresh.session(session.id).view()).messages.map((message) =>
         message.kind === "user" ? message.content : message.kind,
       ),
-    ).toEqual(["Hello from activate.", "Nudged.", "After."]);
+    ).toEqual(["Hi.", "Hello from activate.", "Nudged.", "After."]);
   });
 
   it("relocates a session: its environment, cwd and plugins follow the new workspace", async () => {
     const { kernel, host, workspace } = await world({ plugins: [environmentPlugin] });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const other = await addWorkspace(host, "/work/other");
 
     expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/project");
@@ -698,7 +708,7 @@ describe("activation (§37j–m)", () => {
     };
 
     const { kernel, host, workspace } = await world({ plugins: [flaky], builtins: [builtin] });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const first = kernel.plugins.runtime(session.id);
 
     expect(first.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
@@ -745,7 +755,7 @@ describe("activation (§37j–m)", () => {
       execution: { kind: "admit-only" },
     });
 
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     expect(
       kernel.plugins
@@ -764,11 +774,12 @@ describe("activation (§37j–m)", () => {
     });
 
     const driver = driveInProcess(kernel, { kind: "workspace", workspace });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(provider.attaches).toBe(1);
     expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/project");
+    await session.stop();
     await driver.close();
   });
 });
@@ -853,7 +864,7 @@ describe("browser pages (§37i)", () => {
 
   it("shows a step's page on its head as an unlogged background item, seeded into cold folds, and a re-run adopts the recorded page", async () => {
     const { kernel, host, provider, workspace } = await world({ browser: true });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const call: CallId = asId("c1");
     const held: Page[] = [];
 

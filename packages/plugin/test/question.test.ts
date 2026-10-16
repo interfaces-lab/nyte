@@ -44,8 +44,7 @@ it("parks on one grouped modal and resumes with all selected, custom and unanswe
   );
 
   await using host = await open(fake, [questionPlugin]);
-  const session = await host.sessions.create();
-  const receipt = await session.send("Ask me.");
+  const { session, receipt } = await host.sessions.start({ content: "Ask me." });
 
   const asked = await until(async () =>
     (await session.view()).parts.find((part) => part.partKind === "ask/question"),
@@ -96,8 +95,9 @@ it("resumes a grouped request answered by a cold host sharing the durable store"
   );
 
   await using parked = await open(fake, [questionPlugin], { store, poll: 10 });
-  const session = await parked.sessions.create();
-  const receipt = await session.send("Ask me.");
+  const { session, receipt } = await parked.sessions.start({
+    content: "Ask me.",
+  });
 
   const asked = await until(async () =>
     (await session.view()).parts.find((part) => part.partKind === "ask/question"),
@@ -134,7 +134,7 @@ it("resumes a grouped request answered by a cold host sharing the durable store"
 
 it("rejects invalid submissions and keeps the first answer across same-set retries", async () => {
   await using host = await open(fakeModels(), [questionPlugin]);
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const part = await session.parts.create(question, {
     state: { questions, answers: null },

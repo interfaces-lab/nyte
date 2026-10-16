@@ -69,19 +69,10 @@ function changed(change: (opened: StoreConnection) => StoreConnection): Store {
 }
 
 async function sent(handler: (request: Request) => Promise<Response>) {
-  const created = decodeOutput(
-    "sessions.create",
-    await (await post(handler, "sessions.create", {})).json(),
+  return decodeOutput(
+    "sessions.start",
+    await (await post(handler, "sessions.start", { content: "Hi." })).json(),
   );
-
-  const receipt = decodeOutput(
-    "head.send",
-    await (
-      await post(handler, "head.send", { session: created.session, head: main, content: "Hi." })
-    ).json(),
-  );
-
-  return { session: created.session, ...receipt };
 }
 
 describe("handler", () => {
@@ -257,8 +248,8 @@ describe("handler", () => {
     const { handler } = await served();
 
     const { session } = decodeOutput(
-      "sessions.create",
-      await (await post(handler, "sessions.create", {})).json(),
+      "sessions.start",
+      await (await post(handler, "sessions.start", { content: "Hi." })).json(),
     );
 
     const controller = new AbortController();
@@ -437,8 +428,8 @@ describe("handler", () => {
     expect(view[0]).toHaveProperty("principal");
 
     const { session } = decodeOutput(
-      "sessions.create",
-      await (await post(handler, "sessions.create", {})).json(),
+      "sessions.start",
+      await (await post(handler, "sessions.start", { content: "Hi." })).json(),
     );
 
     const created = decodeOutput(
@@ -476,8 +467,8 @@ describe("handler", () => {
     const warm = await served({ store, plugins });
 
     const { session } = decodeOutput(
-      "sessions.create",
-      await (await post(warm.handler, "sessions.create", {})).json(),
+      "sessions.start",
+      await (await post(warm.handler, "sessions.start", { content: "Hi." })).json(),
     );
 
     const cold = await served({ store, plugins });
