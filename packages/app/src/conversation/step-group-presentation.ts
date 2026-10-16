@@ -3,6 +3,7 @@ import {
   showsThinking,
   showsTool,
   toolStatus,
+  toolTitle,
   toolVerbs,
 } from "@nyte-ai/plugin/client/presentation";
 import { formatRunDuration } from "./transcript-presentation.ts";
@@ -50,7 +51,7 @@ function activityLabel(running: readonly ToolClass[]): string | undefined {
     case "delegate":
       return toolVerbs(newest).running;
     case "custom":
-      return `Running ${newest.label}`;
+      return toolTitle(newest, "running");
     default: {
       const _exhaustive: never = newest;
 
