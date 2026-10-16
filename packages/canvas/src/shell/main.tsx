@@ -178,7 +178,8 @@ function paint(): void {
   root.render(<Shell {...state} />);
 }
 
-function isComponent(value: unknown): value is ComponentType {
+// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- typeof narrows an imported default export only to Function, not ComponentType
+function exportsComponent(value: unknown): value is ComponentType {
   return typeof value === "function";
 }
 
@@ -202,7 +203,7 @@ async function load(module: CanvasModule): Promise<void> {
         ? imported.default
         : undefined;
 
-    if (!isComponent(Canvas)) {
+    if (!exportsComponent(Canvas)) {
       fail({ phase: "load", message: "The module's default export is not a component." });
 
       return;
