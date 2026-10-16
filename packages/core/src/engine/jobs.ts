@@ -28,6 +28,9 @@ const SCROLLBACK_BYTES = 256 * 1024;
 
 const READER_BYTES = 64 * 1024;
 
+/** How long a user's shell runs with no reader before it is stopped: long enough for a window to reload and re-attach. */
+const ORPHAN_MS = 60_000;
+
 const REPORT_BYTES = 4096;
 
 const ENDED_KEPT = 32;
@@ -388,7 +391,16 @@ async function spawn(
           startedBy: own ? origin.call : null,
         };
 
-  const output = createOutput(input.pty !== undefined && input.session === undefined);
+  const output = createOutput(
+    input.pty !== undefined && input.session === undefined
+      ? {
+          orphaned: () =>
+            void process.stop().catch((error: unknown) => {
+              dev("jobs", "orphan stop failed", { job: id, error: String(error) });
+            }),
+        }
+      : null,
+  );
 
   kernel.jobs.add({
     view: {
@@ -476,11 +488,12 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
  * A job's output for its readers: each reader opens on the last 256 KiB (the
  * scrollback a re-attached terminal shows) and then follows it live; the
  * view's tail is the last 4 KiB as text. A reader 64 KiB behind gets a gap,
- * unless the output is `flow`-controlled (a user's shell, which no session
- * owns): then it misses nothing, and `drained` holds the job's pump, and so
- * the pty, until the slowest reader is back under 64 KiB.
+ * unless the output is a `shell`'s (a user's pty, which no session owns):
+ * then it misses nothing, `drained` holds the job's pump, and so the pty,
+ * until the slowest reader is back under 64 KiB, and a shell left without a
+ * reader for `ORPHAN_MS`, as when its window closed for good, is `orphaned`.
  */
-function createOutput(flow: boolean): JobOutput {
+function createOutput(shell: { orphaned(): void } | null): JobOutput {
   type Reader = {
     replay: OutputFrame[];
     frames: OutputFrame[];
@@ -496,6 +509,15 @@ function createOutput(flow: boolean): JobOutput {
   const readers = new Set<Reader>();
 
   const draining = new Set<() => void>();
+  let orphan: ReturnType<typeof setTimeout> | undefined;
+
+  const watchReaders = (): void => {
+    clearTimeout(orphan);
+    orphan =
+      shell === null || exit !== null || readers.size > 0
+        ? undefined
+        : setTimeout(() => shell.orphaned(), ORPHAN_MS);
+  };
 
   const caughtUp = (): void => {
     if ([...readers].some((reader) => reader.size > READER_BYTES)) return;
@@ -524,6 +546,8 @@ function createOutput(flow: boolean): JobOutput {
     return out;
   };
 
+  watchReaders();
+
   return {
     open() {
       const replay: OutputFrame[] = cut ? [{ kind: "gap" }] : [];
@@ -535,6 +559,8 @@ function createOutput(flow: boolean): JobOutput {
 
       if (exit === null) readers.add(reader);
       else reader.frames.push({ kind: "exit", code: exit.code });
+
+      watchReaders();
 
       return {
         async next() {
@@ -563,6 +589,7 @@ function createOutput(flow: boolean): JobOutput {
           readers.delete(reader);
           wake(reader);
           caughtUp();
+          watchReaders();
         },
       };
     },
@@ -587,7 +614,7 @@ function createOutput(flow: boolean): JobOutput {
       }
 
       for (const reader of readers) {
-        if (!flow && reader.size + bytes.byteLength > READER_BYTES) {
+        if (shell === null && reader.size + bytes.byteLength > READER_BYTES) {
           reader.missed = true;
 
           continue;
@@ -626,6 +653,7 @@ function createOutput(flow: boolean): JobOutput {
 
       for (const reader of ended) wake(reader);
       caughtUp();
+      watchReaders();
     },
     tail() {
       const text = new TextDecoder().decode(last(TAIL_BYTES));

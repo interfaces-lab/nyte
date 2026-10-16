@@ -303,6 +303,40 @@ describe("jobs", () => {
     expect(await slow.next()).toEqual({ done: false, value: { kind: "exit", code: 0 } });
   });
 
+  it("stops a user's shell a minute after its last reader leaves, never one a reader holds or a session owns", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    try {
+      const { host, provider, workspace } = await world();
+      const jobs = host.workspace(workspace).jobs;
+      const session = await host.sessions.create({ workspace });
+      const shell = await jobs.start({ pty: { columns: 80, rows: 24 } });
+      const owned = await jobs.start({ pty: { columns: 80, rows: 24 }, session: session.id });
+      await started(provider.processes, 2);
+      const reader = shell.output()[Symbol.asyncIterator]();
+      const opened = reader.next();
+
+      vi.advanceTimersByTime(120_000);
+      const state = async () =>
+        (await jobs.list()).map(
+          (job) => (job.id === shell.id ? "shell" : "owned") + ":" + job.state.kind,
+        );
+
+      expect(await state()).toEqual(["shell:running", "owned:running"]);
+
+      await reader.return?.();
+      expect(await opened).toEqual({ done: true, value: undefined });
+      vi.advanceTimersByTime(60_000);
+
+      expect(await shell.settled()).toEqual({ kind: "exited", code: null, reason: "terminated" });
+      expect((await jobs.list()).find((job) => job.id === owned.id)?.state).toEqual({
+        kind: "running",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("recovers a pty job by key, writes, resizes and stops it; a pipe job answers not-pty", async () => {
     const { host, provider, workspace } = await world();
     const jobs = host.workspace(workspace).jobs;
