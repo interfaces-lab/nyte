@@ -33,7 +33,6 @@ import {
   hideFromPanes,
   usePaneActions,
   usePaneControllerSnapshot,
-  usePaneViewStateStore,
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
@@ -172,7 +171,6 @@ export function Sidebar(): ReactElement {
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
-  const viewStore = usePaneViewStateStore();
   const workingSessions = useWorkingSessionIds();
   const page = useStagePage();
   const paletteOpen = useOverlays().search;
@@ -191,6 +189,7 @@ export function Sidebar(): ReactElement {
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
   const [hold, setHold] = useState<ShelfHold | undefined>();
+  const [listedWhenBlank, setListedWhenBlank] = useState<ReadonlySet<SessionId>>();
 
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<WorkspaceId | null>>(
     () => new Set(),
@@ -212,19 +211,29 @@ export function Sidebar(): ReactElement {
           ?.flatMap((directory) => directory.sessions)
           .find((session) => session.id === paneSessionId);
 
-  if (hold?.sessionId !== paneSession?.id) {
-    if (hold !== undefined) viewStore.forgetStart(hold.sessionId);
+  if (selection.kind === "blank" && listedWhenBlank === undefined && sessionDirectory.data)
+    setListedWhenBlank(
+      new Set(
+        sessionDirectory.data.flatMap((directory) =>
+          directory.sessions.map((session) => session.id),
+        ),
+      ),
+    );
 
+  if (hold?.sessionId !== paneSession?.id) {
     setHold(
       paneSession === undefined
         ? undefined
         : {
             sessionId: paneSession.id,
-            shelf: viewStore.startedFromDraft(paneSession.id)
-              ? "inbox"
-              : deriveShelf(paneSession, workingSessions, undefined),
+            shelf:
+              listedWhenBlank?.has(paneSession.id) === false
+                ? "inbox"
+                : deriveShelf(paneSession, workingSessions, undefined),
           },
     );
+
+    if (paneSession !== undefined) setListedWhenBlank(undefined);
   }
 
   const setExpanded = (workspace: WorkspaceId | null, expanded: boolean): void => {

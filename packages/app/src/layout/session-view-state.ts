@@ -253,7 +253,6 @@ function imagesKey(persistence: Persistence): string {
 export class SessionViewStateStore {
   readonly #sessions = new Map<SessionId, SessionViewState>();
   readonly #drafts = new Map<PaneId, PaneDraftState>();
-  readonly #started = new Set<string>();
   readonly #listeners = new Set<() => void>();
   readonly #persistence: Persistence | undefined;
   #publishTimer: ReturnType<typeof setTimeout> | undefined;
@@ -406,7 +405,6 @@ export class SessionViewStateStore {
     };
 
     drafts.active = this.#createDraft();
-    this.#started.add(current.id);
     this.#emit();
 
     return submitted;
@@ -416,7 +414,6 @@ export class SessionViewStateStore {
   restoreBlank(paneId: PaneId, submitted: ChatDraft): void {
     const drafts = this.#draftState(paneId);
     const restored = { ...submitted, updatedAt: Date.now() };
-    this.#started.delete(submitted.id);
 
     if (!draftHasContent(drafts.active)) {
       drafts.active = restored;
@@ -425,16 +422,6 @@ export class SessionViewStateStore {
     }
 
     this.#emit();
-  }
-
-  /** Whether one of these drafts started `sessionId` and the sidebar still holds the chat in its draft's place. */
-  startedFromDraft(sessionId: SessionId): boolean {
-    return this.#started.has(sessionId);
-  }
-
-  /** Lets a started chat go once it leaves the pane, so opening it again finds its own shelf. */
-  forgetStart(sessionId: SessionId): void {
-    this.#started.delete(sessionId);
   }
 
   #draftState(paneId: PaneId): PaneDraftState {
