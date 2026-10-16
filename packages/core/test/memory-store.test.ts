@@ -1,10 +1,11 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { memoryStore, objectId } from "../src/index.ts";
+import { dev, memoryStore, objectId, sessionRef } from "../src/index.ts";
+import { commit } from "../src/fold/commit.ts";
 import type { StoreConnection } from "../src/index.ts";
 import { attempt, STALE } from "../src/store/session.ts";
-import { setup, until } from "./harness.ts";
+import { main, setup, until } from "./harness.ts";
 
 const session: SessionId = asId("s1");
 
@@ -258,5 +259,50 @@ describe("commit", () => {
 
     expect(seen).toHaveLength(2);
     expect(reads).toBe(0);
+  });
+
+  it("publishes a landed write again when its first publish failed, so watchers still see it", async () => {
+    const store = await memoryStore().open();
+    let failing = false;
+
+    const flaky: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        async get(name) {
+          if (failing && name.endsWith("/heads/main")) {
+            failing = false;
+
+            throw new Error("The head read failed.");
+          }
+
+          return store.refs.get(name);
+        },
+      },
+    };
+
+    const { kernel, host } = await setup({ store: flaky });
+    const created = await host.sessions.create();
+    const seen: string[] = [];
+    kernel.bus.subscribe(created.id, (event) => seen.push(event.kind));
+    const lines: string[] = [];
+    const sink = dev.sink;
+    dev.on((line) => lines.push(line));
+    failing = true;
+
+    try {
+      await commit(kernel, [
+        {
+          name: `${sessionRef(created.id)}/marks/m`,
+          target: null,
+          event: { head: main, kind: "head", from: null, to: null, reason: "moved" },
+        },
+      ]);
+
+      expect(lines.filter((line) => line.startsWith("DEV:store publish failed"))).toHaveLength(1);
+      expect(await until(() => (seen.includes("head") ? seen : undefined))).toContain("head");
+    } finally {
+      dev.sink = sink;
+    }
   });
 });
