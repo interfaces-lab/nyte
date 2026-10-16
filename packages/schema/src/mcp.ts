@@ -47,8 +47,10 @@ export type McpServerView = {
 
 /**
  * What `workspace(id).mcp()` yields: every server the workspace sees, sorted
- * by name, and the problems found reading its `mcp.json` files. An invalid
- * entry appears in `issues` and not in `servers`; the others still connect.
+ * by name, and the problems found reading its `mcp.json` files or the tools
+ * its servers list. An invalid entry appears in `issues` and not in
+ * `servers`; the others still connect. A listed tool whose input schema is
+ * not JSON Schema appears in `issues` and not in its server's tools.
  */
 export type McpView = {
   readonly servers: readonly McpServerView[];

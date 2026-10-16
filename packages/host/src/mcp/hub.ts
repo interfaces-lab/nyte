@@ -14,13 +14,20 @@ import type {
   ToolDefinition,
 } from "@nyte-ai/core";
 import { isJson } from "@nyte-ai/schema";
-import type { McpChange, McpScope, McpServerState, McpServerView, McpView } from "@nyte-ai/schema";
+import type {
+  McpChange,
+  McpScope,
+  McpServerState,
+  McpServerView,
+  McpView,
+  ValidationIssue,
+} from "@nyte-ai/schema";
 import { editMcpFile, parseMcpConfig, readMcpFile } from "./config.ts";
 import type { McpConfig, McpFile, McpFileContents, McpServerEntry } from "./config.ts";
 import { connectServer, oauthSettings } from "./connect.ts";
 import type { McpConnector } from "./connect.ts";
 import { oauthKey, oauthStore, signIn } from "./oauth.ts";
-import { bridgeTools, toolExposure } from "./tools.ts";
+import { bridgeTools, checkToolSchemas, toolExposure } from "./tools.ts";
 
 const STDERR_TAIL = 4000;
 
@@ -49,7 +56,11 @@ export function createMcpHub(input: {
 
 type LinkState =
   | { readonly kind: "connecting" }
-  | { readonly kind: "connected"; readonly tools: readonly Tool[] }
+  | {
+      readonly kind: "connected";
+      readonly tools: readonly Tool[];
+      readonly issues: readonly ValidationIssue[];
+    }
   | { readonly kind: "needs-sign-in" }
   | { readonly kind: "failed"; readonly message: string; readonly stderr: string | null };
 
@@ -209,11 +220,13 @@ function hub(input: {
         }
 
         const refresh = async (): Promise<void> => {
-          const tools = await next.listTools();
+          const listed = await next.listTools();
 
           if (client !== next) return;
-          dev("mcp", "tools listed", { server: entry.name, tools: tools.length });
-          set({ kind: "connected", tools });
+          const { usable, issues } = checkToolSchemas(entry.name, listed);
+
+          dev("mcp", "tools listed", { server: entry.name, tools: usable.length });
+          set({ kind: "connected", tools: usable, issues });
         };
 
         client = next;
@@ -432,7 +445,14 @@ function hub(input: {
   const signingIn = new Set<string>();
 
   const view = (pool: Pool): McpView => ({
-    issues: pool.config.issues,
+    issues: [
+      ...pool.config.issues,
+      ...[...pool.links.values()].flatMap((link) => {
+        const state = link.state();
+
+        return state.kind === "connected" ? state.issues : [];
+      }),
+    ],
     servers: [...pool.config.servers.values()]
       .toSorted((a, b) => a.name.localeCompare(b.name))
       .map((entry): McpServerView => ({

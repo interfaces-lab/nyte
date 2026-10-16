@@ -133,3 +133,33 @@ it("fails the call, not the turn, when the server exits mid-call", async () => {
   expect(outcome).toMatchObject({ kind: "failed" });
   expect(fake.requests).toHaveLength(2);
 });
+
+it("leaves out a tool whose input schema is not JSON Schema, and says why", async () => {
+  const fake = fakeModels();
+  fake.reply({ content: [{ type: "text", text: "No places tool." }] });
+  await using host = await openPlaces(await placesHome({ PLACES_INVALID_SCHEMA: "1" }), fake);
+  const session = await host.sessions.create();
+
+  await (await session.send("Find a place nearby.")).settled();
+
+  expect(requestTools(fake.requests[0])).not.toContain(SEARCH);
+
+  const views = host
+    .workspace((await session.info()).workspace)
+    .mcp.watch()
+    [Symbol.asyncIterator]();
+
+  expect(
+    await nextView(views, (view) => view.servers[0]?.state.kind === "connected"),
+  ).toMatchObject({
+    servers: [{ state: { kind: "connected", tools: [] } }],
+    issues: [
+      {
+        severity: "error",
+        path: ["mcpServers", "places", "tools", "search_places", "inputSchema"],
+        message: expect.stringContaining("/required must be array"),
+      },
+    ],
+  });
+  await views.return?.();
+});

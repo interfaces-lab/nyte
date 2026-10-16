@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 import type { CallToolResult, McpClient, Tool } from "@earendil-works/pi-mcp";
 import type { ExecutionEnv, ToolDefinition } from "@nyte-ai/core";
 import { isJson } from "@nyte-ai/schema";
-import type { Json, McpExposure, Schema, ToolContent } from "@nyte-ai/schema";
+import type { Json, McpExposure, Schema, ToolContent, ValidationIssue } from "@nyte-ai/schema";
+import { Errors, Meta } from "typebox/schema";
 import type { McpServerEntry } from "./config.ts";
 
 const NAME_LIMIT = 64;
+
+const DRAFT_2020_12 = Meta["https://json-schema.org/draft/2020-12/schema"];
 
 /** The exposure `entry` gives `tool`: an exact `toolExposure` key, else the first matching pattern, else the server's. */
 export function toolExposure(entry: McpServerEntry, tool: string): McpExposure {
@@ -15,6 +18,55 @@ export function toolExposure(entry: McpServerEntry, tool: string): McpExposure {
   const matched = entry.toolExposure.find(([pattern]) => globMatches(pattern, tool));
 
   return matched?.[1] ?? entry.exposure;
+}
+
+/** A server's listed tools that sessions get, and why each of the others is left out. */
+export type CheckedTools = {
+  readonly usable: readonly Tool[];
+  readonly issues: readonly ValidationIssue[];
+};
+
+/**
+ * Splits a server's listed tools into those whose input schema is JSON Schema
+ * for an object, which providers accept, and an issue for each of the rest.
+ * A tool with a bad schema would fail every request that declares it, so no
+ * session gets it.
+ */
+export function checkToolSchemas(server: string, tools: readonly Tool[]): CheckedTools {
+  const usable: Tool[] = [];
+  const issues: ValidationIssue[] = [];
+
+  for (const tool of tools) {
+    const problem = findSchemaProblem(tool.inputSchema);
+
+    if (problem === null) {
+      usable.push(tool);
+
+      continue;
+    }
+
+    issues.push({
+      severity: "error",
+      path: ["mcpServers", server, "tools", tool.name, "inputSchema"],
+      message: `${server} lists ${tool.name} with an input schema that is not valid JSON Schema (${problem}), so sessions do not get the tool.`,
+    });
+  }
+
+  return { usable, issues };
+}
+
+function findSchemaProblem(schema: Tool["inputSchema"]): string | null {
+  if (schema["type"] !== "object") return 'its type is not "object"';
+  const [valid, errors] = Errors(Meta, DRAFT_2020_12, schema);
+
+  if (valid) return null;
+  const first = new Map<string, string>();
+
+  for (const error of errors)
+    if (!first.has(error.instancePath))
+      first.set(error.instancePath, `${error.instancePath || "/"} ${error.message}`);
+
+  return [...first.values()].slice(0, 3).join("; ");
 }
 
 /** Turns a server's listed tools into session tools named `mcp__<server>__<tool>`. */
@@ -73,6 +125,7 @@ function bridge(
     ...(output === undefined ? {} : { output: passthrough(output) }),
     exposure: toolExposure(entry, tool.name),
     class: () => ({ kind: "custom", label: `${entry.name}: ${tool.title ?? tool.name}` }),
+    effects: tool.annotations?.readOnlyHint === true ? "none" : "workspace",
     replay:
       tool.annotations?.readOnlyHint === true || tool.annotations?.idempotentHint === true
         ? "safe"
