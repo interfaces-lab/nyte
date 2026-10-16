@@ -1,8 +1,9 @@
 import { followedShells } from "../state.ts";
+import type { State } from "../state.ts";
 import { following, stay, withLocal, withNotice } from "../step.ts";
-import type { SomeHandlers } from "../step.ts";
+import type { SomeHandlers, Step } from "../step.ts";
 import { deriveTranscript, rowWeight } from "../transcript.ts";
-import { revealEarlier } from "../window.ts";
+import { revealEarlier, revealLater } from "../window.ts";
 
 const SCROLLS = {
   "page-up": { kind: "page", direction: -1 },
@@ -16,25 +17,8 @@ export const transcriptHandlers = {
     msg.to === "latest"
       ? { state: following(state), effects: [{ kind: "scroll", op: { kind: "latest" } }] }
       : { state, effects: [{ kind: "scroll", op: SCROLLS[msg.to] }] },
-  "reveal-earlier": (state) => {
-    const local = state.local.transcript;
-
-    const model = deriveTranscript(
-      state.facts.session?.view ?? null,
-      followedShells(state),
-      local,
-      null,
-    );
-
-    if (model.window.start === 0) return stay(state);
-
-    const window = revealEarlier(model.rows, rowWeight, model.window);
-
-    return {
-      state: withLocal(state, { transcript: { ...local, following: false, window } }),
-      effects: [{ kind: "scroll", op: { kind: "keep-viewport" } }],
-    };
-  },
+  "reveal-earlier": (state) => reveal(state, "earlier"),
+  "reveal-later": (state) => reveal(state, "later"),
   "toggle-tool-output": (state, _msg, now) => {
     const local = state.local.transcript;
     const toolOutput = local.toolOutput === "expanded" ? "collapsed" : "expanded";
@@ -66,3 +50,27 @@ export const transcriptHandlers = {
     effects: [{ kind: "open-external", target: msg.target }],
   }),
 } satisfies SomeHandlers;
+
+function reveal(state: State, direction: "earlier" | "later"): Step {
+  const local = state.local.transcript;
+
+  const { rows, window: current } = deriveTranscript(
+    state.facts.session?.view ?? null,
+    followedShells(state),
+    local,
+    null,
+  );
+
+  if (direction === "earlier" ? current.start === 0 : current.end === rows.length)
+    return stay(state);
+
+  const window =
+    direction === "earlier"
+      ? revealEarlier(rows, rowWeight, current)
+      : revealLater(rows, rowWeight, current);
+
+  return {
+    state: withLocal(state, { transcript: { ...local, following: false, window } }),
+    effects: [{ kind: "scroll", op: { kind: "keep-viewport" } }],
+  };
+}

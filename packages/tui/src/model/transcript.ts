@@ -127,7 +127,7 @@ export function deriveTranscript(
     window:
       previous !== null &&
       previous.window.start === window.start &&
-      previous.window.hidden === window.hidden
+      previous.window.end === window.end
         ? previous.window
         : window,
     following: local.following,

@@ -71,6 +71,7 @@ export type Intent =
       readonly to: "page-up" | "page-down" | "latest" | "previous-turn" | "next-turn";
     }
   | { readonly kind: "reveal-earlier" }
+  | { readonly kind: "reveal-later" }
   | { readonly kind: "toggle-tool-output" }
   | { readonly kind: "toggle-disclosure"; readonly key: string }
   | { readonly kind: "cycle-thinking" }

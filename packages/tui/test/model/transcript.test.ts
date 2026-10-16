@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { deriveTranscript, turnStatus } from "../../src/model/transcript.ts";
 import type { Row, TranscriptModel, TurnModel } from "../../src/model/transcript.ts";
 import type { ShellJob, TranscriptLocal } from "../../src/model/state.ts";
-import { mountWindow, revealEarlier, WINDOW } from "../../src/model/window.ts";
+import { mountWindow, revealEarlier, revealLater, WINDOW } from "../../src/model/window.ts";
 import { viewOf } from "../fixture/view.ts";
 
 const LOCAL: TranscriptLocal = {
@@ -201,7 +201,7 @@ describe("mount window", () => {
   test("the tail mounts the last WINDOW.tail weight of rows", () => {
     const window = mountWindow(rows(100), () => 1, { kind: "tail" });
 
-    expect(window).toEqual({ start: 100 - WINDOW.tail, hidden: 100 - WINDOW.tail });
+    expect(window).toEqual({ start: 100 - WINDOW.tail, end: 100 });
   });
 
   test("revealing earlier moves the start back by WINDOW.step and anchors it by key", () => {
@@ -215,6 +215,31 @@ describe("mount window", () => {
       index: 160 - WINDOW.step,
     });
     expect(mountWindow(all, () => 1, start).start).toBe(160 - WINDOW.step);
+  });
+
+  test("browsing history mounts at most WINDOW.span weight; revealing later moves it forward", () => {
+    const all = rows(400);
+    const window = mountWindow(all, () => 1, { kind: "from", key: "note:20", index: 20 });
+
+    expect(window).toEqual({ start: 20, end: 20 + WINDOW.span });
+
+    const later = revealLater(all, () => 1, window);
+
+    expect(later).toEqual({
+      kind: "from",
+      key: `note:${String(20 + WINDOW.step)}`,
+      index: 20 + WINDOW.step,
+    });
+    expect(mountWindow(all, () => 1, later).end).toBe(20 + WINDOW.step + WINDOW.span);
+  });
+
+  test("a window that reaches the tail mounts through the last row", () => {
+    const all = rows(200);
+
+    expect(mountWindow(all, () => 1, { kind: "from", key: "note:120", index: 120 })).toEqual({
+      start: 120,
+      end: 200,
+    });
   });
 
   test("an anchor survives rows inserted before it and falls back to its index when its row vanishes", () => {

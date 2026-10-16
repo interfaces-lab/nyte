@@ -3,7 +3,7 @@ import type { App } from "../../../src/app/context.tsx";
 import type { ScrollPort } from "../../../src/model/native.ts";
 import type { State } from "../../../src/model/state.ts";
 import { rowWeight } from "../../../src/model/transcript.ts";
-import { revealEarlier, WINDOW } from "../../../src/model/window.ts";
+import { revealEarlier, revealLater, WINDOW } from "../../../src/model/window.ts";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
 import { frameShowing } from "../../fixture/render.tsx";
 import { stateOf } from "../../fixture/state.ts";
@@ -15,25 +15,30 @@ const TURNS = 50;
 
 const MOUNTED = WINDOW.tail / 2;
 
-const VIEW = viewOf((v) => {
-  let built = v;
+function conversation(turns: number) {
+  return viewOf((v) => {
+    let built = v;
 
-  for (let index = 1; index <= TURNS; index += 1)
-    built = built.turn(`t${String(index)}`, (t) =>
-      t
-        .user(`question ${String(index)}`)
-        .text(`answer ${String(index)}`)
-        .ended("completed"),
-    );
+    for (let index = 1; index <= turns; index += 1)
+      built = built.turn(`t${String(index)}`, (t) =>
+        t
+          .user(`question ${String(index)}`)
+          .text(`answer ${String(index)}`)
+          .ended("completed"),
+      );
 
-  return built;
-});
+    return built;
+  });
+}
+
+const VIEW = conversation(TURNS);
 
 interface Driver {
   readonly port: () => ScrollPort;
   readonly scrolled: boolean[];
   readonly reveals: () => number;
   readonly reveal: () => void;
+  readonly revealLater: () => void;
   readonly node: (app: App) => ReturnType<typeof Transcript>;
 }
 
@@ -46,12 +51,16 @@ function driver(
   let reveals = 0;
   const scrolled: boolean[] = [];
 
-  const reveal = (): void => {
+  const move = (direction: "earlier" | "later"): void => {
     reveals += 1;
     const local = state.local.transcript;
     const { transcript } = harness().screen();
 
-    const window = revealEarlier(transcript.rows, rowWeight, transcript.window);
+    const window = (direction === "earlier" ? revealEarlier : revealLater)(
+      transcript.rows,
+      rowWeight,
+      transcript.window,
+    );
 
     state = {
       ...state,
@@ -60,6 +69,9 @@ function driver(
     harness().setState(state);
     port?.keepViewport();
   };
+
+  const reveal = (): void => move("earlier");
+  const later = (): void => move("later");
 
   return {
     port: () => {
@@ -70,6 +82,7 @@ function driver(
     scrolled,
     reveals: () => reveals,
     reveal,
+    revealLater: later,
     node: (app) => (
       <Transcript
         model={() => app.screen().transcript}
@@ -82,6 +95,7 @@ function driver(
         }}
         onScrolled={(atBottom) => scrolled.push(atBottom)}
         onRevealEarlier={reveal}
+        onRevealLater={later}
         onLatest={() => undefined}
       />
     ),
@@ -99,7 +113,7 @@ describe("scroll", () => {
     await using app = await renderWithApp(state, drive.node, { height: 20 });
     const hidden = TURNS - MOUNTED;
 
-    expect(app.screen().transcript.window).toEqual({ start: hidden, hidden });
+    expect(app.screen().transcript.window).toEqual({ start: hidden, end: TURNS });
     expect(app.renderer.root.findDescendantById(`turn:t${String(hidden)}`)).toBeUndefined();
     expect(app.renderer.root.findDescendantById(`turn:t${String(hidden + 1)}`)).toBeDefined();
     expect(app.captureCharFrame()).toContain(`question ${String(TURNS)}`);
@@ -125,9 +139,44 @@ describe("scroll", () => {
     await app.renderOnce();
     const after = app.captureCharFrame();
 
-    expect(app.screen().transcript.window.start).toBe(0);
+    expect(app.screen().transcript.window.start).toBe(TURNS - MOUNTED - WINDOW.step / 2);
     expect(lineOf(after, first)).toBe(row);
-    expect(after).not.toContain("earlier · scroll up");
+  });
+
+  test("browsing far back unmounts the rows below, and revealing either way keeps the viewport still", async () => {
+    const state = stateOf(followed(conversation(150)));
+    const drive = driver(state, () => app);
+    await using app = await renderWithApp(state, drive.node, { height: 20 });
+
+    const settled = async (): Promise<string> => {
+      await app.renderOnce();
+      await app.renderOnce();
+
+      return app.captureCharFrame();
+    };
+
+    drive.reveal();
+    await settled();
+    drive.port().row("turn:t116");
+    await settled();
+    drive.reveal();
+    await settled();
+    drive.port().row("turn:t101");
+    const top = lineOf(await settled(), "question 101");
+
+    drive.reveal();
+
+    expect(lineOf(await settled(), "question 101")).toBe(top);
+    expect(app.screen().transcript.window).toEqual({ start: 85, end: 115 });
+    expect(app.renderer.root.findDescendantById("turn:t150")).toBeUndefined();
+
+    drive.port().row("turn:t110");
+    const lower = lineOf(await settled(), "question 110");
+    drive.revealLater();
+
+    expect(lineOf(await settled(), "question 110")).toBe(lower);
+    expect(app.screen().transcript.window).toEqual({ start: 100, end: 150 });
+    expect(app.renderer.root.findDescendantById("turn:t86")).toBeUndefined();
   });
 
   test("wheel up near the top asks for earlier rows", async () => {

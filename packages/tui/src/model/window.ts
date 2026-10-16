@@ -1,14 +1,20 @@
 import type { Row, RowKey } from "./transcript.ts";
 
-export const WINDOW = { tail: 40, step: 60 } as const;
+/**
+ * Mount-window budgets, in row weight (a turn weighs its block count). `tail` is mounted while
+ * following; `span` bounds the window while browsing history, so layout and re-wrap on resize
+ * stay proportional to the viewport; `step` is how far one reveal moves the window.
+ */
+export const WINDOW = { tail: 40, span: 60, step: 30 } as const;
 
 export type WindowStart =
   | { readonly kind: "tail" }
   | { readonly kind: "from"; readonly key: RowKey; readonly index: number };
 
+/** The mounted rows: `rows.slice(start, end)`. */
 export interface MountWindow {
   readonly start: number;
-  readonly hidden: number;
+  readonly end: number;
 }
 
 function tailStart(rows: readonly Row[], weight: (row: Row) => number, budget: number): number {
@@ -24,6 +30,24 @@ function tailStart(rows: readonly Row[], weight: (row: Row) => number, budget: n
   return start;
 }
 
+function spanEnd(
+  rows: readonly Row[],
+  weight: (row: Row) => number,
+  start: number,
+  budget: number,
+): number {
+  let total = 0;
+  let end = start;
+
+  while (end < rows.length && total < budget) {
+    const row = rows[end];
+    total += row === undefined ? 0 : weight(row);
+    end += 1;
+  }
+
+  return end;
+}
+
 export function mountWindow(
   rows: readonly Row[],
   weight: (row: Row) => number,
@@ -31,15 +55,23 @@ export function mountWindow(
 ): MountWindow {
   const tail = tailStart(rows, weight, WINDOW.tail);
 
-  if (start.kind === "tail") return { start: tail, hidden: tail };
+  if (start.kind === "tail") return { start: tail, end: rows.length };
+
   const found =
     rows[start.index]?.key === start.key
       ? start.index
       : rows.findIndex((row) => row.key === start.key);
-  const anchored = Math.min(found === -1 ? start.index : found, tail);
-  const first = Math.max(0, anchored);
 
-  return { start: first, hidden: first };
+  const first = Math.max(0, Math.min(found === -1 ? start.index : found, tail));
+  const end = spanEnd(rows, weight, first, WINDOW.span);
+
+  return { start: first, end: end >= tail ? rows.length : end };
+}
+
+function anchor(rows: readonly Row[], index: number): WindowStart {
+  const row = rows[index];
+
+  return row === undefined ? { kind: "tail" } : { kind: "from", key: row.key, index };
 }
 
 export function revealEarlier(
@@ -47,16 +79,17 @@ export function revealEarlier(
   weight: (row: Row) => number,
   current: MountWindow,
 ): WindowStart {
-  const start = tailStart(rows.slice(0, current.start), weight, WINDOW.step);
-  const row = rows[start];
+  return anchor(rows, tailStart(rows.slice(0, current.start), weight, WINDOW.step));
+}
 
-  return row === undefined ? { kind: "tail" } : { kind: "from", key: row.key, index: start };
+export function revealLater(
+  rows: readonly Row[],
+  weight: (row: Row) => number,
+  current: MountWindow,
+): WindowStart {
+  return anchor(rows, Math.min(spanEnd(rows, weight, current.start, WINDOW.step), current.end));
 }
 
 export function anchorAt(rows: readonly Row[], current: MountWindow): WindowStart {
-  const row = rows[current.start];
-
-  return row === undefined
-    ? { kind: "tail" }
-    : { kind: "from", key: row.key, index: current.start };
+  return anchor(rows, current.start);
 }

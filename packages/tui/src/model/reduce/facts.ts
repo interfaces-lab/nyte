@@ -447,20 +447,20 @@ export function completionLookup(before: State["local"]["completion"], next: Sta
 function scrolled(state: State, atBottom: boolean): State {
   const { transcript } = state.local;
 
-  if (atBottom)
-    return withLocal(state, {
-      transcript: { ...transcript, following: true, window: { kind: "tail" } },
-    });
-
-  if (transcript.window.kind !== "tail")
-    return withLocal(state, { transcript: { ...transcript, following: false } });
-
   const model = deriveTranscript(
     state.facts.session?.view ?? null,
     followedShells(state),
     transcript,
     null,
   );
+
+  if (atBottom && model.window.end === model.rows.length)
+    return withLocal(state, {
+      transcript: { ...transcript, following: true, window: { kind: "tail" } },
+    });
+
+  if (transcript.window.kind !== "tail")
+    return withLocal(state, { transcript: { ...transcript, following: false } });
 
   return withLocal(state, {
     transcript: { ...transcript, following: false, window: anchorAt(model.rows, model.window) },

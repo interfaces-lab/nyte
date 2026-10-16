@@ -70,6 +70,7 @@ export function Screen(): JSX.Element {
           attach={(port) => app.kit.attach.scroll(port)}
           onScrolled={(atBottom) => app.dispatch({ kind: "scrolled", atBottom })}
           onRevealEarlier={() => app.dispatch({ kind: "reveal-earlier" })}
+          onRevealLater={() => app.dispatch({ kind: "reveal-later" })}
           onPaste={(event) => {
             app.dispatch({ kind: "focus-composer" });
             app.dispatch({ kind: "paste", source: pasteMessage(event) });
