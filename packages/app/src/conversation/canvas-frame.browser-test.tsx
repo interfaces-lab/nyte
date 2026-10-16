@@ -1,4 +1,5 @@
 import "../../test/window-bridge.ts";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
@@ -55,6 +56,11 @@ export async function run(): Promise<string> {
     await until(() => height() === 400, "The shell's reported height did not take");
 
     if (frame()?.style.colorScheme !== "light") return "The frame should take the light scheme";
+    flushSync(() => root.render(null));
+    flushSync(() => draw(part('{"height":400}')));
+
+    if (height() !== 400)
+      return `A remount should paint at the reported height, not ${String(height())}`;
 
     window.postMessage(sizeChangedNotification(900), "*");
     await new Promise<void>((resolve) => setTimeout(resolve, 50));

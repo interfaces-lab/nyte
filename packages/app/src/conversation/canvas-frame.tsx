@@ -1,6 +1,8 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { canvas } from "@nyte-ai/plugin/canvas/schema";
 import type { CanvasState } from "@nyte-ai/plugin/canvas/schema";
@@ -18,6 +20,7 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
+import { patchDigest } from "../workbench/changes-viewed.ts";
 import { canvasFrameEffects, canvasFrameHeight } from "./canvas-frame.ts";
 import type { CanvasPost } from "./canvas-frame.ts";
 import { readCanvasTheme, subscribeCanvasTheme } from "./canvas-theme.ts";
@@ -94,6 +97,46 @@ function post(frame: HTMLIFrameElement | null, message: CanvasPost): void {
   frame?.contentWindow?.postMessage(message, "*");
 }
 
+const HEIGHTS_KEY = "nyte.canvas-heights";
+
+/** Canvases whose last reported height is kept; older ones paint at their hint again. */
+const HEIGHTS_KEPT = 200;
+
+const storedHeights = Type.Array(Type.Tuple([Type.String(), Type.Number()]));
+
+/**
+ * The height each canvas last reported, by a digest of its code. A canvas
+ * reloads whenever its row remounts (virtualized scrolling, switching chats,
+ * a restart), and seeding the frame with this keeps it from opening at the
+ * agent's hint and jumping when the shell measures.
+ */
+const measuredHeights = new Map<string, number>(readStoredHeights());
+
+function readStoredHeights(): readonly (readonly [string, number])[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(HEIGHTS_KEY) ?? "[]");
+
+    return Value.Check(storedHeights, parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberHeight(key: string, height: number): void {
+  if (measuredHeights.get(key) === height) return;
+  measuredHeights.delete(key);
+  measuredHeights.set(key, height);
+
+  for (const stale of [...measuredHeights.keys()].slice(0, -HEIGHTS_KEPT))
+    measuredHeights.delete(stale);
+
+  try {
+    window.localStorage.setItem(HEIGHTS_KEY, JSON.stringify([...measuredHeights]));
+  } catch {
+    return;
+  }
+}
+
 interface CanvasError {
   readonly code: string;
   readonly message: string;
@@ -108,11 +151,15 @@ export function CanvasFrame({
 }): ReactElement {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const theme = useSyncExternalStore(subscribeCanvasTheme, readCanvasTheme, readCanvasTheme);
-  const [reportedHeight, setReportedHeight] = useState<number>();
+  const { runtime, code, title, error: known } = state;
+  const heightKey = useMemo(() => patchDigest(code), [code]);
+  const [reported, setReported] = useState<{ readonly key: string; readonly height: number }>();
   const [initialized, setInitialized] = useState(false);
   const [error, setError] = useState<CanvasError>();
   const shell = useRef({ initialized: false, reported: new Set<string>() });
-  const { runtime, code, title, error: known } = state;
+
+  const reportedHeight =
+    reported?.key === heightKey ? reported.height : measuredHeights.get(heightKey);
 
   useLayoutEffect(() => {
     const receive = (event: MessageEvent<unknown>): void => {
@@ -135,11 +182,11 @@ export function CanvasFrame({
             setInitialized(true);
             break;
           case "height":
-            setReportedHeight(effect.height);
+            rememberHeight(heightKey, effect.height);
+            setReported({ key: heightKey, height: effect.height });
             break;
           case "open-link": {
             const allowed = document.activeElement === frame && navigator.userActivation.isActive;
-
             if (allowed) openExternalLink(effect.url);
             post(frame, openLinkResult(effect.id, !allowed));
             break;
@@ -162,7 +209,7 @@ export function CanvasFrame({
     window.addEventListener("message", receive);
 
     return () => window.removeEventListener("message", receive);
-  }, [theme, runtime, code, title, known, report]);
+  }, [theme, runtime, code, title, known, report, heightKey]);
 
   useLayoutEffect(() => {
     if (shell.current.initialized)
