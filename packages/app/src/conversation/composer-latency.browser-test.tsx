@@ -6,6 +6,7 @@
  * without waiting for paint, so a blocked main thread shows up as several
  * characters landing in one frame, which is the lag a person sees.
  */
+import "../../test/window-bridge.ts";
 // oxlint-disable-next-line no-restricted-imports -- the stream loop runs only while the flag is set
 import { StrictMode, memo, useEffect, useState } from "react";
 import type { ReactElement } from "react";

@@ -1,3 +1,4 @@
+import "../../test/window-bridge.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRef } from "react";
 import type { ComponentProps } from "react";
