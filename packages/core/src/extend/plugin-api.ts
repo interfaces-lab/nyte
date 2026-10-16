@@ -1,3 +1,4 @@
+import { isJsonObject } from "@nyte-ai/schema";
 import type { SessionId, ValidationIssue } from "@nyte-ai/schema";
 import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext, PluginStorage } from "../contract/host.ts";
@@ -9,7 +10,6 @@ import { commit } from "../fold/commit.ts";
 import { kvRef } from "../store/refs.ts";
 import { put, readKv, requireSession } from "../store/session.ts";
 import { SdkError } from "../util/error.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 
 export function corePluginApi(
   kernel: Kernel,

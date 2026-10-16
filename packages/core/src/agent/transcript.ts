@@ -1,3 +1,4 @@
+import { isJsonObject } from "@nyte-ai/schema";
 import type {
   BlobId,
   CommitId,
@@ -33,7 +34,7 @@ import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import type { Resources } from "../contract/workspace.ts";
 import { withFold } from "../fold/reads.ts";
 import { readPositionCommit, requireSession, START, walkCommitPath } from "../store/session.ts";
-import { check, isJsonObject } from "../util/json-schema.ts";
+import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 interface Step {

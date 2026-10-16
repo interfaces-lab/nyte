@@ -1,4 +1,4 @@
-import { asId, asSeq } from "@nyte-ai/schema";
+import { asId, asSeq, isJsonObject } from "@nyte-ai/schema";
 import type {
   Activation,
   BackgroundItem,
@@ -37,7 +37,6 @@ import type {
 } from "../contract/fold.ts";
 import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { readPositionCommit, START } from "../store/session.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 import { applyCall, describeLiveActivity } from "./calls.ts";
 import {
   committed,

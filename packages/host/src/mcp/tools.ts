@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import type { CallToolResult, McpClient, ProgressNotification, Tool } from "@earendil-works/pi-mcp";
-import { isJsonObject } from "@nyte-ai/core";
 import type { ExecutionEnv, ToolDefinition } from "@nyte-ai/core";
-import { isJson } from "@nyte-ai/schema";
+import { isJson, isJsonObject } from "@nyte-ai/schema";
 import type {
   Json,
   McpExposure,

@@ -1,10 +1,16 @@
-import { compile, FileStatusType, HunkType, isJson, writePatch } from "@nyte-ai/schema";
+import {
+  compile,
+  FileStatusType,
+  HunkType,
+  isJson,
+  isJsonObject,
+  writePatch,
+} from "@nyte-ai/schema";
 import type { Json, ObjectId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { objectId } from "../util/content.ts";
 import { SdkError } from "../util/error.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 
 export type StoreDialect = "sqlite" | "postgres";
 

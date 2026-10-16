@@ -1,3 +1,4 @@
+import { isJsonObject } from "@nyte-ai/schema";
 import type {
   CommitId,
   CreateHeadOutcome,
@@ -44,7 +45,6 @@ import {
   walkCommitPath,
 } from "../store/session.ts";
 import { SdkError } from "../util/error.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 import { extractUserText } from "../util/text.ts";
 
 const PREVIEW = 80;

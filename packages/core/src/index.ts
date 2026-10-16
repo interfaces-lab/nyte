@@ -111,6 +111,6 @@ export type { SdkErrorCode } from "./util/error.ts";
 
 export { closable, coalesce } from "./util/iterable.ts";
 
-export { isJsonObject, matchesOutput } from "./util/json-schema.ts";
+export { matchesOutput } from "./util/json-schema.ts";
 
 export { lineDiff } from "./util/line-diff.ts";

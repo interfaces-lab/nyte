@@ -3,10 +3,6 @@ import type { Json } from "@nyte-ai/sdk";
 
 export type JsonObject = { readonly [key: string]: Json };
 
-export function isJsonObject(value: Json | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 export function isJsonString(value: Json | undefined): value is string {
   return typeof value === "string";
 }

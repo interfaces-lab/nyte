@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, isJsonObject } from "@nyte-ai/schema";
 import type {
   CommitId,
   CompactionPlan,
@@ -61,7 +61,7 @@ import {
 import type { Tip } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
-import { check, isJsonObject } from "../util/json-schema.ts";
+import { check } from "../util/json-schema.ts";
 import { extractUserText } from "../util/text.ts";
 import { charge, complete, requestEvent, rideRef, ZERO_USAGE } from "./request.ts";
 import { estimateTranscriptTokens, projectedCommit, requestBody } from "./transcript.ts";

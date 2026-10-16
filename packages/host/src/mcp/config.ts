@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { McpExposureNameType, McpOAuthConfigType } from "@nyte-ai/schema";
-import { isJsonObject } from "@nyte-ai/core";
+import { isJsonObject, McpExposureNameType, McpOAuthConfigType } from "@nyte-ai/schema";
 import { isJson } from "@nyte-ai/schema";
 import type {
   Json,

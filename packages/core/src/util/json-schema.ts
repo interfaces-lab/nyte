@@ -1,5 +1,5 @@
-import { compile, isJson } from "@nyte-ai/schema";
-import type { Json, JsonSchema, Schema, ValidationIssue } from "@nyte-ai/schema";
+import { compile, isJson, isJsonObject } from "@nyte-ai/schema";
+import type { JsonSchema, Schema, ValidationIssue } from "@nyte-ai/schema";
 import { SdkError } from "./error.ts";
 
 const schemas = new WeakMap<
@@ -62,9 +62,4 @@ export async function check<T>(schema: Schema<T>, value: unknown): Promise<Check
       message: found.message,
     })),
   };
-}
-
-// oxlint-disable-next-line nyte-code/no-is-helper-names -- a public guard that @nyte-ai/host and @nyte-ai/plugin import
-export function isJsonObject(value: Json | undefined): value is { readonly [key: string]: Json } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -3,10 +3,10 @@ import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
 import type { Tool } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import type { OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
-import { SdkError, processEnvironment, closable, dev, isJsonObject } from "@nyte-ai/core";
+import { SdkError, processEnvironment, closable, dev } from "@nyte-ai/core";
 import type { Login, PluginStorage, ToolDefinition } from "@nyte-ai/core";
 import type { McpHub, McpHubFactory, McpServerBrief, McpWorkspace } from "@nyte-ai/core/server";
-import { isJson } from "@nyte-ai/schema";
+import { isJson, isJsonObject } from "@nyte-ai/schema";
 import type {
   Disposer,
   McpChange,

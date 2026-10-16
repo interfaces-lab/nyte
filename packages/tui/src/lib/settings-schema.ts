@@ -1,5 +1,6 @@
 import type { Json, Thinking } from "@nyte-ai/sdk";
-import { isJsonObject, type JsonObject } from "../json.ts";
+import { isJsonObject } from "@nyte-ai/schema";
+import type { JsonObject } from "../json.ts";
 import { THINKING_LEVELS } from "./constants.ts";
 import { isThemeChoice, type ThemeChoice } from "./theme.ts";
 

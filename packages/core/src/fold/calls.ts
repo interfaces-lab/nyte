@@ -1,4 +1,4 @@
-import { compile, ToolClassType } from "@nyte-ai/schema";
+import { compile, isJsonObject, ToolClassType } from "@nyte-ai/schema";
 import type {
   CallId,
   HeadName,
@@ -9,7 +9,6 @@ import type {
   TurnInfo,
 } from "@nyte-ai/schema";
 import type { Draft, FoldTurn, Logged } from "../contract/fold.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 import { liveRun, setTurn, updatePart } from "./draft.ts";
 
 const TOOL_CLASS = compile(ToolClassType);

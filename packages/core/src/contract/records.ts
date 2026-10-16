@@ -7,6 +7,7 @@ import {
   cyclicWithJson,
   HeadInfoType,
   idSchema,
+  isJsonObject,
   JsonObjectType,
   JsonType,
   MoveOutcomeType,
@@ -41,7 +42,6 @@ import type {
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static, TProperties, TSchema, TUnsafe } from "typebox";
-import { isJsonObject } from "../util/json-schema.ts";
 import type { SendReceipt } from "./session.ts";
 
 const WaitTargetSchema = typed<WaitTarget>()(WaitTargetType);
@@ -107,8 +107,6 @@ const RunRecordType = record({
   lastSnapshot: nullable(idSchema<"snapshot">()),
   usage: nullable(typed<Usage>()(UsageType)),
   requests: Type.Number(),
-
-  waitedBy: list(record({ session: idSchema<"session">(), call: idSchema<"call">() })),
 
   parked: list(idSchema<"call">()),
 });

@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, isJsonObject } from "@nyte-ai/schema";
 import type {
   CommitId,
   DecodedObjectView,
@@ -13,7 +13,6 @@ import type { Host } from "../contract/host.ts";
 
 import { decodeCommitRecord } from "../contract/records.ts";
 import type { CommitRecord } from "../contract/records.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 import { sessionRef } from "./refs.ts";
 import { readCommit, toCommitObjectId } from "./session.ts";
 import type { StoreConnection } from "../contract/store.ts";

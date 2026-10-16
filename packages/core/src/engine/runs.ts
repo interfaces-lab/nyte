@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, isJsonObject } from "@nyte-ai/schema";
 import type {
   Configuration,
   HeadInfo,
@@ -34,7 +34,6 @@ import {
   STALE,
 } from "../store/session.ts";
 import { SdkError } from "../util/error.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 import { send } from "./admission.ts";
 import { FENCED, stopRun } from "./fence.ts";
 import { notifyReceipt, waitFor } from "./waits.ts";

@@ -1,8 +1,8 @@
-import { SdkErrorWireSchema } from "@nyte-ai/schema";
+import { isJsonObject, SdkErrorWireSchema } from "@nyte-ai/schema";
 import type { ByteReader, Json, OutputFrame, SdkErrorWire } from "@nyte-ai/schema";
 import { SdkError, dev } from "@nyte-ai/core";
 import type { SdkErrorCode } from "@nyte-ai/core";
-import { isRecord, parseJson } from "./json.ts";
+import { parseJson } from "./json.ts";
 
 /** Maps each error code to the HTTP status the handler answers it with. */
 export const errorStatus = {
@@ -346,7 +346,7 @@ function parseEventBlock(block: string): { readonly data: Json } | null {
 }
 
 function controlOf(value: Json): OutputFrame | null {
-  if (!isRecord(value)) return null;
+  if (!isJsonObject(value)) return null;
 
   if (value.kind === "gap") return { kind: "gap" };
 

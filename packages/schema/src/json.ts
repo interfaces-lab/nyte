@@ -49,3 +49,8 @@ const json = compile(withJson(JsonType));
 export function isJson(value: unknown): value is Json {
   return json.Check(value);
 }
+
+// oxlint-disable-next-line nyte-code/no-is-helper-names -- the public guard every package narrows a JSON value to an object with
+export function isJsonObject(value: Json | undefined): value is JsonSchema {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

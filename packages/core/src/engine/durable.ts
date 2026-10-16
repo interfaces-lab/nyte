@@ -1,4 +1,4 @@
-import { isJson } from "@nyte-ai/schema";
+import { isJson, isJsonObject } from "@nyte-ai/schema";
 import type {
   Awaitable,
   CallId,
@@ -21,7 +21,6 @@ import { partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { SdkError } from "../util/error.ts";
-import { isJsonObject } from "../util/json-schema.ts";
 import { holdLease } from "./lease.ts";
 import { lapsed, readParkedWait, runWait, waitingOn } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";

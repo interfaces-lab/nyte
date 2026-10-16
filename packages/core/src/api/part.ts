@@ -1,4 +1,4 @@
-import { asId, isJson, standard } from "@nyte-ai/schema";
+import { asId, isJson, isJsonObject, standard } from "@nyte-ai/schema";
 import type {
   CallId,
   Json,
@@ -43,7 +43,7 @@ import {
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { SdkError } from "../util/error.ts";
-import { check, convertJsonSchema, isJsonObject, matchesOutput } from "../util/json-schema.ts";
+import { check, convertJsonSchema, matchesOutput } from "../util/json-schema.ts";
 
 type Performed =
   | { readonly kind: "returned"; readonly output: unknown }

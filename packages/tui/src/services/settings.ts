@@ -4,7 +4,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import type { Json } from "@nyte-ai/sdk";
-import { isJsonObject, toJson } from "../json.ts";
+import { isJsonObject } from "@nyte-ai/schema";
+import { toJson } from "../json.ts";
 import { parseSettingsFile } from "../lib/settings-schema.ts";
 import type { ResolvedSettings, SettingsFile, SettingsPatch } from "../lib/settings-schema.ts";
 
