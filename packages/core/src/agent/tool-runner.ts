@@ -13,6 +13,7 @@ import type {
   Awaitable,
   CallId,
   Decision,
+  DurableEvent,
   FileChange,
   HeadName,
   Infer,
@@ -387,72 +388,68 @@ async function partOpening(
     status: { kind: "live", run },
   });
 
-  const running = await put(
-    kernel,
-    "part",
-    record({ ...fields, phase: "running", progress: null }, 2),
-    at,
-  );
-
-  const opened: RefUpdate[] = [
+  const opening: readonly DurableEvent[] = [
     {
-      name,
-      target: running,
-      expect: "absent",
-      event: {
-        head,
-        kind: "part",
-        part,
-        change: "created",
-        partKind: tool.kind,
-        placement: STEP,
-        state: calling,
-        version: 1,
-        run,
-        owner: null,
-      },
+      head,
+      kind: "part",
+      part,
+      change: "created",
+      partKind: tool.kind,
+      placement: STEP,
+      state: calling,
+      version: 1,
+      run,
+      owner: null,
     },
     {
-      name,
-      target: running,
-      event: {
-        head,
-        kind: "call",
-        call,
-        part,
-        change: "intent",
-        name: where.name,
-        args: planned.args,
-        class: planned.class,
-      },
+      head,
+      kind: "call",
+      call,
+      part,
+      change: "intent",
+      name: where.name,
+      args: planned.args,
+      class: planned.class,
     },
   ];
 
-  if (held !== null) return { updates: [held, ...opened], result: null };
+  if (held !== null) {
+    const running = await put(
+      kernel,
+      "part",
+      record({ ...fields, phase: "running", progress: null }, 2),
+      at,
+    );
+
+    return {
+      updates: [held, { name, target: running, expect: "absent", events: opening }],
+      result: null,
+    };
+  }
+
   abortHere(kernel, run);
   const settled = record({ ...fields, phase: "settled", outcome: STOPPED, changes: null }, 3);
   const status = { kind: "failed", run, failure: FENCED } as const;
 
   return {
     updates: [
-      ...opened,
-      {
-        name,
-        target: await put(kernel, "part", settled, at),
-        event: {
-          head,
-          kind: "call",
-          call,
-          part,
-          change: "settled",
-          outcome: STOPPED,
-          changes: null,
-        },
-      },
       {
         name,
         target: await put(kernel, "part", { ...settled, status }, at),
-        event: { head, kind: "part", part, change: "failed", failure: FENCED },
+        expect: "absent",
+        events: [
+          ...opening,
+          {
+            head,
+            kind: "call",
+            call,
+            part,
+            change: "settled",
+            outcome: STOPPED,
+            changes: null,
+          },
+          { head, kind: "part", part, change: "failed", failure: FENCED },
+        ],
       },
     ],
     result: STOPPED,
@@ -610,19 +607,21 @@ async function settlement(
       name,
       target,
       expect: found.ref.revision,
-      event: {
-        head,
-        kind: "call",
-        call,
-        part,
-        change: "settled",
-        outcome: settled.outcome,
-        changes: settled.changes,
-      },
+      events: [
+        {
+          head,
+          kind: "call",
+          call,
+          part,
+          change: "settled",
+          outcome: settled.outcome,
+          changes: settled.changes,
+        },
+        ...(settled.files.length === 0
+          ? []
+          : [{ head: null, kind: "changes", files: settled.files } as const]),
+      ],
     },
-    ...(settled.files.length === 0
-      ? []
-      : [{ name, target, event: { head: null, kind: "changes", files: settled.files } } as const]),
   ];
 
   if (found.record.status.kind === "failed" || found.record.status.kind === "settled") {

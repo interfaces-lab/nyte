@@ -36,9 +36,9 @@ describe("runs", () => {
           if (crashed) throw new Error("Crashed.");
           const outcome = await store.refs.set(updates);
 
-          crashed = updates.some(
-            (update) => update.event?.kind === "run" && update.event.change === "ended",
-          );
+          crashed = updates
+            .flatMap((update) => update.events ?? [])
+            .some((event) => event.kind === "run" && event.change === "ended");
 
           return outcome;
         },

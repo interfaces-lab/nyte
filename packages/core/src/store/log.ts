@@ -1,5 +1,5 @@
 import { SessionEventSchema } from "@nyte-ai/schema";
-import type { Json, Ref, RefUpdate, SessionEvent, SessionId } from "@nyte-ai/schema";
+import type { DurableEvent, Json, Ref, RefUpdate, SessionEvent, SessionId } from "@nyte-ai/schema";
 import { SdkError } from "../util/error.ts";
 import { parseSessionRef } from "./refs.ts";
 
@@ -13,9 +13,9 @@ export function admits(update: RefUpdate, current: Ref | undefined): boolean {
 
 export function collectSessionEvents(
   updates: readonly RefUpdate[],
-): readonly { readonly session: SessionId; readonly event: NonNullable<RefUpdate["event"]> }[] {
+): readonly { readonly session: SessionId; readonly event: DurableEvent }[] {
   return updates.flatMap((update) => {
-    if (update.event === undefined) return [];
+    if (update.events === undefined || update.events.length === 0) return [];
     const session = parseSessionRef(update.name);
 
     if (session === null)
@@ -24,7 +24,7 @@ export function collectSessionEvents(
         `${update.name} is outside a session and cannot carry an event`,
       );
 
-    return [{ session, event: update.event }];
+    return update.events.map((event) => ({ session, event }));
   });
 }
 

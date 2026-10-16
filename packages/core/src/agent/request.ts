@@ -145,8 +145,8 @@ export async function rideRef(kernel: Kernel, name: string, event: DurableEvent)
     if (ref === null || ref.target === null) return;
 
     if (
-      (await commit(kernel, [{ name, target: ref.target, expect: ref.revision, event }])).kind ===
-      "set"
+      (await commit(kernel, [{ name, target: ref.target, expect: ref.revision, events: [event] }]))
+        .kind === "set"
     )
       return;
   }
@@ -257,7 +257,7 @@ async function chargeFailed(
         name: found.ref.name,
         target: await put(kernel, "run", charge(found.record, usage, true)),
         expect: found.ref.revision,
-        event,
+        events: [event],
       },
     ]);
 

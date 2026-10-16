@@ -55,12 +55,14 @@ async function advanceSeen(
         name,
         target: await put(kernel, "seen", record),
         expect: readRefExpectation(ref),
-        event: {
-          head: input.head,
-          kind: "seen",
-          principal: input.principal,
-          commit: input.commit,
-        },
+        events: [
+          {
+            head: input.head,
+            kind: "seen",
+            principal: input.principal,
+            commit: input.commit,
+          },
+        ],
       },
     ]);
 

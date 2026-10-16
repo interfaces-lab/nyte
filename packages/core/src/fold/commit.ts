@@ -9,7 +9,7 @@ import { publishSet } from "./watch.ts";
 
 export interface CallChange {
   readonly record: CallRecord;
-  readonly event?: DurableEvent;
+  readonly events?: readonly DurableEvent[];
   readonly updates?: readonly RefUpdate[];
 }
 
@@ -86,7 +86,7 @@ export function changeCall(
           name,
           target: await put(kernel, "call", next.record),
           expect: readRefExpectation(found?.ref ?? null),
-          event: next.event,
+          events: next.events,
         },
         ...(next.updates ?? []),
       ]);

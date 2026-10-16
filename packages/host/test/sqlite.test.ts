@@ -299,7 +299,7 @@ describe("sqliteStore", () => {
       })(),
     );
 
-    await refs.set([{ name: "sessions/s1/heads/main", target, event: created }]);
+    await refs.set([{ name: "sessions/s1/heads/main", target, events: [created] }]);
     await first.close();
 
     const second = sqliteStore({ path });

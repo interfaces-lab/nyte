@@ -199,7 +199,7 @@ export async function configure(
         name: sessionRef(session),
         target: await put(kernel, "session", record),
         expect: current.ref.revision,
-        event: { head, kind: "configured", selected, effective: selected },
+        events: [{ head, kind: "configured", selected, effective: selected }],
       },
     ]);
 

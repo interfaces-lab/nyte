@@ -142,13 +142,13 @@ export async function settling(
       {
         name: partRef(session, part),
         target,
-        event: { head, kind: "part", part, change: "settled", commit: landed, endedAt: at },
+        events: [{ head, kind: "part", part, change: "settled", commit: landed, endedAt: at }],
       },
       {
         name: headRef(session, head),
         target: toCommitObjectId(landed),
         expect: input.expect,
-        event: { head, kind: "commit", id: landed, parent, run, body },
+        events: [{ head, kind: "commit", id: landed, parent, run, body }],
       },
     ],
   };
@@ -212,7 +212,7 @@ export async function stoppedParts(
         name,
         target: await put(kernel, "part", record, at),
         expect: found.ref.revision,
-        event: { head, kind: "part", part, change: "updated", state, version },
+        events: [{ head, kind: "part", part, change: "updated", state, version }],
       },
       ...landed.updates,
     );
@@ -244,7 +244,7 @@ export async function failedParts(
             status: { kind: "failed", run: found.record.run, failure },
           }),
           expect: found.ref.revision,
-          event: { head, kind: "part", part, change: "failed", failure },
+          events: [{ head, kind: "part", part, change: "failed", failure }],
         },
       ];
     }),

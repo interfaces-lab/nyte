@@ -452,18 +452,20 @@ describe("waits as store facts", () => {
       {
         name: partRef(session.id, part.id),
         target: await put(kernel, "part", { ...record, run, status: { kind: "live", run } }),
-        event: {
-          head: main,
-          kind: "part",
-          part: part.id,
-          change: "created",
-          partKind: record.partKind,
-          placement: record.placement,
-          state: record.state,
-          version: record.version,
-          run,
-          owner: record.owner,
-        },
+        events: [
+          {
+            head: main,
+            kind: "part",
+            part: part.id,
+            change: "created",
+            partKind: record.partKind,
+            placement: record.placement,
+            state: record.state,
+            version: record.version,
+            run,
+            owner: record.owner,
+          },
+        ],
       },
     ]);
     const pending = part.answer();

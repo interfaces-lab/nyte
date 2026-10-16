@@ -259,18 +259,20 @@ export async function livePart(
     {
       name: partRef(session, part),
       target: await kernel.store.objects.put(envelope("part", record, Date.now())),
-      event: {
-        head: main,
-        kind: "part",
-        part,
-        change: "created",
-        partKind: "text",
-        placement: record.placement,
-        state: record.state,
-        version: 1,
-        run,
-        owner: null,
-      },
+      events: [
+        {
+          head: main,
+          kind: "part",
+          part,
+          change: "created",
+          partKind: "text",
+          placement: record.placement,
+          state: record.state,
+          version: 1,
+          run,
+          owner: null,
+        },
+      ],
     },
   ];
 
@@ -293,7 +295,7 @@ export function recording(store: StoreConnection) {
       refs: {
         ...store.refs,
         set(updates) {
-          sets.push(updates.flatMap((update) => (update.event ? [label(update.event)] : [])));
+          sets.push(updates.flatMap((update) => (update.events ?? []).map(label)));
 
           return store.refs.set(updates);
         },

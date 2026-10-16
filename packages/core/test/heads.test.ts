@@ -41,7 +41,7 @@ async function land(kernel: Kernel, session: SessionId, content: string): Promis
       name: headRef(session, main),
       target: toCommitObjectId(id),
       expect: readRefExpectation(tip.ref),
-      event: { head: main, kind: "commit", id, parent: record.parent, run: null, body },
+      events: [{ head: main, kind: "commit", id, parent: record.parent, run: null, body }],
     },
   ]);
 

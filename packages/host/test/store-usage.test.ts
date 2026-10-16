@@ -131,7 +131,7 @@ test("reads charged requests once, with workspace and session metadata, not run 
     ];
 
     await connection.refs.set(
-      events.map((event) => ({ name: "sessions/session", target: session, event })),
+      events.map((event) => ({ name: "sessions/session", target: session, events: [event] })),
     );
     const report = readNyteUsage(home, { sinceDay: null, untilDay: localDay(Date.now()) });
     expect(report.sources).toEqual([

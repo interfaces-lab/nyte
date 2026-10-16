@@ -39,7 +39,7 @@ async function land(kernel: Kernel, session: SessionId, text: string): Promise<v
       name: headRef(session, main),
       target: asId<"object">(id),
       expect: tip.ref?.revision ?? "absent",
-      event: { head: main, kind: "commit", id, parent: record.parent, run: null, body },
+      events: [{ head: main, kind: "commit", id, parent: record.parent, run: null, body }],
     },
   ]);
 }
@@ -164,7 +164,13 @@ describe("the store is the truth", () => {
         async set(updates) {
           const outcome = await shared.refs.set(updates);
 
-          if (armed && updates.some((update) => update.event?.kind === "commit")) gate = true;
+          if (
+            armed &&
+            updates
+              .flatMap((update) => update.events ?? [])
+              .some((event) => event.kind === "commit")
+          )
+            gate = true;
 
           return outcome;
         },

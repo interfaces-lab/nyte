@@ -2135,7 +2135,7 @@ const cases = {
   ),
   RefUpdateSchema: sample(
     RefUpdateSchema,
-    { name: "sessions/s1/heads/main", target: object, expect: "absent", event: durableEvent },
+    { name: "sessions/s1/heads/main", target: object, expect: "absent", events: [durableEvent] },
     { name: "x", target: null, expect: 1 },
   ),
   SetOutcomeSchema: sample(

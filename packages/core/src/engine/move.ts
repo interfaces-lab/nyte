@@ -227,7 +227,7 @@ async function decide(
         name: headRef(session, head),
         target: plan.landing === null ? null : toCommitObjectId(plan.landing),
         expect: readRefExpectation(checked.tip.ref),
-        event: { head, kind: "head", from: checked.tip.id, to: plan.landing, reason: "moved" },
+        events: [{ head, kind: "head", from: checked.tip.id, to: plan.landing, reason: "moved" }],
       },
     ]);
 

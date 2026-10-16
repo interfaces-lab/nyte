@@ -125,7 +125,7 @@ export async function createHead(
               name: headRef(session, head),
               target: toCommitObjectId(source),
               expect: "absent",
-              event: { head, kind: "head", from: null, to: source, reason: "created" },
+              events: [{ head, kind: "head", from: null, to: source, reason: "created" }],
             },
           ];
 
@@ -134,7 +134,7 @@ export async function createHead(
         name: sessionRef(session),
         target: await put(kernel, "session", record, at),
         expect: found.ref.revision,
-        event: await sessionEvent(kernel, record, rows),
+        events: [await sessionEvent(kernel, record, rows)],
       },
       ...created,
     ]);
@@ -185,19 +185,21 @@ export async function mergeHead(
       name: headRef(session, stack.parent),
       target: own.ref?.target ?? null,
       expect: readRefExpectation(parent.ref),
-      event: {
-        head: stack.parent,
-        kind: "head",
-        from: parent.id,
-        to: own.id,
-        reason: "merged",
-      },
+      events: [
+        {
+          head: stack.parent,
+          kind: "head",
+          from: parent.id,
+          to: own.id,
+          reason: "merged",
+        },
+      ],
     },
     {
       name: sessionRef(session),
       target: await put(kernel, "session", record),
       expect: found.ref.revision,
-      event: await sessionEvent(kernel, record),
+      events: [await sessionEvent(kernel, record)],
     },
   ]);
 
@@ -243,7 +245,7 @@ export async function removeHead(
               name: headRef(session, head),
               target: null,
               expect: tip.ref.revision,
-              event: { head, kind: "head", from: tip.id, to: null, reason: "removed" },
+              events: [{ head, kind: "head", from: tip.id, to: null, reason: "removed" }],
             },
           ];
 
@@ -253,7 +255,7 @@ export async function removeHead(
         name: sessionRef(session),
         target: await put(kernel, "session", record),
         expect: found.ref.revision,
-        event: await sessionEvent(kernel, record),
+        events: [await sessionEvent(kernel, record)],
       },
     ]);
 

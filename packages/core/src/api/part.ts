@@ -177,7 +177,7 @@ export async function createPart<K extends PartDefinition>(
             at,
           ),
           expect: "absent",
-          event: { head: null, ...created },
+          events: [{ head: null, ...created }],
         },
       ]);
 
@@ -215,24 +215,26 @@ export async function createPart<K extends PartDefinition>(
     );
 
     const updates: readonly RefUpdate[] = [
-      { name, target, expect: "absent", event: { head, ...created } },
+      { name, target, expect: "absent", events: [{ head, ...created }] },
       {
         name,
         target,
-        event: { head, kind: "part", part: id, change: "settled", commit: landed, endedAt: at },
+        events: [{ head, kind: "part", part: id, change: "settled", commit: landed, endedAt: at }],
       },
       {
         name: headRef(session, head),
         target: toCommitObjectId(landed),
         expect: readRefExpectation(tip.ref),
-        event: {
-          head,
-          kind: "commit",
-          id: landed,
-          parent: record.parent,
-          run: null,
-          body: record.body,
-        },
+        events: [
+          {
+            head,
+            kind: "commit",
+            id: landed,
+            parent: record.parent,
+            run: null,
+            body: record.body,
+          },
+        ],
       },
     ];
 
@@ -331,7 +333,7 @@ function partHandleFor<K extends PartDefinition>(
             name,
             target: await put(kernel, "part", { ...record, state, version }),
             expect: ref.revision,
-            event: { head: null, kind: "part", part: id, change: "updated", state, version },
+            events: [{ head: null, kind: "part", part: id, change: "updated", state, version }],
           },
         ]);
 
@@ -422,7 +424,7 @@ function partHandleFor<K extends PartDefinition>(
             name,
             target: null,
             expect: found.ref.revision,
-            event: { head: null, kind: "part", part: id, change: "closed" },
+            events: [{ head: null, kind: "part", part: id, change: "closed" }],
           },
         ]);
 
@@ -462,7 +464,7 @@ async function answered(
         name,
         target: await put(kernel, "part", { ...found.record, status: { ...status, answer } }),
         expect: found.ref.revision,
-        event: { head: null, kind: "part", part: id, change: "answered", answer },
+        events: [{ head: null, kind: "part", part: id, change: "answered", answer }],
       },
     ]);
 

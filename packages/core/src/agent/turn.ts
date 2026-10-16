@@ -623,18 +623,20 @@ async function open(context: Turn, state: AttemptState, kind: OpenPart["kind"]):
         name: partRef(session, part),
         target: await put(kernel, "part", record),
         expect: "absent",
-        event: {
-          head,
-          kind: "part",
-          part,
-          change: "created",
-          partKind: kind,
-          placement,
-          state: initial,
-          version: 1,
-          run,
-          owner: null,
-        },
+        events: [
+          {
+            head,
+            kind: "part",
+            part,
+            change: "created",
+            partKind: kind,
+            placement,
+            state: initial,
+            version: 1,
+            run,
+            owner: null,
+          },
+        ],
       },
     ]);
 
@@ -702,7 +704,7 @@ async function settledParts(
         name: partRef(session, entry.part),
         target: landed.target,
         expect: part.ref.revision,
-        event: { head, kind: "part", part: entry.part, change: "updated", state, version },
+        events: [{ head, kind: "part", part: entry.part, change: "updated", state, version }],
       },
       ...landed.updates,
     );
@@ -773,10 +775,16 @@ async function keep(
       name,
       target,
       expect: found.ref.revision,
-      event: { head, kind: "part", part, change: "updated", state, version },
+      events: [{ head, kind: "part", part, change: "updated", state, version }],
     },
     ...(live
-      ? [{ name, target, event: { head, kind: "part", part, change: "failed", failure } } as const]
+      ? [
+          {
+            name,
+            target,
+            events: [{ head, kind: "part", part, change: "failed", failure }],
+          } as const,
+        ]
       : []),
   ];
 }
@@ -893,12 +901,9 @@ async function changeRun(
 
     if (next === null) return undefined;
     const target = await put(kernel, "run", next.record);
-    const [first, ...rest] = next.events;
-
     const outcome = await commit(kernel, [
       ...(next.updates ?? []),
-      { name: found.ref.name, target, expect: found.ref.revision, event: first },
-      ...rest.map((event) => ({ name: found.ref.name, target, event })),
+      { name: found.ref.name, target, expect: found.ref.revision, events: next.events },
     ]);
 
     return outcome.kind === "set" ? undefined : STALE;

@@ -1486,9 +1486,9 @@ describe("turn findings (CORE-DIET D3)", () => {
           refs: {
             ...opened.refs,
             async set(updates) {
-              const retrying = updates.find(
-                (update) => update.event?.kind === "run" && update.event.change === "retrying",
-              )?.event;
+              const retrying = updates
+                .flatMap((update) => update.events ?? [])
+                .find((event) => event.kind === "run" && event.change === "retrying");
 
               if (retrying?.kind === "run" && stop !== null) {
                 const stopping = stop;
@@ -1858,14 +1858,16 @@ describe("turn findings (CORE-DIET D3)", () => {
           envelope("part", { ...record, state: corrupt, version }, Date.now()),
         ),
         expect: ref.revision,
-        event: {
-          head: main,
-          kind: "part",
-          part: asId<"part">(note.id),
-          change: "updated",
-          state: corrupt,
-          version,
-        } as const,
+        events: [
+          {
+            head: main,
+            kind: "part",
+            part: asId<"part">(note.id),
+            change: "updated",
+            state: corrupt,
+            version,
+          } as const,
+        ],
       },
     ];
 
@@ -1912,9 +1914,9 @@ describe("turn findings (CORE-DIET D3)", () => {
             async set(updates) {
               if (
                 locked &&
-                updates.some(
-                  (update) => update.event?.kind === "part" && update.event.change === "settled",
-                )
+                updates
+                  .flatMap((update) => update.events ?? [])
+                  .some((event) => event.kind === "part" && event.change === "settled")
               ) {
                 locked = false;
 

@@ -378,12 +378,17 @@ async function create(
           {
             name: sessionRef(id),
             target,
-            event: { head: MAIN, kind: "configured", selected, effective },
+            events: [{ head: MAIN, kind: "configured", selected, effective }],
           },
         ];
 
   const outcome = await commit(kernel, [
-    { name: sessionRef(id), target, expect: "absent", event: await sessionEvent(kernel, record) },
+    {
+      name: sessionRef(id),
+      target,
+      expect: "absent",
+      events: [await sessionEvent(kernel, record)],
+    },
     ...configured,
   ]);
 
@@ -473,7 +478,7 @@ async function update(
         name: sessionRef(session),
         target: await put(kernel, "session", record),
         expect: found.ref.revision,
-        event: await sessionEvent(kernel, record),
+        events: [await sessionEvent(kernel, record)],
       },
     ]);
 
@@ -513,7 +518,7 @@ async function remove(
         name: sessionRef(session),
         target: null,
         expect: found.ref.revision,
-        event: await sessionEvent(kernel, found.record),
+        events: [await sessionEvent(kernel, found.record)],
       },
     ]);
 

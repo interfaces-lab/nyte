@@ -312,9 +312,9 @@ async function crashingAfterMove() {
         if (crashed) throw new Error("The host crashed.");
         const outcome = await memory.refs.set(updates);
 
-        crashed = updates.some(
-          (update) => update.event?.kind === "head" && update.event.reason === "moved",
-        );
+        crashed = updates
+          .flatMap((update) => update.events ?? [])
+          .some((event) => event.kind === "head" && event.reason === "moved");
 
         return outcome;
       },

@@ -489,17 +489,19 @@ async function park(
 
     return {
       record: { ...current, waiting: target, partial },
-      event:
+      events:
         on === null || place.part === null
-          ? undefined
-          : {
-              head: place.head,
-              kind: "call",
-              call: place.call,
-              part: place.part,
-              change: "waiting",
-              on,
-            },
+          ? []
+          : [
+              {
+                head: place.head,
+                kind: "call",
+                call: place.call,
+                part: place.part,
+                change: "waiting",
+                on,
+              },
+            ],
       updates: [
         ...(place.run === null
           ? []
@@ -579,7 +581,7 @@ async function modalsWaiting(
       name,
       target: await put(kernel, "part", { ...found.record, status: { ...status, waiting: call } }),
       expect: found.ref.revision,
-      event: { head: null, kind: "part", part, change: "waiting", call },
+      events: [{ head: null, kind: "part", part, change: "waiting", call }],
     });
   }
 

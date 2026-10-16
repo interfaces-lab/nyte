@@ -230,7 +230,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const [head, run] = first.revisions;
 
       const outcome = await refs.set([
-        { name: "sessions/s1/heads/main", target: after, expect: head, event: moved },
+        { name: "sessions/s1/heads/main", target: after, expect: head, events: [moved] },
         { name: "sessions/s1/runs/r1", target: null, expect: head },
       ]);
 
@@ -312,14 +312,14 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const target = await objects.put({});
 
       const first = await refs.set([
-        { name: "sessions/s1/heads/main", target, event: created },
+        { name: "sessions/s1/heads/main", target, events: [created] },
         { name: "sessions/s1/inbox/main", target },
-        { name: "sessions/s2/heads/main", target, event: created },
-        { name: "sessions/s1/runs/r1", target, event: moved },
+        { name: "sessions/s2/heads/main", target, events: [created] },
+        { name: "sessions/s1/runs/r1", target, events: [moved] },
       ]);
 
       const second = await refs.set([
-        { name: "sessions/s1/heads/main", target: null, event: removed },
+        { name: "sessions/s1/heads/main", target: null, events: [removed] },
       ]);
 
       expect(first).toMatchObject({ kind: "set", logged: [1, 1, 2] });
@@ -343,8 +343,8 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
       await expect(
         refs.set([
-          { name: "sessions/s1/heads/main", target, event: created },
-          { name: "kv/host/core/x", target, event: moved },
+          { name: "sessions/s1/heads/main", target, events: [created] },
+          { name: "kv/host/core/x", target, events: [moved] },
         ]),
       ).rejects.toMatchObject({ code: "internal" });
       expect(await refs.get("sessions/s1/heads/main")).toBeNull();
@@ -408,10 +408,10 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const [revision] = first.revisions;
 
       const outcome = await refs.set([
-        { name: "sessions/s1/heads/main", target: two, expect: revision, event: moved },
-        { name: "sessions/s1/heads/main", target: three, expect: revision, event: moved },
+        { name: "sessions/s1/heads/main", target: two, expect: revision, events: [moved] },
+        { name: "sessions/s1/heads/main", target: three, expect: revision, events: [moved] },
         { name: "sessions/s1/parts/p", target: one, expect: "absent" },
-        { name: "sessions/s1/parts/p", target: two, expect: "absent", event: created },
+        { name: "sessions/s1/parts/p", target: two, expect: "absent", events: [created] },
       ]);
 
       assert(outcome.kind === "set");
@@ -476,7 +476,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
               name: "sessions/s1/heads/main",
               target: await objects.put(side),
               expect: revision,
-              event: moved,
+              events: [moved],
             },
           ]),
         ),

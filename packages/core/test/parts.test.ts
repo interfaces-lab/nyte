@@ -601,8 +601,8 @@ describe("parts", () => {
           if (
             publishedWhileRefused.length < 2 &&
             updates.length === 1 &&
-            only?.event?.kind === "part" &&
-            only.event.change === "answered"
+            only?.events?.some((event) => event.kind === "part" && event.change === "answered") ===
+              true
           ) {
             publishedWhileRefused.push(published);
 

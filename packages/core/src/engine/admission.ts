@@ -223,27 +223,31 @@ export async function landing(
         name: inboxRef(session, head),
         target: remaining,
         expect: index === 0 ? readRefExpectation(inbox.ref) : undefined,
-        event: {
-          head,
-          kind: "input",
-          message: due[index],
-          change: "landed",
-          commit: id,
-          run,
-        },
+        events: [
+          {
+            head,
+            kind: "input",
+            message: due[index],
+            change: "landed",
+            commit: id,
+            run,
+          },
+        ],
       },
       {
         name: headRef(session, head),
         target: toCommitObjectId(id),
         expect: index === 0 ? readRefExpectation(tip.ref) : undefined,
-        event: {
-          head,
-          kind: "commit",
-          id,
-          parent: record.parent,
-          run,
-          body: record.body,
-        },
+        events: [
+          {
+            head,
+            kind: "commit",
+            id,
+            parent: record.parent,
+            run,
+            body: record.body,
+          },
+        ],
       },
     ]);
 
@@ -378,14 +382,16 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
           outcome: null,
         }),
         expect: "absent",
-        event: {
-          head,
-          kind: "input",
-          message: target,
-          change: "scheduled",
-          schedule: message.schedule,
-          position,
-        },
+        events: [
+          {
+            head,
+            kind: "input",
+            message: target,
+            change: "scheduled",
+            schedule: message.schedule,
+            position,
+          },
+        ],
       },
     ]);
 
@@ -493,7 +499,7 @@ async function editGated(
         name: headRef(session, head),
         target: parent === null ? null : toCommitObjectId(parent),
         expect: readRefExpectation(checked.tip.ref),
-        event: { head, kind: "head", from: checked.tip.id, to: parent, reason: "moved" },
+        events: [{ head, kind: "head", from: checked.tip.id, to: parent, reason: "moved" }],
       },
       await admitted(
         kernel,
@@ -709,19 +715,21 @@ async function admitted(
     name: inboxRef(session, head),
     target: await put(kernel, "inbox", { messages, pendingInput }),
     expect: readRefExpectation(inbox.ref),
-    event: {
-      head,
-      kind: "input",
-      message: message.id,
-      change: "admitted",
-      content: message.content,
-      source: message.source,
-      delivery: message.delivery,
-      schedule: message.schedule,
-      covered: message.covered,
-      configuration: message.configuration,
-      replaced: message.replaced,
-    },
+    events: [
+      {
+        head,
+        kind: "input",
+        message: message.id,
+        change: "admitted",
+        content: message.content,
+        source: message.source,
+        delivery: message.delivery,
+        schedule: message.schedule,
+        covered: message.covered,
+        configuration: message.configuration,
+        replaced: message.replaced,
+      },
+    ],
   };
 }
 

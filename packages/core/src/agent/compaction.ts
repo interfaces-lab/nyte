@@ -321,18 +321,20 @@ async function openCompaction(
         name: partRef(session, part),
         target,
         expect: "absent",
-        event: {
-          head,
-          kind: "part",
-          part,
-          change: "created",
-          partKind: "compaction",
-          placement: NOTE,
-          state,
-          version: 1,
-          run,
-          owner: null,
-        },
+        events: [
+          {
+            head,
+            kind: "part",
+            part,
+            change: "created",
+            partKind: "compaction",
+            placement: NOTE,
+            state,
+            version: 1,
+            run,
+            owner: null,
+          },
+        ],
       },
     ]);
 
@@ -475,7 +477,9 @@ async function writeCompaction(
 
     const outcome = await commit(kernel, [
       ...(await failedParts(kernel, session, head, [part], failure)),
-      ...(fence === null ? [] : [{ ...fence.update, event: written.event ?? undefined }]),
+      ...(fence === null
+        ? []
+        : [{ ...fence.update, events: written.event === null ? [] : [written.event] }]),
     ]);
 
     if (outcome.kind === "stale") return "stale";
@@ -507,7 +511,7 @@ async function writeCompaction(
       name,
       target,
       expect: live.ref.revision,
-      event: { head, kind: "part", part, change: "updated", state, version },
+      events: [{ head, kind: "part", part, change: "updated", state, version }],
     },
     ...landed.updates,
     ...(run === null
@@ -515,17 +519,19 @@ async function writeCompaction(
           {
             name: headRef(session, head),
             target: toCommitObjectId(landed.landed),
-            event: {
-              head,
-              kind: "head",
-              from: tip.id,
-              to: landed.landed,
-              reason: "moved",
-            } as const,
+            events: [
+              {
+                head,
+                kind: "head",
+                from: tip.id,
+                to: landed.landed,
+                reason: "moved",
+              } as const,
+            ],
           },
         ]
       : []),
-    ...(written.event === null ? [] : [{ name, target, event: written.event }]),
+    ...(written.event === null ? [] : [{ name, target, events: [written.event] }]),
     ...(fence === null ? [] : [fence.update]),
   ]);
 

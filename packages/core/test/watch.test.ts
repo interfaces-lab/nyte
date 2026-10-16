@@ -63,14 +63,14 @@ async function write(
   entries: readonly {
     readonly name: string;
     readonly object: Json;
-    readonly event?: DurableEvent;
+    readonly events?: readonly DurableEvent[];
   }[],
 ): Promise<void> {
   const updates: readonly RefUpdate[] = await Promise.all(
     entries.map(async (entry) => ({
       name: entry.name,
       target: await kernel.store.objects.put(entry.object),
-      event: entry.event,
+      events: entry.events,
     })),
   );
 
@@ -101,24 +101,26 @@ async function createSession(
     {
       name: sessionRef(id),
       object: envelope("session", record, lastActivityAt),
-      event: {
-        head: null,
-        kind: "session",
-        info: {
-          ...record,
-          call: null,
-          activation: kernel.activation(id),
-          heads: [
-            {
-              name: main,
-              tip: { kind: "start" },
-              stack: null,
-              execution: { kind: "idle", lastRun: null },
-              unread: false,
-            },
-          ],
+      events: [
+        {
+          head: null,
+          kind: "session",
+          info: {
+            ...record,
+            call: null,
+            activation: kernel.activation(id),
+            heads: [
+              {
+                name: main,
+                tip: { kind: "start" },
+                stack: null,
+                execution: { kind: "idle", lastRun: null },
+                unread: false,
+              },
+            ],
+          },
         },
-      },
+      ],
     },
   ]);
 }
@@ -128,19 +130,21 @@ async function admit(kernel: Kernel, session: SessionId, message: string): Promi
     {
       name: inboxRef(session, main),
       object: envelope("inbox", { messages: [message], pendingInput: [message] }, 0),
-      event: {
-        head: main,
-        kind: "input",
-        message: asId(message),
-        change: "admitted",
-        content: message,
-        source: { kind: "user" },
-        delivery: "steer",
-        schedule: { kind: "next-turn", reason: "idle" },
-        covered: true,
-        configuration,
-        replaced: null,
-      },
+      events: [
+        {
+          head: main,
+          kind: "input",
+          message: asId(message),
+          change: "admitted",
+          content: message,
+          source: { kind: "user" },
+          delivery: "steer",
+          schedule: { kind: "next-turn", reason: "idle" },
+          covered: true,
+          configuration,
+          replaced: null,
+        },
+      ],
     },
   ]);
 }
@@ -171,19 +175,21 @@ async function land(
     {
       name: inboxRef(session, main),
       object: envelope("inbox", { messages: [], pendingInput: [] }, 0),
-      event: {
-        head: main,
-        kind: "input",
-        message: asId(message),
-        change: "landed",
-        commit: id,
-        run: null,
-      },
+      events: [
+        {
+          head: main,
+          kind: "input",
+          message: asId(message),
+          change: "landed",
+          commit: id,
+          run: null,
+        },
+      ],
     },
     {
       name: headRef(session, main),
       object: envelope("commit", record, 0),
-      event: { head: main, kind: "commit", id, parent, run: null, body: record.body },
+      events: [{ head: main, kind: "commit", id, parent, run: null, body: record.body }],
     },
   ]);
 

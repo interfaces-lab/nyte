@@ -11,10 +11,11 @@ export type RefUpdate = {
   readonly name: string;
   readonly target: ObjectId | null;
   readonly expect?: Revision | "absent";
-  readonly event?: DurableEvent;
+  /** The events this write logs to the ref's session, in order; a ref outside a session carries none. */
+  readonly events?: readonly DurableEvent[];
 };
 
-/** What `RefStore.set` did: `set` with the seq each update carrying an event was logged at, in update order, the time it logged them at, and each update's new revision; or `stale`, naming the first ref whose expectation failed. */
+/** What `RefStore.set` did: `set` with the seq each event was logged at, in update order and each update's events in order, the time it logged them at, and each update's new revision; or `stale`, naming the first ref whose expectation failed. */
 export type SetOutcome =
   | {
       readonly kind: "set";

@@ -55,18 +55,20 @@ async function livePart(
     {
       name: partRef(session, part),
       target: await kernel.store.objects.put(envelope("part", record, Date.now())),
-      event: {
-        head: asId<"head">("main"),
-        kind: "part",
-        part,
-        change: "created",
-        partKind,
-        placement: record.placement,
-        state: record.state,
-        version: 1,
-        run,
-        owner: null,
-      } as const,
+      events: [
+        {
+          head: asId<"head">("main"),
+          kind: "part",
+          part,
+          change: "created",
+          partKind,
+          placement: record.placement,
+          state: record.state,
+          version: 1,
+          run,
+          owner: null,
+        } as const,
+      ],
     },
   ];
 
@@ -82,14 +84,16 @@ async function updatePart(kernel: Kernel, session: SessionId, record: PartRecord
       target: await kernel.store.objects.put(
         envelope("part", { ...record, state, version: 2 }, Date.now()),
       ),
-      event: {
-        head: main,
-        kind: "part",
-        part: record.id,
-        change: "updated",
-        state,
-        version: 2,
-      } as const,
+      events: [
+        {
+          head: main,
+          kind: "part",
+          part: record.id,
+          change: "updated",
+          state,
+          version: 2,
+        } as const,
+      ],
     },
   ];
 

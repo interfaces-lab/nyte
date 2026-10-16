@@ -87,7 +87,7 @@ export async function fence(kernel: Kernel, session: SessionId, run: RunId): Pro
         name: runRef(session, run),
         target: stopping,
         expect: found.ref.revision,
-        event: { head, kind: "run", run, change: "stopping" },
+        events: [{ head, kind: "run", run, change: "stopping" }],
       },
       ...stopped,
       { name: inboxRef(session, head), target: rewritten, expect: readRefExpectation(inbox.ref) },

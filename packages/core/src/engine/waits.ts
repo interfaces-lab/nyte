@@ -133,17 +133,19 @@ export function createWaitRegistry(kernel: Kernel): WaitRegistry {
 
       return {
         record: { ...current, partial },
-        event:
+        events:
           on === null || current.part === null
-            ? undefined
-            : {
-                head: current.head,
-                kind: "call",
-                call: current.id,
-                part: current.part,
-                change: "waiting",
-                on,
-              },
+            ? []
+            : [
+                {
+                  head: current.head,
+                  kind: "call",
+                  call: current.id,
+                  part: current.part,
+                  change: "waiting",
+                  on,
+                },
+              ],
         updates:
           on === null || entry.run === null
             ? []
@@ -590,12 +592,12 @@ export async function runWait(
         phase: resumed ? "executing" : record.phase,
       }),
       expect: found.ref.revision,
-      event:
+      events:
         next.waiting !== null
-          ? { head, kind: "run", run, change: "waiting", on: next.waiting }
+          ? [{ head, kind: "run", run, change: "waiting", on: next.waiting }]
           : resumed
-            ? { head, kind: "run", run, change: "phase", phase: "executing" }
-            : undefined,
+            ? [{ head, kind: "run", run, change: "phase", phase: "executing" }]
+            : [],
     },
   ];
 }

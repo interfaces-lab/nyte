@@ -72,7 +72,7 @@ export async function newRun(
       name: runRef(session, id),
       target: await put(kernel, "run", record, startedAt),
       expect: "absent",
-      event: { head, kind: "run", run: id, change: "started", view },
+      events: [{ head, kind: "run", run: id, change: "started", view }],
     },
   };
 }
@@ -145,13 +145,13 @@ export async function endRun(
         name: runRef(session, run),
         target: null,
         expect: found.ref.revision,
-        event: { head, kind: "run", run, change: "ended", end: final },
+        events: [{ head, kind: "run", run, change: "ended", end: final }],
       },
       {
         name: sessionRef(session),
         target: await put(kernel, "session", record, endedAt),
         expect: current.ref.revision,
-        event: await sessionEvent(kernel, record, rows),
+        events: [await sessionEvent(kernel, record, rows)],
       },
       {
         name: inboxRef(session, head),

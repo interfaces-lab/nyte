@@ -250,12 +250,14 @@ export async function withdraw(
     );
 
     const outcome = await commit(kernel, [
-      ...due.map((message, index) => ({
+      {
         name: inboxRef(session, head),
         target,
-        expect: index === 0 ? readRefExpectation(inbox.ref) : undefined,
-        event: { head, kind: "input", message, change: "withdrawn" } as const,
-      })),
+        expect: readRefExpectation(inbox.ref),
+        events: due.map(
+          (message) => ({ head, kind: "input", message, change: "withdrawn" }) as const,
+        ),
+      },
       ...receipts.flat(),
     ]);
 

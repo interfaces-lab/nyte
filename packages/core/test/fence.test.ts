@@ -47,13 +47,12 @@ function hookedStore(
 }
 
 function labels(updates: readonly RefUpdate[]): readonly string[] {
-  return updates.flatMap((update) => (update.event === undefined ? [] : [label(update.event)]));
+  return updates.flatMap((update) => (update.events ?? []).map(label));
 }
 
 function createdRun(updates: readonly RefUpdate[]) {
-  for (const update of updates)
-    if (update.event?.kind === "part" && update.event.change === "created" && update.event.run)
-      return update.event.run;
+  for (const event of updates.flatMap((update) => update.events ?? []))
+    if (event.kind === "part" && event.change === "created" && event.run) return event.run;
 
   return null;
 }
@@ -204,7 +203,7 @@ describe("the stop fence (ADV round 2)", () => {
     let bumps = 0;
 
     const store = hooked(memory, async (updates, inner) => {
-      const fence = updates.find((update) => update.event?.kind === "run");
+      const fence = updates.find((update) => update.events?.some((event) => event.kind === "run"));
 
       if (fence !== undefined && labels(updates).includes("run:stopping") && bumps < 2) {
         bumps += 1;
@@ -277,9 +276,9 @@ describe("move receipts and summary guards (ADV F-2)", () => {
       if (crashed) throw new Error("The host crashed.");
       const outcome = await inner.set(updates);
 
-      crashed = updates.some(
-        (update) => update.event?.kind === "head" && update.event.reason === "moved",
-      );
+      crashed = updates
+        .flatMap((update) => update.events ?? [])
+        .some((event) => event.kind === "head" && event.reason === "moved");
 
       return outcome;
     });

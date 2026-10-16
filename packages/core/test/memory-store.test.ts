@@ -96,7 +96,7 @@ describe("memoryStore", () => {
     const [head, run] = first.revisions;
 
     const outcome = await refs.set([
-      { name: "sessions/s1/heads/main", target: after, expect: head, event: moved },
+      { name: "sessions/s1/heads/main", target: after, expect: head, events: [moved] },
       { name: "sessions/s1/runs/r1", target: null, expect: head },
     ]);
 
@@ -152,14 +152,14 @@ describe("memoryStore", () => {
     const target = await objects.put({});
 
     const first = await refs.set([
-      { name: "sessions/s1/heads/main", target, event: created },
+      { name: "sessions/s1/heads/main", target, events: [created] },
       { name: "sessions/s1/inbox/main", target },
-      { name: "sessions/s2/heads/main", target, event: created },
-      { name: "sessions/s1/runs/r1", target, event: moved },
+      { name: "sessions/s2/heads/main", target, events: [created] },
+      { name: "sessions/s1/runs/r1", target, events: [moved] },
     ]);
 
     const second = await refs.set([
-      { name: "sessions/s1/heads/main", target: null, event: removed },
+      { name: "sessions/s1/heads/main", target: null, events: [removed] },
     ]);
 
     expect(first).toMatchObject({ kind: "set", logged: [1, 1, 2] });
@@ -295,7 +295,7 @@ describe("commit", () => {
         {
           name: `${sessionRef(created.id)}/marks/m`,
           target: null,
-          event: { head: main, kind: "head", from: null, to: null, reason: "moved" },
+          events: [{ head: main, kind: "head", from: null, to: null, reason: "moved" }],
         },
       ]);
 
@@ -319,7 +319,7 @@ describe("commit", () => {
       {
         name: `${sessionRef(created.id)}/marks/${name}`,
         target: null,
-        event: { head: main, kind: "head", from: null, to: null, reason: "moved" },
+        events: [{ head: main, kind: "head", from: null, to: null, reason: "moved" }],
       },
     ];
 

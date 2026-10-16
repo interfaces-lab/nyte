@@ -17,7 +17,7 @@ export const RefUpdateType = Type.Object({
   name: Type.String(),
   target: nullable(idSchema<"object">()),
   expect: Type.Optional(Type.Union([Type.Literal("absent"), idSchema<"revision">()])),
-  event: Type.Optional(DurableEventType),
+  events: Type.Optional(Type.Array(DurableEventType)),
 });
 
 export const SetOutcomeType = Type.Union([

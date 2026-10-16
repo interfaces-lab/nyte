@@ -76,9 +76,9 @@ describe("execution", () => {
         set(updates) {
           if (
             broken &&
-            updates.some(
-              (update) => update.event?.kind === "run" && update.event.change === "ended",
-            )
+            updates
+              .flatMap((update) => update.events ?? [])
+              .some((event) => event.kind === "run" && event.change === "ended")
           ) {
             broken = false;
 
