@@ -1,3 +1,4 @@
+import { OPERATIONS } from "@nyte-ai/schema";
 import type { Authority, Json } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
@@ -14,7 +15,6 @@ import type {
   FrameName,
 } from "./binding.ts";
 import { decodeInput, encodeOutput } from "./codec.ts";
-import { declarations } from "./declarations.ts";
 import type { OperationName } from "./declarations.ts";
 import { isRecord, parseJson } from "./json.ts";
 import { abortable, mapped } from "./streams.ts";
@@ -128,7 +128,7 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
           ...authenticated.headers,
         });
       }
-      const needed = declarations[name].authority;
+      const needed = OPERATIONS[name].authority;
 
       if (!authenticated.authority.has(needed))
         throw new SdkError("denied", `${name} needs ${needed} authority.`);
@@ -368,11 +368,11 @@ function withHeaders(response: Response, headers: Readonly<Record<string, string
 }
 
 function isOperation(name: string): name is OperationName {
-  return Object.hasOwn(declarations, name);
+  return Object.hasOwn(OPERATIONS, name);
 }
 
 function isCall(name: OperationName): name is CallName {
-  const { kind } = declarations[name];
+  const { kind } = OPERATIONS[name];
 
   return kind === "query" || kind === "command" || kind === "receipt";
 }

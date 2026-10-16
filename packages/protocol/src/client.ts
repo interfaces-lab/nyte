@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { OPERATIONS, asId } from "@nyte-ai/schema";
 import type {
   ByteReader,
   FileVersion,
@@ -9,7 +9,6 @@ import type {
 } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import type { OperationName } from "./declarations.ts";
-import { declarations } from "./declarations.ts";
 import { parseJson } from "./json.ts";
 import { HOST_HEADER, decodeError, parseOutputFrames, parseSse, withInputHeader } from "./wire.ts";
 import type { SseFrame } from "./wire.ts";
@@ -93,7 +92,7 @@ export function createTransport(options: TransportOptions): Transport {
 
   return {
     async invoke(name, input, request) {
-      if ("wait" in declarations[name]) {
+      if ("wait" in OPERATIONS[name]) {
         const controller = new AbortController();
         const signal = request?.signal ?? controller.signal;
         try {

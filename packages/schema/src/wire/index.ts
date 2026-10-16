@@ -14,7 +14,7 @@ export * from "./json.ts";
 export * from "./mcp.ts";
 export * from "./messages.ts";
 export * from "./models.ts";
-export * from "./operations.ts";
+export * from "./operations/index.ts";
 export * from "./parts.ts";
 export * from "./plugins.ts";
 export * from "./primitives.ts";

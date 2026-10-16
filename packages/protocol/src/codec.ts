@@ -2,9 +2,9 @@ import { IsSchema } from "typebox";
 import type { TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
+import { OPERATIONS } from "@nyte-ai/schema";
 import type { Declaration, Json, Schema, ValidationIssue } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
-import { declarations } from "./declarations.ts";
 import type { OperationInput, OperationName, OperationOutput } from "./declarations.ts";
 import { isRecord } from "./json.ts";
 
@@ -18,7 +18,7 @@ type Path = readonly (string | number)[];
 
 const rows: {
   readonly [N in OperationName]: Declaration<OperationInput<N>, OperationOutput<N>>;
-} = declarations;
+} = OPERATIONS;
 
 const validators = new WeakMap<object, Validator>();
 

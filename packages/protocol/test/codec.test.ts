@@ -1,44 +1,10 @@
 import { Validator } from "@cfworker/json-schema";
-import { asId, asSeq } from "@nyte-ai/schema";
-import type { Infer, Json, PatchSetWire, SessionEvent } from "@nyte-ai/schema";
+import { OPERATIONS, asId, asSeq } from "@nyte-ai/schema";
+import type { Json, PatchSetWire, SessionEvent } from "@nyte-ai/schema";
 import { SdkError } from "@nyte-ai/core";
 import { describe, expect, it } from "vitest";
-import {
-  declarations,
-  decodeInput,
-  decodeOutput,
-  encodeInput,
-  encodeOutput,
-  operations,
-} from "../src/index.ts";
-import type { Declarations, OperationInput, OperationName, OperationOutput } from "../src/index.ts";
-
-type Frozen<T> = [Json] extends [T]
-  ? T
-  : T extends string | number | boolean | null | undefined
-    ? T
-    : T extends Uint8Array
-      ? Uint8Array
-      : T extends readonly (infer E)[]
-        ? readonly Frozen<E>[]
-        : { readonly [K in keyof T]: Frozen<T[K]> };
-
-type Agree<A, B> = [Frozen<A>] extends [Frozen<B>]
-  ? [Frozen<B>] extends [Frozen<A>]
-    ? true
-    : false
-  : false;
-
-type Disagreeing = {
-  [N in OperationName]: [
-    Agree<Infer<Declarations[N]["input"]>, OperationInput<N>>,
-    Agree<Infer<Declarations[N]["output"]>, OperationOutput<N>>,
-  ] extends [true, true]
-    ? never
-    : N;
-}[OperationName];
-
-const twoWay: [Disagreeing] extends [never] ? true : Disagreeing = true;
+import { decodeInput, decodeOutput, encodeInput, encodeOutput, operations } from "../src/index.ts";
+import type { OperationInput, OperationOutput } from "../src/index.ts";
 
 const session = asId<"session">("s1");
 const head = asId<"head">("main");
@@ -56,10 +22,6 @@ function invalid(run: () => unknown): SdkError {
 }
 
 describe("codec", () => {
-  it("types every row's input and output as its schema does, both ways (§40r)", () => {
-    expect(twoWay).toBe(true);
-  });
-
   it("round-trips a sample of rows' inputs and outputs", () => {
     const send: OperationInput<"head.send"> = {
       session,
@@ -228,7 +190,7 @@ describe("codec", () => {
   it("serves the table as loadable JSON Schemas", () => {
     const rows = operations();
 
-    expect(rows.map((row) => row.name)).toEqual(Object.keys(declarations));
+    expect(rows.map((row) => row.name)).toEqual(Object.keys(OPERATIONS));
     expect(rows.find((row) => row.name === "git.stage")).toMatchObject({
       kind: "command",
       authority: "owner",

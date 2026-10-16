@@ -14,7 +14,6 @@ import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
 import {
   HOST_HEADER,
-  declarations,
   decodeError,
   decodeOutput,
   parseOutputFrames,

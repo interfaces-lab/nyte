@@ -1,6 +1,7 @@
 import { Value } from "typebox/value";
 import { describe, expect, it } from "vitest";
-import { createTransport, declarations } from "@nyte-ai/protocol";
+import { createTransport } from "@nyte-ai/protocol";
+import { OPERATIONS } from "@nyte-ai/schema";
 import {
   CANCEL_PATH,
   CHANNEL_HEADER,
@@ -42,14 +43,22 @@ const refusals = Object.keys(RELAY_REFUSALS).filter((name): name is RelayRefusal
 );
 
 describe("public relay targets", () => {
-  it("names every row of protocol's declarations table and nothing else", () => {
-    expect([...RELAY_OPERATIONS].sort()).toEqual(Object.keys(declarations).sort());
+  it("names every row of the operations table and nothing else", () => {
+    expect([...RELAY_OPERATIONS].sort()).toEqual(Object.keys(OPERATIONS).sort());
   });
 
   it("carries protocol's stream channel: its paths, the stream headers, and the channel id back", () => {
     expect(RELAY_STREAMS).toEqual({ channel: `/${CHANNEL_PATH}`, cancel: `/${CANCEL_PATH}` });
-    expect(target(`/${CHANNEL_PATH}`)).toEqual({ kind: "api", environmentId, path: `/${CHANNEL_PATH}` });
-    expect(target(`/${CANCEL_PATH}`)).toEqual({ kind: "api", environmentId, path: `/${CANCEL_PATH}` });
+    expect(target(`/${CHANNEL_PATH}`)).toEqual({
+      kind: "api",
+      environmentId,
+      path: `/${CHANNEL_PATH}`,
+    });
+    expect(target(`/${CANCEL_PATH}`)).toEqual({
+      kind: "api",
+      environmentId,
+      path: `/${CANCEL_PATH}`,
+    });
     expect(RELAY_REQUEST_HEADER_NAMES).toEqual(
       expect.arrayContaining([CHANNEL_HEADER.toLowerCase(), STREAM_HEADER.toLowerCase()]),
     );
