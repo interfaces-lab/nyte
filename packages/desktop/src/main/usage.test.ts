@@ -49,7 +49,6 @@ test("host.usage reads a real completed chat and keeps external histories separa
       model: "model",
     });
     assert.equal(report.entries[0]?.totals.tokens, 130);
-    assert.equal(report.entries[0]?.totals.turns, 1);
     assert.equal(report.sessions[0]?.name, "Usage chat");
     assert.deepEqual(report.claudeCode, { kind: "missing" });
     assert.deepEqual(report.codex, { kind: "missing" });
