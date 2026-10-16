@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import type { RunId } from "@nyte-ai/schema";
 import type { ExecutionEnv } from "@nyte-ai/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { localExec, localFiles, localSnapshots } from "../src/index.ts";
 import { findExecutable } from "../src/local/command.ts";
 
@@ -57,6 +57,8 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     await writeFile(join(root, "moved.txt"), "a stable body\nthat moves\nacross names\n");
     sh(root, "add", "-A");
     sh(root, "commit", "-q", "-m", "first");
+    const committed = sh(root, "rev-parse", "HEAD^{tree}").trim();
+    sh(root, "update-ref", `refs/nyte/snapshots/${committed}`, committed);
     const snapshots = localSnapshots(envOf(root), { store });
     const before = await snapshots.before(run);
 
@@ -77,7 +79,11 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     expect(after).not.toBe(before);
     expect(await snapshots.before(run)).toBe(before);
     expect(sh(root, "status", "--porcelain")).toBe(statusBefore);
-    expect(sh(root, "show-ref")).toContain(`refs/nyte/snapshots/${after.slice(4)}`);
+    await vi.waitFor(() =>
+      expect(sh(root, "ls-tree", "refs/nyte/kept")).toContain(`tree ${after.slice(4)}\t`),
+    );
+    expect(sh(root, "ls-tree", "refs/nyte/kept")).toContain(`tree ${committed}\t`);
+    expect(sh(root, "show-ref")).not.toContain("refs/nyte/snapshots/");
 
     const changes = await snapshots.diff(before, after);
     expect(changes).toEqual({
