@@ -6,7 +6,7 @@
  */
 import { contextStyles } from "@nyte-ai/app/screens/context-selector.stylex.ts";
 import { threadStyles } from "@nyte-ai/app/screens/thread.stylex.ts";
-import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
+import { composerStyles } from "@nyte-ai/app/conversation/composer.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";

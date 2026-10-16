@@ -1,4 +1,4 @@
-import type { SessionMark } from "@nyte-ai/app/view-helpers.ts";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import type { IconName } from "@nyte-ai/ui/icon";
 
 export type TabKind = "pinned" | "folder" | "chat";

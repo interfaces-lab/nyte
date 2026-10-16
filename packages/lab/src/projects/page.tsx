@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import type { SessionMark } from "@nyte-ai/app/view-helpers.ts";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { titlebarStyles } from "@nyte-ai/app/chrome/titlebar.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
@@ -12,7 +12,7 @@ import { Icon, PanelToggleIcon, type IconName } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
-import { avatar, layer, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { avatar, layer, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -84,9 +84,9 @@ function AgentGlyph({ agent }: { readonly agent: Agent }): ReactElement {
   if (agent.place === "cloud") return glyph;
 
   return (
-    <span title="This Mac" {...props(sidebarStyles.sessionBadgeHost)}>
+    <span title="This Mac" {...props(styles.sessionBadgeHost)}>
       {glyph}
-      <span {...props(sidebarStyles.sessionBadge)}>
+      <span {...props(styles.sessionBadge)}>
         <Icon name="laptop" size={9} label="This Mac" />
       </span>
     </span>
@@ -1166,6 +1166,25 @@ export function ProjectsPage(): ReactElement {
 }
 
 const styles = create({
+  sessionBadgeHost: {
+    position: "relative",
+    display: "grid",
+    placeItems: "center",
+    width: "100%",
+    height: "100%",
+  },
+  sessionBadge: {
+    position: "absolute",
+    insetInlineEnd: `calc(${space.s1} * -1)`,
+    insetBlockEnd: -3,
+    display: "grid",
+    placeItems: "center",
+    width: 12,
+    height: 12,
+    borderRadius: radius.pill,
+    backgroundColor: role.sidebarMaterial,
+    color: role.contentSecondary,
+  },
   window: {
     position: "relative",
     display: "flex",

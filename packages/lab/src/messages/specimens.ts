@@ -17,8 +17,8 @@ import type {
   TurnInfo,
   UserContent,
 } from "@nyte-ai/sdk";
-import { isToolMessage } from "@nyte-ai/app/view-helpers.ts";
-import type { ConversationTurn, UserMessage } from "@nyte-ai/app/view-helpers.ts";
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import { showsTool, type UserMessage } from "@nyte-ai/plugin/client/presentation";
 
 export const CWD = "/Users/lab/nyte";
 
@@ -222,7 +222,7 @@ function turn(
   const steps = messages.filter((message) => message.kind === "part" && message.role === "step");
 
   const tools = messages.flatMap((message) =>
-    isToolMessage(message) && message.state.phase === "settled" ? [message.state] : [],
+    showsTool(message) && message.state.phase === "settled" ? [message.state] : [],
   );
 
   const succeeded = tools.filter((tool) => tool.outcome.kind === "ok");

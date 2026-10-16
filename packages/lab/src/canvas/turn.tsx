@@ -4,7 +4,8 @@ import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import type { ReactElement } from "react";
 import { CanvasFrame } from "./frame";
-import { isToolMessage, toolOutput, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import { showsTool, toolOutput } from "@nyte-ai/plugin/client/presentation";
 
 const noContinuations: readonly ConversationTurn[] = [];
 
@@ -19,7 +20,7 @@ export function CanvasTurn({
 
   const ids = turn.messages.flatMap((message) => {
     if (
-      !isToolMessage(message) ||
+      !showsTool(message) ||
       message.state.class.kind !== "custom" ||
       message.state.class.label !== "Canvas" ||
       message.state.phase !== "settled" ||

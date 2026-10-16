@@ -2,7 +2,7 @@ import { create, keyframes, props } from "@stylexjs/stylex";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { asId } from "@nyte-ai/schema";
-import { conversationTurns, isBusy } from "@nyte-ai/app/view-helpers.ts";
+import { conversationTurns } from "@nyte-ai/app/view-helpers.ts";
 import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import type {
   ComposerDocumentState,
@@ -148,7 +148,7 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
   const running =
     send.isPending ||
     (live.view !== undefined &&
-      (isBusy(live.view.execution) ||
+      (live.view.execution.kind !== "idle" ||
         live.view.messages.some(
           (message) => message.kind === "user" && message.status.kind !== "landed",
         )));
