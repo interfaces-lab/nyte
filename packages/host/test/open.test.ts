@@ -26,7 +26,7 @@ async function folder(): Promise<string> {
 
 const TOKEN = "a-token-of-16-chars";
 
-async function viewOf(host: Host): Promise<HostView> {
+async function firstView(host: Host): Promise<HostView> {
   for await (const view of host.watch()) return view;
 
   throw new Error("The host view ended.");
@@ -101,12 +101,12 @@ describe("openHost", () => {
     );
 
     const paths = async (host: Host) =>
-      (await viewOf(host)).settings.find((setting) => setting.id === "skills.paths")?.value;
+      (await firstView(host)).settings.find((setting) => setting.id === "skills.paths")?.value;
 
     const first = await open(home, store);
 
     expect(await paths(first)).toEqual(["/seeded"]);
-    expect((await viewOf(first)).plugins.find((row) => row.id === "settings")).toEqual({
+    expect((await firstView(first)).plugins.find((row) => row.id === "settings")).toEqual({
       id: "settings",
       source: "user",
       path: join(home, ".nyte", "settings.json"),
@@ -126,7 +126,7 @@ describe("openHost", () => {
     await writeFile(join(home, ".nyte", "settings.json"), "[1, 2]");
     await using host = await open(home);
 
-    expect((await viewOf(host)).plugins.find((row) => row.id === "settings")).toMatchObject({
+    expect((await firstView(host)).plugins.find((row) => row.id === "settings")).toMatchObject({
       path: join(home, ".nyte", "settings.json"),
       issues: [expect.objectContaining({ severity: "warning" })],
     });
@@ -140,7 +140,7 @@ describe("openHost", () => {
     await writeFile(join(dir, "broken.mjs"), "export default {;\n");
     await writeFile(join(dir, "reserved.mjs"), 'export default { id: "models" };\n');
     await using host = await open(home);
-    const rows = (await viewOf(host)).plugins;
+    const rows = (await firstView(host)).plugins;
 
     expect(rows.find((row) => row.id === "good")).toMatchObject({
       source: "user",
@@ -267,14 +267,14 @@ describe("openHost", () => {
 
     expect(info.projectResources).toBeNull();
     expect(info.projectSources).toContain(".nyte/plugins/mine.mjs");
-    expect((await viewOf(host)).plugins.map((row) => row.id)).not.toContain("mine");
+    expect((await firstView(host)).plugins.map((row) => row.id)).not.toContain("mine");
 
     expect(await host.workspace(info.id).update({ projectResources: true })).toEqual({
       kind: "updated",
     });
     await host.sessions.create({ workspace: info.id });
 
-    expect((await viewOf(host)).plugins.map((row) => row.id)).toContain("mine");
+    expect((await firstView(host)).plugins.map((row) => row.id)).toContain("mine");
   });
 
   it("listens with an identity from <home>/.nyte/identity.key and X-Nyte-Host on every answer", async () => {
@@ -421,7 +421,7 @@ describe("openHost", () => {
     const dir = join(home, ".nyte", "plugins");
     await mkdir(dir, { recursive: true });
     await using host = await open(home);
-    const before = await viewOf(host);
+    const before = await firstView(host);
 
     expect(before.plugins.some((row) => row.id === "hot")).toBe(false);
     await writeFile(join(dir, "hot.mjs"), 'export default { id: "hot" };\n');

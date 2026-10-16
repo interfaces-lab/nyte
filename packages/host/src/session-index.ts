@@ -2,7 +2,7 @@ import { projectSessionIndex, sessionIndexRef } from "@nyte-ai/core/store";
 import type { SessionIndex } from "@nyte-ai/core";
 import { asId } from "@nyte-ai/schema";
 import type { Json, Revision } from "@nyte-ai/schema";
-import { refOf, textOf } from "./store-rows.ts";
+import { parseRef, parseText } from "./store-rows.ts";
 
 type Binding = string | number | null;
 
@@ -66,7 +66,10 @@ export function sqlSessionIndex(
           `SELECT r.name, r.target, r.revision, s.version FROM session_index s JOIN refs r ON r.name = s.name${conditions.length === 0 ? "" : ` WHERE ${conditions.join(" AND ")}`} ORDER BY s.sort_at, s.session LIMIT ?`,
           values,
         )
-      ).map((row) => ({ ref: refOf(row), version: asId<"revision">(textOf(row.version) ?? "") }));
+      ).map((row) => ({
+        ref: parseRef(row),
+        version: asId<"revision">(parseText(row.version) ?? ""),
+      }));
     },
     async work({ after, limit }) {
       return (
@@ -74,7 +77,7 @@ export function sqlSessionIndex(
           `SELECT r.name, r.target, r.revision FROM (SELECT DISTINCT session FROM pending_work${after === undefined ? "" : " WHERE session > ?"}) p JOIN session_index s ON s.session = p.session JOIN refs r ON r.name = s.name ORDER BY p.session LIMIT ?`,
           after === undefined ? [limit] : [after, limit],
         )
-      ).map(refOf);
+      ).map(parseRef);
     },
     async pending({ kind, sessions }) {
       if (sessions?.length === 0) return [];
@@ -84,7 +87,7 @@ export function sqlSessionIndex(
           `SELECT r.name, r.target, r.revision FROM pending_work p JOIN refs r ON r.name = p.name WHERE p.kind = ?${sessions === undefined ? "" : ` AND p.session IN (${sessions.map(() => "?").join(", ")})`} ORDER BY p.name`,
           [kind, ...(sessions ?? [])],
         )
-      ).map(refOf);
+      ).map(parseRef);
     },
   };
 }

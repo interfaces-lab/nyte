@@ -34,7 +34,7 @@ function sh(cwd: string, ...args: string[]): string {
   });
 }
 
-function envOf(cwd: string): ExecutionEnv {
+function localEnv(cwd: string): ExecutionEnv {
   return {
     identity: asId("test"),
     cwd,
@@ -55,7 +55,7 @@ async function repository(): Promise<{ readonly root: string; readonly git: GitA
   sh(root, "add", "-A");
   sh(root, "commit", "-q", "-m", "first");
 
-  return { root, git: localGit(envOf(root)) };
+  return { root, git: localGit(localEnv(root)) };
 }
 
 async function repo(git: GitApi): Promise<Extract<GitStatus, { kind: "repository" }>> {
@@ -80,7 +80,7 @@ async function first<T>(source: AsyncIterable<T>): Promise<T> {
 describe.skipIf(!hasGit)("localGit", () => {
   it("answers none outside a repository and an unborn status in a new one", async () => {
     const outside = await folder();
-    const git = localGit(envOf(outside));
+    const git = localGit(localEnv(outside));
 
     expect(await git.status()).toEqual({ kind: "none" });
     await expect(git.changes({ kind: "worktree" })).rejects.toMatchObject({ code: "unavailable" });
@@ -480,7 +480,7 @@ describe.skipIf(!hasGit)("localGit", () => {
     const wrapper = join(await folder(), "git");
     await writeFile(wrapper, `#!/bin/sh\necho "$*" >> '${log}'\nexec git "$@"\n`);
     await chmod(wrapper, 0o755);
-    const git = localGit(envOf(root), { git: wrapper });
+    const git = localGit(localEnv(root), { git: wrapper });
     const runs = async (): Promise<readonly string[]> =>
       (await readFile(log, "utf8").catch(() => "")).split("\n").filter((line) => line !== "");
     const statuses = git.watch()[Symbol.asyncIterator]();
@@ -518,7 +518,7 @@ describe.skipIf(!hasGit)("localGit", () => {
     await writeFile(join(root, "pkg", "a.ts"), "two\n");
     await writeFile(join(root, "pkg", "new.ts"), "fresh\n");
     await writeFile(join(root, "a.txt"), "outside the workspace\n");
-    const git = localGit(envOf(join(root, "pkg")));
+    const git = localGit(localEnv(join(root, "pkg")));
     const status = await repo(git);
 
     expect(status.root).toBe(root);

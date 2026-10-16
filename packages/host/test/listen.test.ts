@@ -78,11 +78,11 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
-async function codeOf(response: Response): Promise<string> {
+async function readErrorCode(response: Response): Promise<string> {
   return decodeError(JSON.parse(await response.text()), response.status).code;
 }
 
-function kindOf(frame: Json): string | null {
+function readKind(frame: Json): string | null {
   return typeof frame === "object" &&
     frame !== null &&
     "kind" in frame &&
@@ -141,7 +141,7 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T | "timed out"> {
   ]);
 }
 
-async function endOf(frames: AsyncIterator<Json>): Promise<string> {
+async function drainFrames(frames: AsyncIterator<Json>): Promise<string> {
   try {
     while ((await frames.next()).done !== true);
 
@@ -175,7 +175,7 @@ describe("listen", () => {
     ]) {
       const response = await post(listener, "sessions.list", {}, { Authorization: authorization });
 
-      expect([response.status, await codeOf(response)]).toEqual([401, "unauthenticated"]);
+      expect([response.status, await readErrorCode(response)]).toEqual([401, "unauthenticated"]);
     }
   });
 
@@ -206,7 +206,7 @@ describe("listen", () => {
 
     await host.principals.revoke(paired.id);
     const revoked = await post(listener, "sessions.list", {}, device);
-    expect([revoked.status, await codeOf(revoked)]).toEqual([401, "unauthenticated"]);
+    expect([revoked.status, await readErrorCode(revoked)]).toEqual([401, "unauthenticated"]);
   });
 
   it("ends a revoked principal's open head.watch at once, unauthenticated, while another principal's keeps flowing", async () => {
@@ -245,7 +245,7 @@ describe("listen", () => {
       const frames = transport
         .frames("head.watch", { session, head: main })
         [Symbol.asyncIterator]();
-      expect(kindOf((await frames.next()).value ?? null)).toBe("view");
+      expect(readKind((await frames.next()).value ?? null)).toBe("view");
 
       return frames;
     };
@@ -256,13 +256,13 @@ describe("listen", () => {
     assert(id !== undefined);
     await host.principals.revoke(id);
 
-    expect(await within(endOf(revoked), 100)).toBe("unauthenticated");
+    expect(await within(drainFrames(revoked), 100)).toBe("unauthenticated");
     await post(listener, "head.send", { session, head: main, content: "Still here." });
 
     const delivered = within(
       (async () => {
         for (let next = await kept.next(); next.done !== true; next = await kept.next())
-          if (JSON.stringify(next.value).includes("Still here.")) return kindOf(next.value);
+          if (JSON.stringify(next.value).includes("Still here.")) return readKind(next.value);
 
         return "ended";
       })(),
@@ -298,16 +298,16 @@ describe("listen", () => {
 
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    expect(kindOf((await frames.next()).value ?? null)).toBe("view");
+    expect(readKind((await frames.next()).value ?? null)).toBe("view");
 
-    const ended = endOf(frames);
+    const ended = drainFrames(frames);
     const [paired] = await other.principals.list();
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
 
     expect(await within(ended, 1_000)).toBe("unauthenticated");
     const revoked = await post(listener, "sessions.list", {}, device);
-    expect([revoked.status, await codeOf(revoked)]).toEqual([401, "unauthenticated"]);
+    expect([revoked.status, await readErrorCode(revoked)]).toEqual([401, "unauthenticated"]);
   });
 
   it("ends a head.watch opened by its own pairing request once another host's revoke commits (ADV C-3 N2, probe N2r)", async () => {
@@ -329,9 +329,9 @@ describe("listen", () => {
     expect(watch.headers.get("X-Nyte-Credential")).not.toBeNull();
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    expect(kindOf((await frames.next()).value ?? null)).toBe("view");
+    expect(readKind((await frames.next()).value ?? null)).toBe("view");
 
-    const ended = endOf(frames);
+    const ended = drainFrames(frames);
     const [paired] = await other.principals.list();
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
@@ -360,7 +360,7 @@ describe("listen", () => {
       { Authorization: `Bearer ${token}` },
     );
 
-    expect([response.status, await codeOf(response)]).toEqual([403, "denied"]);
+    expect([response.status, await readErrorCode(response)]).toEqual([403, "denied"]);
   });
 
   it("maps custom authorization to a principal, 401 and 403, and loads wire plugin paths through the kernel's loader", async () => {
@@ -434,7 +434,7 @@ describe("listen", () => {
     ).toBe(200);
     const refused = await post(listener, "sessions.list", {}, { Authorization: random });
 
-    expect([refused.status, await codeOf(refused)]).toEqual([401, "unauthenticated"]);
+    expect([refused.status, await readErrorCode(refused)]).toEqual([401, "unauthenticated"]);
     expect(asked).toEqual([random]);
   });
 
@@ -516,14 +516,14 @@ describe("listen", () => {
     expect(allowed.headers.get("Access-Control-Expose-Headers")).toContain("X-Nyte-Credential");
 
     const other = await post(listener, "sessions.list", {}, { Origin: "https://evil.example" });
-    expect([other.status, await codeOf(other)]).toEqual([403, "denied"]);
+    expect([other.status, await readErrorCode(other)]).toEqual([403, "denied"]);
   });
 
   it("limits the body to maxBodyBytes", async () => {
     const listener = await serve(await compose(fakeModels()), { maxBodyBytes: 64 });
     const response = await post(listener, "sessions.create", { title: "x".repeat(200) });
 
-    expect([response.status, await codeOf(response)]).toEqual([413, "invalid"]);
+    expect([response.status, await readErrorCode(response)]).toEqual([413, "invalid"]);
   });
 
   it("serves a head.watch over node:http, the head's whole view first", async () => {
@@ -598,7 +598,7 @@ describe("listen", () => {
 
     await expect(fetch(`${address}/sessions.list`, { method: "POST" })).rejects.toThrow();
     const after = await post(listener, "sessions.list", {});
-    expect([after.status, await codeOf(after)]).toEqual([503, "unavailable"]);
+    expect([after.status, await readErrorCode(after)]).toEqual([503, "unavailable"]);
   });
 });
 

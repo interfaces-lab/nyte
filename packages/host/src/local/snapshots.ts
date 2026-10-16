@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SdkError } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   ChangeSet,
   DiffOptions,
@@ -32,7 +32,6 @@ import {
   parseNameStatus,
   parseNumstat,
   readPatches,
-  snapshotOf,
   textEntry,
 } from "./patch.ts";
 import type { Changed } from "./patch.ts";
@@ -169,7 +168,7 @@ export function localSnapshots(
 
     const first = await write(true);
     const tree = await checked(first.code === 0 ? first : await write(false));
-    const id = snapshotOf(`git:${tree}`);
+    const id = asId<"snapshot">(`git:${tree}`);
 
     if (fresh.includes(tree) || keptTrees.has(tree)) return id;
     fresh.push(tree);
@@ -366,7 +365,7 @@ export function localSnapshots(
     const id = sha256(text);
     await keep(join(options.store, "trees", `${id}.json`), text);
 
-    return snapshotOf(`tree:${id}`);
+    return asId<"snapshot">(`tree:${id}`);
   };
 
   const take = async (): Promise<SnapshotId> => {
@@ -398,8 +397,8 @@ export function localSnapshots(
     if (kinds.has("tree") || kinds.size === 0)
       return {
         kind: "tree",
-        from: await treeOf(options.store, from),
-        to: await treeOf(options.store, to),
+        from: await readWalkedTree(options.store, from),
+        to: await readWalkedTree(options.store, to),
       };
     const repo = await repository();
 
@@ -621,7 +620,7 @@ async function keep(path: string, contents: string | Uint8Array): Promise<void> 
   }
 }
 
-async function treeOf(store: string, id: SnapshotId): Promise<Tree> {
+async function readWalkedTree(store: string, id: SnapshotId): Promise<Tree> {
   if (id === "") return { files: {}, incomplete: false };
 
   if (!id.startsWith("tree:")) throw new SdkError("invalid", `${id} is not a walked snapshot.`);

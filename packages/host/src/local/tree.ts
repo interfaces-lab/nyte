@@ -31,7 +31,7 @@ type Matcher = ReturnType<typeof ignore>;
 export function createIgnores(root: string): Ignores {
   const rules = new Map<string, Promise<Matcher | null>>();
 
-  const rulesOf = (directory: string): Promise<Matcher | null> => {
+  const loadRules = (directory: string): Promise<Matcher | null> => {
     const known = rules.get(directory);
 
     if (known !== undefined) return known;
@@ -61,7 +61,7 @@ export function createIgnores(root: string): Ignores {
     let result = false;
 
     for (let depth = 0; depth < segments.length; depth += 1) {
-      const matcher = await rulesOf(segments.slice(0, depth).join("/"));
+      const matcher = await loadRules(segments.slice(0, depth).join("/"));
 
       if (matcher === null) continue;
       const relative = segments.slice(depth).join("/") + (directory ? "/" : "");
@@ -115,7 +115,7 @@ export async function* walkTree(
 
     const listed = await readdir(join(root, directory), { withFileTypes: true }).catch(
       (error: unknown) => {
-        if (codeOf(error) === "EACCES" || codeOf(error) === "EPERM") denied = true;
+        if (readErrorCode(error) === "EACCES" || readErrorCode(error) === "EPERM") denied = true;
 
         return null;
       },
@@ -381,7 +381,7 @@ export function watchPath(
   };
 }
 
-export function codeOf(error: unknown): string | null {
+export function readErrorCode(error: unknown): string | null {
   return typeof error === "object" &&
     error !== null &&
     "code" in error &&

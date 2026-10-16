@@ -1,6 +1,6 @@
 import { lineDiff } from "@nyte-ai/core";
 import { asId, writePatch } from "@nyte-ai/schema";
-import type { FileStatus, GitRevision, LineStat, PatchEntry, SnapshotId } from "@nyte-ai/schema";
+import type { FileStatus, LineStat, PatchEntry } from "@nyte-ai/schema";
 import { sha256 } from "../hash.ts";
 import type { Ran } from "./command.ts";
 
@@ -199,14 +199,6 @@ export function lineStat(before: string, after: string): LineStat {
   const { added, removed } = lineDiff(before, after);
 
   return { kind: "text", added, removed };
-}
-
-export function revisionOf(value: string): GitRevision {
-  return asId<"git-revision">(value);
-}
-
-export function snapshotOf(value: string): SnapshotId {
-  return asId<"snapshot">(value);
 }
 
 function headerPaths(rest: string): { readonly old: string; readonly new: string } | null {

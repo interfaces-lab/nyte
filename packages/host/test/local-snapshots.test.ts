@@ -40,7 +40,7 @@ function sh(cwd: string, ...args: string[]): string {
   });
 }
 
-function envOf(cwd: string): ExecutionEnv {
+function localEnv(cwd: string): ExecutionEnv {
   return {
     identity: asId("test"),
     cwd,
@@ -65,7 +65,7 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     sh(root, "commit", "-q", "-m", "first");
     const committed = sh(root, "rev-parse", "HEAD^{tree}").trim();
     sh(root, "update-ref", `refs/nyte/snapshots/${committed}`, committed);
-    const snapshots = localSnapshots(envOf(root), { store });
+    const snapshots = localSnapshots(localEnv(root), { store });
     const before = await snapshots.before(run);
 
     expect(before).toMatch(/^git:[0-9a-f]{40}$/);
@@ -147,7 +147,7 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     await mkdir(join(root, "pkg"));
     await writeFile(join(root, "outside.txt"), "o\n");
     await writeFile(join(root, "pkg", "inside.txt"), "i\n");
-    const snapshots = localSnapshots(envOf(join(root, "pkg")), { store: await folder() });
+    const snapshots = localSnapshots(localEnv(join(root, "pkg")), { store: await folder() });
     const before = await snapshots.before(run);
     await writeFile(join(root, "pkg", "inside.txt"), "changed\n");
     await writeFile(join(root, "outside.txt"), "changed\n");
@@ -164,7 +164,7 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     const lines = (letter: string): string => `${letter.repeat(999)}\n`.repeat(1_200);
     await writeFile(join(root, "big.txt"), lines("a"));
     await writeFile(join(root, "small.txt"), "one\n");
-    const snapshots = localSnapshots(envOf(root), { store: await folder() });
+    const snapshots = localSnapshots(localEnv(root), { store: await folder() });
     const before = await snapshots.before(run);
     await writeFile(join(root, "big.txt"), lines("b"));
     await writeFile(join(root, "small.txt"), "two\n");
@@ -189,7 +189,7 @@ describe("localSnapshots outside a repository", () => {
     await writeFile(join(root, "same.txt"), "kept body\n");
     await writeFile(join(root, "pic.bin"), new Uint8Array([0, 1, 2]));
     await writeFile(join(root, "big.txt"), "b".repeat(1024 * 1024 + 1));
-    const snapshots = localSnapshots(envOf(root), { store, git: join(root, "no-git") });
+    const snapshots = localSnapshots(localEnv(root), { store, git: join(root, "no-git") });
     const before = await snapshots.before(run);
 
     expect(before).toMatch(/^tree:[0-9a-f]{64}$/);
@@ -275,7 +275,7 @@ describe("localSnapshots outside a repository", () => {
     const root = await folder();
     const store = await folder();
     await writeFile(join(root, "a.txt"), "a b\nc\n");
-    const snapshots = localSnapshots(envOf(root), { store, git: join(root, "no-git") });
+    const snapshots = localSnapshots(localEnv(root), { store, git: join(root, "no-git") });
     const before = await snapshots.before(run);
     await writeFile(join(root, "a.txt"), "a  b\nd\n");
     const after = await snapshots.after(run);
@@ -294,8 +294,8 @@ describe("localSnapshots outside a repository", () => {
     await writeFile(join(root, "a.txt"), "one\n");
     await writeFile(join(root, "b.txt"), "b\n");
     await writeFile(join(root, "c.txt"), "c\n");
-    const full = localSnapshots(envOf(root), { store, git });
-    const capped = localSnapshots(envOf(root), { store, git, limit: 2 });
+    const full = localSnapshots(localEnv(root), { store, git });
+    const capped = localSnapshots(localEnv(root), { store, git, limit: 2 });
     const before = await full.after(run);
     await writeFile(join(root, "a.txt"), "two\n");
     const after = await capped.after(run);
@@ -323,7 +323,7 @@ describe("localSnapshots outside a repository", () => {
   it("refuses to compare snapshots of two kinds", async () => {
     const root = await folder();
 
-    const snapshots = localSnapshots(envOf(root), {
+    const snapshots = localSnapshots(localEnv(root), {
       store: await folder(),
       git: join(root, "no-git"),
     });

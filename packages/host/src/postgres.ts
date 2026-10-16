@@ -29,11 +29,11 @@ import {
   loggedRow,
   memoryReader,
   mintRevision,
-  numberOf,
+  parseNumber,
   prefixEnd,
-  refOf,
-  storedRecordOf,
-  textOf,
+  parseRef,
+  parseStoredRecord,
+  parseText,
 } from "./store-rows.ts";
 import {
   postgresSessionIndexQuery,
@@ -98,7 +98,7 @@ async function storedVersion(client: PostgresClient): Promise<number> {
   const stamp = await client.query("SELECT version FROM store_meta WHERE id = 1");
   const version = stamp.rows[0]?.version;
 
-  return version === undefined ? 0 : numberOf(version);
+  return version === undefined ? 0 : parseNumber(version);
 }
 
 function postgresTarget(pool: PostgresPool): MigrationTarget {
@@ -122,7 +122,7 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
             "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
           ),
         )
-      ).rows.map(storedRecordOf),
+      ).rows.map(parseStoredRecord),
     async *logs() {
       const sessions = await withClient(pool, async (client) => {
         const { rows } = await client.query("SELECT to_regclass('log') IS NOT NULL AS present");
@@ -133,7 +133,7 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
       });
 
       for (const row of sessions) {
-        const session = textOf(row.session);
+        const session = parseText(row.session);
 
         if (session === null) continue;
 
@@ -207,7 +207,7 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
             const { rows } = await client.query("SELECT name, target, revision FROM refs");
 
             for (const row of rows) {
-              const ref = refOf(row);
+              const ref = parseRef(row);
               await updateSessionIndex(client, ref.name, ref.target, ref.revision);
             }
           }
@@ -245,14 +245,14 @@ function connect(pool: PostgresPool): StoreConnection {
   const query = (text: string, values?: readonly unknown[]) =>
     withClient(pool, (client) => client.query(text, values));
 
-  const tailOf = async (client: PostgresClient, session: SessionId): Promise<Seq> => {
+  const readTail = async (client: PostgresClient, session: SessionId): Promise<Seq> => {
     const { rows } = await client.query("SELECT MAX(seq) AS tail FROM log WHERE session = $1", [
       session,
     ]);
 
     const value = rows[0]?.tail;
 
-    return asSeq(value === null || value === undefined ? 0 : numberOf(value));
+    return asSeq(value === null || value === undefined ? 0 : parseNumber(value));
   };
 
   return {
@@ -271,7 +271,7 @@ function connect(pool: PostgresPool): StoreConnection {
       },
       async get(id) {
         const { rows } = await query("SELECT body FROM objects WHERE id = $1", [id]);
-        const body = textOf(rows[0]?.body);
+        const body = parseText(rows[0]?.body);
 
         return body === null ? null : decodeObject(body);
       },
@@ -300,7 +300,7 @@ function connect(pool: PostgresPool): StoreConnection {
 
         const row = rows[0];
 
-        return row === undefined ? null : refOf(row);
+        return row === undefined ? null : parseRef(row);
       },
       async list(prefix) {
         const end = prefixEnd(prefix);
@@ -316,9 +316,9 @@ function connect(pool: PostgresPool): StoreConnection {
                 [prefix, end],
               );
 
-        return rows.map(refOf);
+        return rows.map(parseRef);
       },
-      set: (updates) => withClient(pool, (client) => publish(client, updates, tailOf)),
+      set: (updates) => withClient(pool, (client) => publish(client, updates, readTail)),
       async log(session, after, limit) {
         const { rows } = await query(
           "SELECT seq, at, event FROM log WHERE session = $1 AND seq > $2 ORDER BY seq LIMIT $3",
@@ -326,10 +326,10 @@ function connect(pool: PostgresPool): StoreConnection {
         );
 
         return rows.map((row) =>
-          decodeEvent(numberOf(row.seq), numberOf(row.at), textOf(row.event) ?? ""),
+          decodeEvent(parseNumber(row.seq), parseNumber(row.at), parseText(row.event) ?? ""),
         );
       },
-      tail: (session) => withClient(pool, (client) => tailOf(client, session)),
+      tail: (session) => withClient(pool, (client) => readTail(client, session)),
     },
   };
 }
@@ -337,7 +337,7 @@ function connect(pool: PostgresPool): StoreConnection {
 async function publish(
   client: PostgresClient,
   updates: readonly RefUpdate[],
-  tailOf: (client: PostgresClient, session: SessionId) => Promise<Seq>,
+  readTail: (client: PostgresClient, session: SessionId) => Promise<Seq>,
 ): Promise<SetOutcome> {
   const logged = collectSessionEvents(updates);
   const fences = fenceNames(updates);
@@ -376,7 +376,7 @@ async function publish(
 
     const before = new Map<string, Ref>(
       rows.map((row) => {
-        const ref = refOf(row);
+        const ref = parseRef(row);
 
         return [ref.name, ref];
       }),
@@ -433,7 +433,7 @@ async function publish(
     const appended: Seq[] = [];
 
     for (const { session, event } of logged) {
-      const seq = (tails.get(session) ?? (await tailOf(client, session))) + 1;
+      const seq = (tails.get(session) ?? (await readTail(client, session))) + 1;
       tails.set(session, seq);
       await client.query("INSERT INTO log (session, seq, at, event) VALUES ($1, $2, $3, $4)", [
         session,
@@ -464,7 +464,7 @@ async function updateSessionIndex(
   const body =
     target === null
       ? null
-      : textOf(
+      : parseText(
           (await client.query("SELECT body FROM objects WHERE id = $1", [target])).rows[0]?.body,
         );
 

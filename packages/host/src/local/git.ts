@@ -29,7 +29,6 @@ import {
   parseNameStatus,
   parseNumstat,
   readPatches,
-  revisionOf,
   textEntry,
 } from "./patch.ts";
 import type { Changed } from "./patch.ts";
@@ -129,7 +128,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     return found;
   };
 
-  const statusOf = async (repo: Repository): Promise<Repo> => {
+  const readRepository = async (repo: Repository): Promise<Repo> => {
     const [porcelain, staged, unstaged] = await Promise.all([
       git(repo.root, [
         "status",
@@ -154,7 +153,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   const status = async (): Promise<GitStatus> => {
     const repo = await repository();
 
-    return repo === null ? { kind: "none" } : statusOf(repo);
+    return repo === null ? { kind: "none" } : readRepository(repo);
   };
 
   const empty = (root: string): Promise<string> => {
@@ -171,7 +170,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     return ran.code === 0 ? ran.stdout.toString("utf8").trim() : null;
   };
 
-  const rangeOf = async (
+  const resolveRange = async (
     root: string,
     scope: GitScope,
   ): Promise<{ readonly args: readonly string[]; readonly untracked: boolean }> => {
@@ -209,12 +208,12 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   const whitespace = (ignore: boolean | undefined): readonly string[] =>
     ignore === true ? ["--ignore-all-space"] : [];
 
-  const changedOf = async (
+  const listChanged = async (
     repo: Repository,
     scope: GitScope,
     current: Repo,
   ): Promise<readonly Changed[]> => {
-    const range = await rangeOf(repo.root, scope);
+    const range = await resolveRange(repo.root, scope);
 
     const ran = await git(repo.root, [
       "diff",
@@ -228,7 +227,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     if (ran.code !== 0) throw new SdkError("unavailable", ran.stderr.trim());
 
     const tracked = parseNameStatus(ran.stdout.toString("utf8")).map((file) =>
-      withPaths(file, (path) => outOf(repo, path)),
+      withPaths(file, (path) => relativeToPrefix(repo, path)),
     );
 
     return range.untracked
@@ -242,10 +241,10 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     current: Repo,
     ignoreWhitespace: boolean | undefined,
   ): Promise<ChangeSet> => {
-    const range = await rangeOf(repo.root, scope);
+    const range = await resolveRange(repo.root, scope);
 
     const [changed, numstat] = await Promise.all([
-      changedOf(repo, scope, current),
+      listChanged(repo, scope, current),
       git(repo.root, [
         "diff",
         "--numstat",
@@ -282,7 +281,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     const { root } = repo;
 
     const changed = new Map(
-      (await changedOf(repo, scope, current)).map((file) => [file.path, file]),
+      (await listChanged(repo, scope, current)).map((file) => [file.path, file]),
     );
 
     const wanted = [...new Set(paths)].flatMap((path) => {
@@ -291,7 +290,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       return file === undefined ? [] : [file];
     });
 
-    const range = await rangeOf(root, scope);
+    const range = await resolveRange(root, scope);
     const entries = new Map<string, PatchEntry & { readonly fresh: boolean }>();
 
     const read = async (files: readonly Changed[], limit: number): Promise<Ran> =>
@@ -330,7 +329,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       for (const entry of await readPatches(tracked, read, (file) =>
         sha256(`${file.path}\u0000`),
       )) {
-        const path = outOf(repo, entry.path);
+        const path = relativeToPrefix(repo, entry.path);
         entries.set(path, { ...entry, path, fresh: true });
       }
     }
@@ -343,7 +342,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
     if (ran.code !== 0 && !ran.truncated) return { kind: "absent" };
 
-    return sideOf(ran.stdout, ran.truncated);
+    return decodeSide(ran.stdout, ran.truncated);
   };
 
   const worktree = async (root: string, path: string): Promise<GitFileSide> => {
@@ -355,7 +354,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
     if (bytes === null) return { kind: "absent" };
 
-    return sideOf(bytes.subarray(0, PATCH_LIMIT), bytes.byteLength > PATCH_LIMIT);
+    return decodeSide(bytes.subarray(0, PATCH_LIMIT), bytes.byteLength > PATCH_LIMIT);
   };
 
   const write = async (
@@ -371,7 +370,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
     if (takesIndex && (await exists(join(repo.gitDir, "index.lock"))))
       return { kind: "busy", runs: [] };
-    const before = await statusOf(repo);
+    const before = await readRepository(repo);
 
     if (expect !== undefined && expect !== before.revision)
       return { kind: "stale", revision: before.revision };
@@ -394,7 +393,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       };
     }
 
-    const after = await statusOf(repo);
+    const after = await readRepository(repo);
 
     return moves === "revision" && after.revision === before.revision
       ? { kind: "unchanged" }
@@ -462,7 +461,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     async changes(scope, diff) {
       const repo = await required();
 
-      return changesAt(repo, scope, await statusOf(repo), diff?.ignoreWhitespace);
+      return changesAt(repo, scope, await readRepository(repo), diff?.ignoreWhitespace);
     },
     watchChanges: (scope, diff) =>
       follow(inRepo((repo, current) => changesAt(repo, scope, current, diff?.ignoreWhitespace))),
@@ -472,12 +471,12 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       ),
     async contents(path, scope) {
       const repo = await required();
-      const current = await statusOf(repo);
+      const current = await readRepository(repo);
       const root = repo.root;
 
       const from = into(
         repo,
-        (await changedOf(repo, scope, current)).find((file) => file.path === path)?.from ?? path,
+        (await listChanged(repo, scope, current)).find((file) => file.path === path)?.from ?? path,
       );
 
       const at = into(repo, path);
@@ -775,13 +774,13 @@ async function readStatus(
     head: head === null ? null : asId<"git-commit">(head),
     branch,
     upstream: upstream === null ? null : { name: upstream, ahead, behind },
-    revision: revisionOf(
+    revision: asId<"git-revision">(
       sha256([porcelain, head ?? "", numstat.staged, numstat.unstaged, ...stamps].join("\u0000")),
     ),
-    staged: staged.map((file) => withPaths(file, (path) => outOf(repo, path))),
-    unstaged: unstaged.map((file) => withPaths(file, (path) => outOf(repo, path))),
-    untracked: untracked.map((path) => outOf(repo, path)),
-    conflicts: conflicts.map((path) => outOf(repo, path)),
+    staged: staged.map((file) => withPaths(file, (path) => relativeToPrefix(repo, path))),
+    unstaged: unstaged.map((file) => withPaths(file, (path) => relativeToPrefix(repo, path))),
+    untracked: untracked.map((path) => relativeToPrefix(repo, path)),
+    conflicts: conflicts.map((path) => relativeToPrefix(repo, path)),
   };
 }
 
@@ -789,7 +788,7 @@ function into(repo: Repository, path: string): string {
   return `${repo.prefix}${path}`;
 }
 
-function outOf(repo: Repository, path: string): string {
+function relativeToPrefix(repo: Repository, path: string): string {
   return path.startsWith(repo.prefix)
     ? path.slice(repo.prefix.length)
     : `${"../".repeat(repo.prefix.split("/").length - 1)}${path}`;
@@ -891,7 +890,7 @@ async function untrackedEntry(target: string, path: string): Promise<PatchEntry>
     : textEntry(path, "untracked", null, text);
 }
 
-function sideOf(bytes: Uint8Array, truncated: boolean): GitFileSide {
+function decodeSide(bytes: Uint8Array, truncated: boolean): GitFileSide {
   if (bytes.includes(0)) return { kind: "binary" };
 
   if (truncated) return { kind: "truncated", head: new TextDecoder().decode(bytes) };

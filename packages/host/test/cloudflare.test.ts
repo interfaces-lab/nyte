@@ -67,7 +67,7 @@ function due(storage: Pick<DurableObjectSql, "sql">, rows: readonly [string, num
     );
 }
 
-function rowsOf(storage: Pick<DurableObjectSql, "sql">): Record<string, SqlValue>[] {
+function readSchedule(storage: Pick<DurableObjectSql, "sql">): Record<string, SqlValue>[] {
   return storage.sql.exec("SELECT session, at FROM nyte_schedule ORDER BY session").toArray();
 }
 
@@ -105,7 +105,7 @@ describe("pass (§42f, §42i)", () => {
     });
 
     const next = await pass(host, storage, { heads: 32, ms: 10_000, repair: false });
-    const rows = Object.fromEntries(rowsOf(storage).map((row) => [row.session, row.at]));
+    const rows = Object.fromEntries(readSchedule(storage).map((row) => [row.session, row.at]));
 
     expect(host.ticks).toHaveLength(1);
     expect(host.advanced).toEqual(["a", "b", "c", "d"]);
@@ -130,7 +130,7 @@ describe("pass (§42f, §42i)", () => {
     const next = await pass(host, storage, { heads: 2, ms: 10_000, repair: false });
 
     expect(host.advanced).toEqual(["a", "b"]);
-    expect(rowsOf(storage).map((row) => row.session)).toEqual(["c"]);
+    expect(readSchedule(storage).map((row) => row.session)).toEqual(["c"]);
     expect(next).not.toBeNull();
     expect(Number(next)).toBeLessThanOrEqual(Date.now());
   });
@@ -158,7 +158,7 @@ describe("pass (§42f, §42i)", () => {
 
     expect(host.repairs).toBe(1);
     expect(host.advanced).toEqual(["owed"]);
-    expect(rowsOf(storage).map((row) => row.session)).toEqual(["owed"]);
+    expect(readSchedule(storage).map((row) => row.session)).toEqual(["owed"]);
     expect(next).not.toBeNull();
 
     const quiet = fakeHost({ reports: {}, runnable });
@@ -180,7 +180,7 @@ describe("pass (§42f, §42i)", () => {
 
     expect(await pass(host, storage, { heads: 32, ms: 10_000, repair: true })).toBeNull();
     expect(host.advanced).toEqual(["owed"]);
-    expect(rowsOf(storage)).toEqual([]);
+    expect(readSchedule(storage)).toEqual([]);
     expect(await pass(host, storage, { heads: 32, ms: 10_000, repair: false })).toBeNull();
     expect(host.advanced).toEqual(["owed"]);
   });

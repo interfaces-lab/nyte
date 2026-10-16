@@ -6,7 +6,7 @@ import type { ValidationIssue } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/core";
 import type { ComposeOptions } from "@nyte-ai/core/server";
-import { codeOf } from "../local/tree.ts";
+import { readErrorCode } from "../local/tree.ts";
 
 const EXTENSIONS = [".ts", ".mts", ".js", ".mjs"];
 
@@ -94,7 +94,7 @@ async function importEach(files: readonly string[]): Promise<{
 
 async function pluginFilesIn(dir: string): Promise<readonly string[]> {
   const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
-    if (codeOf(error) === "ENOENT" || codeOf(error) === "ENOTDIR") return [];
+    if (readErrorCode(error) === "ENOENT" || readErrorCode(error) === "ENOTDIR") return [];
 
     throw error;
   });

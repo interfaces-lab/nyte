@@ -34,7 +34,7 @@ import webSearch from "@nyte-ai/plugin/core/web-search";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
-import { codeOf } from "./local/tree.ts";
+import { readErrorCode } from "./local/tree.ts";
 import { localProvider } from "./local/provider.ts";
 import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
 import { listen } from "./listen.ts";
@@ -386,7 +386,7 @@ function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () 
 
       return [watcher];
     } catch (error) {
-      dev("open", "plugins unwatched", { dir, code: codeOf(error) });
+      dev("open", "plugins unwatched", { dir, code: readErrorCode(error) });
 
       return [];
     }
@@ -410,7 +410,11 @@ async function settingsSeed(home: string): Promise<{
   const path = settingsPath(home);
 
   const text = await readFile(path, "utf8").catch((error: unknown) =>
-    codeOf(error) === "ENOENT" ? null : error instanceof Error ? error : new Error(String(error)),
+    readErrorCode(error) === "ENOENT"
+      ? null
+      : error instanceof Error
+        ? error
+        : new Error(String(error)),
   );
 
   if (text === null) return { seed: null, issue: null };

@@ -105,7 +105,7 @@ async function respond(
   let request: Request;
 
   try {
-    request = requestOf(incoming, origin, controller.signal);
+    request = readRequest(incoming, origin, controller.signal);
   } catch (error) {
     await write(
       failure(new SdkError("invalid", error instanceof Error ? error.message : String(error))),
@@ -118,7 +118,7 @@ async function respond(
   await write(await fetch(request), outgoing);
 }
 
-function requestOf(incoming: IncomingMessage, origin: string, signal: AbortSignal): Request {
+function readRequest(incoming: IncomingMessage, origin: string, signal: AbortSignal): Request {
   const headers = new Headers();
 
   for (const [name, value] of Object.entries(incoming.headers)) {
@@ -134,12 +134,12 @@ function requestOf(incoming: IncomingMessage, origin: string, signal: AbortSigna
   const body =
     method === "GET" || method === "HEAD"
       ? {}
-      : { body: bodyOf(incoming), duplex: "half" as const };
+      : { body: streamBody(incoming), duplex: "half" as const };
 
   return new Request(url.href, { method, headers, signal, ...body });
 }
 
-function bodyOf(incoming: IncomingMessage): ReadableStream<Uint8Array> {
+function streamBody(incoming: IncomingMessage): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       incoming.on("data", (chunk: Buffer) => {

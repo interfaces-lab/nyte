@@ -185,7 +185,7 @@ export function fakeModels(input?: {
 
     const reply: Reply = typeof next === "function" ? next(request) : next;
 
-    return streamOf(model, reply, options);
+    return streamReply(model, reply, options);
   };
 
   const provider: Provider = {
@@ -272,7 +272,7 @@ export async function open(
   });
 }
 
-function streamOf(
+function streamReply(
   model: Model<Api>,
   reply: Reply,
   options: SimpleStreamOptions | undefined,
@@ -374,7 +374,7 @@ function streamOf(
         const deltas =
           reply.tokens === undefined
             ? [body.slice(0, half), body.slice(half)]
-            : piecesOf(body, reply.tokens);
+            : splitText(body, reply.tokens);
 
         for (const delta of deltas) {
           content.text += delta;
@@ -435,7 +435,7 @@ function streamOf(
   return stream;
 }
 
-function piecesOf(text: string, count: number): readonly string[] {
+function splitText(text: string, count: number): readonly string[] {
   const pieces = Math.max(1, count);
 
   return Array.from({ length: pieces }, (_, index) =>

@@ -32,7 +32,7 @@ export function localProvider(options?: {
   return {
     kind: "local",
     async inspect(target) {
-      const path = pathOf(target);
+      const path = readTargetPath(target);
 
       if (path === null)
         return {
@@ -57,7 +57,7 @@ export function localProvider(options?: {
       };
     },
     async attach(target) {
-      const path = pathOf(target);
+      const path = readTargetPath(target);
 
       if (path === null) throw new SdkError("unavailable", "A local workspace needs a path.");
       const real = await realpath(path).catch(() => null);
@@ -108,7 +108,7 @@ function nests(outer: string, inner: string): boolean {
   return path === "" || (path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path));
 }
 
-function pathOf(target: WorkspaceTarget): string | null {
+function readTargetPath(target: WorkspaceTarget): string | null {
   return "path" in target && typeof target.path === "string" ? target.path : null;
 }
 

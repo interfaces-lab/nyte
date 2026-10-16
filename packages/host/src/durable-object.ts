@@ -20,11 +20,11 @@ import {
   loggedRow,
   memoryReader,
   mintRevision,
-  numberOf,
+  parseNumber,
   prefixEnd,
-  refOf,
-  storedRecordOf,
-  textOf,
+  parseRef,
+  parseStoredRecord,
+  parseText,
 } from "./store-rows.ts";
 import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
 
@@ -72,7 +72,7 @@ function storedVersion(storage: DurableObjectSql): number {
     .exec("SELECT version FROM store_meta WHERE id = 1")
     .toArray()[0]?.version;
 
-  return version === undefined ? 0 : numberOf(version);
+  return version === undefined ? 0 : parseNumber(version);
 }
 
 function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
@@ -93,14 +93,14 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
     async records() {
       return rows(
         "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
-      ).map(storedRecordOf);
+      ).map(parseStoredRecord);
     },
     async *logs() {
       if (rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log'").length === 0)
         return;
 
       for (const row of rows("SELECT DISTINCT session FROM log")) {
-        const session = textOf(row.session);
+        const session = parseText(row.session);
 
         if (session !== null)
           yield {
@@ -174,7 +174,7 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
 
         if (change.reindexSessions)
           for (const row of rows("SELECT name, target, revision FROM refs")) {
-            const ref = refOf(row);
+            const ref = parseRef(row);
             updateSessionIndex(storage, ref.name, ref.target, ref.revision);
           }
 
@@ -196,13 +196,13 @@ function connect(storage: DurableObjectSql): StoreConnection {
   const tail = (session: SessionId): Seq => {
     const value = rows("SELECT MAX(seq) AS tail FROM log WHERE session = ?", session)[0]?.tail;
 
-    return asSeq(value === null || value === undefined ? 0 : numberOf(value));
+    return asSeq(value === null || value === undefined ? 0 : parseNumber(value));
   };
 
   const ref = (name: string): Ref | null => {
     const row = rows("SELECT name, target, revision FROM refs WHERE name = ?", name)[0];
 
-    return row === undefined ? null : refOf(row);
+    return row === undefined ? null : parseRef(row);
   };
 
   return {
@@ -221,7 +221,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
         return id;
       },
       async get(id) {
-        const body = textOf(rows("SELECT body FROM objects WHERE id = ?", id)[0]?.body);
+        const body = parseText(rows("SELECT body FROM objects WHERE id = ?", id)[0]?.body);
 
         return body === null ? null : decodeObject(body);
       },
@@ -257,7 +257,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
                 end,
               );
 
-        return found.map(refOf);
+        return found.map(parseRef);
       },
       async set(updates) {
         const logged = collectSessionEvents(updates).map(({ session, event }) => {
@@ -334,7 +334,9 @@ function connect(storage: DurableObjectSql): StoreConnection {
           session,
           after,
           limit,
-        ).map((row) => decodeEvent(numberOf(row.seq), numberOf(row.at), textOf(row.event) ?? ""));
+        ).map((row) =>
+          decodeEvent(parseNumber(row.seq), parseNumber(row.at), parseText(row.event) ?? ""),
+        );
       },
       tail: async (session) => tail(session),
     },
@@ -351,7 +353,7 @@ function updateSessionIndex(
   const body =
     target === null
       ? null
-      : textOf(
+      : parseText(
           storage.sql.exec("SELECT body FROM objects WHERE id = ?", target).toArray()[0]?.body,
         );
 

@@ -25,11 +25,11 @@ import {
   loggedRow,
   memoryReader,
   mintRevision,
-  numberOf,
+  parseNumber,
   prefixEnd,
-  refOf,
-  storedRecordOf,
-  textOf,
+  parseRef,
+  parseStoredRecord,
+  parseText,
 } from "./store-rows.ts";
 import { sqliteWorkers } from "./sqlite-workers.ts";
 import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
@@ -114,7 +114,7 @@ function storedVersion(database: DatabaseSync): number {
   if (!hasTable(database, "store_meta")) return 0;
   const row = database.prepare("SELECT version FROM store_meta WHERE id = 1").get();
 
-  return row === undefined ? 0 : numberOf(row.version);
+  return row === undefined ? 0 : parseNumber(row.version);
 }
 
 function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTarget {
@@ -134,14 +134,14 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
         )
         .all()
-        .map(storedRecordOf);
+        .map(parseStoredRecord);
     },
     async *logs() {
       if (!hasTable(database, "log")) return;
       const read = database.prepare("SELECT seq, event FROM log WHERE session = ? ORDER BY seq");
 
       for (const row of database.prepare("SELECT DISTINCT session FROM log").all()) {
-        const session = textOf(row.session);
+        const session = parseText(row.session);
 
         if (session !== null) yield { session, events: read.all(session).map(loggedRow) };
       }
@@ -201,7 +201,7 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
 
         if (change.reindexSessions)
           for (const row of database.prepare("SELECT name, target, revision FROM refs").all()) {
-            const ref = refOf(row);
+            const ref = parseRef(row);
             updateSessionIndex(database, ref.name, ref.target, ref.revision);
           }
 
@@ -245,7 +245,7 @@ function backup(
   const rows = names.flatMap((name) => {
     const row = read.get(name);
 
-    return row === undefined ? [] : [refOf(row)];
+    return row === undefined ? [] : [parseRef(row)];
   });
 
   writeFileSync(
@@ -307,17 +307,17 @@ function connect(
   const tail = (session: SessionId): Seq => {
     const row = readTail.get(session);
 
-    return asSeq(row?.tail === null || row?.tail === undefined ? 0 : numberOf(row.tail));
+    return asSeq(row?.tail === null || row?.tail === undefined ? 0 : parseNumber(row.tail));
   };
 
   const ref = (name: string): Ref | null => {
     const row = getRef.get(name);
 
-    return row === undefined ? null : refOf(row);
+    return row === undefined ? null : parseRef(row);
   };
 
   return {
-    commitMark: async () => numberOf(readDataVersion.get()?.data_version),
+    commitMark: async () => parseNumber(readDataVersion.get()?.data_version),
     sessions: sqlSessionIndex(
       async (text, values) =>
         (await workers?.read(text, values)) ?? database.prepare(text).all(...values),
@@ -331,7 +331,7 @@ function connect(
         return id;
       },
       async get(id) {
-        const body = textOf(getBody.get(id)?.body);
+        const body = parseText(getBody.get(id)?.body);
 
         return body === null ? null : decodeObject(body);
       },
@@ -357,7 +357,7 @@ function connect(
         const rows =
           end === null ? await read(listFrom, prefix) : await read(listRange, prefix, end);
 
-        return rows.map(refOf);
+        return rows.map(parseRef);
       },
       async set(updates) {
         const logged = collectSessionEvents(updates);
@@ -367,7 +367,7 @@ function connect(
         const acquired = performance.now();
 
         try {
-          assertStoreVersion(numberOf(readVersion.get()?.version ?? 0));
+          assertStoreVersion(parseNumber(readVersion.get()?.version ?? 0));
           const before = new Map<string, Ref | undefined>();
 
           for (const update of updates)
@@ -440,7 +440,7 @@ function connect(
       },
       async log(session, after, limit) {
         return (await read(readLog, session, after, limit)).map((row) =>
-          decodeEvent(numberOf(row.seq), numberOf(row.at), textOf(row.event) ?? ""),
+          decodeEvent(parseNumber(row.seq), parseNumber(row.at), parseText(row.event) ?? ""),
         );
       },
       tail: async (session) => tail(session),
@@ -458,7 +458,7 @@ function updateSessionIndex(
   const body =
     target === null
       ? null
-      : textOf(database.prepare("SELECT body FROM objects WHERE id = ?").get(target)?.body);
+      : parseText(database.prepare("SELECT body FROM objects WHERE id = ?").get(target)?.body);
 
   for (const change of sessionIndexChanges(
     name,

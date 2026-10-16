@@ -1,14 +1,14 @@
 import { link, mkdir, open, readFile, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { SdkError } from "@nyte-ai/schema";
-import { codeOf } from "./local/tree.ts";
+import { readErrorCode } from "./local/tree.ts";
 
 export async function readKeyFile(path: string, name: string): Promise<Uint8Array> {
   const bytes = await readFile(path)
     .then(
       (stored) => new Uint8Array(stored),
       (error: unknown) => {
-        if (codeOf(error) === "ENOENT") return mintKeyFile(path);
+        if (readErrorCode(error) === "ENOENT") return mintKeyFile(path);
 
         throw error;
       },
@@ -44,7 +44,7 @@ async function mintKeyFile(path: string): Promise<Uint8Array> {
 
     return bytes;
   } catch (error) {
-    if (codeOf(error) !== "EEXIST") throw error;
+    if (readErrorCode(error) !== "EEXIST") throw error;
 
     return new Uint8Array(await readFile(path));
   } finally {

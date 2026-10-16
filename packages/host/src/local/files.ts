@@ -34,7 +34,7 @@ import { findExecutable, run } from "./command.ts";
 import type { Ran } from "./command.ts";
 import { feed } from "./feed.ts";
 import { decodeText } from "./text.ts";
-import { codeOf, createIgnores, walkTree, watchPath, watchTree } from "./tree.ts";
+import { readErrorCode, createIgnores, walkTree, watchPath, watchTree } from "./tree.ts";
 
 /** Returns a byte reader that carries the version of the file it read, which the server answers as `X-Nyte-Version` (§40h, §40p). */
 export type VersionedReader = ByteReader & { readonly version: FileVersion };
@@ -110,7 +110,7 @@ export function localFiles(
       const bytes = await readFile(target).catch(missing);
 
       if (bytes === null) return { kind: "missing", path };
-      const version = versionOf(bytes);
+      const version = hashVersion(bytes);
       const text = decodeText(bytes);
 
       return text === null
@@ -167,7 +167,7 @@ export function localFiles(
       if (stats.isSymbolicLink()) {
         const link = await readlink(target);
 
-        return { kind: "symlink", size: stats.size, version: versionOf(link), target: link };
+        return { kind: "symlink", size: stats.size, version: hashVersion(link), target: link };
       }
 
       if (stats.isDirectory())
@@ -206,7 +206,7 @@ export function localFiles(
         throw error;
       }
 
-      return { kind: "saved", version: versionOf(bytes) };
+      return { kind: "saved", version: hashVersion(bytes) };
     },
     async remove(path, removeOptions) {
       const target = absolute(path);
@@ -216,7 +216,7 @@ export function localFiles(
 
       const current =
         (await currentVersion(target)) ??
-        (link.isSymbolicLink() ? versionOf(await readlink(target)) : null);
+        (link.isSymbolicLink() ? hashVersion(await readlink(target)) : null);
 
       if (removeOptions?.expect !== undefined && removeOptions.expect !== current)
         return { kind: "stale", current };
@@ -278,12 +278,12 @@ export function localFiles(
   };
 }
 
-function versionOf(data: string | Uint8Array): FileVersion {
+function hashVersion(data: string | Uint8Array): FileVersion {
   return asId<"file-version">(sha256(data));
 }
 
 function missing(error: unknown): null {
-  const code = codeOf(error);
+  const code = readErrorCode(error);
 
   if (code === "ENOENT" || code === "ENOTDIR") return null;
 
@@ -311,7 +311,7 @@ async function hashFile(path: string): Promise<FileVersion> {
 }
 
 async function directoryVersion(path: string): Promise<FileVersion> {
-  return versionOf((await readdir(path)).sort().join("\n"));
+  return hashVersion((await readdir(path)).sort().join("\n"));
 }
 
 async function currentVersion(path: string): Promise<FileVersion | null> {
