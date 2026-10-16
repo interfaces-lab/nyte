@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView, ModelInfo, SessionView } from "@nyte-ai/sdk";
 import type { Msg } from "../../src/model/msg.ts";
 import { reduce } from "../../src/model/reduce.ts";
-import type { Step } from "../../src/model/reduce.ts";
+import type { Step } from "../../src/model/step.ts";
 import { initialState } from "../../src/model/state.ts";
 import type { State } from "../../src/model/state.ts";
 import { followed } from "../fixture/view.ts";

@@ -1,96 +1,81 @@
 import type { MessageId, SessionId, SessionView } from "@nyte-ai/sdk";
-import { shortId } from "../lib/format.ts";
-import { CLOSED, explicitMentionQuery, nextCompletion } from "./completion.ts";
-import { addPart } from "./draft.ts";
-import type { Fact } from "./msg.ts";
-import { currentQuestion, sameQuestion } from "./question.ts";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
-import type { Step } from "./reduce.ts";
-import { followedShells } from "./state.ts";
-import type { Handback, ShellJob, State } from "./state.ts";
-import { andThen, insertText, setDraft, stay, withFacts, withLocal, withNotice } from "./step.ts";
-import { deriveTranscript } from "./transcript.ts";
-import { anchorAt } from "./window.ts";
+import { shortId } from "../../lib/format.ts";
+import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
+import { addPart } from "../draft.ts";
+import type { Fact } from "../msg.ts";
+import { currentQuestion, sameQuestion } from "../question.ts";
+import { followedShells } from "../state.ts";
+import type { FollowedSession, Handback, ShellJob, State } from "../state.ts";
+import { andThen, insertText, setDraft, stay, withFacts, withLocal, withNotice } from "../step.ts";
+import type { MsgOf, SomeHandlers, Step } from "../step.ts";
+import { deriveTranscript } from "../transcript.ts";
+import { anchorAt } from "../window.ts";
 
-export function facts(state: State, msg: Fact, now: number): Step {
-  switch (msg.kind) {
-    case "phase":
-      return stay(withFacts(state, { phase: msg.phase }));
-    case "session-opened":
-      return {
-        state: opened(state, msg),
-        effects: [{ kind: "check-trust", workspace: msg.info.workspace, ask: "if-needed" }],
-      };
-    case "view":
-      return viewArrived(state, msg.session, msg.view, now);
-    case "watch-ended": {
-      const session = state.facts.session;
+/**
+ * Wraps a handler for a fact about one session: the fact applies only while that session is
+ * the followed one, and is dropped otherwise.
+ */
+function followedOnly<M extends { readonly session: SessionId }>(
+  handle: (state: State, session: FollowedSession, msg: M, now: number) => Step,
+): (state: State, msg: M, now: number) => Step {
+  return (state, msg, now) => {
+    const { session } = state.facts;
 
-      if (session?.id !== msg.session) return stay(state);
-
-      return stay(
-        withFacts(state, {
-          session: { ...session, watch: { kind: "failed", failure: msg.failure } },
-        }),
-      );
-    }
-
-    case "session-info": {
-      const session = state.facts.session;
-
-      return session?.id === msg.session
-        ? stay(withFacts(state, { session: { ...session, info: msg.info } }))
-        : stay(state);
-    }
-
-    case "selection": {
-      const session = state.facts.session;
-
-      return session?.id === msg.session
-        ? stay(withFacts(state, { session: { ...session, selection: msg.selection } }))
-        : stay(state);
-    }
-
-    case "catalog":
-      return msg.generation < state.facts.catalog.generation
-        ? stay(state)
-        : stay(withFacts(state, { catalog: { generation: msg.generation, catalog: msg.catalog } }));
-    case "settings":
-      return stay(withFacts(state, { settings: msg.settings }));
-    case "tasks":
-      if (state.facts.session?.id !== msg.session) return stay(state);
-
-      return stay(questionMoved(state, withFacts(state, { tasks: msg.tasks })));
-    case "workspace":
-      return stay(
-        withLocal(withFacts(state, { workspace: msg.workspace }), {
-          pasteGeneration:
-            msg.workspace.cwd === state.facts.workspace.cwd
-              ? state.local.pasteGeneration
-              : state.local.pasteGeneration + 1,
-        }),
-      );
-    case "shell-job":
-      return shellReported(state, msg.job);
-    case "terminal":
-      return stay(withFacts(state, { terminal: msg.terminal }));
-    case "remote":
-      return stay(withFacts(state, { remote: msg.remote }));
-    case "draft-changed":
-      return draftChanged(state, msg, now);
-    case "scrolled":
-      return stay(scrolled(state, msg.atBottom));
-    case "failure":
-      return stay(withLocal(state, { failures: [...state.local.failures, msg.failure] }));
-    case "tick":
-      return stay(state);
-    default: {
-      const _exhaustive: never = msg;
-
-      return _exhaustive;
-    }
-  }
+    return session !== null && session.id === msg.session
+      ? handle(state, session, msg, now)
+      : stay(state);
+  };
 }
+
+export const factHandlers = {
+  phase: (state, msg) => stay(withFacts(state, { phase: msg.phase })),
+  "session-opened": (state, msg) => ({
+    state: opened(state, msg),
+    effects: [{ kind: "check-trust", workspace: msg.info.workspace, ask: "if-needed" }],
+  }),
+  view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
+    viewArrived(state, session, msg.view, now),
+  ),
+  "watch-ended": followedOnly<MsgOf<"watch-ended">>((state, session, msg) =>
+    stay(
+      withFacts(state, {
+        session: { ...session, watch: { kind: "failed", failure: msg.failure } },
+      }),
+    ),
+  ),
+  "session-info": followedOnly<MsgOf<"session-info">>((state, session, msg) =>
+    stay(withFacts(state, { session: { ...session, info: msg.info } })),
+  ),
+  selection: followedOnly<MsgOf<"selection">>((state, session, msg) =>
+    stay(withFacts(state, { session: { ...session, selection: msg.selection } })),
+  ),
+  tasks: followedOnly<MsgOf<"tasks">>((state, _session, msg) =>
+    stay(questionMoved(state, withFacts(state, { tasks: msg.tasks }))),
+  ),
+  catalog: (state, msg) =>
+    msg.generation < state.facts.catalog.generation
+      ? stay(state)
+      : stay(withFacts(state, { catalog: { generation: msg.generation, catalog: msg.catalog } })),
+  settings: (state, msg) => stay(withFacts(state, { settings: msg.settings })),
+  workspace: (state, msg) =>
+    stay(
+      withLocal(withFacts(state, { workspace: msg.workspace }), {
+        pasteGeneration:
+          msg.workspace.cwd === state.facts.workspace.cwd
+            ? state.local.pasteGeneration
+            : state.local.pasteGeneration + 1,
+      }),
+    ),
+  "shell-job": (state, msg) => shellReported(state, msg.job),
+  terminal: (state, msg) => stay(withFacts(state, { terminal: msg.terminal })),
+  remote: (state, msg) => stay(withFacts(state, { remote: msg.remote })),
+  "draft-changed": (state, msg, now) => draftChanged(state, msg, now),
+  scrolled: (state, msg) => stay(scrolled(state, msg.atBottom)),
+  failure: (state, msg) =>
+    stay(withLocal(state, { failures: [...state.local.failures, msg.failure] })),
+  tick: (state) => stay(state),
+} satisfies SomeHandlers;
 
 function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): State {
   const next = withFacts(state, {
@@ -119,10 +104,7 @@ function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): S
   });
 }
 
-function viewArrived(state: State, id: SessionId, view: SessionView, now: number): Step {
-  const session = state.facts.session;
-
-  if (session === null || session.id !== id) return stay(state);
+function viewArrived(state: State, session: FollowedSession, view: SessionView, now: number): Step {
   const before = session.view;
   let next = withFacts(state, { session: { ...session, view } });
 
@@ -239,7 +221,7 @@ function firstView(state: State, now: number): Step {
   return andThen(setDraft(restored, saved), deliverShells);
 }
 
-export function unansweredRequest(
+function unansweredRequest(
   view: SessionView,
 ): { readonly message: MessageId; readonly commit: string } | null {
   const turn = view.turns.at(-1);
@@ -253,12 +235,7 @@ export function unansweredRequest(
     : null;
 }
 
-export function runEnded(
-  before: SessionView | null,
-  after: SessionView,
-  next: State,
-  now: number,
-): Step {
+function runEnded(before: SessionView | null, after: SessionView, next: State, now: number): Step {
   const session = next.facts.session;
 
   if (
@@ -340,14 +317,7 @@ export function stageHandback(
   );
 }
 
-function shownLanded(view: SessionView, message: MessageId): boolean {
-  return view.messages.some(
-    (candidate) =>
-      candidate.id === message && candidate.kind === "user" && candidate.status.kind === "landed",
-  );
-}
-
-export function landHandback(next: State, now: number): Step {
+function landHandback(next: State, now: number): Step {
   const session = next.facts.session;
   const view = session?.view;
 
@@ -363,7 +333,16 @@ export function landHandback(next: State, now: number): Step {
   )
     return stay(next);
 
-  if (head.unlessLanded !== null && shownLanded(view, head.unlessLanded)) return stay(next);
+  if (
+    head.unlessLanded !== null &&
+    view.messages.some(
+      (candidate) =>
+        candidate.id === head.unlessLanded &&
+        candidate.kind === "user" &&
+        candidate.status.kind === "landed",
+    )
+  )
+    return stay(next);
 
   const dropped = withLocal(next, {
     handbacks: { ...next.local.handbacks, [session.id]: rest },
@@ -389,7 +368,7 @@ function shellReported(state: State, job: ShellJob): Step {
   return deliverShells(withFacts(state, { shells }));
 }
 
-export function deliverShells(state: State): Step {
+function deliverShells(state: State): Step {
   if (state.local.dialogs.length > 0) return stay(state);
 
   return followedShells(state).reduce<Step>((step, job) => {
