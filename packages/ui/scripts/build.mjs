@@ -2,7 +2,7 @@ import { glob, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import stylex from "@stylexjs/unplugin";
+import { stylex } from "../stylex.mjs";
 import { context } from "esbuild";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

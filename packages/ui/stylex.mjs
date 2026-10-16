@@ -8,6 +8,17 @@ const ATOMIC_PRIORITY = 1000;
 /** Above the highest component priority bucket, a pseudo-element under an at-rule. */
 const APP_OFFSET = 10_000;
 
+/**
+ * StyleX sees a `defineConsts` key only as `var(--hash)` and prices it as a
+ * plain property (3000) rather than the at-rule it stands for, which also
+ * lifts the rule a specificity level. Every const key in this codebase is a
+ * media query, so each leading `var(--hash){` wrapper is repriced as `@media`
+ * (200): `[media.hover]` then sorts exactly like the literal query.
+ */
+const CONST_KEY_OVERPRICE = 3000 - 200;
+
+const CONST_WRAPPERS = /^(?:var\(--[\w-]+\)\{)*/;
+
 function nyteStylexOrder({ types }) {
   return {
     name: "nyte-stylex-order",
@@ -15,6 +26,12 @@ function nyteStylexOrder({ types }) {
       const rules = file.metadata.stylex;
 
       if (!Array.isArray(rules)) return;
+
+      for (const rule of rules) {
+        const wrappers = rule[1].ltr.match(CONST_WRAPPERS)[0].split("{").length - 1;
+
+        rule[2] -= wrappers * CONST_KEY_OVERPRICE;
+      }
 
       const atomic = rules.filter(
         ([name, rule, priority]) =>
@@ -78,4 +95,5 @@ const settledStylesheet = {
 export const stylex = {
   vite: (options) => [settledStylesheet, unplugin.vite(withOrder(options))],
   rollup: (options) => unplugin.rollup(withOrder(options)),
+  esbuild: (options) => unplugin.esbuild(withOrder(options)),
 };
