@@ -34,7 +34,7 @@ const writtenAsCode = (word: string): boolean =>
   word.endsWith("()") || word.includes("_") || /[\w$]{2,}\.[\w$]{2,}/.test(word);
 
 /** camelCase reads as code too, but only counts when the diff holds it: prose has its iPhones. */
-const camel = (word: string): boolean => /[a-z][A-Z]/.test(word);
+const CAMEL = /[a-z][A-Z]/;
 
 function patchLines(file: ReviewFile): readonly PatchLine[] {
   const lines: PatchLine[] = [];
@@ -98,7 +98,7 @@ export function linkProse(text: string, files: readonly ReviewFile[]): readonly 
   for (const match of text.matchAll(WORD)) {
     const word = match[0];
 
-    if (!writtenAsCode(word) && !camel(word)) continue;
+    if (!writtenAsCode(word) && !CAMEL.test(word)) continue;
 
     const file = FILE.test(word)
       ? files.find((entry) => entry.path === word || entry.path.endsWith(`/${word}`))

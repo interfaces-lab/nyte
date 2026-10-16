@@ -1,9 +1,9 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * What every code surface in the review shares: one Pierre preset, one file
  * header, and one way to turn a line selection into a side-chat reference.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";

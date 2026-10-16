@@ -229,8 +229,7 @@ function ReviewDocument({
   }>({ path: undefined, count: 0 });
 
   const bands = useRef(new Map<number, HTMLElement>());
-  /** A section the Overview asked for, scrolled to when the guide draws its band. */
-  const opening = useRef<number | undefined>(undefined);
+  const sectionToScroll = useRef<number | undefined>(undefined);
   const approved = review.approvals.at(-1)?.head === review.revision.head;
   const draft = review.author?.status === "working";
   const sections = shown?.guide.sections ?? [];
@@ -261,7 +260,7 @@ function ReviewDocument({
       return;
     }
 
-    opening.current = index;
+    sectionToScroll.current = index;
     onView("guide");
   };
 
@@ -276,9 +275,9 @@ function ReviewDocument({
 
       bands.current.set(index, node);
 
-      if (opening.current !== index) return;
+      if (sectionToScroll.current !== index) return;
 
-      opening.current = undefined;
+      sectionToScroll.current = undefined;
       node.scrollIntoView({ block: "start" });
     },
   };

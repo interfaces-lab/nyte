@@ -87,6 +87,10 @@ export interface GuideWriting {
   readonly requesting: boolean;
 }
 
+/**
+ * The line above the guide: progress, a failure, or, with no guide yet, the
+ * page's one action under the words that explain it, where the eye already is.
+ */
 export function StatusLine({
   review,
   current,
@@ -137,7 +141,6 @@ export function StatusLine({
       </div>
     );
 
-  // No guide yet: the page's one action, under the words that explain it, where the eye already is.
   if (current === undefined && !writing && shown === undefined)
     return (
       <div {...props(styles.empty)}>
@@ -204,13 +207,6 @@ export function StatusLine({
     </div>
   );
 }
-
-const startsFolded = (file: ReviewFile, open: boolean, reviewed: boolean): boolean =>
-  !open ||
-  reviewed ||
-  file.metadata === undefined ||
-  file.metadata.type === "deleted" ||
-  file.added + file.removed > LONG_DIFF;
 
 /** Pierre draws each file in a shadow root; its rows carry the line number and the row type. */
 function lineRow(card: HTMLElement | undefined, target: LineTarget): Element | undefined {
@@ -350,6 +346,13 @@ function Segment({
   );
 }
 
+/**
+ * The guide beside its files. Only the guide scrolls: a row's own
+ * scrollIntoView would also slide Pierre's code sideways under its sticky
+ * gutter. A line in a folded or still-drawing file waits for Pierre's next
+ * draw to scroll to it. The section in view is the last band whose top has
+ * passed the upper third.
+ */
 export function ReviewGuide({
   review,
   current,
@@ -392,7 +395,11 @@ export function ReviewGuide({
     sections.flatMap(({ files }) =>
       files.map((file, position): [string, boolean] => [
         file.path,
-        startsFolded(file, position < OPEN_FILES, input.reviewed(file.path) === "reviewed"),
+        position >= OPEN_FILES ||
+          input.reviewed(file.path) === "reviewed" ||
+          file.metadata === undefined ||
+          file.metadata.type === "deleted" ||
+          file.added + file.removed > LONG_DIFF,
       ]),
     ),
   );
@@ -407,7 +414,6 @@ export function ReviewGuide({
     return true;
   };
 
-  // Only the guide scrolls: a row's own scrollIntoView would also slide Pierre's code sideways under its sticky gutter.
   const center = (row: Element): void => {
     const box = scroller.current?.getBoundingClientRect();
 
@@ -434,7 +440,6 @@ export function ReviewGuide({
       return;
     }
 
-    // Folded or still drawing: Pierre's next draw scrolls to it.
     waiting.current = target;
     cards.current.get(target.path)?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
@@ -452,7 +457,6 @@ export function ReviewGuide({
     center(found);
   };
 
-  /** The section in view is the last band whose top has passed the upper third. */
   const follow = (scroller: HTMLElement): void => {
     const box = scroller.getBoundingClientRect();
     const line = box.top + box.height / 3;

@@ -1,4 +1,3 @@
-
 const HOUR = 3_600_000;
 
 const DAY = 24 * HOUR;

@@ -599,7 +599,7 @@ function openTab(state: TabState, id: string): TabState {
 }
 
 function closeTab(state: TabState, id: string): TabState {
-  const index = state.open.indexOf(id);
+  const index = state.open.findIndex((entry) => entry === id);
 
   if (index === -1) return state;
   const open = state.open.filter((entry) => entry !== id);
@@ -627,7 +627,7 @@ function reopenTab(state: TabState): TabState {
 
 function cycleTab(state: TabState, step: 1 | -1): TabState {
   const order = [COORDINATOR, ...state.open];
-  const index = order.indexOf(state.active);
+  const index = order.findIndex((entry) => entry === state.active);
   const next = order[(index + step + order.length) % order.length];
 
   return next === undefined ? state : activate(state, next);
@@ -823,7 +823,9 @@ export function ProjectsPage(): ReactElement {
                 }
                 onCloseRight={(id) =>
                   setTabs((current) =>
-                    openIds.slice(openIds.indexOf(id) + 1).reduce(closeTab, current),
+                    openIds
+                      .slice(openIds.findIndex((entry) => entry === id) + 1)
+                      .reduce(closeTab, current),
                   )
                 }
                 onReorder={(ids) =>

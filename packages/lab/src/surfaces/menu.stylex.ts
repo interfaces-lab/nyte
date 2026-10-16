@@ -99,8 +99,10 @@ export const menu = create({
     gap: space.gapRow,
     blockSize: space.rowMenu,
     paddingInline: space.insetRow,
-    // The row owns the ink, so a variant recolours the row once and the label
-    // and the shortcut inherit instead of restating it.
+    /**
+     * The row owns the ink, so a variant recolours the row once and the label
+     * and the shortcut inherit instead of restating it.
+     */
     color: color.textPrimary,
     // A desktop menu, not a web link.
     cursor: "default",
@@ -160,8 +162,10 @@ export const menu = create({
   label: {
     flexGrow: 1,
     flexShrink: 1,
-    // Lets a long label ellipsis at the menu's max width instead of pushing
-    // the trailing slot out of the panel.
+    /**
+     * Lets a long label ellipsis at the menu's max width instead of pushing
+     * the trailing slot out of the panel.
+     */
     minInlineSize: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -182,8 +186,10 @@ export const menu = create({
     flexGrow: 0,
     flexShrink: 0,
     color: color.textTertiary,
-    // Shortcut glyphs are mostly caps and symbols, but digits appear in
-    // function keys and should not jitter between rows.
+    /**
+     * Shortcut glyphs are mostly caps and symbols, but digits appear in
+     * function keys and should not jitter between rows.
+     */
     fontVariantNumeric: "tabular-nums",
   },
 
@@ -246,8 +252,10 @@ export const menu = create({
     color: color.textTertiary,
   },
 
-  // Slots carry icon ink rather than text ink, so they dim to the icon ramp's
-  // matching step rather than the text one.
+  /**
+   * Slots carry icon ink rather than text ink, so they dim to the icon ramp's
+   * matching step rather than the text one.
+   */
   disabledSlot: {
     color: color.iconTertiary,
   },

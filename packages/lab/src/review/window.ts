@@ -101,6 +101,12 @@ function insertAfterActive(state: WindowState, tab: Tab): readonly Tab[] {
   return [...state.tabs.slice(0, at + 1), tab, ...state.tabs.slice(at + 1)];
 }
 
+/**
+ * The window's tabs after one action. Opening a place pushes it, dropping
+ * anything forward of where the tab stands. There is no overview behind the
+ * strip, so closing the last tab leaves a new chat; closing the active tab
+ * hands over to the tab on its right, then the one on its left.
+ */
 export function reduce(state: WindowState, action: WindowAction): WindowState {
   switch (action.kind) {
     case "open": {
@@ -114,7 +120,6 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
         };
       }
 
-      // Push, dropping anything forward of where the tab stands.
       return updateActive(state, (tab) =>
         samePlace(placeOf(tab), action.place)
           ? tab
@@ -145,7 +150,6 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
       const at = state.tabs.findIndex((tab) => tab.id === action.tabId);
       const rest = state.tabs.filter((tab) => tab.id !== action.tabId);
 
-      // No overview behind the strip: closing the last tab leaves a new chat.
       if (rest.length === 0) {
         const tab = newTab(state.serial, { kind: "new-chat" });
 
@@ -154,7 +158,6 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
 
       if (action.tabId !== state.active) return { ...state, tabs: rest };
 
-      // The tab to the right takes over, then the one to the left.
       const next = rest[Math.min(at, rest.length - 1)];
 
       return { ...state, tabs: rest, active: next?.id ?? state.active };

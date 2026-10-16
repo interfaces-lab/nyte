@@ -1,10 +1,10 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The Changes tab: the file tree beside one virtualized CodeView stack that
  * wears the same header, reviewed state and selection action as the Guide.
  * Layout and the file tree are the page's to choose; they live in the "⋯" menu
  * on the tab row, not here.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewLineSelection } from "@pierre/diffs";

@@ -346,7 +346,7 @@ export function WindowTabStrip({
                 >
                   <Tab
                     tab={tab}
-                    position={tabs.indexOf(tab)}
+                    position={tabs.findIndex((entry) => entry === tab)}
                     active={active}
                     design={design}
                     onActivate={() => onActivate(tab.id)}

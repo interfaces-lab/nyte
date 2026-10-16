@@ -14,7 +14,7 @@ import { edge, layer, radius } from "../tokens/layer.stylex";
 import { space } from "../tokens/space.stylex";
 import { motion } from "../tokens/type.stylex";
 
-/*
+/**
  * The panel enters by scale alone. A translate would need a displacement in
  * pixels and no area owns one; scale is unitless and reads as the sheet
  * settling rather than sliding in from a direction it has no reason to come
@@ -35,19 +35,19 @@ const panelIn = keyframes({
   to: { opacity: 1, transform: "scale(1)" },
 });
 
-/* The exit travels under a third of the enter's distance. Softer, and the
+/** The exit travels under a third of the enter's distance. Softer, and the
  * panel stays legible for the whole of its departure. */
 const panelOut = keyframes({
   from: { opacity: 1, transform: "scale(1)" },
   to: { opacity: 0, transform: "scale(0.988)" },
 });
 
-/* DERIVED: not a duration, a switch. Short enough to be instant and long
+/** DERIVED: not a duration, a switch. Short enough to be instant and long
  * enough that `animationend` still fires, which is what unmounts the panel. */
 const instant = "0.01ms";
 
 export const dialog = create({
-  /*
+  /**
    * The scrim is a sibling of the panel, never its parent. A parent animating
    * opacity would pull the panel into its own group and flatten the shadow
    * the material casts, and any overflow on it would clip the material.
@@ -78,7 +78,7 @@ export const dialog = create({
     },
   },
 
-  /*
+  /**
    * Three rows rather than centring: 2fr of empty above and 3fr below lifts
    * the panel off the geometric centre. A centred box reads as sitting low,
    * and a ratio holds that correction at every viewport height without
@@ -106,7 +106,7 @@ export const dialog = create({
   panel: {
     gridRowStart: 2,
     pointerEvents: "auto",
-    /*
+    /**
      * The width is a ceiling, not a promise. A container narrower than the
      * dialog is a real case once the modal is scoped to a window rather than
      * the viewport, and overflowing it would put the actions off-screen.
@@ -141,7 +141,7 @@ export const dialog = create({
     margin: 0,
   },
 
-  /*
+  /**
    * Rhythm decision 1 of 3, and the smallest. The title and the body are one
    * statement, so the margin only has to stop the two steps touching. It is
    * doing less work than it looks: the title step carries 4px of half-leading
@@ -156,7 +156,7 @@ export const dialog = create({
     color: color.textSecondary,
   },
 
-  /*
+  /**
    * Rhythm decision 2 of 3, and the largest. Two reasons it clears the title
    * gap by four times rather than one step.
    *
@@ -173,16 +173,16 @@ export const dialog = create({
     marginBlockStart: space.gapBlock,
     display: "flex",
     flexDirection: "row",
-    /* macOS order: the confirming action is last, hard against the trailing
+    /** macOS order: the confirming action is last, hard against the trailing
      * edge, because that is where the reading finishes. */
     justifyContent: "flex-end",
     alignItems: "center",
-    /* Rhythm decision 3 of 3. Buttons in a row are peers of one another, not
+    /** Rhythm decision 3 of 3. Buttons in a row are peers of one another, not
      * blocks of content, so this is the sibling gap and not the block gap. */
     columnGap: space.gapContent,
   },
 
-  /*
+  /**
    * Row anatomy from space.stylex.ts: fixed leading slot, flexible label,
    * optional trailing slot, at the button row height.
    *
@@ -206,7 +206,7 @@ export const dialog = create({
     columnGap: space.gapRow,
     blockSize: space.rowButton,
     paddingBlock: 0,
-    /* DERIVED from the ruler: space.stylex.ts names no button inset. insetRow
+    /** DERIVED from the ruler: space.stylex.ts names no button inset. insetRow
      * is 8px, which works for a row whose leading slot already supplies the
      * optical margin, and cramps a two-word label that has no slot. */
     paddingInline: space.insetButton,
@@ -216,14 +216,14 @@ export const dialog = create({
     borderRadius: radius.r6,
     fontFamily: "inherit",
     cursor: "default",
-    /* Longhand, and only the two properties that actually change. A shorthand
+    /** Longhand, and only the two properties that actually change. A shorthand
      * here would sweep up layout and fight the panel's own animation. */
     transitionProperty: "background-color, border-color, color",
     transitionDuration: motion.durationState,
     transitionTimingFunction: motion.easeDefault,
   },
 
-  /*
+  /**
    * DERIVED: no focus-ring token exists in any area. Two pixels is the
    * platform weight, and the offset is one hairline so the ring clears the
    * button's own edge by exactly the width of that edge.
@@ -238,7 +238,7 @@ export const dialog = create({
     outlineOffset: edge.hairline,
   },
 
-  /*
+  /**
    * The filled variant cannot use the state wash: state-hover is 4% black
    * over a near-black pill and does nothing. It moves along the gray ramp
    * instead, away from the extreme, which lightens in light and dims in dark.
@@ -262,7 +262,7 @@ export const dialog = create({
     color: color.textPrimary,
   },
 
-  /*
+  /**
    * Destructive is not filled. It is the action the user is least likely to
    * want, so it takes the red label and the quiet frame, and its wash is the
    * neutral state step: the red ramp's 30 is translucent in light and a solid
@@ -279,7 +279,7 @@ export const dialog = create({
     color: color.red600,
   },
 
-  /* Same slot width as a menu item's, so labels land in the same column
+  /** Same slot width as a menu item's, so labels land in the same column
    * across surfaces. Rendered only when a button has something to put in it:
    * reserving it on a bare button would push a centred label off centre for
    * the sake of an alignment nothing is using. */

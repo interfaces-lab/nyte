@@ -1,4 +1,3 @@
-
 export type AgentPlace = "cloud" | "local";
 
 export type AgentState = "working" | "done" | "archived";

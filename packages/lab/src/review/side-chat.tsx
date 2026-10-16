@@ -215,7 +215,6 @@ export function SideChat({
               suggestionCatalog={NO_SUGGESTIONS}
               mentionFiles={NO_FILES}
               inputRef={(handle) => {
-                // Opening the side chat, or "Ask about this section", asks for focus by bumping the counter.
                 if (handle === null || focused.current === local.focus) return;
 
                 focused.current = local.focus;

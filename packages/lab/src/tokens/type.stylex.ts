@@ -14,7 +14,7 @@ import { create, defineConsts } from "@stylexjs/stylex";
 import { color } from "./color.stylex";
 
 export const text = create({
-  /* The package loads Inter Variable once at the application boundary. */
+  /** The package loads Inter Variable once at the application boundary. */
   root: {
     fontFamily: '"Inter Variable", Inter, sans-serif',
     fontSize: "13px",
@@ -22,7 +22,7 @@ export const text = create({
     fontWeight: color.weightRegular,
   },
 
-  /* Shortcut hints, timestamps, counts. Medium because it sits in secondary
+  /** Shortcut hints, timestamps, counts. Medium because it sits in secondary
    * ink, where regular at this size goes soft. */
   caption: {
     fontSize: "11px",
@@ -30,21 +30,21 @@ export const text = create({
     fontWeight: color.weightMedium,
   },
 
-  /* Section headings and form labels. Names a group, never reads as content. */
+  /** Section headings and form labels. Names a group, never reads as content. */
   label: {
     fontSize: "12px",
     lineHeight: "16px",
     fontWeight: color.weightMedium,
   },
 
-  /* Menu item labels, dialog body, shell rows. The default. */
+  /** Menu item labels, dialog body, shell rows. The default. */
   body: {
     fontSize: "13px",
     lineHeight: "var(--lab-line-height, 18px)",
     fontWeight: color.weightRegular,
   },
 
-  /* Body metrics at medium weight: a selected or primary row can swap to this
+  /** Body metrics at medium weight: a selected or primary row can swap to this
    * without reflowing the row it sits in. */
   strong: {
     fontSize: "13px",
@@ -52,7 +52,7 @@ export const text = create({
     fontWeight: color.weightMedium,
   },
 
-  /* Dialog titles. The only step that changes the reading size. */
+  /** Dialog titles. The only step that changes the reading size. */
   title: {
     fontSize: "16px",
     lineHeight: "24px",

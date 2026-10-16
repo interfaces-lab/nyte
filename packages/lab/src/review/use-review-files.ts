@@ -28,11 +28,14 @@ export function briefsOf(review: ReviewDetail) {
   return { empty: revision.head === revision.base, current, shown };
 }
 
+/**
+ * The review's patches and which files moved since the guide: since the
+ * guide's own head when it is behind, else since the brief it was cut from.
+ */
 export function useReviewFiles(review: ReviewDetail) {
   const { revision } = review;
   const { empty, current, shown } = briefsOf(review);
 
-  // Since the guide's own head when it is behind, else since the brief it was cut from.
   const since =
     shown === undefined ? undefined : shown.head === revision.head ? shown.from : shown.head;
 

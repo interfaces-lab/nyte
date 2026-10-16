@@ -63,7 +63,7 @@ export const radius = defineConsts({
  */
 export const edge = defineConsts({
   hairline: "1px",
-  /*
+  /**
    * DERIVED: two hairlines make the focus ring a separate edge.
    */
   focusRing: "2px",
