@@ -264,7 +264,7 @@ export async function* parseOutputFrames(
           continue;
         }
 
-        const control = controlOf(parseJson(decoder.decode(payload)));
+        const control = decodeControl(parseJson(decoder.decode(payload)));
 
         if (control !== null) yield control;
       }
@@ -340,7 +340,7 @@ function parseEventBlock(block: string): { readonly data: Json } | null {
   return { data: json };
 }
 
-function controlOf(value: Json): OutputFrame | null {
+function decodeControl(value: Json): OutputFrame | null {
   if (!isJsonObject(value)) return null;
 
   if (value.kind === "gap") return { kind: "gap" };
