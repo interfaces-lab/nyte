@@ -29,6 +29,34 @@ export function dropInlinedGhosttyWasm(): Plugin {
   };
 }
 
+const KATEX = "\0nyte:katex";
+
+/**
+ * Streamdown imports katex only for its `latexGuard` option, which Nyte never
+ * sets, so the import resolves to a module that refuses to render. Any other
+ * importer fails the build: math rendering would need the real package.
+ */
+export function withoutKatex(): Plugin {
+  return {
+    name: "nyte:without-katex",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (source !== "katex") return;
+
+      if (importer?.includes("/node_modules/@lobehub/streamdown/") !== true) {
+        this.error(`katex is stubbed out for Streamdown; ${importer ?? "an entry"} imports it`);
+      }
+
+      return KATEX;
+    },
+    load(id) {
+      if (id !== KATEX) return;
+
+      return 'export function renderToString() { throw new Error("Nyte renders no LaTeX"); }';
+    },
+  };
+}
+
 const SHELL_DIRECTORY = fileURLToPath(new URL("../canvas/dist/shell/", import.meta.url));
 
 const SHELL_MISSING =

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
-import { dropInlinedGhosttyWasm, stylex } from "@nyte-ai/app/vite";
+import { dropInlinedGhosttyWasm, stylex, withoutKatex } from "@nyte-ai/app/vite";
 import { deferredClerk } from "./account.vite.ts";
 
 const offlineModels: Plugin = {
@@ -73,6 +73,7 @@ const config = (mode: string): UserConfig => ({
   renderer: {
     plugins: [
       deferredClerk(),
+      withoutKatex(),
       dropInlinedGhosttyWasm(),
       stylex.vite({
         useCSSLayers: true,
