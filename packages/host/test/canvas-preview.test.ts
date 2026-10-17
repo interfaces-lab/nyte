@@ -1,4 +1,6 @@
+import { createSocket } from "node:dgram";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
@@ -110,6 +112,61 @@ it.skipIf(shell === undefined || chromium === undefined)(
 
     expect(outcome).toMatchObject({ kind: "unavailable" });
     expect(performance.now() - started).toBeLessThan(10_000);
+  },
+);
+
+it.skipIf(shell === undefined || chromium === undefined)(
+  "runs a canvas as sealed as the chat's frame: an opaque origin in a secure context, no permissions, no WebRTC traffic",
+  { timeout: 60_000 },
+  async () => {
+    if (shell === undefined) return;
+    const udp = createSocket("udp4");
+    let packets = 0;
+    udp.on("message", () => (packets += 1));
+    await new Promise<void>((resolve) => udp.bind(0, "127.0.0.1", resolve));
+    let connections = 0;
+    const tcp = createServer((socket) => {
+      connections += 1;
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => tcp.listen(0, "127.0.0.1", resolve));
+    const tcpAddress = tcp.address();
+
+    try {
+      if (tcpAddress === null || typeof tcpAddress === "string") throw new Error("No port.");
+      const { source, files } = await readCanvasFixture(join(canvasPackage, "test/probes/sandbox"));
+      const compiled = await compileCanvas(source, {
+        ...files,
+        "ports.ts": `export const ports = { stun: ${udp.address().port}, turn: ${tcpAddress.port} };`,
+      });
+
+      if (compiled.kind !== "compiled") throw new Error(JSON.stringify(compiled.errors));
+      const outcome = await chromiumCanvasPreview(shell)(
+        {
+          module: { runtime: compiled.runtime, code: compiled.code, title: "Probe" },
+          theme: "light",
+        },
+        new AbortController().signal,
+      );
+
+      if (outcome.kind !== "rendered") throw new Error(outcome.reason);
+      const line = outcome.report.console.find((entry) => entry.text.startsWith("probe "));
+
+      expect(outcome.report.errors).toEqual([]);
+      expect(JSON.parse(line?.text.slice("probe ".length) ?? "null")).toEqual({
+        secure: true,
+        stored: "SecurityError",
+        geolocation: "denied",
+        notifications: "refused",
+        media: "SecurityError",
+        activated: false,
+        ice: "gathered",
+      });
+      expect({ packets, connections }).toEqual({ packets: 0, connections: 0 });
+    } finally {
+      udp.close();
+      tcp.close();
+    }
   },
 );
 

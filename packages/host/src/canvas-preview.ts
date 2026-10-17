@@ -3,9 +3,11 @@
  * already on this machine, driven over the DevTools protocol on a pipe, so
  * nothing new is installed and no debugging port is opened. Each preview
  * starts its own browser with a throwaway profile and stops it after. The
- * page loads the shell directory the chat serves, from a made-up origin the
- * previewer answers itself under the chat's shell policy; every other
- * request is refused, so the canvas stays as sealed as in the chat.
+ * page loads the shell directory the chat serves, from a made-up https
+ * origin the previewer answers itself under the chat's shell policy and
+ * frame sandbox; every other request is refused, no host name resolves,
+ * WebRTC sends nothing outside a proxy, and permission prompts are denied,
+ * so the canvas stays as sealed as in the chat.
  */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -26,7 +28,7 @@ import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
 
-const ORIGIN = "http://canvas.preview/";
+const ORIGIN = "https://canvas.preview/";
 
 /**
  * Returns the shell a previewer serves: every file of the canvas package's
@@ -38,9 +40,9 @@ const ORIGIN = "http://canvas.preview/";
  */
 export type CanvasShellFiles = Readonly<Record<string, string>>;
 
-/** The policy the chat's clients serve the shell's page under. */
+/** The policy the chat's clients serve the shell's page under, plus the sandbox its frame adds there, so the top-level page gets the frame's opaque origin. */
 const SHELL_POLICY =
-  "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'";
+  "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts";
 
 const SHELL_TYPES = new Map([
   ["html", "text/html; charset=utf-8"],
@@ -227,6 +229,7 @@ function serve(pipe: Pipe, shell: CanvasShellFiles, sessionId: string): void {
           responseCode: 200,
           responseHeaders: [
             { name: "Content-Type", value: type },
+            { name: "Access-Control-Allow-Origin", value: "*" },
             ...(path === "index.html"
               ? [{ name: "Content-Security-Policy", value: SHELL_POLICY }]
               : []),
@@ -352,6 +355,9 @@ export function chromiumCanvasPreview(
         "--disable-background-networking",
         "--disable-sync",
         "--mute-audio",
+        "--deny-permission-prompts",
+        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        "--host-resolver-rules=MAP * ~NOTFOUND",
         "--hide-scrollbars",
         "--enable-unsafe-swiftshader",
         "--use-mock-keychain",
