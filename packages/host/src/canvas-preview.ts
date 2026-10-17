@@ -6,8 +6,8 @@
  * page loads the shell directory the chat serves, from a made-up https
  * origin the previewer answers itself under the chat's shell policy and
  * frame sandbox; every other request is refused, no host name resolves,
- * WebRTC sends nothing outside a proxy, and permission prompts are denied,
- * so the canvas stays as sealed as in the chat.
+ * WebRTC may only go through a proxy that leads nowhere, and permission
+ * prompts are denied, so the canvas stays as sealed as in the chat.
  */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -357,6 +357,9 @@ export function chromiumCanvasPreview(
         "--mute-audio",
         "--deny-permission-prompts",
         "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+        "--proxy-server=socks5://127.0.0.1:9",
+        "--proxy-bypass-list=<-loopback>",
         "--host-resolver-rules=MAP * ~NOTFOUND",
         "--hide-scrollbars",
         "--enable-unsafe-swiftshader",
