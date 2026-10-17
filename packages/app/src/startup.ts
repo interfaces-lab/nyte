@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import type { AppRouter } from "./router.tsx";
 
 /**
@@ -49,6 +50,43 @@ export const startupConnection = {
   read: (): StartupConnection => connectionState,
 };
 
+/** How long after the host connects a window that shows no composer holds its startup reads. */
+const STARTUP_READS_FALLBACK_MS = 1000;
+
+const startupReads = Promise.withResolvers<void>();
+
+let holdingStartupReads = false;
+
+/**
+ * Resolves once reads the first frame does not need may start: at once, or
+ * while a renderer starts up, after its composer has drawn what it shows.
+ */
+export function startupReadsReleased(): Promise<void> {
+  return holdingStartupReads ? startupReads.promise : Promise.resolve();
+}
+
+/** Lets held startup reads begin once the next frame has painted and the main thread is idle. */
+function releaseStartupReads(): void {
+  if (!holdingStartupReads) return;
+
+  const release = (): void => {
+    holdingStartupReads = false;
+    startupReads.resolve();
+  };
+
+  requestAnimationFrame(() => {
+    if ("requestIdleCallback" in window) requestIdleCallback(release, { timeout: 500 });
+    else setTimeout(release, 0);
+  });
+}
+
+/** Releases held startup reads once `ready`: the composer has what it shows on its first frame. */
+export function useReleaseStartupReads(ready: boolean): void {
+  useLayoutEffect(() => {
+    if (ready) releaseStartupReads();
+  }, [ready]);
+}
+
 function mark(name: string): void {
   if (performance.getEntriesByName(name).length === 0) performance.mark(name);
 }
@@ -62,11 +100,15 @@ function mark(name: string): void {
 export function startRendererStartup(options: RendererStartupOptions): void {
   const { connect } = options;
   let loading = false;
+  holdingStartupReads = true;
 
   const open = (): void => {
     publish({ kind: "connecting" });
     connect().then(
-      () => publish({ kind: "connected" }),
+      () => {
+        publish({ kind: "connected" });
+        setTimeout(releaseStartupReads, STARTUP_READS_FALLBACK_MS);
+      },
       () => publish({ kind: "failed", retry: open }),
     );
   };

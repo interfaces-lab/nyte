@@ -56,6 +56,7 @@ import { openJobTerminal } from "../workbench/terminal-store.ts";
 import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents.tsx";
 import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
+import { useReleaseStartupReads } from "../startup.ts";
 
 const EMPTY_TURNS: readonly ConversationTurn[] = [];
 
@@ -244,6 +245,9 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
 
   const { value: view, error: viewError, retry: retryView } = useSessionState(sessionId);
   const choice = useSessionChoice(sessionId);
+  useReleaseStartupReads(
+    (view !== undefined && session.data !== undefined) || viewError !== undefined,
+  );
 
   const turns = useMemo(
     () => (view === undefined ? EMPTY_TURNS : conversationTurns(view).turns),

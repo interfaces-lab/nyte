@@ -39,6 +39,7 @@ import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts"
 import { useCatalog, useHostState, useMentionFiles, useSetPreference } from "../queries.ts";
 import { pickerDefaults } from "../preference-projection.ts";
 import { selectedModelOption } from "../conversation/model-picker-state.ts";
+import { useReleaseStartupReads } from "../startup.ts";
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
 
@@ -97,6 +98,7 @@ export function BlankConversation({
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace !== undefined);
   const actions = usePaneActions();
+  useReleaseStartupReads(true);
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
   const { status } = viewState;

@@ -14,6 +14,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { useSyncExternalStore } from "react";
+import { startupReadsReleased } from "./startup.ts";
 
 export interface HostEndpoint {
   readonly url: string;
@@ -430,6 +431,7 @@ export const jobsWatch = watchFamily(
 export const gitStatusWatch = watchFamily(
   (current, workspace: WorkspaceId): AsyncIterable<GitStatus> =>
     (async function* () {
+      await startupReadsReleased();
       const git = await current.workspace(workspace).git();
 
       if (git.kind === "available") yield* git.api.watch();

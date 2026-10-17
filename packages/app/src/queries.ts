@@ -70,6 +70,7 @@ import { mentionFile } from "./conversation/message-references.ts";
 import { subagentActivity } from "./conversation/subagent-status.ts";
 import type { MentionFile } from "./conversation/message-references.ts";
 import type { DesktopCatalog } from "./catalog.ts";
+import { startupReadsReleased } from "./startup.ts";
 
 export { keys } from "./query-keys.ts";
 
@@ -565,6 +566,7 @@ export async function readRunPatches(
 }
 
 async function scanFiles(): Promise<readonly MentionFile[]> {
+  await startupReadsReleased();
   const root = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
   const files = await workspaceFiles();
   const entries: MentionFile[] = [];

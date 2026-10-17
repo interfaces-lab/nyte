@@ -10,6 +10,7 @@ import type { GitHubAccountState, GitHubApi } from "@nyte-ai/sdk";
 import { keys, useHostState } from "../queries.ts";
 import { nyte } from "../nyte.ts";
 import { connected } from "../sdk.tsx";
+import { startupReadsReleased } from "../startup.ts";
 
 const SIGNING_IN_POLL_MS = 2_000;
 
@@ -64,7 +65,14 @@ export function useGitHubState(github: GitHubApi | undefined) {
 
   return useQuery({
     queryKey: [...keys.github, host.data.workspace?.path ?? null],
-    queryFn: github === undefined ? skipToken : () => github.state(),
+    queryFn:
+      github === undefined
+        ? skipToken
+        : async () => {
+            await startupReadsReleased();
+
+            return github.state();
+          },
     staleTime: 30_000,
     refetchOnMount: true,
     refetchInterval: (current): number | false => {
