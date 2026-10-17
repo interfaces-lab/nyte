@@ -915,6 +915,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.5.8
         version: 0.5.8
+      '@nyte-ai/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@types/node':
         specifier: ^26.6.5
         version: 26.6.5

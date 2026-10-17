@@ -1,10 +1,9 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import React from "react";
 import ReactDom from "react-dom";
 import jsxRuntime from "react/jsx-runtime";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import {
-  CANVAS_ENTRY,
   JSX_RUNTIME_EXPORTS,
   KIT_EXPORTS,
   LIBRARY_EXPORTS,
@@ -15,6 +14,7 @@ import {
 import { expect, it } from "vitest";
 import manifest from "../package.json" with { type: "json" };
 import { kit } from "../src/kit/index.ts";
+import { readCanvasFixture } from "./read-canvas-fixture.ts";
 
 const fixtures = new URL("./fixtures/", import.meta.url);
 
@@ -25,29 +25,10 @@ async function readFixtures() {
   return Promise.all(
     entries
       .filter((entry) => entry.isDirectory() || entry.name.endsWith(".tsx"))
-      .map(async (entry) => {
-        if (!entry.isDirectory())
-          return {
-            name: entry.name,
-            source: await readFile(new URL(entry.name, fixtures), "utf8"),
-            files: {},
-          };
-        const folder = new URL(`${entry.name}/`, fixtures);
-        const names = (await readdir(folder)).filter((name) => /\.tsx?$/u.test(name));
-        const read = (name: string) => readFile(new URL(name, folder), "utf8");
-
-        return {
-          name: entry.name,
-          source: await read(CANVAS_ENTRY),
-          files: Object.fromEntries(
-            await Promise.all(
-              names
-                .filter((name) => name !== CANVAS_ENTRY)
-                .map(async (name) => [name, await read(name)] as const),
-            ),
-          ),
-        };
-      }),
+      .map(async (entry) => ({
+        name: entry.name,
+        ...(await readCanvasFixture(new URL(entry.name, fixtures))),
+      })),
   );
 }
 

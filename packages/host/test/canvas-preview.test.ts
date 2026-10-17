@@ -1,6 +1,7 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { expect, it } from "vitest";
 import { chromiumCanvasPreview, findChromium } from "../src/canvas-preview.ts";
@@ -46,16 +47,8 @@ it.skipIf(shell === undefined || chromium === undefined)(
   { timeout: 90_000 },
   async () => {
     if (shell === undefined) return;
-    const names = (await readdir(galaxy)).filter((name) => /\.tsx?$/u.test(name));
-    const read = (name: string) => readFile(join(galaxy, name), "utf8");
-    const compiled = await compileCanvas(
-      await read("main.tsx"),
-      Object.fromEntries(
-        await Promise.all(
-          names.filter((name) => name !== "main.tsx").map(async (name) => [name, await read(name)]),
-        ),
-      ),
-    );
+    const { source, files } = await readCanvasFixture(galaxy);
+    const compiled = await compileCanvas(source, files);
 
     if (compiled.kind !== "compiled") throw new Error(JSON.stringify(compiled.errors));
     const outcome = await chromiumCanvasPreview(shell)(

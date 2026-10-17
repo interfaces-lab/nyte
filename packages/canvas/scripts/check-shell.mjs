@@ -9,6 +9,7 @@ import {
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
 import { chromium } from "@playwright/test";
+import { readCanvasFixture } from "../test/read-canvas-fixture.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -73,25 +74,6 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
 const port = server.address().port;
 
-/** A `.tsx` fixture alone, or a folder's main.tsx with its other files, as the tool takes them. */
-async function readFixture(entry) {
-  const path = join(root, "test/fixtures", entry.name);
-
-  if (!entry.isDirectory()) return { source: await readFile(path, "utf8"), files: {} };
-  const names = (await readdir(path)).filter((name) => /\.tsx?$/u.test(name));
-
-  return {
-    source: await readFile(join(path, "main.tsx"), "utf8"),
-    files: Object.fromEntries(
-      await Promise.all(
-        names
-          .filter((name) => name !== "main.tsx")
-          .map(async (name) => [name, await readFile(join(path, name), "utf8")]),
-      ),
-    ),
-  };
-}
-
 const fixtures = (await readdir(join(root, "test/fixtures"), { withFileTypes: true })).filter(
   (entry) => entry.isDirectory() || entry.name.endsWith(".tsx"),
 );
@@ -99,7 +81,7 @@ const fixtures = (await readdir(join(root, "test/fixtures"), { withFileTypes: tr
 const modules = [];
 
 for (const entry of fixtures) {
-  const { source, files } = await readFixture(entry);
+  const { source, files } = await readCanvasFixture(join(root, "test/fixtures", entry.name));
   const outcome = await compileCanvas(source, files);
   const name = entry.name.replace(/\.tsx$/, "");
 

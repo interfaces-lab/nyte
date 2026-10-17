@@ -5,6 +5,7 @@
   "description": "Inline canvases: the nyte/canvas kit the agent writes TSX against, and the runtime shell every client loads it in.",
   "type": "module",
   "exports": {
+    "./fixtures": "./test/read-canvas-fixture.ts",
     "./kit": "./src/kit/index.ts",
     "./shell-inline": {
       "types": "./dist/shell-inline.d.ts",

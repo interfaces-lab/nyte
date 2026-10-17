@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { app } from "electron";
+import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { previewCanvasOffscreen } from "../canvas-preview.ts";
@@ -28,16 +28,8 @@ registerRenderer({ scheme, frontendApiHost: undefined, shellRoot });
 
 /** Previews the fixture folder's main.tsx and its files offscreen in the scheme-served shell, in both themes. */
 async function run(): Promise<void> {
-  const names = (await readdir(fixture)).filter((name) => /\.tsx?$/u.test(name));
-  const read = (name: string) => readFile(join(fixture, name), "utf8");
-  const compiled = await compileCanvas(
-    await read("main.tsx"),
-    Object.fromEntries(
-      await Promise.all(
-        names.filter((name) => name !== "main.tsx").map(async (name) => [name, await read(name)]),
-      ),
-    ),
-  );
+  const { source, files } = await readCanvasFixture(fixture);
+  const compiled = await compileCanvas(source, files);
 
   if (compiled.kind === "failed") throw new Error(JSON.stringify(compiled.errors));
   await app.whenReady();
