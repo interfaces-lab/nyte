@@ -29,11 +29,13 @@ function every(limit: number): Readonly<Record<StartupCase, number>> {
  * (macOS arm64, packaged, 7 runs, main's restored and heavy homes seeded by its own code): each
  * budget is the branch's p95 plus 15% (memory plus 5%), and no latency or long-task budget sits
  * above main's median in its scenario. Fresh and restored allow the one long task left, the
- * entry's evaluation (60-94 ms), at main's median of 88 ms. Restored and heavy make one more
- * IPC call and up to four more host requests than fresh since the window selects the restored
- * chat's folder before its first frame (8e4ffea9); main makes 22 IPC calls there. First paint is
- * the static splash in every scenario, held under main's fresh median (509-615 ms across runs):
- * on a shared machine one contended launch in seven moved it 70-160 ms, past the 15% margin.
+ * entry's evaluation (60-94 ms), at main's median of 88 ms. Every scenario makes three IPC
+ * calls before the composer: a restored chat's folder comes with the host state (`host.restore`);
+ * main makes 22 there. That folder is selected before the first frame, so its `workspace.files`
+ * and `workspace.git` reads join the first burst of host requests: 14 in most runs, and up to 17
+ * when the folder's `files.scan`, `git.watch` and a stream cancel start before the composer.
+ * First paint is the static splash in every scenario, held at 495 ms, under main's fresh median
+ * (509-615 ms).
  */
 const metricFields = [
   {
@@ -52,7 +54,7 @@ const metricFields = [
     key: "spawnToFirstPaintMs",
     label: "Spawn to first paint (FCP)",
     unit: "ms",
-    budget: every(505),
+    budget: every(495),
   },
   { key: "splashMs", label: "Splash visible", unit: "ms", budget: every(225) },
   { key: "keystrokeToPaintMs", label: "Keystroke to paint", unit: "ms", budget: every(16.7) },
@@ -84,7 +86,7 @@ const metricFields = [
     key: "ipcCalls",
     label: "IPC round trips before composer",
     unit: "count",
-    budget: { fresh: 3, restored: 4, heavy: 4 },
+    budget: every(3),
   },
   {
     key: "hostRequests",
