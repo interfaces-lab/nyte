@@ -13,7 +13,8 @@ import type { HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.
 
 /**
  * The app's port to `host`, opening `folder` for new chats when it is not null. A submit is
- * traced as `composer.submit` under its receipt id, and while tracing is on each message a
+ * traced as `composer.submit` under its receipt id, a new chat's first one under the chat's id,
+ * which names its receipt, and while tracing is on each message a
  * view brings is a `client.paint` span that ends when `painted` (the renderer's next frame)
  * resolves.
  */
@@ -38,13 +39,17 @@ export function hostPort(
       throw new Error("Open nyte in a folder: the host has no default workspace.");
     },
     async start(input) {
+      followTrace(input.id, input.id);
+
       try {
-        const { receipt } = await host.sessions.start({
-          id: input.id,
-          workspace: input.workspace,
-          configuration: { model: input.selection.model, thinking: input.selection.effort },
-          content: input.content,
-        });
+        const { receipt } = await traced("composer.submit", input.id, { session: input.id }, () =>
+          host.sessions.start({
+            id: input.id,
+            workspace: input.workspace,
+            configuration: { model: input.selection.model, thinking: input.selection.effort },
+            content: input.content,
+          }),
+        );
 
         return { kind: "started", message: receipt.message };
       } catch (error) {
