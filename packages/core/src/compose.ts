@@ -80,6 +80,7 @@ import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
 import { readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
+import { sweepWorktrees } from "./env/worktrees.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
@@ -197,6 +198,10 @@ export async function composeServer(
     kernel.execution.kind === "run" ? driveInProcess(kernel, kernel.execution.coverage) : null;
 
   const unpoll = pollStore(kernel);
+
+  void sweepWorktrees(kernel).catch((error: unknown) =>
+    dev("worktrees", "sweep failed", { error: String(error) }),
+  );
 
   const host = createHost(kernel, { credential: { kind: "token", token: "" } });
   let closing: Promise<void> | null = null;

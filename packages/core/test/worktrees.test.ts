@@ -1,6 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
-import { assert, describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import { memoryStore } from "../src/store.ts";
 import { isPart, tool } from "../src/index.ts";
 import type { EnvironmentProvider, Plugin, Store, Worktree } from "../src/index.ts";
@@ -13,9 +13,13 @@ function locate(target: WorkspaceTarget): string {
   return "locator" in target ? JSON.stringify(target.locator) : target.path;
 }
 
-function repository(options?: { readonly worktrees?: boolean }) {
+function repository(options?: {
+  readonly worktrees?: boolean;
+  readonly folders?: readonly ("removed" | "kept")[];
+}) {
   const created: string[] = [];
   const removed: Worktree[] = [];
+  const folders = [...(options?.folders ?? [])];
 
   const provider: EnvironmentProvider = {
     kind: "repo",
@@ -41,7 +45,7 @@ function repository(options?: { readonly worktrees?: boolean }) {
             async remove(worktree) {
               removed.push(worktree);
 
-              return { folder: "removed", branch: "deleted" };
+              return { folder: folders.shift() ?? "removed", branch: "deleted" };
             },
           },
   };
@@ -114,6 +118,45 @@ describe("worktree isolation", () => {
       },
     ]);
     expect((await served.workspaces.list()).map((workspace) => workspace.id)).toEqual([source.id]);
+  });
+
+  it("releases a worktree its chat moves off, keeps a folder with changes listed, and sweeps it at a later open", async () => {
+    const fake = fakeModels();
+    const repo = repository({ folders: ["kept"] });
+    const store = memoryStore();
+    fake.reply({ content: [{ type: "text", text: "Done." }] });
+
+    {
+      await using served = await host(fake, repo.plugin, { store });
+      const source = (await served.workspaces.list())[0];
+      assert(source !== undefined);
+
+      const { session, receipt } = await served.sessions.start({
+        id: asId<"session">("moved"),
+        isolation: "worktree",
+        content: "Fix it.",
+      });
+
+      await receipt.settled();
+      expect(await session.update({ workspace: source.id })).toEqual({ kind: "updated" });
+      expect(repo.removed).toHaveLength(1);
+      expect(await served.workspaces.list()).toHaveLength(2);
+    }
+
+    const later = Date.now() + 120_000;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => later);
+
+    try {
+      await using reopened = await host(fakeModels(), repo.plugin, { store });
+
+      expect(
+        await until(async () =>
+          (await reopened.workspaces.list()).length === 1 ? repo.removed.length : undefined,
+        ),
+      ).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("refuses isolation in a workspace whose provider has no worktrees, starting no chat", async () => {

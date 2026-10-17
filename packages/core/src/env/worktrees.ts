@@ -94,11 +94,15 @@ export async function isolateWorkspace(
   });
 }
 
+/** How old a worktree's workspace must be before a sweep releases it for having no chat, so a start still registering its chat (in another process over the same store) keeps its worktree. */
+const ORPHAN_MS = 60_000;
+
 /**
  * Removes the worktree that isolated `session` once no chat is left on it,
  * then forgets its workspace. The provider keeps a folder that holds
- * uncommitted changes and a branch with commits; a removal that fails is
- * logged and the workspace forgotten all the same, its folder left to git.
+ * uncommitted changes and a branch with commits; a kept folder, or a removal
+ * that fails, keeps its workspace too, so the folder stays listed under its
+ * source and the next sweep tries again.
  */
 export async function releaseWorktree(
   kernel: Kernel,
@@ -114,17 +118,18 @@ export async function releaseWorktree(
     return;
   await kernel.environments.detachWorkspace(workspace);
 
-  try {
-    const removal = await kernel.environments.provider(record.target.kind)?.worktrees?.remove({
-      target: record.target,
-      branch: isolation.branch,
-      base: isolation.base,
+  const removal = await kernel.environments
+    .provider(record.target.kind)
+    ?.worktrees?.remove({ target: record.target, branch: isolation.branch, base: isolation.base })
+    .catch((error: unknown) => {
+      dev("worktrees", "remove failed", { session, workspace, error: String(error) });
+
+      return null;
     });
 
-    dev("worktrees", "removed", { session, workspace, ...removal });
-  } catch (error) {
-    dev("worktrees", "remove failed", { session, workspace, error: String(error) });
-  }
+  dev("worktrees", "removed", { session, workspace, ...removal });
+
+  if (removal === null || removal?.folder === "kept") return;
 
   await attempt(`Forgetting the worktree of ${session}`, async () => {
     const ref = await kernel.store.refs.get(workspaceRef(workspace));
@@ -137,4 +142,21 @@ export async function releaseWorktree(
     return outcome.kind === "stale" ? STALE : true;
   });
   changed(kernel, workspace);
+}
+
+/**
+ * Releases every worktree no chat is on: one whose chat was removed before
+ * its release committed, as a crash leaves it, or moved to another workspace.
+ * Converges: a folder kept for its changes is tried again on the next sweep.
+ * A worktree younger than a minute is left to the start registering it.
+ */
+export async function sweepWorktrees(kernel: Kernel): Promise<void> {
+  const now = Date.now();
+
+  for (const record of await workspaceRecords(kernel.store)) {
+    const session = record.isolation?.session;
+
+    if (session === undefined || now - record.createdAt < ORPHAN_MS) continue;
+    await releaseWorktree(kernel, session, record.id);
+  }
 }
