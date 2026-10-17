@@ -92,6 +92,7 @@ describe("workspaces", () => {
           addedBy: LOCAL,
           sessions: 0,
           writers: [],
+          isolation: null,
         },
       ]),
     );
@@ -314,6 +315,7 @@ describe("workspaces", () => {
       projectSources: [],
       addedBy: LOCAL,
       createdAt: 0,
+      isolation: null,
     };
 
     await kernel.store.refs.set([

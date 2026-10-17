@@ -343,9 +343,11 @@ export function readResources(api: PluginApi<"core">): Resources {
 
 /**
  * An EnvironmentProvider owns inspect and attach for one target kind. Its
- * ExecutionEnv owns cwd, files, exec and close. Optional git, snapshots and
- * browser capabilities remain absent when unsupported. wrapEnv can add a
- * capability for a desktop without changing a tool's contract.
+ * ExecutionEnv owns cwd, files, exec and close. Optional git, snapshots,
+ * worktrees and browser capabilities remain absent when unsupported.
+ * Worktrees back `sessions.start({ isolation: "worktree" })`: the chat gets a
+ * workspace of its own on a new branch, removed with the chat. wrapEnv can add
+ * a capability for a desktop without changing a tool's contract.
  */
 export type Environment = {
   readonly provider: EnvironmentProvider;

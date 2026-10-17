@@ -184,6 +184,7 @@ export async function setup(
       projectSources: [],
       addedBy: asId("local"),
       createdAt: 0,
+      isolation: null,
     };
 
     await store.refs.set([

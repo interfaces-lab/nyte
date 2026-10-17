@@ -72,6 +72,7 @@ test("reads charged requests once, with workspace and session metadata, not run 
           projectSources: [],
           addedBy: "local",
           createdAt: at,
+          isolation: null,
         },
         at,
       ),

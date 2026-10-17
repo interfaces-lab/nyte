@@ -208,6 +208,7 @@ export const HOST_OPERATIONS = {
       parent: Type.Optional(idSchema<"session">()),
       configuration: Type.Optional(Type.Union([ConfigurationType, ConfigurationPatchType])),
       prompt: Type.Optional(PromptOverrideType),
+      isolation: Type.Optional(Type.Literal("worktree")),
       content: UserContentType,
     }),
     output: wireObject({

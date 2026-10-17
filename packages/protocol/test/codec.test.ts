@@ -123,6 +123,7 @@ describe("codec", () => {
       addedBy: asId<"principal">("local"),
       sessions: 0,
       writers: [],
+      isolation: null,
     };
 
     expect(encodeOutput("part.update", outcome)).toEqual({ kind: "updated", version: 2 });

@@ -213,6 +213,30 @@ export interface SnapshotsApi {
   ): Promise<readonly PatchEntry[]>;
 }
 
+/** A git worktree that isolates one session: its folder as a target, the branch checked out there and the commit it started from. */
+export interface Worktree {
+  readonly target: WorkspaceTarget;
+  readonly branch: string;
+  readonly base: string;
+}
+
+/** What removing a worktree left: its folder stays while it holds uncommitted changes, its branch once it has commits past its base. */
+export type WorktreeRemoval = {
+  readonly folder: "removed" | "kept";
+  readonly branch: "deleted" | "kept";
+};
+
+/** Git worktrees of a provider's workspaces, which isolate a session from the workspace it started in. */
+export interface WorktreeProvider {
+  /** Checks a new branch out from the HEAD of `env`'s repository in a folder of its own and copies `env`'s uncommitted changes, ignored files aside, into it. `name` keys it: a later call with the same name answers the worktree the first made. Throws `SdkError("unavailable")` outside a git repository or before its first commit. */
+  create(
+    env: ExecutionEnv,
+    input: { readonly name: string; readonly title: string | null },
+  ): Promise<Worktree>;
+  /** Removes the worktree's folder and deletes its branch, keeping the folder (and so the branch) while it holds uncommitted changes and the branch once it moved past `base`. A folder already gone counts as removed. */
+  remove(worktree: Worktree): Promise<WorktreeRemoval>;
+}
+
 export interface EnvironmentProvider {
   readonly kind: string;
   inspect(target: WorkspaceTarget): Promise<{
@@ -224,6 +248,7 @@ export interface EnvironmentProvider {
   readonly git?: (env: ExecutionEnv) => GitApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
+  readonly worktrees?: WorktreeProvider;
   destroy?(target: WorkspaceTarget): Promise<void>;
 }
 

@@ -97,6 +97,9 @@ export type {
   SnapshotsApi,
   Workspace,
   Workspaces,
+  Worktree,
+  WorktreeProvider,
+  WorktreeRemoval,
 } from "./contract/workspace.ts";
 
 export { processEnvironment } from "./util/process-environment.ts";

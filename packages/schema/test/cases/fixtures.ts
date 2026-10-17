@@ -574,6 +574,7 @@ export const workspaceInfo = {
   addedBy: principal,
   sessions: 0,
   writers: [],
+  isolation: null,
 };
 
 export const jobView = {

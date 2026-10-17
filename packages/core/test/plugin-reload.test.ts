@@ -46,6 +46,7 @@ async function controlled(attach: () => Promise<typeof env>) {
             projectSources: [],
             addedBy: asId("local"),
             createdAt: 0,
+            isolation: null,
           },
           0,
         ),

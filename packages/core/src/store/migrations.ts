@@ -481,6 +481,17 @@ const hookToolArgs: RewriteStep = {
   },
 };
 
+/** A workspace record names the session it isolates in a git worktree, or `null` for a folder the user added. */
+const workspaceIsolation: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-workspace-isolation",
+  rewrite(object) {
+    if (!isJsonObject(object) || object.kind !== "workspace") return null;
+
+    return patched(object, (body) => filled(body, { isolation: null }));
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -496,6 +507,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   intentPosition,
   wokenCalls,
   hookToolArgs,
+  workspaceIsolation,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
