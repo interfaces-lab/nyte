@@ -356,6 +356,26 @@ async function inspectMain(application: ElectronApplication) {
   }));
 }
 
+/**
+ * Main's used heap after a full collection, requested over main's own inspector, so the reading
+ * does not move with when V8 last collected.
+ */
+async function collectMainHeap(application: ElectronApplication): Promise<number> {
+  return application.evaluate(async () => {
+    const { Session } = process.getBuiltinModule("node:inspector/promises");
+    const session = new Session();
+    session.connect();
+
+    try {
+      await session.post("HeapProfiler.collectGarbage");
+    } finally {
+      session.disconnect();
+    }
+
+    return process.memoryUsage().heapUsed;
+  });
+}
+
 /** Waits, polling every frame, for a composer that accepts input over the scenario's chat. */
 async function waitForComposer(page: Page, expected: StartupFixture["expected"]) {
   const ready = await page.waitForFunction(
@@ -624,6 +644,7 @@ async function measure(
     );
 
     const processTree = await inspectProcessTree(application.process().pid);
+    const mainHeap = await collectMainHeap(application);
     const cdp = await application.context().newCDPSession(page);
     const rendererHeap = await cdp.send("Runtime.getHeapUsage");
     await cdp.detach();
@@ -701,7 +722,7 @@ async function measure(
             : [Math.max(0, ...longTasks.map((task) => task.duration))],
         ipcCalls: [ipcCalls],
         hostRequests: [renderer.hostRequestsBeforeComposer],
-        mainHeapBytes: [main.memory.heapUsed],
+        mainHeapBytes: [mainHeap],
         rendererHeapBytes: [rendererHeap.usedSize],
         processes: processTree === null ? [main.processes.length] : [processTree.length],
         residentBytes:
@@ -874,7 +895,7 @@ async function run(options: Options): Promise<void> {
       longTasks: "Buffered PerformanceObserver longtask entries that start before composer ready.",
       ipc: "Host calls (ipcRenderer.invoke on the call channel) that reached main before composer ready, recorded in main from Electron's session -ipc-invoke event.",
       hostRequests: "Completed fetch resource entries started before composer ready.",
-      heap: "Main process.memoryUsage().heapUsed and renderer CDP Runtime.getHeapUsage usedSize after typing.",
+      heap: "Main process.memoryUsage().heapUsed after an inspector HeapProfiler.collectGarbage, and renderer CDP Runtime.getHeapUsage usedSize, after typing.",
       processes: "ps descendants of the Electron main process, including it, with summed RSS.",
       budgets: "Each budget is a p95 ceiling for the judged build, the last one given.",
     },
