@@ -27,6 +27,7 @@ import {
 } from "../shared/ipc.ts";
 import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {
   applicationMenuTemplate,
@@ -47,7 +48,7 @@ import { registerAccount } from "./account.ts";
 import type { AccountSession } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
 import { accountScheme } from "../account/scheme.ts";
-import { previewCanvasOffscreen } from "./canvas-preview.ts";
+import { offscreenCanvasPreviewer } from "./canvas-preview.ts";
 import { canvasShellUrl, registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
@@ -89,6 +90,8 @@ let account: AccountSession | undefined;
 let rendererUrl: string;
 
 let canvasShell: string;
+
+let previewCanvas: CanvasPreviewer;
 
 /** Aborts the canvas previews in flight once the last window closes, so a hidden preview window neither holds the app open nor renders for no one. */
 let previewsOpen = new AbortController();
@@ -415,8 +418,7 @@ function startHost(): HostProcess {
         if (request.kind === "canvas-preview")
           return {
             kind: "canvas-preview",
-            outcome: await previewCanvasOffscreen(
-              canvasShell,
+            outcome: await previewCanvas(
               request.request,
               AbortSignal.any([signal, previewsOpen.signal]),
             ),
@@ -752,14 +754,17 @@ if (!hasSingleInstanceLock) {
   const config = readConnectConfig(import.meta.env);
   const scheme = accountScheme({ packaged: app.isPackaged, updateTest });
 
+  const shellRoot = app.isPackaged
+    ? join(process.resourcesPath, "canvas")
+    : join(app.getAppPath(), "..", "canvas", "dist", "shell");
+
   rendererUrl = registerRenderer({
     scheme,
     frontendApiHost: config?.clerk.frontendApiHost,
-    shellRoot: app.isPackaged
-      ? join(process.resourcesPath, "canvas")
-      : join(app.getAppPath(), "..", "canvas", "dist", "shell"),
+    shellRoot,
   });
   canvasShell = canvasShellUrl(scheme);
+  previewCanvas = offscreenCanvasPreviewer(scheme, shellRoot);
   account = createAccount(config);
 
   app.on("second-instance", (_event, argv) => {

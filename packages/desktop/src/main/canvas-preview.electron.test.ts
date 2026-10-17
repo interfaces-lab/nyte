@@ -18,6 +18,8 @@ const galaxy = fileURLToPath(
   new URL("../../../canvas/test/fixtures/repo-galaxy/", import.meta.url),
 );
 
+const probe = fileURLToPath(new URL("../../../canvas/test/probes/sandbox/", import.meta.url));
+
 const built = await access(join(shellRoot, "libraries", "three.js")).then(
   () => true,
   () => false,
@@ -34,10 +36,14 @@ const Results = Type.Object({
   galaxy: Type.Array(Type.Intersect([Report, Type.Object({ theme: Type.String() })])),
   hung: Type.Object({ kind: Type.String(), ms: Type.Number() }),
   after: Type.Intersect([Report, Type.Object({ kind: Type.Literal("rendered") })]),
+  probe: Type.Object({
+    reports: Type.Array(Type.Unknown()),
+    traffic: Type.Object({ packets: Type.Number(), connections: Type.Number() }),
+  }),
 });
 
 test.skipIf(!built)(
-  "previews the multi-file repo-galaxy offscreen in real Electron, from the scheme-served shell, and a canvas that hangs its renderer holds up no later preview",
+  "previews the multi-file repo-galaxy offscreen in real Electron, from the scheme-served shell, a canvas that hangs its renderer holds up no later preview, and a canvas runs as sealed as in the chat's frame",
   { timeout: 150_000 },
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-canvas-preview-"));
@@ -77,11 +83,15 @@ test.skipIf(!built)(
         "dist",
         (await readFile(join(electronDirectory, "path.txt"), "utf8")).trim(),
       );
-      const { stderr } = await execute(executable, [directory, directory, shellRoot, galaxy], {
-        cwd: directory,
-        env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
-        timeout: 120_000,
-      });
+      const { stderr } = await execute(
+        executable,
+        [directory, directory, shellRoot, galaxy, probe],
+        {
+          cwd: directory,
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
+          timeout: 120_000,
+        },
+      );
 
       expect(await readFile(join(directory, "result.txt"), "utf8").catch(() => stderr)).toBe(
         "passed",
@@ -100,6 +110,18 @@ test.skipIf(!built)(
       expect(results.hung.ms).toBeLessThan(10_000);
       expect(results.after.errors).toEqual([]);
       expect(results.after.heights.chat).toBeGreaterThan(0);
+      const sealed = {
+        secure: true,
+        stored: "SecurityError",
+        geolocation: "denied",
+        notifications: "refused",
+        media: "SecurityError",
+        activated: false,
+        ice: "gathered",
+      };
+
+      expect(results.probe.reports).toEqual([sealed, sealed]);
+      expect(results.probe.traffic).toEqual({ packets: 0, connections: 0 });
 
       const proof = process.env["NYTE_CANVAS_PROOF"];
 
