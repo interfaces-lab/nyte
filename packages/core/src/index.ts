@@ -61,6 +61,8 @@ export type {
   RegistryDraft,
   Renderer,
   Row,
+  RuntimeCall,
+  RuntimeVerdict,
   Setting,
   SettingDefinition,
   Side,

@@ -373,7 +373,8 @@ export type Environment = {
 
 /**
  * Tools declare Standard Schema parameters, an optional output schema, a
- * class, workspace effects and replay policy. Results use kind text/file,
+ * class, workspace effects, whether a permissions policy may hold a call
+ * (`approval`) and replay policy. Results use kind text/file,
  * typed output and optional part ids. A tool invocation receives the real
  * session, connection, workspace and environment, plus progress and tool
  * access.
@@ -384,6 +385,7 @@ export const labelTool: ToolDefinition<Label> = {
   parameters: labelSchema,
   class: () => ({ kind: "custom", label: "Label" }),
   effects: "none",
+  approval: "never",
   replay: "safe",
   async execute(input) {
     return { content: [{ kind: "text", text: input.label }] };
@@ -408,6 +410,10 @@ export async function durableLabel(invocation: ToolInvocation): Promise<Json> {
  * A command's caller is the principal whose authority its api uses. Agents
  * select model, prompt and allowed tool names. Settings declare schemas and
  * scope; a plugin reads its values through its own settings registry.
+ *
+ * `approve` decides a call another agent runtime runs outside the loop; a
+ * runtime plugin asks every active approver through `api.approve`, and the
+ * first denial stands.
  */
 export const referencePlugin = {
   id: "lab-reference",
@@ -432,6 +438,8 @@ export const referencePlugin = {
       },
     ],
   },
+  approve: async (call) =>
+    call.class.kind === "shell" ? { kind: "deny", reason: "No commands." } : { kind: "allow" },
   hooks: {
     before_tool: () => ({ action: "continue" }),
   },
