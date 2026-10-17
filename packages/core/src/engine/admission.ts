@@ -305,8 +305,10 @@ async function admit(sending: Sending): Promise<SendReceipt> {
       resolve(sending, submission.configuration),
     ]);
 
-    const message = buildMessage(asId<"message">(id), submission, {
-      schedule: await chooseSendSchedule(submission.delivery, configuration, run?.record ?? null),
+    const landing = landed(kernel, submission, run?.record ?? null);
+
+    const message = buildMessage(asId<"message">(id), landing, {
+      schedule: await chooseSendSchedule(landing.delivery, configuration, run?.record ?? null),
       covered,
       configuration,
       replaced: null,
@@ -364,8 +366,10 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
     const rest = inbox.messages.filter((message) => message !== target);
     const position = findInsertionIndex(options.position, rest, current);
 
-    const message = buildMessage(target, submission, {
-      schedule: await chooseSendSchedule(submission.delivery, configuration, run?.record ?? null),
+    const landing = landed(kernel, submission, run?.record ?? null);
+
+    const message = buildMessage(target, landing, {
+      schedule: await chooseSendSchedule(landing.delivery, configuration, run?.record ?? null),
       covered,
       configuration,
       replaced: previous?.replaced ?? null,
@@ -891,6 +895,15 @@ async function resolve(
   if (result.kind === "exact") return result;
 
   throw refusalError(result);
+}
+
+/** The submission as it lands: a `steer` becomes a `queue` while the live run's model takes no message mid-turn, so every client's steer waits for the turn alike. */
+function landed(kernel: Kernel, submission: Submission, run: RunRecord | null): Submission {
+  return submission.delivery === "steer" &&
+    run !== null &&
+    !kernel.modelSteers(run.view.configuration.model)
+    ? { ...submission, delivery: "queue" }
+    : submission;
 }
 
 async function chooseSendSchedule(

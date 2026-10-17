@@ -18,6 +18,7 @@ import type {
   Json,
   MessageId,
   MessageSource,
+  ModelRef,
   ModelRequestInput,
   ModelRequestOutcome,
   PartId,
@@ -112,6 +113,9 @@ export interface Kernel {
   readonly compact: Compactor;
 
   readonly resolveConfiguration: ConfigurationResolver;
+
+  /** Whether `model`'s runtime takes a message sent mid-turn (`ModelCapabilities.steer`); true for a model of no known provider. */
+  readonly modelSteers: (model: ModelRef) => boolean;
 
   readonly waits: WaitRegistry;
 

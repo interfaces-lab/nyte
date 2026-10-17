@@ -135,7 +135,13 @@ export async function setup(
   options?: Partial<
     Pick<
       Kernel,
-      "summarize" | "execution" | "hostId" | "store" | "secrets" | "resolveConfiguration"
+      | "summarize"
+      | "execution"
+      | "hostId"
+      | "store"
+      | "secrets"
+      | "resolveConfiguration"
+      | "modelSteers"
     >
   > & {
     readonly script?: Script;
@@ -165,6 +171,7 @@ export async function setup(
     }),
     turn: turns.driver,
     resolveConfiguration: options?.resolveConfiguration ?? (async () => configuration),
+    modelSteers: options?.modelSteers,
     summarize: options?.summarize ?? (async () => ({ kind: "ok", markdown: "Summary.", usage })),
     execution: options?.execution,
     secrets: options?.secrets,

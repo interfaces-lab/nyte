@@ -325,6 +325,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
       | "summarize"
       | "compact"
       | "resolveConfiguration"
+      | "modelSteers"
       | "request"
       | "home"
       | "secrets"
@@ -417,6 +418,9 @@ export function createKernel(input: KernelOptions): Kernel {
           ? async () => unavailable("compact")
           : createCompactor(kernel, models));
     },
+    modelSteers:
+      input.modelSteers ??
+      ((model) => models?.getProvider(model.provider)?.capabilities?.steer ?? true),
     get resolveConfiguration() {
       return (resolveConfiguration ??=
         models === undefined
