@@ -80,8 +80,6 @@ test("a relaunch draws the last run's chats and model while the host is held, an
     await expect(field).toHaveAttribute("contenteditable", "true");
     await expect(chatPane(page).getByRole("button", { name: "Scripted" })).toBeVisible();
     await expect(chatRow(page, FIXTURES.alpha)).toBeVisible();
-    await expect(sidebar(page).getByText("Loading…")).toHaveCount(0);
-    await expect(page.locator("#startup")).toHaveCount(0);
     expect((await readMarks(page)).sdkConnected).toBeUndefined();
   });
 

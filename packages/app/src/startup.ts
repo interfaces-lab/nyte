@@ -86,7 +86,6 @@ export function startRendererStartup(options: RendererStartupOptions): void {
 
       loading = false;
       options.mountShell();
-      mark("nyte:resources-ready");
       open();
     })();
   };
