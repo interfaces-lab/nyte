@@ -72,17 +72,18 @@ function forget(): void {
 
 /**
  * Seed the catalog, the folders and the recent chats from the last run on
- * `host`. Runs before the first render; a missing, unreadable or foreign
- * snapshot is forgotten and the shell starts empty.
+ * `host`, and answer whether there was one. Runs before the first render; a
+ * missing, unreadable or foreign snapshot is forgotten and the shell starts
+ * empty.
  */
-export function seedFirstFrame(host: string): void {
+export function seedFirstFrame(host: string): boolean {
   const stored = readStored();
   const frame = parseFrame(stored, host);
 
   if (frame === undefined) {
     if (stored !== null) forget();
 
-    return;
+    return false;
   }
 
   written = stored;
@@ -90,6 +91,8 @@ export function seedFirstFrame(host: string): void {
   queryClient.setQueryData(keys.modelCatalog("initial"), frame.catalog, { updatedAt: 0 });
   queryClient.setQueryData(keys.workspaces, frame.workspaces, { updatedAt: 0 });
   queryClient.setQueryData(keys.firstFrameRoots, frame.sessions, { updatedAt: 0 });
+
+  return true;
 }
 
 function seeded(query: Query): boolean {
