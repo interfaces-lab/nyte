@@ -37,6 +37,7 @@ const MODEL: ModelInfo = {
   maxOutput: 100,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  capabilities: { steer: true },
 };
 
 function catalog(credential: "configured" | "missing"): ModelCatalogView {
