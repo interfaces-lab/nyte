@@ -62,7 +62,11 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       watch: (input) => rows.watch("sessions.watch", input ?? {}),
       async start(input) {
         const id = input.id ?? asId<"session">(crypto.randomUUID());
-        const started = await rows.wait("sessions.start", { ...input, id });
+        followTrace(id, id);
+
+        const started = await traced("sdk.send", id, { session: id }, () =>
+          rows.wait("sessions.start", { ...input, id }),
+        );
 
         return {
           session: sessionHandle(bound, started.session),
