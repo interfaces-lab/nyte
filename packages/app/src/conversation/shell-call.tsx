@@ -412,9 +412,7 @@ export const ShellCallView = memo(function ShellCallView({
       : `${description.charAt(0).toUpperCase()}${description.slice(1)}`;
 
   const verb =
-    status.tense === "none" || description !== ""
-      ? undefined
-      : toolVerbs(toolClass)[status.tense];
+    status.tense === "none" || description !== "" ? undefined : toolVerbs(toolClass)[status.tense];
   const heading = verb === undefined ? label : `${verb} ${label}`;
   const follow = running ? output : undefined;
 
