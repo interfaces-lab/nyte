@@ -8,6 +8,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { build } from "vite";
 import { expect, test } from "vitest";
+import { PICKER_SCRIPT } from "./browser-picker-page.ts";
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>picker</title>
 <body style="font:16px system-ui;margin:0">
@@ -127,6 +128,7 @@ test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
           },
         },
       });
+      await writeFile(join(dir, "browser-picker-page.js"), PICKER_SCRIPT);
       await writeFile(join(dir, "page.html"), PAGE);
       await writeFile(join(dir, "harness.js"), HARNESS);
 

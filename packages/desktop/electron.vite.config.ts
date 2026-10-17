@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
 import { deferredEntries } from "@nyte-ai/app/deferred-entries.ts";
+import { PICKER_SCRIPT } from "./src/main/browser-picker-page.ts";
 import {
   deferredChunks,
   dropInlinedGhosttyWasm,
@@ -88,6 +89,16 @@ const config = (mode: string): UserConfig => ({
             type: "asset",
             fileName: "quickjs.wasm",
             source: await readFile(resolveQuickJSWasmPath()),
+          });
+        },
+      } satisfies Plugin,
+      {
+        name: "nyte:browser-picker-page",
+        generateBundle() {
+          this.emitFile({
+            type: "asset",
+            fileName: "browser-picker-page.js",
+            source: PICKER_SCRIPT,
           });
         },
       } satisfies Plugin,
