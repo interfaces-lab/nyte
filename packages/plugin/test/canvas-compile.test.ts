@@ -60,8 +60,9 @@ describe("the canvas compiler", () => {
 
     if (outcome.kind !== "compiled") throw new Error(JSON.stringify(outcome.errors));
 
-    expect(outcome.runtime).toBe(CANVAS_RUNTIME);
+    expect(outcome.runtime).toBe(1);
     expect(outcome.code).toContain(`"react": globalThis.${CANVAS_GLOBAL}.react`);
+    expect(outcome.code).not.toContain(".reactDom");
     expect(outcome.code).toContain(`"${KIT_SPECIFIER}": globalThis.${CANVAS_GLOBAL}.kit`);
     expect(outcome.code).toContain("var _react = require('react');");
     expect(outcome.code).toContain('export default __require("main.tsx").default;');
@@ -94,6 +95,7 @@ describe("the canvas compiler", () => {
 
     if (outcome.kind !== "compiled") throw new Error(JSON.stringify(outcome.errors));
 
+    expect(outcome.runtime).toBe(CANVAS_RUNTIME);
     expect(outcome.code).toContain(
       `"d3-scale": await globalThis.${CANVAS_GLOBAL}.library("d3-scale")`,
     );

@@ -17,7 +17,6 @@ import {
   CANVAS_CODE_LIMIT,
   CANVAS_ENTRY,
   CANVAS_GLOBAL,
-  CANVAS_RUNTIME,
   CANVAS_SOURCE_LIMIT,
   JSX_RUNTIME_EXPORTS,
   KIT_EXPORTS,
@@ -80,6 +79,9 @@ const EXTERNAL = new Map<string, { readonly value: string; readonly names: reado
       ] as const,
   ),
 ]);
+
+/** The specifiers a runtime 1 shell cannot resolve; a canvas that imports none of them targets runtime 1, so a shell from before them still renders it. */
+const RUNTIME_2 = new Set(["react-dom", ...Object.keys(LIBRARY_EXPORTS)]);
 
 const IMPORTABLE = [...EXTERNAL.keys()]
   .filter((name) => name !== "react/jsx-runtime")
@@ -191,7 +193,7 @@ function checkFile(
   source: string,
   names: ReadonlySet<string>,
   errors: CompileError[],
-  libraries: Set<string>,
+  externals: Set<string>,
 ): Unit | undefined {
   let output: string;
 
@@ -238,7 +240,7 @@ function checkFile(
     wants: [],
   };
 
-  for (const entry of imports) checkImport(unit, entry, prefix, names, errors, libraries);
+  for (const entry of imports) checkImport(unit, entry, prefix, names, errors, externals);
 
   for (const found of findLinkerNames(output)) {
     const { line, column } = locate(output, found.offset, prefix);
@@ -280,7 +282,7 @@ function checkImport(
   prefix: number,
   names: ReadonlySet<string>,
   errors: CompileError[],
-  libraries: Set<string>,
+  externals: Set<string>,
 ): void {
   if (entry.d === -2) return;
   const { file, output } = unit;
@@ -324,7 +326,7 @@ function checkImport(
     return;
   }
 
-  if (Object.hasOwn(LIBRARY_EXPORTS, specifier)) libraries.add(specifier);
+  if (external !== undefined) externals.add(specifier);
 
   if (target !== undefined) {
     const quoted = output[entry.s] === '"' || output[entry.s] === "'";
@@ -434,9 +436,9 @@ export async function compileCanvas(
 
   if (errors.length > 0) return failed(errors);
   await init;
-  const libraries = new Set<string>();
+  const externals = new Set<string>();
   const units = sources.flatMap(([name = "", text = ""]) => {
-    const unit = checkFile(name, text, names, errors, libraries);
+    const unit = checkFile(name, text, names, errors, externals);
 
     return unit === undefined ? [] : [unit];
   });
@@ -461,25 +463,29 @@ export async function compileCanvas(
     errors.push(at(CANVAS_ENTRY, null, null, "The module must `export default` a component."));
 
   if (errors.length > 0) return failed(errors);
-  const code = bundle(units, libraries);
+  const code = bundle(units, externals);
 
   if (encoder.encode(code).byteLength > codeLimit)
     return failed([
       at(null, null, null, `The compiled canvas is over ${kb(codeLimit)}; render less at once.`),
     ]);
 
-  return { kind: "compiled", code, runtime: CANVAS_RUNTIME };
+  return {
+    kind: "compiled",
+    code,
+    runtime: [...externals].some((name) => RUNTIME_2.has(name)) ? 2 : 1,
+  };
 }
 
 /**
  * Lays the files out as one ES module: the files comment and the external
- * modules on line one, then each file's function with its code starting on
+ * modules the files import on line one, then each file's function with its code starting on
  * a line of its own, then the linker, which runs each file once on first
  * `require`, and the entry's default export.
  */
-function bundle(units: readonly Unit[], libraries: ReadonlySet<string>): string {
+function bundle(units: readonly Unit[], imported: ReadonlySet<string>): string {
   const externals = [...EXTERNAL]
-    .filter(([name]) => !Object.hasOwn(LIBRARY_EXPORTS, name) || libraries.has(name))
+    .filter(([name]) => imported.has(name))
     .map(([name, external]) => `${JSON.stringify(name)}: ${external.value}`);
   const spans: CanvasFileSpan[] = [];
   const body: string[] = [];

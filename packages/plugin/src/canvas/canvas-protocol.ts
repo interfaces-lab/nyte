@@ -9,7 +9,7 @@
  */
 import { CANVAS_LIBRARIES } from "./canvas-libraries.ts";
 
-/** The shell surface a compiled module was built against. Bump on any change to `KIT`, a kit component's props, the libraries or the global; a shell renders a canvas whose runtime is at most its own. Runtime 2 added `react-dom`, the libraries and multi-file modules. */
+/** The shell surface a compiled module was built against. Bump on any change to `KIT`, a kit component's props, the libraries or the global; a shell renders a canvas whose runtime is at most its own. Runtime 2 added `react-dom` and the libraries; the compiler stamps a canvas with 2 only when it imports one of them, so a runtime 1 shell still renders the rest. */
 export const CANVAS_RUNTIME = 2;
 
 /** The global the shell installs before importing a module: `{ runtime, react, jsxRuntime, reactDom, kit, library }`, where `library(specifier)` loads one of `LIBRARY_EXPORTS`' modules. */
