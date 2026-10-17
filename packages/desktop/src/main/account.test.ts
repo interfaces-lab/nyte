@@ -146,6 +146,20 @@ describe("packaged renderer files", () => {
       path: join(root, "shell", "assets", "main-1.js"),
       html: false,
     });
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/libraries/three.js")).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "libraries", "three.js"),
+      html: false,
+    });
+    expect(
+      resolveRendererFile(roots, "nyte-desktop-dev://canvas/libraries/chunks/range-1.js"),
+    ).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "libraries", "chunks", "range-1.js"),
+      html: false,
+    });
     expect(resolveRendererFile(roots, "nyte-desktop-dev://account/")).toEqual({
       kind: "refused",
       status: 404,
@@ -161,6 +175,14 @@ describe("packaged renderer files", () => {
       status: 404,
     });
     expect(refused("nyte-desktop://renderer/")).toEqual({ kind: "refused", status: 404 });
+    expect(refused("nyte-desktop://account/libraries/three.js")).toEqual({
+      kind: "refused",
+      status: 404,
+    });
+    expect(refused("nyte-desktop://canvas/libraries/..%2f..%2fpackage.json")).toEqual({
+      kind: "refused",
+      status: 403,
+    });
     expect(refused("nyte-desktop://account/assets/")).toEqual({ kind: "refused", status: 403 });
     expect(refused("nyte-desktop://account/assets/%2e%2e/account.html")).toEqual({
       kind: "refused",

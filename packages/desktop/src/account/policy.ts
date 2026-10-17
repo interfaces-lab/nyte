@@ -114,9 +114,12 @@ export function resolveRendererFile(
     return { kind: "file", host, path: join(root, "index.html"), html: true };
   }
 
-  if (!pathname.startsWith("/assets/")) return { kind: "refused", status: 404 };
-  const assets = join(root, "assets");
-  const target = resolve(assets, `.${pathname.slice("/assets".length)}`);
+  const folder = /^\/(assets|libraries)\//u.exec(pathname)?.[1];
+
+  if (folder === undefined || (folder === "libraries" && host !== CANVAS_HOST))
+    return { kind: "refused", status: 404 };
+  const assets = join(root, folder);
+  const target = resolve(assets, `.${pathname.slice(folder.length + 1)}`);
   const inside = relative(assets, target);
 
   if (inside === "" || inside.split(sep)[0] === ".." || isAbsolute(inside)) {
