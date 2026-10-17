@@ -1,15 +1,8 @@
 import { homedir } from "node:os";
 import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
 import { asId } from "@nyte-ai/schema";
-import {
-  followedTrace,
-  followTrace,
-  pagedViews,
-  startSpan,
-  traced,
-  tracing,
-} from "@nyte-ai/sdk/client";
-import type { Connection, MessageId, PagedViews, Session, SessionView } from "@nyte-ai/sdk";
+import { followTrace, pagedViews, traced, tracePaints } from "@nyte-ai/sdk/client";
+import type { Connection, MessageId, PagedViews, Session } from "@nyte-ai/sdk";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
 import { follow } from "../lib/view-helpers.ts";
@@ -373,40 +366,6 @@ function sessionPort(
       return found;
     },
   };
-}
-
-/** `views`, each message after the first view timed as a `client.paint` span until `painted` resolves; a user message is its own submit's trace, a part joins the one the session followed last. */
-async function* tracePaints(
-  views: AsyncIterable<SessionView>,
-  session: Session["id"],
-  painted: () => Promise<void>,
-): AsyncIterable<SessionView> {
-  let seen: Set<string> | null = null;
-
-  for await (const view of views) {
-    if (!tracing.enabled) {
-      yield view;
-      continue;
-    }
-
-    const known: Set<string> = seen ?? new Set(view.messages.map((message) => message.id));
-
-    for (const message of view.messages) {
-      if (known.has(message.id)) continue;
-      known.add(message.id);
-      const user = message.kind === "user";
-
-      const ended = startSpan("client.paint", user ? message.id : followedTrace(session), {
-        session,
-        kind: user ? "user" : message.partKind,
-      });
-
-      void painted().then(() => ended());
-    }
-
-    seen = known;
-    yield view;
-  }
 }
 
 export async function pluginsPort(

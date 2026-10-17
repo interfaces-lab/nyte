@@ -1,4 +1,4 @@
-import { pagedViews, sdk, SdkError, tracing } from "@nyte-ai/sdk";
+import { pagedViews, sdk, SdkError, tracePaints } from "@nyte-ai/sdk";
 import type {
   ConnectOptions,
   Connection,
@@ -14,7 +14,6 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import { useSyncExternalStore } from "react";
-import { tracePaints } from "./paint-spans.ts";
 
 export interface HostEndpoint {
   readonly url: string;
@@ -360,6 +359,11 @@ const pagers = new Map<SessionId, PagedViews>();
 /** The oldest message a session showed when its pager last came back empty. */
 const exhausted = new Map<SessionId, string>();
 
+/** Resolves in the task after the next animation frame, once that frame has painted. */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}
+
 /** A session's views, with its older messages paged in by `loadEarlierMessages`. */
 export const sessionWatch = watchFamily(
   (current, session: SessionId): AsyncIterable<SessionView> => {
@@ -367,7 +371,7 @@ export const sessionWatch = watchFamily(
     pagers.set(session, views);
     exhausted.delete(session);
 
-    return tracing.enabled ? tracePaints(views, session) : views;
+    return tracePaints(views, session, nextFrame);
   },
 );
 

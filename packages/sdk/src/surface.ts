@@ -283,6 +283,8 @@ export { SdkError } from "@nyte-ai/schema";
 
 export { pagedViews } from "./history.ts";
 
+export { tracePaints } from "./paint-spans.ts";
+
 export type { PagedViews } from "./history.ts";
 
 export type { DevRow } from "@nyte-ai/core";
