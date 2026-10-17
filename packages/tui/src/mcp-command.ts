@@ -203,14 +203,28 @@ function report(
 
 async function settled(mcp: McpApi, signal: AbortSignal): Promise<McpView> {
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(LIST_WAIT_MS)]);
+  const views = mcp.watch()[Symbol.asyncIterator]();
+
+  const stopped = new Promise<"stopped">((resolve) =>
+    deadline.addEventListener("abort", () => resolve("stopped"), { once: true }),
+  );
+
   let latest: McpView | null = null;
 
-  for await (const view of mcp.watch()) {
-    latest = view;
+  try {
+    for (;;) {
+      const next = await Promise.race([views.next(), stopped]);
 
-    if (deadline.aborted || view.servers.every((server) => server.state.kind !== "connecting"))
-      return view;
+      if (next === "stopped" || next.done === true) break;
+      latest = next.value;
+
+      if (latest.servers.every((server) => server.state.kind !== "connecting")) break;
+    }
+  } finally {
+    await views.return?.();
   }
+
+  signal.throwIfAborted();
 
   if (latest === null) throw new Error("The MCP servers could not be read.");
 
