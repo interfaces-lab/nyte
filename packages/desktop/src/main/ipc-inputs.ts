@@ -197,6 +197,7 @@ export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
   "host.browser.captureFrame": compile(strict({ surface: nonEmpty })),
+  "host.browser.pickElement": compile(strict({ surface: nonEmpty })),
   "host.browser.find": compile(
     strict({
       surface: nonEmpty,

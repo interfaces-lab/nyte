@@ -651,6 +651,14 @@ export interface GitHubBridge {
   createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
 }
 
+/** An element picked on a page: a selector that finds it, its outer HTML cut short, and a PNG data URL of its box. */
+export interface BrowserElementPick {
+  readonly url: string;
+  readonly selector: string;
+  readonly html: string;
+  readonly image: string | undefined;
+}
+
 export interface BrowserBridge {
   open(input: {
     surface: string;
@@ -678,6 +686,11 @@ export interface BrowserBridge {
    * view. The panel paints it while an overlay forces the page to hide.
    */
   captureFrame(input: { surface: string }): Promise<string | undefined>;
+  /**
+   * Lets the user point at an element on the page, and answers with it once
+   * picked: a click or Enter picks, Escape or a second call cancels with none.
+   */
+  pickElement(input: { surface: string }): Promise<BrowserElementPick | undefined>;
   /** Highlights matches and moves to the next or previous one. Empty text clears. */
   find(input: {
     surface: string;
