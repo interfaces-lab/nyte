@@ -11,12 +11,17 @@ import type {
 } from "@agentclientprotocol/sdk";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
 import type { Api, AssistantMessageEventStream, Model, StopReason } from "@nyte-ai/ai";
+import type { RuntimeCall, RuntimeVerdict } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { emptyMessage, MIRROR_TOOL, toolText, Translator } from "./translate.ts";
+import { emptyMessage, MIRROR_TOOL, mirrorClass, toolText, Translator } from "./translate.ts";
 import type { MirrorArguments } from "./translate.ts";
 
-type Decision = "allow" | "reject" | "cancelled";
+/** Where Nyte is with one of the agent's calls: recording it (its mirror runs), or done with it without running it. */
+type Recording = "recording" | "skipped";
+
+/** Decides a call the agent asks permission for, under the session's policy. */
+export type AcpApprove = (call: RuntimeCall, signal: AbortSignal) => Promise<RuntimeVerdict>;
 
 type ThreadEvent =
   | { readonly kind: "text"; readonly text: string }
@@ -41,10 +46,11 @@ export interface AcpToolOutput {
   readonly failed: boolean;
 }
 
-/** How a thread reaches its agent: one prompt turn, and the cancel notification for it. */
+/** How a thread reaches its agent: one prompt turn, the cancel notification for it, and how a permission it asks for is decided. */
 export interface AcpChannel {
   prompt(blocks: readonly ContentBlock[]): Promise<PromptResponse>;
   cancel(): void;
+  readonly approve: AcpApprove;
 }
 
 class Inbox<T> {
@@ -79,13 +85,13 @@ class Inbox<T> {
 const input = Type.Record(Type.String(), Type.Unknown());
 
 function answer(
-  decision: Decision,
+  choice: "allow" | "reject" | "cancelled",
   options: readonly PermissionOption[],
 ): RequestPermissionResponse {
   const kinds =
-    decision === "allow"
+    choice === "allow"
       ? ["allow_once", "allow_always"]
-      : decision === "reject"
+      : choice === "reject"
         ? ["reject_once", "reject_always"]
         : [];
 
@@ -116,15 +122,17 @@ function stopReason(
  * One ACP session on an agent: the prompt turns Nyte sends it, the updates
  * it streams back as assistant messages, and its tool calls, which Nyte
  * records as mirror calls whose ids start with `prefix`. A permission the
- * agent asks for waits for Nyte to `allow` or `reject` that call.
+ * agent asks for waits until Nyte records that call, then goes to the
+ * channel's `approve` under the call's ACP kind; a call Nyte skips is
+ * refused.
  */
 export class AcpThread {
   readonly prefix: string;
   readonly #channel: AcpChannel;
   readonly #events = new Inbox<ThreadEvent>();
   readonly #tools = new Map<string, ToolState>();
-  readonly #permissions = new Map<string, PromiseWithResolvers<Decision>>();
-  readonly #decisions = new Map<string, Decision>();
+  readonly #permissions = new Map<string, AbortController>();
+  readonly #recordings = new Map<string, PromiseWithResolvers<Recording>>();
   readonly #changes = new Set<() => void>();
   readonly #queue: (readonly ContentBlock[])[] = [];
   #running = false;
@@ -169,31 +177,46 @@ export class AcpThread {
   async permission(request: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const id = request.toolCall.toolCallId;
     this.#see(request.toolCall);
-    const known = this.#decisions.get(id);
-
-    if (known !== undefined) return answer(known, request.options);
 
     if (this.#failure !== undefined) return answer("cancelled", request.options);
-    const pending = Promise.withResolvers<Decision>();
-    this.#permissions.set(id, pending);
+    const asking = new AbortController();
+    this.#permissions.set(id, asking);
     this.#changed();
 
     try {
-      return answer(await pending.promise, request.options);
+      const recorded = await Promise.race([
+        this.#recording(id).promise,
+        new Promise<"cancelled">((resolve) =>
+          asking.signal.addEventListener("abort", () => resolve("cancelled"), { once: true }),
+        ),
+      ]);
+
+      if (recorded !== "recording")
+        return answer(recorded === "skipped" ? "reject" : "cancelled", request.options);
+      const args = this.#arguments(id);
+      const name = args.kind === "other" ? args.title : args.kind;
+      const verdict = await this.#channel.approve(
+        { name, class: mirrorClass(args) },
+        asking.signal,
+      );
+
+      if (asking.signal.aborted) return answer("cancelled", request.options);
+
+      return answer(verdict.kind === "allow" ? "allow" : "reject", request.options);
     } finally {
       this.#permissions.delete(id);
       this.#changed();
     }
   }
 
-  /** Lets the agent run `id` when it asks, now or later. */
-  allow(id: string): void {
-    this.#decide(id, "allow");
+  /** Lets the agent's permission ask for `id`, now or later, go on to its approval: Nyte is recording the call. */
+  recording(id: string): void {
+    this.#recording(id).resolve("recording");
   }
 
-  /** Refuses `id` when the agent asks, now or later; a call this thread never saw is left alone. */
-  reject(id: string): void {
-    if (this.#tools.has(id)) this.#decide(id, "reject");
+  /** Refuses `id` when the agent asks, now or later: Nyte settled it without running it. A call this thread never saw is left alone. */
+  skip(id: string): void {
+    if (this.#tools.has(id)) this.#recording(id).resolve("skipped");
   }
 
   /** Streams the turn as one assistant message, ending at the agent's next new tool call or at the turn's end; with `tools` false, its tool calls are refused and skipped. */
@@ -227,7 +250,7 @@ export class AcpThread {
 
           if (event.kind === "text") translator.text(event.text);
           else if (event.kind === "thinking") translator.thinking(event.text);
-          else if (event.kind === "tool" && !tools) this.reject(event.id);
+          else if (event.kind === "tool" && !tools) this.skip(event.id);
           else if (event.kind === "tool") {
             translator.call(this.#mirror(event.id));
             reason = "toolUse";
@@ -303,7 +326,7 @@ export class AcpThread {
   cancel(): void {
     this.#queue.length = 0;
 
-    for (const pending of this.#permissions.values()) pending.resolve("cancelled");
+    for (const asking of this.#permissions.values()) asking.abort();
 
     if (this.#running) this.#channel.cancel();
   }
@@ -366,10 +389,10 @@ export class AcpThread {
     this.#events.push({ kind: "tool", id: update.toolCallId });
   }
 
-  #mirror(id: string) {
+  #arguments(id: string): MirrorArguments {
     const tool = this.#tools.get(id);
 
-    const args: MirrorArguments = {
+    return {
       thread: this.prefix,
       id,
       title: tool?.title ?? "Tool",
@@ -377,18 +400,25 @@ export class AcpThread {
       input: tool?.input ?? {},
       paths: tool?.paths ?? [],
     };
+  }
 
+  #mirror(id: string) {
     return {
       type: "toolCall",
       id: `${this.prefix}${id}`,
       name: MIRROR_TOOL,
-      arguments: args,
+      arguments: this.#arguments(id),
     } as const;
   }
 
-  #decide(id: string, decision: Decision): void {
-    if (!this.#decisions.has(id)) this.#decisions.set(id, decision);
-    this.#permissions.get(id)?.resolve(this.#decisions.get(id) ?? decision);
+  #recording(id: string): PromiseWithResolvers<Recording> {
+    const known = this.#recordings.get(id);
+
+    if (known !== undefined) return known;
+    const created = Promise.withResolvers<Recording>();
+    this.#recordings.set(id, created);
+
+    return created;
   }
 
   #changed(): void {

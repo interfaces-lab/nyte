@@ -3,6 +3,8 @@ import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type {
   CanUseTool,
   EffortLevel,
+  HookInput,
+  HookJSONOutput,
   McpSdkServerConfigWithInstance,
   Options,
   PermissionResult,
@@ -43,7 +45,7 @@ interface Launch {
   readonly approve: Approve;
 }
 
-/** Decides a call one of Claude Code's subagents asks to run, which Nyte's agent loop never sees. */
+/** Decides a call Claude Code asks to run under Nyte's permissions policy, by the tool's own name. */
 export type Approve = (
   name: string,
   input: Parameters<CanUseTool>[1],
@@ -69,6 +71,11 @@ const ALLOW: PermissionResult = { behavior: "allow" };
 const SKIPPED = "Nyte did not run this tool call.";
 
 const toolUseId = Type.String({ minLength: 1 });
+
+const toolInput = Type.Record(Type.String(), Type.Unknown());
+
+/** How long Claude Code waits on the PreToolUse hook, which holds a call while the user decides it: a week, so a hook timeout never lets a call past Nyte's policy. */
+const APPROVAL_HOOK_SECONDS = 7 * 24 * 60 * 60;
 
 type TurnItem =
   | Extract<SDKMessage, { type: "stream_event" | "result" | "assistant" }>
@@ -172,6 +179,8 @@ export class ClaudeCodeSession {
   readonly #changes = new Set<() => void>();
   readonly #replies = new Map<string, PromiseWithResolvers<ToolReply>>();
   readonly #gates = new Map<string, PromiseWithResolvers<PermissionResult>>();
+  readonly #permits = new Map<string, Promise<PermissionResult>>();
+  readonly #approve: Approve;
   readonly #server: McpSdkServerConfigWithInstance;
   readonly #query: ReturnType<StartQuery>;
   #tools: readonly Tool[];
@@ -188,6 +197,7 @@ export class ClaudeCodeSession {
     this.key = launch.key;
     this.#settings = { effort: launch.effort, ultracode: launch.ultracode };
     this.#tools = launch.tools;
+    this.#approve = launch.approve;
     const session = launch.session;
     this.#server = createSdkMcpServer({ name: NYTE_SERVER, tools: [] });
     this.#server.instance.server.registerCapabilities({ tools: { listChanged: true } });
@@ -235,9 +245,15 @@ export class ClaudeCodeSession {
             : { behavior: "allow", updatedInput: { ...input, answers } };
         }
 
-        return agentID === undefined
-          ? await this.#decide(toolUseID, signal)
-          : await launch.approve(name, input, signal);
+        return await this.#permit(toolUseID, name, input, agentID === undefined, signal);
+      },
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [(input, _id, { signal }) => this.#beforeTool(input, signal)],
+            timeout: APPROVAL_HOOK_SECONDS,
+          },
+        ],
       },
       thinking: launch.thinking
         ? { type: "adaptive", display: "summarized" }
@@ -303,8 +319,8 @@ export class ClaudeCodeSession {
     }
   }
 
-  /** Lets Claude Code run the call `id` that Nyte is now running, and denies the calls before it in the same message that Nyte settled without running. */
-  allow(id: string): void {
+  /** Lets Claude Code's call `id` go on to its approval now that Nyte records it (so the workspace snapshot before it is taken), and denies the calls before it in the same message that Nyte settled without running. */
+  recording(id: string): void {
     const position = this.#order.findIndex((known) => known === id);
 
     for (const [index, earlier] of this.#order.entries()) {
@@ -523,7 +539,61 @@ export class ClaudeCodeSession {
     }
   }
 
-  async #decide(id: string, signal: AbortSignal): Promise<PermissionResult> {
+  /** Decides call `id` once, whichever of the PreToolUse hook and `canUseTool` asks first: a main-agent call waits until Nyte records it, then every call goes to Nyte's policy. */
+  #permit(
+    id: string,
+    name: string,
+    input: Record<string, unknown>,
+    main: boolean,
+    signal: AbortSignal,
+  ): Promise<PermissionResult> {
+    const known = this.#permits.get(id);
+
+    if (known !== undefined) return known;
+
+    const decided = (async (): Promise<PermissionResult> => {
+      if (main) {
+        const recorded = await this.#recorded(id, signal);
+
+        if (recorded.behavior === "deny") return recorded;
+      }
+
+      return this.#approve(name, input, signal);
+    })();
+
+    this.#permits.set(id, decided);
+
+    return decided;
+  }
+
+  async #beforeTool(input: HookInput, signal: AbortSignal): Promise<HookJSONOutput> {
+    if (
+      input.hook_event_name !== "PreToolUse" ||
+      input.tool_name.startsWith(NYTE_TOOL_PREFIX) ||
+      input.tool_name === "AskUserQuestion"
+    )
+      return {};
+
+    const decided = await this.#permit(
+      input.tool_use_id,
+      input.tool_name,
+      Value.Check(toolInput, input.tool_input) ? input.tool_input : {},
+      input.agent_id === undefined,
+      signal,
+    );
+
+    return decided.behavior === "allow"
+      ? {}
+      : {
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: decided.message,
+          },
+        };
+  }
+
+  async #recorded(id: string, signal: AbortSignal): Promise<PermissionResult> {
     const pending = this.#gate(id);
     const cancel = () => pending.resolve({ behavior: "deny", message: "Request was aborted" });
     signal.addEventListener("abort", cancel, { once: true });
@@ -619,7 +689,11 @@ export class ClaudeCodeSession {
 
   #track(event: Extract<SDKMessage, { type: "stream_event" }>["event"]): void {
     if (event.type === "message_start") {
-      for (const id of this.#order) this.#gates.delete(id);
+      for (const id of this.#order) {
+        this.#gates.delete(id);
+        this.#permits.delete(id);
+      }
+
       this.#order = [];
 
       return;

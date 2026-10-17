@@ -1,11 +1,11 @@
 import { isPart, tool } from "@nyte-ai/core";
-import type { Plugin, ToolDefinition } from "@nyte-ai/core";
+import type { Plugin, PluginApi, ToolDefinition } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
 import { standard } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import approvalsPlugin, { approvalReason, decideApproval } from "../src/approvals/approvals.ts";
+import approvalsPlugin, { approvalReason } from "../src/approvals/approvals.ts";
 import { openApprovals, PERMISSIONS } from "../src/approvals/schema.ts";
 import type { ApprovalPolicy } from "../src/approvals/schema.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
@@ -92,7 +92,7 @@ describe("approvalReason", () => {
   const read = { name: "read", class: { kind: "read", path: "/etc/hosts" } as const };
   const mcp = { name: "mcp__db__drop", class: { kind: "custom", label: "Dropping" } as const };
   const search = { ...mcp, name: "web_search", approval: "never" as const };
-  const readOnly = { ...mcp, name: "mcp__db__list" };
+  const mirror = { name: "claude_code", class: command.class, approval: "runtime" as const };
 
   it.each([
     ["ask", edit("src/a.ts"), "edit"],
@@ -101,10 +101,14 @@ describe("approvalReason", () => {
     ["ask", mcp, "tool"],
     ["ask", read, null],
     ["ask", search, null],
-    ["ask", readOnly, "tool"],
+    ["ask", mirror, null],
     ["auto-edit", edit("src/a.ts"), null],
     ["auto-edit", edit("/tmp/project/src/a.ts"), null],
     ["auto-edit", edit("/tmp/project-other/a.ts"), "outside"],
+    ["auto-edit", edit(".claude/settings.local.json"), "edit"],
+    ["auto-edit", edit("/tmp/project/.git/hooks/pre-commit"), "edit"],
+    ["auto-edit", edit(".nyte/plugins.json"), "edit"],
+    ["auto-edit", edit("src/.claude.md"), null],
     ["auto-edit", command, "shell"],
     ["auto-edit", mcp, "tool"],
     ["auto-edit", read, null],
@@ -288,16 +292,32 @@ it("takes the first answer when two clients answer one approval", async () => {
   ).toMatchObject({ decision: "once" });
 });
 
-it("decides a call outside the agent loop for Claude Code's canUseTool", async () => {
-  await using host = await open(fakeModels(), [approvalsPlugin]);
+function runtimeApis() {
+  const apis = new Map<SessionId, PluginApi<"core">>();
+
+  const plugin: Plugin<"core"> = {
+    id: "runtime",
+    activate: (api) => {
+      apis.set(api.session.id, api);
+    },
+  };
+
+  return { plugin, find: (session: SessionId) => until(() => apis.get(session)) };
+}
+
+it("decides a call another runtime runs through api.approve, granting by the tool's own name", async () => {
+  const runtime = runtimeApis();
+  await using host = await open(fakeModels(), [approvalsPlugin, runtime.plugin]);
   const { session } = await host.sessions.start({ content: "Hi." });
+  const api = await runtime.find(session.id);
   const bash = { name: "Bash", class: { kind: "shell", command: "ls" } as const };
+  const write = { name: "Write", class: { kind: "edit", path: "a.ts" } as const };
   const signal = new AbortController().signal;
 
-  expect(await decideApproval(session.id, bash, signal)).toEqual({ kind: "allow" });
+  expect(await api.approve(bash, signal)).toEqual({ kind: "allow" });
   expect(await host.settings.apply(PERMISSIONS, "ask")).toEqual({ kind: "applied" });
 
-  const deciding = decideApproval(session.id, bash, signal);
+  const deciding = api.approve(bash, signal);
   const [asked] = await waiting(session);
   assert(asked !== undefined);
   await session.part(asked.part).act("deny", {});
@@ -306,9 +326,17 @@ it("decides a call outside the agent loop for Claude Code's canUseTool", async (
     reason: "The user denied this tool call. Ask them how to proceed instead of retrying it.",
   });
 
+  const granting = api.approve(bash, signal);
+  const [grant] = await waiting(session);
+  assert(grant !== undefined);
+  await session.part(grant.part).act("session", {});
+  expect(await granting).toEqual({ kind: "allow" });
+  expect(await api.approve(bash, signal)).toEqual({ kind: "allow" });
+
   const stop = new AbortController();
-  const stopped = decideApproval(session.id, bash, stop.signal);
-  await waiting(session);
+  const stopped = api.approve(write, stop.signal);
+  const [other] = await waiting(session);
+  expect(other).toMatchObject({ tool: "Write", reason: "edit" });
   stop.abort();
   expect(await stopped).toEqual({
     kind: "deny",

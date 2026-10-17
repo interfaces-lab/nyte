@@ -12,6 +12,7 @@ import type { ExecutionEnv, Job } from "@nyte-ai/core";
 import manifest from "../../package.json" with { type: "json" };
 import type { AcpAgent } from "./registry.ts";
 import { AcpThread } from "./thread.ts";
+import type { AcpApprove } from "./thread.ts";
 
 const AUTH_REQUIRED = -32_000;
 
@@ -112,8 +113,8 @@ export class AcpProcess {
     return (await this.#initialized()).agentCapabilities?.promptCapabilities?.image === true;
   }
 
-  /** Starts an ACP session in `cwd`; an agent that wants a sign-in first fails with how to give it one. */
-  async open(cwd: string): Promise<AcpThread> {
+  /** Starts an ACP session in `cwd` whose permission asks go to `approve`; an agent that wants a sign-in first fails with how to give it one. */
+  async open(cwd: string, approve: AcpApprove): Promise<AcpThread> {
     await this.#initialized();
 
     let sessionId: string;
@@ -132,6 +133,7 @@ export class AcpProcess {
     }
 
     const thread = new AcpThread(`acp-${randomUUID().slice(0, 8)}-`, {
+      approve,
       prompt: (blocks) =>
         this.#connection.agent.request(methods.agent.session.prompt, {
           sessionId,

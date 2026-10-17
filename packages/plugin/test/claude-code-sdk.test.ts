@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import type {
   CanUseTool,
+  HookJSONOutput,
   McpSdkServerConfigWithInstance,
   Options,
   PermissionResult,
@@ -39,6 +40,7 @@ interface Claude {
     id: string,
     agent?: string,
   ): Promise<PermissionResult | null>;
+  hook(name: string, input: JsonObject, id: string): Promise<HookJSONOutput | null>;
 }
 
 const MODEL = "claude-opus-4-7";
@@ -273,6 +275,25 @@ function fakeClaude(script: (claude: Claude) => Promise<void>) {
               agentID: agent,
             });
       },
+      hook: async (name, input, id) => {
+        const before = options.hooks?.PreToolUse?.[0]?.hooks[0];
+
+        return before === undefined
+          ? null
+          : before(
+              {
+                hook_event_name: "PreToolUse",
+                tool_name: name,
+                tool_input: input,
+                tool_use_id: id,
+                session_id: "claude",
+                transcript_path: "",
+                cwd: tmpdir(),
+              },
+              id,
+              { signal: new AbortController().signal },
+            );
+      },
     };
 
     script(claude).then(ran.resolve, ran.reject);
@@ -464,4 +485,48 @@ it("asks the user under the permissions policy before a Claude Code subagent's c
       message: "The user denied this tool call. Ask them how to proceed instead of retrying it.",
     },
   ]);
+});
+
+it("decides each main-agent call at Claude Code's PreToolUse hook, granting by the tool's own name", async () => {
+  const decided: (HookJSONOutput | null)[] = [];
+  const reached = Promise.withResolvers<Claude>();
+
+  const claude = fakeClaude(async (fake) => {
+    await fake.prompt();
+    fake.emit(begin(), ...toolUse(0, "toolu_ls", "Bash", { command: "ls" }), ...end("tool_use"));
+    decided.push(await fake.hook("Bash", { command: "ls" }, "toolu_ls"));
+    reached.resolve(fake);
+  });
+
+  await using host = await openClaude(claude.start, [tools, approvalsPlugin]);
+  expect(await host.settings.apply(PERMISSIONS, "ask")).toEqual({ kind: "applied" });
+  const { session } = await host.sessions.start({ content: "List.", configuration });
+
+  const asking = async (count: number) =>
+    until(async () => {
+      const approvals = openApprovals(await session.view());
+
+      return approvals.length >= count ? approvals : undefined;
+    });
+
+  const [pending] = await asking(1);
+  assert(pending !== undefined);
+  expect(pending).toMatchObject({ tool: "Bash", reason: "shell" });
+  await session.part(pending.part).act("session", {});
+  const fake = await reached.promise;
+
+  expect(decided).toEqual([{}]);
+  expect(await fake.ask("Bash", { command: "pwd" }, "toolu_sub_pwd", "agent-1")).toEqual({
+    behavior: "allow",
+  });
+
+  const writing = fake.ask("Write", { file_path: "notes.md" }, "toolu_sub_write", "agent-1");
+  const [write] = await asking(1);
+  assert(write !== undefined);
+  expect(write).toMatchObject({ tool: "Write", reason: "edit" });
+  await session.part(write.part).act("deny", {});
+  expect(await writing).toMatchObject({ behavior: "deny" });
+  expect(
+    (await session.view()).parts.filter((part) => part.partKind === "ask/approval"),
+  ).toHaveLength(2);
 });

@@ -4,11 +4,13 @@ import type {
   ActionContext,
   ActionOutput,
   PluginApi,
+  RuntimeCall,
+  RuntimeVerdict,
   SettingDefinition,
   ToolDefinition,
 } from "@nyte-ai/core";
 import { SdkError } from "@nyte-ai/schema";
-import type { Awaitable, Infer, SessionId, ToolClass } from "@nyte-ai/schema";
+import type { Awaitable, Infer } from "@nyte-ai/schema";
 import {
   APPROVAL_POLICIES,
   approval as approvalContract,
@@ -29,16 +31,9 @@ type Handlers = {
 };
 
 /** A tool call as the policy sees it: its tool's name, its class, and whether its tool lets a policy hold it. */
-export interface ApprovalTool {
-  readonly name: string;
-  readonly class: ToolClass;
+export interface ApprovalTool extends RuntimeCall {
   readonly approval?: ToolDefinition["approval"];
 }
-
-/** What a gated call may do: run, or not, with the reason the model reads. */
-export type ApprovalVerdict =
-  | { readonly kind: "allow" }
-  | { readonly kind: "deny"; readonly reason: string };
 
 const DENIED = "The user denied this tool call. Ask them how to proceed instead of retrying it.";
 
@@ -60,24 +55,28 @@ export const permissions: SettingDefinition<ApprovalPolicy> = {
   scope: "host",
 };
 
-const sessions = new Map<SessionId, PluginApi<"core">>();
+/** Folders inside a workspace whose files configure the agents, hooks and tools that run there, so an edit to one asks even under `auto-edit`. */
+const GUARDED = new Set([".claude", ".git", ".nyte"]);
 
 function grantKey(tool: string): string {
   return `grant:${tool}`;
 }
 
-function inside(cwd: string, path: string): boolean {
+function workspacePath(cwd: string, path: string): string | null {
   const root = posix.resolve(cwd);
   const target = posix.resolve(root, path);
 
-  return target === root || target.startsWith(`${root}/`);
+  if (target === root) return "";
+
+  return target.startsWith(`${root}/`) ? target.slice(root.length + 1) : null;
 }
 
 /**
  * Why `policy` stops `tool` for the user in a workspace at `cwd`, or null
  * when the call runs without asking. Reads, listings, delegation and tools
- * whose `approval` is not `policy` never ask; a subagent's own calls ask in
- * its session.
+ * whose `approval` is not `policy` never ask (a subagent's own calls ask in
+ * its session); under `auto-edit` an edit in the workspace runs unless it is
+ * under `.claude`, `.git` or `.nyte`.
  *
  * @category plugins
  * @since 0.1.0
@@ -97,9 +96,11 @@ export function approvalReason(
   if (subject.kind === "shell") return "shell";
 
   if (subject.kind === "edit") {
-    if (!inside(cwd, subject.path)) return "outside";
+    const path = workspacePath(cwd, subject.path);
 
-    return policy === "ask" ? "edit" : null;
+    if (path === null) return "outside";
+
+    return policy === "ask" || GUARDED.has(path.split("/", 1)[0] ?? "") ? "edit" : null;
   }
 
   return "tool";
@@ -125,7 +126,7 @@ async function pendingReason(
   return (await api.storage.get(grantKey(tool.name))) === true ? null : reason;
 }
 
-function verdict(action: string | undefined): ApprovalVerdict {
+function verdict(action: string | undefined): RuntimeVerdict {
   if (action === "once" || action === "session") return { kind: "allow" };
 
   return { kind: "deny", reason: action === "deny" ? DENIED : UNANSWERED };
@@ -178,30 +179,17 @@ export const approval = definePart({
   onAction: (action, input, context) => handlers[action](input, context),
 });
 
-/**
- * Decides one tool call in `session` outside the agent loop, the way Claude
- * Code's `canUseTool` needs: applies the policy and the session's grants, and
- * when the call asks, opens an approval in the session and waits for any
- * client to answer it. Aborting `signal` closes the approval and denies the
- * call. A session without the approvals plugin active allows every call.
- *
- * @category plugins
- * @since 0.1.0
- */
-export async function decideApproval(
-  session: SessionId,
-  tool: ApprovalTool,
-  signal: AbortSignal,
-): Promise<ApprovalVerdict> {
-  const api = sessions.get(session);
-
-  if (api === undefined) return { kind: "allow" };
-  const reason = await pendingReason(api, tool);
+async function approveRuntimeCall(
+  call: RuntimeCall,
+  context: { readonly api: PluginApi<"core">; readonly signal: AbortSignal },
+): Promise<RuntimeVerdict> {
+  const { api, signal } = context;
+  const reason = await pendingReason(api, call);
 
   if (reason === null) return { kind: "allow" };
 
   const part = await api.session.parts.create(approval, {
-    state: { tool: tool.name, class: tool.class, reason, decision: null },
+    state: { tool: call.name, class: call.class, reason, decision: null },
     placement: { kind: "modal" },
   });
 
@@ -213,10 +201,14 @@ export async function decideApproval(
 }
 
 /**
- * Gates tool calls on the session's `permissions` policy. A call that asks
- * parks its before_tool hook on an approval part, so the request outlives a
- * host restart and any client watching the session can answer it; a denial
- * reaches the model as the rejected call's reason.
+ * Gates tool calls on the session's `permissions` policy, keying grants on
+ * each tool's own name. A call in Nyte's loop that asks parks its
+ * before_tool hook on an approval part, so the request outlives a host
+ * restart and any client watching the session can answer it; a denial
+ * reaches the model as the rejected call's reason. A call another agent
+ * runtime asks to run comes through `approve` and waits on the same part
+ * while its runtime runs; its mirror call (`approval: "runtime"`) is not
+ * asked about again.
  *
  * @category plugins
  * @since 0.1.0
@@ -224,20 +216,11 @@ export async function decideApproval(
 export default {
   id: "approvals",
   contribute: { parts: [approval], settings: [permissions] },
-  activate(api) {
-    const id = api.session.id;
-    sessions.set(id, api);
-    api.signal.addEventListener(
-      "abort",
-      () => {
-        if (sessions.get(id) === api) sessions.delete(id);
-      },
-      { once: true },
-    );
-  },
+  approve: approveRuntimeCall,
   hooks: {
     before_tool: async (call, context) => {
       const { api } = context;
+
       const definition = api.contribute.tools.list().find((tool) => tool.name === call.name);
 
       const reason = await context.memo("reason", () =>

@@ -30,7 +30,6 @@ import type { PartId, ToolClass } from "@nyte-ai/schema";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { decideApproval } from "../approvals/approvals.ts";
 import type { Plugin } from "../core.ts";
 import { question } from "../question/question.ts";
 import { answerInput } from "../question/schema.ts";
@@ -286,6 +285,7 @@ function mirrorTool(
     description: "A tool Claude Code ran. Claude Code reports the result; Nyte records it.",
     parameters: standard(mirrorArguments),
     exposure: "hidden",
+    approval: "runtime",
     replay: "safe",
     class: ({ name, input }) => classifyClaudeTool(name, input),
     async execute({ id, name, input }, invocation) {
@@ -295,7 +295,7 @@ function mirrorTool(
 
       if (name === BACKGROUND_TOOL)
         return { content: [{ kind: "text", text: await session.background(invocation.signal) }] };
-      session.allow(id);
+      session.recording(id);
       let parts: PartId[] = [];
 
       if (name === "AskUserQuestion") {
@@ -463,8 +463,7 @@ export function claudeCodeSdk(start: StartQuery = query) {
         cwd: api.env.cwd,
         ultracode: async () => (await api.contribute.settings.value(ultracodeSetting.id)) === true,
         approve: async (name, input, signal) => {
-          const verdict = await decideApproval(
-            id,
+          const verdict = await api.approve(
             { name, class: classifyClaudeTool(name, input) },
             signal,
           );

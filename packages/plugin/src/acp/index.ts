@@ -14,7 +14,7 @@ import type {
   TranscriptContext,
 } from "@nyte-ai/ai";
 import { processEnvironment } from "@nyte-ai/core";
-import type { ExecutionEnv, ToolDefinition } from "@nyte-ai/core";
+import type { ExecutionEnv, PluginApi, ToolDefinition } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
@@ -32,6 +32,11 @@ export type { AcpAgent } from "./registry.ts";
 const NOT_RUNNING = "The agent is no longer running this turn. Send a message to continue.";
 
 const REGISTRY_TTL_MS = 24 * 60 * 60 * 1_000;
+
+interface Binding {
+  readonly env: ExecutionEnv;
+  readonly approve: PluginApi<"core">["approve"];
+}
 
 interface Live {
   readonly key: string;
@@ -61,6 +66,7 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
     description: "A tool an ACP agent ran. The agent reports the result; Nyte records it.",
     parameters: standard(mirrorArguments),
     exposure: "hidden",
+    approval: "runtime",
     replay: "safe",
     class: mirrorClass,
     async execute(args, invocation) {
@@ -68,7 +74,7 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
 
       if (thread === undefined || thread.closed || args.thread !== thread.prefix)
         throw new Error(NOT_RUNNING);
-      thread.allow(args.id);
+      thread.recording(args.id);
       const output = await thread.result(args.id, invocation.signal);
 
       if (output.failed)
@@ -84,9 +90,10 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
  * installed on this machine is a model of the `acp` provider, run as a
  * process in the session's environment. Its text and thoughts stream as the
  * assistant's, each of its tool calls is recorded as a hidden `acp` mirror
- * call, and a permission it asks for is answered by that call's before_tool
- * gate: allowed when the call runs, refused when the gate rejects it. A
- * stopped run cancels the agent's turn. The registry list is fetched on a
+ * call, and a permission it asks for waits until Nyte records that call and
+ * is then decided by `PluginApi.approve` under the call's ACP kind (a call
+ * Nyte settles without running is refused). A stopped run cancels the
+ * agent's turn. The registry list is fetched on a
  * networked catalog refresh at most daily and kept in the models store;
  * before the first fetch, the list shipped in `registry-seed.json` stands in.
  * `agents`, when given, replaces the registry lookup, as tests do.
@@ -94,7 +101,7 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
 export function acpAgents(options?: { readonly agents?: () => Promise<readonly AcpAgent[]> }) {
   let agents: readonly AcpAgent[] = [];
   const live = new Map<string, Live>();
-  const bindings = new Map<string, ExecutionEnv>();
+  const bindings = new Map<string, Binding>();
 
   const forget = (entry: Live): void => {
     void entry.process.then((started) => started.close()).catch(() => undefined);
@@ -111,10 +118,11 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
   async function connect(
     id: string,
     model: Model<Api>,
-  ): Promise<{ readonly entry: Live; readonly env: ExecutionEnv; readonly agent: AcpProcess }> {
-    const env = bindings.get(id);
+  ): Promise<{ readonly entry: Live; readonly binding: Binding; readonly agent: AcpProcess }> {
+    const binding = bindings.get(id);
 
-    if (env === undefined) throw new Error("ACP agents answer inside a Nyte session.");
+    if (binding === undefined) throw new Error("ACP agents answer inside a Nyte session.");
+    const { env } = binding;
     const agent = agents.find((candidate) => candidate.id === model.id);
 
     if (agent === undefined) throw new Error(`${model.name} is not installed on this machine.`);
@@ -128,7 +136,7 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
       live.set(id, entry);
     }
 
-    return { entry, env, agent: await entry.process };
+    return { entry, binding, agent: await entry.process };
   }
 
   async function respond(
@@ -138,7 +146,7 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
     id: string | undefined,
   ): Promise<AssistantMessageEventStream> {
     if (id === undefined) throw new Error("ACP agents answer inside a Nyte session.");
-    const { entry, env, agent } = await connect(id, model);
+    const { entry, binding, agent } = await connect(id, model);
     const messages = context.messages.filter((message) => message.role !== "system");
     const keys = messages.map(messageKey);
     const images = await agent.images();
@@ -174,14 +182,14 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
               Value.Check(mirrorArguments, block.arguments) &&
               block.arguments.thread === thread.prefix
             )
-              thread.reject(block.arguments.id);
+              thread.skip(block.arguments.id);
 
       if (prompt.length > 0) thread.send(prompt);
     } else {
       if (current !== undefined) agent.forget(current);
 
       if (prompt.length === 0) throw new Error(NOT_RUNNING);
-      thread = await agent.open(env.cwd);
+      thread = await agent.open(binding.env.cwd, binding.approve);
       entry.thread = thread;
       const history = transcriptText(messages.slice(0, first));
 
@@ -212,8 +220,8 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
     id: string | undefined,
   ): Promise<AssistantMessageEventStream> {
     if (id === undefined) throw new Error("ACP agents answer inside a Nyte session.");
-    const { env, agent } = await connect(id, model);
-    const thread = await agent.open(env.cwd);
+    const { binding, agent } = await connect(id, model);
+    const thread = await agent.open(binding.env.cwd, binding.approve);
     const system = getCurrentSystemPrompt(context.messages);
 
     const conversation = transcriptText(
@@ -300,12 +308,15 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
     contribute: { tools: [mirrorTool(live)] },
     activate(api) {
       const id = api.session.id;
-      const env = api.env;
+      const binding: Binding = {
+        env: api.env,
+        approve: (call, signal) => api.approve(call, signal),
+      };
       const release = acquireSessionResources(id);
-      bindings.set(id, env);
+      bindings.set(id, binding);
 
       const unbind = () => {
-        if (bindings.get(id) === env) bindings.delete(id);
+        if (bindings.get(id) === binding) bindings.delete(id);
         release();
       };
 
