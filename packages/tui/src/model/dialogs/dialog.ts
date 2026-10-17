@@ -24,7 +24,7 @@ export type Dialog =
   | TextDialog
   | AuthDialog;
 
-interface TextSpan {
+export interface TextSpan {
   readonly text: string;
   readonly tone?: "foreground" | "muted" | "dim" | "accent" | "warning" | "error";
   readonly bold?: boolean;
