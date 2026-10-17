@@ -94,6 +94,13 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+/** The kind a field change is counted under: a call record's call kind (`call/hook`), else the record's kind. */
+function changeKind(record: Json, kind: string): string {
+  return kind === "call" && isJsonObject(record) && isJsonObject(record.body)
+    ? `call/${text(record.body.kind)}`
+    : kind;
+}
+
 /**
  * How a before_tool hook call's stored result fared, judged by decoding it
  * rather than by the step's rewrite: a result the store-13 decoder read must
@@ -289,7 +296,7 @@ export async function verifyMigration(
         problems.push(`ref ${name} target is not its body's id`);
 
       for (const path of changedPaths(record, expected))
-        count(fieldChanges, `${kind} ${fieldPattern(path)}`);
+        count(fieldChanges, `${changeKind(record, kind)} ${fieldPattern(path)}`);
       count(outcomes, `rewritten ${kind}`);
     }
 

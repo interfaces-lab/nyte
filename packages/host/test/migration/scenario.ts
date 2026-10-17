@@ -11,6 +11,7 @@ import {
   JsonType,
   ToolClassType,
   WaitOutcomeType,
+  WaitTargetType,
   withJson,
 } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
@@ -42,6 +43,18 @@ function variant(kind: string, change: string): TSchema {
 const json = schemaArbitrary(withJson(JsonType), 4);
 
 const jsonObject = json.filter(isJsonObject);
+
+const waitTarget = schemaArbitrary(withJson(WaitTargetType));
+
+/** What an unsettled call waits on: one target, or several with input waking it too. */
+const waiting = fc.oneof(
+  waitTarget,
+  fc.record({
+    kind: fc.constantFrom("any", "all"),
+    targets: fc.array(waitTarget, { minLength: 1, maxLength: 3 }),
+    untilInput: fc.constant(true),
+  }),
+);
 
 /** An edit tool's output as Nyte wrote it before patches were text. */
 const legacyPatch = fc.record({
@@ -128,6 +141,10 @@ function records(from: number): fc.Arbitrary<Entry> {
             },
           ),
           outcome: legacyOutcome,
+          waiting: fc.oneof(
+            { arbitrary: fc.constant(null), weight: 3 },
+            { arbitrary: waiting, weight: 1 },
+          ),
           modify: fc.oneof(
             {
               arbitrary: fc.record({
@@ -177,7 +194,18 @@ function records(from: number): fc.Arbitrary<Entry> {
               ? { action: "modify", value: legacy.modify }
               : (call.result ?? null),
           };
-        const id = own && typeof call.id === "string" ? call.id : other;
+        if (older(from, 10) && legacy.waiting !== null)
+          call = {
+            ...call,
+            result: null,
+            waiting: legacy.waiting,
+            partial: [],
+            head: typeof call.head === "string" ? call.head : "main",
+          };
+        const id =
+          (own || (older(from, 10) && legacy.waiting !== null)) && typeof call.id === "string"
+            ? call.id
+            : other;
 
         return entry("call", `sessions/${session}/calls/${id}`, call, time);
       }),

@@ -22,7 +22,10 @@ type JsonObject = { readonly [key: string]: Json };
  * stamp a store holds once the step has run, so a store stamped below it runs
  * it. Every field a row does not name is kept as it was, every object row is
  * kept (content addressing never deletes one), and every logged event keeps
- * its session, seq and time.
+ * its session, seq and time. `covers` names the tallies a property run must
+ * count at least once to have exercised the row: the store stamp just below
+ * the row's version, and each field or ref the row changes (`call/*` for a
+ * call of any kind).
  */
 export const MAPPING = [
   {
@@ -30,6 +33,7 @@ export const MAPPING = [
     step: "baseline",
     target: "tables",
     change: "creates objects, refs, log and store_meta",
+    covers: ["from 0"],
   },
   {
     version: 2,
@@ -37,30 +41,44 @@ export const MAPPING = [
     target: "call, inbox, run and principals records",
     change:
       "call gains `reran: null`, inbox `pendingInput: []`, run `waitedBy: []`, `parked: []` and `lastSnapshot: null`, each only where absent; principals drops each entry's `lastSeenAt` and gains `codes: []` where absent, unless no entry has `lastSeenAt` and `codes` exists (a missing `principals` list becomes [])",
+    covers: [
+      "from 1",
+      "field call/* /body/reran",
+      "field inbox /body/pendingInput",
+      "field run /body/waitedBy",
+      "field run /body/parked",
+      "field run /body/lastSnapshot",
+      "field principals /body/codes",
+      "field principals /body/principals/*/lastSeenAt",
+    ],
   },
   {
     version: 3,
     step: "2026-10-14-session-index",
     target: "tables",
     change: "creates session_index and pending_work",
+    covers: ["from 2"],
   },
   {
     version: 4,
     step: "2026-10-14-session-index-order",
     target: "tables",
     change: "recreates session_index and pending_work and rebuilds both from every ref",
+    covers: ["from 3"],
   },
   {
     version: 5,
     step: "2026-10-15-log-kind-index",
     target: "tables",
     change: "creates the log_kind index",
+    covers: ["from 4"],
   },
   {
     version: 6,
     step: "2026-10-15-workspace-trust",
     target: "workspace records",
     change: "`projectResources: true` becomes null; false and null are kept",
+    covers: ["from 5", "field workspace /body/projectResources"],
   },
   {
     version: 7,
@@ -69,6 +87,13 @@ export const MAPPING = [
       "call `result.output` and `nested.<key>.output`, part `state.outcome.output`, logged call/settled `outcome.output`",
     change:
       'an output `{ path, status, kind: "text", hunks, ...rest }` becomes `{ path, status, kind: "text", ...rest, patch: writePatch(path, status, hunks) }`; any other output is kept',
+    covers: [
+      "from 6",
+      "field call/* /body/result/output/patch",
+      "field call/* /body/nested/*/output/patch",
+      "field part /body/state/outcome/output/patch",
+      "field log call/settled /outcome/output/patch",
+    ],
   },
   {
     version: 8,
@@ -76,6 +101,7 @@ export const MAPPING = [
     target: "logged call/intent and part/created events",
     change:
       "a call/intent event holding `name`, `args` and `class`, whose part has an earlier part/created event with an object `state`, keeps every other field; that part/created event's `state` takes the intent's `name`, `args` and `class` where any of them differs",
+    covers: ["from 7", "field log call/intent /name", "field log part/created /state/name"],
   },
   {
     version: 9,
@@ -83,6 +109,7 @@ export const MAPPING = [
     target: "refs",
     change:
       "adds `sessions/<s>/live/<run>` at the record of `sessions/<s>/runs/<run>` for each run record whose `view.id` is `<run>` and that is not stopping, unless the ref exists",
+    covers: ["from 8", "added sessions/*/live"],
   },
   {
     version: 10,
@@ -90,18 +117,28 @@ export const MAPPING = [
     target: "refs",
     change:
       "adds the `waits/` index refs of each unsettled call record at `sessions/<s>/calls/<call>`, at that record, unless they exist",
+    covers: [
+      "from 9",
+      "added waits/run",
+      "added waits/part",
+      "added waits/job",
+      "added waits/time",
+      "added waits/input",
+    ],
   },
   {
     version: 11,
     step: "2026-10-16-tool-args-in-part",
     target: "call records of kind tool",
     change: "an object `intent` drops `name` and `args`",
+    covers: ["from 10", "field call/tool /body/intent/name", "field call/tool /body/intent/args"],
   },
   {
     version: 12,
     step: "2026-10-16-intent-position",
     target: "call records of kind intent",
     change: "an object `intent` without `position` gains `position: 0`",
+    covers: ["from 11", "field call/intent /body/intent/position"],
   },
   {
     version: 13,
@@ -109,6 +146,7 @@ export const MAPPING = [
     target: "refs",
     change:
       "adds `waits/woken/<s>/<call>` at the record of each call at `sessions/<s>/calls/<call>` with no result, no current wait and at least one finished wait, unless the ref exists",
+    covers: ["from 12", "added waits/woken"],
   },
   {
     version: 14,
@@ -116,6 +154,14 @@ export const MAPPING = [
     target: "call records of kind hook whose id starts `hook:before_tool:`",
     change:
       'an object `intent` holding `args` becomes `{ principal }` (null where absent); a `modify` result whose value is a ToolCall, the only one the old decoder read, becomes `{ action: "modify", value: <value.args> }`; any other result is kept',
+    covers: [
+      "from 13",
+      "field call/hook /body/intent/args",
+      "field call/hook /body/intent/principal",
+      "field call/hook /body/result/value",
+      "hook decisions read alike",
+      "hook decisions kept unreadable",
+    ],
   },
 ] as const;
 

@@ -81,24 +81,16 @@ it(
       { numRuns: RUNS, seed: SEED },
     );
 
-    for (const covered of [
-      "field call /body/reran",
-      "field inbox /body/pendingInput",
-      "field run /body/parked",
-      "field principals /body/codes",
-      "field workspace /body/projectResources",
-      "field call /body/result/output/patch",
-      "field call /body/nested/*/output/patch",
-      "field part /body/state/outcome/output/patch",
-      "field log call/settled /outcome/output/patch",
-      "field log call/intent /name",
-      "field log part/created /state/name",
-      "field call /body/intent/name",
-      "field call /body/intent/position",
-      "field call /body/result/value",
-      "added sessions/*/live",
-      "added waits/woken",
-    ])
-      expect(totals.get(covered) ?? 0, covered).toBeGreaterThan(0);
+    for (const covered of MAPPING.flatMap((row) => row.covers)) {
+      const counted = [...totals].filter(
+        ([key]) =>
+          key === covered || key.replace(/^field call\/\w+ /u, "field call/* ") === covered,
+      );
+
+      expect(
+        counted.reduce((sum, [, value]) => sum + value, 0),
+        covered,
+      ).toBeGreaterThan(0);
+    }
   },
 );
