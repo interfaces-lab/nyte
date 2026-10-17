@@ -358,6 +358,7 @@ export function workspaceHandle(
     },
     files: async () => (await capabilities()).files,
     git: async () => (await capabilities()).git,
+    github: async () => (await capabilities()).github,
     browser: async () => (await capabilities()).browser,
   };
 }

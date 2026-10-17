@@ -5,7 +5,7 @@ import type { SessionView } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_PATH, encodeError, STREAM_HEADER } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { connect } from "../src/connect.ts";
 import { BASE, readOperation, TOKEN_SECRET, until } from "./served.ts";
 import { cleanups, client, closeOpened, open, text, users } from "./connection.ts";
@@ -87,6 +87,30 @@ describe("client", () => {
 
     expect(git.kind).not.toBe("available");
     expect("api" in git).toBe(false);
+  });
+
+  it("binds GitHub on a local workspace and leaves it unsupported on a chat-only one", async () => {
+    vi.stubEnv("PATH", "/usr/bin:/bin");
+    cleanups.push(async () => {
+      vi.unstubAllEnvs();
+    });
+    const chat = await open();
+    const [chatWorkspace] = await (await client(chat)).workspaces.list();
+    assert(chatWorkspace !== undefined);
+
+    expect((await (await client(chat)).workspace(chatWorkspace.id).github()).kind).toBe(
+      "unsupported",
+    );
+
+    const host = await open({ local: true });
+    const connection = await client(host);
+    const [info] = await connection.workspaces.list();
+    assert(info !== undefined);
+    const github = await connection.workspace(info.id).github();
+    assert(github.kind === "available");
+
+    expect(await github.api.state()).toEqual({ kind: "cli_missing" });
+    expect(await github.api.createPullRequest({ title: "Fix" })).toEqual({ kind: "cli_missing" });
   });
 
   it("binds files, git and jobs on a local workspace: bytes, batch uploads, PatchSet maps, job output frames", async () => {

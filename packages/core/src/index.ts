@@ -91,6 +91,7 @@ export type {
   FileBatch,
   FilesApi,
   GitApi,
+  GitHubApi,
   Job,
   Jobs,
   McpApi,

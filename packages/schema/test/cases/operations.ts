@@ -610,6 +610,15 @@ export const operations = {
     { workspace, input: { setUpstream: true } },
     { workspace, input: { setUpstream: "yes" } },
   ),
+  "workspace.github input": operation(OPERATIONS["workspace.github"].input, workspaceInput, {}),
+  "github.state input": operation(OPERATIONS["github.state"].input, workspaceInput, {}),
+  "github.signIn input": operation(OPERATIONS["github.signIn"].input, workspaceInput, {}),
+  "github.signOut input": operation(OPERATIONS["github.signOut"].input, workspaceInput, {}),
+  "github.createPullRequest input": operation(
+    OPERATIONS["github.createPullRequest"].input,
+    { workspace, input: { title: "Fix", body: "Why.", draft: true } },
+    { workspace, input: { title: 1 } },
+  ),
   "browser.open input": operation(
     OPERATIONS["browser.open"].input,
     { workspace, url: "https://a.b", id: "open-1" },

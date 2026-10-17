@@ -104,6 +104,7 @@ export function createConnection(
       }),
       files: () => capability("files", () => handle.files()),
       git: () => capability("git", () => handle.git()),
+      github: () => capability("github", () => handle.github()),
       browser: () => capability("browser", () => handle.browser()),
     });
   };

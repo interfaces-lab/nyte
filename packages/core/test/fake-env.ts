@@ -25,6 +25,7 @@ import type {
   ExecutionEnv,
   FilesApi,
   GitApi,
+  GitHubApi,
   Host,
   Job,
   Page,
@@ -192,6 +193,7 @@ export function fakeProvider(
     availability: null,
     failure: null,
     git: options?.git === false ? undefined : () => fakeGit(),
+    github: () => fakeGitHub(),
     browser: options?.browser === true ? () => fakeBrowser(provider) : undefined,
     script: (process) => {
       const command =
@@ -709,6 +711,13 @@ function fakeBrowser(provider: FakeProvider): BrowserApi {
       yield await list();
     },
   };
+}
+
+/** GitHub with the `gh` CLI missing, so every answer is the state that says so. */
+function fakeGitHub(): GitHubApi {
+  const missing = async () => ({ kind: "cli_missing" as const });
+
+  return { state: missing, signIn: missing, signOut: missing, createPullRequest: missing };
 }
 
 function fakeGit(): GitApi {

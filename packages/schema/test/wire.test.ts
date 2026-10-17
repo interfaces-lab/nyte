@@ -52,6 +52,7 @@ import {
 } from "./cases/fixtures.ts";
 import type { Case } from "./cases/fixtures.ts";
 import { basicCases } from "./cases/basics.ts";
+import { githubCases } from "./cases/github.ts";
 import { operations } from "./cases/operations.ts";
 import { sessionCases } from "./cases/session.ts";
 import { workspaceCases } from "./cases/workspace.ts";
@@ -66,7 +67,13 @@ function ids(value: unknown): readonly string[] {
   );
 }
 
-const cases = { ...operations, ...basicCases, ...workspaceCases, ...sessionCases };
+const cases = {
+  ...operations,
+  ...basicCases,
+  ...workspaceCases,
+  ...githubCases,
+  ...sessionCases,
+};
 
 const paged: Schema<Paged<SessionInfo>> = pagedSchema(SessionInfoType);
 

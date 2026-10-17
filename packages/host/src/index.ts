@@ -5,6 +5,7 @@ export * from "./listen.ts";
 export * from "./listen-fetch.ts";
 export * from "./local/files.ts";
 export * from "./local/git.ts";
+export * from "./local/github.ts";
 export * from "./local/identity.ts";
 export * from "./local/jobs.ts";
 export * from "./local/provider.ts";

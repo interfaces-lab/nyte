@@ -129,6 +129,12 @@ export const WORKSPACE_OPERATIONS = {
     input: ON_WORKSPACE,
     output: CapabilityWireSchema,
   },
+  "workspace.github": {
+    ...PARTICIPANT,
+    kind: "query",
+    input: ON_WORKSPACE,
+    output: CapabilityWireSchema,
+  },
   "workspace.browser": {
     ...PARTICIPANT,
     kind: "query",

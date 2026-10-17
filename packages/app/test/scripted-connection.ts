@@ -171,6 +171,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     patches: refused,
     files: refuse,
     git: refuse,
+    github: refuse,
     browser: refuse,
   });
 

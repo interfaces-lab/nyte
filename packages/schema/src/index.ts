@@ -14,6 +14,8 @@ export * from "./files.ts";
 
 export * from "./git.ts";
 
+export * from "./github.ts";
+
 export * from "./heads.ts";
 
 export * from "./hooks.ts";

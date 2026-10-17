@@ -303,6 +303,23 @@ export async function readGit(workspace: Workspace) {
 }
 
 /**
+ * GitHub goes through the serving machine's `gh`: its login, the repository
+ * the workspace's remotes name, and the checked-out branch's pull request
+ * with its check rollup. Missing `gh`, a signed-out CLI and a folder without
+ * a GitHub remote are states and outcomes, not failures.
+ */
+export async function openPullRequest(workspace: Workspace) {
+  const capability = await workspace.github();
+
+  if (capability.kind !== "available") return capability;
+  const state = await capability.api.state();
+
+  if (state.kind !== "ready" || state.pullRequest.kind === "ready") return state;
+
+  return capability.api.createPullRequest({ title: "Fix tab close", body: "Why it changed." });
+}
+
+/**
  * Jobs start through workspace.jobs or an invocation environment. A Job
  * exposes input, output frames, resize, idle, settled and stop. Job directory
  * rows come from workspace.jobs.list/watch. Output frames keep

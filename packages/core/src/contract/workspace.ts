@@ -28,6 +28,9 @@ import type {
   GitScope,
   GitStatus,
   GitWrite,
+  GitHubPullRequestInput,
+  GitHubPullRequestOutcome,
+  GitHubState,
   HeadName,
   JobChange,
   JobEnd,
@@ -96,6 +99,22 @@ export interface GitApi {
     options?: GitWrite,
   ): Promise<GitOutcome>;
   push(input?: { readonly setUpstream?: boolean }, options?: GitWrite): Promise<GitOutcome>;
+}
+
+/**
+ * GitHub for one workspace through the serving machine's GitHub CLI (`gh`):
+ * the CLI's login is machine-wide and owns the credentials, the workspace
+ * picks the repository (its remotes) and the branch (its HEAD).
+ */
+export interface GitHubApi {
+  /** The login, the repository and the checked-out branch's pull request with its checks. `signing_in` while a sign-in waits for its code. */
+  state(): Promise<GitHubState>;
+  /** Starts `gh auth login` on github.com, or joins the one already running, and answers `signing_in` once it has a one-time code; an account already signed in answers `ready` and starts nothing. The sign-in ends when the code is entered, when it expires, or on `signOut`. */
+  signIn(): Promise<GitHubState>;
+  /** Ends a sign-in still waiting for its code; otherwise removes the CLI's github.com login. */
+  signOut(): Promise<GitHubState>;
+  /** Opens a pull request for the checked-out branch, which the caller has pushed; an open one for the branch answers `exists` and opens nothing. */
+  createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
 }
 
 export interface Jobs {
@@ -246,6 +265,7 @@ export interface EnvironmentProvider {
   }>;
   attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
   readonly git?: (env: ExecutionEnv) => GitApi | undefined;
+  readonly github?: (env: ExecutionEnv) => GitHubApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
   readonly worktrees?: WorktreeProvider;
@@ -281,6 +301,7 @@ export interface Resources {
 export type EnvironmentCapabilities = {
   readonly files: Capability<FilesApi>;
   readonly git: Capability<GitApi>;
+  readonly github: Capability<GitHubApi>;
   readonly browser: Capability<BrowserApi>;
 };
 
@@ -522,6 +543,9 @@ export interface Workspace {
   files(): Promise<Capability<FilesApi>>;
 
   git(): Promise<Capability<GitApi>>;
+
+  /** GitHub through the serving machine's `gh`; `unsupported` where the provider serves none. */
+  github(): Promise<Capability<GitHubApi>>;
 
   browser(): Promise<Capability<BrowserApi>>;
 }
