@@ -34,10 +34,12 @@ export function useWindowTabsState(): WindowState {
 
 /**
  * Asks the host to select the restored active tab's chat folder for this
- * window. The host reads the chat's folder from its own store and announces
- * nothing, so the workbench takes the folder without the reload a
- * `workspace_opened` event runs. Absent on the web, which keeps no folder per
- * window.
+ * window. The first frame already shows the folder the last run recorded for
+ * that chat; the host's answer confirms it, or corrects it when the folder is
+ * gone or awaits trust. The host reads the chat's folder from its own store
+ * and announces nothing, so the workbench takes the folder without the reload
+ * a `workspace_opened` event runs. Absent on the web, which keeps no folder
+ * per window.
  */
 async function restoreChatFolder(): Promise<void> {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));

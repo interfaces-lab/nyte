@@ -1,18 +1,28 @@
 /**
  * What the last connected run saw of its host, kept so the next launch draws
- * a new chat, its model and the sidebar before the host answers. Each seed
- * sits under a key of its own that the live query shows as its placeholder,
- * so the live answer replaces it in place and only live answers are recorded.
+ * a new chat, its model, the sidebar and the window's folder before the host
+ * answers. Each seed sits under a key of its own that the live query shows as
+ * its placeholder, so the live answer replaces it in place and only live
+ * answers are recorded.
  */
 import type { HostId, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
-import { ModelCatalogViewType, SessionInfoType, WorkspaceInfoType } from "@nyte-ai/schema";
+import {
+  idSchema,
+  ModelCatalogViewType,
+  SessionInfoType,
+  WorkspaceInfoType,
+} from "@nyte-ai/schema";
 import type { Decoded } from "@nyte-ai/schema";
 import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import type { HostState } from "./bridge.ts";
 import { keys, newestModelCatalog, queryClient } from "./queries.ts";
 import { directoryWatch } from "./sdk.tsx";
+import { sessionId } from "./schemas.ts";
+import { activeTab, tabPlace } from "./tabs/model.ts";
+import { windowTabs } from "./tabs/window-tabs.ts";
 
 const FIRST_FRAME_KEY = "nyte.first-frame.v1";
 
@@ -28,6 +38,29 @@ const FirstFrameType = Type.Object(
     workspaces: Type.Array(WorkspaceInfoType),
     /** Pinned and newest open root chats, in the directory's order. */
     sessions: Type.Array(SessionInfoType, { maxItems: ROOT_LIMIT }),
+    /**
+     * The chat the window's active tab showed and the folder the window had
+     * selected for it, so a window reopening on that chat lays out its
+     * workbench for the folder on its first frame; null when the tab showed
+     * no chat or the chat lives in Home.
+     */
+    folder: Type.Union([
+      Type.Object(
+        {
+          session: sessionId,
+          workspace: Type.Object(
+            {
+              id: idSchema<"workspace">(),
+              path: Type.String({ minLength: 1 }),
+              name: Type.String(),
+            },
+            { additionalProperties: false },
+          ),
+        },
+        { additionalProperties: false },
+      ),
+      Type.Null(),
+    ]),
   },
   { additionalProperties: false },
 );
@@ -35,6 +68,7 @@ const FirstFrameType = Type.Object(
 type FirstFrame = Decoded<typeof FirstFrameType>;
 
 const SEEDED_KEYS = [
+  keys.host,
   keys.modelCatalog("initial"),
   keys.firstFrameWorkspaces,
   keys.firstFrameRoots,
@@ -73,10 +107,11 @@ export function forgetFirstFrame(): void {
 }
 
 /**
- * Seed the catalog, the folders and the recent chats from the last run on
- * `host`, and answer whether there was one. Runs before the first render; a
- * missing, unreadable or foreign snapshot is forgotten and the shell starts
- * empty.
+ * Seed the catalog, the folders, the recent chats and, for a window reopening
+ * on the chat it recorded, that chat's folder from the last run on `host`, and
+ * answer whether there was one. Runs before the first render, after the
+ * window's tabs are restored; a missing, unreadable or foreign snapshot is
+ * forgotten and the shell starts empty.
  */
 export function seedFirstFrame(host: string): boolean {
   const stored = readStored();
@@ -92,6 +127,12 @@ export function seedFirstFrame(host: string): boolean {
   queryClient.setQueryData(keys.modelCatalog("initial"), frame.catalog, { updatedAt: 0 });
   queryClient.setQueryData(keys.firstFrameWorkspaces, frame.workspaces, { updatedAt: 0 });
   queryClient.setQueryData(keys.firstFrameRoots, frame.sessions, { updatedAt: 0 });
+  const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+
+  if (frame.folder !== null && place.kind === "session" && place.sessionId === frame.folder.session)
+    queryClient.setQueryData(keys.host, { workspace: frame.folder.workspace } satisfies HostState, {
+      updatedAt: 0,
+    });
 
   return true;
 }
@@ -113,6 +154,16 @@ function recentRoots(directory: readonly SessionInfo[]): readonly SessionInfo[] 
   return roots.filter((session) => kept.has(session)).slice(0, ROOT_LIMIT);
 }
 
+/** The window's folder for the chat its active tab shows, or null. */
+function windowFolder(): FirstFrame["folder"] {
+  const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+  const workspace = queryClient.getQueryData<HostState>(keys.host)?.workspace;
+
+  return place.kind === "session" && workspace !== undefined
+    ? { session: place.sessionId, workspace }
+    : null;
+}
+
 function write(): void {
   const catalog = newestModelCatalog();
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
@@ -130,6 +181,7 @@ function write(): void {
         catalog,
         workspaces,
         sessions: recentRoots(directory),
+        folder: windowFolder(),
       } satisfies FirstFrame),
     );
   } catch {}

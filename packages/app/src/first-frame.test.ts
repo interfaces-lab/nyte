@@ -32,6 +32,7 @@ function snapshot(host: string): string {
     catalog,
     workspaces: [],
     sessions: [sessionRow("recent")],
+    folder: null,
   });
 }
 
