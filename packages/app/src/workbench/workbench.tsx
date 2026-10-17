@@ -45,7 +45,7 @@ import type {
 } from "./controller";
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
-import { Deferred, loadDeferred, readDeferred } from "../deferred.tsx";
+import { Deferred, loadDeferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
@@ -125,32 +125,19 @@ function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElem
   );
 }
 
-interface WorkbenchTabRequest {
+function openWorkbenchTab({
+  view,
+  kind,
+  workspacePath,
+  capabilities,
+}: {
   readonly view: WorkbenchViewKey;
   readonly kind: WorkbenchTabKind;
   readonly workspacePath: string | null;
   readonly capabilities: ClientCapabilities;
-}
+}): void {
+  if (!workbenchTabAvailable({ kind: "project" }, kind, capabilities)) return;
 
-/**
- * A panel from the workbench chunk opens once the chunk has loaded: mounting
- * it earlier suspends, and React holds the revealed panel back for 300 ms.
- * A failed load still opens the tab, whose panel retries the chunk.
- */
-function openWorkbenchTab(request: WorkbenchTabRequest): void {
-  if (!workbenchTabAvailable({ kind: "project" }, request.kind, request.capabilities)) return;
-
-  if (request.kind === "browser" || readDeferred("workbench") !== undefined) {
-    addWorkbenchTab(request);
-
-    return;
-  }
-
-  const add = (): void => addWorkbenchTab(request);
-  void loadDeferred("workbench").then(add, add);
-}
-
-function addWorkbenchTab({ view, kind, workspacePath }: WorkbenchTabRequest): void {
   const id = workbenchController.actions.openTab({
     view,
     tab: defaultWorkbenchTab(kind),
