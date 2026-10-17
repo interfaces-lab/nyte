@@ -1,0 +1,262 @@
+import { posix } from "node:path";
+import { definePart } from "@nyte-ai/core";
+import type {
+  ActionContext,
+  ActionOutput,
+  PluginApi,
+  SettingDefinition,
+  ToolDefinition,
+} from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
+import type { Awaitable, Infer, SessionId, ToolClass } from "@nyte-ai/schema";
+import {
+  APPROVAL_POLICIES,
+  approval as approvalContract,
+  approvalPolicy,
+  openApprovals,
+  PERMISSIONS,
+} from "./schema.ts";
+import type { ApprovalDecision, ApprovalPolicy, ApprovalState } from "./schema.ts";
+import type { Plugin } from "@nyte-ai/plugin/core";
+
+type Actions = typeof approvalContract.actions;
+
+type Handlers = {
+  readonly [A in keyof Actions]: (
+    input: Infer<Actions[A]["input"]>,
+    context: ActionContext<ApprovalState, Actions>,
+  ) => Awaitable<ActionOutput<Actions[A]>>;
+};
+
+/** A tool call as the policy sees it: its tool's name, its class, and the tool's declared effects. */
+export interface ApprovalTool {
+  readonly name: string;
+  readonly class: ToolClass;
+  readonly effects?: ToolDefinition["effects"];
+}
+
+/** What a gated call may do: run, or not, with the reason the model reads. */
+export type ApprovalVerdict =
+  | { readonly kind: "allow" }
+  | { readonly kind: "deny"; readonly reason: string };
+
+const DENIED = "The user denied this tool call. Ask them how to proceed instead of retrying it.";
+
+const UNANSWERED = "The approval request closed before the user answered.";
+
+/**
+ * The host's policy for tool calls, `full` by default. It applies to every
+ * session at its next call, including one already running.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export const permissions: SettingDefinition<ApprovalPolicy> = {
+  id: PERMISSIONS,
+  label: "Permissions",
+  schema: approvalPolicy,
+  choices: APPROVAL_POLICIES,
+  default: "full",
+  scope: "host",
+};
+
+const sessions = new Map<SessionId, PluginApi<"core">>();
+
+function grantKey(tool: string): string {
+  return `grant:${tool}`;
+}
+
+function inside(cwd: string, path: string): boolean {
+  const root = posix.resolve(cwd);
+  const target = posix.resolve(root, path);
+
+  return target === root || target.startsWith(`${root}/`);
+}
+
+/**
+ * Why `policy` stops `tool` for the user in a workspace at `cwd`, or null
+ * when the call runs without asking. Calls that change nothing outside the
+ * session, reads, listings and delegation never ask; a subagent's own calls
+ * ask in its session.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export function approvalReason(
+  policy: ApprovalPolicy,
+  tool: ApprovalTool,
+  cwd: string,
+): ApprovalState["reason"] | null {
+  const subject = tool.class;
+
+  if (policy === "full" || tool.effects === "none") return null;
+
+  if (subject.kind === "read" || subject.kind === "list" || subject.kind === "delegate")
+    return null;
+
+  if (subject.kind === "shell") return "shell";
+
+  if (subject.kind === "edit") {
+    if (!inside(cwd, subject.path)) return "outside";
+
+    return policy === "ask" ? "edit" : null;
+  }
+
+  return "tool";
+}
+
+async function readPolicy(api: PluginApi<"core">): Promise<ApprovalPolicy> {
+  const value = await api.contribute.settings.value(PERMISSIONS);
+  const checked = approvalPolicy["~standard"].validate(value);
+
+  return checked instanceof Promise || checked.issues !== undefined
+    ? permissions.default
+    : checked.value;
+}
+
+async function pendingReason(
+  api: PluginApi<"core">,
+  tool: ApprovalTool,
+): Promise<ApprovalState["reason"] | null> {
+  const reason = approvalReason(await readPolicy(api), tool, api.env.cwd);
+
+  if (reason === null) return null;
+
+  return (await api.storage.get(grantKey(tool.name))) === true ? null : reason;
+}
+
+function verdict(action: string | undefined): ApprovalVerdict {
+  if (action === "once" || action === "session") return { kind: "allow" };
+
+  return { kind: "deny", reason: action === "deny" ? DENIED : UNANSWERED };
+}
+
+async function decide(
+  decision: ApprovalDecision,
+  context: ActionContext<ApprovalState, Actions>,
+): Promise<undefined> {
+  let granted: string | null = null;
+
+  const outcome = await context.part.update((current) => {
+    granted = current.decision === null || current.decision === decision ? current.tool : null;
+
+    return current.decision === null ? { ...current, decision } : current;
+  });
+
+  if (outcome.kind !== "updated")
+    throw new SdkError("invalid", "This approval is no longer waiting.");
+
+  if (granted === null) throw new SdkError("invalid", "This approval was already answered.");
+
+  if (decision !== "session") return undefined;
+  await context.api.storage.set(grantKey(granted), true);
+
+  for (const sibling of openApprovals(await context.api.session.view())) {
+    if (sibling.part !== context.part.id && sibling.tool === granted)
+      await context.api.session.part(sibling.part).act("once", {});
+  }
+
+  return undefined;
+}
+
+const handlers: Handlers = {
+  once: (_input, context) => decide("once", context),
+  session: (_input, context) => decide("session", context),
+  deny: (_input, context) => decide("deny", context),
+};
+
+/**
+ * The approval part with its handlers: the first answer is kept, and
+ * `session` records a grant for the tool and answers the session's other
+ * waiting approvals for it.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export const approval = definePart({
+  ...approvalContract,
+  onAction: (action, input, context) => handlers[action](input, context),
+});
+
+/**
+ * Decides one tool call in `session` outside the agent loop, the way Claude
+ * Code's `canUseTool` needs: applies the policy and the session's grants, and
+ * when the call asks, opens an approval in the session and waits for any
+ * client to answer it. Aborting `signal` closes the approval and denies the
+ * call. A session without the approvals plugin active allows every call.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export async function decideApproval(
+  session: SessionId,
+  tool: ApprovalTool,
+  signal: AbortSignal,
+): Promise<ApprovalVerdict> {
+  const api = sessions.get(session);
+
+  if (api === undefined) return { kind: "allow" };
+  const reason = await pendingReason(api, tool);
+
+  if (reason === null) return { kind: "allow" };
+
+  const part = await api.session.parts.create(approval, {
+    state: { tool: tool.name, class: tool.class, reason, decision: null },
+    placement: { kind: "modal" },
+  });
+
+  try {
+    return verdict((await part.answer({ signal }))?.action);
+  } finally {
+    if (signal.aborted) await part.close().catch(() => undefined);
+  }
+}
+
+/**
+ * Gates tool calls on the session's `permissions` policy. A call that asks
+ * parks its before_tool hook on an approval part, so the request outlives a
+ * host restart and any client watching the session can answer it; a denial
+ * reaches the model as the rejected call's reason.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export default {
+  id: "approvals",
+  contribute: { parts: [approval], settings: [permissions] },
+  activate(api) {
+    const id = api.session.id;
+    sessions.set(id, api);
+    api.signal.addEventListener(
+      "abort",
+      () => {
+        if (sessions.get(id) === api) sessions.delete(id);
+      },
+      { once: true },
+    );
+  },
+  hooks: {
+    before_tool: async (call, context) => {
+      const { api } = context;
+      const effects = api.contribute.tools.list().find((tool) => tool.name === call.name)?.effects;
+
+      const reason = await context.memo("reason", () =>
+        pendingReason(api, { name: call.name, class: call.class, effects }),
+      );
+
+      if (reason === null) return { action: "continue" };
+
+      const part = await api.session.parts.create(approval, {
+        state: { tool: call.name, class: call.class, reason, decision: null },
+        placement: { kind: "modal" },
+      });
+
+      const outcome = await context.wait({ kind: "part", part: part.id });
+      const answered = verdict(outcome.kind === "part" ? outcome.answer?.action : undefined);
+
+      return answered.kind === "allow"
+        ? { action: "continue" }
+        : { action: "reject", reason: answered.reason };
+    },
+  },
+} satisfies Plugin;

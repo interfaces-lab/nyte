@@ -21,6 +21,7 @@ import { dev, processEnvironment } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
+import approvals from "@nyte-ai/plugin/core/approvals";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
@@ -135,6 +136,7 @@ async function composeOpen(
   ]);
 
   const builtins = [
+    approvals,
     question,
     rename,
     bashDescription,

@@ -16,6 +16,7 @@
   "type": "module",
   "exports": {
     "./core": "./src/core.ts",
+    "./core/approvals": "./src/approvals/approvals.ts",
     "./core/bash-description": "./src/bash-description.ts",
     "./core/browser-tools": "./src/browser-tools.ts",
     "./core/canvas": "./src/canvas/canvas.ts",
@@ -39,6 +40,7 @@
     "./client/questions-tui": "./src/question/client/questions-tui.ts",
     "./client/transcript": "./src/client/transcript.tsx",
     "./client/transcript-tui": "./src/client/transcript-tui.ts",
+    "./approvals/schema": "./src/approvals/schema.ts",
     "./canvas/protocol": "./src/canvas/canvas-protocol.ts",
     "./canvas/schema": "./src/canvas/schema.ts",
     "./question/schema": "./src/question/schema.ts"
