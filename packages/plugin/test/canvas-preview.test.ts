@@ -88,8 +88,8 @@ it("previews through the host's previewer and answers with the screenshot, heigh
       return { kind: "rendered", report };
     }),
   ]);
-  const session = await host.sessions.create();
-  await (await session.send("Preview it.")).settled();
+  const { session, receipt } = await host.sessions.start({ content: "Preview it." });
+  await receipt.settled();
 
   expect(seen).toHaveLength(1);
   expect(seen[0]?.theme).toBe("dark");
@@ -130,8 +130,8 @@ it("says when this host has no preview, and offers the tool only to a host with 
   await using host = await open(fake, [
     canvasPlugin(async () => ({ kind: "unavailable", reason: "No Chrome or Chromium was found." })),
   ]);
-  const session = await host.sessions.create();
-  await (await session.send("Preview it.")).settled();
+  const { session, receipt } = await host.sessions.start({ content: "Preview it." });
+  await receipt.settled();
 
   expect(
     JSON.stringify(
@@ -169,8 +169,7 @@ it("aborts a preview that runs past 45 seconds and tells the model it took too l
         return new Promise(() => undefined);
       }),
     ]);
-    const session = await host.sessions.create();
-    const turn = await session.send("Preview it.");
+    const { receipt: turn } = await host.sessions.start({ content: "Preview it." });
     const signal = await started.promise;
     await vi.advanceTimersByTimeAsync(45_000);
     await turn.settled();
