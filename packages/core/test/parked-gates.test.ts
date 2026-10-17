@@ -3,16 +3,29 @@ import { expect, it } from "vitest";
 import { until } from "../src/harness.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import { definePart } from "../src/index.ts";
+import type { ActionContext, ActionOutput, ToolDefinition } from "../src/index.ts";
 import { approve, echo } from "./plugin-support.ts";
+
+type GateActions = typeof approve.actions;
+
+async function markAllowed(
+  context: ActionContext<{ readonly tool: string }, GateActions>,
+): Promise<undefined> {
+  await context.part.update((current) => ({ ...current, tool: `${current.tool} allowed` }));
+
+  return undefined;
+}
+
+const marking: {
+  readonly [A in keyof GateActions]: (
+    context: ActionContext<{ readonly tool: string }, GateActions>,
+  ) => Promise<ActionOutput<GateActions[A]>>;
+} = { allow: markAllowed, deny: markAllowed };
 
 const decided = definePart({
   ...approve,
   kind: "gate/decided",
-  onAction: async (_action, _input, context) => {
-    await context.part.update((current) => ({ ...current, tool: `${current.tool} allowed` }));
-
-    return undefined;
-  },
+  onAction: (action, _input, context) => marking[action](context),
 });
 
 it.each([
@@ -24,6 +37,15 @@ it.each([
     const asked: PartId[] = [];
     const ran: string[] = [];
     const fake = fakeModels();
+
+    const counted: ToolDefinition<{ text: string }> = {
+      ...echo,
+      execute: async (args) => {
+        ran.push(args.text);
+
+        return echo.execute(args);
+      },
+    };
 
     fake.reply(
       {
@@ -43,16 +65,7 @@ it.each([
           id: "gate",
           contribute: {
             parts: [gate],
-            tools: [
-              {
-                ...echo,
-                execute: async (args, invocation) => {
-                  ran.push(args.text);
-
-                  return echo.execute(args, invocation);
-                },
-              },
-            ],
+            tools: [counted],
           },
           hooks: {
             before_tool: async (call, context) => {

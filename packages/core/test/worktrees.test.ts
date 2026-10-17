@@ -2,6 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { memoryStore } from "../src/store.ts";
+import { isPart, tool } from "../src/index.ts";
 import type { EnvironmentProvider, Plugin, Store, Worktree } from "../src/index.ts";
 import type { ComposeOptions } from "../src/server.ts";
 import { env, until } from "../src/harness.ts";
@@ -182,7 +183,7 @@ describe("worktree isolation", () => {
     expect(repo.created).toEqual([child.id]);
 
     const call = (await second.session(parent.id).view()).messages.find(
-      (message) => message.kind === "part" && message.state.call?.endsWith(":call-task"),
+      (message) => isPart(message, tool) && message.state.call.endsWith(":call-task"),
     );
 
     expect(call).toMatchObject({
