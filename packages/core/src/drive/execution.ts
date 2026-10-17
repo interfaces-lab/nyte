@@ -15,6 +15,7 @@ import type {
 } from "@nyte-ai/schema";
 import { retryDelayMs } from "@nyte-ai/ai/utils/retry";
 import { executeCall, owedCalls, readToolInput } from "../agent/tool-runner.ts";
+import type { OwedCall } from "../agent/tool-runner.ts";
 import type { FoldInput } from "../contract/fold.ts";
 import { PARTICIPANT_AUTHORITY } from "../contract/host.ts";
 import type { ExecutionState, Kernel, LandedInput } from "../contract/kernel.ts";
@@ -574,33 +575,38 @@ async function resume(
 
   try {
     await runtime.ready;
+    const tried = new Set<string>();
 
-    for (const owed of await owedCalls(kernel.store, session, run)) {
-      if (renewal.lease.signal.aborted) break;
+    for (
+      let batch = await runnableCalls(kernel.store, session, run, tried);
+      batch.length > 0 && !renewal.lease.signal.aborted;
+      batch = await runnableCalls(kernel.store, session, run, tried)
+    )
+      for (const owed of batch) {
+        if (renewal.lease.signal.aborted) break;
+        tried.add(owed.record.id);
+        const input = await readToolInput(kernel.store, session, owed.record);
 
-      if (owed.parked) continue;
-      const input = await readToolInput(kernel.store, session, owed.record);
+        if (input === null) continue;
 
-      if (input === null) continue;
-
-      await executeCall(kernel, {
-        session,
-        head,
-        run,
-        call: owed.record.id,
-        name: input.name,
-        args: input.args,
-        argumentsError: input.argumentsError,
-        runtime,
-        context: {
-          principal: input.principal,
-          authority: PARTICIPANT_AUTHORITY,
-          credential: { kind: "token", token: "" },
-          origin: null,
-        },
-        signal,
-      });
-    }
+        await executeCall(kernel, {
+          session,
+          head,
+          run,
+          call: owed.record.id,
+          name: input.name,
+          args: input.args,
+          argumentsError: input.argumentsError,
+          runtime,
+          context: {
+            principal: input.principal,
+            authority: PARTICIPANT_AUTHORITY,
+            credential: { kind: "token", token: "" },
+            origin: null,
+          },
+          signal,
+        });
+      }
   } finally {
     renewal.lease.stop();
     release();
@@ -611,6 +617,18 @@ async function resume(
   if (refused !== null) kernel.runs.end(run);
 
   return refused;
+}
+
+/** The run's owed calls that wait on nothing and that `tried` has not run. Read again after each batch: a wait that fires while a call runs makes its call runnable, and the wake it sends finds the head busy. */
+async function runnableCalls(
+  store: StoreConnection,
+  session: SessionId,
+  run: RunId,
+  tried: ReadonlySet<string>,
+): Promise<readonly OwedCall[]> {
+  return (await owedCalls(store, session, run)).filter(
+    (owed) => !owed.parked && !tried.has(owed.record.id),
+  );
 }
 
 /** Holds a head's lease while a run is resumed or driven; `refused` says why it was lost. */
