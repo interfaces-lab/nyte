@@ -56,9 +56,9 @@ const PICKER_SCRIPT = `(() => {
     let part = element.localName;
     for (const name of [...element.classList].slice(0, 2)) part += "." + CSS.escape(name);
     const parent = element.parentElement;
-    if (parent !== null) {
+    if (parent !== null && [...parent.children].filter((child) => child.matches(part)).length > 1) {
       const same = [...parent.children].filter((child) => child.localName === element.localName);
-      if (same.length > 1) part += ":nth-of-type(" + String(same.findIndex((child) => child === element) + 1) + ")";
+      part += ":nth-of-type(" + String(same.findIndex((child) => child === element) + 1) + ")";
     }
     return part;
   };
@@ -80,7 +80,8 @@ const PICKER_SCRIPT = `(() => {
     const rect = element.getBoundingClientRect();
     Object.assign(box.style, { display: "block", left: rect.left + "px", top: rect.top + "px", width: rect.width + "px", height: rect.height + "px" });
     tag.textContent = step(element);
-    Object.assign(tag.style, { display: "block", left: Math.max(0, rect.left) + "px", top: (rect.top >= 20 ? rect.top - 20 : rect.bottom + 2) + "px" });
+    Object.assign(tag.style, { display: "block", top: (rect.top >= 20 ? rect.top - 20 : rect.bottom + 2) + "px" });
+    tag.style.left = Math.max(0, Math.min(rect.left, window.innerWidth - tag.offsetWidth - 2)) + "px";
   };
   const block = (event) => {
     event.preventDefault();
