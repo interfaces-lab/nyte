@@ -307,15 +307,33 @@ function rowEstimate(
   }
 }
 
-function estimateTurnSize(turn: ConversationTurn, density: ToolCallDensity, scale: number): number {
-  let size = 0;
+/** What a turn's estimate counts, independent of density and font size. */
+interface TurnMeasure {
+  readonly users: number;
+  readonly prose: number;
+  readonly step: boolean;
+  readonly files: number;
+}
+
+const turnMeasures = new WeakMap<ConversationTurn, TurnMeasure>();
+
+/**
+ * Counts a turn's prompts, prose, work and changed files once per turn object:
+ * the virtualizer asks for every unmeasured row's estimate each time a row
+ * measures, and recognising a message's part validates its state.
+ */
+function measureTurn(turn: ConversationTurn): TurnMeasure {
+  const known = turnMeasures.get(turn);
+
+  if (known !== undefined) return known;
+  let users = 0;
   let prose = 0;
   let step = false;
   const files = new Set<string>();
 
   for (const message of turn.messages) {
     if (message.kind === "user") {
-      size += USER_ROW_ESTIMATE;
+      users += 1;
       continue;
     }
 
@@ -330,12 +348,22 @@ function estimateTurnSize(turn: ConversationTurn, density: ToolCallDensity, scal
       for (const path of message.state.changes?.paths ?? []) files.add(path);
   }
 
+  const measured = { users, prose, step, files: files.size };
+  turnMeasures.set(turn, measured);
+
+  return measured;
+}
+
+function estimateTurnSize(turn: ConversationTurn, density: ToolCallDensity, scale: number): number {
+  const { users, prose, step, files } = measureTurn(turn);
+  let size = USER_ROW_ESTIMATE * users;
+
   if (step) size += STEP_GROUP_ESTIMATE[density];
 
-  if (files.size > 0) {
+  if (files > 0) {
     size +=
       CHANGES_CARD_BASE_ESTIMATE +
-      CHANGES_CARD_ROW_ESTIMATE * Math.min(files.size, CHANGES_VISIBLE_FILES);
+      CHANGES_CARD_ROW_ESTIMATE * Math.min(files, CHANGES_VISIBLE_FILES);
   }
 
   if (prose > 0) {
