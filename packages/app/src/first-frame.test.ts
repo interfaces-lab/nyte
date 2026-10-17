@@ -40,13 +40,14 @@ afterEach(() => {
   queryClient.clear();
 });
 
-test("the last run's snapshot of this host seeds a new window as stale data", () => {
+test("the last run's snapshot of this host seeds a new window's placeholders", () => {
   stored.set(KEY, snapshot("local"));
   seedFirstFrame("local");
 
   assert.deepEqual(queryClient.getQueryData(keys.modelCatalog("initial")), catalog);
   assert.equal(queryClient.getQueryState(keys.modelCatalog("initial"))?.dataUpdatedAt, 0);
-  assert.deepEqual(queryClient.getQueryData(keys.workspaces), []);
+  assert.deepEqual(queryClient.getQueryData(keys.firstFrameWorkspaces), []);
+  assert.equal(queryClient.getQueryData(keys.workspaces), undefined);
   assert.deepEqual(queryClient.getQueryData(keys.firstFrameRoots), [sessionRow("recent")]);
 });
 
@@ -73,4 +74,5 @@ test("a connection to another host than the one recorded drops the seed", async 
   assert.equal(stored.has(KEY), false);
   assert.equal(queryClient.getQueryData(keys.modelCatalog("initial")), undefined);
   assert.equal(queryClient.getQueryData(keys.firstFrameRoots), undefined);
+  assert.equal(queryClient.getQueryData(keys.firstFrameWorkspaces), undefined);
 });

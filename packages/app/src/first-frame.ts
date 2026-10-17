@@ -1,17 +1,17 @@
 /**
  * What the last connected run saw of its host, kept so the next launch draws
- * a new chat, its model and the sidebar before the host answers. The seeded
- * queries carry `dataUpdatedAt: 0`, so any live answer outranks them and
- * replaces them in place.
+ * a new chat, its model and the sidebar before the host answers. Each seed
+ * sits under a key of its own that the live query shows as its placeholder,
+ * so the live answer replaces it in place and only live answers are recorded.
  */
-import type { HostId, ModelCatalogView, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
+import type { HostId, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import { ModelCatalogViewType, SessionInfoType, WorkspaceInfoType } from "@nyte-ai/schema";
 import type { Decoded } from "@nyte-ai/schema";
 import { hashKey } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { keys, queryClient } from "./queries.ts";
+import { keys, newestModelCatalog, queryClient } from "./queries.ts";
 import { directoryWatch } from "./sdk.tsx";
 
 const FIRST_FRAME_KEY = "nyte.first-frame.v1";
@@ -34,13 +34,16 @@ const FirstFrameType = Type.Object(
 
 type FirstFrame = Decoded<typeof FirstFrameType>;
 
-const SEEDED_KEYS = [keys.modelCatalog("initial"), keys.workspaces, keys.firstFrameRoots];
+const SEEDED_KEYS = [
+  keys.modelCatalog("initial"),
+  keys.firstFrameWorkspaces,
+  keys.firstFrameRoots,
+].map((key) => hashKey(key));
 
 let seededHostId: string | undefined;
 
-let written: string | null = null;
-
-let recording = false;
+/** The connection this run records for; the newest one wins. */
+let recording: { readonly host: string; readonly hostId: HostId } | undefined;
 
 function readStored(): string | null {
   try {
@@ -62,9 +65,7 @@ function parseFrame(stored: string | null, host: string): FirstFrame | undefined
   }
 }
 
-function forget(): void {
-  written = null;
-
+function forgetFirstFrame(): void {
   try {
     localStorage.removeItem(FIRST_FRAME_KEY);
   } catch {}
@@ -81,38 +82,21 @@ export function seedFirstFrame(host: string): boolean {
   const frame = parseFrame(stored, host);
 
   if (frame === undefined) {
-    if (stored !== null) forget();
+    if (stored !== null) forgetFirstFrame();
 
     return false;
   }
 
-  written = stored;
   seededHostId = frame.hostId;
   queryClient.setQueryData(keys.modelCatalog("initial"), frame.catalog, { updatedAt: 0 });
-  queryClient.setQueryData(keys.workspaces, frame.workspaces, { updatedAt: 0 });
+  queryClient.setQueryData(keys.firstFrameWorkspaces, frame.workspaces, { updatedAt: 0 });
   queryClient.setQueryData(keys.firstFrameRoots, frame.sessions, { updatedAt: 0 });
 
   return true;
 }
 
 function seeded(query: Query): boolean {
-  return (
-    query.state.dataUpdatedAt === 0 && SEEDED_KEYS.some((key) => hashKey(key) === query.queryHash)
-  );
-}
-
-/** The newest catalog any generation answered, live or seeded. */
-function newestCatalog(): ModelCatalogView | undefined {
-  const newest = queryClient
-    .getQueryCache()
-    .findAll({ queryKey: ["catalog", "models"] })
-    .filter((query) => query.state.data !== undefined)
-    .toSorted((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)
-    .at(0);
-
-  return newest === undefined
-    ? undefined
-    : queryClient.getQueryData<ModelCatalogView>(newest.queryKey);
+  return query.state.dataUpdatedAt === 0 && SEEDED_KEYS.includes(query.queryHash);
 }
 
 /** Pinned roots and the newest open ones, kept in the directory's newest-first order. */
@@ -128,26 +112,25 @@ function recentRoots(directory: readonly SessionInfo[]): readonly SessionInfo[] 
   return roots.filter((session) => kept.has(session)).slice(0, ROOT_LIMIT);
 }
 
-function write(host: string, hostId: HostId): void {
-  const catalog = newestCatalog();
+function write(): void {
+  const catalog = newestModelCatalog();
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
   const directory = directoryWatch("all").value;
 
-  if (catalog === undefined || workspaces === undefined || directory === undefined) return;
+  if (recording === undefined || catalog === undefined) return;
 
-  const next = JSON.stringify({
-    host,
-    hostId,
-    catalog,
-    workspaces,
-    sessions: recentRoots(directory),
-  } satisfies FirstFrame);
-
-  if (next === written) return;
+  if (workspaces === undefined || directory === undefined) return;
 
   try {
-    localStorage.setItem(FIRST_FRAME_KEY, next);
-    written = next;
+    localStorage.setItem(
+      FIRST_FRAME_KEY,
+      JSON.stringify({
+        ...recording,
+        catalog,
+        workspaces,
+        sessions: recentRoots(directory),
+      } satisfies FirstFrame),
+    );
   } catch {}
 }
 
@@ -155,22 +138,21 @@ function write(host: string, hostId: HostId): void {
  * Keep this run's view of `host` for the next launch. A connection to
  * another host than the one seeded drops the seed at once. Writes happen
  * only when the page hides or goes away, the moments a later launch reads
- * from, and only when something changed.
+ * from.
  */
 export function recordFirstFrame(host: string, hostId: HostId): void {
   if (seededHostId !== undefined && seededHostId !== hostId) {
     seededHostId = undefined;
-    forget();
+    forgetFirstFrame();
     void queryClient.resetQueries({ predicate: seeded });
   }
 
-  if (queryClient.getQueryState(keys.workspaces)?.dataUpdatedAt === 0)
-    void queryClient.invalidateQueries({ queryKey: keys.workspaces, exact: true });
+  if (recording === undefined) {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") write();
+    });
+    window.addEventListener("pagehide", write);
+  }
 
-  if (recording) return;
-  recording = true;
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") write(host, hostId);
-  });
-  window.addEventListener("pagehide", () => write(host, hostId));
+  recording = { host, hostId };
 }

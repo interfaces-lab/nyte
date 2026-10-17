@@ -126,18 +126,17 @@ function newestCatalogQuery() {
     .at(0);
 }
 
-function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
-  if (previous !== undefined) return previous;
+/** The newest catalog any generation answered: a live one, or the last run's seed until one does. */
+export function newestModelCatalog(): ModelCatalogView | undefined {
+  const newest = newestCatalogQuery();
 
-  const recent = queryClient
-    .getQueryCache()
-    .findAll({ queryKey: ["catalog", "models"] })
-    .toSorted((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)
-    .find((query) => query.state.data !== undefined);
-
-  return recent === undefined
+  return newest === undefined
     ? undefined
-    : queryClient.getQueryData<ModelCatalogView>(recent.queryKey);
+    : queryClient.getQueryData<ModelCatalogView>(newest.queryKey);
+}
+
+function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
+  return previous ?? newestModelCatalog();
 }
 
 const DEFAULT_MODEL_MUTATION = ["catalog", "default"] as const;
@@ -265,6 +264,8 @@ export function useWorkspaces() {
   return useQuery({
     queryKey: keys.workspaces,
     queryFn: readWorkspaces,
+    placeholderData: () =>
+      queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.firstFrameWorkspaces),
     select: (workspaces): readonly RailWorkspace[] =>
       workspaces.flatMap((workspace) => {
         const path = workspacePath(workspace);
