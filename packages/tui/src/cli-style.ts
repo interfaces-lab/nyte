@@ -232,7 +232,7 @@ export function renderCommandHelp(
         "which needs the folder to be trusted. add options: --env KEY=VALUE, --cwd <dir>,",
         "--header KEY=VALUE, --bearer-token-env-var <NAME>, --oauth-client-id <id>,",
         "--oauth-client-secret <secret>, --oauth-callback-port <n>, --oauth-client-name <name>,",
-        "--exposure direct|deferred|codemode|hidden, --description <text>.",
+        "--exposure direct|deferred|codemode|codemode-deferred|hidden, --description <text>.",
         "list exits 1 when an entry is invalid or an enabled server is not connected.",
         "login without a name needs an interactive terminal; over SSH, paste the URL the browser ends on.",
         "Examples: nyte mcp add docs --url https://example.com/mcp",
