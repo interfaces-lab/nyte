@@ -191,7 +191,11 @@ function currentWindow(): NyteWindow | undefined {
   return [...windows.values()].at(-1);
 }
 
-function reveal(window: BrowserWindow): void {
+/** Bring a window forward. One that has not drawn its first frame yet shows itself when it does. */
+function reveal(entry: NyteWindow): void {
+  if (!entry.shown) return;
+  const { window } = entry;
+
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
@@ -624,7 +628,7 @@ function createWindow(): NyteWindow {
   const entry: NyteWindow = {
     window: created,
     menuCommands: createMenuCommandDelivery({
-      openWindow: () => reveal(created),
+      openWindow: () => reveal(entry),
       send: (command) => created.webContents.send(APP_MENU_COMMAND_CHANNEL, command),
     }),
     present: () => {
@@ -777,7 +781,7 @@ if (!hasSingleInstanceLock) {
   app.on("second-instance", (_event, argv) => {
     const clerkCallback = argv.some((arg) => arg.startsWith(`${scheme}:`));
 
-    if (!clerkCallback) reveal((currentWindow() ?? createWindow()).window);
+    if (!clerkCallback) reveal(currentWindow() ?? createWindow());
   });
 
   void app.whenReady().then(async () => {
