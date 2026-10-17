@@ -36,20 +36,23 @@ export function createStreamClient(post: Post) {
     headers: { "Content-Type": "application/json" },
   });
 
-  const release = (current: Channel, id: string): void => {
+  const forget = (current: Channel, id: string): boolean => {
     const stream = current.streams.get(id);
 
-    if (stream === undefined) return;
+    if (stream === undefined) return false;
     current.streams.delete(id);
     stream.dispose();
 
-    if (current.streams.size === 0) {
-      current.controller.abort();
+    if (current.streams.size > 0) return true;
+    current.controller.abort();
 
-      if (channel === current) channel = undefined;
+    if (channel === current) channel = undefined;
 
-      return;
-    }
+    return false;
+  };
+
+  const release = (current: Channel, id: string): void => {
+    if (!forget(current, id)) return;
 
     void current.ready
       .then((channelId) =>
@@ -85,10 +88,10 @@ export function createStreamClient(post: Post) {
 
           if (frame.kind === "end") {
             buffer.end();
-            release(current, frame.stream);
+            forget(current, frame.stream);
           } else if (frame.kind === "error") {
             buffer.fail(decodeError(parseJson(frame.error)));
-            release(current, frame.stream);
+            forget(current, frame.stream);
           } else {
             let chunk: Uint8Array;
 
