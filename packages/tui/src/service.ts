@@ -149,6 +149,7 @@ export async function serviceCommandMain(
       const installed = await installService({
         home,
         version: VERSION,
+        code: await readCodeId(),
         command: serviceCommand(),
       });
 

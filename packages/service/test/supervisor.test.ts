@@ -70,8 +70,8 @@ describe("the installed service", () => {
     process.env["PATH"] = `${bin}:${path ?? ""}`;
     process.env["FAKE_SUPERVISOR_STATE"] = state;
     process.env["FAKE_SUPERVISOR_UNIT"] = supervisor?.unit ?? "";
-    v1 = await serviceBuild("v1");
-    v2 = await serviceBuild("v2");
+    v1 = await serviceBuild("v1", undefined);
+    v2 = await serviceBuild("v2", undefined);
   });
 
   afterEach(async () => {
