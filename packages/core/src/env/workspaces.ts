@@ -29,7 +29,6 @@ import type {
 } from "../contract/workspace.ts";
 import { createJobs, jobHandle } from "../engine/jobs.ts";
 import { dropScans } from "../extend/resources.ts";
-import { listWorkspaceCommands, runWorkspaceCommand } from "../extend/workspace-commands.ts";
 import { commit } from "../fold/commit.ts";
 import { endedRunRef, runRef, workspaceRef } from "../store/refs.ts";
 import {
@@ -175,10 +174,10 @@ export function createWorkspaces(
 
 export function workspaceHandle(
   kernel: Kernel,
-  context: ConnectionContext,
+  context: Pick<ConnectionContext, "origin">,
   id: WorkspaceId,
   client: object | null = null,
-): Workspace {
+): Omit<Workspace, "commands" | "command"> {
   const viewing = async (): Promise<SessionId | null> => {
     const origin = context.origin;
 
@@ -251,11 +250,6 @@ export function workspaceHandle(
       return outcome.kind === "set" ? { kind: "updated" } : STALE;
     });
 
-  const requireWorkspace = async (): Promise<void> => {
-    if ((await readWorkspace(kernel.store, id)) === null)
-      throw new SdkError("unknown", `Workspace ${id} is not registered.`);
-  };
-
   return {
     id,
     async info() {
@@ -266,16 +260,6 @@ export function workspaceHandle(
       return info;
     },
     mcp: mcpApi(kernel, id),
-    async commands() {
-      await requireWorkspace();
-
-      return listWorkspaceCommands(kernel, id);
-    },
-    async command(name, args) {
-      await requireWorkspace();
-
-      return runWorkspaceCommand(kernel, context, id, name, args);
-    },
     watch() {
       return closable<WorkspaceInfo>(() => {
         let changes = 0;

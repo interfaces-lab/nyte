@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   CommandInfo,
   Json,
@@ -8,6 +8,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel, PluginRuntime } from "../contract/kernel.ts";
+import { readWorkspace } from "../env/environment.ts";
 import { newChatPlugins } from "./activation.ts";
 import { createHookDispatch } from "./hooks.ts";
 import { activateApart } from "./plugin-runtime.ts";
@@ -56,6 +57,9 @@ async function withNewChatPlugins<T>(
     plugins: Pick<PluginRuntime, "registries" | "api"> & { readonly session: SessionId },
   ) => Promise<T>,
 ): Promise<T> {
+  if ((await readWorkspace(kernel.store, workspace)) === null)
+    throw new SdkError("unknown", `Workspace ${workspace} is not registered.`);
+
   const session = asId<"session">(crypto.randomUUID());
   const ended = new AbortController();
 
