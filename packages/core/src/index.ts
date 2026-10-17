@@ -93,6 +93,7 @@ export type {
   FileBatch,
   FilesApi,
   GitApi,
+  GitHubAccountApi,
   GitHubApi,
   Job,
   Jobs,

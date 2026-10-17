@@ -16,6 +16,7 @@ import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type {
+  GitHubAccountState,
   GitHubPullRequestInput,
   GitHubPullRequestOutcome,
   GitHubState,
@@ -23,7 +24,7 @@ import type {
   GitRevision,
 } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { useGitHub, useGitHubState } from "../chrome/github-account.ts";
+import { useGitHub, useGitHubAccountState, useGitHubState } from "../chrome/github-account.ts";
 import { errorMessage } from "../errors.ts";
 import {
   Menu,
@@ -143,13 +144,18 @@ interface CommitBarState {
   readonly fileCount: number;
   readonly message: string;
   readonly branch: BranchReadout | undefined;
-  /** GitHub as the host last read it; undefined until it answers. */
+  /** The machine's GitHub CLI login; undefined until it answers, null where the host serves none. */
+  readonly account: GitHubAccountState | null | undefined;
+  /** The folder on GitHub as the host last read it; undefined until it answers. */
   readonly github: GitHubState | undefined;
 }
 
-/** Why GitHub cannot open a pull request yet, read from its state before anything runs. */
-function pullRequestBlocker(github: GitHubState | undefined): string | undefined {
-  switch (github?.kind) {
+/** Why GitHub cannot open a pull request yet, read from the login and the folder before anything runs. */
+function pullRequestBlocker(
+  account: GitHubAccountState | null | undefined,
+  github: GitHubState | undefined,
+): string | undefined {
+  switch (account?.kind) {
     case undefined:
     case "signing_in":
       return undefined;
@@ -158,9 +164,11 @@ function pullRequestBlocker(github: GitHubState | undefined): string | undefined
     case "signed_out":
       return "Sign in to the GitHub CLI to open pull requests";
     case "error":
-      return github.message;
+      return account.message;
     case "ready":
-      return github.repository === undefined ? "This repository has no GitHub remote" : undefined;
+      return github !== undefined && github.repository === undefined
+        ? "This repository has no GitHub remote"
+        : undefined;
   }
 }
 
@@ -178,7 +186,7 @@ function commitActionDisabledReason(
   if (plan.pullRequest && !readsWorkingTree(state.scope))
     return "Pull requests apply to the working tree";
 
-  const blocker = plan.pullRequest ? pullRequestBlocker(state.github) : undefined;
+  const blocker = plan.pullRequest ? pullRequestBlocker(state.account, state.github) : undefined;
 
   if (blocker !== undefined) return blocker;
 
@@ -393,6 +401,7 @@ export function ChangesCommitBar({
 }: ChangesCommitBarProps): ReactElement {
   const github = useGitHub();
   const githubState = useGitHubState(github);
+  const account = useGitHubAccountState().data;
   const actions = commitActions(github !== undefined);
   const [message, setMessage] = useState("");
   const [chosenAction, setAction] = useState<CommitAction>(() => readStoredAction(COMMIT_ACTIONS));
@@ -408,9 +417,16 @@ export function ChangesCommitBar({
   const [result, setResult] = useState<CommitBarResult | undefined>(undefined);
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
 
-  const state: CommitBarState = { scope, fileCount, message, branch, github: githubState.data };
+  const state: CommitBarState = {
+    scope,
+    fileCount,
+    message,
+    branch,
+    account,
+    github: githubState.data,
+  };
   const pullRequest =
-    githubState.data?.kind === "ready" && githubState.data.pullRequest.kind === "ready"
+    githubState.data?.pullRequest.kind === "ready"
       ? githubState.data.pullRequest.pullRequest
       : undefined;
 
@@ -549,7 +565,7 @@ export function ChangesCommitBar({
   };
 
   const blocked = commitActionPlan(action).pullRequest
-    ? pullRequestBlocker(githubState.data)
+    ? pullRequestBlocker(account, githubState.data)
     : undefined;
   const successText = result?.tone === "success" ? result.text.trim() : "";
   const showResult = result !== undefined && (result.tone === "error" || successText !== "");

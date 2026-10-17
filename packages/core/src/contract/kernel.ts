@@ -66,6 +66,7 @@ import type { ToolDefinition } from "./tools.ts";
 import type {
   EnvironmentRegistry,
   ExecutionEnv,
+  GitHubAccountApi,
   JobTable,
   McpHub,
   PageTable,
@@ -140,6 +141,9 @@ export interface Kernel {
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
 
   readonly mcp: McpHub | null;
+
+  /** The serving machine's GitHub CLI login, null on a host without one. */
+  readonly github: GitHubAccountApi | null;
 
   readonly plugins: PluginHost;
 

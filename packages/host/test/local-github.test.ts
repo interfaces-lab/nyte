@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { asId } from "@nyte-ai/schema";
 import type { ExecutionEnv, GitHubApi } from "@nyte-ai/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { localExec, localFiles, localGitHub } from "../src/index.ts";
+import { localExec, localFiles, localGitHub, localGitHubAccount } from "../src/index.ts";
 
 const FAKE_GH = fileURLToPath(new URL("fixtures/gh", import.meta.url));
 
@@ -156,17 +156,23 @@ describe("localGitHub", () => {
   it("answers cli_missing with the repository when no gh is on the PATH, and opens nothing", async () => {
     const root = await repository({ origin: "git@github.com:octo/hello.git" });
     const api = github(root, "nyte-no-such-gh");
+    const account = localGitHubAccount({ gh: "nyte-no-such-gh", home: root });
 
-    expect(await api.state()).toEqual({ kind: "cli_missing", repository: HELLO });
+    expect(await api.state()).toEqual({ repository: HELLO, pullRequest: { kind: "unavailable" } });
     expect(await api.createPullRequest({ title: "Fix" })).toEqual({ kind: "cli_missing" });
-    expect(await api.signIn()).toEqual({ kind: "cli_missing", repository: HELLO });
+    expect(await account.account()).toEqual({ kind: "cli_missing" });
+    expect(await account.signIn()).toEqual({ kind: "cli_missing" });
   });
 
   it("answers signed_out, and a pull request without a login is refused before gh runs it", async () => {
     const root = await repository({ origin: "https://github.com/octo/hello.git" });
     await scenario({ auth: "signed_out" });
 
-    expect(await github(root).state()).toEqual({ kind: "signed_out", repository: HELLO });
+    expect(await github(root).state()).toEqual({
+      repository: HELLO,
+      pullRequest: { kind: "unavailable" },
+    });
+    expect(await localGitHubAccount({ home: root }).account()).toEqual({ kind: "signed_out" });
     expect(await github(root).createPullRequest({ title: "Fix" })).toEqual({
       kind: "signed_out",
     });
@@ -176,22 +182,27 @@ describe("localGitHub", () => {
   it("says what to do for a rejected login, a gh too old for --json, and an unreachable API", async () => {
     const root = await repository({ origin: "https://github.com/octo/hello" });
 
+    const account = localGitHubAccount({ home: root });
+
     await scenario({ auth: "invalid" });
-    expect(await github(root).state()).toMatchObject({
+    expect(await account.account()).toMatchObject({
       kind: "error",
       message: expect.stringContaining("gh auth login"),
     });
 
     await scenario({ auth: "ready", cli: "old" });
-    expect(await github(root).state()).toMatchObject({
+    expect(await account.account()).toEqual({
       kind: "error",
+      message: "Update the GitHub CLI (gh), then try again.",
+    });
+    expect(await github(root).createPullRequest({ title: "Fix" })).toEqual({
+      kind: "failed",
       message: "Update the GitHub CLI (gh), then try again.",
     });
 
     await scenario({ auth: "ready", api: "fail" });
-    expect(await github(root).state()).toEqual({
+    expect(await account.account()).toEqual({
       kind: "error",
-      repository: HELLO,
       message: "Couldn't reach GitHub. Try again.",
     });
   });
@@ -200,14 +211,14 @@ describe("localGitHub", () => {
     const root = await repository({ origin: "https://gitlab.com/octo/hello.git" });
     await scenario({ auth: "ready" });
 
-    expect(await github(root).state()).toEqual({
+    expect(await github(root).state()).toEqual({ pullRequest: { kind: "none" } });
+    expect(await localGitHubAccount({ home: root }).account()).toEqual({
       kind: "ready",
       account: {
         login: "octocat",
         name: "The Octocat",
         avatarUrl: "https://avatars.githubusercontent.com/u/583231?v=4",
       },
-      pullRequest: { kind: "none" },
     });
     expect(await github(root).createPullRequest({ title: "Fix" })).toEqual({ kind: "no_remote" });
   });
@@ -223,7 +234,6 @@ describe("localGitHub", () => {
     const state = await github(root).state();
 
     expect(state).toMatchObject({
-      kind: "ready",
       repository: HELLO,
       pullRequest: {
         kind: "ready",
@@ -347,7 +357,6 @@ describe("localGitHub", () => {
     await scenario({ auth: "ready", pulls: { "ada:feature": openPull } });
 
     expect(await github(root).state()).toMatchObject({
-      kind: "ready",
       repository: { ...HELLO, remoteName: "upstream" },
       pullRequest: { kind: "ready", pullRequest: { number: 12 } },
     });
@@ -361,45 +370,30 @@ describe("localGitHub", () => {
     sh(root, "checkout", "-q", "--detach");
     await scenario({ auth: "ready", pulls: { feature: openPull } });
 
-    expect(await github(root).state()).toMatchObject({
-      kind: "ready",
-      pullRequest: { kind: "none" },
-    });
+    expect(await github(root).state()).toMatchObject({ pullRequest: { kind: "none" } });
     expect(await github(root).createPullRequest({ title: "Fix" })).toEqual({ kind: "detached" });
   });
 
-  it("signs in through one shared gh auth login, shows its code, and is ready once it is entered", async () => {
+  it("signs in through one gh auth login for the machine, shows its code, and is ready once it is entered", async () => {
     const root = await repository({ origin: "https://github.com/octo/hello.git" });
     await scenario({ auth: "signed_out" });
-    const shared = localGitHub();
-
-    const env = (cwd: string): ExecutionEnv => ({
-      identity: asId("test"),
-      cwd,
-      files: localFiles(cwd),
-      exec: localExec(cwd),
-      close: async () => undefined,
-    });
-
-    const here = shared(env(root));
-    const elsewhere = shared(env(await folder()));
-    const signingIn = await here.signIn();
+    const account = localGitHubAccount({ home: await folder() });
+    const signingIn = await account.signIn();
 
     expect(signingIn).toMatchObject({
       kind: "signing_in",
-      repository: HELLO,
       deviceCode: { userCode: "ABCD-1234", verificationUri: "https://github.com/login/device" },
     });
-    expect(await elsewhere.signIn()).toMatchObject({ kind: "signing_in" });
-    expect(await elsewhere.state()).not.toHaveProperty("repository");
+    expect(await account.signIn()).toMatchObject({ kind: "signing_in" });
     expect((await calls()).filter((call) => call.args[1] === "login")).toHaveLength(1);
 
     await writeFile(`${scenarioFile}.approved`, "");
-    await vi.waitFor(async () => expect(await here.state()).toMatchObject({ kind: "ready" }), {
+    await vi.waitFor(async () => expect(await account.account()).toMatchObject({ kind: "ready" }), {
       timeout: 5_000,
     });
+    expect(await github(root).state()).toMatchObject({ repository: HELLO });
 
-    expect(await here.signOut()).toEqual({ kind: "signed_out", repository: HELLO });
+    expect(await account.signOut()).toEqual({ kind: "signed_out" });
     expect((await calls()).find((call) => call.args[1] === "logout")?.args).toEqual([
       "auth",
       "logout",
@@ -411,12 +405,11 @@ describe("localGitHub", () => {
   });
 
   it("cancels a sign-in still waiting for its code on sign-out, leaving the login as it was", async () => {
-    const root = await repository({});
     await scenario({ auth: "signed_out" });
-    const api = github(root);
+    const account = localGitHubAccount({ home: await folder() });
 
-    expect(await api.signIn()).toMatchObject({ kind: "signing_in" });
-    expect(await api.signOut()).toEqual({ kind: "signed_out" });
-    expect(await api.state()).toEqual({ kind: "signed_out" });
+    expect(await account.signIn()).toMatchObject({ kind: "signing_in" });
+    expect(await account.signOut()).toEqual({ kind: "signed_out" });
+    expect(await account.account()).toEqual({ kind: "signed_out" });
   });
 });

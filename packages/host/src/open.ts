@@ -38,6 +38,7 @@ import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
 import { readErrorCode } from "./local/tree.ts";
+import { localGitHubAccount } from "./local/github.ts";
 import { localProvider } from "./local/provider.ts";
 import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
 import { listen } from "./listen.ts";
@@ -171,6 +172,7 @@ async function composeOpen(
     loadPlugins: async (paths) => pluginLoader([...files.dirs, ...(await projectDirs())])(paths),
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
+    github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
     plugins: [...plugins, ...files.plugins],
     pluginSources: files.sources,
     secrets,

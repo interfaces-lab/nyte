@@ -28,6 +28,7 @@ import type {
   GitScope,
   GitStatus,
   GitWrite,
+  GitHubAccountState,
   GitHubPullRequestInput,
   GitHubPullRequestOutcome,
   GitHubState,
@@ -103,18 +104,24 @@ export interface GitApi {
 
 /**
  * GitHub for one workspace through the serving machine's GitHub CLI (`gh`):
- * the CLI's login is machine-wide and owns the credentials, the workspace
- * picks the repository (its remotes) and the branch (its HEAD).
+ * the workspace picks the repository (its remotes) and the branch (its HEAD);
+ * the login is the machine's, `Connection.github`.
  */
 export interface GitHubApi {
-  /** The login, the repository and the checked-out branch's pull request with its checks. `signing_in` while a sign-in waits for its code. */
+  /** The repository and the checked-out branch's pull request with its checks; the pull request is `unavailable` while the machine's `gh` has no account that can read it. */
   state(): Promise<GitHubState>;
-  /** Starts `gh auth login` on github.com, or joins the one already running, and answers `signing_in` once it has a one-time code; an account already signed in answers `ready` and starts nothing. The sign-in ends when the code is entered, when it expires, or on `signOut`. */
-  signIn(): Promise<GitHubState>;
-  /** Ends a sign-in still waiting for its code; otherwise removes the CLI's github.com login. */
-  signOut(): Promise<GitHubState>;
   /** Opens a pull request for the checked-out branch, which the caller has pushed; an open one for the branch answers `exists` and opens nothing. */
   createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
+}
+
+/** The serving machine's GitHub CLI login, one for the whole machine and every workspace on it. */
+export interface GitHubAccountApi {
+  /** The github.com account `gh` is signed in as; `signing_in` while a sign-in waits for its code. */
+  account(): Promise<GitHubAccountState>;
+  /** Starts `gh auth login` on github.com, or joins the one already running, and answers `signing_in` once it has a one-time code; an account already signed in answers `ready` and starts nothing. The sign-in ends when the code is entered, when it expires, or on `signOut`. */
+  signIn(): Promise<GitHubAccountState>;
+  /** Ends a sign-in still waiting for its code; otherwise removes the CLI's github.com login. */
+  signOut(): Promise<GitHubAccountState>;
 }
 
 export interface Jobs {

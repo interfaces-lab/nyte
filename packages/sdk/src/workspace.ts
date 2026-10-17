@@ -139,8 +139,6 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
 function githubApi(rows: Rows, workspace: WorkspaceId): GitHubApi {
   return {
     state: () => rows.call("github.state", { workspace }),
-    signIn: () => rows.call("github.signIn", { workspace }),
-    signOut: () => rows.call("github.signOut", { workspace }),
     createPullRequest: (input) => rows.call("github.createPullRequest", { workspace, input }),
   };
 }

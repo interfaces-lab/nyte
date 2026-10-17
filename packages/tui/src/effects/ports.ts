@@ -2,6 +2,7 @@ import type {
   BlobId,
   CommandOutcome,
   ConfigureOutcome,
+  GitHubAccountState,
   GitHubState,
   HostView,
   Json,
@@ -89,8 +90,10 @@ export interface HostPort {
     driver: LoginDriver,
   ): Promise<{ readonly provider: string; readonly name: string }>;
   hostPlugins(): Promise<HostView["plugins"]>;
-  /** The workspace's GitHub state through the host's `gh`, or `null` where the host serves no GitHub. */
-  github(workspace: WorkspaceId): Promise<GitHubState | null>;
+  /** The machine's `gh` login and the workspace on GitHub through the host, or `null` where the host serves no GitHub. */
+  github(
+    workspace: WorkspaceId,
+  ): Promise<{ readonly account: GitHubAccountState; readonly folder: GitHubState } | null>;
   mcp(workspace: WorkspaceId): Promise<McpView>;
   mcpAction(workspace: WorkspaceId, server: string, action: McpAction): Promise<McpChange>;
   mcpLogin(workspace: WorkspaceId, server: string, driver: LoginDriver): Promise<void>;

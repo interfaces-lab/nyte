@@ -90,7 +90,10 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
     async github(workspace) {
       const capability = await host.workspace(workspace).github();
 
-      return capability.kind === "available" ? capability.api.state() : null;
+      if (capability.kind !== "available") return null;
+      const [account, state] = await Promise.all([host.github.account(), capability.api.state()]);
+
+      return { account, folder: state };
     },
     async trustInfo(workspace) {
       const info = await host.workspace(workspace).info();

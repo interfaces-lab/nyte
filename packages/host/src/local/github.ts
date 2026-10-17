@@ -1,10 +1,12 @@
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
 import type { ChildProcess } from "node:child_process";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
 import type {
   GitHubAccount,
+  GitHubAccountState,
   GitHubCheck,
   GitHubDeviceCode,
   GitHubPullRequest,
@@ -14,7 +16,7 @@ import type {
   GitHubState,
 } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
-import type { ExecutionEnv, GitHubApi } from "@nyte-ai/core";
+import type { ExecutionEnv, GitHubAccountApi, GitHubApi } from "@nyte-ai/core";
 import { findExecutable, run } from "./command.ts";
 
 const ENV = {
@@ -315,34 +317,15 @@ function startSignIn(file: string, cwd: string, ended: () => void): SignIn {
   return { started: started.promise, expiresAt, cancel: () => end({ kind: "ended" }) };
 }
 
-/**
- * Returns GitHub for each local workspace through the machine's `gh` (`gh`,
- * default `gh` on the PATH) and `git`. Nothing runs until a state is asked
- * for. The login is machine-wide: every workspace shares at most one
- * `gh auth login`. `state` reads the github.com account (`gh auth status`,
- * then `gh api user`), the repository from the remotes in gh's base-repository
- * order (`upstream`, `github`, `origin`, then the rest; only github.com
- * remotes), and the checked-out branch's pull request with its check rollup
- * (`gh pr view <branch> --json`, the branch as `<owner>:<branch>` when it
- * tracks a fork). While a sign-in runs, `state` answers its code until it
- * ends, then what the login became. `createPullRequest` answers each precondition from that
- * state, an open pull request as `exists`, and otherwise runs
- * `gh pr create --head <branch>` with the title, the body on stdin, and
- * `--fill` for whichever of the two is missing.
- */
-export function localGitHub(options?: {
-  readonly gh?: string;
-  readonly git?: string;
-}): (env: ExecutionEnv) => GitHubApi {
-  const binary = options?.gh ?? "gh";
-  const gitBinary = options?.git ?? "git";
-  let signing: SignIn | undefined;
+type Gh = (
+  cwd: string,
+  args: readonly string[],
+  extra?: { readonly input?: string; readonly timeoutMs?: number },
+) => Promise<Command>;
 
-  const gh = async (
-    cwd: string,
-    args: readonly string[],
-    extra?: { readonly input?: string; readonly timeoutMs?: number },
-  ): Promise<Command> => {
+/** Runs `binary` (found on the PATH at each call) with gh's prompts and colors off. */
+function ghCommand(binary: string): Gh {
+  return async (cwd, args, extra) => {
     const file = await findExecutable(binary);
 
     if (file === null) return { kind: "missing" };
@@ -371,6 +354,174 @@ export function localGitHub(options?: {
       stderr: ran.stderr,
     };
   };
+}
+
+/** gh's github.com login: `gh auth status`, the active account only. */
+async function readAuth(gh: Gh, cwd: string): Promise<Auth> {
+  const result = await gh(cwd, [
+    "auth",
+    "status",
+    "--hostname",
+    "github.com",
+    "--json",
+    "hosts",
+    "--jq",
+    '[(.hosts["github.com"] // [])[] | {active, state, login}]',
+  ]);
+
+  if (result.kind === "missing") return result;
+
+  if (result.kind === "failed") return { kind: "error", message: RECOVERY.account };
+
+  if (result.code !== 0)
+    return {
+      kind: "error",
+      message: /unknown flag: --(?:json|jq)\b/u.test(result.stderr)
+        ? RECOVERY.update
+        : RECOVERY.account,
+    };
+
+  const entries = parseJson(authSchema, result.stdout);
+
+  if (entries === undefined) return { kind: "error", message: RECOVERY.update };
+  const active = entries.find((entry) => entry.active);
+
+  if (active === undefined) return { kind: "signed_out" };
+
+  if (active.state !== "success")
+    return {
+      kind: "error",
+      message: active.state === "error" ? RECOVERY.signIn : RECOVERY.account,
+    };
+
+  return { kind: "ready", login: active.login };
+}
+
+/** The account gh is signed in as: its login, then its profile (`gh api user`). */
+async function readAccountState(gh: Gh, cwd: string): Promise<GitHubAccountState> {
+  const auth = await readAuth(gh, cwd);
+
+  if (auth.kind === "missing") return { kind: "cli_missing" };
+
+  if (auth.kind !== "ready") return auth;
+  const result = await gh(cwd, ["api", "--hostname", "github.com", "user"]);
+
+  const account =
+    result.kind === "completed" && result.code === 0 ? readAccountJson(result.stdout) : undefined;
+
+  return account === undefined
+    ? { kind: "error", message: RECOVERY.account }
+    : { kind: "ready", account };
+}
+
+/**
+ * Returns the machine's GitHub CLI login through `gh` (`gh`, default `gh` on
+ * the PATH), run in `home` (default `os.homedir()`). Nothing runs until it is
+ * asked for. `account` reads the github.com account (`gh auth status`, then
+ * `gh api user`); while a sign-in runs, it answers its code until it ends,
+ * then what the login became. `signIn` starts at most one `gh auth login`
+ * for the whole machine and `signOut` cancels it or runs `gh auth logout`.
+ */
+export function localGitHubAccount(options?: {
+  readonly gh?: string;
+  readonly home?: string;
+}): GitHubAccountApi {
+  const binary = options?.gh ?? "gh";
+  const gh = ghCommand(binary);
+  const home = options?.home ?? homedir();
+  let signing: SignIn | undefined;
+
+  const signingState = async (attempt: SignIn): Promise<GitHubAccountState> => {
+    const start = await attempt.started;
+
+    if (start.kind !== "code") {
+      const state = await readAccountState(gh, home);
+
+      return start.kind === "failed" && state.kind === "signed_out"
+        ? { kind: "error", message: RECOVERY.signIn }
+        : state;
+    }
+
+    return {
+      kind: "signing_in",
+      deviceCode: {
+        ...start.deviceCode,
+        expiresInSeconds: Math.max(0, Math.ceil((attempt.expiresAt - Date.now()) / 1000)),
+      },
+    };
+  };
+
+  return {
+    account: () => (signing === undefined ? readAccountState(gh, home) : signingState(signing)),
+    async signIn() {
+      if (signing !== undefined) return signingState(signing);
+      const state = await readAccountState(gh, home);
+
+      if (state.kind !== "signed_out" && state.kind !== "error") return state;
+
+      if (signing !== undefined) return signingState(signing);
+      const file = await findExecutable(binary);
+
+      if (file === null) return { kind: "cli_missing" };
+
+      const attempt = startSignIn(file, home, () => {
+        if (signing === attempt) signing = undefined;
+      });
+
+      signing = attempt;
+
+      return signingState(attempt);
+    },
+    async signOut() {
+      if (signing !== undefined) {
+        signing.cancel();
+        signing = undefined;
+
+        return readAccountState(gh, home);
+      }
+
+      const auth = await readAuth(gh, home);
+
+      if (auth.kind !== "ready") return readAccountState(gh, home);
+
+      const result = await gh(home, [
+        "auth",
+        "logout",
+        "--hostname",
+        "github.com",
+        "--user",
+        auth.login,
+      ]);
+
+      const state = await readAccountState(gh, home);
+
+      if ((result.kind === "completed" && result.code === 0) || state.kind !== "ready")
+        return state;
+
+      return { kind: "error", message: RECOVERY.signOut };
+    },
+  };
+}
+
+/**
+ * Returns GitHub for each local workspace through the machine's `gh` (`gh`,
+ * default `gh` on the PATH) and `git`. Nothing runs until a state is asked
+ * for. `state` reads the repository from the remotes in gh's
+ * base-repository order (`upstream`, `github`, `origin`, then the rest; only
+ * github.com remotes) and, while gh has a login, the checked-out branch's
+ * pull request with its check rollup (`gh pr view <branch> --json`, the
+ * branch as `<owner>:<branch>` when it tracks a fork); without one the pull
+ * request is `unavailable`. `createPullRequest` answers each precondition, an
+ * open pull request as `exists`, and otherwise runs
+ * `gh pr create --head <branch>` with the title as an argument, the body on
+ * stdin, and `--fill` for whichever of the two is missing.
+ */
+export function localGitHub(options?: {
+  readonly gh?: string;
+  readonly git?: string;
+}): (env: ExecutionEnv) => GitHubApi {
+  const gh = ghCommand(options?.gh ?? "gh");
+  const gitBinary = options?.git ?? "git";
 
   const git = async (cwd: string, args: readonly string[]): Promise<string | null> => {
     const ran = await run(gitBinary, args, {
@@ -402,54 +553,6 @@ export function localGitHub(options?: {
     return [...found.values()].sort(
       (left, right) => rank(left.remoteName) - rank(right.remoteName),
     );
-  };
-
-  const readAuth = async (cwd: string): Promise<Auth> => {
-    const result = await gh(cwd, [
-      "auth",
-      "status",
-      "--hostname",
-      "github.com",
-      "--json",
-      "hosts",
-      "--jq",
-      '[(.hosts["github.com"] // [])[] | {active, state, login}]',
-    ]);
-
-    if (result.kind === "missing") return result;
-
-    if (result.kind === "failed") return { kind: "error", message: RECOVERY.account };
-
-    if (result.code !== 0)
-      return {
-        kind: "error",
-        message: /unknown flag: --(?:json|jq)\b/u.test(result.stderr)
-          ? RECOVERY.update
-          : RECOVERY.account,
-      };
-
-    const entries = parseJson(authSchema, result.stdout);
-
-    if (entries === undefined) return { kind: "error", message: RECOVERY.update };
-    const active = entries.find((entry) => entry.active);
-
-    if (active === undefined) return { kind: "signed_out" };
-
-    if (active.state !== "success")
-      return {
-        kind: "error",
-        message: active.state === "error" ? RECOVERY.signIn : RECOVERY.account,
-      };
-
-    return { kind: "ready", login: active.login };
-  };
-
-  const readAccount = async (cwd: string): Promise<GitHubAccount | undefined> => {
-    const result = await gh(cwd, ["api", "--hostname", "github.com", "user"]);
-
-    return result.kind === "completed" && result.code === 0
-      ? readAccountJson(result.stdout)
-      : undefined;
   };
 
   const readHead = async (
@@ -501,126 +604,38 @@ export function localGitHub(options?: {
     cwd: string,
   ): Promise<{
     readonly state: GitHubState;
+    readonly auth: Auth;
     readonly head: string | undefined;
   }> => {
-    const [found, auth] = await Promise.all([remotes(cwd), readAuth(cwd)]);
+    const [found, auth] = await Promise.all([remotes(cwd), readAuth(gh, cwd)]);
     const repository = found[0];
     const located = repository === undefined ? {} : { repository };
 
-    if (auth.kind === "missing")
-      return { state: { kind: "cli_missing", ...located }, head: undefined };
+    if (auth.kind !== "ready")
+      return { state: { ...located, pullRequest: { kind: "unavailable" } }, auth, head: undefined };
 
-    if (auth.kind === "signed_out")
-      return { state: { kind: "signed_out", ...located }, head: undefined };
-
-    if (auth.kind === "error")
-      return { state: { kind: "error", ...located, message: auth.message }, head: undefined };
-
-    const branch = async () => {
-      if (repository === undefined) return { head: undefined, pullRequest: NO_PULL_REQUEST };
-      const head = await readHead(cwd, repository, found);
-
-      return { head, pullRequest: await readPullRequest(cwd, repository, head) };
-    };
-
-    const [account, { head, pullRequest }] = await Promise.all([readAccount(cwd), branch()]);
-
-    if (account === undefined)
-      return { state: { kind: "error", ...located, message: RECOVERY.account }, head };
-
-    return { state: { kind: "ready", ...located, account, pullRequest }, head };
-  };
-
-  const signingState = async (cwd: string, attempt: SignIn): Promise<GitHubState> => {
-    const start = await attempt.started;
-
-    if (start.kind !== "code") {
-      const { state } = await readState(cwd);
-
-      return start.kind === "failed" && state.kind === "signed_out"
-        ? { ...state, kind: "error", message: RECOVERY.signIn }
-        : state;
-    }
-
-    const found = await remotes(cwd);
-    const repository = found[0];
+    if (repository === undefined)
+      return { state: { pullRequest: NO_PULL_REQUEST }, auth, head: undefined };
+    const head = await readHead(cwd, repository, found);
 
     return {
-      kind: "signing_in",
-      ...(repository === undefined ? {} : { repository }),
-      deviceCode: {
-        ...start.deviceCode,
-        expiresInSeconds: Math.max(0, Math.ceil((attempt.expiresAt - Date.now()) / 1000)),
-      },
+      state: { repository, pullRequest: await readPullRequest(cwd, repository, head) },
+      auth,
+      head,
     };
-  };
-
-  const signIn = async (cwd: string): Promise<GitHubState> => {
-    if (signing !== undefined) return signingState(cwd, signing);
-    const { state } = await readState(cwd);
-
-    if (state.kind !== "signed_out" && state.kind !== "error") return state;
-
-    if (signing !== undefined) return signingState(cwd, signing);
-    const file = await findExecutable(binary);
-
-    if (file === null) return { ...state, kind: "cli_missing" };
-
-    const attempt = startSignIn(file, cwd, () => {
-      if (signing === attempt) signing = undefined;
-    });
-
-    signing = attempt;
-
-    return signingState(cwd, attempt);
-  };
-
-  const signOut = async (cwd: string): Promise<GitHubState> => {
-    if (signing !== undefined) {
-      signing.cancel();
-      signing = undefined;
-
-      return (await readState(cwd)).state;
-    }
-
-    const auth = await readAuth(cwd);
-
-    if (auth.kind !== "ready") return (await readState(cwd)).state;
-
-    const result = await gh(cwd, [
-      "auth",
-      "logout",
-      "--hostname",
-      "github.com",
-      "--user",
-      auth.login,
-    ]);
-
-    const { state } = await readState(cwd);
-
-    if ((result.kind === "completed" && result.code === 0) || state.kind !== "ready") return state;
-
-    return { ...state, kind: "error", message: RECOVERY.signOut };
   };
 
   const createPullRequest = async (
     cwd: string,
     input: { readonly title?: string; readonly body?: string; readonly draft?: boolean },
   ): Promise<GitHubPullRequestOutcome> => {
-    const { state, head } = await readState(cwd);
+    const { state, auth, head } = await readState(cwd);
 
-    switch (state.kind) {
-      case "cli_missing":
-        return { kind: "cli_missing" };
-      case "signed_out":
-      case "signing_in":
-        return { kind: "signed_out" };
-      case "error":
-        return { kind: "failed", message: state.message };
-      case "ready":
-        break;
-    }
+    if (auth.kind === "missing") return { kind: "cli_missing" };
 
+    if (auth.kind === "signed_out") return { kind: "signed_out" };
+
+    if (auth.kind === "error") return { kind: "failed", message: auth.message };
     const { repository, pullRequest } = state;
 
     if (repository === undefined) return { kind: "no_remote" };
@@ -670,10 +685,7 @@ export function localGitHub(options?: {
   };
 
   return (env) => ({
-    state: async () =>
-      signing === undefined ? (await readState(env.cwd)).state : signingState(env.cwd, signing),
-    signIn: () => signIn(env.cwd),
-    signOut: () => signOut(env.cwd),
+    state: async () => (await readState(env.cwd)).state,
     createPullRequest: (input) => createPullRequest(env.cwd, input),
   });
 }

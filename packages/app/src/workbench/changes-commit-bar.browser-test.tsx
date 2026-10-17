@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { SdkError } from "@nyte-ai/sdk";
 import type {
   GitApi,
+  GitHubAccountState,
   GitHubApi,
   GitHubPullRequestInput,
   GitHubState,
@@ -73,8 +74,6 @@ const pushes: number[] = [];
 
 const github: GitHubApi = {
   state: refuse,
-  signIn: refuse,
-  signOut: refuse,
   createPullRequest: async (input) => {
     created.push(input);
 
@@ -122,13 +121,18 @@ function connect(): void {
   });
 }
 
-/** Seeds what the host would answer: GitHub served or not, and its state for the selected folder. */
-function seed(api: GitHubApi | null, state: GitHubState | undefined): void {
+/** Seeds what the host would answer: GitHub served or not, the machine's login, and the selected folder on GitHub. */
+function seed(
+  api: GitHubApi | null,
+  account: GitHubAccountState | null,
+  state: GitHubState | undefined,
+): void {
   queryClient.clear();
   queryClient.setQueryData(keys.host, {
     workspace: { id: WORKSPACE, path: "/srv/hello", name: "hello" },
   });
   queryClient.setQueryData([...keys.github, "capability", WORKSPACE], api);
+  queryClient.setQueryData([...keys.github, "account"], account);
 
   if (state !== undefined) queryClient.setQueryData([...keys.github, "/srv/hello"], state);
 }
@@ -198,7 +202,7 @@ export async function run(): Promise<string> {
   document.body.append(container);
   const root = createRoot(container);
 
-  seed(null, undefined);
+  seed(null, null, undefined);
   mount(root);
   await settle();
   const offered = (await menuItems()).map((item) => item.textContent ?? "");
@@ -212,41 +216,37 @@ export async function run(): Promise<string> {
   );
   root.unmount();
 
-  const blocked: readonly (readonly [GitHubState, string])[] = [
+  const unavailable = { repository: REPOSITORY, pullRequest: { kind: "unavailable" } } as const;
+
+  const blocked: readonly (readonly [GitHubAccountState, GitHubState, string])[] = [
+    [{ kind: "cli_missing" }, unavailable, "Install the GitHub CLI (gh) to open pull requests"],
+    [{ kind: "signed_out" }, unavailable, "Sign in to the GitHub CLI to open pull requests"],
     [
-      { kind: "cli_missing", repository: REPOSITORY },
-      "Install the GitHub CLI (gh) to open pull requests",
-    ],
-    [
-      { kind: "signed_out", repository: REPOSITORY },
-      "Sign in to the GitHub CLI to open pull requests",
-    ],
-    [
-      { kind: "ready", account: ACCOUNT, pullRequest: { kind: "none" } },
+      { kind: "ready", account: ACCOUNT },
+      { pullRequest: { kind: "none" } },
       "This repository has no GitHub remote",
     ],
   ];
 
-  for (const [state, reason] of blocked) {
+  for (const [login, state, reason] of blocked) {
     const blockedRoot = createRoot(container);
-    seed(github, state);
+    seed(github, login, state);
     mount(blockedRoot);
     await settle();
     check(primary().textContent === "Create Pull Request", "the stored action is offered");
-    check(disabled(primary()), `${state.kind} disables the pull request`);
-    check(primary().title === reason, `${state.kind} says why: ${primary().title}`);
+    check(disabled(primary()), `${login.kind} disables the pull request`);
+    check(primary().title === reason, `${login.kind} says why: ${primary().title}`);
     const said = document.querySelector("form p")?.textContent ?? "";
-    check(said === reason, `${state.kind} says why under the bar: ${said}`);
+    check(said === reason, `${login.kind} says why under the bar: ${said}`);
     blockedRoot.unmount();
   }
 
   const readyRoot = createRoot(container);
-  seed(github, {
-    kind: "ready",
-    repository: REPOSITORY,
-    account: ACCOUNT,
-    pullRequest: { kind: "none" },
-  });
+  seed(
+    github,
+    { kind: "ready", account: ACCOUNT },
+    { repository: REPOSITORY, pullRequest: { kind: "none" } },
+  );
   mount(readyRoot);
   await settle();
   check(!disabled(primary()), "a ready repository can open a pull request");
@@ -278,12 +278,11 @@ export async function run(): Promise<string> {
   readyRoot.unmount();
 
   const pullRoot = createRoot(container);
-  seed(github, {
-    kind: "ready",
-    repository: REPOSITORY,
-    account: ACCOUNT,
-    pullRequest: { kind: "ready", pullRequest: PULL_REQUEST },
-  });
+  seed(
+    github,
+    { kind: "ready", account: ACCOUNT },
+    { repository: REPOSITORY, pullRequest: { kind: "ready", pullRequest: PULL_REQUEST } },
+  );
   mount(pullRoot);
   await settle();
   const section = document.querySelector<HTMLElement>('section[aria-label="Pull request"]');

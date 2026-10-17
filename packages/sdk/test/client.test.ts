@@ -109,7 +109,8 @@ describe("client", () => {
     const github = await connection.workspace(info.id).github();
     assert(github.kind === "available");
 
-    expect(await github.api.state()).toEqual({ kind: "cli_missing" });
+    expect(await github.api.state()).toEqual({ pullRequest: { kind: "unavailable" } });
+    await expect(connection.github.account()).rejects.toMatchObject({ code: "unavailable" });
     expect(await github.api.createPullRequest({ title: "Fix" })).toEqual({ kind: "cli_missing" });
   });
 

@@ -461,9 +461,10 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       (await git(id)).branch(input, options),
     "git.push": async ({ workspace: id, input, options }) => (await git(id)).push(input, options),
 
+    "github.account": () => connection.github.account(),
+    "github.signIn": () => connection.github.signIn(),
+    "github.signOut": () => connection.github.signOut(),
     "github.state": async ({ workspace: id }) => (await github(id)).state(),
-    "github.signIn": async ({ workspace: id }) => (await github(id)).signIn(),
-    "github.signOut": async ({ workspace: id }) => (await github(id)).signOut(),
     "github.createPullRequest": async ({ workspace: id, input }) =>
       (await github(id)).createPullRequest(input),
 

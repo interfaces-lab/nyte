@@ -45,6 +45,7 @@ import type { HostIdentity } from "./contract/records.ts";
 import type { StoreConnection } from "./contract/store.ts";
 import type {
   EnvironmentRegistry,
+  GitHubAccountApi,
   JobTable,
   McpHub,
   McpHubFactory,
@@ -307,6 +308,7 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
     execution: options.execution,
     models: options.models,
     mcp: options.mcp,
+    github: options.github,
     builtins: BUILTINS,
     hostPlugins: options.plugins,
     pluginSources: options.pluginSources,
@@ -345,6 +347,8 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly models?: Models;
     /** Builds the host's MCP hub and adds the `mcp` plugin to the builtins. */
     readonly mcp?: McpHubFactory;
+    /** The serving machine's GitHub CLI login. */
+    readonly github?: GitHubAccountApi;
   };
 
 export function createKernel(input: KernelOptions): Kernel {
@@ -458,6 +462,7 @@ export function createKernel(input: KernelOptions): Kernel {
     },
     connections: createConnectionRegistry(),
     secrets: input.secrets ?? null,
+    github: input.github ?? null,
     get mcp() {
       if (mcp === undefined) mcp = input.mcp?.({ secrets: pluginSecrets(kernel, "mcp") }) ?? null;
 

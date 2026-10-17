@@ -1,4 +1,8 @@
-import { GitHubPullRequestOutcomeSchema, GitHubStateSchema } from "../../src/index.ts";
+import {
+  GitHubAccountStateSchema,
+  GitHubPullRequestOutcomeSchema,
+  GitHubStateSchema,
+} from "../../src/index.ts";
 import { sample } from "./fixtures.ts";
 import type { Case } from "./fixtures.ts";
 
@@ -26,13 +30,13 @@ const pullRequest = {
 export const githubCases = {
   GitHubStateSchema: sample(
     GitHubStateSchema,
-    {
-      kind: "ready",
-      repository,
-      account: { login: "octocat", name: "The Octocat" },
-      pullRequest: { kind: "ready", pullRequest },
-    },
-    { kind: "ready", repository, account: { login: "octocat" } },
+    { repository, pullRequest: { kind: "ready", pullRequest } },
+    { repository, pullRequest: { kind: "open" } },
+  ),
+  GitHubAccountStateSchema: sample(
+    GitHubAccountStateSchema,
+    { kind: "ready", account: { login: "octocat", name: "The Octocat" } },
+    { kind: "ready", repository },
   ),
   GitHubPullRequestOutcomeSchema: sample(
     GitHubPullRequestOutcomeSchema,

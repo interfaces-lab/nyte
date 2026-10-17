@@ -44,9 +44,10 @@ export const GitHubPullRequestType = Type.Object({
 
 export type GitHubPullRequest = Decoded<typeof GitHubPullRequestType>;
 
-/** Whether the checked-out branch has a pull request: `none` also for a detached HEAD or a folder without a GitHub remote. */
+/** Whether the checked-out branch has a pull request: `none` also for a detached HEAD or a folder without a GitHub remote, `unavailable` while the machine's `gh` has no account that can read it (see `github.account`). */
 export const GitHubPullRequestContextType = Type.Union([
   Type.Object({ kind: Type.Literal("none") }),
+  Type.Object({ kind: Type.Literal("unavailable") }),
   Type.Object({ kind: Type.Literal("ready"), pullRequest: GitHubPullRequestType }),
   Type.Object({ kind: Type.Literal("error"), message: Type.String() }),
 ]);
@@ -62,33 +63,22 @@ export const GitHubDeviceCodeType = Type.Object({
 
 export type GitHubDeviceCode = Decoded<typeof GitHubDeviceCodeType>;
 
-/** The serving machine's `gh` login and the workspace's repository: `cli_missing` when no `gh` is on the PATH, `signed_out` with no github.com account, `signing_in` while a sign-in waits for its code, `ready` with the account and the branch's pull request, `error` with what to do next. `repository` is absent where no remote names github.com. */
-export const GitHubStateType = Type.Union([
-  Type.Object({
-    kind: Type.Literal("cli_missing"),
-    repository: Type.Optional(GitHubRepositoryType),
-  }),
-  Type.Object({
-    kind: Type.Literal("signed_out"),
-    repository: Type.Optional(GitHubRepositoryType),
-  }),
-  Type.Object({
-    kind: Type.Literal("signing_in"),
-    repository: Type.Optional(GitHubRepositoryType),
-    deviceCode: GitHubDeviceCodeType,
-  }),
-  Type.Object({
-    kind: Type.Literal("ready"),
-    repository: Type.Optional(GitHubRepositoryType),
-    account: GitHubAccountType,
-    pullRequest: GitHubPullRequestContextType,
-  }),
-  Type.Object({
-    kind: Type.Literal("error"),
-    repository: Type.Optional(GitHubRepositoryType),
-    message: Type.String(),
-  }),
+/** The serving machine's `gh` login, one for the whole machine: `cli_missing` when no `gh` is on the PATH, `signed_out` with no github.com account, `signing_in` while a sign-in waits for its code, `ready` with the account, `error` with what to do next. */
+export const GitHubAccountStateType = Type.Union([
+  Type.Object({ kind: Type.Literal("cli_missing") }),
+  Type.Object({ kind: Type.Literal("signed_out") }),
+  Type.Object({ kind: Type.Literal("signing_in"), deviceCode: GitHubDeviceCodeType }),
+  Type.Object({ kind: Type.Literal("ready"), account: GitHubAccountType }),
+  Type.Object({ kind: Type.Literal("error"), message: Type.String() }),
 ]);
+
+export type GitHubAccountState = Decoded<typeof GitHubAccountStateType>;
+
+/** A workspace on GitHub: the repository its remotes name, absent where none names github.com, and the checked-out branch's pull request. */
+export const GitHubStateType = Type.Object({
+  repository: Type.Optional(GitHubRepositoryType),
+  pullRequest: GitHubPullRequestContextType,
+});
 
 export type GitHubState = Decoded<typeof GitHubStateType>;
 
@@ -115,6 +105,9 @@ export const GitHubPullRequestOutcomeType = Type.Union([
 export type GitHubPullRequestOutcome = Decoded<typeof GitHubPullRequestOutcomeType>;
 
 export const GitHubStateSchema: Schema<GitHubState> = standard(GitHubStateType);
+
+export const GitHubAccountStateSchema: Schema<GitHubAccountState> =
+  standard(GitHubAccountStateType);
 
 export const GitHubPullRequestOutcomeSchema: Schema<GitHubPullRequestOutcome> = standard(
   GitHubPullRequestOutcomeType,

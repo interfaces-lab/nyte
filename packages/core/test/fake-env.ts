@@ -713,11 +713,12 @@ function fakeBrowser(provider: FakeProvider): BrowserApi {
   };
 }
 
-/** GitHub with the `gh` CLI missing, so every answer is the state that says so. */
+/** GitHub with the `gh` CLI missing: a folder with no repository, and no pull request opened. */
 function fakeGitHub(): GitHubApi {
-  const missing = async () => ({ kind: "cli_missing" as const });
-
-  return { state: missing, signIn: missing, signOut: missing, createPullRequest: missing };
+  return {
+    state: async () => ({ pullRequest: { kind: "unavailable" } }),
+    createPullRequest: async () => ({ kind: "cli_missing" }),
+  };
 }
 
 function fakeGit(): GitApi {

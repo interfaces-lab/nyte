@@ -1,4 +1,4 @@
-import type { GitHubCheck, GitHubPullRequest, GitHubState } from "@nyte-ai/sdk";
+import type { GitHubAccountState, GitHubCheck, GitHubPullRequest, GitHubState } from "@nyte-ai/sdk";
 import type { TextLine, TextSpan } from "../model/dialogs/dialog.ts";
 import { GLYPHS } from "./constants.ts";
 
@@ -52,11 +52,14 @@ function pullRequestLines(pullRequest: GitHubPullRequest): readonly TextLine[] {
   ];
 }
 
-/** What `/pr` shows: the branch's pull request and its checks, or the GitHub state that stands in the way; `null` where the host serves no GitHub. */
-export function gitHubLines(state: GitHubState | null): readonly TextLine[] {
-  if (state === null) return ["This host doesn't serve GitHub"];
+/** What `/pr` shows: the branch's pull request and its checks, or what stands in the way, the machine's `gh` login first; `null` where the host serves no GitHub. */
+export function gitHubLines(
+  found: { readonly account: GitHubAccountState; readonly folder: GitHubState } | null,
+): readonly TextLine[] {
+  if (found === null) return ["This host doesn't serve GitHub"];
+  const { account, folder } = found;
 
-  switch (state.kind) {
+  switch (account.kind) {
     case "cli_missing":
       return ["Install the GitHub CLI (gh) to open pull requests"];
     case "signed_out":
@@ -64,20 +67,23 @@ export function gitHubLines(state: GitHubState | null): readonly TextLine[] {
     case "signing_in":
       return [
         "Waiting for approval on github.com",
-        `Enter ${state.deviceCode.userCode} at ${state.deviceCode.verificationUri}`,
+        `Enter ${account.deviceCode.userCode} at ${account.deviceCode.verificationUri}`,
       ];
     case "error":
-      return [[{ text: state.message, tone: "error" }]];
+      return [[{ text: account.message, tone: "error" }]];
     case "ready":
       break;
   }
 
-  const { repository, pullRequest } = state;
+  const { repository, pullRequest } = folder;
 
   if (repository === undefined) return ["This repository has no GitHub remote"];
   const named: TextLine = [{ text: `${repository.owner}/${repository.name}`, tone: "muted" }];
 
   if (pullRequest.kind === "none") return [named, "No pull request for this branch"];
+
+  if (pullRequest.kind === "unavailable")
+    return [named, "Sign in to the GitHub CLI to see its pull request"];
 
   if (pullRequest.kind === "error") return [named, [{ text: pullRequest.message, tone: "error" }]];
 
