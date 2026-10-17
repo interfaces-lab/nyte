@@ -11,6 +11,8 @@ const WAIT_MS = 15_000;
 
 /** The compiled binary on a real PTY, its screen parsed by OpenTUI's terminal emulator. */
 export interface Pty extends AsyncDisposable {
+  /** `performance.now()` just after the binary was spawned. */
+  readonly spawnedAt: number;
   screen(): EmbeddedTerminalScreen;
   /** Sends the first key bound to `command`, encoded for the modes the binary negotiated. */
   press(command: ChatCommand): void;
@@ -63,6 +65,7 @@ export async function openPty(options: {
     },
   });
 
+  const spawnedAt = performance.now();
   pty = child.terminal;
 
   if (options.typed !== undefined) pty?.write(options.typed);
@@ -95,6 +98,7 @@ export async function openPty(options: {
   };
 
   return {
+    spawnedAt,
     screen: () => emulator.screen(),
     press(command) {
       const [stroke] = keyStrokes(command);

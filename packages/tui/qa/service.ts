@@ -5,7 +5,7 @@ import { openHost } from "@nyte-ai/host";
 import { fakeModels } from "@nyte-ai/host/bench";
 import type { Reply, Request } from "@nyte-ai/host/bench";
 import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
-import { startService } from "@nyte-ai/service";
+import { findService, startService, stopService } from "@nyte-ai/service";
 import { VERSION } from "../src/version.ts";
 
 /** The answer of the project plugin `serveForBinary` writes when asked for one. */
@@ -29,16 +29,7 @@ export interface TestService extends AsyncDisposable {
  * decision gates.
  */
 export async function serveForBinary(options: { readonly plugin: boolean }): Promise<TestService> {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-binary-")));
-  const home = join(root, "home");
-  const cwd = join(root, "workspace");
-  await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
-  await mkdir(cwd, { recursive: true });
-  await mkdir(join(root, "tmp"));
-  await writeFile(
-    join(home, ".nyte", "settings.json"),
-    '{ "autoUpdate": false, "theme": "dark" }\n',
-  );
+  const { root, home, cwd, env } = await isolate();
 
   if (options.plugin) {
     const plugin = join(cwd, ".nyte", "plugins", "qa-probe");
@@ -87,19 +78,66 @@ export async function serveForBinary(options: { readonly plugin: boolean }): Pro
     cwd,
     reply: (...queued) => void replies.push(...queued),
     requests,
-    env: {
-      HOME: home,
-      NYTE_HOME: join(home, ".nyte"),
-      NYTE_SKIP_VERSION_CHECK: "1",
-      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
-      TERM: "xterm-256color",
-      COLORTERM: "truecolor",
-      LANG: "en_US.UTF-8",
-      TMPDIR: join(root, "tmp"),
-    },
+    env,
     async [Symbol.asyncDispose]() {
       await service.close();
       await rm(root, { recursive: true, force: true });
     },
   };
+}
+
+/** An isolated HOME with no service registered: the binary starts its own there, as on a fresh machine. */
+export interface FreshHome extends AsyncDisposable {
+  readonly cwd: string;
+  /** `$NYTE_HOME`, where the TUI keeps its settings and first-frame record. */
+  readonly nyteHome: string;
+  /** Where the service the binary starts registers itself once it listens. */
+  readonly registration: string;
+  readonly env: Readonly<Record<string, string>>;
+}
+
+/** Disposing waits for the service the binary started to register, stops it, and removes the HOME. */
+export async function freshHome(): Promise<FreshHome> {
+  const { root, home, cwd, env } = await isolate();
+  const registration = join(home, ".nyte", "service.json");
+
+  return {
+    cwd,
+    nyteHome: join(home, ".nyte"),
+    registration,
+    env,
+    async [Symbol.asyncDispose]() {
+      const deadline = Date.now() + 20_000;
+
+      while (Date.now() < deadline && (await findService(home)) === undefined) await Bun.sleep(50);
+      await stopService(home);
+      await rm(root, { recursive: true, force: true });
+    },
+  };
+}
+
+async function isolate() {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-binary-")));
+  const home = join(root, "home");
+  const cwd = join(root, "workspace");
+  await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
+  await mkdir(cwd, { recursive: true });
+  await mkdir(join(root, "tmp"));
+  await writeFile(
+    join(home, ".nyte", "settings.json"),
+    '{ "autoUpdate": false, "theme": "dark" }\n',
+  );
+
+  const env = {
+    HOME: home,
+    NYTE_HOME: join(home, ".nyte"),
+    NYTE_SKIP_VERSION_CHECK: "1",
+    PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    LANG: "en_US.UTF-8",
+    TMPDIR: join(root, "tmp"),
+  };
+
+  return { root, home, cwd, env };
 }
