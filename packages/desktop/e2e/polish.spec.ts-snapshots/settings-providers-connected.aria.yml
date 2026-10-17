@@ -22,4 +22,4 @@
     - heading "Other providers" [level=3]
     - text: Vercel AI Gateway Add an API key to connect
     - button "Connect Provider Vercel AI Gateway"
-    - text: Claude Code Connects through the environment
+    - text: Claude Code Connects through the environment ACP agents Connects through the environment
