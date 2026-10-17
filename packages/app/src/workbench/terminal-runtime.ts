@@ -7,7 +7,7 @@ import { preferences } from "../preferences/index.ts";
 import { addToChat, addsToChat } from "../conversation/add-to-chat.ts";
 import type { ExcerptReference } from "../conversation/message-references.ts";
 import { errorMessage } from "../errors.ts";
-import { macPlatform } from "../platform.ts";
+import { nyte } from "../nyte.ts";
 import { props } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
@@ -331,7 +331,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.ctrlKey && event.code === "Backquote") return true;
 
-    if (addsToChat(event, macPlatform(undefined))) {
+    if (addsToChat(event, nyte.platform === "darwin")) {
       if (event.type === "keydown" && addTerminalToChat(id)) event.preventDefault();
 
       return true;

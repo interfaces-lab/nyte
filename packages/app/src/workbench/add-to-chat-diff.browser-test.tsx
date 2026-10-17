@@ -9,7 +9,7 @@ import "../theme/global.css";
 import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
 import { ComposerEditor } from "../conversation/composer-editor.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
-import { macPlatform } from "../platform.ts";
+import { nyte } from "../nyte.ts";
 import { ChangesStack } from "./changes-stack.tsx";
 import { patchDigest } from "./changes-viewed.ts";
 
@@ -150,8 +150,8 @@ export async function run(): Promise<string> {
       code: "KeyL",
       key: "L",
       shiftKey: true,
-      metaKey: macPlatform(undefined),
-      ctrlKey: !macPlatform(undefined),
+      metaKey: nyte.platform === "darwin",
+      ctrlKey: nyte.platform !== "darwin",
       bubbles: true,
       cancelable: true,
     });

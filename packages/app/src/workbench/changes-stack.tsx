@@ -22,7 +22,6 @@ import { diffStyles } from "../conversation/diff.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { keyOwner } from "../shell/focus-owner.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
@@ -150,7 +149,7 @@ export function ChangesStack({
   const scrollReport = useRef<ScrollReport>({ top: scrollTop, timer: undefined, path: undefined });
   const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
   const sources = useRef(model.sourceById);
-  const mac = macPlatform(nyte.platform);
+  const mac = nyte.platform === "darwin";
 
   useLayoutEffect(() => {
     sources.current = model.sourceById;

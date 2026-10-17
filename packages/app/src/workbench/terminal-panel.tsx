@@ -15,7 +15,7 @@ import { useSession, useWorkspaceJobs } from "../queries.ts";
 import { connection } from "../sdk.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import type { WorkbenchTabId } from "./controller.ts";
-import { macPlatform } from "../platform.ts";
+import { nyte } from "../nyte.ts";
 import {
   addTerminalToChat,
   mountTerminal,
@@ -63,7 +63,7 @@ function AddSelectionToChat({ id }: { readonly id: string }): ReactElement | nul
         variant="outline"
         size="sm"
         icon="paperclip"
-        aria-keyshortcuts={macPlatform(undefined) ? "Meta+Shift+L" : "Control+Shift+L"}
+        aria-keyshortcuts={nyte.platform === "darwin" ? "Meta+Shift+L" : "Control+Shift+L"}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => addTerminalToChat(id)}
       >

@@ -737,7 +737,7 @@ export function BrowserPanel({
             iconOnly
             icon="code-brackets"
             aria-label="Add Element to Chat"
-            aria-keyshortcuts={macPlatform(undefined) ? "Meta+Shift+L" : "Control+Shift+L"}
+            aria-keyshortcuts={nyte.platform === "darwin" ? "Meta+Shift+L" : "Control+Shift+L"}
             pressed={picking}
             onPressedChange={pickElement}
           />
