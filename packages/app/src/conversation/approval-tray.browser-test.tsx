@@ -319,11 +319,13 @@ export async function run(): Promise<string> {
     () => (next.querySelector("pre")?.textContent === "git push --force" ? true : null),
     "the next command",
   );
-  [...next.querySelectorAll("button")].find((button) => button.textContent === "Deny")?.click();
+  press("Escape");
 
   const alert = await until(() => next.querySelector("[role='alert']"), "the refusal");
 
   if (alert.textContent !== refusal) failures.push(`the refusal reads ${alert.textContent ?? ""}`);
+
+  if (acts.join() !== "first:session,second:deny") failures.push(`Escape sent ${acts.join()}`);
   await painted();
   await capture("approval-refused");
 

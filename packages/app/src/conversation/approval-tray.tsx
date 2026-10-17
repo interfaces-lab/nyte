@@ -45,7 +45,7 @@ const NEXT = new Set(["ArrowRight", "ArrowDown"]);
 
 const PREVIOUS = new Set(["ArrowLeft", "ArrowUp"]);
 
-/** Arrow keys move between the answers, as ↑ and ↓ do in the terminal's approval list. */
+/** Arrow keys move between the answers and Escape denies, as in the terminal's approval list. */
 function moveFocus(event: KeyboardEvent<HTMLDivElement>): void {
   const step = NEXT.has(event.key) ? 1 : PREVIOUS.has(event.key) ? -1 : 0;
 
@@ -73,6 +73,12 @@ function ApprovalCard({
 
   return (
     <div
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.defaultPrevented || blocked) return;
+        event.preventDefault();
+        event.stopPropagation();
+        answer.mutate({ request, decision: "deny" });
+      }}
       role="group"
       aria-labelledby={`${id}-title`}
       aria-describedby={prompt.detail === "" ? undefined : `${id}-detail`}
@@ -97,6 +103,7 @@ function ApprovalCard({
             size="sm"
             variant={index === 0 ? "solid" : "outline"}
             autoFocus={index === 0}
+            aria-keyshortcuts={action === "deny" ? "Escape" : undefined}
             disabled={blocked}
             onClick={() => answer.mutate({ request, decision: action })}
           >
