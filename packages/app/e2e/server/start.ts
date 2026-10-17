@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import process from "node:process";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
-import { localProvider, sqliteStore } from "@nyte-ai/host";
+import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
 import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
 import { sdk } from "@nyte-ai/sdk";
 import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
@@ -77,6 +77,7 @@ const host = await sdk.open({
   store: sqliteStore({ memory: true }),
   models,
   plugins: [{ id: "local", environment: localProvider({ home: cwd }) }],
+  github: localGitHubAccount({ home: cwd }),
   workspace: { kind: "local", path: cwd },
   home: cwd,
 });
