@@ -1,4 +1,6 @@
+import { standard } from "@nyte-ai/schema";
 import type { PartId } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import { expect, it } from "vitest";
 import { until } from "../src/harness.ts";
 import { fakeModels, open } from "./fake-models.ts";
@@ -98,3 +100,70 @@ it.each([
     ).toHaveLength(3);
   },
 );
+
+it("runs a script's nested gated calls when each gate is answered as it opens", async () => {
+  const ran: string[] = [];
+  const fake = fakeModels();
+
+  const counted: ToolDefinition<{ text: string }> = {
+    ...echo,
+    execute: async (args) => {
+      ran.push(args.text);
+
+      return echo.execute(args);
+    },
+  };
+
+  const script: ToolDefinition<{ texts: string[] }> = {
+    ...echo,
+    name: "script",
+    parameters: standard(Type.Object({ texts: Type.Array(Type.String()) })),
+    execute: async (args, invocation) => {
+      const outcomes = [];
+
+      for (const [index, text] of args.texts.entries())
+        outcomes.push(await invocation.tools.execute("echo", { text }, { key: String(index) }));
+
+      return { content: [{ kind: "text", text: `${String(outcomes.length)} ran.` }] };
+    },
+  };
+
+  fake.reply(
+    {
+      content: [
+        { type: "toolCall", id: "run", name: "script", arguments: { texts: ["one", "two"] } },
+      ],
+    },
+    { content: [{ type: "text", text: "Done." }] },
+  );
+
+  await using host = await open(fake, {
+    plugins: [
+      {
+        id: "gate",
+        contribute: { parts: [approve], tools: [counted, script] },
+        hooks: {
+          before_tool: async (call, context) => {
+            if (call.name !== "echo") return { action: "continue" };
+
+            const part = await context.api.session.parts.create(approve, {
+              state: { tool: call.name },
+              placement: { kind: "modal" },
+            });
+
+            setTimeout(() => void context.api.session.part(part.id).act("allow", {}), 0);
+            await context.wait({ kind: "part", part: part.id });
+
+            return { action: "continue" };
+          },
+        },
+      },
+    ],
+  });
+
+  const { receipt } = await host.sessions.start({ content: "Run the script." });
+
+  expect((await receipt.settled()).kind).toBe("completed");
+  expect(ran).toEqual(["one", "two"]);
+  expect(JSON.stringify(fake.requests[1]?.context.messages)).toContain("2 ran.");
+});

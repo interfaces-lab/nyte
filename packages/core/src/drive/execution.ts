@@ -525,29 +525,38 @@ async function settleLive(
   if (live.record.stopping) {
     kernel.runs.start(session, run).abort();
     await kernel.waits.runStopped(session, run);
-    const refused = await resume(kernel, session, head, run);
+    const resumed = await resume(kernel, session, head, run);
 
-    if (refused !== null) return refused;
+    if (resumed.refused !== null) return resumed.refused;
     await endRun(kernel, session, run, { kind: "stopped" });
 
     return null;
   }
 
-  const refused = await resume(kernel, session, head, run);
+  const unreadable = new Set<string>();
 
-  if (refused !== null) return refused;
+  for (;;) {
+    const resumed = await resume(kernel, session, head, run);
 
-  const record = (
-    await load(kernel.store, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord)
-  )?.record;
+    if (resumed.refused !== null) return resumed.refused;
 
-  if (record === undefined) return null;
+    for (const call of resumed.unreadable) unreadable.add(call);
 
-  return (
-    (await holding(kernel.store, session, record)) ??
-    (await drive(kernel, session, head, record.view)) ??
-    next(kernel, session, head)
-  );
+    const record = (
+      await load(kernel.store, await kernel.store.refs.get(runRef(session, run)), decodeRunRecord)
+    )?.record;
+
+    if (record === undefined) return null;
+    const held = await holding(kernel.store, session, record);
+
+    if (held !== null) return held;
+
+    const runnable = await runnableCalls(kernel.store, session, run);
+
+    if (runnable.some((owed) => !unreadable.has(owed.record.id))) continue;
+
+    return (await drive(kernel, session, head, record.view)) ?? next(kernel, session, head);
+  }
 }
 
 async function holding(
@@ -562,51 +571,50 @@ async function holding(
     : null;
 }
 
+/** Runs the run's owed calls that wait on nothing, once each, and names those whose input it could not read. The caller resumes again while a call is runnable (a gate answered while another call ran, or after this read, whose wake found the head busy), so the turn never goes on past a call that can run. */
 async function resume(
   kernel: Kernel,
   session: SessionId,
   head: HeadName,
   run: RunId,
-): Promise<Refused | null> {
+): Promise<{ readonly refused: Refused | null; readonly unreadable: readonly string[] }> {
   const renewal = holdHead(kernel, session, head);
   const signal = AbortSignal.any([kernel.runs.start(session, run).signal, renewal.lease.signal]);
   const runtime = kernel.plugins.runtime(session);
   const release = runtime.hold();
+  const unreadable: string[] = [];
 
   try {
     await runtime.ready;
-    const tried = new Set<string>();
 
-    for (
-      let batch = await runnableCalls(kernel.store, session, run, tried);
-      batch.length > 0 && !renewal.lease.signal.aborted;
-      batch = await runnableCalls(kernel.store, session, run, tried)
-    )
-      for (const owed of batch) {
-        if (renewal.lease.signal.aborted) break;
-        tried.add(owed.record.id);
-        const input = await readToolInput(kernel.store, session, owed.record);
+    for (const owed of await runnableCalls(kernel.store, session, run)) {
+      if (renewal.lease.signal.aborted) break;
+      const input = await readToolInput(kernel.store, session, owed.record);
 
-        if (input === null) continue;
+      if (input === null) {
+        unreadable.push(owed.record.id);
 
-        await executeCall(kernel, {
-          session,
-          head,
-          run,
-          call: owed.record.id,
-          name: input.name,
-          args: input.args,
-          argumentsError: input.argumentsError,
-          runtime,
-          context: {
-            principal: input.principal,
-            authority: PARTICIPANT_AUTHORITY,
-            credential: { kind: "token", token: "" },
-            origin: null,
-          },
-          signal,
-        });
+        continue;
       }
+
+      await executeCall(kernel, {
+        session,
+        head,
+        run,
+        call: owed.record.id,
+        name: input.name,
+        args: input.args,
+        argumentsError: input.argumentsError,
+        runtime,
+        context: {
+          principal: input.principal,
+          authority: PARTICIPANT_AUTHORITY,
+          credential: { kind: "token", token: "" },
+          origin: null,
+        },
+        signal,
+      });
+    }
   } finally {
     renewal.lease.stop();
     release();
@@ -616,19 +624,16 @@ async function resume(
 
   if (refused !== null) kernel.runs.end(run);
 
-  return refused;
+  return { refused, unreadable };
 }
 
-/** The run's owed calls that wait on nothing and that `tried` has not run. Read again after each batch: a wait that fires while a call runs makes its call runnable, and the wake it sends finds the head busy. */
+/** The run's owed calls that wait on nothing. */
 async function runnableCalls(
   store: StoreConnection,
   session: SessionId,
   run: RunId,
-  tried: ReadonlySet<string>,
 ): Promise<readonly OwedCall[]> {
-  return (await owedCalls(store, session, run)).filter(
-    (owed) => !owed.parked && !tried.has(owed.record.id),
-  );
+  return (await owedCalls(store, session, run)).filter((owed) => !owed.parked);
 }
 
 /** Holds a head's lease while a run is resumed or driven; `refused` says why it was lost. */
