@@ -89,7 +89,11 @@ test("a browser paired through Remote access shares the desktop's chats until it
           authorization: `Bearer ${input.token}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ name: input.name, content: "Hi from the phone" }),
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          name: input.name,
+          content: "Hi from the phone",
+        }),
       });
 
       return response.status;
