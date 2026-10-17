@@ -5,6 +5,9 @@ import { E2E_ORIGIN } from "./server/address.ts";
 
 const CI = process.env.CI !== undefined && process.env.CI !== "";
 
+/** The specs that gate hop latencies, which parallel specs push over budget. */
+const TIMED = /scenario-[du]\.spec\.ts$/u;
+
 export default defineConfig({
   testDir: resolve(import.meta.dirname, "web"),
   outputDir: resolve(import.meta.dirname, "test-results"),
@@ -12,6 +15,10 @@ export default defineConfig({
   retries: CI ? 2 : 0,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: { baseURL: E2E_ORIGIN, trace: "on-first-retry", screenshot: "only-on-failure" },
+  projects: [
+    { name: "web", testIgnore: TIMED },
+    { name: "timed", testMatch: TIMED, dependencies: ["web"], workers: 1 },
+  ],
   webServer: {
     command: "node e2e/server/start.ts",
     cwd: resolve(import.meta.dirname, ".."),
