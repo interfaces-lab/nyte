@@ -1,4 +1,4 @@
-import type { PartId, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { SessionId, SessionView } from "@nyte-ai/sdk";
 import { APPROVAL_ACTIONS, approvalPrompt, openApprovals } from "@nyte-ai/plugin/approvals/schema";
 import type { OpenApproval } from "@nyte-ai/plugin/approvals/schema";
 import { shortId } from "../lib/format.ts";
@@ -13,12 +13,6 @@ const DENY = APPROVAL_ACTIONS.findIndex(({ action }) => action === "deny");
 export interface ApprovalModel extends OpenApproval {
   readonly session: SessionId;
   readonly owner: { readonly kind: "head" } | { readonly kind: "child"; readonly short: string };
-}
-
-/** Where an approval's answer goes. */
-interface ApprovalRequest {
-  readonly session: SessionId;
-  readonly part: PartId;
 }
 
 export function currentApproval(
