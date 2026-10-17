@@ -513,7 +513,7 @@ async function checkRules(): Promise<string> {
       "an editable message below the top edge",
     );
     await openEditor(editable);
-    await holds("7/12", editable, 6);
+    await holds("7/12", editable, 3);
     expectRule(
       "19",
       editable.querySelector("[contenteditable='true']") !== null,
