@@ -141,6 +141,39 @@ describe("localExec over pipes", () => {
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 0 });
   });
 
+  it("keeps a protocol pipe whole for a slow reader, its stderr tagged apart", async () => {
+    const job = await localExec(await folder())(
+      [
+        process.execPath,
+        "-e",
+        "process.stderr.write('warming up\\n'); process.stdout.write('x'.repeat(3 * 1024 * 1024)); process.stdout.write('END')",
+      ],
+      { stdio: "protocol" },
+    );
+
+    let stdout = "";
+    let stderr = "";
+    const kinds = new Set<string>();
+
+    for await (const frame of job.output()) {
+      kinds.add(frame.kind);
+
+      if (frame.kind !== "bytes") continue;
+
+      if (frame.stream === "stderr") stderr += decoder.decode(frame.data);
+      else {
+        stdout += decoder.decode(frame.data);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+    }
+
+    expect(kinds.has("gap")).toBe(false);
+    expect(stderr).toBe("warming up\n");
+    expect(stdout.length).toBe(3 * 1024 * 1024 + 3);
+    expect(stdout.endsWith("END")).toBe(true);
+    expect(await job.settled()).toEqual({ kind: "exited", code: 0, reason: "exited" });
+  });
+
   it("detaches readers on close and on the environment's signal, leaving the process running", async () => {
     const environment = new AbortController();
     const exec = localExec(await folder(), { signal: environment.signal });

@@ -25,6 +25,24 @@ export interface StoreConnection {
   readonly sessions: SessionIndex;
   /** A mark that moves whenever a connection other than this one commits: equal marks mean nothing else wrote in between. Absent where nothing else can write, or where the store cannot tell, so every read and poll goes to the store. */
   commitMark?(): Promise<number>;
+  /** Each session's latest fold checkpoint. Absent where the store keeps none, so every cold fold reads its session's log from the start. */
+  readonly checkpoints?: FoldCheckpoints;
+}
+
+/** A session's fold through `seq`, as core encoded it. */
+export interface FoldCheckpoint {
+  readonly seq: Seq;
+  readonly body: string;
+}
+
+/** One fold checkpoint per session, a cache over the log: core ignores a checkpoint it cannot decode and folds that session's log from the start. */
+export interface FoldCheckpoints {
+  /** The session's checkpoint, or null when it has none. */
+  read(session: SessionId): Promise<FoldCheckpoint | null>;
+  /** Keeps `checkpoint` as the session's, unless the one kept is at a later seq. */
+  write(session: SessionId, checkpoint: FoldCheckpoint): Promise<void>;
+  /** The session's logged events after `after`: how many, and their size in bytes as logged. */
+  gap(session: SessionId, after: Seq): Promise<{ readonly events: number; readonly bytes: number }>;
 }
 
 /** Indexed reads of current session roots and unsettled records, never historical objects. */

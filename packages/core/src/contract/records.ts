@@ -21,6 +21,7 @@ import {
   WaitOutcomeType,
   WaitTargetType,
   WorkspaceTargetType,
+  WorktreeIsolationType,
 } from "@nyte-ai/schema";
 import type {
   BatchOutcome,
@@ -39,6 +40,7 @@ import type {
   WaitOutcome,
   WaitTarget,
   WorkspaceTarget,
+  WorktreeIsolation,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static, TProperties, TSchema, TUnsafe } from "typebox";
@@ -226,6 +228,7 @@ const WorkspaceRecordType = record({
   projectSources: list(Type.String()),
   addedBy: idSchema<"principal">(),
   createdAt: Type.Number(),
+  isolation: nullable(typed<WorktreeIsolation>()(WorktreeIsolationType)),
 });
 
 export type WorkspaceRecord = Static<typeof WorkspaceRecordType>;

@@ -1,4 +1,5 @@
 import type { RunId } from "@nyte-ai/sdk";
+import { availableModels, findModel } from "../lib/catalog.ts";
 import { runnableCommand, slashNamespace } from "./commands.ts";
 import { completionModel } from "./completion.ts";
 import type { CompletionModel } from "./completion.ts";
@@ -110,6 +111,18 @@ export function blockedBy(state: State): Blocked | null {
   return null;
 }
 
+/** How a message sent while a run works is delivered: the follow-up setting, or `queue` when the chat's model cannot take a message mid-turn. */
+export function followUpDelivery(state: State): "steer" | "queue" {
+  const { chat } = state.facts;
+  const { catalog } = state.facts.catalog;
+  const model =
+    chat === null || catalog === null
+      ? undefined
+      : findModel(availableModels(catalog), chat.selection.model);
+
+  return model?.capabilities.steer === false ? "queue" : state.facts.settings.followUp;
+}
+
 export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
   const session = followedSession(state);
 
@@ -145,7 +158,7 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
     waiting: waitingMessages(state).length > 0,
     models: state.facts.catalog.catalog !== null,
     queue,
-    followUp: state.facts.settings.followUp,
+    followUp: followUpDelivery(state),
     tasks: state.facts.tasks.length,
     now: 0,
     cursor: {

@@ -303,6 +303,23 @@ export async function readGit(workspace: Workspace) {
 }
 
 /**
+ * GitHub goes through the serving machine's `gh`: its login, the repository
+ * the workspace's remotes name, and the checked-out branch's pull request
+ * with its check rollup. Missing `gh`, a signed-out CLI and a folder without
+ * a GitHub remote are states and outcomes, not failures.
+ */
+export async function openPullRequest(workspace: Workspace) {
+  const capability = await workspace.github();
+
+  if (capability.kind !== "available") return capability;
+  const state = await capability.api.state();
+
+  if (state.kind !== "ready" || state.pullRequest.kind === "ready") return state;
+
+  return capability.api.createPullRequest({ title: "Fix tab close", body: "Why it changed." });
+}
+
+/**
  * Jobs start through workspace.jobs or an invocation environment. A Job
  * exposes input, output frames, resize, idle, settled and stop. Job directory
  * rows come from workspace.jobs.list/watch. Output frames keep
@@ -343,9 +360,11 @@ export function readResources(api: PluginApi<"core">): Resources {
 
 /**
  * An EnvironmentProvider owns inspect and attach for one target kind. Its
- * ExecutionEnv owns cwd, files, exec and close. Optional git, snapshots and
- * browser capabilities remain absent when unsupported. wrapEnv can add a
- * capability for a desktop without changing a tool's contract.
+ * ExecutionEnv owns cwd, files, exec and close. Optional git, snapshots,
+ * worktrees and browser capabilities remain absent when unsupported.
+ * Worktrees back `sessions.start({ isolation: "worktree" })`: the chat gets a
+ * workspace of its own on a new branch, removed with the chat. wrapEnv can add
+ * a capability for a desktop without changing a tool's contract.
  */
 export type Environment = {
   readonly provider: EnvironmentProvider;
@@ -354,7 +373,8 @@ export type Environment = {
 
 /**
  * Tools declare Standard Schema parameters, an optional output schema, a
- * class, workspace effects and replay policy. Results use kind text/file,
+ * class, workspace effects, whether a permissions policy may hold a call
+ * (`approval`) and replay policy. Results use kind text/file,
  * typed output and optional part ids. A tool invocation receives the real
  * session, connection, workspace and environment, plus progress and tool
  * access.
@@ -365,6 +385,7 @@ export const labelTool: ToolDefinition<Label> = {
   parameters: labelSchema,
   class: () => ({ kind: "custom", label: "Label" }),
   effects: "none",
+  approval: "never",
   replay: "safe",
   async execute(input) {
     return { content: [{ kind: "text", text: input.label }] };
@@ -389,6 +410,10 @@ export async function durableLabel(invocation: ToolInvocation): Promise<Json> {
  * A command's caller is the principal whose authority its api uses. Agents
  * select model, prompt and allowed tool names. Settings declare schemas and
  * scope; a plugin reads its values through its own settings registry.
+ *
+ * `approve` decides a call another agent runtime runs outside the loop; a
+ * runtime plugin asks every active approver through `api.approve`, and the
+ * first denial stands.
  */
 export const referencePlugin = {
   id: "lab-reference",
@@ -413,6 +438,8 @@ export const referencePlugin = {
       },
     ],
   },
+  approve: async (call) =>
+    call.class.kind === "shell" ? { kind: "deny", reason: "No commands." } : { kind: "allow" },
   hooks: {
     before_tool: () => ({ action: "continue" }),
   },

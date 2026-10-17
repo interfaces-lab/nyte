@@ -8,6 +8,7 @@ import {
 } from "@nyte-ai/schema";
 import type {
   ActOutcome,
+  Authority,
   Awaitable,
   Disposer,
   Infer,
@@ -49,6 +50,8 @@ export interface ActionContext<State, Actions extends ActionSchemas> extends Dur
   readonly session: SessionId;
   readonly api: PluginApi<"core">;
   readonly principal: PrincipalId;
+  /** The authority the acting principal holds on this host. */
+  readonly authority: ReadonlySet<Authority>;
   readonly signal: AbortSignal;
 }
 

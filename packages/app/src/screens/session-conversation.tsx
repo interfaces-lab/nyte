@@ -46,6 +46,7 @@ import type { ConversationTurn } from "../view-helpers.ts";
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
 import { TranscriptProvider, useTranscriptControls } from "../conversation/transcript.tsx";
+import { ApprovalTray } from "../conversation/approval-tray.tsx";
 import { QuestionTray } from "../conversation/tray/questions.tsx";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
 import { conversationMessages, transcriptRows } from "../conversation/transcript-rows.ts";
@@ -487,6 +488,11 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
                   backgroundWork={{
                     content: (
                       <>
+                        <ApprovalTray
+                          sessionId={sessionId}
+                          disabled={viewError !== undefined || navigating}
+                          viewport={scroll}
+                        />
                         <QuestionTray
                           disabled={viewError !== undefined || navigating}
                           viewport={scroll}

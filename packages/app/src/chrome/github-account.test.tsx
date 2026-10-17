@@ -4,25 +4,43 @@ import { setImmediate } from "node:timers/promises";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, test, vi } from "vitest";
-import type { GitHubBridge, GitHubProviderState, HostState } from "../bridge.ts";
+import { SdkError } from "@nyte-ai/sdk";
+import type { GitHubAccountApi, GitHubAccountState, GitHubApi, GitHubState } from "@nyte-ai/sdk";
+import type { HostState } from "../bridge.ts";
 import { keys } from "../query-keys.ts";
-import { useGitHubAccount } from "./github-account.ts";
+import { installConnection } from "../sdk.tsx";
+import { scriptedConnection } from "../../test/scripted-connection.ts";
+import { useGitHubAccount, useGitHubState } from "./github-account.ts";
 
-const github = {
-  state: vi.fn<GitHubBridge["state"]>(),
-  signIn: vi.fn<GitHubBridge["signIn"]>(),
-  signOut: vi.fn<GitHubBridge["signOut"]>(),
-  createPullRequest: vi.fn<GitHubBridge["createPullRequest"]>(),
+const account = {
+  account: vi.fn<GitHubAccountApi["account"]>(),
+  signIn: vi.fn<GitHubAccountApi["signIn"]>(),
+  signOut: vi.fn<GitHubAccountApi["signOut"]>(),
 };
+
+installConnection(
+  scriptedConnection({
+    github: {
+      account: () => account.account(),
+      signIn: () => account.signIn(),
+      signOut: () => account.signOut(),
+    },
+  }).connection,
+);
+
+const folder = { state: vi.fn<GitHubApi["state"]>(), createPullRequest: vi.fn() };
 
 const clients = new Set<QueryClient>();
 
-const signedOut = { kind: "signed_out", repository: undefined } satisfies GitHubProviderState;
+const signedOut = { kind: "signed_out" } satisfies GitHubAccountState;
 
-function ready(name: string): GitHubProviderState {
+const ready = {
+  kind: "ready",
+  account: { login: "octocat", name: undefined, avatarUrl: undefined },
+} satisfies GitHubAccountState;
+
+function repository(name: string): GitHubState {
   return {
-    kind: "ready",
-    account: { login: "octocat", name: undefined, avatarUrl: undefined },
     repository: {
       owner: "octocat",
       name,
@@ -54,25 +72,19 @@ function fixture(path: string | null = "/projects/one") {
 }
 
 /**
- * SSR has no mounted subscriptions, so only an invalidated seed qualifies for
- * this refetch, which runs the hook's actual query function.
- */
-function refetchSeed(client: QueryClient, path: string | null): Promise<void> {
-  return client.refetchQueries({ queryKey: [...keys.github, path], exact: true, stale: true });
-}
-
-/**
  * SSR creates fresh observers, so these probes test cache visibility, not mounted
- * effects or preservation of one component's local mutation error across renders.
- * SSR has no effects either, so the probe captures the real hook result for
- * actions after rendering.
+ * effects. SSR has no effects either, so the probe captures the real hook result
+ * for actions after rendering.
  */
 function probe(client: QueryClient) {
-  let account: ReturnType<typeof useGitHubAccount> | undefined;
+  let found: ReturnType<typeof useGitHubAccount> | undefined;
+  let repo: ReturnType<typeof useGitHubState> | undefined;
 
   function Probe() {
     // oxlint-disable-next-line react/globals
-    account = useGitHubAccount(github);
+    found = useGitHubAccount();
+    // oxlint-disable-next-line react/globals
+    repo = useGitHubState(folder);
 
     return null;
   }
@@ -82,9 +94,9 @@ function probe(client: QueryClient) {
       <Probe />
     </QueryClientProvider>,
   );
-  assert.ok(account);
+  assert.ok(found && repo);
 
-  return account;
+  return { ...found, folder: repo };
 }
 
 beforeEach(() => vi.resetAllMocks());
@@ -94,63 +106,63 @@ afterEach(() => {
   clients.clear();
 });
 
-test("a fetched provider error remains available to render and a refresh recovers", async () => {
+test("a fetched login error remains available to render and a refresh recovers", async () => {
   const client = fixture();
   const initial = probe(client);
   assert.equal(initial.query.data, undefined);
-  assert.equal(initial.query.isPending, true);
 
   const failure = {
     kind: "error",
-    repository: undefined,
     message: "GitHub API rate limit exceeded",
-  } satisfies GitHubProviderState;
+  } satisfies GitHubAccountState;
 
-  github.state.mockResolvedValueOnce(failure).mockResolvedValueOnce(signedOut);
+  account.account.mockResolvedValueOnce(failure).mockResolvedValueOnce(signedOut);
 
   await initial.query.refetch();
   const failed = probe(client);
   assert.deepEqual(failed.query.data, failure);
   assert.equal(failed.query.isError, false);
-  assert.equal(failed.busy, false);
 
   await failed.query.refetch();
-  const recovered = probe(client);
-  assert.deepEqual(recovered.query.data, signedOut);
-  assert.equal(recovered.query.error, null);
+  assert.deepEqual(probe(client).query.data, signedOut);
 });
 
-test("Home and each workspace retain their own repository state", async () => {
-  const client = fixture(null);
+test("a host that serves no GitHub login reads as none", async () => {
+  const client = fixture();
+  account.account.mockRejectedValueOnce(new SdkError("unavailable", "No gh here."));
+  await probe(client).query.refetch();
 
-  const targets = [
-    { path: null, state: signedOut },
-    { path: "/projects/one", state: ready("one") },
-    { path: "/projects/two", state: ready("two") },
-  ];
+  assert.equal(probe(client).query.data, null);
+});
 
-  for (const target of targets) {
-    selectWorkspace(client, target.path);
-    const account = probe(client);
-    assert.equal(account.query.data, undefined);
-    github.state.mockResolvedValueOnce(target.state);
-    await account.query.refetch();
-    assert.deepEqual(probe(client).query.data, target.state);
+test("the login is the machine's, one for every folder, while each folder keeps its repository", async () => {
+  const client = fixture();
+  account.account.mockResolvedValueOnce(ready);
+  await probe(client).query.refetch();
+
+  for (const path of ["/projects/one", "/projects/two"]) {
+    selectWorkspace(client, path);
+    const current = probe(client);
+    assert.deepEqual(current.query.data, ready);
+    folder.state.mockResolvedValueOnce(repository(path.slice(-3)));
+    await current.folder.refetch();
   }
 
-  for (const target of targets) {
-    selectWorkspace(client, target.path);
-    assert.deepEqual(probe(client).query.data, target.state);
+  for (const path of ["/projects/one", "/projects/two"]) {
+    selectWorkspace(client, path);
+    assert.deepEqual(probe(client).folder.data, repository(path.slice(-3)));
   }
+
+  assert.equal(account.account.mock.calls.length, 1);
 });
 
 test.each(["signIn", "signOut"] as const)(
-  "%s is visible to other account observers across workspace switches, but not other clients",
+  "%s is visible to other observers across folder switches, but not other clients",
   async (operation) => {
     const client = fixture();
     const otherClient = fixture();
-    const pending = Promise.withResolvers<GitHubProviderState>();
-    github[operation].mockReturnValueOnce(pending.promise);
+    const pending = Promise.withResolvers<GitHubAccountState>();
+    account[operation].mockReturnValueOnce(pending.promise);
     const mutation = probe(client).auth.mutateAsync(operation);
 
     for (const path of ["/projects/one", "/projects/two", null]) {
@@ -161,7 +173,6 @@ test.each(["signIn", "signOut"] as const)(
     }
 
     assert.equal(probe(otherClient).busy, false);
-    assert.equal(probe(otherClient).connecting, false);
 
     pending.resolve(signedOut);
     await mutation;
@@ -170,99 +181,56 @@ test.each(["signIn", "signOut"] as const)(
   },
 );
 
-test("auth operations from different observers cannot change shared credentials concurrently", async () => {
+test("sign-in and sign-out from different observers never change the login concurrently", async () => {
   const client = fixture();
-  const signingIn = Promise.withResolvers<GitHubProviderState>();
-  const signingOut = Promise.withResolvers<GitHubProviderState>();
-  github.signIn.mockReturnValueOnce(signingIn.promise);
-  github.signOut.mockReturnValueOnce(signingOut.promise);
+  const signingIn = Promise.withResolvers<GitHubAccountState>();
+  const signingOut = Promise.withResolvers<GitHubAccountState>();
+  account.signIn.mockReturnValueOnce(signingIn.promise);
+  account.signOut.mockReturnValueOnce(signingOut.promise);
   const signIn = probe(client).auth.mutateAsync("signIn");
-  await vi.waitFor(() => assert.equal(github.signIn.mock.calls.length, 1));
+  await vi.waitFor(() => assert.equal(account.signIn.mock.calls.length, 1));
   const signOut = probe(client).auth.mutateAsync("signOut");
   await setImmediate();
-  assert.equal(github.signOut.mock.calls.length, 0);
+  assert.equal(account.signOut.mock.calls.length, 0);
   assert.equal(probe(client).connecting, true);
 
-  signingIn.resolve(ready("one"));
+  signingIn.resolve(ready);
   await signIn;
-  await vi.waitFor(() => assert.equal(github.signOut.mock.calls.length, 1));
+  await vi.waitFor(() => assert.equal(account.signOut.mock.calls.length, 1));
   assert.equal(probe(client).busy, true);
-  assert.equal(probe(client).connecting, false);
 
   signingOut.resolve(signedOut);
   await signOut;
   assert.equal(probe(client).busy, false);
 });
 
-test("auth finishing after a workspace switch refreshes all targets without caching its old repository", async () => {
+test("an error from sign-in rejects, clears the busy state, and a retry succeeds", async () => {
   const client = fixture();
+  client.setQueryData([...keys.github, "account"], signedOut);
+  const found = probe(client);
 
-  for (const path of ["/projects/one", "/projects/two", null]) {
-    selectWorkspace(client, path);
-    client.setQueryData([...keys.github, path], signedOut);
-    probe(client);
-  }
+  account.signIn.mockResolvedValueOnce({ kind: "error", message: "GitHub authentication failed" });
 
-  selectWorkspace(client, "/projects/one");
-  const pending = Promise.withResolvers<GitHubProviderState>();
-  github.signIn.mockReturnValueOnce(pending.promise);
-  const mutation = probe(client).auth.mutateAsync("signIn");
-  selectWorkspace(client, "/projects/two");
-  pending.resolve(ready("one"));
-  await mutation;
-  assert.deepEqual(probe(client).query.data, signedOut);
+  await assert.rejects(found.auth.mutateAsync("signIn"), /GitHub authentication failed/);
+  assert.equal(probe(client).busy, false);
 
-  for (const path of ["/projects/two", "/projects/one", null]) {
-    selectWorkspace(client, path);
-    const current = ready(path ?? "home");
-    github.state.mockResolvedValueOnce(current);
-    await refetchSeed(client, path);
-    assert.deepEqual(probe(client).query.data, current);
-  }
+  found.auth.reset();
+  account.signIn.mockResolvedValueOnce(signedOut);
+  assert.deepEqual(await found.auth.mutateAsync("signIn"), signedOut);
 });
 
-test("a provider error from sign-in rejects, clears the busy state, and a retry succeeds", async () => {
+test("signing out cancels a login read started before it, so the old login never comes back", async () => {
   const client = fixture();
-  client.setQueryData([...keys.github, "/projects/one"], signedOut);
-  const account = probe(client);
-
-  github.signIn.mockResolvedValueOnce({
-    kind: "error",
-    repository: undefined,
-    message: "GitHub authentication failed",
-  });
-
-  await assert.rejects(account.auth.mutateAsync("signIn"), /GitHub authentication failed/);
-  assert.equal(probe(client).busy, false);
-  assert.equal(probe(client).connecting, false);
-  const refreshed = ready("one");
-  github.state.mockResolvedValueOnce(refreshed);
-  await client.refetchQueries({
-    queryKey: [...keys.github, "/projects/one"],
-    exact: true,
-    stale: true,
-  });
-  assert.deepEqual(probe(client).query.data, refreshed);
-
-  account.auth.reset();
-  github.signIn.mockResolvedValueOnce(signedOut);
-  assert.deepEqual(await account.auth.mutateAsync("signIn"), signedOut);
-  assert.equal(probe(client).busy, false);
-});
-
-test("auth cancels a pre-auth status read before it can replace the cached account", async () => {
-  const client = fixture();
-  const connected = ready("one");
-  client.setQueryData([...keys.github, "/projects/one"], connected);
-  const staleRead = Promise.withResolvers<GitHubProviderState>();
-  github.state.mockReturnValueOnce(staleRead.promise).mockResolvedValueOnce(signedOut);
-  github.signOut.mockResolvedValueOnce(signedOut);
-  const account = probe(client);
-  const staleRefresh = account.query.refetch();
-  await account.auth.mutateAsync("signOut");
-  staleRead.resolve(ready("outdated-repository"));
+  client.setQueryData([...keys.github, "account"], ready);
+  const staleRead = Promise.withResolvers<GitHubAccountState>();
+  account.account.mockReturnValueOnce(staleRead.promise).mockResolvedValueOnce(signedOut);
+  account.signOut.mockResolvedValueOnce(signedOut);
+  const found = probe(client);
+  const staleRefresh = found.query.refetch();
+  await found.auth.mutateAsync("signOut");
+  staleRead.resolve(ready);
   await staleRefresh;
-  assert.deepEqual(probe(client).query.data, connected);
+  assert.deepEqual(probe(client).query.data, ready);
   await probe(client).query.refetch();
   assert.deepEqual(probe(client).query.data, signedOut);
 });

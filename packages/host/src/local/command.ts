@@ -20,6 +20,8 @@ export async function run(
     readonly env?: Readonly<Record<string, string>>;
     readonly input?: string | Uint8Array;
     readonly limit?: number;
+    /** Kills the command after this long; it then ends with a null code. */
+    readonly timeoutMs?: number;
   },
 ): Promise<Ran> {
   await processEnvironment();
@@ -30,6 +32,7 @@ export async function run(
       env: { ...process.env, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      timeout: options.timeoutMs,
     });
 
     const stdout: Buffer[] = [];

@@ -19,7 +19,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import type { ConnectBridge, GitHubBridge } from "../bridge.ts";
+import type { ConnectBridge } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
 import { openExternal } from "../open-external.ts";
 import { useUpdateState } from "../queries.ts";
@@ -107,19 +107,17 @@ function NyteGroup({
   );
 }
 
-/** A workspace switch reads GitHub afresh; the label keeps the last answer meanwhile. */
+/** The machine's GitHub login labels the row; a refetch keeps the last answer meanwhile. */
 export function AccountFooterMenu({
-  github,
   connect,
   anchor,
   onOpenProfile,
 }: {
-  readonly github: GitHubBridge;
   readonly connect: ConnectBridge;
   readonly anchor: RefObject<HTMLDivElement | null>;
   readonly onOpenProfile: () => void;
 }): ReactElement {
-  const account = useGitHubAccount(github);
+  const account = useGitHubAccount();
   const update = useUpdateState().data ?? { kind: "idle" };
   const busy = update.kind === "downloading" || update.kind === "installing";
   const attention = update.kind !== "idle" && !busy;

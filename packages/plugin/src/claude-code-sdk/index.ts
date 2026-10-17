@@ -26,7 +26,7 @@ import type {
 import { processEnvironment } from "@nyte-ai/core";
 import type { SettingDefinition, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { standard } from "@nyte-ai/schema";
-import type { PartId } from "@nyte-ai/schema";
+import type { PartId, ToolClass } from "@nyte-ai/schema";
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -34,6 +34,7 @@ import type { Plugin } from "../core.ts";
 import { question } from "../question/question.ts";
 import { answerInput } from "../question/schema.ts";
 import { ClaudeCodeSession } from "./session.ts";
+import type { Approve, StartQuery } from "./session.ts";
 import {
   flatPrompt,
   messageKey,
@@ -55,6 +56,17 @@ const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies rea
 
 const NOT_RUNNING = "Claude Code is no longer running this turn. Send a message to continue.";
 
+/** Nyte tools Claude Code has its own built-in for, which the Nyte MCP server leaves out. */
+const CLAUDE_CODE_HAS_ITS_OWN = new Set([
+  "read",
+  "write",
+  "edit",
+  "list",
+  "bash",
+  "web_search",
+  "question",
+]);
+
 export const ultracodeSetting: SettingDefinition<boolean> = {
   id: "claude_code.ultracode",
   label: "Claude Code ultracode",
@@ -70,6 +82,7 @@ export const ultracodeSetting: SettingDefinition<boolean> = {
 interface Binding {
   readonly cwd: string;
   ultracode(): Promise<boolean>;
+  readonly approve: Approve;
 }
 
 function effortFor(
@@ -96,6 +109,7 @@ async function claudeCodeConfigured(): Promise<boolean> {
 }
 
 function answerOnce(
+  start: StartQuery,
   model: Model<Api>,
   context: TranscriptContext,
   options: SimpleStreamOptions | undefined,
@@ -112,7 +126,7 @@ function answerOnce(
       stream.push({ type: "start", partial: output });
       await processEnvironment();
 
-      for await (const message of query({
+      for await (const message of start({
         prompt: flatPrompt(context.messages),
         options: {
           model: model.id,
@@ -209,6 +223,60 @@ async function askUser(
   return { answers: answers.length === 0 ? null : Object.fromEntries(answers), part: part.id };
 }
 
+function classifyClaudeTool(
+  name: string,
+  input: Static<typeof mirrorArguments>["input"],
+): ToolClass {
+  const path = field(input, "file_path") ?? field(input, "notebook_path");
+  const command = field(input, "command");
+  const description = field(input, "description");
+
+  switch (name) {
+    case "Read":
+      return path === undefined ? { kind: "custom", label: name } : { kind: "read", path };
+    case "Edit":
+    case "MultiEdit":
+    case "Write":
+    case "NotebookEdit":
+      return path === undefined ? { kind: "custom", label: name } : { kind: "edit", path };
+    case "Bash":
+      if (command === undefined) return { kind: "custom", label: name };
+
+      return description === undefined
+        ? { kind: "shell", command }
+        : { kind: "shell", command, description };
+    case "Agent":
+    case "Task":
+      return {
+        kind: "delegate",
+        child: null,
+        role: "task",
+        title: description ?? null,
+      };
+    case "Skill":
+      return { kind: "custom", label: `Skill ${field(input, "skill") ?? ""}`.trim() };
+    case "Workflow":
+      return {
+        kind: "custom",
+        label: `Workflow ${field(input, "title") ?? field(input, "name") ?? ""}`.trim(),
+      };
+    case "AskUserQuestion": {
+      const headers = Value.Check(claudeQuestions, input.questions)
+        ? input.questions.map((item) => item.header).join(", ")
+        : "";
+
+      return { kind: "custom", label: `Asking ${headers}`.trim() };
+    }
+    case BACKGROUND_TOOL:
+      return { kind: "custom", label: "Waiting for background work" };
+    default: {
+      const subject = field(input, "pattern") ?? field(input, "url") ?? field(input, "query");
+
+      return { kind: "custom", label: subject === undefined ? name : `${name} ${subject}` };
+    }
+  }
+}
+
 function mirrorTool(
   sessions: ReadonlyMap<string, ClaudeCodeSession>,
 ): ToolDefinition<Static<typeof mirrorArguments>> {
@@ -217,54 +285,9 @@ function mirrorTool(
     description: "A tool Claude Code ran. Claude Code reports the result; Nyte records it.",
     parameters: standard(mirrorArguments),
     exposure: "hidden",
+    approval: "runtime",
     replay: "safe",
-    class({ name, input }) {
-      const path = field(input, "file_path") ?? field(input, "notebook_path");
-      const command = field(input, "command");
-
-      switch (name) {
-        case "Read":
-          return path === undefined ? { kind: "custom", label: name } : { kind: "read", path };
-        case "Edit":
-        case "MultiEdit":
-        case "Write":
-        case "NotebookEdit":
-          return path === undefined ? { kind: "custom", label: name } : { kind: "edit", path };
-        case "Bash":
-          return command === undefined
-            ? { kind: "custom", label: name }
-            : { kind: "shell", command, description: field(input, "description") };
-        case "Agent":
-        case "Task":
-          return {
-            kind: "delegate",
-            child: null,
-            role: "task",
-            title: field(input, "description") ?? null,
-          };
-        case "Skill":
-          return { kind: "custom", label: `Skill ${field(input, "skill") ?? ""}`.trim() };
-        case "Workflow":
-          return {
-            kind: "custom",
-            label: `Workflow ${field(input, "title") ?? field(input, "name") ?? ""}`.trim(),
-          };
-        case "AskUserQuestion": {
-          const headers = Value.Check(claudeQuestions, input.questions)
-            ? input.questions.map((item) => item.header).join(", ")
-            : "";
-
-          return { kind: "custom", label: `Asking ${headers}`.trim() };
-        }
-        case BACKGROUND_TOOL:
-          return { kind: "custom", label: "Waiting for background work" };
-        default: {
-          const subject = field(input, "pattern") ?? field(input, "url") ?? field(input, "query");
-
-          return { kind: "custom", label: subject === undefined ? name : `${name} ${subject}` };
-        }
-      }
-    },
+    class: ({ name, input }) => classifyClaudeTool(name, input),
     async execute({ id, name, input }, invocation) {
       const session = sessions.get(invocation.session.id);
 
@@ -272,6 +295,7 @@ function mirrorTool(
 
       if (name === BACKGROUND_TOOL)
         return { content: [{ kind: "text", text: await session.background(invocation.signal) }] };
+      session.recording(id);
       let parts: PartId[] = [];
 
       if (name === "AskUserQuestion") {
@@ -289,7 +313,7 @@ function mirrorTool(
   };
 }
 
-export function claudeCodeSdk() {
+export function claudeCodeSdk(start: StartQuery = query) {
   const catalog = anthropicProvider();
   const sessions = new Map<string, ClaudeCodeSession>();
   const bindings = new Map<string, Binding>();
@@ -317,6 +341,11 @@ export function claudeCodeSdk() {
     const key = JSON.stringify([model.id, binding.cwd, options?.reasoning !== undefined]);
     const messages = context.messages.filter((message) => message.role !== "system");
     const keys = messages.map(messageKey);
+
+    const tools = getCurrentTools(context.messages).filter(
+      (tool) => !CLAUDE_CODE_HAS_ITS_OWN.has(tool.name),
+    );
+
     let session = sessions.get(id);
 
     const continues =
@@ -350,11 +379,16 @@ export function claudeCodeSdk() {
           model: model.id,
           cwd: binding.cwd,
         }),
+        tools,
+        query: start,
+        approve: binding.approve,
       });
       sessions.set(id, session);
     }
 
     if (session === undefined) throw new Error(NOT_RUNNING);
+    session.expose(tools);
+    session.deliver(messages);
     await session.configure(effort, ultracode);
 
     if (prompt.length > 0)
@@ -380,13 +414,14 @@ export function claudeCodeSdk() {
     options?: SimpleStreamOptions,
   ): AssistantMessageEventStream =>
     getCurrentTools(context.messages).length === 0
-      ? answerOnce(model, context, options)
+      ? answerOnce(start, model, context, options)
       : lazyStream(model, () => respond(model, context, options));
 
   const provider: Provider = {
     id: CLAUDE_CODE_PROVIDER,
     name: "Claude Code",
     baseUrl: "process://claude-code",
+    capabilities: { steer: true },
     auth: {
       apiKey: {
         name: "Claude Code login",
@@ -427,6 +462,16 @@ export function claudeCodeSdk() {
       const binding: Binding = {
         cwd: api.env.cwd,
         ultracode: async () => (await api.contribute.settings.value(ultracodeSetting.id)) === true,
+        approve: async (name, input, signal) => {
+          const verdict = await api.approve(
+            { name, class: classifyClaudeTool(name, input) },
+            signal,
+          );
+
+          return verdict.kind === "allow"
+            ? { behavior: "allow" }
+            : { behavior: "deny", message: verdict.reason };
+        },
       };
 
       const release = acquireSessionResources(id);

@@ -222,8 +222,16 @@ export async function loadEarlier(
 export async function watchHost(context: HandlerContext): Promise<void> {
   const { ports, dispatch, read, scope } = context;
   let seen = read().facts.catalog.catalog?.generation ?? null;
+  let settings = JSON.stringify(read().facts.hostSettings);
 
   const catalogs = each(ports.host.catalog(), context.signal, (entry) => {
+    const listed = JSON.stringify(entry.settings);
+
+    if (listed !== settings) {
+      settings = listed;
+      dispatch({ kind: "host-settings", settings: entry.settings });
+    }
+
     if (entry.catalog === seen) return;
     seen = entry.catalog;
     const generation = (scope.catalogGeneration += 1);

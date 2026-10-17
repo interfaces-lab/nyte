@@ -10,6 +10,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionView,
+  SettingInfo,
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ChatCommand } from "../lib/constants.ts";
@@ -173,6 +174,7 @@ export type Fact =
   | { readonly kind: "session-info"; readonly session: SessionId; readonly info: SessionInfo }
   | { readonly kind: "selection"; readonly session: SessionId; readonly selection: Selection }
   | { readonly kind: "catalog"; readonly generation: number; readonly catalog: ModelCatalogView }
+  | { readonly kind: "host-settings"; readonly settings: readonly SettingInfo[] }
   | { readonly kind: "settings"; readonly settings: ResolvedSettings }
   | { readonly kind: "tasks"; readonly session: SessionId; readonly tasks: readonly Task[] }
   | { readonly kind: "workspace"; readonly workspace: WorkspaceFacts }
@@ -216,6 +218,7 @@ export type Outcome =
         | { readonly kind: "failed"; readonly message: string };
       readonly typed: QuestionTypedDraft | null;
     }
+  | { readonly kind: "approved"; readonly part: PartId; readonly failure: string | null }
   | {
       readonly kind: "moved";
       readonly outcome: MoveOutcome;

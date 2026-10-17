@@ -131,6 +131,7 @@ export function createWorkspaces(
           projectSources: inspected.projectSources,
           addedBy: context.principal,
           createdAt: Date.now(),
+          isolation: null,
         };
 
         const outcome = await commit(kernel, [
@@ -360,6 +361,7 @@ export function workspaceHandle(
     },
     files: async () => (await capabilities()).files,
     git: async () => (await capabilities()).git,
+    github: async () => (await capabilities()).github,
     browser: async () => (await capabilities()).browser,
   };
 }
@@ -391,10 +393,11 @@ async function workspaceInfo(
     addedBy: record.addedBy,
     sessions: sessions.length,
     writers: runs.flat().map((run) => run.record.view.id),
+    isolation: record.isolation,
   };
 }
 
-async function sessionsOn(
+export async function sessionsOn(
   store: StoreConnection,
   workspace: WorkspaceId,
 ): Promise<readonly SessionId[]> {
@@ -603,7 +606,7 @@ async function runSnapshots(
   return null;
 }
 
-async function byIdentity(
+export async function byIdentity(
   store: StoreConnection,
   input: { readonly kind: string; readonly identity: EnvironmentIdentity },
 ): Promise<WorkspaceRecord | null> {
@@ -630,7 +633,7 @@ export async function trustChanged(kernel: Kernel): Promise<void> {
   );
 }
 
-function changed(kernel: Kernel, id: WorkspaceId): void {
+export function changed(kernel: Kernel, id: WorkspaceId): void {
   for (const listener of kernel.workspaceState.listeners) listener(id);
 }
 

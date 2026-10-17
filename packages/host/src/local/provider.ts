@@ -8,18 +8,21 @@ import type { EnvironmentProvider, ExecutionEnv } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { localFiles } from "./files.ts";
 import { localGit } from "./git.ts";
+import { localGitHub } from "./github.ts";
 import { folderIdentity } from "./identity.ts";
 import { localExec } from "./jobs.ts";
 import { localSnapshots } from "./snapshots.ts";
+import { localWorktrees } from "./worktrees.ts";
 
 const PLUGIN_FILE = /\.(?:ts|mts|js|mjs)$/;
 
 const ROOT_SOURCES = [".nyte/SYSTEM.md", ".nyte/APPEND_SYSTEM.md", ".nyte/mcp.json"];
 
-/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files `.nyte/plugins/<name>.{ts,mts,js,mjs}` and `.nyte/plugins/<name>/index.<ext>`, the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, the prompts `.nyte/prompts/<name>.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md` and `.nyte/mcp.json`: the files project trust gates. Context files such as `AGENTS.md` load without trust and are not listed. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`), and absent for a folder that contains `<home>/.nyte` or lies inside it (the home folder itself, its ancestors, Nyte's own state): there a snapshot would walk or stage everything under home, the store and secrets included, to report changes in the store it just wrote; no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
+/** Returns the local environment provider (`kind: "local"`): a folder on this machine. `inspect` answers a `{ kind: "local", path }` target's `folderIdentity` (§41d), `available` when the path is a readable directory (else `unavailable { unreachable }`; a target without a path `unavailable { unsupported }`, identified by the hash of its locator), and the project sources present under it, relative to it, in this order: the plugin files `.nyte/plugins/<name>.{ts,mts,js,mjs}` and `.nyte/plugins/<name>/index.<ext>`, the skills `.nyte/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`, the prompts `.nyte/prompts/<name>.md`, then `.nyte/SYSTEM.md`, `.nyte/APPEND_SYSTEM.md` and `.nyte/mcp.json`: the files project trust gates. Context files such as `AGENTS.md` load without trust and are not listed. `attach` resolves the real path (a target that is not a directory throws `SdkError("unavailable")`) and returns an `ExecutionEnv` with that identity, `cwd` the real path, `files` from `localFiles` (with `ripgrep` and `formatter`), `exec` from `localExec`, and a `close` that ends its file watches and the jobs' readers, leaving running jobs alone. `git` is `localGit` (with `git`), `github` is `localGitHub` (with `gh` and `git`; the login is the machine's, `localGitHubAccount`), `snapshots` is `localSnapshots` storing tree walks under `<home>/.nyte/snapshots` (`home` default `os.homedir()`), and absent for a folder that contains `<home>/.nyte` or lies inside it outside `<home>/.nyte/worktrees` (the home folder itself, its ancestors, Nyte's own state): there a snapshot would walk or stage everything under home, the store and secrets included, to report changes in the store it just wrote; `worktrees` is `localWorktrees` (with `home` and `git`); no `browser` (the desktop wraps one in); `destroy` rejects with `SdkError("unavailable")`: a local folder is never torn down. */
 export function localProvider(options?: {
   readonly home?: string;
   readonly git?: string;
+  readonly gh?: string;
   readonly ripgrep?: string;
   readonly formatter?: string;
   /** The login shell a pty job without a command runs, read at each start; null or absent is `$SHELL`. */
@@ -28,6 +31,7 @@ export function localProvider(options?: {
   const home = options?.home ?? homedir();
   const store = join(home, ".nyte", "snapshots");
   let state: string | undefined;
+  const github = localGitHub({ gh: options?.gh, git: options?.git });
 
   return {
     kind: "local",
@@ -81,13 +85,16 @@ export function localProvider(options?: {
       return env;
     },
     git: (env) => localGit(env, { git: options?.git }),
+    github,
     snapshots(env) {
       state ??= join(realpathOrSelf(home), ".nyte");
 
-      return nests(env.cwd, state) || nests(state, env.cwd)
+      return nests(env.cwd, state) ||
+        (nests(state, env.cwd) && !nests(join(state, "worktrees"), env.cwd))
         ? undefined
         : localSnapshots(env, { store, git: options?.git });
     },
+    worktrees: localWorktrees({ home, git: options?.git }),
     async destroy() {
       throw new SdkError("unavailable", "A local folder is never torn down.");
     },

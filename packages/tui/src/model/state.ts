@@ -7,6 +7,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionView,
+  SettingInfo,
   Thinking,
   ModelRef,
   WorkspaceId,
@@ -31,6 +32,8 @@ export interface Facts {
   readonly host: "opening" | "open";
   readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
+  /** The host's own settings, which a chat's catalog repeats; what a blank chat offers. */
+  readonly hostSettings: readonly SettingInfo[];
   readonly settings: ResolvedSettings;
   readonly tasks: readonly Task[];
   readonly shells: readonly ShellJob[];
@@ -125,6 +128,7 @@ export interface Local {
   readonly editing: Editing | null;
   readonly dialogs: readonly Dialog[];
   readonly question: QuestionLocal;
+  readonly approval: ApprovalLocal;
   readonly notice: Notice | null;
   readonly failures: readonly FailureReport[];
   readonly pending: readonly PendingOp[];
@@ -205,6 +209,13 @@ export interface QuestionLocal {
   readonly drafts: ReadonlyMap<SessionId, ReadonlyMap<PartId, QuestionDraft>>;
 }
 
+/** The approval panel's highlight, kept for the part it was moved on, and the part whose answer is in flight. */
+export interface ApprovalLocal {
+  readonly part: PartId | null;
+  readonly highlighted: number;
+  readonly sending: PartId | null;
+}
+
 export interface Notice {
   readonly tone: "info" | "ok" | "warning" | "error";
   readonly text: string;
@@ -265,6 +276,7 @@ export function initialState(bootstrap: Bootstrap): State {
       host: "opening",
       chat: bootstrap.chat,
       catalog: { generation: -1, catalog: null },
+      hostSettings: [],
       settings: bootstrap.settings,
       tasks: [],
       shells: [],
@@ -278,6 +290,7 @@ export function initialState(bootstrap: Bootstrap): State {
       editing: null,
       dialogs: [],
       question: { dismissed: null, highlighted: 0, drafts: new Map() },
+      approval: { part: null, highlighted: 0, sending: null },
       notice: null,
       failures: [],
       pending: [],

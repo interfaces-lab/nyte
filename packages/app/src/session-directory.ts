@@ -7,16 +7,24 @@ export interface WorkspaceSessionDirectory {
   readonly sessions: readonly SessionInfo[];
 }
 
+/** Groups chats by folder; a chat in a worktree joins the folder the worktree was made from. */
 export function groupDirectory(
   sessions: readonly SessionInfo[],
-  workspaces: readonly { readonly id: WorkspaceId; readonly path: string }[],
+  workspaces: readonly {
+    readonly id: WorkspaceId;
+    readonly path: string;
+    readonly worktree?: { readonly source: WorkspaceId } | null;
+  }[],
 ): readonly WorkspaceSessionDirectory[] {
   const groups = new Map<WorkspaceId, SessionInfo[]>();
 
   for (const session of sessions) {
-    const group = groups.get(session.workspace) ?? [];
+    const folder =
+      workspaces.find((candidate) => candidate.id === session.workspace)?.worktree?.source ??
+      session.workspace;
+    const group = groups.get(folder) ?? [];
     group.push(session);
-    groups.set(session.workspace, group);
+    groups.set(folder, group);
   }
 
   return [...groups].map(([workspace, rows]) => {

@@ -40,6 +40,8 @@ export interface ComposerEditorHandle {
   insertReference(reference: MessageReference, start?: number, end?: number): void;
   /** Insert at the text under a viewport point, else at the caret. */
   dropReferences(references: readonly MessageReference[], clientX: number, clientY: number): void;
+  /** Hands files to the composer as a paste would; dropped where it takes no files. */
+  attachFiles(files: readonly File[]): void;
 }
 
 export interface ComposerComboboxState {
@@ -176,6 +178,7 @@ export function ComposerEditor({
   const reported = useRef<ComposerDocumentState | undefined>(undefined);
   const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
+  const onFilesSelectedRef = useRef(onFilesSelected);
 
   const handle = useMemo<ComposerEditorHandle>(
     () => ({
@@ -229,12 +232,19 @@ export function ComposerEditor({
         for (const reference of references) insertComposerReference(tr, reference);
         view.dispatch(closeHistory(tr).scrollIntoView());
       },
+      attachFiles(files) {
+        onFilesSelectedRef.current?.(files);
+      },
     }),
     [editor],
   );
 
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
+
+  useLayoutEffect(() => {
+    onFilesSelectedRef.current = onFilesSelected;
+  }, [onFilesSelected]);
 
   useLayoutEffect(
     () =>

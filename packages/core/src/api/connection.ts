@@ -11,7 +11,7 @@ import type {
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin } from "../contract/plugin.ts";
 import type { Head, Session } from "../contract/session.ts";
-import type { Workspace } from "../contract/workspace.ts";
+import type { GitHubAccountApi, Workspace } from "../contract/workspace.ts";
 import { advance, cover, repair } from "../drive/execution.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
@@ -19,6 +19,16 @@ import { createSettingsApi } from "../extend/settings.ts";
 import { inspect } from "../store/inspect.ts";
 import { watchHost } from "./host.ts";
 import { createSessions, sessionHandle } from "./session.ts";
+
+const NO_GITHUB: GitHubAccountApi = {
+  account: async () => unavailableGitHub(),
+  signIn: async () => unavailableGitHub(),
+  signOut: async () => unavailableGitHub(),
+};
+
+function unavailableGitHub(): never {
+  throw new SdkError("unavailable", "This host has no GitHub CLI login to serve.");
+}
 
 /** Returns the connection a caller holds under `context`, each api gated by its authority; `models` is the host's models api, built once over its providers. */
 export function createConnection(
@@ -104,6 +114,7 @@ export function createConnection(
       }),
       files: () => capability("files", () => handle.files()),
       git: () => capability("git", () => handle.git()),
+      github: () => capability("github", () => handle.github()),
       browser: () => capability("browser", () => handle.browser()),
     });
   };
@@ -158,6 +169,7 @@ export function createConnection(
       authority,
     ),
     principals: gated("principals", createPrincipals(kernel), authority),
+    github: gated("github", kernel.github ?? NO_GITHUB, authority),
     close,
     [Symbol.asyncDispose]: close,
   };

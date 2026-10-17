@@ -28,6 +28,10 @@ import type {
   GitScope,
   GitStatus,
   GitWrite,
+  GitHubAccountState,
+  GitHubPullRequestInput,
+  GitHubPullRequestOutcome,
+  GitHubState,
   HeadName,
   JobChange,
   JobEnd,
@@ -96,6 +100,28 @@ export interface GitApi {
     options?: GitWrite,
   ): Promise<GitOutcome>;
   push(input?: { readonly setUpstream?: boolean }, options?: GitWrite): Promise<GitOutcome>;
+}
+
+/**
+ * GitHub for one workspace through the serving machine's GitHub CLI (`gh`):
+ * the workspace picks the repository (its remotes) and the branch (its HEAD);
+ * the login is the machine's, `Connection.github`.
+ */
+export interface GitHubApi {
+  /** The repository and the checked-out branch's pull request with its checks; the pull request is `unavailable` while the machine's `gh` has no account that can read it. */
+  state(): Promise<GitHubState>;
+  /** Opens a pull request for the checked-out branch, which the caller has pushed; an open one for the branch answers `exists` and opens nothing. */
+  createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
+}
+
+/** The serving machine's GitHub CLI login, one for the whole machine and every workspace on it. */
+export interface GitHubAccountApi {
+  /** The github.com account `gh` is signed in as; `signing_in` while a sign-in waits for its code. */
+  account(): Promise<GitHubAccountState>;
+  /** Starts `gh auth login` on github.com, or joins the one already running, and answers `signing_in` once it has a one-time code; an account already signed in answers `ready` and starts nothing. The sign-in ends when the code is entered, when it expires, or on `signOut`. */
+  signIn(): Promise<GitHubAccountState>;
+  /** Ends a sign-in still waiting for its code; otherwise removes the CLI's github.com login. */
+  signOut(): Promise<GitHubAccountState>;
 }
 
 export interface Jobs {
@@ -192,6 +218,8 @@ export interface ExecutionEnv {
       readonly env?: Readonly<Record<string, string>>;
       readonly signal?: AbortSignal;
       readonly pty?: { readonly columns: number; readonly rows: number };
+      /** `"protocol"` for a pipe a protocol runs over: `output()` yields every byte of stdout and never a `gap`, holding the process while its slowest open reader is behind, and stderr apart, as `bytes` frames with `stream: "stderr"`. Default `"merged"`: stdout and stderr interleaved, a reader that falls behind skipping to a `gap`. A provider that cannot keep them apart throws `SdkError("unavailable")`; `pty` ignores it. */
+      readonly stdio?: "merged" | "protocol";
     },
   ): Promise<Job>;
   close(): Promise<void>;
@@ -213,6 +241,30 @@ export interface SnapshotsApi {
   ): Promise<readonly PatchEntry[]>;
 }
 
+/** A git worktree that isolates one session: its folder as a target, the branch checked out there and the commit it started from. */
+export interface Worktree {
+  readonly target: WorkspaceTarget;
+  readonly branch: string;
+  readonly base: string;
+}
+
+/** What removing a worktree left: its folder stays while it holds uncommitted changes, its branch once it has commits past its base. */
+export type WorktreeRemoval = {
+  readonly folder: "removed" | "kept";
+  readonly branch: "deleted" | "kept";
+};
+
+/** Git worktrees of a provider's workspaces, which isolate a session from the workspace it started in. */
+export interface WorktreeProvider {
+  /** Checks a new branch out from the HEAD of `env`'s repository in a folder of its own and copies `env`'s uncommitted changes, ignored files aside, into it. `name` keys it: a later call with the same name answers the worktree the first made. Throws `SdkError("unavailable")` outside a git repository or before its first commit. */
+  create(
+    env: ExecutionEnv,
+    input: { readonly name: string; readonly title: string | null },
+  ): Promise<Worktree>;
+  /** Removes the worktree's folder and deletes its branch, keeping the folder (and so the branch) while it holds uncommitted changes and the branch once it moved past `base`. A folder already gone counts as removed. */
+  remove(worktree: Worktree): Promise<WorktreeRemoval>;
+}
+
 export interface EnvironmentProvider {
   readonly kind: string;
   inspect(target: WorkspaceTarget): Promise<{
@@ -222,8 +274,10 @@ export interface EnvironmentProvider {
   }>;
   attach(target: WorkspaceTarget): Promise<ExecutionEnv>;
   readonly git?: (env: ExecutionEnv) => GitApi | undefined;
+  readonly github?: (env: ExecutionEnv) => GitHubApi | undefined;
   readonly snapshots?: (env: ExecutionEnv) => SnapshotsApi | undefined;
   readonly browser?: (env: ExecutionEnv) => BrowserApi;
+  readonly worktrees?: WorktreeProvider;
   destroy?(target: WorkspaceTarget): Promise<void>;
 }
 
@@ -256,6 +310,7 @@ export interface Resources {
 export type EnvironmentCapabilities = {
   readonly files: Capability<FilesApi>;
   readonly git: Capability<GitApi>;
+  readonly github: Capability<GitHubApi>;
   readonly browser: Capability<BrowserApi>;
 };
 
@@ -497,6 +552,9 @@ export interface Workspace {
   files(): Promise<Capability<FilesApi>>;
 
   git(): Promise<Capability<GitApi>>;
+
+  /** GitHub through the serving machine's `gh`; `unsupported` where the provider serves none. */
+  github(): Promise<Capability<GitHubApi>>;
 
   browser(): Promise<Capability<BrowserApi>>;
 }

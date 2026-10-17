@@ -4,6 +4,7 @@ import type {
   ConfigurationPatch,
   LoginMethod,
   ModelAccount,
+  ModelCapabilities,
   ModelCatalogView,
   ModelInfo,
   ModelRef,
@@ -174,7 +175,12 @@ async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalo
       models: catalog
         .filter((model) => model.variant === undefined)
         .map((model) =>
-          projectModel(model, fast.get(model.id) ?? null, policies.get(formatModelKey(model))),
+          projectModel(
+            model,
+            fast.get(model.id) ?? null,
+            policies.get(formatModelKey(model)),
+            provider.capabilities,
+          ),
         ),
     };
   });
@@ -206,6 +212,7 @@ export function modelInfo(models: Models, ref: ModelRef, runtime: PluginRuntime)
     model,
     fast === undefined ? null : { provider: fast.provider, id: fast.id },
     policy,
+    models.getProvider(model.provider)?.capabilities,
   );
 }
 
@@ -368,10 +375,13 @@ async function defaultModel(kernel: Kernel, models: Models): Promise<ModelRef | 
   return null;
 }
 
+const NYTE_LOOP: ModelCapabilities = { steer: true };
+
 function projectModel(
   model: Model<Api>,
   fast: ModelRef | null,
   policy: ModelContextPolicy | undefined,
+  capabilities: ModelCapabilities | undefined,
 ): ModelInfo {
   return {
     ref: { provider: model.provider, id: model.id },
@@ -384,6 +394,7 @@ function projectModel(
     compactAt: policy?.compactAt ?? Math.floor(model.contextWindow * 0.8),
     maxOutput: model.maxTokens,
     input: [...model.input],
+    capabilities: capabilities ?? NYTE_LOOP,
     cost: {
       input: model.cost.input,
       output: model.cost.output,

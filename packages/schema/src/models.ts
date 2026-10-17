@@ -86,6 +86,16 @@ export const ProviderUsageType = Type.Object({
 
 export type ProviderUsage = Decoded<typeof ProviderUsageType>;
 
+/**
+ * What a model's runtime does around a turn, for clients to read instead of
+ * its provider id: `steer` when a message sent mid-turn reaches it before the
+ * turn ends (otherwise it waits for the turn). The inputs it reads are
+ * `ModelInfo.input`.
+ */
+export const ModelCapabilitiesType = Type.Object({ steer: Type.Boolean() });
+
+export type ModelCapabilities = Decoded<typeof ModelCapabilitiesType>;
+
 export const ModelInfoType = Type.Object({
   ref: ModelRefType,
   name: Type.String(),
@@ -98,6 +108,7 @@ export const ModelInfoType = Type.Object({
   compactAt: Type.Number(),
   maxOutput: Type.Number(),
   input: Type.Array(Type.Enum(["text", "image"])),
+  capabilities: ModelCapabilitiesType,
   cost: Type.Object({
     input: Type.Number(),
     output: Type.Number(),

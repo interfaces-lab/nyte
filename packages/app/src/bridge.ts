@@ -2,7 +2,7 @@
  * The contract between the interface and whatever hosts it: where the host's
  * listener is (the interface connects to it with `@nyte-ai/sdk`), and a host
  * namespace for what lives beside the sdk (workspace selection, files on this
- * machine, terminals, browser surfaces, usage history, GitHub). The desktop
+ * machine, terminals, browser surfaces, usage history). The desktop
  * carries it over Electron IPC; the web app supplies its own.
  */
 import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
@@ -148,76 +148,6 @@ export interface DeviceCode {
   readonly expiresInSeconds?: number;
   readonly instructions?: string;
 }
-
-/** The GitHub repository the selected folder's remote names. */
-export interface GitHubRepository {
-  readonly owner: string;
-  readonly name: string;
-  readonly remoteName: string;
-  /** The canonical public URL. Remote credentials and raw remote URLs never cross. */
-  readonly url: string;
-}
-
-/** The account `gh` is signed in as. */
-export interface GitHubAccount {
-  readonly login: string;
-  readonly name?: string;
-  readonly avatarUrl?: string;
-}
-
-/** A pull request for the checked-out branch. */
-export interface GitHubPullRequest {
-  readonly number: number;
-  readonly title: string;
-  readonly url: string;
-  readonly state: "OPEN" | "CLOSED" | "MERGED";
-  readonly draft: boolean;
-  readonly headRefName: string;
-  readonly baseRefName: string;
-}
-
-/** Whether the checked-out branch has a pull request. */
-export type GitHubPullRequestContext =
-  | { readonly kind: "none" }
-  | { readonly kind: "ready"; readonly pullRequest: GitHubPullRequest }
-  | { readonly kind: "error"; readonly message: string };
-
-/** What opening a pull request takes. */
-export interface GitHubPullRequestInput {
-  readonly title: string;
-  readonly body?: string;
-  readonly draft?: boolean;
-}
-
-/** Every state `gh` can leave a pull request request in; `exists` carries the one already open. */
-export type GitHubPullRequestOutcome =
-  | { readonly kind: "created"; readonly url: string }
-  | { readonly kind: "exists"; readonly pullRequest: GitHubPullRequest }
-  | { readonly kind: "cli_missing" }
-  | { readonly kind: "signed_out" }
-  | { readonly kind: "no_remote" }
-  | { readonly kind: "failed"; readonly message: string };
-
-/** The serving machine's GitHub CLI login and the repository of the selected folder. */
-export type GitHubProviderState =
-  | { readonly kind: "cli_missing"; readonly repository?: GitHubRepository }
-  | { readonly kind: "signed_out"; readonly repository?: GitHubRepository }
-  | {
-      readonly kind: "signing_in";
-      readonly repository?: GitHubRepository;
-      readonly deviceCode: DeviceCode;
-    }
-  | {
-      readonly kind: "ready";
-      readonly repository?: GitHubRepository;
-      readonly account: GitHubAccount;
-      readonly pullRequest: GitHubPullRequestContext;
-    }
-  | {
-      readonly kind: "error";
-      readonly repository?: GitHubRepository;
-      readonly message: string;
-    };
 
 export type ThemePreference = "system" | "light" | "dark";
 
@@ -614,7 +544,6 @@ export type HostEvent =
   /** A host mutation (file save, terminal) was refused. Sessions report trust through their activation. */
   | { kind: "workspace_trust_required"; path: string }
   | { kind: "workspace_closed" }
-  | { kind: "github_changed" }
   /** The server was connected or disconnected; re-read its state. */
   | { kind: "server_changed" }
   /** Remote access started, stopped, or moved folders; re-read its state. */
@@ -641,14 +570,12 @@ export type HostEvent =
       url: string;
     };
 
-export interface GitHubBridge {
-  state(): Promise<GitHubProviderState>;
-  /** The renderer can call this only from a user gesture. `gh` owns the credentials. */
-  signIn(): Promise<GitHubProviderState>;
-  /** Ends a sign-in still waiting for its code; otherwise removes the CLI login. */
-  signOut(): Promise<GitHubProviderState>;
-  /** Open a pull request for the current branch through `gh`. Needs workspace trust. */
-  createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
+/** An element picked on a page: a selector that finds it, its outer HTML cut short, and a PNG data URL of its box. */
+export interface BrowserElementPick {
+  readonly url: string;
+  readonly selector: string;
+  readonly html: string;
+  readonly image: string | undefined;
 }
 
 export interface BrowserBridge {
@@ -678,6 +605,11 @@ export interface BrowserBridge {
    * view. The panel paints it while an overlay forces the page to hide.
    */
   captureFrame(input: { surface: string }): Promise<string | undefined>;
+  /**
+   * Lets the user point at an element on the page, and answers with it once
+   * picked: a click or Enter picks, Escape or a second call cancels with none.
+   */
+  pickElement(input: { surface: string }): Promise<BrowserElementPick | undefined>;
   /** Highlights matches and moves to the next or previous one. Empty text clears. */
   find(input: {
     surface: string;
@@ -758,8 +690,6 @@ export interface HostBridge {
     /** What the Check for Updates menu item does in this state. */
     check(): Promise<void>;
   };
-  /** Absent where no environment answers for `gh`. */
-  readonly github?: GitHubBridge;
   server: {
     state(): Promise<ServerState>;
     /** Proves the server answers with this token before remembering either. */
@@ -807,7 +737,7 @@ export interface HostBridge {
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 
-/** What `window.nyte` is: the shell's surface and the host namespace. Sessions, files and git are the connection's. */
+/** What `window.nyte` is: the shell's surface and the host namespace. Sessions, files, git and GitHub are the connection's. */
 export interface NyteBridge {
   readonly clientSurface: ClientSurface;
   /** The operating system the interface runs on, known before any host answers. */

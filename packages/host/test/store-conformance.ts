@@ -355,6 +355,28 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       expect(await refs.log(session, asSeq(3), 10)).toEqual([]);
     });
 
+    it("keeps one fold checkpoint per session, a later seq replacing it, and sizes the log past a seq", async () => {
+      const { objects, refs, checkpoints } = await connect();
+
+      if (checkpoints === undefined) return;
+      const target = await objects.put({});
+      await refs.set([{ name: "sessions/s1/heads/main", target, events: [created, moved] }]);
+      await checkpoints.write(session, { seq: asSeq(2), body: "second" });
+      await checkpoints.write(session, { seq: asSeq(1), body: "first" });
+
+      expect(await checkpoints.read(session)).toEqual({ seq: 2, body: "second" });
+      expect(await checkpoints.read(other)).toBeNull();
+
+      await checkpoints.write(session, { seq: asSeq(2), body: "again" });
+
+      expect(await checkpoints.read(session)).toEqual({ seq: 2, body: "again" });
+      expect(await checkpoints.gap(session, asSeq(1))).toEqual({
+        events: 1,
+        bytes: new TextEncoder().encode(JSON.stringify(moved)).byteLength,
+      });
+      expect(await checkpoints.gap(session, asSeq(2))).toEqual({ events: 0, bytes: 0 });
+    });
+
     it("throws for an event outside a session and writes nothing", async () => {
       const { objects, refs } = await connect();
       const target = await objects.put({ outside: true });

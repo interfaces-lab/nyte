@@ -269,6 +269,7 @@ function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
     parameters,
     class: (args) => ({ kind: "custom", label: `Searching ${args.query}` }),
     effects: "none",
+    approval: "never",
     replay: "safe",
     async execute(args, invocation) {
       const value = await api.contribute.settings.value(provider.id);

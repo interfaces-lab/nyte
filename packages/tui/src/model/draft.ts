@@ -1,4 +1,5 @@
-import type { BlobId, SkillInfo, UserContent } from "@nyte-ai/sdk";
+import type { BlobId, ExcerptSource, SkillInfo, UserContent } from "@nyte-ai/sdk";
+import { excerptLabel } from "../lib/format.ts";
 import { parseComposerSubmission, promptDraft, skillTokens } from "../lib/slash.ts";
 import type { Draft } from "./state.ts";
 
@@ -29,6 +30,7 @@ export type DraftPart =
       readonly mime: string;
     }
   | { readonly kind: "paste"; readonly text: string }
+  | { readonly kind: "excerpt"; readonly source: ExcerptSource; readonly text: string }
   | {
       readonly kind: "shell";
       readonly command: string;
@@ -143,6 +145,12 @@ function samePart(left: DraftPart, right: DraftPart): boolean {
       return right.kind === "image" && sameImage(left, right);
     case "paste":
       return right.kind === "paste" && right.text === left.text;
+    case "excerpt":
+      return (
+        right.kind === "excerpt" &&
+        right.text === left.text &&
+        JSON.stringify(right.source) === JSON.stringify(left.source)
+      );
     case "shell":
       return (
         right.kind === "shell" &&
@@ -223,6 +231,8 @@ function markerFor(parts: DraftParts, part: DraftPart): string {
     }
     case "shell":
       return uniqueMarker(parts, `[Shell ${part.command.trim().replace(/\s+/gu, " ")}]`);
+    case "excerpt":
+      return uniqueMarker(parts, `[${excerptLabel(part.source, part.text)}]`);
     default: {
       const _exhaustive: never = part;
 
@@ -289,6 +299,8 @@ export function draftFromContent(content: UserContent): DraftSnapshot {
     for (const [index, item] of content.entries()) {
       if (item.kind === "text") text += item.text;
       else if (item.kind === "reference") text += `@${fileUrl(item.path)}`;
+      else if (item.kind === "excerpt")
+        text += add({ kind: "excerpt", source: item.source, text: item.text });
       else if (item.kind === "skill") {
         const next = content[index + 1];
 
@@ -347,7 +359,7 @@ type ContentPart = Exclude<UserContent, string>[number];
 /**
  * What the draft sends: its text, a file or folder chip as a `reference`, a
  * skill (leading or inline) as a `skill` part, an image as its uploaded
- * `file`, and a paste or shell chip as its text.
+ * `file`, an excerpt as itself, and a paste or shell chip as its text.
  */
 export function draftContent(draft: DraftSnapshot, inputs: ContentInputs): UserContent {
   const text = draft.text.trim();
@@ -402,6 +414,8 @@ export function draftContent(draft: DraftSnapshot, inputs: ContentInputs): UserC
       content.push({ kind: "skill", name: skill.name, location: skill.location });
     else if (part?.kind === "file") content.push({ kind: "reference", path: part.path });
     else if (part?.kind === "paste") say(part.text);
+    else if (part?.kind === "excerpt")
+      content.push({ kind: "excerpt", source: part.source, text: part.text });
     else if (part?.kind === "shell") say(shellBlock(part.command, part.output, part.exit));
     else if (part?.kind === "image" && blob !== undefined)
       content.push({

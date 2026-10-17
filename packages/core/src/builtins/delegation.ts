@@ -38,6 +38,15 @@ const selectionParameters = {
   ),
 };
 
+const isolationParameter = {
+  isolation: Type.Optional(
+    Type.Literal("worktree", {
+      description:
+        "Run the subagent in a git worktree on a new branch from HEAD, with your uncommitted changes copied in, so its edits stay out of this workspace. The reply names the folder and branch. Without it, the subagent works in this workspace.",
+    }),
+  ),
+};
+
 const taskParameters = standard(
   Type.Object({
     prompt: Type.String({
@@ -45,6 +54,7 @@ const taskParameters = standard(
     }),
     title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
     ...selectionParameters,
+    ...isolationParameter,
   }),
 );
 
@@ -55,6 +65,7 @@ const createParameters = standard(
     }),
     title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
     ...selectionParameters,
+    ...isolationParameter,
     role: Type.Optional(
       Type.String({
         description: "Instructions the subagent keeps for every message, added to its prompt.",
@@ -106,6 +117,7 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
       parent: invocation.session.id,
       name: args.title,
       configuration: await childConfiguration(invocation, args),
+      isolation: args.isolation,
       content: args.prompt,
     });
 
@@ -117,8 +129,10 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
 
     if (run === null) return reply(`Subagent ${child.id} did not start the task.`);
     const outcome = await invocation.wait({ kind: "run", session: child.id, run });
+    const answer = await readSubagentReply(child, run, outcome);
+    const worktree = await describeWorktree(invocation, child);
 
-    return reply(await readSubagentReply(child, run, outcome));
+    return reply(worktree === null ? answer : `${worktree}\n\n${answer}`);
   },
 };
 
@@ -136,10 +150,16 @@ const create: ToolDefinition<Infer<typeof createParameters>> = {
       name: args.title,
       configuration: await childConfiguration(invocation, args),
       prompt: args.role === undefined ? undefined : { kind: "layer", text: args.role },
+      isolation: args.isolation,
       content: args.prompt,
     });
+    const worktree = await describeWorktree(invocation, child);
 
-    return reply(`Started subagent ${child.id}.`);
+    return reply(
+      worktree === null
+        ? `Started subagent ${child.id}.`
+        : `Started subagent ${child.id}. ${worktree}`,
+    );
   },
 };
 
@@ -324,6 +344,19 @@ async function findModel(invocation: ToolInvocation, name: string): Promise<Mode
       )
       .join("\n")}`,
   );
+}
+
+/** The worktree a subagent works in, as a sentence for the model, or null when it shares this workspace. */
+async function describeWorktree(
+  invocation: ToolInvocation,
+  child: Session,
+): Promise<string | null> {
+  const workspace = await invocation.sdk.workspace((await child.info()).workspace).info();
+
+  if (workspace.isolation === null) return null;
+  const folder = "path" in workspace.target ? workspace.target.path : workspace.id;
+
+  return `It works in the worktree ${folder} on branch ${workspace.isolation.branch}.`;
 }
 
 function reply(content: string): ToolResult<unknown> {

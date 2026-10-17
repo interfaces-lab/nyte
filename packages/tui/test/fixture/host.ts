@@ -3,7 +3,7 @@ import process from "node:process";
 import { dev } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
-import type { ExecutionEnv, Plugin } from "@nyte-ai/core";
+import type { ExecutionEnv, GitHubAccountApi, Plugin } from "@nyte-ai/core";
 import { chatOnly, fakeModels, testModel } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
@@ -32,6 +32,8 @@ export async function openTestHost(options?: {
   readonly environment?: Plugin<"core">;
   /** The fake provider's catalog; default one model `model` without thinking levels. */
   readonly models?: readonly ReturnType<typeof testModel>[];
+  /** The machine's GitHub CLI login the host serves; default none. */
+  readonly github?: GitHubAccountApi;
 }): Promise<TestHost> {
   dev.off();
   const models = fakeModels({ models: options?.models });
@@ -43,6 +45,7 @@ export async function openTestHost(options?: {
     workspace: { kind: "chat-only", locator: null },
     home: null,
     description: { name: "tui-test", platform: process.platform, version: "0.0.0" },
+    github: options?.github,
   });
 
   let closed: Promise<void> | null = null;

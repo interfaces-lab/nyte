@@ -87,6 +87,19 @@ export async function answer(effect: Of<"answer">, context: HandlerContext): Pro
   }
 }
 
+export async function approve(effect: Of<"approve">, context: HandlerContext): Promise<void> {
+  const outcome = await context.ports.host
+    .session(effect.session)
+    .approve(effect.part, effect.decision)
+    .catch((cause: unknown) => {
+      context.ports.log.write("effect", cause);
+
+      return errorMessage(cause);
+    });
+
+  context.dispatch({ kind: "approved", part: effect.part, failure: outcome });
+}
+
 export async function move(effect: Of<"move">, context: HandlerContext): Promise<void> {
   const outcome = await context.ports.host
     .session(effect.session)

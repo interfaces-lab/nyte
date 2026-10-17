@@ -23,6 +23,7 @@ import type {
   Connection,
   FilesApi,
   GitApi,
+  GitHubApi,
   Job,
   Login,
   Page,
@@ -119,6 +120,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
   const git = async (id: WorkspaceId): Promise<GitApi> =>
     available(await workspace(id).git(), "git");
+
+  const github = async (id: WorkspaceId): Promise<GitHubApi> =>
+    available(await workspace(id).github(), "github");
 
   const browser = async (id: WorkspaceId): Promise<BrowserApi> =>
     available(await workspace(id).browser(), "browser");
@@ -379,6 +383,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
       mapped(workspace(id).patches(run, paths, options), patchesWire),
     "workspace.files": async ({ workspace: id }) => capabilityWire(await workspace(id).files()),
     "workspace.git": async ({ workspace: id }) => capabilityWire(await workspace(id).git()),
+    "workspace.github": async ({ workspace: id }) => capabilityWire(await workspace(id).github()),
     "workspace.browser": async ({ workspace: id }) => capabilityWire(await workspace(id).browser()),
 
     "jobs.start": async ({ workspace: id, command, session, title, pty, id: job }) =>
@@ -455,6 +460,13 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "git.branch": async ({ workspace: id, input, options }) =>
       (await git(id)).branch(input, options),
     "git.push": async ({ workspace: id, input, options }) => (await git(id)).push(input, options),
+
+    "github.account": () => connection.github.account(),
+    "github.signIn": () => connection.github.signIn(),
+    "github.signOut": () => connection.github.signOut(),
+    "github.state": async ({ workspace: id }) => (await github(id)).state(),
+    "github.createPullRequest": async ({ workspace: id, input }) =>
+      (await github(id)).createPullRequest(input),
 
     "browser.open": async ({ workspace: id, url, id: key }) => {
       const api = await browser(id);

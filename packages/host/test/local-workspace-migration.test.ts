@@ -40,6 +40,7 @@ it("reopens proven legacy workspaces without moving chats or trusting replacemen
     projectSources: ["AGENTS.md"],
     addedBy: asId("original-owner"),
     createdAt: Date.now(),
+    isolation: null,
   };
 
   const records: readonly WorkspaceRecord[] = [
@@ -185,6 +186,7 @@ it("converges concurrent migrations and skips scanning after the atomic marker",
     projectSources: [],
     addedBy: asId("owner"),
     createdAt: Date.now(),
+    isolation: null,
   };
 
   try {
@@ -279,6 +281,7 @@ it("retries an unavailable legacy folder without scanning completed workspaces",
     projectSources: ["AGENTS.md"],
     addedBy: asId("owner"),
     createdAt: Date.now(),
+    isolation: null,
   };
 
   try {
@@ -344,6 +347,7 @@ it("finishes when a pending workspace is forgotten", async () => {
               projectSources: [],
               addedBy: asId("owner"),
               createdAt: Date.now(),
+              isolation: null,
             } satisfies WorkspaceRecord,
             1,
           ),

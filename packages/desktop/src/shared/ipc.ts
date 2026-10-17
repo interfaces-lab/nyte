@@ -42,6 +42,7 @@ export const MAIN_OPERATION_PATHS = [
   "host.browser.perform",
   "host.browser.close",
   "host.browser.captureFrame",
+  "host.browser.pickElement",
   "host.browser.find",
   "host.browser.cancelDownload",
   "host.browser.login",

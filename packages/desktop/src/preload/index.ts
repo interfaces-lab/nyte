@@ -156,6 +156,7 @@ const bridge = {
       perform: object("host.browser.perform"),
       close: object("host.browser.close"),
       captureFrame: object("host.browser.captureFrame"),
+      pickElement: object("host.browser.pickElement"),
       find: object("host.browser.find"),
       cancelDownload: object("host.browser.cancelDownload"),
       login: object("host.browser.login"),

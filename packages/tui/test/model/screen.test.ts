@@ -6,7 +6,7 @@ import { deriveScreen } from "../../src/model/screen.ts";
 import { blockedBy } from "../../src/model/table-input.ts";
 import type { State } from "../../src/model/state.ts";
 import { followed, buildView } from "../fixture/view.ts";
-import { blank, play, ready, S1, typed } from "./support.ts";
+import { blank, CATALOG, model, play, ready, S1, typed } from "./support.ts";
 
 const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
@@ -85,6 +85,20 @@ describe("placeholder", () => {
     }).state;
 
     expect(deriveScreen(queue, null).placeholder).toBe("Queue a follow-up");
+  });
+
+  test("busy queues when the chat's model cannot take a message mid-turn", () => {
+    const agent = {
+      ...model("model"),
+      capabilities: { steer: false },
+    };
+    const catalog = {
+      ...CATALOG,
+      providers: CATALOG.providers.map((provider) => ({ ...provider, models: [agent] })),
+    };
+    const state = play(ready(working), { kind: "catalog", generation: 2, catalog }).state;
+
+    expect(deriveScreen(state, null).placeholder).toBe("Queue a follow-up");
   });
 
   test("a child's question names its owner once its panel is put away", () => {

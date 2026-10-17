@@ -17,6 +17,7 @@ import type {
   FileBatch,
   FilesApi,
   GitApi,
+  GitHubApi,
   Job,
   Jobs,
   Page,
@@ -69,6 +70,10 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
     git: async () =>
       resolveCapability(await rows.call("workspace.git", { workspace }), () =>
         gitApi(rows, workspace),
+      ),
+    github: async () =>
+      resolveCapability(await rows.call("workspace.github", { workspace }), () =>
+        githubApi(rows, workspace),
       ),
     browser: async () =>
       resolveCapability(await rows.call("workspace.browser", { workspace }), () =>
@@ -128,6 +133,13 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
     search: (input) => rows.frames("files.search", { workspace, ...input }),
     watch: (input) => rows.watch("files.watch", { workspace, ...input }),
     upload,
+  };
+}
+
+function githubApi(rows: Rows, workspace: WorkspaceId): GitHubApi {
+  return {
+    state: () => rows.call("github.state", { workspace }),
+    createPullRequest: (input) => rows.call("github.createPullRequest", { workspace, input }),
   };
 }
 

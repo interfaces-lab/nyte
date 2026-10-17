@@ -21,6 +21,8 @@ import { main, setup, workspace } from "../src/harness.ts";
 async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<string, string>> {
   const git = await at.git();
   assert(git.kind === "available");
+  const github = await at.github();
+  assert(github.kind === "available");
   const login = () => sdk.models.login({ provider: "p", method: { kind: "key" } });
 
   const rows: Record<string, () => unknown> = {
@@ -53,6 +55,9 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "git.commit": () => git.api.commit({ message: "no", files: "staged" }),
     "git.branch": () => git.api.branch({ name: "no", checkout: false }),
     "git.push": () => git.api.push(),
+    "github.signIn": () => sdk.github.signIn(),
+    "github.signOut": () => sdk.github.signOut(),
+    "github.createPullRequest": () => github.api.createPullRequest({ title: "no" }),
     "plugins.replace": () => sdk.plugins.replace([]),
     "plugins.check": () => sdk.plugins.check([]),
     "principals.list": () => sdk.principals.list(),
@@ -145,7 +150,7 @@ describe("connection gate (§52 rule 5)", () => {
       covered: false,
     });
 
-    expect(elevated).toHaveLength(34);
+    expect(elevated).toHaveLength(37);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });

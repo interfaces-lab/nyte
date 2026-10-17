@@ -9,6 +9,8 @@
 import { execFile } from "node:child_process";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { addWorktree, hasBranch, listWorktrees } from "@nyte-ai/host";
+import type { ListedWorktree } from "@nyte-ai/host";
 
 /** One ref or object a reviewer may name: a branch, a tag, `origin/main`, or a hex id; never a `..` range. */
 const REF = /^(?![-.])(?!.*\.\.)[\w./@^~-]{1,200}$/;
@@ -51,11 +53,6 @@ interface BranchInfo {
   readonly ahead: number;
   /** Commits on the base that the branch lacks. */
   readonly behind: number;
-}
-
-interface Worktree {
-  readonly path: string;
-  readonly branch?: string;
 }
 
 class GitError extends Error {
@@ -294,38 +291,19 @@ export class Repo {
   hasBranch(name: string): Promise<boolean> {
     if (!REF.test(name)) return Promise.resolve(false);
 
-    return this.#git(["show-ref", "--verify", "--quiet", `refs/heads/${name}`]).then(
-      () => true,
-      () => false,
-    );
+    return hasBranch(this.root, name);
   }
 
   /** Every worktree of the repository, and the branch each has checked out. */
-  async worktrees(): Promise<readonly Worktree[]> {
-    const out = await this.#git(["worktree", "list", "--porcelain"]);
-
-    return out
-      .split("\n\n")
-      .map((block) => block.split("\n"))
-      .flatMap((lines) => {
-        const path = lines.find((line) => line.startsWith("worktree "))?.slice(9);
-        const branch = lines.find((line) => line.startsWith("branch refs/heads/"))?.slice(18);
-
-        if (path === undefined) return [];
-
-        return [branch === undefined ? { path } : { path, branch }];
-      });
+  worktrees(): Promise<readonly ListedWorktree[]> {
+    return listWorktrees(this.root);
   }
 
   /** Check `branch` out at `path`, creating it at `from` when given. */
   async addWorktree(path: string, branch: string, from?: string): Promise<void> {
     if (!REF.test(branch)) throw new GitError(`${branch} is not a branch name`, undefined);
 
-    await this.#git(
-      from === undefined
-        ? ["worktree", "add", path, branch]
-        : ["worktree", "add", "-b", branch, path, from],
-    );
+    await addWorktree(this.root, from === undefined ? { path, branch } : { path, branch, from });
   }
 
   /** The branch your checkout is on, if any. */

@@ -136,6 +136,31 @@ describe("admission", () => {
     expect(await steer.settled()).toEqual(completed);
   });
 
+  it("queues a steer behind the live run when its model takes no message mid-turn", async () => {
+    const { host, script } = await setup({ modelSteers: () => false });
+    const { session } = await host.sessions.start({ content: "First." });
+    const step = host.execution.advance({ session: session.id, head: main });
+    const turn = await script.started(1);
+    const steer = await session.send("Also this.", { delivery: "steer" });
+
+    expect(await message(session, steer.message)).toMatchObject({
+      delivery: "queue",
+      status: { kind: "pending", schedule: { kind: "next-turn", reason: "run-ended" } },
+    });
+    expect(await turn.input.boundary()).toEqual([]);
+
+    turn.finish();
+
+    expect(await step).toEqual({ kind: "continue" });
+    const next = host.execution.advance({ session: session.id, head: main });
+    const second = await script.started(2);
+
+    expect(second.input.run.origin).toEqual({ kind: "input", message: steer.message });
+    second.finish();
+    expect(await next).toEqual({ kind: "idle" });
+    expect(await steer.settled()).toEqual(completed);
+  });
+
   it("lands steers in inbox order: two sent while idle start the run together, one sent during it joins", async () => {
     const { host, script } = await setup();
     const { session, receipt: first } = await host.sessions.start({ content: "One." });

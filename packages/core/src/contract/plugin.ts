@@ -20,6 +20,7 @@ import type {
   SubmitDraft,
   Thinking,
   ToolCall,
+  ToolClass,
   ToolOutcome,
   Transcript,
   Usage,
@@ -130,6 +131,17 @@ export interface Keybinding {
   readonly when?: string;
 }
 
+/** A tool call another agent runtime asks to run: the runtime's own tool name (`Bash`, `execute`), which grants key on, and the class Nyte shows it by. */
+export interface RuntimeCall {
+  readonly name: string;
+  readonly class: ToolClass;
+}
+
+/** Whether a runtime call may run, with the reason its runtime reads when it may not. */
+export type RuntimeVerdict =
+  | { readonly kind: "allow" }
+  | { readonly kind: "deny"; readonly reason: string };
+
 export type SideTable = {
   core: {
     api: {
@@ -142,8 +154,18 @@ export type SideTable = {
       readonly inputs: Resources;
 
       request<T = string>(input: ModelRequestInput<T>): Promise<ModelRequestOutcome<T>>;
+
+      /** Asks the session's active plugins that declare `approve` whether a call another agent runtime runs may run, in load order: the first denial stands, and a session where none declares it allows. Aborting `signal` ends the asking with a denial. */
+      approve(call: RuntimeCall, signal: AbortSignal): Promise<RuntimeVerdict>;
     };
-    plugin: { readonly environment?: EnvironmentProvider };
+    plugin: {
+      readonly environment?: EnvironmentProvider;
+      /** Decides a call another agent runtime (Claude Code, an ACP agent) asks to run in the session, outside Nyte's agent loop, with this plugin's own api. */
+      readonly approve?: (
+        call: RuntimeCall,
+        context: { readonly api: PluginApi<"core">; readonly signal: AbortSignal },
+      ) => Promise<RuntimeVerdict>;
+    };
   };
   client: { api: ClientApi; plugin: {} };
 };

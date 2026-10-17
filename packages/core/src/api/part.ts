@@ -548,6 +548,7 @@ async function perform(
           return kernel.plugins.api(registered.owner ?? "core", session);
         },
         principal: context.principal,
+        authority: context.authority,
         signal: controller.signal,
       };
 

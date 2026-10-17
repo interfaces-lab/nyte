@@ -42,7 +42,7 @@ const BACKUPS_KEPT = 3;
 const PUT_BODY =
   "INSERT INTO objects (id, body) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL";
 
-/** Returns a `Store` over one `node:sqlite` `DatabaseSync`: a file at `path` (WAL mode, a busy timeout so a second process waits rather than fails) or an in-memory database. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore` (core's `objects`, `refs`, `log` and `store_meta` tables; each commit one `BEGIN IMMEDIATE`), a file store whose migration rewrites records first saving those refs' rows (name, target, revision; objects are never deleted, so the rows restore them) to `backups/store-<time>-<pid>-<uuid>-v<from>-v<to>.json` beside it, keeping the newest three backups, and rejects with `SdkError("unavailable")` for a store a newer Nyte migrated; a `migrations` table an older Nyte left is kept and ignored. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once; an object and a blob that share an id share the row, each column filled once (§41f); `blob` reads the bytes back with their size and a null mime. `refs.set` is one `BEGIN IMMEDIATE` transaction with `RefStore.set`'s semantics, each revision a random UUID, that first rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store since it opened. `list(prefix)` reads the name range from `prefix` in name order (BINARY, by code point); `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0; `commitMark` is the writer connection's `PRAGMA data_version`, which moves only for another connection's commit. File stores run `list` and `log` on a read-only worker and WAL checkpoints on a separate worker, checking at 1,000 frames and after 100 ms idle with a 10,000-frame writer backstop; unavailable workers warn and fall back to the main connection. Checkpoints use fullfsync on macOS, WAL reuse retains at most 32 MiB, and opening refreshes planner statistics. Writes binding more than 64 KiB use uncached statements. Every `open()` returns a connection over the one writer; `close()` waits for opening and worker shutdown before closing it, and an open during close waits to reopen. */
+/** Returns a `Store` over one `node:sqlite` `DatabaseSync`: a file at `path` (WAL mode, a busy timeout so a second process waits rather than fails) or an in-memory database. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore` (core's `objects`, `refs`, `log` and `store_meta` tables; each commit one `BEGIN IMMEDIATE`), a file store whose migration rewrites records first saving those refs' rows (name, target, revision; objects are never deleted, so the rows restore them) to `backups/store-<time>-<pid>-<uuid>-v<from>-v<to>.json` beside it, keeping the newest three backups, and rejects with `SdkError("unavailable")` for a store a newer Nyte migrated; a `migrations` table an older Nyte left is kept and ignored. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once; an object and a blob that share an id share the row, each column filled once (§41f); `blob` reads the bytes back with their size and a null mime. `refs.set` is one `BEGIN IMMEDIATE` transaction with `RefStore.set`'s semantics, each revision a random UUID, that first rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store since it opened. `list(prefix)` reads the name range from `prefix` in name order (BINARY, by code point); `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0; `commitMark` is the writer connection's `PRAGMA data_version`, which moves only for another connection's commit. `checkpoints` keeps one fold checkpoint per session in `fold_checkpoints`, a write at a lower seq leaving the kept one, and `gap` counts a session's events past a seq and sums their UTF-8 bytes. File stores run `list` and `log` on a read-only worker and WAL checkpoints on a separate worker, checking at 1,000 frames and after 100 ms idle with a 10,000-frame writer backstop; unavailable workers warn and fall back to the main connection. Checkpoints use fullfsync on macOS, WAL reuse retains at most 32 MiB, and opening refreshes planner statistics. Writes binding more than 64 KiB use uncached statements. Every `open()` returns a connection over the one writer; `close()` waits for opening and worker shutdown before closing it, and an open during close waits to reopen. */
 export function sqliteStore(input: { readonly path: string } | { readonly memory: true }): Store {
   let database: DatabaseSync | null = null;
   let opening: Promise<StoreConnection> | null = null;
@@ -305,6 +305,18 @@ function connect(
   );
 
   const readTail = database.prepare("SELECT MAX(seq) AS tail FROM log WHERE session = ?");
+
+  const readCheckpoint = database.prepare(
+    "SELECT seq, body FROM fold_checkpoints WHERE session = ?",
+  );
+
+  const writeCheckpoint = database.prepare(
+    "INSERT INTO fold_checkpoints (session, seq, body) VALUES (?, ?, ?) ON CONFLICT (session) DO UPDATE SET seq = excluded.seq, body = excluded.body WHERE excluded.seq >= fold_checkpoints.seq",
+  );
+
+  const readGap = database.prepare(
+    "SELECT COUNT(*) AS events, COALESCE(SUM(LENGTH(CAST(event AS BLOB))), 0) AS bytes FROM log WHERE session = ? AND seq > ?",
+  );
   const readVersion = database.prepare("SELECT version FROM store_meta WHERE id = 1");
   const readDataVersion = database.prepare("PRAGMA data_version");
 
@@ -451,6 +463,25 @@ function connect(
         );
       },
       tail: async (session) => tail(session),
+    },
+    checkpoints: {
+      async read(session) {
+        const [row] = await read(readCheckpoint, session);
+        const body = parseText(row?.body);
+
+        return row === undefined || body === null
+          ? null
+          : { seq: asSeq(parseNumber(row.seq)), body };
+      },
+      async write(session, checkpoint) {
+        write(database, writeCheckpoint, session, checkpoint.seq, checkpoint.body);
+        workers?.check();
+      },
+      async gap(session, after) {
+        const [row] = await read(readGap, session, after);
+
+        return { events: parseNumber(row?.events ?? 0), bytes: parseNumber(row?.bytes ?? 0) };
+      },
     },
   };
 }

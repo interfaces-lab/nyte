@@ -22,7 +22,7 @@ import type {
 import type { FoldInput, FoldState } from "../contract/fold.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import type { CommitRecord, RunRecord } from "../contract/records.ts";
+import type { CommitRecord } from "../contract/records.ts";
 import type { SendReceipt } from "../contract/session.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
@@ -53,6 +53,7 @@ import { collectContributions, refusalError } from "./contributions.ts";
 import { fence, finishFence } from "./fence.ts";
 import { freezeMentions } from "./mentions.ts";
 import { known, reserve, sendReceipt, settleReceipt } from "./receipts.ts";
+import { chooseSendSchedule, landed } from "./send-schedule.ts";
 import { followTrace, takeReceiptTrace, traced } from "../util/trace.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
@@ -306,8 +307,10 @@ async function admit(sending: Sending): Promise<SendReceipt> {
       resolve(sending, submission.configuration),
     ]);
 
-    const message = buildMessage(asId<"message">(id), submission, {
-      schedule: await chooseSendSchedule(submission.delivery, configuration, run?.record ?? null),
+    const landing = landed(kernel, submission, run?.record ?? null);
+
+    const message = buildMessage(asId<"message">(id), landing, {
+      schedule: await chooseSendSchedule(landing.delivery, configuration, run?.record ?? null),
       covered,
       configuration,
       replaced: null,
@@ -365,8 +368,10 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
     const rest = inbox.messages.filter((message) => message !== target);
     const position = findInsertionIndex(options.position, rest, current);
 
-    const message = buildMessage(target, submission, {
-      schedule: await chooseSendSchedule(submission.delivery, configuration, run?.record ?? null),
+    const landing = landed(kernel, submission, run?.record ?? null);
+
+    const message = buildMessage(target, landing, {
+      schedule: await chooseSendSchedule(landing.delivery, configuration, run?.record ?? null),
       covered,
       configuration,
       replaced: previous?.replaced ?? null,
@@ -892,23 +897,6 @@ async function resolve(
   if (result.kind === "exact") return result;
 
   throw refusalError(result);
-}
-
-async function chooseSendSchedule(
-  delivery: Delivery,
-  configuration: Configuration,
-  run: RunRecord | null,
-): Promise<Schedule> {
-  if (delivery === "attach") return { kind: "attached" };
-
-  if (run === null) return { kind: "next-turn", reason: "idle" };
-
-  if (delivery === "queue" || run.stopping) return { kind: "next-turn", reason: "run-ended" };
-
-  if ((await objectId(configuration)) !== (await objectId(run.view.configuration)))
-    return { kind: "next-turn", reason: "configuration" };
-
-  return { kind: "joined", run: run.view.id };
 }
 
 async function admitted(

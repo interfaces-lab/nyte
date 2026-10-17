@@ -45,6 +45,7 @@ import type { HostIdentity } from "./contract/records.ts";
 import type { StoreConnection } from "./contract/store.ts";
 import type {
   EnvironmentRegistry,
+  GitHubAccountApi,
   JobTable,
   McpHub,
   McpHubFactory,
@@ -80,6 +81,7 @@ import { createPartTable } from "./store/parts.ts";
 import { hostIdentityRef, kvRef } from "./store/refs.ts";
 import { readKv } from "./store/session.ts";
 import { dev } from "./util/dev-log.ts";
+import { sweepWorktrees } from "./env/worktrees.ts";
 
 export type ComposeOptions = OpenOptions & {
   readonly home: string | null;
@@ -198,6 +200,10 @@ export async function composeServer(
 
   const unpoll = pollStore(kernel);
 
+  void sweepWorktrees(kernel).catch((error: unknown) =>
+    dev("worktrees", "sweep failed", { error: String(error) }),
+  );
+
   const host = createHost(kernel, { credential: { kind: "token", token: "" } });
   let closing: Promise<void> | null = null;
 
@@ -302,6 +308,7 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
     execution: options.execution,
     models: options.models,
     mcp: options.mcp,
+    github: options.github,
     builtins: BUILTINS,
     hostPlugins: options.plugins,
     pluginSources: options.pluginSources,
@@ -325,6 +332,7 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
       | "summarize"
       | "compact"
       | "resolveConfiguration"
+      | "modelSteers"
       | "request"
       | "home"
       | "secrets"
@@ -339,6 +347,8 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly models?: Models;
     /** Builds the host's MCP hub and adds the `mcp` plugin to the builtins. */
     readonly mcp?: McpHubFactory;
+    /** The serving machine's GitHub CLI login. */
+    readonly github?: GitHubAccountApi;
   };
 
 export function createKernel(input: KernelOptions): Kernel {
@@ -382,6 +392,7 @@ export function createKernel(input: KernelOptions): Kernel {
     host: input.host,
     folds: createFoldCache({
       store: input.store,
+      description: input.description,
       bus,
       publisher,
       sessions,
@@ -416,6 +427,9 @@ export function createKernel(input: KernelOptions): Kernel {
           ? async () => unavailable("compact")
           : createCompactor(kernel, models));
     },
+    modelSteers:
+      input.modelSteers ??
+      ((model) => models?.getProvider(model.provider)?.capabilities?.steer ?? true),
     get resolveConfiguration() {
       return (resolveConfiguration ??=
         models === undefined
@@ -448,6 +462,7 @@ export function createKernel(input: KernelOptions): Kernel {
     },
     connections: createConnectionRegistry(),
     secrets: input.secrets ?? null,
+    github: input.github ?? null,
     get mcp() {
       if (mcp === undefined) mcp = input.mcp?.({ secrets: pluginSecrets(kernel, "mcp") }) ?? null;
 

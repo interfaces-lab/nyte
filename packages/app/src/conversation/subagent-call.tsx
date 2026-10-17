@@ -543,8 +543,17 @@ function CitationModel({ session }: { readonly session: SessionInfo }): ReactEle
   );
 }
 
-function CitationFolder({ session }: { readonly session: SessionInfo }): string {
-  return useWorkspaces().data?.find((candidate) => candidate.id === session.workspace)?.name ?? "";
+/** The folder a subagent works in, or the branch of the worktree it works in. */
+function CitationFolder({ session }: { readonly session: SessionInfo }): ReactElement {
+  const workspace = useWorkspaces().data?.find((candidate) => candidate.id === session.workspace);
+  const branch = workspace?.worktree?.branch;
+
+  return (
+    <span title={workspace?.path} {...props(citationStyles.detail)}>
+      <Icon name={branch === undefined ? "folder" : "git-branch"} size={12} />
+      <span {...props(citationStyles.detailText)}>{branch ?? workspace?.name ?? ""}</span>
+    </span>
+  );
 }
 
 export function SubagentCitation({
@@ -589,12 +598,7 @@ export function SubagentCitation({
       <PreviewCardContent side="bottom" align="start" xstyle={citationStyles.popup}>
         <div {...props(text.sm, citationStyles.card)}>
           <span {...props(citationStyles.title)}>{title ?? name}</span>
-          <span {...props(citationStyles.detail)}>
-            <Icon name="folder" size={12} />
-            <span {...props(citationStyles.detailText)}>
-              <CitationFolder session={child} />
-            </span>
-          </span>
+          <CitationFolder session={child} />
           <CitationModel session={child} />
         </div>
       </PreviewCardContent>

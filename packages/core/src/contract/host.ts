@@ -45,7 +45,7 @@ import type { Models, Provider } from "@nyte-ai/ai";
 import type { Plugin } from "./plugin.ts";
 import type { Session, Sessions } from "./session.ts";
 import type { Store } from "./store.ts";
-import type { McpHubFactory, Workspace, Workspaces } from "./workspace.ts";
+import type { GitHubAccountApi, McpHubFactory, Workspace, Workspaces } from "./workspace.ts";
 
 export type CredentialStatus = ModelCatalogView["providers"][number]["credential"];
 
@@ -117,6 +117,8 @@ export interface OpenOptions {
   readonly secrets?: { key(): Promise<Uint8Array> };
   /** Serves MCP servers to this host's sessions and clients; see {@link McpHub}. */
   readonly mcp?: McpHubFactory;
+  /** The serving machine's GitHub CLI login, served as `Connection.github`; absent, its calls throw `SdkError("unavailable")`. */
+  readonly github?: GitHubAccountApi;
 }
 
 export interface ConnectOptions {
@@ -172,6 +174,8 @@ export interface Connection {
   readonly settings: SettingsApi;
   readonly plugins: PluginsApi<PluginFile>;
   readonly principals: PrincipalsApi;
+  /** The serving machine's GitHub CLI login, shared by every workspace; signing in and out needs owner authority, and a host without one throws `SdkError("unavailable")`. */
+  readonly github: GitHubAccountApi;
 
   close(): Promise<void>;
 

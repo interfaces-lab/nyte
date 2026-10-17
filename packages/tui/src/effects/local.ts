@@ -5,6 +5,7 @@ import type { DialogData } from "../model/dialogs/dialog.ts";
 import { mcpActionChoices, mcpDetailLines, mcpServerChoices } from "../model/mcp.ts";
 import type { Choice } from "../model/dialogs/list.ts";
 import type { ModelRow } from "../model/dialogs/model-picker.ts";
+import { gitHubLines } from "../lib/pull-request.ts";
 import type { Effect } from "../model/effect.ts";
 import { followedSession } from "../model/state.ts";
 import type { ShellJob } from "../model/state.ts";
@@ -244,6 +245,9 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
 
       return { kind: "text", lines: lines.length === 0 ? ["No plugins"] : lines };
     }
+
+    case "pull-request":
+      return { kind: "text", lines: gitHubLines(await ports.host.github(request.workspace)) };
 
     case "mcp-servers":
       return {

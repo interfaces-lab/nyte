@@ -571,6 +571,29 @@ const endedRunRecords: RecoverStep = {
   },
 };
 
+/** A workspace record names the session it isolates in a git worktree, or `null` for a folder the user added. */
+const workspaceIsolation: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-16-workspace-isolation",
+  rewrite(object) {
+    if (!isJsonObject(object) || object.kind !== "workspace") return null;
+
+    return patched(object, (body) => filled(body, { isolation: null }));
+  },
+};
+
+/** One fold checkpoint per session, a cache over the log that core rewrites when a fold settles and ignores when it cannot decode one. Postgres keeps none. */
+const foldCheckpoints: SchemaStep = {
+  kind: "schema",
+  name: "2026-10-16-fold-checkpoints",
+  sql: {
+    sqlite: [
+      "CREATE TABLE IF NOT EXISTS fold_checkpoints (session TEXT PRIMARY KEY, seq INTEGER NOT NULL, body TEXT NOT NULL)",
+    ],
+    postgres: [],
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -587,6 +610,8 @@ const STORE_STEPS: readonly StoreStep[] = [
   wokenCalls,
   hookToolArgs,
   endedRunRecords,
+  workspaceIsolation,
+  foldCheckpoints,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

@@ -10,7 +10,7 @@ import {
   MenuSubContent,
   MenuSubTrigger,
 } from "@nyte-ai/ui/menu";
-import { useGitHubState } from "../chrome/github-account.ts";
+import { useGitHub, useGitHubState } from "../chrome/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import { clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
@@ -24,7 +24,7 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const workspace = host.data.workspace;
   const workspaces = useWorkspaces();
   const vcs = useVcsSnapshot(workspace !== undefined);
-  const github = useGitHubState(nyte.host.github);
+  const github = useGitHubState(useGitHub());
   const repository = github.data?.repository;
 
   const workspaceName =

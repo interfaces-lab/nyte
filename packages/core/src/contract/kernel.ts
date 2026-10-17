@@ -18,6 +18,7 @@ import type {
   Json,
   MessageId,
   MessageSource,
+  ModelRef,
   ModelRequestInput,
   ModelRequestOutcome,
   PartId,
@@ -65,6 +66,7 @@ import type { ToolDefinition } from "./tools.ts";
 import type {
   EnvironmentRegistry,
   ExecutionEnv,
+  GitHubAccountApi,
   JobTable,
   McpHub,
   PageTable,
@@ -113,6 +115,9 @@ export interface Kernel {
 
   readonly resolveConfiguration: ConfigurationResolver;
 
+  /** Whether `model`'s runtime takes a message sent mid-turn (`ModelCapabilities.steer`); true for a model of no known provider. */
+  readonly modelSteers: (model: ModelRef) => boolean;
+
   readonly waits: WaitRegistry;
 
   readonly modelState: ModelState;
@@ -136,6 +141,9 @@ export interface Kernel {
   readonly secrets: NonNullable<OpenOptions["secrets"]> | null;
 
   readonly mcp: McpHub | null;
+
+  /** The serving machine's GitHub CLI login, null on a host without one. */
+  readonly github: GitHubAccountApi | null;
 
   readonly plugins: PluginHost;
 

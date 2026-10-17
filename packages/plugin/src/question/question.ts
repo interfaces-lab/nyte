@@ -78,6 +78,7 @@ const ask: ToolDefinition<Infer<typeof questionParameters>, Infer<typeof questio
     label: args.questions.map((item) => item.header).join(", "),
   }),
   effects: "none",
+  approval: "never",
   replay: "safe",
   async execute(args, invocation) {
     for (const item of args.questions) {

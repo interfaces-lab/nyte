@@ -258,6 +258,8 @@ export function useRemoteAccessState(active: boolean) {
 
 export interface RailWorkspace extends SelectedWorkspace {
   readonly available: boolean;
+  /** The folder this worktree was made from and its branch; null for a folder the user added. */
+  readonly worktree: { readonly source: WorkspaceId; readonly branch: string } | null;
 }
 
 export function useWorkspaces() {
@@ -282,6 +284,10 @@ export function useWorkspaces() {
                 path,
                 name: workspaceName(workspace),
                 available: workspace.availability.kind === "available",
+                worktree:
+                  workspace.isolation === null
+                    ? null
+                    : { source: workspace.isolation.source, branch: workspace.isolation.branch },
               },
             ];
       }),

@@ -1,4 +1,5 @@
 import { pathToFiletype } from "@opentui/core";
+import { isJsonObject } from "@nyte-ai/schema";
 import type { ToolClass } from "@nyte-ai/sdk";
 import {
   delegateSubject,
@@ -313,7 +314,13 @@ function delegation(
   }
 
   const mark = statusMark(agentStatus(message, tasks));
-  const config = task?.kind === "agent" ? taskConfiguration(task) : "";
+  const { args } = message.state;
+  const worktree = isJsonObject(args) && args.isolation === "worktree" ? "worktree" : "";
+
+  const config = [task?.kind === "agent" ? taskConfiguration(task) : "", worktree]
+    .filter((detail) => detail !== "")
+    .join(" · ");
+
   const rest = task === undefined ? word : config === "" ? undefined : config;
   const activity = task === undefined ? "" : taskActivity(task);
 

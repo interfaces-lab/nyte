@@ -61,6 +61,8 @@ export type {
   RegistryDraft,
   Renderer,
   Row,
+  RuntimeCall,
+  RuntimeVerdict,
   Setting,
   SettingDefinition,
   Side,
@@ -72,6 +74,8 @@ export type {
 export type { Head, Receipt, Run, SendReceipt, Session, Sessions } from "./contract/session.ts";
 
 export type {
+  FoldCheckpoint,
+  FoldCheckpoints,
   ObjectStore,
   RefStore,
   SessionIndex,
@@ -89,6 +93,8 @@ export type {
   FileBatch,
   FilesApi,
   GitApi,
+  GitHubAccountApi,
+  GitHubApi,
   Job,
   Jobs,
   McpApi,
@@ -97,6 +103,9 @@ export type {
   SnapshotsApi,
   Workspace,
   Workspaces,
+  Worktree,
+  WorktreeProvider,
+  WorktreeRemoval,
 } from "./contract/workspace.ts";
 
 export { processEnvironment } from "./util/process-environment.ts";

@@ -7,7 +7,7 @@ export type Declaration<Input, Output> = {
   readonly kind: "query" | "watch" | "command" | "receipt" | "stream";
   readonly authority: Authority;
   readonly scope: "host" | "session" | "workspace";
-  readonly capability?: "files" | "git" | "browser";
+  readonly capability?: "files" | "git" | "github" | "browser";
   readonly recovery?: "replay" | "never";
   readonly wait?: true;
 };

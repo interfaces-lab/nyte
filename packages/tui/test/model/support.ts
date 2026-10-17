@@ -24,6 +24,7 @@ export function model(
     compactAt: 90_000,
     maxOutput: 8_000,
     input: ["text"],
+    capabilities: { steer: true },
     cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
   };
 }

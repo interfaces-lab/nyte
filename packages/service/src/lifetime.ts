@@ -38,19 +38,26 @@ export function terminate(): void {
 
 /**
  * Counts the client processes attached to the service and stops it once none has been
- * attached for the grace period, unless `working` reports a run driving or a job alive,
- * in which case it checks again a grace period later.
+ * attached for the grace period, unless `staying` reports a reason to stay (the service
+ * installed, Connect linked) or `working` a run driving or a job alive, in which case it
+ * checks again a grace period later.
  */
 export class Lifetime {
   readonly #options: LifetimeOptions;
   readonly #working: () => Promise<boolean>;
+  readonly #staying: () => Promise<boolean>;
   readonly #attached = new Set<Attachment>();
   #cancel: (() => void) | undefined;
   #ended = false;
 
-  constructor(options: LifetimeOptions, working: () => Promise<boolean>) {
+  constructor(
+    options: LifetimeOptions,
+    working: () => Promise<boolean>,
+    staying: () => Promise<boolean>,
+  ) {
     this.#options = options;
     this.#working = working;
+    this.#staying = staying;
     this.#arm();
   }
 
@@ -118,11 +125,14 @@ export class Lifetime {
     this.#cancel = undefined;
 
     if (this.#ended || this.#attached.size > 0) return;
-    const working = await this.#working().catch(() => true);
+    const kept = await Promise.all([this.#staying(), this.#working()]).then(
+      (reasons) => reasons.includes(true),
+      () => true,
+    );
 
     if (this.#ended || this.#attached.size > 0) return;
 
-    if (working) {
+    if (kept) {
       this.#arm();
 
       return;

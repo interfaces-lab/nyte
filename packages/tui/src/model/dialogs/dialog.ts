@@ -48,7 +48,10 @@ export type DialogRequest =
   | { readonly kind: "model" }
   | { readonly kind: "tree"; readonly filter: "default" | "users" }
   | { readonly kind: "inspector"; readonly task: string }
-  | { readonly kind: "text"; readonly content: "usage" | "shortcuts" | "plugins" }
+  | {
+      readonly kind: "text";
+      readonly content: "usage" | "shortcuts" | "plugins" | "pull-request";
+    }
   | { readonly kind: "mcp" }
   | { readonly kind: "mcp-details"; readonly workspace: WorkspaceId; readonly server: string }
   | { readonly kind: "auth"; readonly mode: "login" | "logout"; readonly provider: string | null };
@@ -61,6 +64,7 @@ export type LoadRequest =
   | { readonly kind: "usage"; readonly session: SessionId }
   | { readonly kind: "directory"; readonly path: string }
   | { readonly kind: "plugins" }
+  | { readonly kind: "pull-request"; readonly workspace: WorkspaceId }
   | { readonly kind: "mcp-servers"; readonly workspace: WorkspaceId }
   | { readonly kind: "mcp-server"; readonly workspace: WorkspaceId; readonly server: string }
   | { readonly kind: "mcp-details"; readonly workspace: WorkspaceId; readonly server: string };

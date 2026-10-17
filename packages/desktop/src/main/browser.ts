@@ -6,6 +6,7 @@ import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
   BrowserBoundsMessage,
   BrowserBridge,
+  BrowserElementPick,
   BrowserFocusMessage,
   BrowserKey,
   BrowserNavigationAction,
@@ -17,6 +18,7 @@ import type { AgentSurfaces } from "./browser-agent-surface.ts";
 import type { BrowserAgent, BrowserHolder, BrowserOwner } from "./browser-agent.ts";
 import { BrowserDownloads } from "./browser-downloads.ts";
 import { GuestSessions } from "./browser-guest-session.ts";
+import { pickElement } from "./browser-picker.ts";
 import { nextZoomFactor, webUrl } from "./browser-policy.ts";
 import { createSurfaceRuntime } from "./browser-runtime.ts";
 import { DEFAULT_BOUNDS, hasViewHolder, placeSurface, surfaceState } from "./browser-surface.ts";
@@ -374,6 +376,17 @@ export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
     } catch {
       return undefined;
     }
+  }
+
+  /** The page takes the keys while the user points at an element on it. */
+  pickElement(input: { readonly surface: string }): Promise<BrowserElementPick | undefined> {
+    const contents = this.#surfaces.get(input.surface)?.view.webContents;
+
+    if (contents === undefined || contents.isDestroyed() || contents.getURL() === "")
+      return Promise.resolve(undefined);
+    contents.focus();
+
+    return pickElement(contents);
   }
 
   find(input: Parameters<BrowserBridge["find"]>[0]): ReturnType<BrowserBridge["find"]> {

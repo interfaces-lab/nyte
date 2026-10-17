@@ -17,6 +17,7 @@ import type {
   SessionId,
   SessionInfo,
   UpdateOutcome,
+  WorkspaceId,
 } from "@nyte-ai/schema";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
@@ -33,6 +34,7 @@ import { runHandle } from "../engine/runs.ts";
 import { discardSession, releaseStart, stopStart } from "../engine/start.ts";
 import { runCommand } from "../extend/registry.ts";
 import { configure } from "../extend/settings.ts";
+import { isolateWorkspace, releaseWorktree } from "../env/worktrees.ts";
 import { commit } from "../fold/commit.ts";
 import { headRef, seenRef, sessionRef, workspaceRef } from "../store/refs.ts";
 import {
@@ -351,14 +353,18 @@ async function start(
   const id = typeof acquired === "string" ? asId<"session">(acquired) : minted;
   const receipt = asId<"receipt">(id);
 
-  const digest = await objectId({
+  const described = {
     name: input.name ?? null,
     workspace: input.workspace ?? null,
     parent: input.parent ?? null,
     configuration: input.configuration ?? null,
     prompt: input.prompt ?? null,
     content: input.content,
-  });
+  };
+
+  const digest = await objectId(
+    input.isolation === undefined ? described : { ...described, isolation: input.isolation },
+  );
 
   const trace = (origin === null ? null : followedTrace(origin.session)) ?? receipt;
   followTrace(id, trace);
@@ -374,19 +380,28 @@ async function start(
       }
       const parent =
         input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
-      const workspace =
+      const named =
         input.workspace ?? parent?.record.workspace ?? kernel.host.current().defaultWorkspace;
 
-      if (workspace === null)
+      if (named === null)
         throw new SdkError("unknown", "No workspace was named and the host has none by default.");
 
-      if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
-        throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);
+      if ((await kernel.store.refs.get(workspaceRef(named))) === null)
+        throw new SdkError("unknown", `Workspace ${named} is not registered on this host.`);
 
       const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
       const effective = selected ?? (await defaults(kernel, id));
 
       if (effective.kind !== "exact") throw refusalError(effective);
+
+      const workspace =
+        input.isolation === undefined
+          ? named
+          : await isolateWorkspace(kernel, context.principal, {
+              source: named,
+              session: id,
+              title: input.name ?? null,
+            });
       const at = Date.now();
 
       const record: SessionRecord = {
@@ -474,7 +489,7 @@ async function update(
 ): Promise<UpdateOutcome> {
   const { outcome, moved } = await attempt<{
     readonly outcome: UpdateOutcome;
-    readonly moved: boolean;
+    readonly moved: WorkspaceId | null;
   }>(`Updating ${session}`, async () => {
     const found = await requireSession(kernel.store, session);
     const workspace = patch.workspace ?? found.record.workspace;
@@ -486,11 +501,11 @@ async function update(
       if (runs.length > 0)
         return {
           outcome: { kind: "busy", runs: runs.map((run) => run.record.view.id) },
-          moved: false,
+          moved: null,
         };
 
       if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
-        return { outcome: { kind: "unknown-workspace" }, moved: false };
+        return { outcome: { kind: "unknown-workspace" }, moved: null };
     }
 
     const record: SessionRecord = {
@@ -507,7 +522,7 @@ async function update(
       record.archived === found.record.archived &&
       !moving
     )
-      return { outcome: { kind: "updated" }, moved: false };
+      return { outcome: { kind: "updated" }, moved: null };
 
     const written = await commit(kernel, [
       {
@@ -518,12 +533,15 @@ async function update(
       },
     ]);
 
-    return written.kind === "set" ? { outcome: { kind: "updated" }, moved: moving } : STALE;
+    return written.kind === "set"
+      ? { outcome: { kind: "updated" }, moved: moving ? found.record.workspace : null }
+      : STALE;
   });
 
-  if (moved) {
+  if (moved !== null) {
     await kernel.environments.detach(session);
     await Promise.allSettled([kernel.plugins.reload(session)]);
+    await releaseWorktree(kernel, session, moved);
   }
 
   return outcome;

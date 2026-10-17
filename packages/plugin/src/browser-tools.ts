@@ -64,6 +64,7 @@ function browserTool<S extends ReturnType<typeof on>>(input: {
   readonly description: string;
   readonly parameters: S;
   readonly replay: "safe" | "never";
+  readonly approval?: ToolDefinition["approval"];
   run(args: Infer<S>, invocation: ToolInvocation): Promise<string>;
 }): ToolDefinition<Infer<S>> {
   return {
@@ -72,6 +73,7 @@ function browserTool<S extends ReturnType<typeof on>>(input: {
     parameters: input.parameters,
     class: () => ({ kind: "custom", label: input.name.replace("browser_", "Browser: ") }),
     effects: "none",
+    approval: input.approval,
     replay: input.replay,
     execute: async (args, invocation) => ({
       content: [{ kind: "text", text: await input.run(args, invocation) }],
@@ -87,6 +89,7 @@ const open: ToolDefinition<{ url: string }> = {
   ),
   class: (args) => ({ kind: "custom", label: `Opening ${args.url}` }),
   effects: "none",
+  approval: "never",
   replay: "safe",
   async execute(args, invocation) {
     const opened = await (await requireBrowser(invocation)).open({ url: args.url });
@@ -109,6 +112,7 @@ const capture: ToolDefinition<{ page?: string }> = {
   parameters: on({}),
   class: () => ({ kind: "custom", label: "Browser: capture" }),
   effects: "none",
+  approval: "never",
   replay: "safe",
   execute: (args, invocation) =>
     withPage(invocation, args.page, async (held) => {
@@ -141,6 +145,7 @@ export const browserTools: readonly ToolDefinition[] = [
       "Read the page's accessibility tree: one line per node with its ref, role and name.",
     parameters: on({ ref: Type.Optional(ref) }),
     replay: "safe",
+    approval: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         render(await held.snapshot({ ref: args.ref })),
@@ -208,6 +213,7 @@ export const browserTools: readonly ToolDefinition[] = [
       pages: Type.Optional(Type.Number({ minimum: 0.1 })),
     }),
     replay: "never",
+    approval: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         outcomeText(
@@ -226,6 +232,7 @@ export const browserTools: readonly ToolDefinition[] = [
       ms: Type.Optional(Type.Number({ minimum: 0 })),
     }),
     replay: "never",
+    approval: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) =>
         outcomeText(
@@ -247,6 +254,7 @@ export const browserTools: readonly ToolDefinition[] = [
       clear: Type.Optional(Type.Boolean()),
     }),
     replay: "never",
+    approval: "never",
     run: (args, invocation) =>
       withPage(invocation, args.page, async (held) => {
         const entries = await held.console({ limit: args.limit, clear: args.clear });

@@ -55,30 +55,31 @@ export function settingRows(state: State): readonly SettingRow[] {
   const providerName = (provider: string): string =>
     catalog?.providers.find((candidate) => candidate.id === provider)?.name ?? provider;
 
-  const plugin = (followedSession(state)?.view?.catalog.settings ?? []).flatMap(
-    (setting): SettingRow[] =>
-      setting.choices === null
-        ? []
-        : [
-            {
-              id: setting.id,
-              label: setting.label,
-              current: jsonId(setting.value),
-              choices: setting.choices.map((choice) => ({
-                id: jsonId(choice.value),
-                label: choice.label,
-                description: choice.badge ?? "",
-                apply: {
-                  kind: "apply-setting",
-                  id: setting.id,
-                  label: setting.label,
-                  scope: setting.scope,
-                  value: choice.value,
-                },
-              })),
-              whileBusy: false,
-            },
-          ],
+  const plugin = (
+    followedSession(state)?.view?.catalog.settings ?? state.facts.hostSettings
+  ).flatMap((setting): SettingRow[] =>
+    setting.choices === null
+      ? []
+      : [
+          {
+            id: setting.id,
+            label: setting.label,
+            current: jsonId(setting.value),
+            choices: setting.choices.map((choice) => ({
+              id: jsonId(choice.value),
+              label: choice.label,
+              description: choice.badge ?? "",
+              apply: {
+                kind: "apply-setting",
+                id: setting.id,
+                label: setting.label,
+                scope: setting.scope,
+                value: choice.value,
+              },
+            })),
+            whileBusy: setting.scope === "host",
+          },
+        ],
   );
 
   return [
@@ -198,7 +199,10 @@ export function matchChoice(row: SettingRow, argument: string): SettingChoice | 
   return (
     row.choices.find(
       (choice) =>
-        choice.id === argument || choice.label === argument || choice.id.endsWith(`/${argument}`),
+        choice.id === argument ||
+        choice.id === JSON.stringify(argument) ||
+        choice.label === argument ||
+        choice.id.endsWith(`/${argument}`),
     ) ?? null
   );
 }

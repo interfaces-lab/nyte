@@ -45,3 +45,29 @@ it("collects every unbacked workspace in Home without taking a folder's sessions
   ]);
   expect(localSessions(directories, folder)?.map((session) => session.id)).toEqual(["folder-chat"]);
 });
+
+it("lists a chat in a worktree under the folder the worktree was made from", () => {
+  const folder = asId<"workspace">("folder");
+  const worktree = asId<"workspace">("worktree");
+
+  const directories = groupDirectory(
+    [
+      sessionRow("folder-chat", { workspace: folder }),
+      sessionRow("worktree-chat", { workspace: worktree }),
+    ],
+    [
+      { id: folder, path: "/work/project", worktree: null },
+      {
+        id: worktree,
+        path: "/home/ada/.nyte/worktrees/project/fix",
+        worktree: { source: folder },
+      },
+    ],
+  );
+
+  expect(localSessions(directories, folder)?.map((session) => session.id)).toEqual([
+    "folder-chat",
+    "worktree-chat",
+  ]);
+  expect(localSessions(directories, worktree)).toBeUndefined();
+});

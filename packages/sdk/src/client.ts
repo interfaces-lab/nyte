@@ -108,6 +108,11 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       },
     },
     settings: { apply: (id, value) => rows.call("settings.apply", { id, value }) },
+    github: {
+      account: () => rows.call("github.account", {}),
+      signIn: () => rows.call("github.signIn", {}),
+      signOut: () => rows.call("github.signOut", {}),
+    },
     plugins: {
       replace: (plugins, scope) => rows.call("plugins.replace", { plugins: files(plugins), scope }),
       check: (plugins) => rows.call("plugins.check", { plugins: files(plugins) }),

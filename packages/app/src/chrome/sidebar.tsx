@@ -54,7 +54,7 @@ import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
-import { useGitHubState } from "./github-account.ts";
+import { useGitHub, useGitHubAccountState, useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { shellActions, useOverlays, useStagePage } from "./shell-state.ts";
@@ -177,8 +177,8 @@ export function Sidebar(): ReactElement {
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const router = useRouter();
   const settingsOpen = useMatch({ from: "/settings/$section", shouldThrow: false }) !== undefined;
-  const github = nyte.host.github;
-  const githubState = useGitHubState(github);
+  const githubState = useGitHubState(useGitHub());
+  const githubAccount = useGitHubAccountState().data;
   const openFolder = folderPicker();
   const reveal = useListReveal();
   const footerRowRef = useRef<HTMLDivElement>(null);
@@ -265,10 +265,7 @@ export function Sidebar(): ReactElement {
         workspace.available === false ? [workspace.id] : [],
       ),
     ),
-    repository:
-      githubState.data?.kind === "ready" || githubState.data?.kind === "signed_out"
-        ? githubState.data.repository
-        : undefined,
+    repository: githubState.data?.repository,
     working: workingSessions,
     showUpdated: view.show.includes("updated"),
     open: (sessionId, target) => void showSession(sessionId, target),
@@ -316,6 +313,7 @@ export function Sidebar(): ReactElement {
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & RailWorkspace))[] = [
     ...(homeVisible ? [{ kind: "home" } as const] : []),
     ...(workspaces.data ?? [])
+      .filter((workspace) => workspace.worktree === null)
       .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((workspace) => ({ kind: "project", ...workspace }) as const),
   ];
@@ -542,11 +540,10 @@ export function Sidebar(): ReactElement {
         </motion.div>
       </SidebarContent>
 
-      {github !== undefined && (
+      {githubAccount !== undefined && githubAccount !== null && (
         <div {...props(styles.footer)}>
           <div ref={footerRowRef} {...props(styles.footerRow)}>
             <AccountFooterMenu
-              github={github}
               connect={nyte.host.connect}
               anchor={footerRowRef}
               onOpenProfile={() => openSettings("profile")}

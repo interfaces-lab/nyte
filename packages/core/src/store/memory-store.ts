@@ -1,6 +1,6 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { BlobId, ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
-import type { Store, StoreConnection } from "../contract/store.ts";
+import type { FoldCheckpoint, Store, StoreConnection } from "../contract/store.ts";
 import { blobId, objectId } from "../util/content.ts";
 import { admits, collectSessionEvents, decodeObject, fenceNames, loggedEvent } from "./log.ts";
 import { parseSessionRef } from "./refs.ts";
@@ -17,6 +17,8 @@ export function memoryStore(): Store {
     SessionId,
     { readonly seq: Seq; readonly at: number; readonly text: string }[]
   >();
+  const checkpoints = new Map<SessionId, FoldCheckpoint>();
+  const encoder = new TextEncoder();
   let minted = 0;
 
   const tail = (session: SessionId): Seq => logs.get(session)?.at(-1)?.seq ?? asSeq(0);
@@ -190,6 +192,25 @@ export function memoryStore(): Store {
           .slice(0, limit)
           .map((row) => loggedEvent(row.seq, row.at, JSON.parse(row.text))),
       tail: async (session) => tail(session),
+    },
+    checkpoints: {
+      read: async (session) => checkpoints.get(session) ?? null,
+      async write(session, checkpoint) {
+        if ((checkpoints.get(session)?.seq ?? 0) <= checkpoint.seq)
+          checkpoints.set(session, checkpoint);
+      },
+      async gap(session, after) {
+        let events = 0;
+        let bytes = 0;
+
+        for (const row of logs.get(session) ?? []) {
+          if (row.seq <= after) continue;
+          events += 1;
+          bytes += encoder.encode(row.text).byteLength;
+        }
+
+        return { events, bytes };
+      },
     },
   };
 

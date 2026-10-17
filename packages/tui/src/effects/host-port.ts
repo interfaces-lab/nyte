@@ -102,6 +102,14 @@ export function hostPort(
 
       return [];
     },
+    async github(workspace) {
+      const capability = await host.workspace(workspace).github();
+
+      if (capability.kind !== "available") return null;
+      const [account, state] = await Promise.all([host.github.account(), capability.api.state()]);
+
+      return { account, folder: state };
+    },
     async trustInfo(workspace) {
       const info = await host.workspace(workspace).info();
       const inspected = await host.workspaces.inspect(info.target).catch(() => null);
@@ -346,6 +354,28 @@ function sessionPort(
       const outcome = await session.part(part).act("answer", { answers });
 
       return outcome.kind === "ok";
+    },
+    async approve(part, decision) {
+      const outcome = await session.part(part).act(decision, {});
+
+      switch (outcome.kind) {
+        case "ok":
+          return null;
+        case "rejected":
+          return outcome.reason;
+        case "failed":
+          return outcome.message;
+        case "closed":
+          return "This request is no longer waiting.";
+        case "no-owner":
+        case "unknown-action":
+          return "This host can't answer tool approvals.";
+        default: {
+          const exhaustive: never = outcome;
+
+          return exhaustive;
+        }
+      }
     },
     async move(position, options) {
       const receipt = await session.move(position, options);

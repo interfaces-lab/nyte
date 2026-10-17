@@ -15,9 +15,16 @@ import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { GitOutcome, GitRevision } from "@nyte-ai/sdk";
+import type {
+  GitHubAccountState,
+  GitHubPullRequestInput,
+  GitHubPullRequestOutcome,
+  GitHubState,
+  GitOutcome,
+  GitRevision,
+} from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import type { GitHubPullRequestOutcome } from "../bridge.ts";
+import { useGitHub, useGitHubAccountState, useGitHubState } from "../chrome/github-account.ts";
 import { errorMessage } from "../errors.ts";
 import {
   Menu,
@@ -29,7 +36,6 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { nyte } from "../nyte.ts";
 import { openExternal } from "../open-external.ts";
 import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -37,6 +43,7 @@ import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
+import { ChangesPullRequest } from "./changes-pull-request.tsx";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
 /** Every action the split button can run, in the order the menu lists them. */
@@ -137,6 +144,32 @@ interface CommitBarState {
   readonly fileCount: number;
   readonly message: string;
   readonly branch: BranchReadout | undefined;
+  /** The machine's GitHub CLI login; undefined until it answers, null where the host serves none. */
+  readonly account: GitHubAccountState | null | undefined;
+  /** The folder on GitHub as the host last read it; undefined until it answers. */
+  readonly github: GitHubState | undefined;
+}
+
+/** Why GitHub cannot open a pull request yet, read from the login and the folder before anything runs. */
+function pullRequestBlocker(
+  account: GitHubAccountState | null | undefined,
+  github: GitHubState | undefined,
+): string | undefined {
+  switch (account?.kind) {
+    case undefined:
+    case "signing_in":
+      return undefined;
+    case "cli_missing":
+      return "Install the GitHub CLI (gh) to open pull requests";
+    case "signed_out":
+      return "Sign in to the GitHub CLI to open pull requests";
+    case "error":
+      return account.message;
+    case "ready":
+      return github !== undefined && github.repository === undefined
+        ? "This repository has no GitHub remote"
+        : undefined;
+  }
 }
 
 /**
@@ -152,6 +185,10 @@ function commitActionDisabledReason(
 
   if (plan.pullRequest && !readsWorkingTree(state.scope))
     return "Pull requests apply to the working tree";
+
+  const blocker = plan.pullRequest ? pullRequestBlocker(state.account, state.github) : undefined;
+
+  if (blocker !== undefined) return blocker;
 
   if (plan.branch) return undefined;
 
@@ -250,6 +287,11 @@ function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarRe
         tone: "error",
         text: "This repository has no GitHub remote to open a pull request against.",
       };
+    case "detached":
+      return {
+        tone: "error",
+        text: "HEAD is detached, so there is no branch to open a pull request from.",
+      };
     case "failed":
       return { tone: "error", text: "Couldn’t open the pull request.", detail: result.message };
   }
@@ -276,13 +318,15 @@ function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
   return scope.kind === "staged" ? "staged" : "all";
 }
 
-/** A pull request needs a title; the message's first line is it, then the branch. */
-function pullRequestTitle(message: string, branch: BranchReadout | undefined): string {
-  const firstLine = message.split("\n")[0]?.trim() ?? "";
+/** The message's first line titles the pull request and the rest is its body; without a message `gh` fills both from the commits. */
+function pullRequestInput(message: string): GitHubPullRequestInput {
+  const [first = "", ...rest] = message.split("\n");
+  const title = first.trim();
+  const body = rest.join("\n").trim();
 
-  if (firstLine !== "") return firstLine;
+  if (title === "") return {};
 
-  return branch?.label ?? "";
+  return body === "" ? { title } : { title, body };
 }
 
 function readStoredAction(actions: readonly CommitAction[]): CommitAction {
@@ -326,6 +370,7 @@ const styles = create({
   },
   resultError: { color: role.contentSecondary },
   resultDetail: { color: role.contentSecondary },
+  blocked: { margin: 0 },
   resultActions: { display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap" },
 });
 
@@ -334,6 +379,8 @@ interface ChangesCommitBarProps {
   readonly branch: BranchReadout | undefined;
   readonly revision: string;
   readonly fileCount: number;
+  /** Opens a pull request or check page; the system browser when absent. */
+  readonly onOpenLink?: (url: string) => void;
 }
 
 interface RunOptions {
@@ -350,11 +397,15 @@ export function ChangesCommitBar({
   branch,
   revision,
   fileCount,
+  onOpenLink = openExternal,
 }: ChangesCommitBarProps): ReactElement {
-  const github = nyte.host.github;
+  const github = useGitHub();
+  const githubState = useGitHubState(github);
+  const account = useGitHubAccountState().data;
   const actions = commitActions(github !== undefined);
   const [message, setMessage] = useState("");
-  const [action, setAction] = useState<CommitAction>(() => readStoredAction(actions));
+  const [chosenAction, setAction] = useState<CommitAction>(() => readStoredAction(COMMIT_ACTIONS));
+  const action = actions.includes(chosenAction) ? chosenAction : DEFAULT_COMMIT_ACTION;
   const [branchName, setBranchName] = useState("");
   const [branchPrompt, setBranchPrompt] = useState<CommitAction | undefined>(undefined);
   const branchField = useRef<HTMLInputElement>(null);
@@ -366,7 +417,18 @@ export function ChangesCommitBar({
   const [result, setResult] = useState<CommitBarResult | undefined>(undefined);
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
 
-  const state: CommitBarState = { scope, fileCount, message, branch };
+  const state: CommitBarState = {
+    scope,
+    fileCount,
+    message,
+    branch,
+    account,
+    github: githubState.data,
+  };
+  const pullRequest =
+    githubState.data?.pullRequest.kind === "ready"
+      ? githubState.data.pullRequest.pullRequest
+      : undefined;
 
   const primaryDisabled =
     commitActionDisabled(action, state) || (branchPrompt !== undefined && branchName.trim() === "");
@@ -442,6 +504,7 @@ export function ChangesCommitBar({
         }
 
         reported.push(outcome.text);
+        void queryClient.invalidateQueries({ queryKey: keys.github });
       }
 
       if (plan.pullRequest) {
@@ -451,9 +514,7 @@ export function ChangesCommitBar({
           return;
         }
 
-        const opened = await github.createPullRequest({
-          title: pullRequestTitle(message, branch),
-        });
+        const opened = await github.createPullRequest(pullRequestInput(message));
 
         const outcome = pullRequestResultMessage(opened);
 
@@ -503,6 +564,9 @@ export function ChangesCommitBar({
     void run(pending, { setUpstream: true, skipBranch: true, skipCommit: true });
   };
 
+  const blocked = commitActionPlan(action).pullRequest
+    ? pullRequestBlocker(account, githubState.data)
+    : undefined;
   const successText = result?.tone === "success" ? result.text.trim() : "";
   const showResult = result !== undefined && (result.tone === "error" || successText !== "");
 
@@ -597,6 +661,12 @@ export function ChangesCommitBar({
           </MenuContent>
         </Menu>
       </SplitButton.Root>
+      {blocked !== undefined && !showResult && (
+        <p {...props(text.sm, styles.result, styles.blocked)}>{blocked}</p>
+      )}
+      {pullRequest !== undefined && (
+        <ChangesPullRequest pullRequest={pullRequest} onOpenLink={onOpenLink} />
+      )}
       {showResult && result !== undefined && (
         <div
           role={result.tone === "error" ? "alert" : "status"}
@@ -622,7 +692,7 @@ export function ChangesCommitBar({
                   onClick={(event) => {
                     event.preventDefault();
 
-                    if (result.url !== undefined) openExternal(result.url);
+                    if (result.url !== undefined) onOpenLink(result.url);
                   }}
                 >
                   {result.url}

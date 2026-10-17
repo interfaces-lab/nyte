@@ -302,6 +302,7 @@ export const workspaceCases = {
       addedBy: principal,
       sessions: 2,
       writers: [run],
+      isolation: null,
     },
     { id: workspace },
   ),

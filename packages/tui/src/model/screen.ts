@@ -20,6 +20,7 @@ import { blockedReason, interactionsFor } from "./interactions.ts";
 import type { Interactions } from "./interactions.ts";
 import { queuedCount, sameQueueRow } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
+import { approvalPanel, currentApproval } from "./approval.ts";
 import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
 import { followedSession, followedShells } from "./state.ts";
@@ -116,14 +117,14 @@ export function keyboardDialog(state: State): Dialog | null {
 
   if (top !== undefined) return liveDialog(state, top);
   const session = followedSession(state);
+  const head = session === null ? null : { id: session.id, view: session.view };
 
-  return questionPanel(
-    currentQuestion(
-      session === null ? null : { id: session.id, view: session.view },
-      state.facts.tasks,
+  return (
+    approvalPanel(currentApproval(head, state.facts.tasks), state.local.approval) ??
+    questionPanel(
+      currentQuestion(head, state.facts.tasks, state.local.question),
       state.local.question,
-    ),
-    state.local.question,
+    )
   );
 }
 
@@ -197,7 +198,10 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
     scrollAcceleration: state.facts.settings.scrollAcceleration,
     interactions,
     hints,
-    placeholder: placeholderFor({ ...input, followUp: input.followUp }),
+    placeholder:
+      dialog?.kind === "list" && dialog.purpose.kind === "approval"
+        ? ""
+        : placeholderFor({ ...input, followUp: input.followUp }),
     footer: footerFor(state, input.run.kind === "idle" ? 0 : queuedCount(queue)),
     tasksLine: tasksLine(state, question),
     notice: state.local.notice,

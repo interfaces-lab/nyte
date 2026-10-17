@@ -189,6 +189,7 @@ function fakeSession(id: string): FakeSession {
 
       return session.answerResult;
     },
+    approve: async () => null,
     async move(position, options) {
       calls.move.push({ position, options });
 
@@ -241,7 +242,7 @@ function fakeSession(id: string): FakeSession {
 
 export function fakeHost(): FakeHost {
   const sessions = new Map<string, FakeSession>();
-  const catalogs = queue<Pick<HostView, "catalog">>();
+  const catalogs = queue<Pick<HostView, "catalog" | "settings">>();
 
   const directory = queue<readonly SessionInfo[]>();
   const defaults: ModelRef[] = [];
@@ -291,7 +292,7 @@ export function fakeHost(): FakeHost {
     publishSessions: (list) => directory.push(list),
     publishCatalog(next) {
       catalog = next;
-      catalogs.push({ catalog: next.generation });
+      catalogs.push({ catalog: next.generation, settings: [] });
     },
     listModels: async () => catalog,
     accounts: async () => [],
@@ -308,6 +309,7 @@ export function fakeHost(): FakeHost {
       throw new Error("Logout is not scripted in the fake host.");
     },
     hostPlugins: async () => [],
+    github: async () => null,
     mcp: async () => ({ servers: [], issues: [] }),
     mcpAction: async () => ({ kind: "missing" }),
     mcpLogin: async () => undefined,

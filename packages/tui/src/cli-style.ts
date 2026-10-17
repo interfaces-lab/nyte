@@ -115,7 +115,10 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   },
   { label: "nyte serve [--port <n>] [--token <t>]", detail: "serve this folder over HTTP" },
   { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
-  { label: "nyte service [status|stop|run]", detail: "manage the background service" },
+  {
+    label: "nyte service [status|stop|install|uninstall|run]",
+    detail: "manage the background service",
+  },
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
@@ -205,9 +208,13 @@ export function renderCommandHelp(
       ].join("\n");
     case "service":
       return [
-        "Usage: nyte service [status | stop | run [--port <n>]]",
-        "Every nyte command shares one background service, started on first use.",
-        "status prints its address and pid; stop stops it; run keeps it in the foreground.",
+        "Usage: nyte service [status | stop | install | uninstall | run [--port <n>]]",
+        "Every nyte command shares one background service, started on first use. It stops 5 minutes",
+        "after the last client leaves, unless it's installed or this machine is linked to a Nyte account.",
+        "status prints its address, pid, clients and whether it's installed; stop stops it;",
+        "run keeps it in the foreground.",
+        "install runs it as a launch agent (macOS) or systemd user unit (Linux): it starts at login,",
+        "restarts after a crash, and logs to ~/.nyte/logs/service.log. uninstall removes it.",
         "It listens on a free 127.0.0.1 port; NYTE_SERVICE_PORT or --port pins one.",
         "Example: nyte service status",
       ].join("\n");

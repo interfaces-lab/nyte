@@ -287,6 +287,7 @@ export const modelInfo: ModelInfo = {
   compactAt: 160000,
   maxOutput: 64000,
   input: ["text", "image"],
+  capabilities: { steer: true },
   cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
 };
 
@@ -573,6 +574,7 @@ export const workspaceInfo = {
   addedBy: principal,
   sessions: 0,
   writers: [],
+  isolation: null,
 };
 
 export const jobView = {

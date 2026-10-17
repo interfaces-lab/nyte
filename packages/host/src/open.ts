@@ -21,6 +21,8 @@ import { dev, processEnvironment } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
+import approvals from "@nyte-ai/plugin/core/approvals";
+import { acpAgents } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
@@ -36,6 +38,7 @@ import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
 import { readErrorCode } from "./local/tree.ts";
+import { localGitHubAccount } from "./local/github.ts";
 import { localProvider } from "./local/provider.ts";
 import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
 import { listen } from "./listen.ts";
@@ -126,15 +129,18 @@ async function composeOpen(
   const usesLocalProvider = !given.some((plugin) => plugin.environment?.kind === "local");
 
   const claudeCode = claudeCodeSdk();
+  const acp = acpAgents();
 
   const [models, files, settings] = await Promise.all([
-    options.models ?? nyteModels({ store, secrets, home, providers: [claudeCode.provider] }),
+    options.models ??
+      nyteModels({ store, secrets, home, providers: [claudeCode.provider, acp.provider] }),
     filePlugins(home),
     settingsSeed(home),
     usesLocalProvider ? store.open().then(migrateLocalWorkspaceIdentities) : undefined,
   ]);
 
   const builtins = [
+    approvals,
     question,
     rename,
     bashDescription,
@@ -146,6 +152,7 @@ async function composeOpen(
     canvas,
     browserTools,
     claudeCode.plugin,
+    acp.plugin,
   ];
 
   const plugins = [
@@ -165,6 +172,7 @@ async function composeOpen(
     loadPlugins: async (paths) => pluginLoader([...files.dirs, ...(await projectDirs())])(paths),
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
+    github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
     plugins: [...plugins, ...files.plugins],
     pluginSources: files.sources,
     secrets,

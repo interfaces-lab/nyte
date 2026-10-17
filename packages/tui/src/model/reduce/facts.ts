@@ -89,6 +89,7 @@ export const factHandlers = {
       ? stay(state)
       : stay(withFacts(state, { catalog: { generation: msg.generation, catalog: msg.catalog } })),
   settings: (state, msg) => stay(withFacts(state, { settings: msg.settings })),
+  "host-settings": (state, msg) => stay(withFacts(state, { hostSettings: msg.settings })),
   workspace: (state, msg) =>
     stay(
       withLocal(withFacts(state, { workspace: msg.workspace }), {

@@ -1,11 +1,13 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
+import { ADD_TO_CHAT_LABEL } from "../conversation/add-to-chat.ts";
 import { errorMessage } from "../errors";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -13,7 +15,13 @@ import { useSession, useWorkspaceJobs } from "../queries.ts";
 import { connection } from "../sdk.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import type { WorkbenchTabId } from "./controller.ts";
-import { mountTerminal } from "./terminal-runtime";
+import { macPlatform } from "../platform.ts";
+import {
+  addTerminalToChat,
+  mountTerminal,
+  subscribeTerminalSelection,
+  terminalHasSelection,
+} from "./terminal-runtime";
 import { getTerminal, terminalActions, useTerminal } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles } from "./terminal.stylex";
@@ -28,6 +36,42 @@ const startingStyles = create({
     backgroundColor: role.bgBase,
   },
 });
+
+/** Add to Chat floats over the grid's top corner while text is selected, clear of the prompt below. */
+const chatStyles = create({
+  action: {
+    position: "absolute",
+    insetBlockStart: space.s2,
+    insetInlineEnd: space.s3,
+    zIndex: 1,
+  },
+});
+
+function AddSelectionToChat({ id }: { readonly id: string }): ReactElement | null {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeTerminalSelection(id, listener),
+    [id],
+  );
+
+  const selected = useSyncExternalStore(subscribe, () => terminalHasSelection(id));
+
+  if (!selected) return null;
+
+  return (
+    <span {...props(chatStyles.action)}>
+      <Button
+        variant="outline"
+        size="sm"
+        icon="paperclip"
+        aria-keyshortcuts={macPlatform(undefined) ? "Meta+Shift+L" : "Control+Shift+L"}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => addTerminalToChat(id)}
+      >
+        {ADD_TO_CHAT_LABEL}
+      </Button>
+    </span>
+  );
+}
 
 function TerminalCanvas({
   id,
@@ -227,6 +271,7 @@ export function TerminalPanel({
             {(tab.kind === "job"
               ? tab.rendering.kind !== "failed"
               : tab.state.kind !== "failed") && <TerminalCanvas id={tab.id} visible={visible} />}
+            <AddSelectionToChat id={tab.id} />
           </div>
         </div>
       )}

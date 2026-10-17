@@ -2,6 +2,8 @@ import type {
   BlobId,
   CommandOutcome,
   ConfigureOutcome,
+  GitHubAccountState,
+  GitHubState,
   HostView,
   Json,
   McpChange,
@@ -27,6 +29,7 @@ import type {
   UserContent,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { Clock } from "@opentui/core";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
@@ -68,7 +71,7 @@ export interface HostPort {
     { readonly kind: "started"; readonly message: MessageId } | { readonly kind: "taken" }
   >;
   rootSessions(): AsyncIterable<SessionInfo>;
-  catalog(): AsyncIterable<Pick<HostView, "catalog">>;
+  catalog(): AsyncIterable<Pick<HostView, "catalog" | "settings">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
   listModels(): Promise<ModelCatalogView>;
   accounts(provider: string | null): Promise<readonly ModelAccount[]>;
@@ -85,6 +88,10 @@ export interface HostPort {
     driver: LoginDriver,
   ): Promise<{ readonly provider: string; readonly name: string }>;
   hostPlugins(): Promise<HostView["plugins"]>;
+  /** The machine's `gh` login and the workspace on GitHub through the host, or `null` where the host serves no GitHub. */
+  github(
+    workspace: WorkspaceId,
+  ): Promise<{ readonly account: GitHubAccountState; readonly folder: GitHubState } | null>;
   mcp(workspace: WorkspaceId): Promise<McpView>;
   mcpAction(workspace: WorkspaceId, server: string, action: McpAction): Promise<McpChange>;
   mcpLogin(workspace: WorkspaceId, server: string, driver: LoginDriver): Promise<void>;
@@ -126,6 +133,8 @@ export interface SessionPort {
   ): Promise<"revised" | "landed-first" | "gone">;
   stopRun(run: RunId): Promise<"stopped" | "missing">;
   answer(part: PartId, answers: QuestionAnswers): Promise<boolean>;
+  /** Answers an approval; resolves null once it is taken, else why it was not. */
+  approve(part: PartId, decision: ApprovalDecision): Promise<string | null>;
   move(position: Position, options: MoveOptions): Promise<MoveOutcome>;
   tree(): Promise<TreeView>;
   compact(instructions: string | null): Promise<"started" | "busy" | "nothing">;

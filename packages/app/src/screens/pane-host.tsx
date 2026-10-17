@@ -6,6 +6,7 @@ import { SessionConversation } from "./session-conversation.tsx";
 import { props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { ReactElement, RefObject } from "react";
+import { receiveChatExcerpts } from "../conversation/add-to-chat.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import {
   usePaneActions,
@@ -52,6 +53,23 @@ function TypeToCompose({
 
     return () => window.removeEventListener("keydown", route);
   });
+
+  return null;
+}
+
+/** The active pane's composer takes what Add to Chat hands it from a workbench panel. */
+function ReceiveExcerpts({
+  input,
+}: {
+  readonly input: RefObject<ComposerEditorHandle | null>;
+}): null {
+  useMountEffect(() =>
+    receiveChatExcerpts(({ reference, image }) => {
+      input.current?.insertReference(reference);
+
+      if (image !== undefined) input.current?.attachFiles([image]);
+    }),
+  );
 
   return null;
 }
@@ -121,7 +139,12 @@ export function PaneHost({
       onPointerDown={() => actions.focus(pane.id)}
       onFocusCapture={() => actions.focus(pane.id)}
     >
-      {activePane(layout).id === pane.id && <TypeToCompose input={inputRef} />}
+      {activePane(layout).id === pane.id && (
+        <>
+          <TypeToCompose input={inputRef} />
+          <ReceiveExcerpts input={inputRef} />
+        </>
+      )}
       <ReferenceOpenerProvider value={referenceOpener}>
         {pane.selection.kind === "session" ? (
           <SessionConversation

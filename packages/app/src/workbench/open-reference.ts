@@ -50,6 +50,23 @@ export function workbenchReferenceOpener(input: {
         return () => fileActions.open(viewKey, { path: reference.path, preview: true });
       }
 
+      case "excerpt": {
+        const { source } = reference;
+
+        if (source.kind === "browser")
+          return () =>
+            workbenchController.actions.openTab({
+              view: viewKey,
+              tab: { kind: "browser", url: source.url },
+              activate: true,
+            });
+
+        if (source.kind !== "diff" || source.side === "old") return undefined;
+        const path = `${workspacePath.replace(/\/$/u, "")}/${source.path}`;
+
+        return () => fileActions.open(viewKey, { path, line: source.start, preview: true });
+      }
+
       case "mention":
       case "clipboard":
         return undefined;

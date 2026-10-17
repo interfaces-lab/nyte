@@ -386,6 +386,7 @@ const mainCalls: CallTable = {
   "host.browser.perform": (window, input) => browserSurfaces.perform(input, window),
   "host.browser.close": async (_window, input) => browserSurfaces.close(input),
   "host.browser.captureFrame": (_window, input) => browserSurfaces.captureFrame(input),
+  "host.browser.pickElement": (_window, input) => browserSurfaces.pickElement(input),
   "host.browser.find": (_window, input) => browserSurfaces.find(input),
   "host.browser.cancelDownload": async (_window, input) => browserSurfaces.cancelDownload(input),
   "host.browser.login": async (_window, input) => browserSurfaces.login(input),

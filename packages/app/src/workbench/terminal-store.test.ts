@@ -94,6 +94,7 @@ const folder: WorkspaceInfo = {
   addedBy: asId("tester"),
   sessions: 0,
   writers: [],
+  isolation: null,
 };
 
 const started: { readonly pty: unknown; readonly title: unknown }[] = [];

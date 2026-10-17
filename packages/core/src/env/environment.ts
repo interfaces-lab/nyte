@@ -15,6 +15,7 @@ import type {
   FilesApi,
   FileScope,
   GitApi,
+  GitHubApi,
   PageHolder,
   SnapshotsApi,
 } from "../contract/workspace.ts";
@@ -39,6 +40,7 @@ interface Attachment {
   close(): Promise<void>;
   browser(): BrowserApi | undefined;
   git(): GitApi | undefined;
+  github(): GitHubApi | undefined;
   snapshots(): SnapshotsApi | null;
 }
 
@@ -161,10 +163,11 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
     } catch (error) {
       const failure = classifyCapabilityFailure(error);
 
-      return { files: failure, git: failure, browser: failure };
+      return { files: failure, git: failure, github: failure, browser: failure };
     }
 
     const git = found.git();
+    const github = found.github();
     const browser = found.browser();
 
     return {
@@ -176,6 +179,10 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
         git === undefined
           ? { kind: "unsupported", reason: `The ${found.provider.kind} provider serves no git.` }
           : { kind: "available", api: git },
+      github:
+        github === undefined
+          ? { kind: "unsupported", reason: `The ${found.provider.kind} provider serves no GitHub.` }
+          : { kind: "available", api: github },
       browser:
         browser === undefined
           ? {
@@ -370,6 +377,7 @@ function attachment(
   };
 
   let git: GitApi | undefined;
+  let github: GitHubApi | undefined;
   let snapshots: SnapshotsApi | null | undefined;
   let own: BrowserApi | undefined;
 
@@ -393,6 +401,11 @@ function attachment(
       git ??= provider.git?.(env);
 
       return git;
+    },
+    github() {
+      github ??= provider.github?.(env);
+
+      return github;
     },
     snapshots() {
       snapshots ??= provider.snapshots?.(env) ?? null;

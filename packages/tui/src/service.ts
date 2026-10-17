@@ -7,12 +7,16 @@ import type { Connection } from "@nyte-ai/sdk";
 import {
   ensureService,
   findService,
+  installService,
+  logPath,
+  readSupervision,
   serviceBuild,
   serviceClients,
   serviceConnect,
   stopService,
+  uninstallService,
 } from "@nyte-ai/service";
-import type { Registration, ServiceClient } from "@nyte-ai/service";
+import type { Registration, ServiceClient, Supervision, Supervisor } from "@nyte-ai/service";
 import { readCodeId } from "./code-id.ts";
 import { compiled } from "./compiled.ts";
 import { HostFailure, startHostThread } from "./hosting.ts";
@@ -86,22 +90,30 @@ export async function serviceCommandMain(
   switch (command) {
     case "status": {
       if (rest.length > 0) throw new Error("Usage: nyte service status");
-      const running = await findService(home);
+      const [running, supervision] = await Promise.all([findService(home), readSupervision(home)]);
+      const installed = describeSupervision(supervision, running?.pid);
       const build = await serviceBuild(VERSION, await readCodeId());
 
       if (running === undefined) {
         output.write(
-          `Nyte service isn't running. Any nyte command starts it.\nThis nyte is build ${build}.\n`,
+          lines([
+            "Nyte service isn't running. Any nyte command starts it.",
+            installed,
+            `This nyte is build ${build}.`,
+          ]),
         );
 
         return;
       }
 
-      const header = `Nyte service ${running.version} at ${running.url} (pid ${String(running.pid)})`;
+      const header = [
+        `Nyte service ${running.version} at ${running.url} (pid ${String(running.pid)})`,
+        installed,
+      ];
 
       if (running.version !== build) {
         output.write(
-          `${header}\nThis nyte is build ${build}; its next command replaces the service.\n`,
+          lines([...header, `This nyte is build ${build}; its next command replaces the service.`]),
         );
 
         return;
@@ -110,13 +122,13 @@ export async function serviceCommandMain(
       const clients = await serviceClients(running);
 
       output.write(
-        [
-          header,
+        lines([
+          ...header,
           clients.length === 0
             ? "No clients attached."
             : `${String(clients.length)} ${clients.length === 1 ? "client" : "clients"} attached:`,
           ...clients.map(describeClient),
-        ].join("\n") + "\n",
+        ]),
       );
 
       return;
@@ -131,11 +143,73 @@ export async function serviceCommandMain(
       return;
     }
 
+    case "install": {
+      if (rest.length > 0) throw new Error("Usage: nyte service install");
+
+      const installed = await installService({
+        home,
+        version: VERSION,
+        command: serviceCommand(),
+      });
+
+      output.write(
+        installed.kind === "unchanged"
+          ? `The Nyte service is already installed as ${unitName(installed.supervisor)}.\n`
+          : `Installed the Nyte service as ${unitName(installed.supervisor)}.\nIt runs as pid ${String(installed.registration.pid)}, starts at login, restarts after a crash, and logs to ${logPath(home)}.\n`,
+      );
+
+      return;
+    }
+
+    case "uninstall": {
+      if (rest.length > 0) throw new Error("Usage: nyte service uninstall");
+      output.write(
+        (await uninstallService(home))
+          ? "Uninstalled and stopped the Nyte service. Any nyte command starts it again.\n"
+          : "The Nyte service isn't installed.\n",
+      );
+
+      return;
+    }
+
     case "run":
       return runService(rest, signal, output);
     default:
       throw new Error(`Unknown service command: ${command}. Run \`nyte service --help\`.`);
   }
+}
+
+function unitName(supervisor: Supervisor): string {
+  return `${supervisor.kind === "launchd" ? "a launch agent" : "a systemd user unit"} at ${supervisor.unit}`;
+}
+
+/** The status line on how the service is installed, given the pid of the running service; none where it can't be. */
+function describeSupervision(
+  supervision: Supervision,
+  running: number | undefined,
+): string | undefined {
+  switch (supervision.kind) {
+    case "unsupported":
+      return undefined;
+    case "absent":
+      return "Not installed. `nyte service install` starts it at login and keeps it running.";
+    case "installed": {
+      const { supervisor, pid } = supervision;
+
+      return running === undefined || pid === running
+        ? `Installed as ${unitName(supervisor)}.`
+        : `Installed as ${unitName(supervisor)}, but ${supervisor.kind} isn't supervising this service; run \`nyte service install\` to hand it over.`;
+    }
+    default: {
+      const _exhaustive: never = supervision;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function lines(rows: readonly (string | undefined)[]): string {
+  return `${rows.filter((row) => row !== undefined).join("\n")}\n`;
 }
 
 async function runService(

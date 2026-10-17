@@ -4,10 +4,17 @@ import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
-import type { BrowserBoundsMessage, BrowserBridge, BrowserNavigationAction } from "../bridge.ts";
+import type {
+  BrowserBoundsMessage,
+  BrowserBridge,
+  BrowserElementPick,
+  BrowserNavigationAction,
+} from "../bridge.ts";
+import { addToChat } from "../conversation/add-to-chat.ts";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
+import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";
@@ -373,6 +380,27 @@ function blockedPermissionsLabel(permissions: readonly string[]): string {
   return `Blocked by Nyte: ${names.join(", ")}`;
 }
 
+const PNG_DATA_URL = "data:image/png;base64,";
+
+/** A picked element goes to the chat as its HTML under its selector, with its crop as a picture. */
+function addElementToChat(picked: BrowserElementPick): void {
+  const image =
+    picked.image?.startsWith(PNG_DATA_URL) === true
+      ? new File([Uint8Array.fromBase64(picked.image.slice(PNG_DATA_URL.length))], "element.png", {
+          type: "image/png",
+        })
+      : undefined;
+
+  addToChat({
+    reference: {
+      kind: "excerpt",
+      source: { kind: "browser", url: picked.url, selector: picked.selector },
+      text: picked.html,
+    },
+    image,
+  });
+}
+
 interface BrowserPanelProps {
   readonly surface: string;
   readonly visible: boolean;
@@ -412,6 +440,7 @@ export function BrowserPanel({
   const history = useBrowserHistory(workspacePath);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [picking, setPicking] = useState(false);
   const stateUrl = state?.url;
   const blank = parseWebUrl(url) === undefined;
   const currentUrl = stateUrl ?? (blank ? "" : url);
@@ -507,6 +536,18 @@ export function BrowserPanel({
     browserBridge().setFocus({ surface, focused: true });
   };
 
+  const pickElement = (): void => {
+    setFailure(undefined);
+    setPicking(true);
+    void browserBridge()
+      .pickElement({ surface })
+      .then((picked) => {
+        if (picked !== undefined) addElementToChat(picked);
+      })
+      .catch((cause: unknown) => setFailure(errorMessage(cause)))
+      .finally(() => setPicking(false));
+  };
+
   const runShortcut = (shortcut: BrowserShortcut): boolean => {
     switch (shortcut) {
       case "back":
@@ -546,6 +587,11 @@ export function BrowserPanel({
         return true;
       case "history":
         onToggleHistory();
+
+        return true;
+      case "add-to-chat":
+        if (!hasPage) return false;
+        pickElement();
 
         return true;
       default: {
@@ -686,6 +732,16 @@ export function BrowserPanel({
             </span>
           )}
         </AddressField>
+        {hasPage && (
+          <Toggle
+            iconOnly
+            icon="code-brackets"
+            aria-label="Add Element to Chat"
+            aria-keyshortcuts={macPlatform(undefined) ? "Meta+Shift+L" : "Control+Shift+L"}
+            pressed={picking}
+            onPressedChange={pickElement}
+          />
+        )}
         {hasPage && <ShieldMenu state={state} onChanged={() => navigate("reload")} />}
         {hasPage ? (
           <ButtonLink
