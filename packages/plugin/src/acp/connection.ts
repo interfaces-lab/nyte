@@ -18,28 +18,25 @@ const AUTH_REQUIRED = -32_000;
 
 const STDERR_TAIL = 4_096;
 
-/** The agent's stdout as a byte stream of its JSON-RPC lines; any other line, such as stderr the pipe interleaves, goes to `other`. */
-function messageLines(job: Job, other: (line: string) => void): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-  let pending = "";
-
+/** The agent's stdout as the byte stream its JSON-RPC runs over, its stderr to `stderr`; a `gap` (output the job dropped) fails the stream, since a lost frame would corrupt the protocol. */
+function protocolStream(job: Job, stderr: (bytes: Uint8Array) => void): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (line: string) => {
-        if (line.trimStart().startsWith("{")) controller.enqueue(encoder.encode(`${line}\n`));
-        else if (line.trim() !== "") other(line);
-      };
-
       for await (const frame of job.output()) {
-        if (frame.kind !== "bytes") continue;
-        const lines = (pending + decoder.decode(frame.data, { stream: true })).split("\n");
-        pending = lines.pop() ?? "";
+        if (frame.kind === "gap") {
+          controller.error(
+            new Error("The agent's output lost bytes, so its protocol stream broke."),
+          );
 
-        for (const line of lines) emit(line);
+          return;
+        }
+
+        if (frame.kind !== "bytes") continue;
+
+        if (frame.stream === "stderr") stderr(frame.data);
+        else controller.enqueue(frame.data);
       }
 
-      emit(pending + decoder.decode());
       controller.close();
     },
   });
@@ -77,8 +74,10 @@ export class AcpProcess {
 
     const writable = new WritableStream<Uint8Array>({ write: (chunk) => job.write(chunk) });
 
-    const readable = messageLines(job, (line) => {
-      this.#stderr = `${this.#stderr}${line}\n`.slice(-STDERR_TAIL);
+    const decoder = new TextDecoder();
+
+    const readable = protocolStream(job, (bytes) => {
+      this.#stderr = (this.#stderr + decoder.decode(bytes, { stream: true })).slice(-STDERR_TAIL);
     });
 
     this.#connection = app.connect(ndJsonStream(writable, readable));
@@ -96,10 +95,13 @@ export class AcpProcess {
     this.#ready.catch(() => undefined);
   }
 
-  /** Starts `agent` through `env.exec`, after the process environment is whole. */
+  /** Starts `agent` through `env.exec` with its stdio kept whole for the protocol, after the process environment is whole. */
   static async start(env: ExecutionEnv, agent: AcpAgent): Promise<AcpProcess> {
     await processEnvironment();
-    const job = await env.exec([agent.command, ...agent.args], { env: { ...agent.env } });
+    const job = await env.exec([agent.command, ...agent.args], {
+      env: { ...agent.env },
+      stdio: "protocol",
+    });
 
     return new AcpProcess(agent, job);
   }

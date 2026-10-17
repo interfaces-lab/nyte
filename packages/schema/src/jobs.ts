@@ -76,8 +76,13 @@ export function foldJobChange(jobs: readonly JobView[], change: JobsChange): rea
   }
 }
 
+/** A job's output: bytes it wrote (`stream: "stderr"` for its stderr when it runs with `stdio: "protocol"`), a `gap` where a reader missed some, and its exit. */
 export const OutputFrameType = Type.Union([
-  Type.Object({ kind: Type.Literal("bytes"), data: base64Bytes }),
+  Type.Object({
+    kind: Type.Literal("bytes"),
+    data: base64Bytes,
+    stream: Type.Optional(Type.Literal("stderr")),
+  }),
   Type.Object({ kind: Type.Literal("gap") }),
   Type.Object({ kind: Type.Literal("exit"), code: nullable(Type.Number()) }),
 ]);

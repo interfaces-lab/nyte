@@ -30,8 +30,12 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-/** A piped process as the local provider runs one: stdout and stderr interleaved, stdin fed by `write`. */
-function pipeJob(command: readonly string[], extra: Readonly<Record<string, string>>): Job {
+/** A piped process as the local provider runs one: stdin fed by `write`, and with `protocol` stderr tagged apart from stdout, else the two interleaved. */
+function pipeJob(
+  command: readonly string[],
+  extra: Readonly<Record<string, string>>,
+  protocol: boolean,
+): Job {
   const [file = "", ...args] = command;
   const child = spawn(file, args, { cwd: dir, env: { ...process.env, ...extra }, stdio: "pipe" });
   const frames: OutputFrame[] = [];
@@ -43,7 +47,13 @@ function pipeJob(command: readonly string[], extra: Readonly<Record<string, stri
   };
 
   child.stdout.on("data", (chunk: Buffer) => push({ kind: "bytes", data: new Uint8Array(chunk) }));
-  child.stderr.on("data", (chunk: Buffer) => push({ kind: "bytes", data: new Uint8Array(chunk) }));
+  child.stderr.on("data", (chunk: Buffer) =>
+    push(
+      protocol
+        ? { kind: "bytes", data: new Uint8Array(chunk), stream: "stderr" }
+        : { kind: "bytes", data: new Uint8Array(chunk) },
+    ),
+  );
 
   const ended = new Promise<JobEnd>((resolve) =>
     child.on("close", (code) => {
@@ -117,6 +127,7 @@ async function openHost(gate: Plugin<"core">) {
       const job = pipeJob(
         typeof command === "string" ? ["/bin/sh", "-c", command] : command,
         options?.env ?? {},
+        options?.stdio === "protocol",
       );
 
       jobs.push(job);

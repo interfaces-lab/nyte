@@ -211,6 +211,8 @@ export interface ExecutionEnv {
       readonly env?: Readonly<Record<string, string>>;
       readonly signal?: AbortSignal;
       readonly pty?: { readonly columns: number; readonly rows: number };
+      /** `"protocol"` for a pipe a protocol runs over: `output()` yields every byte of stdout and never a `gap`, holding the process while its slowest open reader is behind, and stderr apart, as `bytes` frames with `stream: "stderr"`. Default `"merged"`: stdout and stderr interleaved, a reader that falls behind skipping to a `gap`. A provider that cannot keep them apart throws `SdkError("unavailable")`; `pty` ignores it. */
+      readonly stdio?: "merged" | "protocol";
     },
   ): Promise<Job>;
   close(): Promise<void>;
