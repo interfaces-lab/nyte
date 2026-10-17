@@ -15,7 +15,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { props } from "@stylexjs/stylex";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { MouseEvent, ReactElement } from "react";
 import type { GitHubRepository } from "@nyte-ai/sdk";
 import { formatTimeAgo } from "../components/ui.tsx";
@@ -26,12 +26,17 @@ import { sessionActivityMark } from "../session-activity.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
+import { sessionWatch } from "../sdk.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
 
 function sessionTitle(session: SessionInfo): string {
   return session.name ?? "New chat";
 }
+
+/** How long the pointer rests on a chat's row before its view starts loading. */
+const WARM_DELAY_MS = 50;
 
 /** With a tab strip, ⌘-click or middle-click opens a background tab and ⌘⇧-click shows it. */
 function openTarget(event: MouseEvent): OpenTarget {
@@ -170,7 +175,8 @@ export interface RailRows {
 /**
  * A chat in its folder. Only the open folder's rows drag, since a pane takes
  * a chat from the current folder. A hidden panel's selection never becomes a
- * shared-layout destination.
+ * shared-layout destination. Resting the pointer on a row, or pressing it,
+ * loads the chat's view so opening it shows the chat at once.
  */
 export function SessionRow({
   session,
@@ -199,8 +205,25 @@ export function SessionRow({
   const title = sessionTitle(session);
   const ask = mark === "waiting" || mark === "failed" ? sessionAsk(session) : undefined;
   const [draftName, setDraftName] = useState<string | undefined>();
+  const warming = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const { isDragging, listeners, setNodeRef } = useSessionDraggable(session.id, title, !draggable);
+
+  const cancelWarm = (): void => {
+    clearTimeout(warming.current);
+    warming.current = undefined;
+  };
+
+  const warm = (): void => {
+    cancelWarm();
+
+    if (!selected)
+      void sessionWatch(session.id)
+        .next()
+        .catch(() => undefined);
+  };
+
+  useMountEffect(() => cancelWarm);
 
   const commitRename = (): void => {
     if (draftName === undefined) return;
@@ -304,6 +327,12 @@ export function SessionRow({
         xstyle={unreachable && styles.sessionUnreachable}
         aria-current={selected ? "page" : undefined}
         onClick={(event) => onOpen(openTarget(event))}
+        onPointerEnter={() => {
+          cancelWarm();
+          warming.current = setTimeout(warm, WARM_DELAY_MS);
+        }}
+        onPointerLeave={cancelWarm}
+        onPointerDownCapture={warm}
         onAuxClick={(event) => {
           if (event.button === 1 && windowTabs.strip) onOpen("background");
         }}
