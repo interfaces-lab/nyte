@@ -34,6 +34,7 @@ import type { Plugin } from "../core.ts";
 import { question } from "../question/question.ts";
 import { answerInput } from "../question/schema.ts";
 import { ClaudeCodeSession } from "./session.ts";
+import type { StartQuery } from "./session.ts";
 import {
   flatPrompt,
   messageKey,
@@ -54,6 +55,17 @@ const API = "claude-agent-sdk";
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies readonly EffortLevel[];
 
 const NOT_RUNNING = "Claude Code is no longer running this turn. Send a message to continue.";
+
+/** Nyte tools Claude Code has its own built-in for, which the Nyte MCP server leaves out. */
+const CLAUDE_CODE_HAS_ITS_OWN = new Set([
+  "read",
+  "write",
+  "edit",
+  "list",
+  "bash",
+  "web_search",
+  "question",
+]);
 
 export const ultracodeSetting: SettingDefinition<boolean> = {
   id: "claude_code.ultracode",
@@ -96,6 +108,7 @@ async function claudeCodeConfigured(): Promise<boolean> {
 }
 
 function answerOnce(
+  start: StartQuery,
   model: Model<Api>,
   context: TranscriptContext,
   options: SimpleStreamOptions | undefined,
@@ -112,7 +125,7 @@ function answerOnce(
       stream.push({ type: "start", partial: output });
       await processEnvironment();
 
-      for await (const message of query({
+      for await (const message of start({
         prompt: flatPrompt(context.messages),
         options: {
           model: model.id,
@@ -289,7 +302,7 @@ function mirrorTool(
   };
 }
 
-export function claudeCodeSdk() {
+export function claudeCodeSdk(start: StartQuery = query) {
   const catalog = anthropicProvider();
   const sessions = new Map<string, ClaudeCodeSession>();
   const bindings = new Map<string, Binding>();
@@ -317,6 +330,11 @@ export function claudeCodeSdk() {
     const key = JSON.stringify([model.id, binding.cwd, options?.reasoning !== undefined]);
     const messages = context.messages.filter((message) => message.role !== "system");
     const keys = messages.map(messageKey);
+
+    const tools = getCurrentTools(context.messages).filter(
+      (tool) => !CLAUDE_CODE_HAS_ITS_OWN.has(tool.name),
+    );
+
     let session = sessions.get(id);
 
     const continues =
@@ -350,11 +368,15 @@ export function claudeCodeSdk() {
           model: model.id,
           cwd: binding.cwd,
         }),
+        tools,
+        query: start,
       });
       sessions.set(id, session);
     }
 
     if (session === undefined) throw new Error(NOT_RUNNING);
+    session.expose(tools);
+    session.deliver(messages);
     await session.configure(effort, ultracode);
 
     if (prompt.length > 0)
@@ -380,7 +402,7 @@ export function claudeCodeSdk() {
     options?: SimpleStreamOptions,
   ): AssistantMessageEventStream =>
     getCurrentTools(context.messages).length === 0
-      ? answerOnce(model, context, options)
+      ? answerOnce(start, model, context, options)
       : lazyStream(model, () => respond(model, context, options));
 
   const provider: Provider = {

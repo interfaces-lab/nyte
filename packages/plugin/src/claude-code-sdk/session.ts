@@ -1,18 +1,30 @@
 import { randomUUID } from "node:crypto";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type {
   EffortLevel,
+  McpSdkServerConfigWithInstance,
   Options,
   Query,
   SDKMessage,
   SDKUserMessage,
+  SdkMcpToolDefinition,
   SessionKey,
   SessionStoreEntry,
+  query,
 } from "@anthropic-ai/claude-agent-sdk";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
-import type { Api, AssistantMessageEventStream, Model } from "@nyte-ai/ai";
+import type { Api, AssistantMessageEventStream, Message, Model, Tool } from "@nyte-ai/ai";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type { ContentBlock } from "./transcript.ts";
-import { BACKGROUND_TOOL, emptyMessage, mirrorCall, Translator } from "./translate.ts";
+import {
+  BACKGROUND_TOOL,
+  emptyMessage,
+  mirrorCall,
+  NYTE_SERVER,
+  NYTE_TOOL_PREFIX,
+  Translator,
+} from "./translate.ts";
 
 interface Launch {
   readonly key: string;
@@ -24,7 +36,14 @@ interface Launch {
   readonly env: Record<string, string | undefined> | undefined;
   readonly session: string;
   readonly history: readonly SessionStoreEntry[];
+  readonly tools: readonly Tool[];
+  readonly query: StartQuery;
 }
+
+/** Starts Claude Code: the Agent SDK's `query`, or a stand-in with the parts of its `Query` a session uses. */
+export type StartQuery = (
+  params: Parameters<typeof query>[0],
+) => AsyncIterable<SDKMessage> & Pick<Query, "applyFlagSettings" | "close">;
 
 export type QuestionAnswers = Record<string, string> | null;
 
@@ -32,6 +51,10 @@ interface ClaudeToolOutput {
   readonly text: string;
   readonly isError: boolean;
 }
+
+type ToolReply = Awaited<ReturnType<SdkMcpToolDefinition["handler"]>>;
+
+const toolUseId = Type.String({ minLength: 1 });
 
 type TurnItem =
   | Extract<SDKMessage, { type: "stream_event" | "result" | "assistant" }>
@@ -85,6 +108,21 @@ class Inbox<T> {
 
 type ToolResultBlock = Extract<ContentBlock, { readonly type: "tool_result" }>;
 
+function toolError(text: string): ToolReply {
+  return { content: [{ type: "text", text }], isError: true };
+}
+
+function reply(message: Extract<Message, { readonly role: "toolResult" }>): ToolReply {
+  return {
+    content: message.content.map((block) =>
+      block.type === "text"
+        ? { type: "text", text: block.text }
+        : { type: "image", data: block.data, mimeType: block.mimeType },
+    ),
+    isError: message.isError,
+  };
+}
+
 function resultText(content: ToolResultBlock["content"]): string {
   if (!Array.isArray(content)) return content ?? "";
 
@@ -118,7 +156,10 @@ export class ClaudeCodeSession {
   readonly #questions = new Map<string, PromiseWithResolvers<QuestionAnswers>>();
   readonly #asking = new Set<string>();
   readonly #changes = new Set<() => void>();
-  readonly #query: Query;
+  readonly #replies = new Map<string, PromiseWithResolvers<ToolReply>>();
+  readonly #server: McpSdkServerConfigWithInstance;
+  readonly #query: ReturnType<StartQuery>;
+  #tools: readonly Tool[];
   #settings: { readonly effort: EffortLevel | undefined; readonly ultracode: boolean };
   #background: readonly string[] = [];
   #notes: string[] = [];
@@ -130,13 +171,37 @@ export class ClaudeCodeSession {
   constructor(launch: Launch) {
     this.key = launch.key;
     this.#settings = { effort: launch.effort, ultracode: launch.ultracode };
+    this.#tools = launch.tools;
     const session = launch.session;
+    this.#server = createSdkMcpServer({ name: NYTE_SERVER, tools: [] });
+    this.#server.instance.server.registerCapabilities({ tools: { listChanged: true } });
+
+    this.#server.instance.server.fallbackRequestHandler = async (request, extra) => {
+      if (request.method === "tools/list")
+        return {
+          tools: this.#tools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: { ...tool.parameters, type: "object" },
+          })),
+        };
+
+      if (request.method !== "tools/call")
+        throw new Error(`Nyte does not serve ${request.method}.`);
+      const { _meta: meta } = extra;
+      const id = meta?.["claudecode/toolUseId"];
+
+      return Value.Check(toolUseId, id)
+        ? await this.#call(id, extra.signal)
+        : toolError("Claude Code sent no tool use id for this Nyte tool call.");
+    };
 
     const options: Options = {
       model: launch.model,
       cwd: launch.cwd,
       systemPrompt: { type: "preset", preset: "claude_code" },
       includePartialMessages: true,
+      mcpServers: { [NYTE_SERVER]: this.#server },
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       canUseTool: async (name, input, { signal, toolUseID, agentID }) => {
@@ -171,7 +236,7 @@ export class ClaudeCodeSession {
       options.sessionStore = memoryStore(session, launch.history);
     }
 
-    this.#query = query({ prompt: this.#prompts, options });
+    this.#query = launch.query({ prompt: this.#prompts, options });
     void this.#pump();
   }
 
@@ -187,6 +252,20 @@ export class ClaudeCodeSession {
       ultracode: ultracode ? true : null,
       enableWorkflows: ultracode ? true : null,
     });
+  }
+
+  /** Serves `tools` as the Nyte MCP server's tools from now on, telling Claude Code when they changed. */
+  expose(tools: readonly Tool[]): void {
+    if (JSON.stringify(tools) === JSON.stringify(this.#tools)) return;
+    this.#tools = tools;
+    this.#server.instance.sendToolListChanged();
+  }
+
+  /** Answers each Nyte tool call Claude Code made with its result from Nyte's transcript. */
+  deliver(messages: readonly Message[]): void {
+    for (const message of messages)
+      if (message.role === "toolResult" && this.#replies.has(message.toolCallId))
+        this.#reply(message.toolCallId).resolve(reply(message));
   }
 
   send(content: readonly ContentBlock[]): void {
@@ -255,7 +334,11 @@ export class ClaudeCodeSession {
           this.#held = false;
           const stop = translator.apply(item.event);
 
-          if (stop === "tool_use") break;
+          if (stop === "tool_use") {
+            if (output.content.some((block) => block.type === "toolCall")) break;
+
+            continue;
+          }
 
           if (stop !== undefined && this.#background.length > 0) {
             translator.append(
@@ -325,6 +408,8 @@ export class ClaudeCodeSession {
     this.#failure = reason;
 
     for (const pending of this.#questions.values()) pending.resolve(null);
+
+    for (const pending of this.#replies.values()) pending.resolve(toolError(reason.message));
     this.#prompts.end();
     this.#turn.end();
     this.#query.close();
@@ -351,6 +436,29 @@ export class ClaudeCodeSession {
       return await pending.promise;
     } finally {
       this.#asking.delete(id);
+      signal.removeEventListener("abort", cancel);
+    }
+  }
+
+  #reply(id: string): PromiseWithResolvers<ToolReply> {
+    const known = this.#replies.get(id);
+
+    if (known !== undefined) return known;
+    const created = Promise.withResolvers<ToolReply>();
+    this.#replies.set(id, created);
+
+    return created;
+  }
+
+  async #call(id: string, signal: AbortSignal): Promise<ToolReply> {
+    const pending = this.#reply(id);
+    const cancel = () => pending.resolve(toolError("Request was aborted"));
+    signal.addEventListener("abort", cancel, { once: true });
+
+    try {
+      return await pending.promise;
+    } finally {
+      this.#replies.delete(id);
       signal.removeEventListener("abort", cancel);
     }
   }
@@ -396,6 +504,10 @@ export class ClaudeCodeSession {
   #route(message: SDKMessage): void {
     switch (message.type) {
       case "stream_event":
+        if (message.parent_tool_use_id !== null) break;
+        this.#track(message.event);
+        this.#turn.push(message);
+        break;
       case "assistant":
         if (message.parent_tool_use_id === null) this.#turn.push(message);
         break;
@@ -431,6 +543,15 @@ export class ClaudeCodeSession {
     }
 
     this.#changed();
+  }
+
+  #track(event: Extract<SDKMessage, { type: "stream_event" }>["event"]): void {
+    if (
+      event.type === "content_block_start" &&
+      event.content_block.type === "tool_use" &&
+      event.content_block.name.startsWith(NYTE_TOOL_PREFIX)
+    )
+      this.#reply(event.content_block.id);
   }
 
   #changed(): void {
