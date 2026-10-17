@@ -1,7 +1,7 @@
 import { isPart, tool } from "@nyte-ai/core";
 import type { Plugin, PluginApi, ToolDefinition } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
-import { standard } from "@nyte-ai/schema";
+import { asId, standard } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
@@ -343,4 +343,33 @@ it("decides a call another runtime runs through api.approve, granting by the too
     reason: "The approval request closed before the user answered.",
   });
   expect(openApprovals(await session.view())).toEqual([]);
+});
+
+it("lets only the host's owner allow a tool call; a participant can deny it", async () => {
+  ran.length = 0;
+  const fake = fakeModels();
+  fake.reply(calls(["shell", { command: "deploy" }]), done);
+  await using host = await started("ask", fake);
+  const { session, receipt } = await host.sessions.start({ content: "Deploy." });
+  const [asked] = await waiting(session);
+  assert(asked !== undefined);
+
+  const guest = host.kernel.handles
+    .connection({
+      principal: asId("guest"),
+      authority: new Set(["participant"]),
+      credential: { kind: "token", token: "t" },
+      origin: null,
+    })
+    .session(session.id)
+    .part(asked.part);
+
+  const refused = { kind: "failed", message: "Only the host's owner can allow a tool call." };
+
+  expect(await guest.act("once", {})).toEqual(refused);
+  expect(await guest.act("session", {})).toEqual(refused);
+  expect(openApprovals(await session.view())).toHaveLength(1);
+  await guest.act("deny", {});
+  expect((await receipt.settled()).kind).toBe("completed");
+  expect(ran).toEqual([]);
 });

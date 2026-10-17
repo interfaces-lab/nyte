@@ -136,16 +136,21 @@ async function decide(
   decision: ApprovalDecision,
   context: ActionContext<ApprovalState, Actions>,
 ): Promise<undefined> {
+  const allowed = decision === "deny" || context.authority.has("owner");
   let granted: string | null = null;
+  let refused = false;
 
   const outcome = await context.part.update((current) => {
+    refused = current.decision === null && !allowed;
     granted = current.decision === null || current.decision === decision ? current.tool : null;
 
-    return current.decision === null ? { ...current, decision } : current;
+    return current.decision === null && allowed ? { ...current, decision } : current;
   });
 
   if (outcome.kind !== "updated")
     throw new SdkError("invalid", "This approval is no longer waiting.");
+
+  if (refused) throw new SdkError("denied", "Only the host's owner can allow a tool call.");
 
   if (granted === null) throw new SdkError("invalid", "This approval was already answered.");
 
@@ -208,7 +213,7 @@ async function approveRuntimeCall(
  * reaches the model as the rejected call's reason. A call another agent
  * runtime asks to run comes through `approve` and waits on the same part
  * while its runtime runs; its mirror call (`approval: "runtime"`) is not
- * asked about again.
+ * asked about again. Only a principal with owner authority can allow.
  *
  * @category plugins
  * @since 0.1.0
