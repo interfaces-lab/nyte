@@ -19,6 +19,7 @@ import {
   withNotice,
 } from "../step.ts";
 import type { SomeHandlers, Step } from "../step.ts";
+import { followUpDelivery } from "../table-input.ts";
 import { openDialog, push } from "./dialogs.ts";
 
 const HELD_BY_EFFECT: ReadonlyMap<string, PendingOp["kind"]> = new Map([
@@ -287,7 +288,7 @@ export const sessionHandlers = {
           session: followed.id,
           name: msg.name,
           argument: msg.argument === "" ? null : msg.argument,
-          delivery: msg.delivery ?? (busy(state) ? state.facts.settings.followUp : "queue"),
+          delivery: msg.delivery ?? (busy(state) ? followUpDelivery(state) : "queue"),
         },
       ],
     };

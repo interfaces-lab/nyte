@@ -10,12 +10,14 @@ import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import {
+  useCatalog,
   useHostLink,
   useHostState,
   useMentionFiles,
   usePluginCatalog,
   useSessionActions,
   useSessionActivity,
+  useSessionChoice,
 } from "../queries.ts";
 import { connection } from "../sdk.tsx";
 import { nyte } from "../nyte.ts";
@@ -25,6 +27,7 @@ import type { ComposerViewState } from "../layout/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { ComposerFrame } from "./composer-frame.tsx";
+import { selectedModelOption } from "./model-picker-state.ts";
 import { SessionModelChip } from "./composer-model-chip.tsx";
 import { ComposerQueue } from "./composer-queue.tsx";
 import type { PendingRowAction } from "./composer-queue.tsx";
@@ -112,7 +115,15 @@ export function Composer({
   };
   floatingMount?: HTMLDivElement | null;
 }): ReactElement {
-  const runningMessagePreference = useSetting(preferences.runningMessage);
+  const runningMessage = useSetting(preferences.runningMessage);
+  const catalog = useCatalog(sessionId);
+  const choice = useSessionChoice(sessionId);
+
+  const steers =
+    selectedModelOption(catalog.data?.models ?? [], choice?.model)?.option.capabilities.steer !==
+    false;
+
+  const runningMessagePreference = steers ? runningMessage : "queue";
   const attachTranscriptDock = useTranscriptDock();
   const transcript = useTranscriptControls();
   const [currentViewState, setCurrentViewState] = useState(initialViewState);

@@ -55,6 +55,17 @@ const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const satisfies rea
 
 const NOT_RUNNING = "Claude Code is no longer running this turn. Send a message to continue.";
 
+const CLAUDE_CODE_HAS_ITS_OWN = new Set([
+  MIRROR_TOOL,
+  "read",
+  "write",
+  "edit",
+  "list",
+  "bash",
+  "web_search",
+  "question",
+]);
+
 export const ultracodeSetting: SettingDefinition<boolean> = {
   id: "claude_code.ultracode",
   label: "Claude Code ultracode",
@@ -96,6 +107,7 @@ async function claudeCodeConfigured(): Promise<boolean> {
 }
 
 function answerOnce(
+  start: typeof query,
   model: Model<Api>,
   context: TranscriptContext,
   options: SimpleStreamOptions | undefined,
@@ -112,7 +124,7 @@ function answerOnce(
       stream.push({ type: "start", partial: output });
       await processEnvironment();
 
-      for await (const message of query({
+      for await (const message of start({
         prompt: flatPrompt(context.messages),
         options: {
           model: model.id,
@@ -272,6 +284,7 @@ function mirrorTool(
 
       if (name === BACKGROUND_TOOL)
         return { content: [{ kind: "text", text: await session.background(invocation.signal) }] };
+      session.allow(id);
       let parts: PartId[] = [];
 
       if (name === "AskUserQuestion") {
@@ -289,7 +302,7 @@ function mirrorTool(
   };
 }
 
-export function claudeCodeSdk() {
+export function claudeCodeSdk(start: typeof query = query) {
   const catalog = anthropicProvider();
   const sessions = new Map<string, ClaudeCodeSession>();
   const bindings = new Map<string, Binding>();
@@ -317,6 +330,11 @@ export function claudeCodeSdk() {
     const key = JSON.stringify([model.id, binding.cwd, options?.reasoning !== undefined]);
     const messages = context.messages.filter((message) => message.role !== "system");
     const keys = messages.map(messageKey);
+
+    const tools = getCurrentTools(context.messages).filter(
+      (tool) => !CLAUDE_CODE_HAS_ITS_OWN.has(tool.name),
+    );
+
     let session = sessions.get(id);
 
     const continues =
@@ -350,11 +368,15 @@ export function claudeCodeSdk() {
           model: model.id,
           cwd: binding.cwd,
         }),
+        tools,
+        query: start,
       });
       sessions.set(id, session);
     }
 
     if (session === undefined) throw new Error(NOT_RUNNING);
+    session.expose(tools);
+    session.deliver(messages);
     await session.configure(effort, ultracode);
 
     if (prompt.length > 0)
@@ -380,13 +402,14 @@ export function claudeCodeSdk() {
     options?: SimpleStreamOptions,
   ): AssistantMessageEventStream =>
     getCurrentTools(context.messages).length === 0
-      ? answerOnce(model, context, options)
+      ? answerOnce(start, model, context, options)
       : lazyStream(model, () => respond(model, context, options));
 
   const provider: Provider = {
     id: CLAUDE_CODE_PROVIDER,
     name: "Claude Code",
     baseUrl: "process://claude-code",
+    capabilities: { steer: true, stopSubagent: false, ownPermissions: true },
     auth: {
       apiKey: {
         name: "Claude Code login",

@@ -17,6 +17,7 @@ import type {
   ModelAuth,
   ProviderAuth,
 } from "./auth/types.ts";
+import type { ModelCapabilities } from "@nyte-ai/schema";
 import type { ApiStreamOptions } from "./api-options.ts";
 import { type ModelsStore, type ModelsStoreEntry } from "./models-store.ts";
 import type {
@@ -112,6 +113,8 @@ export interface Provider<TApi extends Api = Api> {
   readonly headers?: ProviderHeaders;
   /** Prompt-cache behavior published for hosts that present cache state. */
   readonly promptCache?: PromptCachePolicy;
+  /** What this provider's models do around a turn; absent, what a model Nyte's own loop drives does: steers, stops a subagent alone, and leaves permissions to Nyte. */
+  readonly capabilities?: ModelCapabilities;
 
   /**
    * Required: at least one of `apiKey`/`oauth`. Every provider has auth

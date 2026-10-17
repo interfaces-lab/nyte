@@ -40,6 +40,7 @@ const INFO: ModelInfo = {
   compactAt: MODEL.contextWindow,
   maxOutput: 1_000,
   input: ["text"],
+  capabilities: { steer: true, stopSubagent: true, ownPermissions: false },
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 };
 
