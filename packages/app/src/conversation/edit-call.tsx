@@ -24,7 +24,7 @@ import { ToolOutcome } from "./tool-line.tsx";
 
 type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
 
-const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
 
 const CARD_PREVIEW_ROWS = 4;
 

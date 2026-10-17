@@ -38,17 +38,17 @@ const styles = create({
     width: 8,
     height: 8,
     borderRadius: 2,
-    backgroundColor: role.bgInteractiveStrong,
+    backgroundColor: role.chartSeries,
   },
   spark: { display: "block", flexShrink: 0, color: role.contentSecondary },
-  sparkTinted: { color: role.bgInteractiveStrong },
+  sparkTinted: { color: role.chartSeries },
 });
 
 const BAR_THEME = {
   text: {
     fontFamily: type.fontSans,
-    fontSize: 11,
-    fill: role.contentTertiary,
+    fontSize: type.fontXs,
+    fill: role.contentSecondary,
     fontVariantNumeric: "tabular-nums",
   },
 } as const;
@@ -119,7 +119,7 @@ function Segment(item: BarItemProps<Datum>): ReactElement {
     <g {...props(layer !== undefined && surfaceTheme[layer.tint])}>
       <BarItem
         {...item}
-        bar={{ ...item.bar, data: { ...item.bar.data, fill: role.bgInteractiveStrong } }}
+        bar={{ ...item.bar, data: { ...item.bar.data, fill: role.chartSeries } }}
       />
     </g>
   );

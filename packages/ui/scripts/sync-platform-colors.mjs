@@ -399,6 +399,7 @@ const scopedColorNames = [
   "--nyte-bg-interactive-primary-translucent",
   "--nyte-bg-interactive-secondary-translucent",
   "--nyte-bg-interactive-strong",
+  "--nyte-chart-series",
 ];
 
 const scheme = (mode, names) =>

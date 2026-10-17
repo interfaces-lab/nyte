@@ -18,6 +18,12 @@ export const shell = defineConsts({
 
 export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
+  /**
+   * Running prose (paragraphs, lists, headings, quotes) wraps near 72
+   * characters a line; tables, code, and canvases keep the full `measure`.
+   * In `ch` so it follows the font size; Inter's `0` is wider than its average
+   * letter, so 54ch is what lands a line at about 72 characters.
+   */
   proseMeasure: "var(--nyte-prose-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
   gutter: "var(--nyte-conversation-gutter)",

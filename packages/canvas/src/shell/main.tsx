@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import { create, props } from "@stylexjs/stylex";
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   CANVAS_GLOBAL,
@@ -37,8 +37,9 @@ const styles = create({
   failure: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    padding: "10px 12px",
+    gap: space.s1,
+    paddingBlock: space.s2_5,
+    paddingInline: space.s3,
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",

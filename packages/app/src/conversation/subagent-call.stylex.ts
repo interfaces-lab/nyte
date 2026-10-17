@@ -14,7 +14,7 @@ export const subagentCallStyles = create({
     paddingBlock: 0,
     paddingInline: 0,
     minHeight: button.heightSm,
-    textAlign: "left",
+    textAlign: "start",
   },
   header: { paddingBlock: space.s1_5 },
   nested: { display: "flex", flexDirection: "column", marginTop: space.s2_5 },

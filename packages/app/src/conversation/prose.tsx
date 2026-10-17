@@ -254,7 +254,7 @@ function MarkdownLink({
           <a
             {...elementProps}
             href={href}
-            {...props(intent.primary, proseStyles.link)}
+            {...props(intent.primary, proseStyles.link, proseStyles.webLink)}
             onClick={(event) => {
               if (href === undefined) return;
               event.preventDefault();

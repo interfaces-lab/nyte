@@ -1,16 +1,17 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 export type Gap = 0 | 1 | 2 | 3 | 4 | 6;
 
 const gaps = create({
   0: { gap: 0 },
-  1: { gap: 4 },
-  2: { gap: 8 },
-  3: { gap: 12 },
-  4: { gap: 16 },
-  6: { gap: 24 },
+  1: { gap: space.s1 },
+  2: { gap: space.s2 },
+  3: { gap: space.s3 },
+  4: { gap: space.s4 },
+  6: { gap: space.s6 },
 });
 
 const stack = create({

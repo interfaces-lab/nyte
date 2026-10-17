@@ -65,6 +65,12 @@ export const roles = defineVars({
   "--nyte-bg-control-selected-hover": shade("bg-control-selected", 0.95, 1.05),
   "--nyte-bg-control-selected-pressed": shade("bg-control-selected", 0.88, 1.12),
 
+  /**
+   * A data mark: a chart series, its swatch, a tinted sparkline. The ramp's 90 step holds
+   * 3:1 against the base in both schemes for every hue but yellow, stays above
+   * the chroma floor, and keeps the hues apart under protan and deutan vision.
+   */
+  "--nyte-chart-series": "var(--nyte-theme-90)",
   "--nyte-button-fill": "oklch(from var(--nyte-theme-80) min(l, 0.52) c h)",
   "--nyte-button-fill-hover": shade("button-fill", 0.95, 0.95),
   "--nyte-button-fill-pressed": shade("button-fill", 0.88, 0.88),

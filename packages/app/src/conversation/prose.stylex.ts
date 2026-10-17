@@ -101,6 +101,19 @@ export const proseStyles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
+  /**
+   * A web link carries an underline as well as its colour: the link ink sits
+   * under 3:1 against body text, so colour alone would not mark it.
+   */
+  webLink: {
+    textDecorationLine: "underline",
+    textDecorationColor: {
+      default: role.borderStrong,
+      ":hover": { [media.hover]: "currentColor" },
+    },
+    textDecorationThickness: "from-font",
+    textUnderlinePosition: "from-font",
+  },
   linkLead: { whiteSpace: "nowrap" },
   linkIcon: {
     display: "inline-flex",
@@ -159,7 +172,7 @@ export const proseStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
-    textAlign: "left",
+    textAlign: "start",
     verticalAlign: "top",
   },
   headerCell: { backgroundColor: role.bgMutedTranslucent, fontWeight: type.weightSemibold },

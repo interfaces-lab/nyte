@@ -39,7 +39,7 @@ const COLOR_TRANSITION = {
   transitionTimingFunction: "ease-in-out",
 } as const;
 
-const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
 
 export const toolLineStyles = create({
   root: { display: "flex", flexDirection: "column", minWidth: 0 },
