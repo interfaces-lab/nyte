@@ -1,26 +1,23 @@
 import { _electron, expect } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
+import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { parseArgs } from "node:util";
+import { parseArgs, promisify } from "node:util";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { prepareStartupFixture, startupCases } from "./startup-fixture.ts";
 import type { StartupCase, StartupFixture } from "./startup-fixture.ts";
 import { inspectProcessTree } from "./process-tree.ts";
-import { chatTab, clearComposer, composer, messages, openChat } from "./ui.ts";
+import { saveFilmstrip } from "./filmstrip.ts";
+import { chatTab, clearComposer, messages, openChat } from "./ui.ts";
+import { keystrokeDelayMs, keystrokeMeasure, typeAndMeasure, typedText } from "./keystrokes.ts";
 import { CALL_CHANNEL } from "../src/shared/ipc.ts";
 
 const timeout = 30_000;
 
 const MIB = 1_024 * 1_024;
-
-const typedText = "startup benchmark keystrokes";
-
-const keystrokeDelayMs = 40;
-
-const keystrokeMeasure = "nyte-bench:keystroke";
 
 function every(limit: number): Readonly<Record<StartupCase, number>> {
   return { fresh: limit, restored: limit, heavy: limit };
@@ -56,6 +53,12 @@ const metricFields = [
   },
   { key: "splashMs", label: "Splash visible", unit: "ms", budget: every(225) },
   { key: "keystrokeToPaintMs", label: "Keystroke to paint", unit: "ms", budget: every(16.7) },
+  {
+    key: "keystrokeWaitingMs",
+    label: "Keystroke to paint, with vsync wait",
+    unit: "ms",
+    budget: null,
+  },
   {
     key: "longTasks",
     label: "Long tasks before composer",
@@ -109,6 +112,20 @@ type Metrics = Readonly<Record<MetricKey, readonly number[]>>;
 
 const ReadySchema = Type.Object({ readyMs: Type.Number() });
 
+const SeededSchema = Type.Object({
+  directory: Type.String(),
+  home: Type.String(),
+  profile: Type.String(),
+  sessions: Type.Number(),
+  turns: Type.Number(),
+  storeBytes: Type.Number(),
+  expected: Type.Object({
+    kind: Type.Literal("chat"),
+    title: Type.String(),
+    lastMessage: Type.String(),
+  }),
+});
+
 interface Build {
   readonly name: "baseline" | "candidate";
   readonly executable: string;
@@ -121,6 +138,10 @@ interface Options {
   readonly warmup: number;
   readonly output: string;
   readonly json: boolean;
+  /** Where one extra traced launch per build and scenario saves its trace.zip and frame strip. */
+  readonly trace: string | undefined;
+  /** A script that seeds the baseline's restored and heavy homes in its own store format. */
+  readonly baselineSeed: string | undefined;
 }
 
 interface Identity {
@@ -128,6 +149,7 @@ interface Identity {
   readonly scenario: StartupCase;
   readonly repetition: number;
   readonly warmup: boolean;
+  readonly traced: boolean;
 }
 
 type Sample =
@@ -160,6 +182,8 @@ function readOptions(): Options | undefined {
       warmup: { type: "string", default: "1" },
       out: { type: "string" },
       json: { type: "boolean", default: false },
+      trace: { type: "string" },
+      "baseline-seed": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -168,6 +192,8 @@ function readOptions(): Options | undefined {
     process.stdout.write(
       "Usage: pnpm bench:desktop --exe <packaged executable> [--compare <executable>]\n" +
         "  --scenario all|fresh|restored|heavy  --runs 5  --warmup 1  --out <report.json>  --json\n" +
+        "  --trace <dir>  one extra launch per build and scenario with a Playwright trace and frame strip\n" +
+        "  --baseline-seed <script>  seeds the baseline's restored and heavy homes: node <script> <dir> <scenario>\n" +
         "On macOS, pass Nyte.app/Contents/MacOS/Nyte. No build or dev server is started.\n" +
         "Budgets gate the last build: --compare when given, otherwise --exe.\n",
     );
@@ -205,7 +231,27 @@ function readOptions(): Options | undefined {
         ? join(import.meta.dirname, "test-results", `startup-${stamp}.json`)
         : resolve(invokedFrom, values.out),
     json: values.json,
+    trace: values.trace === undefined ? undefined : resolve(invokedFrom, values.trace),
+    baselineSeed:
+      values["baseline-seed"] === undefined
+        ? undefined
+        : resolve(invokedFrom, values["baseline-seed"]),
   };
+}
+
+/**
+ * Seeds a home with `script`, run as `node --conditions=nyte-source <script> <directory>
+ * <scenario>` and printing the fixture as JSON. Revisions before the shared store keep sessions
+ * in another format, so the baseline's own code writes its home.
+ */
+async function seedHome(script: string, directory: string, scenario: StartupCase) {
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    ["--conditions=nyte-source", script, directory, scenario],
+    { cwd: dirname(script), maxBuffer: 1_024 * 1_024 },
+  );
+
+  return { scenario, ...Value.Parse(SeededSchema, JSON.parse(stdout)) } satisfies StartupFixture;
 }
 
 function launchEnvironment(fixture: StartupFixture) {
@@ -336,51 +382,6 @@ async function waitForComposer(page: Page, expected: StartupFixture["expected"])
   return Value.Parse(ReadySchema, await ready.jsonValue());
 }
 
-/**
- * Measures each keystroke from its keydown to the task after the frame that follows the
- * composer's first DOM change. Editors that cancel beforeinput fire no input event, so the
- * mutation is the editor-neutral sign that the character landed.
- */
-async function typeAndMeasure(page: Page): Promise<void> {
-  await page.evaluate((name) => {
-    const field = document.querySelector('[aria-label="Message"][contenteditable="true"]');
-
-    if (field === null) throw new Error("The composer disappeared before typing.");
-    let pending: number | undefined;
-    document.addEventListener("keydown", (event) => (pending = event.timeStamp), true);
-    new MutationObserver(() => {
-      const start = pending;
-
-      if (start === undefined) return;
-      pending = undefined;
-      requestAnimationFrame(() => {
-        const channel = new MessageChannel();
-        channel.port1.onmessage = () => {
-          performance.measure(name, { start, end: performance.now() });
-          channel.port1.close();
-        };
-
-        channel.port2.postMessage(null);
-      });
-    }).observe(field, { subtree: true, childList: true, characterData: true });
-  }, keystrokeMeasure);
-
-  const field = composer(page);
-
-  const painted = (count: number) =>
-    page.waitForFunction(
-      ([name, expected]) => performance.getEntriesByName(name).length >= expected,
-      [keystrokeMeasure, count] as const,
-      { polling: "raf", timeout },
-    );
-
-  await field.pressSequentially(typedText.slice(0, 1), { timeout });
-  await painted(1);
-  await field.pressSequentially(typedText.slice(1), { delay: keystrokeDelayMs, timeout });
-  await expect(field).toHaveText(typedText, { timeout });
-  await painted(typedText.length);
-}
-
 async function inspectRenderer(page: Page, composerReadyMs: number) {
   return page.evaluate(
     async ([cutoff, keystroke]) => {
@@ -433,7 +434,11 @@ async function inspectRenderer(page: Page, composerReadyMs: number) {
         longTasks: longTasks === null ? null : longTasks.filter((task) => task.startTime < cutoff),
         keystrokes: performance
           .getEntriesByName(keystroke)
-          .map(({ startTime, duration }) => ({ startTime, duration })),
+          .flatMap((entry) =>
+            entry instanceof PerformanceMeasure
+              ? [{ startTime: entry.startTime, duration: entry.duration, work: entry.detail }]
+              : [],
+          ),
         hostRequestsBeforeComposer: resources.filter(
           (entry) => entry.initiatorType === "fetch" && entry.startTime < cutoff,
         ).length,
@@ -529,7 +534,11 @@ async function launch(build: Build, fixture: StartupFixture) {
   }
 }
 
-async function primeProfile(build: Build, fixture: StartupFixture): Promise<void> {
+/**
+ * Opens the scenario's chat once so the next launch restores it. A seeded baseline predates
+ * window tabs restoring their chat by themselves, so its startup destination is set to the last chat.
+ */
+async function primeProfile(build: Build, fixture: StartupFixture, seeded: boolean): Promise<void> {
   if (fixture.expected.kind === "empty") return;
   const application = await launch(build, fixture);
 
@@ -537,6 +546,11 @@ async function primeProfile(build: Build, fixture: StartupFixture): Promise<void
     const page = await application.firstWindow({ timeout });
     await page.bringToFront();
     await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout });
+
+    if (seeded)
+      await page.evaluate(() =>
+        localStorage.setItem("nyte:startup-destination:v1", JSON.stringify("last-session")),
+      );
     await openChat(page, fixture.expected.title);
     await expect(messages(page)).toContainText(fixture.expected.lastMessage, { timeout });
   } finally {
@@ -544,10 +558,17 @@ async function primeProfile(build: Build, fixture: StartupFixture): Promise<void
   }
 }
 
-async function measure(identity: Identity, fixture: StartupFixture): Promise<Sample> {
+async function measure(
+  identity: Identity,
+  fixture: StartupFixture,
+  trace: string | undefined,
+): Promise<Sample> {
   const output: string[] = [];
   const errors: string[] = [];
   const application = await launch(identity.build, fixture);
+
+  if (trace !== undefined)
+    await application.context().tracing.start({ screenshots: true, snapshots: false });
   const hostCalls = await recordHostCalls(application);
   const captured = new Set<Page>();
 
@@ -603,6 +624,20 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
     const longTasks = renderer.longTasks ?? [];
     const fcp = renderer.firstContentfulPaintMs ?? renderer.firstPaintMs;
 
+    if (trace !== undefined && created !== null)
+      process.stderr.write(
+        `Filmstrip: ${await saveFilmstrip(
+          application.context(),
+          trace,
+          `${identity.build.name} ${identity.scenario}: ${identity.build.executable}`,
+          created,
+          renderer.timeOriginEpochMs +
+            (firstKeystroke === undefined
+              ? ready.readyMs
+              : firstKeystroke.startTime + firstKeystroke.duration),
+        )}\n`,
+      );
+
     return {
       kind: "complete",
       identity,
@@ -624,7 +659,10 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
         spawnToComposerMs: sinceSpawn(ready.readyMs),
         spawnToFirstPaintMs: sinceSpawn(fcp),
         splashMs: [renderer.shellReadyMs - fcp],
-        keystrokeToPaintMs: renderer.keystrokes.map(({ duration }) => duration),
+        keystrokeToPaintMs: renderer.keystrokes.map(({ work, duration }) =>
+          Value.Check(Type.Number(), work) ? work : duration,
+        ),
+        keystrokeWaitingMs: renderer.keystrokes.map(({ duration }) => duration),
         longTasks: renderer.longTasks === null ? [] : [longTasks.length],
         longTaskMs:
           renderer.longTasks === null
@@ -694,7 +732,8 @@ function summarize(samples: readonly Sample[], options: Options) {
         (sample) =>
           sample.identity.build.name === build.name &&
           sample.identity.scenario === scenario &&
-          !sample.identity.warmup,
+          !sample.identity.warmup &&
+          !sample.identity.traced,
       );
 
       const completed = selected.flatMap((sample) => (sample.kind === "complete" ? [sample] : []));
@@ -732,8 +771,12 @@ async function run(options: Options): Promise<void> {
   for (const build of options.builds) await access(build.executable);
   const samples: Sample[] = [];
 
+  const traced = options.trace === undefined ? 0 : 1;
+
+  if (options.trace !== undefined) await mkdir(options.trace, { recursive: true });
+
   for (const scenario of options.scenarios) {
-    for (let repetition = 0; repetition < options.warmup + options.runs; repetition++) {
+    for (let repetition = 0; repetition < options.warmup + options.runs + traced; repetition++) {
       const order = repetition % 2 === 0 ? options.builds : [...options.builds].reverse();
 
       for (const build of order) {
@@ -742,17 +785,32 @@ async function run(options: Options): Promise<void> {
           scenario,
           repetition,
           warmup: repetition < options.warmup,
+          traced: repetition >= options.warmup + options.runs,
         };
 
-        process.stderr.write(
-          `${build.name} ${scenario} ${identity.warmup ? "warmup" : "run"} ${repetition + 1}\n`,
-        );
+        const kind = identity.traced ? "traced" : identity.warmup ? "warmup" : "run";
+        process.stderr.write(`${build.name} ${scenario} ${kind} ${repetition + 1}\n`);
         const directory = await realpath(await mkdtemp(join(tmpdir(), "nyte-startup-")));
 
+        const seeded =
+          build.name === "baseline" && options.baselineSeed !== undefined && scenario !== "fresh";
+
         try {
-          const fixture = await prepareStartupFixture(directory, scenario);
-          await primeProfile(build, fixture);
-          samples.push(await measure(identity, fixture));
+          const fixture =
+            seeded && options.baselineSeed !== undefined
+              ? await seedHome(options.baselineSeed, directory, scenario)
+              : await prepareStartupFixture(directory, scenario);
+
+          await primeProfile(build, fixture, seeded);
+          samples.push(
+            await measure(
+              identity,
+              fixture,
+              identity.traced && options.trace !== undefined
+                ? join(options.trace, `${build.name}-${scenario}`)
+                : undefined,
+            ),
+          );
         } catch (cause) {
           samples.push({
             kind: "failed",
