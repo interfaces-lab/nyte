@@ -169,6 +169,7 @@ describe("openHost", () => {
     expect((await host.models.list()).providers.map((provider) => provider.id)).toEqual([
       ...nyteProviders().map((provider) => provider.id),
       "claude-code",
+      "acp",
     ]);
   });
 
