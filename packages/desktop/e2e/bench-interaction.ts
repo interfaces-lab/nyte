@@ -37,11 +37,12 @@ const streamEnd = "Stream end marker.";
 
 /**
  * Every metric this bench reports, with the judged build's ceiling (`max`) or floor (`min`), or
- * `null` to report only. Every ceiling is absolute (one 60 Hz frame, no idle CPU, no leak, the long
- * chat open within 100 ms), except the cold Terminal, Files and Changes panels: main c7094f5c's
- * median over nine runs on the same machine plus 25%. The other latencies main sets a bar for (the
- * Browser panel, warm panels, the switches) are reported, not gated: compare them with
- * `--compare`'s baseline column.
+ * `null` to report only. A ceiling holds the p95, or the median where the field says `gate`. Every
+ * ceiling is absolute (one 60 Hz frame, no idle CPU, no leak, the long chat open within 100 ms),
+ * except the cold Terminal, Files and Changes panels: main c7094f5c's median over nine runs on the
+ * same machine (55.3, 15.8 and 13.5 ms) plus 25%, held by the median of one cold open per launch.
+ * The other latencies main sets a bar for (the Browser panel, warm panels, the switches) are
+ * reported, not gated: compare them with `--compare`'s baseline column.
  */
 const metricFields = [
   { key: "openTranscriptMs", label: "Open the 2,000-message chat", unit: "ms", max: 100 },
@@ -54,11 +55,11 @@ const metricFields = [
   { key: "scrollFrameP95Ms", label: "Frame time p95, scrolling", unit: "ms", max: 16.7 * 1.5 },
   { key: "browserColdMs", label: "Browser panel, cold", unit: "ms", max: null },
   { key: "browserWarmMs", label: "Browser panel, warm", unit: "ms", max: null },
-  { key: "terminalColdMs", label: "Terminal panel, cold", unit: "ms", max: 55.3 * 1.25 },
+  { key: "terminalColdMs", label: "Terminal panel, cold", unit: "ms", max: 69.1, gate: "median" },
   { key: "terminalWarmMs", label: "Terminal panel, warm", unit: "ms", max: null },
-  { key: "filesColdMs", label: "Files panel, cold", unit: "ms", max: 15.8 * 1.25 },
+  { key: "filesColdMs", label: "Files panel, cold", unit: "ms", max: 19.75, gate: "median" },
   { key: "filesWarmMs", label: "Files panel, warm", unit: "ms", max: null },
-  { key: "changesColdMs", label: "Changes panel, cold", unit: "ms", max: 13.5 * 1.25 },
+  { key: "changesColdMs", label: "Changes panel, cold", unit: "ms", max: 16.9, gate: "median" },
   { key: "changesWarmMs", label: "Changes panel, warm", unit: "ms", max: null },
   { key: "idleCpuPercent", label: "Idle CPU, all processes", unit: "%", max: 0.5 },
   { key: "idleWakeups", label: "Idle wakeups/s, all processes", unit: "count", max: null },
@@ -111,6 +112,7 @@ function readOptions() {
       switches: { type: "string", default: "50" },
       "idle-seconds": { type: "string", default: "60" },
       "soak-turns": { type: "string", default: "60" },
+      "panel-launches": { type: "string", default: "5" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -118,7 +120,8 @@ function readOptions() {
   if (values.help) {
     process.stdout.write(
       "Usage: pnpm --dir packages/desktop bench:interaction --exe <packaged executable> [--compare <executable>]\n" +
-        "  --baseline-seed <script>  --turns 1000  --switches 50  --idle-seconds 60  --soak-turns 60  --out <report.json>\n",
+        "  --baseline-seed <script>  --turns 1000  --switches 50  --idle-seconds 60  --soak-turns 60\n" +
+        "  --panel-launches 5  --out <report.json>\n",
     );
 
     return undefined;
@@ -146,6 +149,7 @@ function readOptions() {
     switches: Number(values.switches),
     idleSeconds: Number(values["idle-seconds"]),
     soakTurns: Number(values["soak-turns"]),
+    panelLaunches: Number(values["panel-launches"]),
   };
 }
 
@@ -483,10 +487,14 @@ async function cpuSeconds(
   );
 }
 
+/**
+ * Each panel's rail button and the content its first frame shows. Files shows its toolbar in the
+ * frame that draws its empty state, which main c7094f5c lacks.
+ */
 const panels = [
   { key: "browser", rail: "Browser", ready: '[aria-label="Address"]' },
   { key: "terminal", rail: "Terminal", ready: '[aria-label="Terminal input"]' },
-  { key: "files", rail: "Files", ready: '[aria-label="Go to file"]' },
+  { key: "files", rail: "Files", ready: '[aria-label="Files Sidebar"]' },
   { key: "changes", rail: "Changes", ready: '[aria-label="Workspace changes"]' },
 ] as const;
 
@@ -504,6 +512,19 @@ async function openPanel(page: Page, rail: string, ready: string): Promise<numbe
   const end = await shown;
 
   return end - (await pointerTime(page));
+}
+
+/** Closes the app and kills whatever of its process tree outlives it. */
+async function quit(application: ElectronApplication): Promise<void> {
+  const tree = await inspectProcessTree(application.process().pid);
+  await application.close().catch(() => undefined);
+
+  for (const row of tree ?? [])
+    try {
+      process.kill(row.pid, "SIGKILL");
+    } catch {
+      continue;
+    }
 }
 
 async function closeWorkbenchTabs(page: Page): Promise<void> {
@@ -664,14 +685,6 @@ async function measure(
         await page.keyboard.press("End").catch(() => undefined);
       });
 
-      for (const panel of panels)
-        await step(page, errors, `${panel.rail} panel`, async () => {
-          for (const phase of ["Cold", "Warm"] as const) {
-            add(`${panel.key}${phase}Ms`, await openPanel(page, panel.rail, panel.ready));
-            await closeWorkbenchTabs(page);
-          }
-        });
-
       await step(page, errors, "idle", async () => {
         await page.waitForTimeout(5_000);
         const pid = application.process().pid;
@@ -771,15 +784,33 @@ async function measure(
 
       await cdp.detach().catch(() => undefined);
     } finally {
-      const tree = await inspectProcessTree(application.process().pid);
-      await application.close().catch(() => undefined);
+      await quit(application);
+    }
 
-      for (const row of tree ?? [])
-        try {
-          process.kill(row.pid, "SIGKILL");
-        } catch {
-          continue;
-        }
+    for (let round = 1; round <= options.panelLaunches; round++) {
+      const relaunched = await launch(build, fixture, model.origin);
+
+      try {
+        const page = await relaunched.firstWindow({ timeout });
+        await page.bringToFront();
+        await page
+          .locator('[aria-label="Message"][contenteditable="true"]')
+          .waitFor({ state: "visible", timeout });
+        await switchTo(page, fixture.transcript.title, "");
+        await page.waitForTimeout(2_000);
+
+        for (const panel of panels)
+          await step(page, errors, `${panel.rail} panel, launch ${round}`, async () => {
+            for (const phase of ["Cold", "Warm"] as const)
+              try {
+                add(`${panel.key}${phase}Ms`, await openPanel(page, panel.rail, panel.ready));
+              } finally {
+                await closeWorkbenchTabs(page);
+              }
+          });
+      } finally {
+        await quit(relaunched);
+      }
     }
 
     notes.fixture = { transcriptTurns: fixture.transcript.turns, others: fixture.others.length };
@@ -867,12 +898,13 @@ function summarize(runs: readonly Awaited<ReturnType<typeof measure>>[]) {
       const values = run.metrics[field.key] ?? [];
       const median = values.length === 0 ? null : percentile(values, 0.5);
       const p95 = values.length === 0 ? null : percentile(values, 0.95);
+      const gated = "gate" in field ? median : p95;
       const ceiling = "max" in field ? field.max : null;
       const floor = "min" in field ? field.min : null;
 
       const over =
         run.build.name === judged &&
-        ((ceiling !== null && (p95 === null || p95 > ceiling)) ||
+        ((ceiling !== null && (gated === null || gated > ceiling)) ||
           (floor !== null && (median === null || median < floor)));
 
       return {
