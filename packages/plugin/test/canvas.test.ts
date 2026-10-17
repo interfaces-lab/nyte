@@ -64,7 +64,9 @@ it("renders a canvas from the tool as an answer part, then replaces it in place 
       { runtime: 1, title: "Totals", code: "", height: null, error: "View is not a function" },
       { id: drawn.part },
     ),
-  ).toBe(`Canvas ${drawn.part}: Totals. It failed to render: View is not a function`);
+  ).toBe(
+    `Canvas ${drawn.part}: Totals. It failed to render: View is not a function. Fix it by calling canvas_render with canvas "${drawn.part}".`,
+  );
 
   fake.reply(
     {
