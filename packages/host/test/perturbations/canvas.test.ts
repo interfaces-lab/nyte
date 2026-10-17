@@ -19,7 +19,7 @@ import {
   openScenario,
   removeFolders,
   savePerturbation,
-  submit,
+  start,
   toolStates,
   waterfall,
   watchViews,
@@ -117,10 +117,9 @@ it("tells the model why a canvas did not compile, keeps the canvas it replaces, 
 
   const fake = fakeModels({ fallback: turns.answer });
   await using host = await openScenario({ fake, home: home.home, workspace: await folder() });
-  const session = await host.sessions.create();
-  const watched = watchViews(session);
   const started = performance.now();
-  const { trace, receipt } = await submit(session, RESTAURANT_PROMPT);
+  const { trace, session, receipt } = await start(host, RESTAURANT_PROMPT);
+  const watched = watchViews(session);
   const end = await receipt.settled();
   const wall = Math.round(performance.now() - started);
 

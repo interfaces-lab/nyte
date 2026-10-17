@@ -21,7 +21,7 @@ import {
   removeFolders,
   savePerturbation,
   settledTool,
-  submit,
+  start,
   toolStates,
   until,
   waterfall,
@@ -99,10 +99,9 @@ it("lands a steer sent during the places call after the call settles, in the sam
 
   const fake = fakeModels({ fallback: turns.answer });
   await using host = await openScenario({ fake, home: home.home, workspace: await folder() });
-  const session = await host.sessions.create();
-  const watched = watchViews(session);
   const started = performance.now();
-  const { trace, receipt } = await submit(session, RESTAURANT_PROMPT);
+  const { trace, session, receipt } = await start(host, RESTAURANT_PROMPT);
+  const watched = watchViews(session);
 
   await until(
     async () =>

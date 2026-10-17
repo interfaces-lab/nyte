@@ -17,7 +17,7 @@ import {
   removeFolders,
   savePerturbation,
   settledTool,
-  submit,
+  start,
   until,
   waterfall,
   watchViews,
@@ -84,10 +84,9 @@ it("delegates scenario D's log reading to a subagent that calls the CI server, a
 
   const fake = fakeModels({ fallback: turns.answer });
   await using host = await openScenario({ fake, home: home.home, workspace: repo.root });
-  const parent = await host.sessions.create();
-  const watched = watchViews(parent);
   const started = performance.now();
-  const { trace, receipt } = await submit(parent, CI_PROMPT);
+  const { trace, session: parent, receipt } = await start(host, CI_PROMPT);
+  const watched = watchViews(parent);
 
   const waiting = await until(
     async () => {
@@ -187,10 +186,9 @@ it("stops a waiting subagent's run when the user stops the parent", async () => 
 
   const fake = fakeModels({ fallback: turns.answer });
   await using host = await openScenario({ fake, home: home.home, workspace: repo.root });
-  const parent = await host.sessions.create();
-  const watched = watchViews(parent);
   const started = performance.now();
-  const { trace, receipt } = await submit(parent, CI_PROMPT);
+  const { trace, session: parent, receipt } = await start(host, CI_PROMPT);
+  const watched = watchViews(parent);
 
   const child = await until(
     async () => {

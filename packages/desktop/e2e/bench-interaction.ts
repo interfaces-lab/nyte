@@ -163,10 +163,15 @@ async function seedHome(directory: string, turns: number): Promise<Fixture> {
   const title = `Transcript ${turns * 2}`;
 
   try {
-    const session = await host.sessions.create({ name: title });
+    const { session, receipt } = await host.sessions.start({
+      name: title,
+      content: `Turn 1 of ${turns}`,
+    });
 
     for (let turn = 1; turn <= turns; turn++) {
-      const outcome = await (await session.send(`Turn ${turn} of ${turns}`)).settled();
+      const outcome = await (
+        turn === 1 ? receipt : await session.send(`Turn ${turn} of ${turns}`)
+      ).settled();
 
       if (outcome.kind !== "completed")
         throw new Error(`Seeding turn ${turn} failed: ${outcome.kind}`);

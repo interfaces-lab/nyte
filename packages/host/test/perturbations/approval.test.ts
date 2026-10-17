@@ -19,7 +19,7 @@ import {
   removeFolders,
   savePerturbation,
   settledTool,
-  submit,
+  start,
   until,
   waterfall,
   watchViews,
@@ -99,10 +99,9 @@ it("rejects a terminal command the user denies: the model is told, nothing runs,
     plugins: [terminalApproval],
   });
 
-  const session = await host.sessions.create();
-  const watched = watchViews(session);
   const started = performance.now();
-  const { trace, receipt } = await submit(session, CI_PROMPT);
+  const { trace, session, receipt } = await start(host, CI_PROMPT);
+  const watched = watchViews(session);
 
   const modal = await until(
     async () => {

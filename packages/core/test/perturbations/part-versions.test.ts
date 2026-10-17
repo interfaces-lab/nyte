@@ -11,8 +11,7 @@ it("keeps a streamed text part's version moving forward when its text lands", as
     until: gate.promise,
   });
   await using host = await open(fake);
-  const session = await host.sessions.create();
-  const receipt = await session.send("What is the answer?");
+  const { session, receipt } = await host.sessions.start({ content: "What is the answer?" });
 
   const streamed = await until(async () => {
     const last = (await session.view()).messages.at(-1);

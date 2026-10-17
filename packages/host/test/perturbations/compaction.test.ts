@@ -84,9 +84,9 @@ it("compacts in the middle of scenario D's run and goes on to the answer with th
     plugins: [smallWindow],
   });
 
-  const session = await host.sessions.create();
+  const { session, receipt: earlier } = await host.sessions.start({ content: EARLIER });
 
-  await (await session.send(EARLIER)).settled();
+  await earlier.settled();
   const watched = watchViews(session);
   const started = performance.now();
   const { trace, receipt } = await submit(session, CI_PROMPT);

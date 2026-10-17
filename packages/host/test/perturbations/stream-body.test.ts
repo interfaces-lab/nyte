@@ -32,7 +32,7 @@ it("serves a shared stream whose request body arrives after its headers", async 
   });
 
   assert(listener.address !== null);
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const authorization = `Bearer ${token}`;
 
   const opened = await fetch(`${listener.address}/${CHANNEL_PATH}`, {

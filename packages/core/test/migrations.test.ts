@@ -107,7 +107,7 @@ async function landChange(kernel: Kernel, change: StoreChange): Promise<"committ
 
 it("keeps an older store's ended runs' last snapshot records under their ended refs", async () => {
   const { kernel, host } = await setup();
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const run = await startRun(
     kernel,
@@ -351,7 +351,7 @@ it("indexes as woken a call an older Nyte woke and had not stepped since", async
 
 it("keeps a before_tool hook call's modify result its old decoder could not read as it was", async () => {
   const { kernel, host } = await setup();
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const call = asId<"call">("hook:before_tool:toolu_02");
   const unreadable = { action: "modify", value: { other: 1 } };
 

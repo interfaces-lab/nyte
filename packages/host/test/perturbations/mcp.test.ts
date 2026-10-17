@@ -23,7 +23,7 @@ import {
   savePerturbation,
   setServerField,
   settledTool,
-  submit,
+  start,
   toolStates,
   until,
   waterfall,
@@ -75,10 +75,9 @@ async function runPlaces(home: ScenarioHome) {
   const turns = placesScript();
   const fake = fakeModels({ fallback: turns.answer });
   const host = await openScenario({ fake, home: home.home, workspace: await folder() });
-  const session = await host.sessions.create();
-  const watched = watchViews(session);
   const started = performance.now();
-  const { trace, receipt } = await submit(session, RESTAURANT_PROMPT);
+  const { trace, session, receipt } = await start(host, RESTAURANT_PROMPT);
+  const watched = watchViews(session);
   const end = await receipt.settled();
   const wall = Math.round(performance.now() - started);
   const final = await expectSettledViews(session, watched);
@@ -130,10 +129,9 @@ it("stops a slow places call when the user stops the run, leaving nothing workin
   const turns = placesScript();
   const fake = fakeModels({ fallback: turns.answer });
   await using host = await openScenario({ fake, home: home.home, workspace: await folder() });
-  const session = await host.sessions.create();
-  const watched = watchViews(session);
   const started = performance.now();
-  const { trace, receipt } = await submit(session, RESTAURANT_PROMPT);
+  const { trace, session, receipt } = await start(host, RESTAURANT_PROMPT);
+  const watched = watchViews(session);
 
   const progress = await until(
     async () =>

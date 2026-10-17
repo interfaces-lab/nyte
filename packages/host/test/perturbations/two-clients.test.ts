@@ -271,7 +271,17 @@ it("keeps two clients' views of one session equal when the relayed one loses its
     headers: async () => ({ authorization: `Bearer ${token}` }),
   });
 
-  const { session } = decodeOutput("sessions.create", await local.invoke("sessions.create", {}));
+  const trace = crypto.randomUUID();
+  const started = performance.now();
+
+  const { session, receipt } = decodeOutput(
+    "sessions.start",
+    await local.invoke("sessions.start", {
+      id: asId<"session">(trace),
+      content: RESTAURANT_PROMPT,
+    }),
+  );
+
   const desktop = watch(local, session);
   const terminal = watch(relayed, session);
 
@@ -279,19 +289,6 @@ it("keeps two clients' views of one session equal when the relayed one loses its
     () => (terminal.view() !== null && desktop.view() !== null ? true : undefined),
     10_000,
     "both clients' first views",
-  );
-
-  const trace = crypto.randomUUID();
-  const started = performance.now();
-
-  const { receipt } = decodeOutput(
-    "head.send",
-    await local.invoke("head.send", {
-      session,
-      head: "main",
-      content: RESTAURANT_PROMPT,
-      options: { id: asId<"receipt">(trace) },
-    }),
   );
 
   await until(

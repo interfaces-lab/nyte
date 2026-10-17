@@ -190,7 +190,10 @@ test("a window reopening on a chat answers its state with the chat's folder sele
   if (opened.kind !== "opened") throw new Error("The folder did not open");
   const host = await made.host.host();
   await host.workspace(opened.workspace.id).update({ projectResources: true });
-  const chat = await host.sessions.create({ workspace: opened.workspace.id });
+  const { session: chat } = await host.sessions.start({
+    workspace: opened.workspace.id,
+    content: "Hi.",
+  });
   received.length = 0;
 
   assert.deepEqual((await made.host.call(2, "host.restore", { session: chat.id })).workspace, {
