@@ -62,8 +62,11 @@ export async function prepareStartupFixture(
   try {
     if (scenario === "heavy") {
       for (let index = 0; index < 200; index++) {
-        const session = await host.sessions.create({ name: `History ${index + 1}` });
-        const receipt = await session.send(`/long 8 History ${index + 1}`);
+        const { receipt } = await host.sessions.start({
+          name: `History ${index + 1}`,
+          content: `/long 8 History ${index + 1}`,
+        });
+
         const outcome = await receipt.settled();
 
         if (outcome.kind !== "completed")

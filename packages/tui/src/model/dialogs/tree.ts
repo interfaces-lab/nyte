@@ -331,6 +331,19 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
       push: null,
     };
 
+  if (row.node.kind === "user" && row.node.parent === null)
+    return {
+      dialog,
+      intents: [
+        {
+          kind: "refuse",
+          reason: "The first message starts the chat and can't move back. /new starts another",
+          tone: "info",
+        },
+      ],
+      push: null,
+    };
+
   if (row.node.kind === "user" && !dialog.composerEmpty)
     return {
       dialog,

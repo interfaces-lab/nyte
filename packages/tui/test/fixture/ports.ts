@@ -14,6 +14,7 @@ import type {
 import { createHandle } from "../../src/effects/local-ports.ts";
 import type {
   FilesPort,
+  FirstFramePort,
   HostPort,
   PluginsPort,
   Ports,
@@ -25,6 +26,7 @@ import type {
 } from "../../src/effects/ports.ts";
 import type { Task } from "../../src/lib/tasks.ts";
 import type { DraftInsert } from "../../src/model/draft.ts";
+import type { Selection } from "../../src/model/state.ts";
 import { CATALOG, SETTINGS } from "./state.ts";
 import { CONFIGURATION } from "./view.ts";
 
@@ -57,6 +59,9 @@ export interface FakeHost extends HostPort {
   publishSessions(sessions: readonly SessionInfo[]): void;
   readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
+  readonly starts: Parameters<HostPort["start"]>[0][];
+  /** Each folder registration asked of the host, by path; `null` is the launch folder. */
+  readonly folders: (string | null)[];
 }
 
 function queue<T>(): AsyncIterable<T> & {
@@ -241,8 +246,9 @@ export function fakeHost(): FakeHost {
   const directory = queue<readonly SessionInfo[]>();
   const defaults: ModelRef[] = [];
   const hostSettings: FakeHost["hostSettings"] = [];
+  const starts: FakeHost["starts"] = [];
+  const folders: FakeHost["folders"] = [];
   let catalog = CATALOG;
-  let created = 0;
 
   const addSession = (id: string): FakeSession => {
     const session = sessions.get(id) ?? fakeSession(id);
@@ -256,11 +262,26 @@ export function fakeHost(): FakeHost {
     defaults,
     hostSettings,
     addSession,
+    starts,
+    folders,
     session: (id) => addSession(id),
-    async create() {
-      created += 1;
+    workspace: (id) => ({
+      id,
+      cwd: async () => "/tmp/fake-workspace",
+      upload: async () => asId("blob-1"),
+      mentions: async () => [],
+    }),
+    async openFolder(path) {
+      folders.push(path);
 
-      return addSession(`created-${String(created)}`).id;
+      return asId("workspace");
+    },
+    async start(input) {
+      starts.push(input);
+
+      const { message } = await addSession(input.id).send(input.content, { delivery: "steer" });
+
+      return { kind: "started", message };
     },
     async *rootSessions() {
       yield* [...sessions.keys()].map(buildSessionInfo);
@@ -348,12 +369,18 @@ export interface FakePorts extends Ports {
   readonly files: FakeFiles;
   readonly plugins: FakePlugins;
   readonly settings: SettingsPort;
+  readonly firstFrame: FakeFirstFrame;
   readonly clock: ManualClock;
   readonly log: {
     readonly path: string;
     readonly entries: { readonly origin: string; readonly error: unknown }[];
     write(origin: string, error: unknown): void;
   };
+}
+
+/** The first-frame record in memory: `saved` is what the next launch would read. */
+export interface FakeFirstFrame extends FirstFramePort {
+  saved: Selection | null;
 }
 
 export function fakePorts(host: FakeHost): FakePorts {
@@ -457,18 +484,28 @@ export function fakePorts(host: FakeHost): FakePorts {
     },
   };
 
+  const firstFrame: FakeFirstFrame = {
+    saved: null,
+    read: () => firstFrame.saved,
+    async write(selection) {
+      firstFrame.saved = selection;
+    },
+  };
+
   return {
     host,
     terminal,
+    firstFrame,
     composer: createHandle(),
     scroll: createHandle(),
     settings: {
-      read: async () => settings,
+      read: () => ({ settings, invalid: [] }),
       async write(_cwd, patch) {
         settings = { ...settings, ...patch };
 
         return settings;
       },
+      settled: async () => undefined,
     },
     plugins,
     shell,

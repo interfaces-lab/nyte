@@ -14,18 +14,20 @@ import {
   App,
   connectLocalHost,
   createAppRouter,
-  loadWindowHostState,
+  recordFirstFrame,
+  seedFirstFrame,
   startRendererStartup,
+  StartupFailure,
   startWindowTabs,
   windowTabRoute,
 } from "@nyte-ai/app";
-import { applyStartupTheme } from "@nyte-ai/app/theme/startup.ts";
 import { useMountEffect } from "@nyte-ai/app/use-mount-effect.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
 
-// A reload restores this window's tabs at once; the first window of a launch adopts the saved strip.
-const windowTabsReady = startWindowTabs();
+startWindowTabs(window.nyte.firstWindow);
+
+seedFirstFrame("local");
 
 export const router = createAppRouter({
   history: createMemoryHistory({ initialEntries: [windowTabRoute()] }),
@@ -36,6 +38,15 @@ const container = document.getElementById("root");
 if (container === null) throw new Error("Missing #root");
 
 const root = createRoot(container);
+
+/** Main keeps the window hidden until the interface has drawn its first frame. */
+const firstFrame = new PerformanceObserver((list) => {
+  if (list.getEntriesByName("nyte:shell-ready").length === 0) return;
+  firstFrame.disconnect();
+  window.nyte.windowPainted();
+});
+
+firstFrame.observe({ entryTypes: ["mark"] });
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {
@@ -53,15 +64,6 @@ focusManager.setEventListener((setFocused) => {
     document.removeEventListener("visibilitychange", update);
   };
 });
-
-// The startup shell in index.html owns the window until the first complete frame.
-const startupShell = document.getElementById("startup");
-
-const startupMessage = document.getElementById("startup-message");
-
-const startupRetry = document.getElementById("startup-retry");
-
-applyStartupTheme({ shell: startupShell, retry: startupRetry });
 
 /** Calls `onMount` once its tree has committed. It sits outside StrictMode, which would call it twice. */
 function Mounted({ onMount, children }: { onMount: () => void; children: ReactNode }): ReactNode {
@@ -91,31 +93,13 @@ function mountShell(mounted: () => void): void {
 performance.mark("nyte:startup");
 
 startRendererStartup({
+  fonts: ['13px "Inter Variable"', '12px "JetBrains Mono Variable"'],
+  router,
   mountShell,
-  loadResources: () =>
-    Promise.all([
-      windowTabsReady.then(loadWindowHostState),
-      document.fonts.load('13px "Inter Variable"'),
-      document.fonts.load('12px "JetBrains Mono Variable"'),
-    ]).then(() => undefined),
-  loadRouter: () => {
-    router.history.replace(windowTabRoute());
-
-    return router.load();
-  },
-  connect: () => connectLocalHost().then(() => undefined),
+  connect: () =>
+    connectLocalHost().then((connection) => recordFirstFrame("local", connection.hostId)),
   showError: (retry) => {
-    startupShell?.setAttribute("data-state", "error");
-
-    if (startupMessage !== null) startupMessage.textContent = "Couldn\u2019t open your workspace.";
-    startupRetry?.addEventListener(
-      "click",
-      () => {
-        startupShell?.setAttribute("data-state", "loading");
-        retry();
-      },
-      { once: true },
-    );
+    root.render(<StartupFailure message="Couldn’t open your workspace." onRetry={retry} />);
+    requestAnimationFrame(() => window.nyte.windowPainted());
   },
-  onReady: () => performance.mark("nyte:resources-ready"),
 });

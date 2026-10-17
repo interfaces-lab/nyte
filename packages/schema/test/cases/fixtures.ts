@@ -281,6 +281,7 @@ export const modelInfo: ModelInfo = {
   name: "Claude",
   reasoning: true,
   thinking: ["off", "high"],
+  defaultThinking: "high",
   fast: null,
   contextWindow: 200000,
   compactAt: 160000,

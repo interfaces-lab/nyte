@@ -28,6 +28,7 @@ import { promptEntries } from "../history.ts";
 import type { Intent, Outcome } from "../msg.ts";
 import { rowMessage } from "../queue.ts";
 import { keyboardDialog } from "../screen.ts";
+import { followedSession } from "../state.ts";
 import type { State } from "../state.ts";
 import {
   andThen,
@@ -58,6 +59,21 @@ export const composerHandlers = {
       : setDraft(withLocal(state, { editing: null }), editing.saved);
   },
   "clear-draft": (state) => clearDraft(state),
+  "recall-first-message": (state, _msg, now) => {
+    const { chat } = state.facts;
+    const waiting = state.local.submissions.find((sent) => sent.session === chat?.id);
+
+    if (chat?.kind !== "blank" || waiting === undefined) return stay(state);
+
+    return stageHandback(
+      withLocal(state, {
+        submissions: state.local.submissions.filter((sent) => sent !== waiting),
+      }),
+      chat.id,
+      { draft: waiting.snapshot, notice: null, unlessLanded: null },
+      now,
+    );
+  },
   "run-shell": (state, msg, now) => {
     if (state.facts.shells.some((job) => job.state.kind === "running"))
       return refuse(state, "A command is already running", now);
@@ -69,7 +85,7 @@ export const composerHandlers = {
         {
           kind: "shell-start",
           id: minted.id,
-          session: current.facts.session?.id ?? null,
+          session: current.facts.chat?.id ?? null,
           command: msg.command,
           include: msg.include,
           cwd: current.facts.workspace.cwd,
@@ -186,7 +202,7 @@ export const composerHandlers = {
       now,
     );
 
-    const target = submission?.session ?? state.facts.session?.id;
+    const target = submission?.session ?? state.facts.chat?.id;
 
     if (target === undefined) return stay(next);
 
@@ -261,7 +277,7 @@ function send(
   now: number,
   reduce: Reduce,
 ): Step {
-  const followed = state.facts.session;
+  const followed = state.facts.chat;
 
   if (followed === null) return refuse(state, "Wait for the chat to open", now);
 
@@ -315,7 +331,7 @@ function submitSnapshot(
 
 function saveEdit(state: State, delivery: Delivery, now: number): Step {
   const { editing } = state.local;
-  const followed = state.facts.session;
+  const followed = followedSession(state);
 
   if (editing === null || followed === null) return stay(state);
   const message = rowMessage(followed, editing.message);
@@ -346,7 +362,7 @@ function saveEdit(state: State, delivery: Delivery, now: number): Step {
 
 function history(state: State, direction: "previous" | "next"): Step {
   const { draft } = state.local;
-  const entries = promptEntries(state.facts.session?.view ?? null);
+  const entries = promptEntries(followedSession(state)?.view ?? null);
   const cursor = state.local.history;
 
   if (direction === "previous") {

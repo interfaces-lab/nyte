@@ -3,10 +3,10 @@ import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
 import { modifierKeyLabel } from "../conversation/composer-keys.ts";
-import { macPlatform } from "../platform.ts";
 import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";
+import { nyte } from "../nyte.ts";
 
 const STARTUP = [
   { value: "new-chat", label: "New chat" },
@@ -52,7 +52,7 @@ function TrustedSitesRow(): ReactElement {
 }
 
 export function GeneralSettings(): ReactElement {
-  const modifier = modifierKeyLabel(macPlatform(undefined));
+  const modifier = modifierKeyLabel(nyte.platform === "darwin");
 
   return (
     <>

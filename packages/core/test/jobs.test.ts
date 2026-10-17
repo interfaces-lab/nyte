@@ -96,7 +96,7 @@ async function parkOn(
 describe("jobs", () => {
   it("starts a session's job: output, tail, background item, and an exit report attached to main", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const jobs = host.workspace(workspace).jobs;
     const job = await jobs.start({ command: "pnpm dev", session: session.id, title: "Dev server" });
     const process = await started(provider.processes, 1);
@@ -140,11 +140,11 @@ describe("jobs", () => {
     const view = await until(async () => {
       const current = await session.view();
 
-      return current.messages.length > 0 ? current : undefined;
+      return current.messages.length > 1 ? current : undefined;
     });
 
     expect(view.background).toEqual([expect.objectContaining({ id: job.id, state: "done" })]);
-    expect(view.messages[0]).toMatchObject({
+    expect(view.messages[1]).toMatchObject({
       kind: "user",
       content: "Job Dev server (pnpm dev) exited with code 0.\n\nready on :3000",
       source: { kind: "job", job: job.id },
@@ -155,7 +155,7 @@ describe("jobs", () => {
 
   it("sends no report when a parked wait consumed the job's end", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     const job = await host
       .workspace(workspace)
@@ -189,7 +189,7 @@ describe("jobs", () => {
       { kind: "job", job: job.id, end: { kind: "exited", code: 2, reason: "exited" } },
     ]);
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect((await session.view()).messages).toEqual([]);
+    expect((await session.view()).messages.map((message) => message.id)).toEqual([session.id]);
     expect((await session.view()).background).toEqual([
       expect.objectContaining({ id: job.id, state: "failed" }),
     ]);
@@ -309,7 +309,7 @@ describe("jobs", () => {
     try {
       const { host, provider, workspace } = await world();
       const jobs = host.workspace(workspace).jobs;
-      const session = await host.sessions.create({ workspace });
+      const { session } = await host.sessions.start({ workspace, content: "Hi." });
       const shell = await jobs.start({ pty: { columns: 80, rows: 24 } });
       const owned = await jobs.start({ pty: { columns: 80, rows: 24 }, session: session.id });
       await started(provider.processes, 2);
@@ -473,7 +473,7 @@ describe("jobs", () => {
     const kernel = kernelOver(store, provider);
     const host = createHost(kernel, { credential: { kind: "token", token: "x" } });
     const workspace = await addWorkspace(host);
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "make", session: session.id });
@@ -504,12 +504,12 @@ describe("jobs", () => {
       waiting: null,
       waits: [{ kind: "job", job: job.id, end: { kind: "exited", code: 2 } }],
     });
-    expect((await session.view()).messages).toEqual([]);
+    expect((await session.view()).messages.map((message) => message.id)).toEqual([session.id]);
   });
 
   it("offers a cold host's answer only to its part: a wait on any of a running job and the part takes the answer (B F2)", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "make", session: session.id });
@@ -550,7 +550,7 @@ describe("jobs", () => {
 
   it("settles a wait on a job this instance does not hold as lost when another kernel loads it", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "make", session: session.id });
@@ -576,7 +576,7 @@ describe("jobs", () => {
   });
   it("leaves a wait on a job this instance does not hold parked when another kernel sees a commit", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "make", session: session.id });
@@ -596,7 +596,7 @@ describe("jobs", () => {
 
   it("answers a step's recorded job as lost after a restart, spawning nothing again (B F1, P1)", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const call: CallId = asId("c1");
     const handles: string[] = [];
 

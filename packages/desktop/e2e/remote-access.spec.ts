@@ -83,13 +83,13 @@ test("a browser paired through Remote access shares the desktop's chats until it
 
   const status = await remote.evaluate(
     async (input) => {
-      const response = await fetch(`${input.host}/sessions.create`, {
+      const response = await fetch(`${input.host}/sessions.start`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${input.token}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ name: input.name }),
+        body: JSON.stringify({ name: input.name, content: "Hi from the phone" }),
       });
 
       return response.status;
@@ -98,9 +98,6 @@ test("a browser paired through Remote access shares the desktop's chats until it
   );
 
   expect(status).toBe(200);
-  await sidebar(page)
-    .getByRole("button", { name: /^Done \d+$/u })
-    .click();
   await expect(chatRow(page, CREATED)).toBeVisible();
 
   await page.getByRole("button", { name: "Remote access: This Mac only" }).click();

@@ -12,7 +12,6 @@ import { StatusDot } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
 import {
   keys,
-  loadHostState,
   queryClient,
   sessionFolderPath,
   useWorkingSessionIds,
@@ -34,16 +33,16 @@ export function useWindowTabsState(): WindowState {
 }
 
 /**
- * Loads the host state for the window's first frame. A window reopening on a
- * chat asks the host to select that chat's folder in the same answer, since
- * the session directory that names the folder arrives only after the host
- * connection opens and selecting it then swaps the workbench under a
- * transcript already painted.
+ * Asks the host to select the restored active tab's chat folder for this
+ * window. The host reads the chat's folder from its own store and announces
+ * nothing, so the workbench takes the folder without the reload a
+ * `workspace_opened` event runs. Absent on the web, which keeps no folder per
+ * window.
  */
-export async function loadWindowHostState(): Promise<void> {
+async function restoreChatFolder(): Promise<void> {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
 
-  if (place.kind !== "session" || nyte.host.restore === undefined) return loadHostState();
+  if (place.kind !== "session" || nyte.host.restore === undefined) return;
   queryClient.setQueryData(keys.host, await nyte.host.restore({ session: place.sessionId }));
 }
 
@@ -62,7 +61,10 @@ export function useWindowTabsSync(): void {
 
   useMountEffect(() => {
     let followed = "";
-    let switching = Promise.resolve();
+    let switching = restoreChatFolder().then(
+      () => undefined,
+      () => undefined,
+    );
     let wanted: string | null = null;
 
     const follow = (): void => {

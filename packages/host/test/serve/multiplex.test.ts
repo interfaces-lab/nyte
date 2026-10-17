@@ -140,8 +140,8 @@ it("registers twelve pending answers without occupying twelve HTTP responses", a
   });
 
   const { session } = decodeOutput(
-    "sessions.create",
-    await transport.invoke("sessions.create", {}),
+    "sessions.start",
+    await transport.invoke("sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
   );
 
   const { part } = decodeOutput(
@@ -207,8 +207,8 @@ it("keeps twelve watches on one response while commands and other watches contin
     expect(await pending).toEqual({ done: true, value: undefined });
 
     const { session } = decodeOutput(
-      "sessions.create",
-      await transport.invoke("sessions.create", {}),
+      "sessions.start",
+      await transport.invoke("sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
     );
 
     const changed = await Promise.all(watches.slice(1).map((watch) => watch.next()));

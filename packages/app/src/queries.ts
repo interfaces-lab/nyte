@@ -1,5 +1,6 @@
 import {
   QueryClient,
+  skipToken,
   useMutation,
   useMutationState,
   useQuery,
@@ -7,7 +8,8 @@ import {
 } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { useMemo, useSyncExternalStore } from "react";
-import { asId } from "@nyte-ai/schema";
+import { asId, ModelRefType } from "@nyte-ai/schema";
+import { Value } from "typebox/value";
 import { toast } from "@nyte-ai/ui/toast";
 import type {
   ChangeSet,
@@ -115,21 +117,56 @@ const readWorkspaces = async () => (await connected()).workspaces.list();
 
 const readModelCatalog = async () => (await connected()).models.list();
 
-function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
-  if (previous !== undefined) return previous;
-
-  const recent = queryClient
+function newestCatalogQuery() {
+  return queryClient
     .getQueryCache()
     .findAll({ queryKey: ["catalog", "models"] })
+    .filter((query) => query.state.data !== undefined)
     .toSorted((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)
-    .find((query) => query.state.data !== undefined);
-
-  return recent === undefined
-    ? undefined
-    : queryClient.getQueryData<ModelCatalogView>(recent.queryKey);
+    .at(0);
 }
 
-function selectedWorkspaceId(): WorkspaceId | undefined {
+/** The newest catalog any generation answered: a live one, or the last run's seed until one does. */
+export function newestModelCatalog(): ModelCatalogView | undefined {
+  const newest = newestCatalogQuery();
+
+  return newest === undefined
+    ? undefined
+    : queryClient.getQueryData<ModelCatalogView>(newest.queryKey);
+}
+
+function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
+  return previous ?? newestModelCatalog();
+}
+
+const DEFAULT_MODEL_MUTATION = ["catalog", "default"] as const;
+
+/**
+ * The catalog a new chat's start checks its model against, once the host
+ * answers: the newest live answer, or a fresh read when only the last run's
+ * seed is cached. A pick still being saved outranks the host's default.
+ */
+export async function readStartCatalog(): Promise<DesktopCatalog> {
+  const newest = newestCatalogQuery();
+
+  const live =
+    newest !== undefined && newest.state.dataUpdatedAt > 0
+      ? queryClient.getQueryData<ModelCatalogView>(newest.queryKey)
+      : undefined;
+
+  const catalog = toDesktopCatalog(live ?? (await readModelCatalog()));
+
+  const picked = queryClient
+    .getMutationCache()
+    .findAll({ mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" })
+    .at(-1)?.state.variables;
+
+  return Value.Check(ModelRefType, picked)
+    ? { ...catalog, defaults: { model: picked, thinkingLevel: undefined } }
+    : catalog;
+}
+
+export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
@@ -171,8 +208,20 @@ export async function workspaceGit(): Promise<GitApi> {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
+/**
+ * A window opens on Home, so its host state is known before the host answers.
+ * It never fetches on its own: `loadLocalResources` and workspace events write it.
+ */
+const OPENING_HOST_STATE: HostState = { workspace: undefined };
+
 export function useHostState() {
-  return useQuery({ queryKey: keys.host, queryFn: readHost });
+  const { data } = useQuery({
+    queryKey: keys.host,
+    queryFn: skipToken,
+    initialData: OPENING_HOST_STATE,
+  });
+
+  return { data: data ?? OPENING_HOST_STATE };
 }
 
 export function useUpdateState() {
@@ -219,6 +268,8 @@ export function useWorkspaces() {
   return useQuery({
     queryKey: keys.workspaces,
     queryFn: readWorkspaces,
+    placeholderData: () =>
+      queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.firstFrameWorkspaces),
     select: (workspaces): readonly RailWorkspace[] =>
       workspaces.flatMap((workspace) => {
         const path = workspacePath(workspace);
@@ -269,17 +320,21 @@ export function useForgetWorkspace() {
   });
 }
 
+/** The live directory's roots; until it arrives, the ones the last run recorded. */
 function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
   const all = useWatch(directoryWatch("all")).value;
 
-  return useMemo(
-    () =>
-      all === undefined
-        ? undefined
-        : projection.list(all.filter((session) => session.parent === null)),
-    [all, projection],
-  );
+  const recorded = useQuery<readonly SessionInfo[]>({
+    queryKey: keys.firstFrameRoots,
+    queryFn: skipToken,
+  }).data;
+
+  return useMemo(() => {
+    if (all !== undefined) return projection.list(all.filter((session) => session.parent === null));
+
+    return recorded === undefined ? undefined : projection.list(recorded);
+  }, [all, projection, recorded]);
 }
 
 const NO_SESSIONS: ReadonlySet<SessionId> = new Set();
@@ -407,7 +462,7 @@ export function useVcsChanges(
   enabled: boolean,
 ) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return useQuery<ChangeSet>({
     queryKey: keys.gitChanges(workspace, scope, ignoreWhitespace, revision),
@@ -426,7 +481,7 @@ export function useVcsLog(
   enabled: boolean,
 ) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return useQuery({
     queryKey: keys.gitLog(workspace, input.limit, input.cursor),
@@ -533,7 +588,7 @@ export async function refreshVcs(): Promise<void> {
 
 export function useVcsSnapshot(enabled: boolean) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return {
     data: useWatch(enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined)
@@ -584,7 +639,7 @@ async function searchWorkspace(input: SearchInput) {
 
 export function useWorkspaceSearch(input: SearchInput | undefined, enabled = true) {
   const host = useHostState();
-  const workspace = host.data?.workspace?.id;
+  const workspace = host.data.workspace?.id;
 
   return useQuery({
     queryKey: keys.workspaceSearch(workspace ?? "", input),
@@ -641,7 +696,7 @@ export function useCatalog(_sessionId?: SessionId) {
   const generation = useCatalogGeneration();
 
   const pending = useMutationState<MutationState<unknown, Error, ModelRef>>({
-    filters: { mutationKey: ["catalog", "default"], status: "pending" },
+    filters: { mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" },
   });
 
   return useQuery({
@@ -747,7 +802,7 @@ export function useSetPreference() {
   const client = useQueryClient();
 
   return useMutation({
-    mutationKey: ["catalog", "default"],
+    mutationKey: DEFAULT_MODEL_MUTATION,
     scope: { id: "catalog-default" },
     mutationFn: async (model: ModelRef) => {
       const outcome = await (await connected()).models.setDefault(model);
@@ -763,9 +818,7 @@ export function useSetPreference() {
 let localLoadVersion = 0;
 
 export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {
-  queryClient.setQueryData<HostState>(keys.host, (host) =>
-    host === undefined ? host : { ...host, workspace },
-  );
+  queryClient.setQueryData<HostState>(keys.host, (host) => ({ ...host, workspace }));
 }
 
 let connecting: Promise<Connection> | undefined;
@@ -793,11 +846,6 @@ export function connectLocalHost(): Promise<Connection> {
     });
 
   return connecting;
-}
-
-/** Host state is a local answer, given before the host has opened; the first frame reads it. */
-export async function loadHostState(): Promise<void> {
-  queryClient.setQueryData(keys.host, await readHost());
 }
 
 /**

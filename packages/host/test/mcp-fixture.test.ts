@@ -75,8 +75,8 @@ function searchOnce(fake: FakeModels): void {
 }
 
 async function settledCall(host: Host, prompt: string) {
-  const session = await host.sessions.create();
-  await (await session.send(prompt)).settled();
+  const { session, receipt: started } = await host.sessions.start({ content: prompt });
+  await started.settled();
   const call = (await session.view()).messages.find((message) => isPart(message, tool));
 
   assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled");
@@ -147,7 +147,7 @@ it("does not hold the first request for a server that crashed, and shows it fail
   const fake = fakeModels();
   fake.reply({ content: [{ type: "text", text: "No places tool." }] });
   await using host = await openPlaces(await placesHome({ PLACES_CRASH: "list" }), fake);
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const started = performance.now();
 
   await (await session.send("Find a place nearby.")).settled();
@@ -189,9 +189,10 @@ it("tells the model a server's instructions", async () => {
     fake,
   );
 
-  const session = await host.sessions.create();
-
-  await (await session.send("Find a place nearby.")).settled();
+  const { receipt: started } = await host.sessions.start({
+    content: "Find a place nearby.",
+  });
+  await started.settled();
 
   expect(systemPrompt(fake.requests[0])).toContain(
     "## places\nSearch before you recommend a place.",
@@ -202,9 +203,10 @@ it("leaves out a tool whose input schema is not JSON Schema, and says why", asyn
   const fake = fakeModels();
   fake.reply({ content: [{ type: "text", text: "No places tool." }] });
   await using host = await openPlaces(await placesHome({ PLACES_INVALID_SCHEMA: "1" }), fake);
-  const session = await host.sessions.create();
-
-  await (await session.send("Find a place nearby.")).settled();
+  const { session, receipt: started } = await host.sessions.start({
+    content: "Find a place nearby.",
+  });
+  await started.settled();
 
   expect(requestTools(fake.requests[0])).not.toContain(SEARCH);
 
@@ -237,8 +239,9 @@ it("shows a server's progress on the running call", async () => {
     fake,
   );
 
-  const session = await host.sessions.create();
-  const run = await session.send("Find a place nearby.");
+  const { session, receipt: run } = await host.sessions.start({
+    content: "Find a place nearby.",
+  });
 
   await vi.waitFor(
     async () => {

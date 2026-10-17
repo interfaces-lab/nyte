@@ -8,7 +8,6 @@ import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { revealLabel } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
-import { useHostState } from "../queries.ts";
 import { dismissDownload } from "./browser-surfaces.ts";
 
 const styles = create({
@@ -86,8 +85,6 @@ interface DownloadsBarProps {
 }
 
 export function DownloadsBar({ surface, downloads }: DownloadsBarProps): ReactElement | null {
-  const host = useHostState();
-
   if (downloads.length === 0) return null;
   const revealPath = nyte.host.revealPath;
 
@@ -124,7 +121,7 @@ export function DownloadsBar({ surface, downloads }: DownloadsBarProps): ReactEl
                 iconOnly
                 icon="folder-open"
                 size="sm"
-                aria-label={revealLabel(host.data?.platform)}
+                aria-label={revealLabel(nyte.platform)}
                 onClick={() => void revealPath({ path: download.path }).catch(() => undefined)}
               />
             )}

@@ -15,7 +15,7 @@ const Report = Type.Object({
 test("a streamed delta re-renders only the streaming row", { timeout: 120_000 }, async () => {
   const output = await testRenderer(
     new URL("./transcript-streaming.browser-test.tsx", import.meta.url),
-    `window.nyte = { clientSurface: "desktop", host: { setThemePreference() {} } };`,
+    `window.nyte = { clientSurface: "desktop", platform: "linux", host: { setThemePreference() {} } };`,
   );
 
   const report = Value.Parse(Report, JSON.parse(output));

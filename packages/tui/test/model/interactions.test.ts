@@ -22,8 +22,8 @@ function at(spec: TableSpec, command: ChatCommand) {
 
 describe("blocked", () => {
   test("Enter refuses with the reason and hides its hint", () => {
-    expect(at({ blocked: "starting", draft: "hi" }, ENTER)).toEqual({
-      intent: { kind: "refuse", reason: "Still starting. Your draft is saved here." },
+    expect(at({ blocked: "switching", draft: "hi" }, ENTER)).toEqual({
+      intent: { kind: "refuse", reason: "Opening the chat. Your draft is saved here." },
       label: "send",
       hidden: true,
     });
@@ -44,14 +44,14 @@ describe("blocked", () => {
   });
 
   test("Esc passes otherwise and opens nothing while blocked", () => {
-    expect(at({ blocked: "starting" }, ESC).intent).toEqual({ kind: "noop" });
+    expect(at({ blocked: "switching" }, ESC).intent).toEqual({ kind: "noop" });
   });
 
-  test("Ctrl+C passes: it clears a draft typed during startup instead of quitting", () => {
-    expect(at({ blocked: "starting", draft: "keep" }, CTRL_C).intent).toEqual({
+  test("Ctrl+C passes: it clears a draft typed while blocked instead of quitting", () => {
+    expect(at({ blocked: "switching", draft: "keep" }, CTRL_C).intent).toEqual({
       kind: "clear-draft",
     });
-    expect(at({ blocked: "starting" }, CTRL_C).intent).toEqual({ kind: "quit" });
+    expect(at({ blocked: "switching" }, CTRL_C).intent).toEqual({ kind: "quit" });
   });
 });
 
@@ -439,7 +439,7 @@ describe("other commands", () => {
 
   test("Ctrl+K opens the palette unless blocked", () => {
     expect(at({}, "chat.commands.open")).toMatchObject({ intent: { kind: "open" }, label: "help" });
-    expect(at({ blocked: "starting" }, "chat.commands.open").intent).toBeNull();
+    expect(at({ blocked: "switching" }, "chat.commands.open").intent).toBeNull();
   });
 
   test("completion keys are on only while a completion is open", () => {
@@ -501,7 +501,7 @@ const SHELL = [false, true] as const;
 
 const COMPLETION = [undefined, "slash", "skill", "cd"] as const;
 
-const BLOCKED = [undefined, "starting", "authenticating"] as const;
+const BLOCKED = [undefined, "switching", "authenticating"] as const;
 
 const FOLLOW_UP = ["steer", "queue"] as const;
 

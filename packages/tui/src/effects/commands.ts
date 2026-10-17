@@ -2,10 +2,20 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { MessageId, SessionId } from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
-import type { Notice, State } from "../model/state.ts";
+import { followedSession } from "../model/state.ts";
+import type { Notice, Selection, State } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
-import type { HandlerContext } from "./scope.ts";
-import { fallback, buildConfigPatch, refreshWorkspace, readSelection } from "./session.ts";
+import { ignoredSettingsText } from "../services/settings.ts";
+import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
+import {
+  fallback,
+  buildConfigPatch,
+  openBlank,
+  readSelection,
+  refreshWorkspace,
+  rememberThinking,
+  toSelection,
+} from "./session.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
@@ -88,6 +98,13 @@ export async function move(effect: Of<"move">, context: HandlerContext): Promise
 export async function configure(effect: Of<"configure">, context: HandlerContext): Promise<void> {
   const { read, scope } = context;
   const followed = scope.followed;
+  const { chat } = read().facts;
+
+  if (chat?.kind === "blank" && chat.id === effect.session) {
+    await configureBlank(effect, chat.selection, context);
+
+    return;
+  }
 
   if (followed === null || followed.id !== effect.session) return;
   const state = read();
@@ -98,6 +115,35 @@ export async function configure(effect: Of<"configure">, context: HandlerContext
   const result = await followed.configurator.request(patch);
 
   if (result.kind === "failed") throw new Error(result.message);
+}
+
+/** Settles a blank chat's model and thinking level and remembers them as the next chat's defaults; the first send starts the chat with them. */
+async function configureBlank(
+  effect: Of<"configure">,
+  current: Selection,
+  context: HandlerContext,
+): Promise<void> {
+  const { dispatch, ports, read } = context;
+  const catalog = read().facts.catalog.catalog;
+  const patch = buildConfigPatch(effect.selection, current, catalog);
+  const model = patch.model ?? current.model;
+  const effort = patch.thinkingLevel ?? current.effort;
+
+  const selection = toSelection({ model, thinkingLevel: effort }, catalog);
+  dispatch({ kind: "selection", session: effect.session, selection });
+  await ports.firstFrame.write(selection).catch((error: unknown) => {
+    ports.log.write("effect", error);
+  });
+
+  if (patch.model !== undefined)
+    await ports.host.setDefaultModel(patch.model).catch((error: unknown) => {
+      ports.log.write("effect", error);
+    });
+
+  if (patch.thinkingLevel !== undefined)
+    await rememberThinking(patch.thinkingLevel, context).catch((error: unknown) => {
+      ports.log.write("effect", error);
+    });
 }
 
 export async function checkTrust(
@@ -203,6 +249,18 @@ export async function changeDirectory(
   }
 
   try {
+    const { chat } = read().facts;
+
+    if (chat?.kind === "blank" && chat.id === effect.session) {
+      await openBlank(
+        { ...chat, folder: { kind: "folder", id: await ports.host.openFolder(path) } },
+        context,
+      );
+      finish(stampNotice(context, "ok", `Working directory: ${path}`));
+
+      return;
+    }
+
     const port = ports.host.session(effect.session);
     const outcome = await port.changeDirectory(path);
 
@@ -222,14 +280,14 @@ export async function changeDirectory(
 
 export async function refreshWorkspaceFacts(
   effect: Of<"refresh-workspace">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   await refreshWorkspace(context, effect.cwd);
 }
 
 export async function reload(effect: Of<"reload">, context: HandlerContext): Promise<void> {
   const { dispatch, ports, read } = context;
-  const session = read().facts.session;
+  const session = followedSession(read());
 
   if (session === null) {
     dispatch({ kind: "op-finished", op: "reload", notice: null });
@@ -242,19 +300,20 @@ export async function reload(effect: Of<"reload">, context: HandlerContext): Pro
 
     if (outcome === "missing") throw new Error("This chat's workspace is no longer registered.");
     const cwd = read().facts.workspace.cwd;
-    const settings = await ports.settings.read(cwd);
+    await ports.settings.settled();
+    const { settings, invalid } = ports.settings.read(cwd);
     dispatch({ kind: "settings", settings });
     await refreshWorkspace(context, cwd);
-    const skills = read().facts.session?.view?.catalog.skills.length ?? 0;
+    const skills = followedSession(read())?.view?.catalog.skills.length ?? 0;
+    const reloaded = `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`;
 
     dispatch({
       kind: "op-finished",
       op: "reload",
-      notice: stampNotice(
-        context,
-        "ok",
-        `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`,
-      ),
+      notice:
+        invalid.length === 0
+          ? stampNotice(context, "ok", reloaded)
+          : stampNotice(context, "warning", `${reloaded}\n${ignoredSettingsText(invalid)}`),
     });
   } catch (error) {
     dispatch({ kind: "op-finished", op: "reload", notice: null });
@@ -292,7 +351,7 @@ export function rowStatus(
   session: SessionId,
   message: MessageId,
 ): "pending" | "landed" | "unsent" | "absent" {
-  const followed = state.facts.session;
+  const followed = followedSession(state);
 
   if (followed === null || followed.id !== session || followed.view === null) return "absent";
 

@@ -18,6 +18,7 @@ export function model(
     name: id,
     reasoning: true,
     thinking,
+    defaultThinking: thinking.find((level) => level !== "off") ?? "off",
     fast: null,
     contextWindow: 100_000,
     compactAt: 90_000,
@@ -53,6 +54,7 @@ export function blank(): State {
       followUp: "steer",
     },
     terminal: { width: 100, height: 32, theme: "dark", selection: false, dragging: false },
+    chat: null,
   });
 }
 
@@ -74,7 +76,7 @@ export function ready(view: SessionView): State {
 
   return play(
     blank(),
-    { kind: "phase", phase: { kind: "ready" } },
+    { kind: "host-opened" },
     { kind: "catalog", generation: 1, catalog: CATALOG },
     {
       kind: "session-opened",

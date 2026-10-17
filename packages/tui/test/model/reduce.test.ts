@@ -249,7 +249,7 @@ describe("send", () => {
       session: S1,
       selection: { effort: "high" },
     });
-    expect(step.state.facts.session?.selection.effort).toBe("high");
+    expect(step.state.facts.chat?.selection.effort).toBe("high");
     expect(step.state.local.notice?.text).toBe("Thinking level: high");
 
     const again = play(step.state, typed("/effort high"), { kind: "send", delivery: "queue" });
@@ -797,7 +797,7 @@ describe("session and view intents", () => {
     expect(thinking.effects).toEqual([
       { kind: "configure", session: S1, selection: { effort: "high" } },
     ]);
-    expect(thinking.state.facts.session?.selection.effort).toBe("high");
+    expect(thinking.state.facts.chat?.selection.effort).toBe("high");
 
     const model = play(ready(idle), { kind: "cycle-model", direction: 1 });
 

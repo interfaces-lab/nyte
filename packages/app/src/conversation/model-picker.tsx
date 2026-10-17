@@ -100,6 +100,9 @@ interface ModelPickerProps {
   fast: boolean;
   disabled?: boolean;
   loading?: boolean;
+  /** Whether the menu is open, for a parent that opens it from elsewhere; the picker keeps its own otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onChange: (change: ModelPickerChange) => void;
 }
 
@@ -111,10 +114,14 @@ function ModelPickerView({
   fast,
   disabled = false,
   loading = false,
+  open: openProp,
+  onOpenChange,
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = onOpenChange ?? setOwnOpen;
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 

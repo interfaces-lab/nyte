@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { PaneController, PaneControllerSnapshot } from "./pane-controller.ts";
 import { activePane, canSplitPane } from "./pane-layout.ts";
 import type { DropPlacement, PaneId, SplitDirection } from "./pane-layout.ts";
-import type { SessionViewStateStore } from "./session-view-state.ts";
+import type { ComposerViewState, SessionViewStateStore } from "./session-view-state.ts";
 import { shellActions } from "../chrome/shell-state.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
@@ -90,6 +90,7 @@ export interface PaneActions {
   newChat(): void;
   openSession(sessionId: SessionId): void;
   openSessionInPane(paneId: PaneId, sessionId: SessionId): void;
+  openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void;
   split(direction: SplitDirection): void;
   close(paneId: PaneId): void;
   focus(paneId: PaneId): void;
@@ -113,6 +114,9 @@ export function usePaneActions(): PaneActions {
       },
       openSessionInPane(paneId, sessionId) {
         controller.selectSessionInPane(paneId, sessionId);
+      },
+      openDraftChat(draftId, sessionId, composer) {
+        controller.openDraftChat(draftId, sessionId, composer);
       },
       split(direction) {
         splitPanes(controller, direction);

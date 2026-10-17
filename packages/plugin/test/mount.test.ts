@@ -35,7 +35,7 @@ function ended(session: SessionInfo, run: string, end: RunEnd): SessionInfo {
 
 it("draws with the client's framework, reports run ends after the first list and asks before submit", async () => {
   await using host = await open(fakeModels(), []);
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const [info] = (await host.sessions.list()).items;
   const ends: string[] = [];
 
@@ -72,5 +72,8 @@ it("draws with the client's framework, reports run ends after the first list and
   expect(
     await plugins.beforeSubmit({ content: "stop", delivery: "queue", session: session.id }),
   ).toEqual({ action: "reject", reason: "no" });
+  expect(await plugins.beforeSubmit({ content: "stop", delivery: "steer", session: null })).toEqual(
+    { action: "reject", reason: "no" },
+  );
   await plugins.dispose();
 });

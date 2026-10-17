@@ -8,6 +8,7 @@ import type {
   HeadName,
   MessageId,
   MessageSource,
+  PrincipalId,
   ReceiptId,
   RefUpdate,
   RunId,
@@ -32,6 +33,7 @@ import {
   inboxWithout,
   coveredHere,
   liveRun,
+  MAIN,
   put,
   readCall,
   readInbox,
@@ -61,6 +63,8 @@ interface Sending {
   readonly context: ConnectionContext;
   readonly content: UserContent;
   readonly options: SendOptions;
+  /** Aborts a before_send decision still pending, besides the kernel closing. */
+  readonly stop: AbortSignal | null;
 }
 
 type SendInput = {
@@ -117,11 +121,18 @@ export async function sendNow(kernel: Kernel, input: SendInput): Promise<SendRec
     context: input.context,
     content: input.content,
     options: input.options ?? {},
+    stop: null,
   };
 
   const target = sending.options.replace;
 
   if (target === undefined) return admit(sending);
+
+  if (
+    (await withFold(kernel, input.session, (state) => state.inputs.get(target)))?.schedule.kind ===
+    "deciding"
+  )
+    throw new SdkError("invalid", `Message ${target} is still being decided.`);
 
   const keyed = {
     id: sending.options.id ?? asId<"receipt">(crypto.randomUUID()),
@@ -143,6 +154,7 @@ export function selectRunStart(
   head: HeadName,
   inputs: readonly FoldInput[],
 ): { readonly origin: RunView["origin"]; readonly input: FoldInput } | null {
+  if (inputs.some((input) => input.schedule.kind === "deciding")) return null;
   const prompt = inputs.find((input) => input.delivery !== "attach");
 
   if (prompt !== undefined) return { origin: { kind: "input", message: prompt.id }, input: prompt };
@@ -294,18 +306,13 @@ async function admit(sending: Sending): Promise<SendReceipt> {
       resolve(sending, submission.configuration),
     ]);
 
-    const message: MessageRecord = {
-      id: asId<"message">(id),
-      at: Date.now(),
-      content: submission.content,
-      source: submission.source,
-      delivery: submission.delivery,
+    const message = buildMessage(asId<"message">(id), submission, {
       schedule: await chooseSendSchedule(submission.delivery, configuration, run?.record ?? null),
       covered,
       configuration,
       replaced: null,
       position: inbox.messages.length,
-    };
+    });
 
     const outcome = await commit(kernel, [
       await admitted(kernel.store, session, head, inbox, [...inbox.messages, message.id], message),
@@ -318,9 +325,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
         ? sendReceipt(kernel, session, id)
         : STALE;
 
-    if (covered) kernel.wakes.notify(session, head);
-
-    if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
+    await announce(kernel, session, head, message);
     dev("admission", "admitted", { session, head, message: message.id, covered });
 
     return sendReceipt(kernel, session, id);
@@ -360,18 +365,13 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
     const rest = inbox.messages.filter((message) => message !== target);
     const position = findInsertionIndex(options.position, rest, current);
 
-    const message: MessageRecord = {
-      id: target,
-      at: Date.now(),
-      content: submission.content,
-      source: submission.source,
-      delivery: submission.delivery,
+    const message = buildMessage(target, submission, {
       schedule: await chooseSendSchedule(submission.delivery, configuration, run?.record ?? null),
       covered,
       configuration,
       replaced: previous?.replaced ?? null,
       position,
-    };
+    });
 
     const outcome = await commit(kernel, [
       await admitted(
@@ -453,21 +453,17 @@ async function editGated(
   const abandoned = options.abandoned;
   const running = options.running ?? "stop";
 
-  const message = async (stopped: RunId | null, position: number): Promise<MessageRecord> => ({
-    id: asId<"message">(id),
-    at: Date.now(),
-    content: submission.content,
-    source: submission.source,
-    delivery: submission.delivery,
-    schedule:
-      submission.delivery === "attach"
-        ? { kind: "attached" }
-        : { kind: "next-turn", reason: "idle" },
-    covered,
-    configuration: await configured(),
-    replaced: { previous: target, stopped },
-    position,
-  });
+  const message = async (stopped: RunId | null, position: number): Promise<MessageRecord> =>
+    buildMessage(asId<"message">(id), submission, {
+      schedule:
+        submission.delivery === "attach"
+          ? { kind: "attached" }
+          : { kind: "next-turn", reason: "idle" },
+      covered,
+      configuration: await configured(),
+      replaced: { previous: target, stopped },
+      position,
+    });
 
   const wake = (stopped: RunId | null): void => {
     if (stopped !== null || covered) kernel.wakes.notify(session, head);
@@ -613,6 +609,149 @@ async function editGated(
   return sendReceipt(kernel, session, id);
 }
 
+/** The updates that store a starting chat's first message on main, deciding until its before_send hooks decide it, with its pending receipt under the chat's id. The receipt keeps `principal`, the one the hooks decide for. */
+export async function admitDeciding(
+  kernel: Kernel,
+  session: SessionId,
+  first: {
+    readonly content: UserContent;
+    readonly configuration: Configuration;
+    readonly covered: boolean;
+    readonly at: number;
+    readonly digest: string;
+    readonly principal: PrincipalId;
+  },
+): Promise<readonly RefUpdate[]> {
+  const id = asId<"receipt">(session);
+
+  const message: MessageRecord = {
+    id: asId<"message">(session),
+    at: first.at,
+    content: first.content,
+    source: USER,
+    delivery: "steer",
+    schedule: { kind: "deciding" },
+    covered: first.covered,
+    configuration: first.configuration,
+    replaced: null,
+    position: 0,
+  };
+
+  return [
+    await admitted(
+      kernel.store,
+      session,
+      MAIN,
+      await readInbox(kernel.store, session, MAIN),
+      [message.id],
+      message,
+    ),
+    {
+      name: receiptRef(session, id),
+      target: await put(kernel.store, "receipt", {
+        id,
+        kind: "send",
+        digest: first.digest,
+        outcome: null,
+        principal: first.principal,
+      }),
+      expect: "absent",
+    },
+  ];
+}
+
+/** Decides a starting chat's first message through its before_send hooks as `context`, then admits it again in place with the decided content, configuration and schedule, under the receipt it has. Resolves the message, or null once it left the inbox; the kernel closing, `stop` or a refusal throws. */
+export async function readmitDeciding(
+  kernel: Kernel,
+  context: ConnectionContext,
+  session: SessionId,
+  input: FoldInput,
+  stop: AbortSignal,
+): Promise<MessageId | null> {
+  const sending: Sending = {
+    kernel,
+    session,
+    head: MAIN,
+    context,
+    content: input.content,
+    options: {},
+    stop,
+  };
+
+  const submission = await gate(sending, input.id, {
+    content: input.content,
+    source: input.source,
+    delivery: input.delivery,
+    configuration: null,
+    replace: null,
+  });
+
+  const covered = await coveredHere(kernel, session);
+
+  return attempt(`Starting ${session}`, async () => {
+    const [inbox, configuration, deciding] = await Promise.all([
+      readInbox(kernel.store, session, MAIN),
+      resolve(sending, submission.configuration),
+      withFold(
+        kernel,
+        session,
+        (state) => state.inputs.get(input.id)?.schedule.kind === "deciding",
+      ),
+    ]);
+
+    const position = inbox.messages.findIndex((message) => message === input.id);
+
+    if (position < 0) return null;
+
+    if (!deciding) return input.id;
+
+    const message = buildMessage(input.id, submission, {
+      schedule: await chooseSendSchedule(submission.delivery, configuration, null),
+      covered,
+      configuration,
+      replaced: null,
+      position,
+    });
+
+    const outcome = await commit(kernel, [
+      await admitted(kernel.store, session, MAIN, inbox, inbox.messages, message),
+    ]);
+
+    if (outcome.kind === "stale") return STALE;
+    await announce(kernel, session, MAIN, message);
+    dev("admission", "started", { session, message: message.id, covered });
+
+    return message.id;
+  });
+}
+
+function buildMessage(
+  id: MessageId,
+  submission: Submission,
+  placed: Omit<MessageRecord, "id" | "at" | "content" | "source" | "delivery">,
+): MessageRecord {
+  return {
+    id,
+    at: Date.now(),
+    content: submission.content,
+    source: submission.source,
+    delivery: submission.delivery,
+    ...placed,
+  };
+}
+
+/** Tells this process an admitted message is in: a covered head wakes, and a wait on the user's input hears it. */
+async function announce(
+  kernel: Kernel,
+  session: SessionId,
+  head: HeadName,
+  message: MessageRecord,
+): Promise<void> {
+  if (message.covered) kernel.wakes.notify(session, head);
+
+  if (message.source.kind === "user") await kernel.waits.inputAdmitted(session, head, message.id);
+}
+
 async function readReplayReceipt(
   kernel: Kernel,
   session: SessionId,
@@ -669,7 +808,7 @@ async function gate(
   };
 }
 
-/** Decides the submission through the session's `before_send` hooks, one durable step keyed by the message; a parked hook holds the send until its wait wakes or the kernel closes. */
+/** Decides the submission through the session's `before_send` hooks, one durable step keyed by the message; a parked hook holds the send until its wait wakes, and the kernel closing or the send's stop throws. */
 async function decideBeforeSend(
   sending: Sending,
   message: MessageId,
@@ -687,7 +826,8 @@ async function decideBeforeSend(
       ]);
   }
 
-  const { signal } = kernel.executionState.closing;
+  const closing = kernel.executionState.closing.signal;
+  const signal = sending.stop === null ? closing : AbortSignal.any([closing, sending.stop]);
   let woken = Promise.withResolvers<void>();
   const dispose = kernel.waits.onWoken(session, call, () => woken.resolve());
   const abort = (): void => woken.resolve();
@@ -697,31 +837,42 @@ async function decideBeforeSend(
     for (;;) {
       woken = Promise.withResolvers<void>();
 
-      const outcome = await kernel.plugins.runtime(session).hooks.decide(
-        "before_send",
-        submission,
-        {
-          session,
-          head: sending.head,
-          run: sending.context.origin?.run ?? null,
-          principal: sending.context.principal,
-        },
-        { call, run: null, head: null, part: null, signal },
-      );
+      const outcome = await kernel.plugins
+        .runtime(session)
+        .hooks.decide(
+          "before_send",
+          submission,
+          {
+            session,
+            head: sending.head,
+            run: sending.context.origin?.run ?? null,
+            principal: sending.context.principal,
+          },
+          { call, run: null, head: null, part: null, signal },
+        )
+        .catch((error: unknown) => {
+          throw signal.aborted ? undecided(closing) : error;
+        });
 
       if (outcome.kind === "done") return outcome.value;
 
-      if (outcome.kind === "interrupted") return { action: "continue" };
+      if (!signal.aborted) {
+        if (outcome.kind === "interrupted") return { action: "continue" };
+        await woken.promise;
+      }
 
-      if (!signal.aborted) await woken.promise;
-
-      if (signal.aborted)
-        return { action: "error", message: "The kernel closed before before_send decided." };
+      if (signal.aborted) throw undecided(closing);
     }
   } finally {
     signal.removeEventListener("abort", abort);
     dispose();
   }
+}
+
+function undecided(closing: AbortSignal): SdkError {
+  return closing.aborted
+    ? new SdkError("unavailable", "The kernel closed before before_send decided.")
+    : new SdkError("invalid", "The send was stopped before before_send decided.");
 }
 
 async function resolve(

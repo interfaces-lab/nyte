@@ -48,9 +48,10 @@ export type ToolCall = Decoded<typeof ToolCallType>;
 export const SubmitDraftType = Type.Object({
   content: UserContentType,
   delivery: DeliveryType,
-  session: idSchema<"session">(),
+  session: nullable(idSchema<"session">()),
 });
 
+/** A client's draft before it is sent; `session` is null for a draft that starts a chat. */
 export type SubmitDraft = Decoded<typeof SubmitDraftType>;
 
 export const SubmissionSchema: Schema<Submission> = standard(withJson(SubmissionType));

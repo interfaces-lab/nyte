@@ -116,7 +116,7 @@ it("calls a tool of a server in ~/.nyte/mcp.json as mcp__<server>__<tool>", asyn
 
   const folder = await home({ fake: { url: "https://fake.test/mcp", exposure: "direct" } });
   await using host = await open(folder, fake, () => fakeServer());
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -149,7 +149,7 @@ it("calls a tool of a server in ~/.nyte/mcp.json as mcp__<server>__<tool>", asyn
 it("gives tools codemode exposure by default and applies an edit to mcp.json", async () => {
   const folder = await home({ fake: { url: "https://fake.test/mcp" } });
   await using host = await open(folder, fakeModels(), () => fakeServer());
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -216,7 +216,7 @@ it("shows a dropped connection as failed and reconnects", async () => {
   let connects = 0;
   const folder = await home({ fake: { url: "https://fake.test/mcp" } });
   await using host = await open(folder, fakeModels(), () => fakeServer(++connects === 1));
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -242,7 +242,7 @@ it("adds, turns off, reconnects and removes a server through mcp.json, keeping t
     return fakeServer();
   });
 
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const mcp = host.workspace((await session.info()).workspace).mcp;
   const views = mcp.watch()[Symbol.asyncIterator]();
   await next(views, (view) => view.servers.length === 0);
@@ -302,7 +302,7 @@ it("waits for sign-in when the server needs OAuth, and refuses to sign in to a c
     };
   });
 
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const mcp = host.workspace((await session.info()).workspace).mcp;
   const views = mcp.watch()[Symbol.asyncIterator]();
 

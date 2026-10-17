@@ -318,7 +318,14 @@ export function kernelOver(
       settings: [],
       defaultWorkspace: null,
     }),
-    turn: { run: () => new Promise(() => {}) },
+    turn: {
+      run: (input) =>
+        new Promise((resolve) =>
+          input.signal.addEventListener("abort", () => resolve({ kind: "stopped" }), {
+            once: true,
+          }),
+        ),
+    },
     resolveConfiguration: async () => configuration,
     home: options?.home,
     execution: options?.execution,

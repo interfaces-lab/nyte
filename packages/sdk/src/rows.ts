@@ -22,8 +22,15 @@ import type {
 
 type LinkState = HostView["link"];
 
-type WaitName = {
-  [N in OperationName]: Declarations[N] extends { readonly wait: true } ? N : never;
+/** A wait query, or a replayed operation whose input names its own id, so a retry is the same request. */
+type RetryName = {
+  [N in OperationName]: Declarations[N] extends { readonly wait: true }
+    ? N
+    : Declarations[N] extends { readonly recovery: "replay" }
+      ? OperationInput<N> extends { readonly id: string }
+        ? N
+        : never
+      : never;
 }[OperationName];
 
 export interface Link {
@@ -42,7 +49,7 @@ export interface Rows {
     input: OperationInput<N>,
     options?: RequestOptions,
   ): Promise<OperationOutput<N>>;
-  wait<N extends WaitName>(
+  wait<N extends RetryName>(
     name: N,
     input: OperationInput<N>,
     options?: RequestOptions,

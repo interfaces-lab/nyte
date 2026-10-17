@@ -28,6 +28,7 @@ export const CATALOG: ModelCatalogView = {
           name: "Model",
           reasoning: true,
           thinking: ["off", "low", "medium", "high"],
+          defaultThinking: "low",
           fast: { provider: "test", id: "model-fast" },
           contextWindow: 100_000,
           compactAt: 80_000,
@@ -40,6 +41,7 @@ export const CATALOG: ModelCatalogView = {
           name: "Model Fast",
           reasoning: false,
           thinking: ["off"],
+          defaultThinking: "off",
           fast: null,
           contextWindow: 100_000,
           compactAt: 80_000,
@@ -62,13 +64,14 @@ export function buildState(
     cwd,
     settings: SETTINGS,
     terminal: { width: 100, height: 32, theme: "dark", selection: false, dragging: false },
+    chat: null,
   });
 
   return {
     facts: {
       ...base.facts,
-      phase: { kind: "ready" },
-      session,
+      host: "open",
+      chat: session,
       catalog: {
         generation: 1,
         catalog: overrides?.catalog === undefined ? CATALOG : overrides.catalog,

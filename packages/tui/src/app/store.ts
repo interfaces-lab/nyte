@@ -21,7 +21,7 @@ export interface Store {
 interface StoreOptions {
   readonly initial: State;
   readonly now: () => number;
-  readonly runner: (context: Omit<RunnerContext, "ports" | "signal">) => Runner;
+  readonly runner: (context: Pick<RunnerContext, "dispatch" | "read">) => Runner;
   readonly report: (origin: "reducer", error: unknown) => void;
 }
 

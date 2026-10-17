@@ -269,7 +269,6 @@ test("a background subagent's report wakes the finished parent and shows as a re
 
   const route = (request: ProviderRequest) => {
     const seen = transcript(request);
-    const child = /Created subagent (\S+?)\./u.exec(seen)?.[1];
 
     if (!seen.includes("start a background helper"))
       return {
@@ -280,16 +279,13 @@ test("a background subagent's report wakes the finished parent and shows as a re
     if (seen.includes("Child finished the task."))
       return { content: [{ type: "text" as const, text: "The helper reported back." }] };
 
-    if (seen.includes("Sent to subagent"))
+    if (seen.includes("Started subagent"))
       return { content: [{ type: "text" as const, text: "Helper started in the background." }] };
 
-    if (child !== undefined)
-      return toolCall("send", { session: child, prompt: "do the child task" });
-
-    return toolCall("create", { title: "Helper" });
+    return toolCall("create", { title: "Helper", prompt: "do the child task" });
   };
 
-  tui.fixture.reply(route, route, route, route, route);
+  tui.fixture.reply(route, route, route, route);
   await tui.send("start a background helper");
   await tui.frame((frame) => frame.includes("Helper started in the background."));
   await idle(tui);

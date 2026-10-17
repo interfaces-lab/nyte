@@ -15,10 +15,12 @@ import type { Renderable } from "@opentui/core";
 import { render } from "@opentui/solid";
 import { createRoot, createSignal } from "solid-js";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
+import { launchChat } from "../effects/boot.ts";
 import type { BootOptions } from "../effects/boot.ts";
 import { createReporter, installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { hostPort, pluginsPort } from "../effects/host-port.ts";
 import { createHandle, filesPort, settingsPort, shellPort } from "../effects/local-ports.ts";
+import { ignoredSettingsText } from "../services/settings.ts";
 import type { CrashLog, HostPort, PluginsPort, Ports, TerminalPort } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
 import { terminalPort } from "../effects/terminal-port.ts";
@@ -28,10 +30,11 @@ import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts
 import type { Ending } from "../lifecycle.ts";
 import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
-import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Msg } from "../model/msg.ts";
-import { initialState } from "../model/state.ts";
+import { followedSession, initialState } from "../model/state.ts";
+import { waitingMessages } from "../model/table-input.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";
+import { firstFramePort } from "../services/first-frame.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
 import { registerSyntaxParsers } from "../services/syntax-parsers.ts";
 import type { Kit } from "./context.tsx";
@@ -44,14 +47,6 @@ import type { Store } from "./store.ts";
 import { createTickers } from "./ticker.ts";
 import { holdTypeahead } from "./typeahead.ts";
 import type { Typeahead } from "./typeahead.ts";
-
-const STARTUP_SETTINGS: ResolvedSettings = {
-  autoUpdate: false,
-  theme: "auto",
-  copyOnSelect: false,
-  scrollAcceleration: false,
-  followUp: "steer",
-};
 
 /** Ports that work before the host opens. The app adds the host, its plugins and the renderer's clock. */
 type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
@@ -99,6 +94,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const [fallen, setFallen] = createSignal<(() => void) | null>(null);
   let startupError: string | null = null;
   let opened: OpenedHost | null = null;
+  const hostOpened = Promise.withResolvers<void>();
+  hostOpened.promise.catch(() => undefined);
 
   const reachable = (): OpenedHost => {
     if (opened === null) throw new Error("The host is still opening.");
@@ -124,13 +121,16 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const quit = (): void => closing.resolve(0);
   const hangUp = (): void => closing.resolve(exitStatus("SIGHUP"));
   const unwatchTerminal = watchTerminal(renderer.stdin, options.outputs ?? [], hangUp);
+  const { settings, invalid } = options.ports.settings.read(options.cwd);
+  const chat = launchChat(options.boot, options.ports.firstFrame.read(), settings);
 
   const root = createRoot((dispose) => {
     const store = createStore({
       initial: initialState({
         cwd: options.cwd,
-        settings: STARTUP_SETTINGS,
+        settings,
         terminal: terminalFacts(renderer),
+        chat,
       }),
       now: () => renderer.clock.now(),
       report,
@@ -139,6 +139,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
           ports,
           read: context.read,
           signal: controller.signal,
+          opened: hostOpened.promise,
           dispatch(msg) {
             if (msg.kind === "effect-failed" && msg.effect === "boot") {
               startupError = msg.message;
@@ -170,15 +171,24 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   });
 
   const { store } = root;
+
+  if (invalid.length > 0)
+    store.dispatch({
+      kind: "inform",
+      tone: "warning",
+      text: ignoredSettingsText(invalid),
+    });
   void store.runner.exited.then(({ code }) => closing.resolve(code));
 
   const opening = options.open(store.dispatch).then((host) => {
     opened = host;
+    hostOpened.resolve();
+    store.dispatch({ kind: "host-opened" });
 
     return host;
   });
 
-  opening.catch(() => undefined);
+  opening.catch((cause: unknown) => hostOpened.reject(cause));
   const uninstallKeymap = installKeymap({ renderer, store, fallen, quit });
 
   const syncTerminal = (): void => {
@@ -254,11 +264,9 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     renderer,
   );
 
+  store.runner.boot(options.boot);
   options.typeahead?.release();
-  store.runner.boot(
-    options.boot,
-    opening.then(() => undefined),
-  );
+  store.runner.run({ kind: "refresh-workspace", cwd: options.cwd });
 
   return {
     store,
@@ -352,6 +360,7 @@ export async function runTui(flags: RunFlags): Promise<number> {
       composer: createHandle(),
       scroll: createHandle(),
       settings: settingsPort(),
+      firstFrame: firstFramePort(join(home, "tui-first-frame.json")),
       shell: shellPort(),
       files: filesPort(),
       log,
@@ -373,7 +382,9 @@ export async function runTui(flags: RunFlags): Promise<number> {
   if (ending === "lost") failures.push(SERVICE_LOST);
   stopEnding();
   exitWithin(status);
-  const session = app.store.state().facts.session?.id ?? null;
+  const session = followedSession(app.store.state())?.id ?? null;
+  const waiting = waitingMessages(app.store.state()).map((sent) => sent.snapshot.text);
+  const unsent = waiting.length === 0 ? null : waiting.join("\n\n");
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 
@@ -384,7 +395,9 @@ export async function runTui(flags: RunFlags): Promise<number> {
     await renderer.closed;
   });
   unhook();
-  process.stdout.write(exitText({ session, failures, crashes: app.store.state().local.failures }));
+  process.stdout.write(
+    exitText({ session, unsent, failures, crashes: app.store.state().local.failures }),
+  );
 
   return status === 0 && failures.length > 0 ? 1 : status;
 }
@@ -438,12 +451,15 @@ async function openService(input: {
 
 export function exitText(input: {
   readonly session: SessionId | null;
+  /** A new chat's first message that was still waiting for the host. */
+  readonly unsent: string | null;
   readonly failures: readonly string[];
   readonly crashes: readonly FailureReport[];
 }): string {
   const lines = [
     ...input.crashes.map((crash) => `error: ${crash.message} (details in ${crash.logPath})`),
     ...input.failures,
+    ...(input.unsent === null ? [] : [`Not sent: ${input.unsent}`]),
     ...(input.session === null
       ? []
       : ["To resume previous session", sessionRecovery(input.session).command]),

@@ -49,11 +49,10 @@ describe("the store is the truth", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, poll: 10, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "From A." });
     const watched = a.host.session(session.id).head(main).watch()[Symbol.asyncIterator]();
     await watched.next();
 
-    await a.host.session(session.id).send("From A.");
     const first = a.host.execution.advance({ session: session.id, head: main });
     (await a.script.started(1)).finish();
     await first;
@@ -81,7 +80,7 @@ describe("the store is the truth", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "Hi." });
     const hold = b.kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
 
@@ -97,18 +96,20 @@ describe("the store is the truth", () => {
 
   it("shows the empty revision once a move to the start deletes the head ref (ADV F F3)", async () => {
     const { kernel, host, script } = await setup();
-    const session = await host.sessions.create();
-    await session.send("Base.");
+    const { session } = await host.sessions.start({ content: "Base." });
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
     await step;
+    const side = asId<"head">("side");
+    await session.heads.create(side, { from: (await session.tree()).tip });
+    const head = session.head(side);
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
 
-    expect((await session.view()).revision).not.toBe("");
-    expect((await (await session.move({ kind: "start" })).settled()).kind).toBe("moved");
-    expect(await kernel.store.refs.get(headRef(session.id, main))).toBeNull();
-    expect((await session.view()).revision).toBe("");
+    expect((await head.view()).revision).not.toBe("");
+    expect((await (await head.move({ kind: "start" })).settled()).kind).toBe("moved");
+    expect(await kernel.store.refs.get(headRef(session.id, side))).toBeNull();
+    expect((await head.view()).revision).toBe("");
     hold.release();
   });
 
@@ -136,8 +137,8 @@ describe("the store is the truth", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: shared, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
-    await land(a.kernel, session.id, "Old tip.");
+    const { session, receipt } = await b.host.sessions.start({ content: "Old tip." });
+    await landing(b.kernel, session.id, main, [receipt.message], null);
     const old = await shared.refs.get(headRef(session.id, main));
     between = () => land(b.kernel, session.id, "New tip.");
     armed = true;
@@ -183,8 +184,8 @@ describe("the store is the truth", () => {
     };
 
     const { kernel, host } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await land(kernel, session.id, "Old.");
+    const { session, receipt } = await host.sessions.start({ content: "Old." });
+    await landing(kernel, session.id, main, [receipt.message], null);
     const watched = session.watch()[Symbol.asyncIterator]();
     await watched.next();
     armed = true;
@@ -205,7 +206,9 @@ describe("the store is the truth", () => {
       shown.done !== true &&
         (
           await (
-            await session.move({ kind: "start" }, { expect: shown.value.revision ?? undefined })
+            await session.move(shown.value.heads[0]?.tip ?? { kind: "start" }, {
+              expect: shown.value.revision ?? undefined,
+            })
           ).settled()
         ).kind,
     ).toBe("moved");

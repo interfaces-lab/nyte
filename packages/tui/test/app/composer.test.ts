@@ -96,10 +96,6 @@ test("keys typed while the host opens stay in the composer through boot", async 
 
   await tui.mockInput.typeText("typed while starting");
   await tui.frame((frame) => composerShows(frame, "typed while starting"));
-  expect(tui.store.screen().blocked).toEqual({ kind: "starting" });
-  tui.mockInput.pressEnter();
-  await tui.renderOnce();
-  expect(tui.fixture.requests).toHaveLength(0);
 
   tui.openHost();
   await tui.ready();

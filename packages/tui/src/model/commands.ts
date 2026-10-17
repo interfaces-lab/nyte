@@ -9,6 +9,7 @@ import type { BuiltinSlashName, SlashCommand } from "../lib/slash.ts";
 import type { Intent } from "./msg.ts";
 import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.ts";
 import type { SettingRow } from "./settings.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 interface CommandEntry {
@@ -137,12 +138,12 @@ function setting(state: State, row: SettingRow, argument: string): Intent {
 
 export function indexSkills(state: State): ReadonlyMap<string, SkillInfo> {
   return new Map(
-    (state.facts.session?.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
+    (followedSession(state)?.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
   );
 }
 
 function pluginCommands(state: State): readonly CommandInfo[] {
-  return state.facts.session?.view?.catalog.commands ?? [];
+  return followedSession(state)?.view?.catalog.commands ?? [];
 }
 
 export function slashNamespace(state: State): readonly SlashCommand[] {

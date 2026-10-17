@@ -20,6 +20,10 @@ async function exchange(
   content: string,
 ): Promise<void> {
   await head.send(content);
+  await advanced(host, turns, head);
+}
+
+async function advanced(host: Omit<Host, "listen">, turns: Script, head: Head): Promise<void> {
   const count = turns.turns.length + 1;
   const step = host.execution.advance({ session: head.sessionId, head: head.name });
   (await turns.started(count)).finish();
@@ -78,7 +82,7 @@ describe("heads", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: raw, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "Hi." });
     await land(a.kernel, session.id, "A");
     const hold = a.kernel.folds.acquire(session.id, LOCAL);
 
@@ -98,8 +102,8 @@ describe("heads", () => {
 
   it("creates, merges and removes heads with each outcome", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    await exchange(host, script, session, "One.");
+    const { session } = await host.sessions.start({ content: "One." });
+    await advanced(host, script, session);
     const tip = (await session.info()).heads[0]?.tip;
     assert(tip !== undefined);
 
@@ -150,8 +154,8 @@ describe("heads", () => {
 
   it("projects every branch as rows, parents first, with the head's path active", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    await exchange(host, script, session, "One.");
+    const { session } = await host.sessions.start({ content: "One." });
+    await advanced(host, script, session);
     await exchange(host, script, session, "Two.");
     const two = (await session.view()).messages[1];
     assert(two !== undefined);
@@ -186,38 +190,43 @@ describe("heads", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    await exchange(host, script, session, "One.");
+    const { session } = await host.sessions.start({ content: "One." });
+    await advanced(host, script, session);
     await exchange(host, script, session, "Two.");
+    await exchange(host, script, session, "Three.");
     const before = await session.tree();
-    const [one, two] = before.nodes;
-    assert(one !== undefined && two !== undefined);
+    const [one, two, three] = before.nodes;
+    assert(one !== undefined && two !== undefined && three !== undefined);
 
-    const stale = await session.move({ kind: "start" }, { expect: asId("an-old-revision") });
+    const stale = await session.move(
+      { kind: "commit", id: one.id },
+      { expect: asId("an-old-revision") },
+    );
 
     expect(await stale.settled()).toEqual({ kind: "stale", revision: before.revision });
 
-    const handback = await session.move({ kind: "commit", id: two.id });
+    const handback = await session.move({ kind: "commit", id: three.id });
 
     expect(await handback.settled()).toMatchObject({
       kind: "moved",
-      position: { kind: "commit", id: one.id },
+      position: { kind: "commit", id: two.id },
       summary: null,
-      handback: "Two.",
+      handback: "Three.",
     });
     expect(
       (await session.view()).messages.map((message) => message.kind === "user" && message.content),
-    ).toEqual(["One."]);
+    ).toEqual(["One.", "Two."]);
 
     const summary = await (
-      await session.move({ kind: "start" }, { abandoned: { summarize: {} } })
+      await session.move({ kind: "commit", id: two.id }, { abandoned: { summarize: {} } })
     ).settled();
 
     assert(summary.kind === "moved");
 
-    expect(summarized).toEqual([[one.id]]);
+    expect(summarized).toEqual([[two.id]]);
     expect(summary.summary).not.toBeNull();
     expect((await session.view()).messages).toMatchObject([
+      { kind: "user", content: "One." },
       {
         id: summary.summary,
         kind: "part",
@@ -227,27 +236,29 @@ describe("heads", () => {
         status: { kind: "settled" },
       },
     ]);
-    expect((await session.tree()).nodes.find((node) => node.active)).toMatchObject({
-      kind: "branchSummary",
-      preview: "Summary.",
-    });
+    expect(
+      (await session.tree()).nodes.find((node) => node.kind === "branchSummary"),
+    ).toMatchObject({ active: true, preview: "Summary." });
 
-    const keep = await (await session.move({ kind: "start" })).settled();
+    const keep = await (await session.move({ kind: "commit", id: two.id })).settled();
 
-    expect(keep).toEqual({
+    expect(keep).toMatchObject({
       kind: "moved",
-      revision: "",
-      position: { kind: "start" },
+      position: { kind: "commit", id: one.id },
       summary: null,
-      handback: null,
+      handback: "Two.",
     });
-    expect((await session.view()).messages).toEqual([]);
+    expect((await session.view()).messages).toMatchObject([{ kind: "user", content: "One." }]);
+    await expect(session.move({ kind: "start" })).rejects.toMatchObject({ code: "invalid" });
+    await expect(session.move({ kind: "commit", id: one.id })).rejects.toMatchObject({
+      code: "invalid",
+    });
 
     await session.send("Busy.");
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(script.turns.length + 1);
 
-    expect(await (await session.move({ kind: "start" })).settled()).toEqual({
+    expect(await (await session.move({ kind: "commit", id: two.id })).settled()).toEqual({
       kind: "busy",
       run: turn.input.run.id,
     });
@@ -259,15 +270,21 @@ describe("heads", () => {
   it("moves with `running: stop` in one set, the fence then the head move, without waiting", async () => {
     const recorder = recording(await memoryStore().open());
     const { kernel, host, script } = await setup({ store: recorder.store });
-    const session = await host.sessions.create();
-    await session.send("One.");
+    const { session } = await host.sessions.start({ content: "One." });
+    await advanced(host, script, session);
+    const [one] = (await session.tree()).nodes;
+    assert(one !== undefined);
+    await session.send("Two.");
     const step = host.execution.advance({ session: session.id, head: main });
-    const turn = await script.started(1);
+    const turn = await script.started(2);
     const before = await kernel.store.refs.tail(session.id);
     const from = recorder.sets.length;
-    const moved = await (await session.move({ kind: "start" }, { running: "stop" })).settled();
 
-    expect(moved).toMatchObject({ kind: "moved", position: { kind: "start" } });
+    const moved = await (
+      await session.move((await session.tree()).tip, { running: "stop" })
+    ).settled();
+
+    expect(moved).toMatchObject({ kind: "moved", position: { kind: "commit", id: one.id } });
     expect(recorder.sets[from]).toEqual(["run:stopping", "head:moved"]);
     expect((await kernel.store.refs.log(session.id, before, 100)).map(label).slice(0, 2)).toEqual([
       "run:stopping",

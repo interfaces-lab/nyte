@@ -24,7 +24,10 @@ async function* streamBytes(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
 
 async function sessionFiles(options?: Parameters<typeof world>[0]) {
   const built = await world(options);
-  const session = await built.host.sessions.create({ workspace: built.workspace });
+  const { session } = await built.host.sessions.start({
+    workspace: built.workspace,
+    content: "Hi.",
+  });
   const files: FilesApi = (await built.kernel.environments.attach(session.id)).files;
 
   return { ...built, session, files };

@@ -1,5 +1,14 @@
 import { followTrace, traced } from "@nyte-ai/sdk";
-import type { CommandInfo, Delivery, Session, SessionId, UserContent } from "@nyte-ai/sdk";
+import type {
+  CommandInfo,
+  ConfigurationPatch,
+  Connection,
+  Delivery,
+  Session,
+  SessionId,
+  UserContent,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { ImageContent } from "@nyte-ai/schema/model";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
@@ -60,7 +69,7 @@ export async function uploadComposerContent(content: ComposerContent): Promise<U
   return [...content.parts, ...content.files, ...uploaded];
 }
 
-type ComposerSendPlan =
+export type ComposerSendPlan =
   | { readonly kind: "empty" }
   | { readonly kind: "command"; readonly command: ParsedPluginCommand; readonly delivery: Delivery }
   | { readonly kind: "message"; readonly content: ComposerContent; readonly delivery: Delivery };
@@ -117,6 +126,29 @@ export async function sendComposerMessage(
       delivery: draft.delivery,
       ...(replacing !== undefined && { replace: replacing.id }),
     });
+  });
+}
+
+/** A new chat as its first submit starts it: the draft's id names the chat, so a retry is the same start. */
+interface ComposerChat {
+  readonly id: SessionId;
+  readonly workspace?: WorkspaceId;
+  readonly configuration?: ConfigurationPatch;
+}
+
+/** Uploads a new chat's first message and starts the chat with it as the client plugins admit it. */
+export async function startComposerChat(
+  connection: Connection,
+  chat: ComposerChat,
+  plan: Extract<ComposerSendPlan, { kind: "message" }>,
+): Promise<void> {
+  followTrace(chat.id, chat.id);
+
+  await traced("composer.submit", chat.id, { session: chat.id }, async () => {
+    const content = await uploadComposerContent(plan.content);
+    const draft = await admitDraft({ content, delivery: plan.delivery, session: null });
+
+    await connection.sessions.start({ ...chat, content: draft.content });
   });
 }
 

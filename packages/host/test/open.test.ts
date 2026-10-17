@@ -234,7 +234,7 @@ describe("openHost", () => {
   it("defaults the store to <home>/.nyte/nyte.db and the workspace to the local folder process.cwd()", async () => {
     const home = await folder();
     const first = await openHost({ models: fakeModels().models, home });
-    const created = await first.sessions.create({});
+    const { session: created } = await first.sessions.start({ content: "Hi." });
     await first.close();
 
     expect(await readdir(join(home, ".nyte"))).toContain("nyte.db");
@@ -263,7 +263,7 @@ describe("openHost", () => {
     });
 
     const [info] = await host.workspaces.list();
-    await host.sessions.create({ workspace: info.id });
+    await host.sessions.start({ workspace: info.id, content: "Hi." });
 
     expect(info.projectResources).toBeNull();
     expect(info.projectSources).toContain(".nyte/plugins/mine.mjs");
@@ -272,7 +272,7 @@ describe("openHost", () => {
     expect(await host.workspace(info.id).update({ projectResources: true })).toEqual({
       kind: "updated",
     });
-    await host.sessions.create({ workspace: info.id });
+    await host.sessions.start({ workspace: info.id, content: "Hi." });
 
     expect((await firstView(host)).plugins.map((row) => row.id)).toContain("mine");
   });
@@ -410,7 +410,7 @@ describe("openHost", () => {
     expect((await host.models.list()).providers[0]?.credential).toBe("configured");
     expect(reads).toBe(0);
     fake.reply({ content: [{ type: "text", text: "hi" }] });
-    await (await (await host.sessions.create()).send("Hello")).settled();
+    await (await host.sessions.start({ content: "Hello" })).receipt.settled();
 
     expect(fake.requests).toHaveLength(1);
     expect(reads).toBe(1);

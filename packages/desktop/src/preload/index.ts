@@ -10,8 +10,11 @@ import {
   CALL_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
+  FIRST_WINDOW_ARGUMENT,
+  MACHINE_NAME_ARGUMENT,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
+  WINDOW_PAINTED_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type {
@@ -83,6 +86,12 @@ const canvasShell = process.argv
 
 const bridge = {
   clientSurface: "desktop",
+  platform: process.platform,
+  machineName: process.argv
+    .find((argument) => argument.startsWith(`${MACHINE_NAME_ARGUMENT}=`))
+    ?.slice(MACHINE_NAME_ARGUMENT.length + 1),
+  firstWindow: process.argv.includes(FIRST_WINDOW_ARGUMENT),
+  windowPainted: () => ipcRenderer.send(WINDOW_PAINTED_CHANNEL),
   ...(canvasShell === undefined ? {} : { canvasShell }),
   host: {
     /** Only the main process sends this private channel; the IPC event is never exposed. */

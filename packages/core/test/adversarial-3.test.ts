@@ -56,7 +56,7 @@ describe("ADV A-3", () => {
     });
 
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "Hi." });
 
     const run = await startRun(
       a.kernel,
@@ -118,8 +118,7 @@ describe("ADV A-3", () => {
 
     await using host = await open(fake, { store: shared, plugins: [plugin] });
     const b = await setup({ store: connection, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
 
     const run = await until(async () => {
       const view = await session.view();
@@ -154,8 +153,7 @@ describe("ADV A-3", () => {
     const fake = fakeModels({ models: [testModel("model")] });
     fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     const views = session.watch()[Symbol.asyncIterator]();
 
     for (;;) {
@@ -248,14 +246,12 @@ describe("ADV A-3", () => {
       );
 
       await using host = await open(fake, { plugins: [slow, provider], store });
-      const session = await host.sessions.create();
+      const { session, receipt } = await host.sessions.start({ content: "Go." });
 
       reload = () => {
         void host.kernel.plugins.reload(session.id);
         setTimeout(() => gate.resolve(), 200);
       };
-
-      const receipt = await session.send("Go.");
 
       await until(async () =>
         (await session.view()).heads[0]?.execution.kind === "waiting" ? true : undefined,
@@ -312,11 +308,13 @@ describe("ADV F-3", () => {
   it("settles a reacquired move receipt after a restart and repair, its set landed before the crash (F-3 R1, F-2 N1)", async () => {
     const { memory, store } = await crashingAfterMove();
     const a = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
-    await land(a.kernel, session, "Base.");
+    const { session, receipt: first } = await a.host.sessions.start({ content: "Base." });
+    await landing(a.kernel, session.id, main, [first.message], null);
+    await land(a.kernel, session, "Next.");
+    const { tip, nodes } = await session.tree();
     const id = asId<"receipt">("crash");
 
-    await expect(move(a.kernel, session.id, main, { kind: "start" }, { id })).rejects.toThrow(
+    await expect(move(a.kernel, session.id, main, tip, { id })).rejects.toThrow(
       "The host crashed.",
     );
 
@@ -330,10 +328,10 @@ describe("ADV F-3", () => {
 
     const moved = {
       kind: "moved",
-      revision: "",
-      position: { kind: "start" },
+      revision: (await memory.refs.get(headRef(session.id, main)))?.revision,
+      position: { kind: "commit", id: nodes[0]?.id },
       summary: null,
-      handback: null,
+      handback: "Next.",
     };
 
     expect(await receipt.status()).toEqual({ kind: "settled", outcome: moved });
@@ -343,26 +341,28 @@ describe("ADV F-3", () => {
   it("answers moved when a crashed move is replayed after a later write, keeping that write (F-3 R4, F-2 N1)", async () => {
     const { memory, store } = await crashingAfterMove();
     const a = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
-    await land(a.kernel, session, "Base.");
+    const { session, receipt: first } = await a.host.sessions.start({ content: "Base." });
+    await landing(a.kernel, session.id, main, [first.message], null);
+    await land(a.kernel, session, "Next.");
+    const { tip, nodes } = await session.tree();
     const id = asId<"receipt">("crash");
 
-    await expect(move(a.kernel, session.id, main, { kind: "start" }, { id })).rejects.toThrow(
+    await expect(move(a.kernel, session.id, main, tip, { id })).rejects.toThrow(
       "The host crashed.",
     );
 
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
     await land(b.kernel, b.host.session(session.id), "Later.");
     const later = await memory.refs.get(headRef(session.id, main));
-    const replay = await move(b.kernel, session.id, main, { kind: "start" }, { id });
+    const replay = await move(b.kernel, session.id, main, tip, { id });
     const log = await memory.refs.log(session.id, asSeq(0), 1000);
 
     expect(await replay.settled()).toEqual({
       kind: "moved",
       revision: later?.revision,
-      position: { kind: "start" },
+      position: { kind: "commit", id: nodes[0]?.id },
       summary: null,
-      handback: null,
+      handback: "Next.",
     });
     expect(log.filter((event) => event.kind === "head" && event.reason === "moved")).toHaveLength(
       1,
@@ -384,8 +384,9 @@ describe("ADV F-3", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    const original = await session.send("Original.");
+    const { session, receipt: original } = await host.sessions.start({
+      content: "Original.",
+    });
     await landing(kernel, session.id, main, [original.message], null);
     const old = await kernel.store.refs.get(headRef(session.id, main));
 
@@ -431,8 +432,8 @@ describe("ADV F-3", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: raw, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
-    await land(a.kernel, session, "A.");
+    const { session, receipt: first } = await a.host.sessions.start({ content: "A." });
+    await landing(a.kernel, session.id, main, [first.message], null);
     const hold = a.kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
     await land(b.kernel, b.host.session(session.id), "B.");

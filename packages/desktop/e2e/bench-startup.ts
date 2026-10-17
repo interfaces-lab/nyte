@@ -29,13 +29,12 @@ function every(limit: number): Readonly<Record<StartupCase, number>> {
  * (macOS arm64, packaged, 7 runs, main's restored and heavy homes seeded by its own code): each
  * budget is the branch's p95 plus 15% (memory plus 5%), and no latency or long-task budget sits
  * above main's median in its scenario. Fresh and restored allow the one long task left, the
- * entry's evaluation (60-94 ms), at main's median of 88 ms. Every scenario makes three IPC
- * calls before the composer: a restored chat's folder comes with the host state (`host.restore`);
- * main makes 22 there. That folder is selected before the first frame, so its `workspace.files`
- * and `workspace.git` reads join the first burst of host requests: 14 in most runs, and up to 17
- * when the folder's `files.scan`, `git.watch` and a stream cancel start before the composer.
- * First paint is the static splash in every scenario, held at 495 ms, under main's fresh median
- * (509-615 ms).
+ * entry's evaluation (60-94 ms), at main's median of 88 ms. Every scenario makes at most three
+ * IPC calls before the composer; main makes 22 there. A restored chat's folder is selected by
+ * the host (`host.restore`) without a reload, so its `workspace.files` and `workspace.git` reads
+ * join the first burst of host requests: 14 in most runs, and up to 17 when the folder's
+ * `files.scan`, `git.watch` and a stream cancel start before the composer. First paint is the
+ * shell's first frame in every scenario, held at 495 ms, under main's fresh median (509-615 ms).
  */
 const metricFields = [
   {
@@ -56,7 +55,13 @@ const metricFields = [
     unit: "ms",
     budget: every(495),
   },
-  { key: "splashMs", label: "Splash visible", unit: "ms", budget: every(225) },
+  { key: "spawnToWindowShownMs", label: "Spawn to window shown", unit: "ms", budget: null },
+  {
+    key: "windowShownToFirstPaintMs",
+    label: "Window shown to first paint (FCP)",
+    unit: "ms",
+    budget: null,
+  },
   { key: "keystrokeToPaintMs", label: "Keystroke to paint", unit: "ms", budget: every(16.7) },
   {
     key: "keystrokeWaitingMs",
@@ -631,6 +636,11 @@ async function measure(
       created === null ? [] : [renderer.timeOriginEpochMs + rendererMs - created];
 
     const firstKeystroke = renderer.keystrokes[0];
+    const windowShown = main.marks.find((mark) => mark.name === "nyte:window-shown");
+
+    const windowShownEpochMs =
+      windowShown === undefined ? undefined : main.timeOriginEpochMs + windowShown.startTime;
+
     const longTasks = renderer.longTasks ?? [];
     const fcp = renderer.firstContentfulPaintMs ?? renderer.firstPaintMs;
 
@@ -668,7 +678,14 @@ async function measure(
             : sinceSpawn(firstKeystroke.startTime + firstKeystroke.duration),
         spawnToComposerMs: sinceSpawn(ready.readyMs),
         spawnToFirstPaintMs: sinceSpawn(fcp),
-        splashMs: [renderer.shellReadyMs - fcp],
+        spawnToWindowShownMs:
+          created === null || windowShownEpochMs === undefined
+            ? []
+            : [windowShownEpochMs - created],
+        windowShownToFirstPaintMs:
+          windowShownEpochMs === undefined
+            ? []
+            : [renderer.timeOriginEpochMs + fcp - windowShownEpochMs],
         keystrokeToPaintMs: renderer.keystrokes.map(({ work, duration }) =>
           Value.Check(Type.Number(), work) ? work : duration,
         ),
@@ -854,7 +871,6 @@ async function run(options: Options): Promise<void> {
       typedInput:
         "The task after the frame that follows the composer's first DOM mutation for the first typed character (requestAnimationFrame, then a MessageChannel task).",
       keystroke: `Each of ${typedText.length} characters typed ${keystrokeDelayMs} ms apart right after the composer is ready: keydown timeStamp to the task after the frame that follows the composer's DOM mutation.`,
-      splash: "nyte:shell-ready (first frame after the interface replaces #startup) minus FCP.",
       longTasks: "Buffered PerformanceObserver longtask entries that start before composer ready.",
       ipc: "Host calls (ipcRenderer.invoke on the call channel) that reached main before composer ready, recorded in main from Electron's session -ipc-invoke event.",
       hostRequests: "Completed fetch resource entries started before composer ready.",

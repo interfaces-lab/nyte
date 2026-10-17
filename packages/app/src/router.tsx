@@ -24,7 +24,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { queryClient, readSession, useHostState } from "./queries.ts";
+import { keys, queryClient, readSession } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
 import { directoryWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
@@ -38,7 +38,6 @@ import { shell } from "./theme/schema.stylex.ts";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { nyte } from "./nyte.ts";
-import { macPlatform } from "./platform.ts";
 import { clientCapabilities, resolveClientAction, resolveTabShortcut } from "./client-actions.ts";
 import { activeTab, tabPlace } from "./tabs/model.ts";
 import { placeHref } from "./tabs/places.ts";
@@ -143,12 +142,11 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
  * navigating the tab.
  */
 function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
-  const host = useHostState();
   const shellRouter = useRouter();
   const page = useStagePage();
   const { about } = useOverlays();
   const sidebarVisible = useSetting(preferences.sidebarVisible);
-  const mac = macPlatform(host.data?.platform);
+  const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
   useWindowTabsSync();
 
@@ -295,7 +293,10 @@ const indexRoute = createRoute({
     if (search.customize !== undefined || search.environment !== undefined) return;
 
     if (preferences.startupDestination.get() === "new-chat") return;
-    const directory = directoryWatch("all").value;
+
+    const directory =
+      directoryWatch("all").value ??
+      queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots);
 
     if (directory === undefined) {
       context.startup.openLastChatOnArrival();
@@ -321,9 +322,10 @@ function lastChat(directory: readonly SessionInfo[]): SessionId | undefined {
 }
 
 /**
- * Startup shows a new chat until the directory arrives, then moves to the
- * last chat, unless the user has started typing or clicking in the meantime:
- * a draft in the new chat outranks the startup destination.
+ * Without a directory or the last run's chats, startup shows a new chat until
+ * the directory arrives, then moves to the last chat, unless the user has
+ * started typing or clicking in the meantime: a draft in the new chat
+ * outranks the startup destination.
  */
 function openLastChatOnArrival(router: AppRouter): void {
   const directory = directoryWatch("all");
@@ -431,8 +433,8 @@ const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute])
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
 /** Desktop windows show tabs: restore this window's strip before the router starts. */
-export function startWindowTabs(): Promise<void> {
-  return windowTabs.start();
+export function startWindowTabs(firstWindow: boolean): void {
+  windowTabs.start(firstWindow);
 }
 
 /** The route the active window tab shows. */

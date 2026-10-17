@@ -88,8 +88,6 @@ function promotable(queue: readonly QueueRow[]): QueueRow | null {
 
 export function blockedReason(blocked: Blocked): string {
   switch (blocked.kind) {
-    case "starting":
-      return "Still starting. Your draft is saved here.";
     case "no-session":
     case "switching":
       return "Opening the chat. Your draft is saved here.";
@@ -366,6 +364,16 @@ const SITUATIONS: readonly Row[] = [
     },
   },
   {
+    name: "waiting",
+    active: (input) => input.waiting,
+    cells: {
+      "chat.submit": pass,
+      "chat.queue.submit": pass,
+      "chat.interrupt": () => on({ kind: "recall-first-message" }, "withdraw"),
+      "chat.quit": pass,
+    },
+  },
+  {
     name: "idle",
     active: () => true,
     cells: {
@@ -605,11 +613,13 @@ function otherInteraction(
     case "chat.message.next":
       return on({ kind: "scroll", to: "next-turn" }, "next message", true);
     case "chat.thinking.cycle":
-      return on({ kind: "cycle-thinking" }, "thinking");
+      return input.models ? on({ kind: "cycle-thinking" }, "thinking") : OFF;
     case "chat.model.next":
-      return on({ kind: "cycle-model", direction: 1 }, "model");
+      return input.models ? on({ kind: "cycle-model", direction: 1 }, "model") : OFF;
     case "chat.model.previous":
-      return on({ kind: "cycle-model", direction: -1 }, "previous model", true);
+      return input.models
+        ? on({ kind: "cycle-model", direction: -1 }, "previous model", true)
+        : OFF;
     case "chat.editor.open":
       return on({ kind: "open-editor" }, "editor", true);
     case "chat.attachment.open":

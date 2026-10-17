@@ -9,7 +9,8 @@ import { queueRows } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
 import { currentQuestion } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
-import type { Draft, ShellJob, State } from "./state.ts";
+import { followedSession } from "./state.ts";
+import type { Draft, FollowedSession, ShellJob, State, Submission } from "./state.ts";
 
 /** What the interaction table decides each command from. */
 export interface TableInput {
@@ -22,6 +23,10 @@ export interface TableInput {
   readonly completion: CompletionModel | null;
   readonly dialog: Dialog | null;
   readonly blocked: Blocked | null;
+  /** A blank chat's first message waits for the host to open. */
+  readonly waiting: boolean;
+  /** The host's model catalog has arrived, so model and thinking choices can be offered. */
+  readonly models: boolean;
   readonly queue: readonly QueueRow[];
   readonly followUp: "steer" | "queue";
   readonly tasks: number;
@@ -52,14 +57,13 @@ export interface EditingModel {
 }
 
 export type Blocked =
-  | { readonly kind: "starting" }
   | { readonly kind: "no-session" }
   | { readonly kind: "switching" }
   | { readonly kind: "changing-directory" }
   | { readonly kind: "authenticating"; readonly link: string | null }
   | { readonly kind: "editor" };
 
-export function runModel(view: State["facts"]["session"]): RunModel {
+export function runModel(view: FollowedSession | null): RunModel {
   const execution = view?.view?.execution;
 
   if (execution === undefined) return { kind: "idle" };
@@ -89,11 +93,11 @@ export function runModel(view: State["facts"]["session"]): RunModel {
 export function blockedBy(state: State): Blocked | null {
   const { pending } = state.local;
 
-  if (state.facts.phase.kind === "starting") return { kind: "starting" };
-
   if (pending.some((op) => op.kind === "switch")) return { kind: "switching" };
 
-  if (state.facts.session === null || state.facts.session.view === null)
+  const { chat } = state.facts;
+
+  if (chat === null || (chat.kind === "session" && chat.view === null))
     return { kind: "no-session" };
 
   if (pending.some((op) => op.kind === "cd")) return { kind: "changing-directory" };
@@ -107,7 +111,7 @@ export function blockedBy(state: State): Blocked | null {
 }
 
 export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
-  const { session } = state.facts;
+  const session = followedSession(state);
 
   const question = currentQuestion(
     session === null ? null : { id: session.id, view: session.view },
@@ -138,6 +142,8 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
         : null,
     dialog,
     blocked: blockedBy(state),
+    waiting: waitingMessages(state).length > 0,
+    models: state.facts.catalog.catalog !== null,
     queue,
     followUp: state.facts.settings.followUp,
     tasks: state.facts.tasks.length,
@@ -149,6 +155,15 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
     },
     browsing: state.local.history !== null,
   };
+}
+
+/** The messages sent to the blank chat on screen while they wait for the host to open, oldest first. */
+export function waitingMessages(state: State): readonly Submission[] {
+  const { chat } = state.facts;
+
+  if (chat?.kind !== "blank" || state.facts.host === "open") return [];
+
+  return state.local.submissions.filter((sent) => sent.session === chat.id);
 }
 
 function editingModel(state: State, queue: readonly QueueRow[]): EditingModel | null {

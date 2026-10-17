@@ -15,7 +15,6 @@ import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { macPlatform } from "../platform.ts";
 import {
   readGitPatches,
   readRunPatches,
@@ -55,6 +54,7 @@ import { changesViewed, patchDigest } from "./changes-viewed.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 import { EMPTY_PATCH, patchStackSection } from "./stacked-diff.ts";
+import { nyte } from "../nyte.ts";
 
 interface VcsChangeRow {
   readonly source: "working" | "commit";
@@ -809,7 +809,7 @@ function ChangesPanelView({
       {...props(styles.panel)}
       aria-label="Workspace changes"
       onKeyDown={(event) => {
-        const action = changesShortcutAction(event.nativeEvent, macPlatform(undefined));
+        const action = changesShortcutAction(event.nativeEvent, nyte.platform === "darwin");
 
         if (action === undefined) return;
         event.preventDefault();

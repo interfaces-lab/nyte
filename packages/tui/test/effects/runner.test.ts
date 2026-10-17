@@ -1,15 +1,15 @@
 import { asId } from "@nyte-ai/schema";
 import type { Configuration, SessionView, Thinking } from "@nyte-ai/sdk";
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { BootOptions } from "../../src/effects/boot.ts";
 import { createRunner } from "../../src/effects/runner.ts";
 import type { Runner } from "../../src/effects/runner.ts";
 import type { Msg } from "../../src/model/msg.ts";
+import { followedSession } from "../../src/model/state.ts";
 import type { FollowedSession, State, Submission } from "../../src/model/state.ts";
 import { until } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
 import type { FakePorts } from "../fixture/ports.ts";
-import { SETTINGS, buildState } from "../fixture/state.ts";
+import { CATALOG, SETTINGS, buildState } from "../fixture/state.ts";
 import { CONFIGURATION, followed, buildView } from "../fixture/view.ts";
 
 const skipVersionCheck = process.env["NYTE_SKIP_VERSION_CHECK"];
@@ -26,12 +26,13 @@ afterAll(() => {
 interface Harness {
   readonly runner: Runner;
   readonly ports: FakePorts;
+  readonly controller: AbortController;
   readonly dispatched: Msg[];
   set(state: State): void;
   received<K extends Msg["kind"]>(kind: K): Promise<Extract<Msg, { readonly kind: K }>>;
 }
 
-function harness(initial: State): Harness {
+function harness(initial: State, opened: Promise<void> = Promise.resolve()): Harness {
   const host = fakeHost();
   const ports = fakePorts(host);
   const dispatched: Msg[] = [];
@@ -45,6 +46,7 @@ function harness(initial: State): Harness {
     },
     read: () => state,
     signal: controller.signal,
+    opened,
   });
 
   const received = <K extends Msg["kind"]>(kind: K): Promise<Extract<Msg, { readonly kind: K }>> =>
@@ -55,6 +57,7 @@ function harness(initial: State): Harness {
   return {
     runner,
     ports,
+    controller,
     dispatched,
     set: (next) => {
       state = next;
@@ -446,55 +449,236 @@ test("an acknowledged thinking level is saved as the default; a model-only choic
 
   const saved = await app.received("settings");
   expect(saved.settings.thinkingLevel).toBe("high");
-  expect(await app.ports.settings.read("/tmp")).toMatchObject({ thinkingLevel: "high" });
+  expect(app.ports.settings.read("/tmp").settings).toMatchObject({ thinkingLevel: "high" });
   expect(app.dispatched.filter((msg) => msg.kind === "settings")).toHaveLength(1);
 });
 
-test("a session the TUI creates starts at the remembered level, clamped to its model", async () => {
-  const app = harness(remembering("xhigh"));
+test("/new opens a blank chat at the remembered level, clamped to its model, and creates no session", async () => {
+  const app = harness(remembering("xhigh", followed(LANDED)));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   await app.runner.settled();
 
-  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([{ effort: "high" }]);
-  expect(app.dispatched[0]).toMatchObject({ kind: "session-opened", session: asId("created-1") });
+  expect(app.dispatched[0]).toMatchObject({
+    kind: "blank-opened",
+    chat: {
+      kind: "blank",
+      folder: { kind: "folder", id: asId("workspace") },
+      selection: { effort: "high" },
+    },
+  });
+  expect(app.ports.host.starts).toEqual([]);
 });
 
-test("without a remembered level a created session keeps the level core gave it", async () => {
-  const app = harness(buildState(null));
+test("without a remembered level a blank chat takes the level core would give its model", async () => {
+  const app = harness(buildState(followed(LANDED)));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   await app.runner.settled();
 
-  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([]);
+  expect(app.dispatched[0]).toMatchObject({
+    kind: "blank-opened",
+    chat: { selection: { model: { id: "model" }, effort: "low" } },
+  });
 });
 
 test("at boot --effort wins over the remembered level, and a resumed session keeps its own", async () => {
-  const boots: readonly {
-    readonly target: BootOptions["target"];
-    readonly effort: Thinking | null;
-    readonly session: string;
-    readonly configure: readonly { readonly effort: Thinking }[];
-  }[] = [
-    { target: { kind: "new" }, effort: null, session: "created-1", configure: [{ effort: "low" }] },
-    { target: { kind: "new" }, effort: "high", session: "created-1", configure: [] },
-    { target: { kind: "session", id: asId("s1") }, effort: null, session: "s1", configure: [] },
+  const blanks: readonly { readonly effort: Thinking | null; readonly shown: Thinking }[] = [
+    { effort: null, shown: "low" },
+    { effort: "high", shown: "high" },
   ];
 
-  for (const boot of boots) {
+  for (const blank of blanks) {
     const app = harness(remembering("low"));
-    app.runner.boot(
-      {
-        home: "/tmp",
-        cwd: "/tmp",
-        target: boot.target,
-        model: null,
-        effort: boot.effort,
-      },
-      Promise.resolve(),
-    );
+    app.runner.boot({
+      home: "/tmp",
+      cwd: "/tmp",
+      target: { kind: "new" },
+      model: null,
+      effort: blank.effort,
+    });
     await app.runner.settled();
-    expect(await app.received("session-opened")).toMatchObject({ session: asId(boot.session) });
-    expect(app.ports.host.sessions.get(boot.session)?.calls.configure).toEqual([...boot.configure]);
+    expect(await app.received("blank-opened")).toMatchObject({
+      chat: { selection: { effort: blank.shown } },
+    });
+    expect(app.ports.host.starts).toEqual([]);
   }
+
+  const app = harness(remembering("high"));
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "session", id: asId("s1") },
+    model: null,
+    effort: null,
+  });
+  await app.runner.settled();
+  expect(await app.received("session-opened")).toMatchObject({ session: asId("s1") });
+  expect(app.ports.host.sessions.get("s1")?.calls.configure).toEqual([]);
+});
+
+test("the first send from a blank chat starts it with that message, then follows it; a refused start keeps it blank", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b1"),
+    folder: { kind: "folder", id: asId<"workspace">("workspace") },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-b1",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+  const sending: State = {
+    facts: { ...base.facts, chat: blank },
+    local: { ...base.local, submissions: [first] },
+  };
+
+  const app = harness(sending);
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await app.runner.settled();
+
+  expect(app.ports.host.starts).toEqual([
+    { id: blank.id, workspace: blank.folder.id, selection: blank.selection, content: "hello" },
+  ]);
+  expect(app.ports.plugins.submitted).toEqual([
+    { content: "hello", delivery: "steer", session: null },
+  ]);
+  expect(app.dispatched.map((msg) => msg.kind)).toContain("sent");
+  expect(await app.received("session-opened")).toMatchObject({ session: blank.id });
+
+  const refused = harness(sending);
+
+  refused.ports.plugins.decision = { kind: "reject", reason: "Not today." };
+  refused.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await refused.runner.settled();
+
+  expect(refused.ports.host.starts).toEqual([]);
+  expect(await refused.received("send-refused")).toMatchObject({ reason: "Not today." });
+  expect(refused.dispatched.map((msg) => msg.kind)).not.toContain("session-opened");
+});
+
+test("a first message on a signed-out provider's model goes back with the fix, and nothing starts", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b-signed-out"),
+    folder: { kind: "folder", id: asId<"workspace">("workspace") },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-signed-out",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+
+  const app = harness({
+    facts: {
+      ...base.facts,
+      chat: blank,
+      catalog: {
+        generation: 1,
+        catalog: {
+          ...CATALOG,
+          providers: CATALOG.providers.map((provider) => ({ ...provider, credential: "missing" })),
+        },
+      },
+    },
+    local: { ...base.local, submissions: [first] },
+  });
+
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await app.runner.settled();
+
+  expect(app.ports.host.starts).toEqual([]);
+  expect(await app.received("send-refused")).toMatchObject({
+    reason: "model isn't available. ctrl+p picks another.",
+  });
+});
+
+test("a first message sent while boot settles the launch folder registers that folder once", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b-launch"),
+    folder: { kind: "launch-folder" },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-launch",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+
+  const app = harness({
+    facts: { ...base.facts, chat: blank },
+    local: { ...base.local, submissions: [first] },
+  });
+
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await until(() => (app.ports.host.starts.length === 1 ? true : undefined));
+
+  expect(app.ports.host.folders).toEqual([null]);
+  app.controller.abort();
+  await app.runner.dispose();
+});
+
+test("/reload reads settings after pending writes land, and names a settings file it left out", async () => {
+  const order: string[] = [];
+  const dispatched: Msg[] = [];
+  const ports = fakePorts(fakeHost());
+
+  const runner = createRunner({
+    ports: {
+      ...ports,
+      settings: {
+        ...ports.settings,
+        settled: async () => {
+          order.push("settled");
+        },
+        read: () => {
+          order.push("read");
+
+          return {
+            settings: SETTINGS,
+            invalid: [{ path: "/home/settings.json", reason: "invalid JSON" }],
+          };
+        },
+      },
+    },
+    dispatch: (msg) => {
+      dispatched.push(msg);
+    },
+    read: () => buildState(followed(LANDED)),
+    signal: new AbortController().signal,
+    opened: Promise.resolve(),
+  });
+
+  runner.run({ kind: "reload" });
+  await runner.settled();
+
+  expect(order).toEqual(["settled", "read"]);
+  expect(dispatched.find((msg) => msg.kind === "op-finished")).toMatchObject({
+    notice: {
+      tone: "warning",
+      text: "Reloaded this workspace's resources · 0 skills\nIgnored /home/settings.json: invalid JSON",
+    },
+  });
 });
 
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {
@@ -536,6 +720,41 @@ test("a local shell reports its job as facts from start to end and can be stoppe
     kind: "shell-job",
     job: { id: "sh2", state: { kind: "cancelled" } },
   });
+});
+
+test("before the host opens, local effects run at once and host effects wait, then start in order", async () => {
+  const opening = Promise.withResolvers<void>();
+  const app = harness(buildState(followed(LANDED)), opening.promise);
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  app.runner.run({ kind: "copy", text: "now" });
+  app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
+  await Bun.sleep(5);
+
+  expect(app.ports.terminal.copies).toEqual(["now"]);
+  expect(app.dispatched).toEqual([]);
+
+  opening.resolve();
+  await app.runner.settled();
+  expect(app.dispatched.map((msg) => msg.kind).slice(0, 2)).toEqual([
+    "blank-opened",
+    "session-opened",
+  ]);
+});
+
+test("a runner stopped before the host opens drops its waiting host effects and settles", async () => {
+  const app = harness(buildState(followed(LANDED)), new Promise(() => undefined));
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  app.controller.abort();
+  await app.runner.dispose();
+
+  expect(app.dispatched).toEqual([]);
 });
 
 test("exit resolves the runner's exited promise with the code", async () => {
@@ -588,18 +807,15 @@ test("a sign-out that leaves the model in place confirms in the ok tone; a failu
 test("a rename of the followed chat in the session directory reaches its info, so the title follows", async () => {
   const state = buildState(followed(LANDED));
   const app = harness(state);
-  const info = state.facts.session?.info;
+  const info = followedSession(state)?.info;
 
-  app.runner.boot(
-    {
-      home: "/tmp",
-      cwd: "/tmp",
-      target: { kind: "session", id: asId("s1") },
-      model: null,
-      effort: null,
-    },
-    Promise.resolve(),
-  );
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "session", id: asId("s1") },
+    model: null,
+    effort: null,
+  });
 
   if (info === undefined) throw new Error("The fixture follows s1.");
   app.ports.host.publishSessions([info]);

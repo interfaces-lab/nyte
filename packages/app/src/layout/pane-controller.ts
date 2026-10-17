@@ -19,6 +19,7 @@ import type {
   SplitDirection,
 } from "./pane-layout.ts";
 import { SessionViewStateStore } from "./session-view-state.ts";
+import type { ComposerViewState } from "./session-view-state.ts";
 
 interface LayoutStorage {
   getItem(key: string): string | null;
@@ -191,10 +192,7 @@ export class PaneController {
   selectDraft(draftId: string): PaneLayout {
     const before = this.#snapshot.layout;
 
-    const visible = orderedPanes(before).find(
-      (pane) =>
-        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
-    );
+    const visible = this.#paneShowingDraft(draftId);
 
     if (visible !== undefined) {
       const layout = this.focus(visible.id);
@@ -216,17 +214,38 @@ export class PaneController {
 
   removeDraft(draftId: string): PaneLayout {
     const layout = this.#snapshot.layout;
-
-    const visible = orderedPanes(layout).find(
-      (pane) =>
-        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
-    );
+    const visible = this.#paneShowingDraft(draftId);
 
     if (!this.#viewState.removeDraft(draftId)) return layout;
 
     if (visible !== undefined) this.#requestFocus(visible.id);
 
     return layout;
+  }
+
+  /**
+   * The draft started chat `sessionId`: the pane showing the draft opens the
+   * chat, wherever the draft moved meanwhile, and a pane showing anything
+   * else stays put. `composer` waits in the chat's composer when the start
+   * handed the message back.
+   */
+  openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void {
+    const visible = this.#paneShowingDraft(draftId);
+
+    if (composer !== undefined) {
+      const paneId = visible?.id ?? activePane(this.#snapshot.layout).id;
+      this.#viewState.updateSession(sessionId, paneId, (state) => ({ ...state, composer }));
+    }
+
+    if (visible !== undefined) this.selectSessionInPane(visible.id, sessionId);
+    this.#viewState.removeDraft(draftId);
+  }
+
+  #paneShowingDraft(draftId: string) {
+    return orderedPanes(this.#snapshot.layout).find(
+      (pane) =>
+        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
+    );
   }
 
   split(direction: SplitDirection): PaneLayout {

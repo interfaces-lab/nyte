@@ -17,10 +17,10 @@ const host = await sdk.open({
   workspace: { kind: "chat-only", locator: null },
 });
 
-const session = await host.sessions.create({
+const { session, receipt } = await host.sessions.start({
   configuration: { model: { provider: "openai-codex", id: "{{modelId}}" } },
+  content: "Hello",
 });
-const receipt = await session.send("Hello");
 const end = await receipt.settled();
 const view = await session.view();
 
@@ -30,8 +30,9 @@ await host.close();
 await store.close();
 ```
 
-`sdk.open` composes a host in this process and runs its sessions there. `send` admits the message
-and returns a receipt: admission, not an answer. `settled()` waits for how the run ended:
+`sdk.open` composes a host in this process and runs its sessions there. `sessions.start` stores the
+session with its first message in one step and returns a receipt: admission, not an answer. Later
+messages go through `session.send`, which returns the same kind of receipt. `settled()` waits for how the run ended:
 `completed`, `stopped` or `failed`. `view()` is one snapshot of what a client draws: `messages`,
 `turns`, `execution`, `background` and `changes`. For a live view, use `watch()` as in
 [Make a web app](#make-a-web-app). The store is yours, so close it after the host.
@@ -150,7 +151,8 @@ node server.ts
 
 #### Render the chat
 
-Replace the generated `src/App.tsx`. Enter the token printed by the host to create a session.
+Replace the generated `src/App.tsx`. Enter the token printed by the host and a first message; that
+submit starts the session.
 `watch()` yields the whole view on every change, and resumes from where it stopped when the link
 drops.
 
@@ -193,6 +195,7 @@ export default function App() {
   }, [session]);
 
   async function submit() {
+    if (!input.trim()) return;
     setBusy(true);
     setError("");
     try {
@@ -201,11 +204,10 @@ export default function App() {
           url: "http://127.0.0.1:8787",
           credentials: { kind: "token", token },
         });
-        setSession(await connection.sessions.create());
-        return;
+        setSession((await connection.sessions.start({ content: input })).session);
+      } else {
+        await session.send(input, { delivery: "queue" });
       }
-      if (!input.trim()) return;
-      await session.send(input, { delivery: "queue" });
       setInput("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -241,7 +243,7 @@ export default function App() {
           void submit();
         }}
       >
-        {session === undefined ? (
+        {session === undefined && (
           <label>
             Host token
             <input
@@ -253,17 +255,16 @@ export default function App() {
               minLength={16}
             />
           </label>
-        ) : (
-          <label>
-            Message
-            <input
-              value={input}
-              disabled={busy || view === undefined}
-              onChange={(event) => setInput(event.target.value)}
-              required
-            />
-          </label>
         )}
+        <label>
+          Message
+          <input
+            value={input}
+            disabled={busy || (session !== undefined && view === undefined)}
+            onChange={(event) => setInput(event.target.value)}
+            required
+          />
+        </label>
         <button disabled={busy || (session !== undefined && view === undefined)}>
           {session === undefined ? "Start chat" : "Send"}
         </button>
@@ -280,8 +281,7 @@ pnpm dev --host localhost --port 5173 --strictPort
 ```
 
 Open `http://localhost:5173`. The host stores conversation history, so the browser sends only the
-new message, not the whole transcript. This example creates a new session each time you start a
-chat. Save `session.id` and reopen it with `connection.session(id)` after a reload.
+new message, not the whole transcript. This example starts a new session with each first message. Save `session.id` and reopen it with `connection.session(id)` after a reload.
 
 A sent message is in `view.messages` at once, `unsent` until the host admits it, then `pending`
 and `landed`. The sdk mints its id before the network and resends it under that id after a failed
@@ -328,7 +328,8 @@ adapter rather than pointing directly at these endpoints.
 ## Make a TUI
 
 Keep the host and render the session yourself. There is nothing to fold and nothing to retry:
-`watch()` yields the view, and `send` journals the message before it reaches the wire.
+`sessions.start` retries under the session id it minted, `watch()` yields the view, and `send`
+journals each later message before it reaches the wire.
 
 ```ts title="tui.ts"
 import process from "node:process";
@@ -339,12 +340,10 @@ const connection = await sdk.connect({
   url: "http://127.0.0.1:8787",
   credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
 });
-const session = await connection.sessions.create();
+const { session } = await connection.sessions.start({ content: "Explain this repository" });
 
 const draw = (view: SessionView) =>
   console.log(view.turns.length, "turns,", view.execution.kind, "execution");
-
-await session.send("Explain this repository", { delivery: "queue" });
 
 for await (const view of session.watch()) draw(view);
 ```

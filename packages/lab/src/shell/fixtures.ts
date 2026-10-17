@@ -14,6 +14,7 @@ function model(
     name,
     reasoning: true,
     thinking,
+    defaultThinking: thinking.find((level) => level !== "off") ?? "off",
     fast: fast ? { provider, id: `${id}-fast` } : null,
     contextWindow: 200_000,
     compactAt: 180_000,

@@ -26,6 +26,7 @@ import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
+import { recoverStarts } from "../engine/start.ts";
 import { earliestWake, loadWaits } from "../engine/waits.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
@@ -65,6 +66,7 @@ export function createExecutionState(): ExecutionState {
     pending: new Map(),
     summaries: new Set(),
     callQueue: keyedSerial(),
+    starting: new Map(),
     timer: null,
     closing: new AbortController(),
   };
@@ -157,7 +159,7 @@ export async function advance(
     const owners = state.held.get(name)?.owners;
 
     for (const [handle, coverage] of state.covers)
-      if (await covers(kernel.store, coverage, session)) owners?.add(handle);
+      if (await covers(kernel.store, coverage, found.record)) owners?.add(handle);
 
     report = await step(kernel, session, head).catch((error) =>
       failStep(kernel, session, head, error),
@@ -260,6 +262,7 @@ async function recover(
   heads: readonly { readonly name: HeadName }[],
 ): Promise<readonly HeadName[]> {
   await recoverMoves(kernel, session);
+  await recoverStarts(kernel, session);
   const runnable: HeadName[] = [];
 
   for (const head of heads) if (await owed(kernel, session, head.name)) runnable.push(head.name);

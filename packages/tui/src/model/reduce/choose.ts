@@ -7,6 +7,7 @@ import { editingQuestionDraft, sameQuestion, storeQuestionDraft } from "../quest
 import { queueRows } from "../queue.ts";
 import { tableInputFor } from "../table-input.ts";
 import { applyChoice, settingRows } from "../settings.ts";
+import { followedSession } from "../state.ts";
 import type { State } from "../state.ts";
 import { andThen, busy, refuse, setDraft, stay, withLocal } from "../step.ts";
 import type { Reduce, SomeHandlers, Step } from "../step.ts";
@@ -134,7 +135,7 @@ const CHOOSERS: Choosers = {
 
     if (choice === null) return stay(state);
 
-    if (choice === state.facts.session?.id)
+    if (choice === state.facts.chat?.id)
       return refuse(closed, `Already in ${shortId(choice)}`, now, "info");
     const target = purpose.sessions.find((id) => id === choice);
 
@@ -177,7 +178,7 @@ const CHOOSERS: Choosers = {
     const closed = withoutDialog(state, msg.dialog);
 
     if (choice === null) return stay(state);
-    const rows = queueRows(state.facts.session, state.local.editing);
+    const rows = queueRows(followedSession(state), state.local.editing);
     const row = rows.find((candidate) => candidate.id === choice);
 
     if (row === undefined) return refuse(state, "Already sent", now);

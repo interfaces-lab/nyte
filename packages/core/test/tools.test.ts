@@ -42,7 +42,7 @@ describe("tool calls", () => {
 
     const built = await setup({ store: recorded.store, plugins: [toolPlugin([watched])] });
     kernel = built.kernel;
-    session = await built.host.sessions.create();
+    session = (await built.host.sessions.start({ content: "Hi." })).session;
     const run = await liveRun(kernel, session.id);
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
@@ -114,7 +114,7 @@ describe("tool calls", () => {
       ],
     });
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const ran = echoes.length;
 
@@ -170,7 +170,7 @@ describe("tool calls", () => {
       ],
     });
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
 
     const rewritten = {
@@ -215,7 +215,7 @@ describe("tool calls", () => {
     } satisfies ToolDefinition<{ until: number }>;
 
     const { kernel, host } = await setup({ plugins: [toolPlugin([echo, parent])] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const at = Date.now() + 60_000;
     const ran = echoes.length;
@@ -260,7 +260,10 @@ describe("tool calls", () => {
       class: () => ({ kind: "delegate", child: null, role: "create", title: null }),
       replay: "safe",
       execute: async (args, invocation) => {
-        const child = await invocation.sdk.sessions.create({ parent: invocation.session.id });
+        const { session: child } = await invocation.sdk.sessions.start({
+          parent: invocation.session.id,
+          content: "Hi.",
+        });
 
         const panel = await invocation.session.parts.create(text, {
           state: { markdown: "Working.", signature: null },
@@ -275,7 +278,7 @@ describe("tool calls", () => {
     } satisfies ToolDefinition<{ until: number }>;
 
     const { kernel, host } = await setup({ plugins: [toolPlugin([spawn])] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const at = Date.now() + 60_000;
     const input = { session: session.id, run, call: "k1", name: "spawn", args: { until: at } };
@@ -329,8 +332,7 @@ describe("tool calls", () => {
 
     const plugins = [toolPlugin([safe, never])];
     const first = await setup({ store, plugins });
-    const session = await first.host.sessions.create();
-    await session.send("Go.");
+    const { session } = await first.host.sessions.start({ content: "Go." });
     void first.host.execution.advance({ session: session.id, head: main });
     const run = (await first.script.started(1)).input.run.id;
 
@@ -369,7 +371,7 @@ describe("tool calls", () => {
     const started: string[] = [];
     const slow = slowTool(started);
     const { kernel, host } = await setup({ plugins: [toolPlugin([slow])] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const controller = new AbortController();
 
@@ -419,7 +421,7 @@ describe("tool calls", () => {
 
     expect(kernel.partDefinitions.get(tool.kind)).toBe(wired);
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
 
     const running = call(kernel, {
@@ -461,7 +463,7 @@ describe("tool calls", () => {
     };
 
     const { kernel, host } = await setup({ store, plugins: [toolPlugin([echo])] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     crash = callRef(session.id, asId("w1"));
 

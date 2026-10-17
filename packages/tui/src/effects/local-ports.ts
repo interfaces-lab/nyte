@@ -107,8 +107,9 @@ export function settingsPort(): SettingsPort {
     async write(cwd, patch) {
       await store.updateGlobal(patch);
 
-      return store.read(cwd);
+      return store.read(cwd).settings;
     },
+    settled: () => store.settled(),
   };
 }
 

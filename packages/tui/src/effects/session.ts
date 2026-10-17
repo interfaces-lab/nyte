@@ -1,3 +1,4 @@
+import { asId } from "@nyte-ai/schema";
 import type {
   Configuration,
   ModelCatalogView,
@@ -10,22 +11,98 @@ import type {
 import { availableModels, clampThinking, findModel } from "../lib/catalog.ts";
 import { errorMessage, shortId } from "../lib/format.ts";
 import { indexedMention } from "../model/completion.ts";
-import type { Selection, State, WorkspaceFacts } from "../model/state.ts";
+import { chatFolder, followedSession } from "../model/state.ts";
+import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state.ts";
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
 import { readWorkspaceStatus } from "../services/workspace.ts";
-import type { HandlerContext } from "./scope.ts";
+import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 
 const HISTORY_PAGE = 200;
 
-const PLACEHOLDER_SELECTION: Selection = {
+export const PLACEHOLDER_SELECTION: Selection = {
   model: { provider: "none", id: "none" },
   effort: "medium",
   fast: false,
 };
 
+/** Opens a blank chat: a draft that the first send starts under `chat.id`. No session exists before then. */
+export async function openBlank(chat: BlankChat, context: HandlerContext): Promise<void> {
+  const { dispatch, scope } = context;
+  scope.followed?.controller.abort();
+  scope.followed = null;
+  dispatch({ kind: "blank-opened", chat });
+  await settleFolder(chat, context);
+}
+
+/** Registers a blank chat's launch folder with the host, then reads that workspace's branch and files. */
+export async function settleFolder(chat: BlankChat, context: HandlerContext): Promise<void> {
+  const workspace = context.ports.host.workspace(await blankWorkspace(chat, context));
+  const cwd = await workspace.cwd();
+
+  if (cwd !== null && !context.signal.aborted)
+    await refreshWorkspace(context, cwd, { mentions: workspace, signal: context.signal });
+}
+
+/** The workspace a blank chat starts in; a chat still in its launch folder waits for that folder's one registration. */
+export async function blankWorkspace(
+  chat: BlankChat,
+  context: HandlerContext,
+): Promise<WorkspaceId> {
+  if (chat.folder.kind === "folder") return chat.folder.id;
+  const { scope } = context;
+
+  scope.launchFolder ??= context.ports.host.openFolder(null).catch((cause: unknown) => {
+    scope.launchFolder = null;
+    throw cause;
+  });
+
+  const workspace = await scope.launchFolder;
+  context.dispatch({ kind: "blank-folder", session: chat.id, workspace });
+
+  return workspace;
+}
+
+/** Opens a blank chat in the current chat's workspace, on the default model at the remembered thinking level. */
+export async function openNew(context: HandlerContext): Promise<void> {
+  const state = context.read();
+  const { chat } = state.facts;
+  const catalog = readCatalog(state);
+
+  await openBlank(
+    {
+      kind: "blank",
+      id: asId(crypto.randomUUID()),
+      folder: chat === null ? { kind: "launch-folder" } : chatFolder(chat),
+      selection:
+        (catalog === null ? null : defaultSelection(catalog, state.facts.settings.thinkingLevel)) ??
+        chat?.selection ??
+        fallback(state),
+    },
+    context,
+  );
+}
+
+/** The host's default model at the remembered thinking level, lowered to what the model supports; without one, at the level core would give it. */
+export function defaultSelection(
+  catalog: ModelCatalogView,
+  remembered: Thinking | undefined,
+): Selection | null {
+  const selection = fallbackSelection(catalog, remembered ?? "off");
+
+  const model =
+    selection === null ? undefined : findModel(availableModels(catalog), selection.model);
+
+  if (selection === null || model === undefined) return selection;
+
+  return {
+    ...selection,
+    effort: remembered === undefined ? model.defaultThinking : clampThinking(model, remembered),
+  };
+}
+
 export async function follow(
-  target: SessionId | "new",
+  id: SessionId,
   announce: boolean,
   context: HandlerContext,
 ): Promise<void> {
@@ -34,7 +111,6 @@ export async function follow(
   const controller = new AbortController();
   const stopOnDispose = (): void => controller.abort();
   context.signal.addEventListener("abort", stopOnDispose, { once: true });
-  const id = target === "new" ? await created(context) : target;
   const port = ports.host.session(id);
   const info = await port.info();
 
@@ -63,7 +139,14 @@ export async function follow(
   });
 
   scope.followed = { id, port, controller, configurator };
-  dispatch({ kind: "session-opened", session: id, info, selection: fallback(read()) });
+  const started = read().facts.chat;
+
+  dispatch({
+    kind: "session-opened",
+    session: id,
+    info,
+    selection: started?.id === id ? started.selection : fallback(read()),
+  });
   let first = true;
 
   const views = each(port.watch(), controller.signal, (view) => {
@@ -72,14 +155,9 @@ export async function follow(
 
     if (selected !== null) configurator.observeSelected(selected);
     const shown = toSelection(configurator.selected, readCatalog(read()));
-    const current = read().facts.session;
-    const unchanged =
-      current !== null &&
-      sameRef(current.selection.model, shown.model) &&
-      current.selection.effort === shown.effort &&
-      current.selection.fast === shown.fast;
+    const current = read().facts.chat;
 
-    if (current?.id === id && !unchanged)
+    if (current?.id === id && !sameSelection(current.selection, shown))
       dispatch({ kind: "selection", session: id, selection: shown });
 
     if (!first) return;
@@ -158,7 +236,7 @@ export async function watchHost(context: HandlerContext): Promise<void> {
   });
 
   const renames = each(ports.host.sessionInfos(), context.signal, (sessions) => {
-    const followed = read().facts.session;
+    const followed = followedSession(read());
     const info = sessions.find((candidate) => candidate.id === followed?.id);
 
     if (followed === null || info === undefined || info.name === followed.info.name) return;
@@ -169,7 +247,7 @@ export async function watchHost(context: HandlerContext): Promise<void> {
 }
 
 export async function refreshWorkspace(
-  context: HandlerContext,
+  context: LocalHandlerContext,
   cwd: string,
   options?: {
     readonly mentions: { mentions(signal: AbortSignal): Promise<readonly string[]> };
@@ -223,7 +301,7 @@ async function each<T>(
 }
 
 export function readSelection(state: State, session: SessionId): Selection | null {
-  const followed = state.facts.session;
+  const followed = followedSession(state);
 
   if (followed === null || followed.id !== session || followed.view === null) return null;
   const { selected: chosen, effective } = followed.view.configuration;
@@ -233,14 +311,13 @@ export function readSelection(state: State, session: SessionId): Selection | nul
 }
 
 export function fallback(state: State): Selection {
-  const followed = state.facts.session;
-  const configuration = followed?.view?.configuration;
+  const configuration = followedSession(state)?.view?.configuration;
   const selected = readRunChoice(configuration?.selected ?? configuration?.effective ?? null);
 
   if (selected !== null) return toSelection(selected, readCatalog(state));
 
   return (
-    fallbackSelection(readCatalog(state), followed?.selection.effort ?? "medium") ??
+    fallbackSelection(readCatalog(state), state.facts.chat?.selection.effort ?? "medium") ??
     PLACEHOLDER_SELECTION
   );
 }
@@ -263,7 +340,7 @@ function toRunChoice(selection: Selection): RunChoice {
   return { model: selection.model, thinkingLevel: selection.effort };
 }
 
-function toSelection(choice: RunChoice, catalog: ModelCatalogView | null): Selection {
+export function toSelection(choice: RunChoice, catalog: ModelCatalogView | null): Selection {
   const fast =
     catalog !== null &&
     catalog.providers.some((provider) =>
@@ -324,6 +401,12 @@ function sameRef(left: ModelRef, right: ModelRef): boolean {
   return left.provider === right.provider && left.id === right.id;
 }
 
+export function sameSelection(left: Selection, right: Selection): boolean {
+  return (
+    sameRef(left.model, right.model) && left.effort === right.effort && left.fast === right.fast
+  );
+}
+
 function unavailable(
   activation: SessionInfo["activation"],
   dispatch: HandlerContext["dispatch"],
@@ -346,41 +429,7 @@ function unavailable(
     });
 }
 
-async function created(context: HandlerContext): Promise<SessionId> {
-  const workspace = context.read().facts.session?.info.workspace ?? null;
-
-  return createSession({ workspace, selection: null, effort: null }, context);
-}
-
-export async function createSession(
-  input: {
-    readonly workspace: WorkspaceId | null;
-    readonly selection: Selection | null;
-    readonly effort: Thinking | null;
-  },
-  context: HandlerContext,
-): Promise<SessionId> {
-  const { ports, read } = context;
-  const id = await ports.host.create({ workspace: input.workspace, selection: input.selection });
-  const remembered = read().facts.settings.thinkingLevel;
-
-  if (input.effort !== null || remembered === undefined) return id;
-  const catalog = readCatalog(read());
-  const model = input.selection?.model ?? fallbackSelection(catalog, remembered)?.model;
-  const info =
-    model === undefined || catalog === null
-      ? undefined
-      : findModel(availableModels(catalog), model);
-  const effort = info === undefined ? remembered : clampThinking(info, remembered);
-  const outcome = await ports.host.session(id).configure({ effort });
-
-  if (outcome.kind !== "configured")
-    ports.log.write("effect", new Error(`Couldn't start at ${effort} thinking: ${outcome.kind}`));
-
-  return id;
-}
-
-async function rememberThinking(level: Thinking, context: HandlerContext): Promise<void> {
+export async function rememberThinking(level: Thinking, context: HandlerContext): Promise<void> {
   const { ports, read, dispatch } = context;
 
   if (read().facts.settings.thinkingLevel === level) return;

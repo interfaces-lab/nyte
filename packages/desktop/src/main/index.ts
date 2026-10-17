@@ -20,12 +20,16 @@ import {
   CALL_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
+  FIRST_WINDOW_ARGUMENT,
+  MACHINE_NAME_ARGUMENT,
   MAIN_OPERATION_PATHS,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
+  WINDOW_PAINTED_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type { CallHandler, CallRequest, CallTable, MainCallPath } from "../shared/ipc.ts";
+import { machineName } from "@nyte-ai/connect/host";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import {
@@ -65,6 +69,8 @@ import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "./ipc-
 interface NyteWindow {
   readonly window: BrowserWindow;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
+  /** Show the window the first time, in its opening frame; later calls do nothing. */
+  readonly present: () => void;
   /**
    * Whether the window has been shown at least once. Synthesized mouse input
    * is silently dropped until the first show, so the explicit signal avoids
@@ -155,6 +161,11 @@ const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-s
 
 const home = updateTest ? app.getPath("userData") : homedir();
 
+/** A development build can hold the host's open, so a test can prove the first frame never waits for it. */
+const hostDelay = Number.parseInt(process.env["NYTE_DESKTOP_HOST_DELAY_MS"] ?? "", 10);
+
+const hostOpenDelayMs = app.isPackaged || Number.isNaN(hostDelay) ? undefined : hostDelay;
+
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
 
 function send(window: HostWindow, channel: string, payload: HostEvent): void {
@@ -180,7 +191,11 @@ function currentWindow(): NyteWindow | undefined {
   return [...windows.values()].at(-1);
 }
 
-function reveal(window: BrowserWindow): void {
+/** Bring a window forward. One that has not drawn its first frame yet shows itself when it does. */
+function reveal(entry: NyteWindow): void {
+  if (!entry.shown) return;
+  const { window } = entry;
+
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
@@ -396,6 +411,7 @@ function startHost(): HostProcess {
       home,
       rendererOrigin: rendererOrigin(rendererUrl),
       account: account === undefined ? null : account.state(),
+      openDelayMs: hostOpenDelayMs,
     },
     {
       event: emitHostEvent,
@@ -488,6 +504,10 @@ function registerIpc(): void {
     });
   }
 
+  ipcMain.on(WINDOW_PAINTED_CHANNEL, (event) => {
+    senderWindow(event).present();
+  });
+
   ipcMain.on(APP_MENU_READY_CHANNEL, (event) => {
     senderWindow(event).menuCommands.ready();
   });
@@ -567,7 +587,13 @@ function openingFrame(): OpeningFrame {
 }
 
 /**
- * Opens a Nyte window, shown at its first paint. Its host work is released when the renderer
+ * How long a loaded window stays hidden waiting for the interface's first frame. A renderer that
+ * crashed or failed before it painted is shown anyway.
+ */
+const FIRST_FRAME_LIMIT_MS = 2_000;
+
+/**
+ * Opens a Nyte window, shown once the interface has drawn its first frame. Its host work is released when the renderer
  * goes away or a committed main-frame navigation leaves the document behind; the navigation's
  * start event fires before `will-navigate` can cancel, so it would tear down under a renderer
  * that stays. A link that would open a window goes to the system browser instead, and an
@@ -584,7 +610,11 @@ function createWindow(): NyteWindow {
     backgroundColor: windowBackgroundColor(),
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.js"),
-      additionalArguments: [`${CANVAS_SHELL_ARGUMENT}=${canvasShell}`],
+      additionalArguments: [
+        `${CANVAS_SHELL_ARGUMENT}=${canvasShell}`,
+        `${MACHINE_NAME_ARGUMENT}=${machineName()}`,
+        ...(windows.size === 0 ? [FIRST_WINDOW_ARGUMENT] : []),
+      ],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -598,9 +628,21 @@ function createWindow(): NyteWindow {
   const entry: NyteWindow = {
     window: created,
     menuCommands: createMenuCommandDelivery({
-      openWindow: () => reveal(created),
+      openWindow: () => reveal(entry),
       send: (command) => created.webContents.send(APP_MENU_COMMAND_CHANNEL, command),
     }),
+    present: () => {
+      if (entry.shown || created.isDestroyed()) return;
+
+      if (frame.maximized) created.maximize();
+      created.show();
+
+      if (frame.fullscreen) created.setFullScreen(true);
+
+      if (performance.getEntriesByName("nyte:window-shown").length === 0)
+        performance.mark("nyte:window-shown");
+      entry.shown = true;
+    },
     shown: false,
   };
 
@@ -644,14 +686,7 @@ function createWindow(): NyteWindow {
 
   nativeTheme.on("updated", updateWindowBackground);
   created.once("ready-to-show", () => {
-    if (frame.maximized) created.maximize();
-    created.show();
-
-    if (frame.fullscreen) created.setFullScreen(true);
-
-    if (performance.getEntriesByName("nyte:window-shown").length === 0)
-      performance.mark("nyte:window-shown");
-    entry.shown = true;
+    setTimeout(entry.present, FIRST_FRAME_LIMIT_MS);
   });
 
   created.webContents.setWindowOpenHandler(({ url }) => {
@@ -746,7 +781,7 @@ if (!hasSingleInstanceLock) {
   app.on("second-instance", (_event, argv) => {
     const clerkCallback = argv.some((arg) => arg.startsWith(`${scheme}:`));
 
-    if (!clerkCallback) reveal((currentWindow() ?? createWindow()).window);
+    if (!clerkCallback) reveal(currentWindow() ?? createWindow());
   });
 
   void app.whenReady().then(async () => {

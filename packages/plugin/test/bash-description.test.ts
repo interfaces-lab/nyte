@@ -21,8 +21,8 @@ it("requires a description on bash and carries it on the shell call's class", as
   );
 
   await using host = await open(fake, [bashDescription]);
-  const session = await host.sessions.create();
-  await (await session.send("List.")).settled();
+  const { session, receipt: started } = await host.sessions.start({ content: "List." });
+  await started.settled();
 
   const [system] = fake.requests[0]?.context.messages ?? [];
 

@@ -3,7 +3,7 @@ import { shownContent } from "@nyte-ai/plugin/client/presentation";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { queuedMessages } from "../lib/view-helpers.ts";
 import { draftFromContent } from "./draft.ts";
-import type { State } from "./state.ts";
+import type { FollowedSession, State } from "./state.ts";
 
 export interface QueueRow {
   readonly id: MessageId;
@@ -23,7 +23,8 @@ export type Place =
     }
   | { readonly kind: "attached" }
   | { readonly kind: "sending"; readonly retryAt: number | null; readonly reason: string | null }
-  | { readonly kind: "uncovered" };
+  | { readonly kind: "uncovered" }
+  | { readonly kind: "deciding" };
 
 function placeMessage(message: UserMessage): Place {
   const { status } = message;
@@ -45,6 +46,8 @@ function placeMessage(message: UserMessage): Place {
       return { kind: "next-turn", reason: schedule.reason };
     case "attached":
       return { kind: "attached" };
+    case "deciding":
+      return { kind: "deciding" };
     default: {
       const _exhaustive: never = schedule;
 
@@ -62,22 +65,26 @@ function queuedText(message: UserMessage): string {
 }
 
 export function queueRows(
-  session: State["facts"]["session"],
+  session: FollowedSession | null,
   editing: State["local"]["editing"],
 ): readonly QueueRow[] {
   const view = session?.view;
 
   if (view === null || view === undefined) return [];
 
-  return queuedMessages(view).map((message) => ({
-    id: message.id,
-    text: queuedText(message),
-    place: placeMessage(message),
-    delivery: message.delivery,
-    withdrawable: message.status.kind === "pending",
-    editable: message.source.kind !== "action",
-    editing: editing?.message === message.id,
-  }));
+  return queuedMessages(view).map((message) => {
+    const place = placeMessage(message);
+
+    return {
+      id: message.id,
+      text: queuedText(message),
+      place,
+      delivery: message.delivery,
+      withdrawable: message.status.kind === "pending" && place.kind !== "deciding",
+      editable: message.source.kind !== "action" && place.kind !== "deciding",
+      editing: editing?.message === message.id,
+    };
+  });
 }
 
 function nextTurnLabel(reason: Extract<Place, { kind: "next-turn" }>["reason"]): string {
@@ -110,6 +117,8 @@ export function placeLabel(place: Place): string {
       return place.retryAt === null ? "sending…" : `retrying · ${place.reason ?? "waiting"}`;
     case "uncovered":
       return "waiting for a host";
+    case "deciding":
+      return "waiting on plugins";
     default: {
       const _exhaustive: never = place;
 
@@ -123,7 +132,7 @@ export function queuedCount(rows: readonly QueueRow[]): number {
     .length;
 }
 
-export function rowMessage(session: State["facts"]["session"], id: MessageId): UserMessage | null {
+export function rowMessage(session: FollowedSession | null, id: MessageId): UserMessage | null {
   const found = session?.view?.messages.find((message) => message.id === id);
 
   return found?.kind === "user" ? found : null;

@@ -10,6 +10,7 @@ import {
   livePart,
   main,
   recording,
+  settledChat,
   setup,
   until,
   usage,
@@ -22,8 +23,10 @@ async function message(session: Session, id: string): Promise<Message | undefine
 describe("admission", () => {
   it("starts a run for a steer on an idle head and lands it into that run", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create({ name: "triage" });
-    const receipt = await session.send("Add a test.");
+    const { session, receipt } = await host.sessions.start({
+      name: "triage",
+      content: "Add a test.",
+    });
 
     expect(receipt.message).toBe(receipt.id);
     expect(await receipt.status()).toEqual({ kind: "pending" });
@@ -58,8 +61,7 @@ describe("admission", () => {
 
   it("holds a queued input until the live run ends", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    const first = await session.send("First.");
+    const { session, receipt: first } = await host.sessions.start({ content: "First." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const queued = await session.send("Second.", { delivery: "queue" });
@@ -88,20 +90,20 @@ describe("admission", () => {
 
   it("never starts a run for an attached input; it rides the next one", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
+    const session = await settledChat(host, script);
     const attached = await session.send("Context.", { delivery: "attach" });
 
     expect(await host.execution.advance({ session: session.id, head: main })).toEqual({
       kind: "idle",
     });
-    expect(script.turns).toHaveLength(0);
+    expect(script.turns).toHaveLength(1);
     expect(await message(session, attached.message)).toMatchObject({
       status: { kind: "pending", schedule: { kind: "attached" } },
     });
 
     await session.send("Go.");
     const step = host.execution.advance({ session: session.id, head: main });
-    const turn = await script.started(1);
+    const turn = await script.started(2);
 
     expect(await attached.landed()).toMatchObject({ kind: "landed", run: turn.input.run.id });
 
@@ -113,8 +115,7 @@ describe("admission", () => {
 
   it("joins a steer to the live run and lands it at the next boundary", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    await session.send("First.");
+    const { session } = await host.sessions.start({ content: "First." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const steer = await session.send("Also this.");
@@ -137,8 +138,7 @@ describe("admission", () => {
 
   it("lands steers in inbox order: two sent while idle start the run together, one sent during it joins", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    const first = await session.send("One.");
+    const { session, receipt: first } = await host.sessions.start({ content: "One." });
     const second = await session.send("Two.");
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
@@ -163,13 +163,13 @@ describe("admission", () => {
 
   it("replays a send with the same id and content, and refuses the id for other content", async () => {
     const { host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const id = asId<"receipt">("receipt-1");
     const first = await session.send("Once.", { id, delivery: "attach" });
     const again = await session.send("Once.", { id, delivery: "attach" });
 
     expect(again.id).toBe(first.id);
-    expect((await session.view()).messages.map((current) => current.id)).toEqual([id]);
+    expect((await session.view()).messages.map((current) => current.id)).toEqual([session.id, id]);
     await expect(session.send("Twice.", { id, delivery: "attach" })).rejects.toMatchObject({
       code: "invalid",
     });
@@ -178,18 +178,26 @@ describe("admission", () => {
   it("refuses a send `before_send` rejects", async () => {
     const { host } = await setup({
       plugins: [
-        { id: "gate", hooks: { before_send: () => ({ action: "reject", reason: "No." }) } },
+        {
+          id: "gate",
+          hooks: {
+            before_send: (submission) =>
+              submission.content === "Hello."
+                ? { action: "reject", reason: "No." }
+                : { action: "continue" },
+          },
+        },
       ],
     });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     await expect(session.send("Hello.")).rejects.toMatchObject({ code: "invalid", message: "No." });
-    expect((await session.view()).messages).toEqual([]);
+    expect((await session.view()).messages.map((current) => current.id)).toEqual([session.id]);
   });
 
   it("withdraws an input stopped before it lands", async () => {
     const { host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const receipt = await session.send("Later.", { delivery: "attach" });
     const landing = receipt.landed();
     const controller = new AbortController();
@@ -200,13 +208,13 @@ describe("admission", () => {
     expect(await receipt.stop()).toEqual({ kind: "requested" });
     expect(await landing).toEqual({ kind: "withdrawn" });
     expect(await receipt.settled()).toEqual({ kind: "withdrawn" });
-    expect((await session.view()).messages).toEqual([]);
+    expect((await session.view()).messages.map((current) => current.id)).toEqual([session.id]);
     expect(await receipt.stop()).toEqual({ kind: "settled", outcome: { kind: "withdrawn" } });
   });
 
   it("revises a pending input in place under the same id and reorders it", async () => {
     const { host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const first = await session.send("A.", { delivery: "attach" });
     const second = await session.send("B.", { delivery: "attach" });
 
@@ -220,8 +228,12 @@ describe("admission", () => {
 
     const view = await session.view();
 
-    expect(view.messages.map((current) => current.id)).toEqual([second.message, first.message]);
-    expect(view.messages[1]).toMatchObject({
+    expect(view.messages.map((current) => current.id)).toEqual([
+      session.id,
+      second.message,
+      first.message,
+    ]);
+    expect(view.messages[2]).toMatchObject({
       kind: "user",
       content: "A, revised.",
       delivery: "attach",
@@ -231,8 +243,9 @@ describe("admission", () => {
 
   it("edits a landed message: stops its run, moves to its parent and admits a sibling", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    const original = await session.send("Use v1.");
+    const { session, receipt: original } = await host.sessions.start({
+      content: "Use v1.",
+    });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     await original.landed();
@@ -261,8 +274,9 @@ describe("admission", () => {
   it("edits in one set, fence then head move then admission, without waiting for the run", async () => {
     const recorder = recording(await memoryStore().open());
     const { kernel, host, script } = await setup({ store: recorder.store });
-    const session = await host.sessions.create();
-    const original = await session.send("Use v1.");
+    const { session, receipt: original } = await host.sessions.start({
+      content: "Use v1.",
+    });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const run = turn.input.run.id;
@@ -303,8 +317,9 @@ describe("admission", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    const original = await session.send("Use v1.");
+    const { session, receipt: original } = await host.sessions.start({
+      content: "Use v1.",
+    });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const landed = await original.landed();
@@ -344,8 +359,9 @@ describe("admission", () => {
       summarize: async () => ({ kind: "failed", reason: "No model." }),
     });
 
-    const session = await host.sessions.create();
-    const original = await session.send("Use v1.");
+    const { session, receipt: original } = await host.sessions.start({
+      content: "Use v1.",
+    });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     await original.landed();
@@ -370,8 +386,7 @@ describe("admission", () => {
 
   it("settles an edit `stale` when the head moved past `expect`", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    const original = await session.send("Hi.");
+    const { session, receipt: original } = await host.sessions.start({ content: "Hi." });
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
     await step;
@@ -391,8 +406,7 @@ describe("admission", () => {
 
   it("settles an edit `pending-input` while other inputs wait on the head", async () => {
     const { host, script } = await setup();
-    const session = await host.sessions.create();
-    const original = await session.send("Hi.");
+    const { session, receipt: original } = await host.sessions.start({ content: "Hi." });
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
     await step;
@@ -404,8 +418,8 @@ describe("admission", () => {
 
   it("A-2 N2: a child's report waiting on a streaming head neither blocks an edit nor is dropped", async () => {
     const { host, script } = await setup({ execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    const child = await host.sessions.create({ parent: session.id });
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: session.id, content: "Hi." });
     const first = await session.send("First.");
     const driving = host.execution.advance({ session: session.id, head: main });
     await script.started(1);
@@ -433,8 +447,8 @@ describe("admission", () => {
 
   it("A-2 N2: on a head whose last run stopped, a child's report starts nothing and blocks neither an edit nor a move", async () => {
     const { host, script } = await setup({ execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    const child = await host.sessions.create({ parent: session.id });
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: session.id, content: "Hi." });
     const first = await session.send("First.");
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish({ kind: "stopped" });
@@ -469,8 +483,8 @@ describe("admission", () => {
 
   it("counts a child's queued wake as no pending input: the inbox records only a user's message as input an edit or a move must not pass", async () => {
     const { kernel, host, script } = await setup({ execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    const child = await host.sessions.create({ parent: session.id });
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: session.id, content: "Hi." });
     const first = await session.send("First.");
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish(completed);
@@ -515,6 +529,6 @@ describe("admission", () => {
     await expect(connection.settings.apply("theme", "dark")).rejects.toMatchObject({
       code: "denied",
     });
-    expect((await connection.sessions.create()).id).toBeTypeOf("string");
+    expect((await connection.sessions.start({ content: "Hi." })).session.id).toBeTypeOf("string");
   });
 });

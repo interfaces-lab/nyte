@@ -36,7 +36,6 @@ import {
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
   sessionFolderPath,
@@ -163,7 +162,7 @@ export function Sidebar(): ReactElement {
   const workspaceCollectionID = useId();
   const panes = usePaneActions();
   const host = useHostState();
-  const open = host.data?.workspace;
+  const open = host.data.workspace;
   const workspaces = useWorkspaces();
   const sessionDirectory = useWorkspaceSessionDirectory();
   const server = useServerState(false);
@@ -189,6 +188,7 @@ export function Sidebar(): ReactElement {
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
   const [hold, setHold] = useState<ShelfHold | undefined>();
+  const [listedWhenBlank, setListedWhenBlank] = useState<ReadonlySet<SessionId>>();
 
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<WorkspaceId | null>>(
     () => new Set(),
@@ -201,7 +201,7 @@ export function Sidebar(): ReactElement {
   const selection = activePane(layout).selection;
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const activeSessionId = page === undefined ? paneSessionId : undefined;
-  const mac = macPlatform(host.data?.platform);
+  const mac = nyte.platform === "darwin";
 
   const paneSession =
     paneSessionId === undefined
@@ -210,15 +210,29 @@ export function Sidebar(): ReactElement {
           ?.flatMap((directory) => directory.sessions)
           .find((session) => session.id === paneSessionId);
 
+  if (selection.kind === "blank" && listedWhenBlank === undefined && sessionDirectory.data)
+    setListedWhenBlank(
+      new Set(
+        sessionDirectory.data.flatMap((directory) =>
+          directory.sessions.map((session) => session.id),
+        ),
+      ),
+    );
+
   if (hold?.sessionId !== paneSession?.id) {
     setHold(
       paneSession === undefined
         ? undefined
         : {
             sessionId: paneSession.id,
-            shelf: deriveShelf(paneSession, workingSessions, undefined),
+            shelf:
+              listedWhenBlank?.has(paneSession.id) === false
+                ? "inbox"
+                : deriveShelf(paneSession, workingSessions, undefined),
           },
     );
+
+    if (paneSession !== undefined) setListedWhenBlank(undefined);
   }
 
   const setExpanded = (workspace: WorkspaceId | null, expanded: boolean): void => {
@@ -370,8 +384,6 @@ export function Sidebar(): ReactElement {
 
           <SearchPalette
             open={paletteOpen}
-            platform={host.data?.platform}
-            sessionQueriesAvailable={host.data !== undefined}
             recentSessions={listed?.map(({ session }) => session)}
             onOpenChange={shellActions.setSearchOpen}
             onOpenSession={(sessionId) =>
@@ -488,48 +500,42 @@ export function Sidebar(): ReactElement {
               </div>
 
               <Collapsible.Panel id={workspaceCollectionID} {...props(styles.workspaceCollection)}>
-                {host.isPending && (
-                  <div aria-busy="true" {...props(text.base, styles.quiet)}>
-                    Loading…
-                  </div>
-                )}
-                {host.data !== undefined &&
-                  (flat ? (
-                    <ChatsList
-                      listId={`${sessionListId}-chats`}
-                      listed={listed}
-                      hold={hold}
-                      layoutEnabled={sidebarVisible && collectionExpanded}
-                      context={context}
-                    />
-                  ) : (
-                    <>
-                      {folders}
-                      {server.data !== undefined &&
-                        server.data.kind !== "none" &&
-                        cloudFailure !== undefined && (
-                          <WorkspaceRow
-                            name="Cloud"
-                            path={server.data.baseUrl}
-                            available={false}
-                            unavailableDetail="server unavailable"
-                            active={false}
-                            expanded={!cloudCollapsed}
-                            onExpandedChange={(next) => setCloudCollapsed(!next)}
-                            onNewChat={undefined}
-                            onArchiveAll={undefined}
-                            onRemove={() => void nyte.host.server.disconnect()}
+                {flat ? (
+                  <ChatsList
+                    listId={`${sessionListId}-chats`}
+                    listed={listed}
+                    hold={hold}
+                    layoutEnabled={sidebarVisible && collectionExpanded}
+                    context={context}
+                  />
+                ) : (
+                  <>
+                    {folders}
+                    {server.data !== undefined &&
+                      server.data.kind !== "none" &&
+                      cloudFailure !== undefined && (
+                        <WorkspaceRow
+                          name="Cloud"
+                          path={server.data.baseUrl}
+                          available={false}
+                          unavailableDetail="server unavailable"
+                          active={false}
+                          expanded={!cloudCollapsed}
+                          onExpandedChange={(next) => setCloudCollapsed(!next)}
+                          onNewChat={undefined}
+                          onArchiveAll={undefined}
+                          onRemove={() => void nyte.host.server.disconnect()}
+                        >
+                          <div
+                            role="status"
+                            {...props(text.base, styles.quiet, styles.sessionQuiet)}
                           >
-                            <div
-                              role="status"
-                              {...props(text.base, styles.quiet, styles.sessionQuiet)}
-                            >
-                              {cloudFailure}
-                            </div>
-                          </WorkspaceRow>
-                        )}
-                    </>
-                  ))}
+                            {cloudFailure}
+                          </div>
+                        </WorkspaceRow>
+                      )}
+                  </>
+                )}
               </Collapsible.Panel>
             </Collapsible.Root>
           </section>

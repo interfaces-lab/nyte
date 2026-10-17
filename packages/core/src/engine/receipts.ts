@@ -26,6 +26,7 @@ import {
   STALE,
 } from "../store/session.ts";
 import { stopRun } from "./fence.ts";
+import { stopStart } from "./start.ts";
 import { waitFor } from "./waits.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
@@ -224,7 +225,13 @@ export async function withdraw(
 ): Promise<readonly MessageId[]> {
   const withdrawn = await attempt("Withdrawing inputs", async () => {
     const inbox = await readInbox(kernel.store, session, head);
-    const due = inbox.messages.filter((message) => ids.includes(message));
+
+    const due = await withFold(kernel, session, (state) =>
+      inbox.messages.filter(
+        (message) =>
+          ids.includes(message) && state.inputs.get(message)?.schedule.kind !== "deciding",
+      ),
+    );
 
     if (due.length === 0) return [];
 
@@ -290,6 +297,12 @@ async function stopReceipt<O extends Json>(
   const input = await withFold(kernel, session, (state) => state.inputs.get(message));
 
   if (input === undefined) return { kind: "missing" };
+
+  if (input.schedule.kind === "deciding") {
+    await stopStart(kernel, session);
+
+    return { kind: "requested" };
+  }
 
   if (input.landed === null && (await withdraw(kernel, session, input.head, [message])).length > 0)
     return { kind: "requested" };

@@ -239,7 +239,7 @@ describe("connect", () => {
       }),
     );
 
-    const session = await connection.sessions.create();
+    const { session } = await connection.sessions.start({ content: "Hi." });
     const views = connection.watch()[Symbol.asyncIterator]();
     await views.next();
     one.intercept((request) => two.listener.fetch(request));
@@ -281,7 +281,7 @@ describe("connect", () => {
     });
 
     cleanups.push(() => listener.close());
-    const session = await b.sessions.create();
+    const { session } = await b.sessions.start({ content: "Hi." });
     const { code } = await a.principals.pair({ authority: new Set(["participant"]) });
 
     const device = kept(

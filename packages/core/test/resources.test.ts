@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import { asId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
 import { createHost } from "../src/api/connection.ts";
-import { resourceIssues, resourcesPlugin, scanResources } from "../src/extend/resources.ts";
+import {
+  dropScans,
+  resourceIssues,
+  resourcesPlugin,
+  scanResources,
+} from "../src/extend/resources.ts";
 import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
@@ -46,7 +51,7 @@ describe("resources", () => {
       kind: "applied",
     });
 
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const resources = await scanResources(kernel, session.id);
 
     expect(resources.user).not.toBeNull();
@@ -107,8 +112,10 @@ describe("resources", () => {
       disk: seeded(),
       home: "/home/ada",
     });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     provider.failure = "Offline.";
-    const session = await host.sessions.create({ workspace });
+    dropScans(kernel, (key) => key === session.id);
+    await kernel.environments.detach(session.id);
 
     await expect(scanResources(kernel, session.id)).rejects.toThrow("Offline.");
   });
@@ -117,7 +124,7 @@ describe("resources", () => {
     const { kernel, host, disk, provider, workspace } = await world();
     disk.put("/work/project/.nyte/SYSTEM.md", "MUST REMAIN");
     const attach = provider.attach.bind(provider);
-    let failing = true;
+    let failing = false;
 
     provider.attach = async (target) => {
       const attached = await attach(target);
@@ -135,7 +142,10 @@ describe("resources", () => {
       };
     };
 
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    failing = true;
+    dropScans(kernel, (key) => key === session.id);
+    await kernel.environments.detach(session.id);
 
     await expect(scanResources(kernel, session.id)).rejects.toThrow("Transient read failure.");
     failing = false;
@@ -150,7 +160,7 @@ describe("resources", () => {
       plugins: [resourcesPlugin],
     });
 
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     await kernel.plugins.runtime(session.id).ready;
     const names = (): readonly string[] =>
       kernel.sessions.catalog(session.id).skills.map((skill) => skill.name);
@@ -174,7 +184,7 @@ describe("resources", () => {
 
   it("keeps scans, the home's files and file batches on the kernel's state, in no module table (audit D4-D5 #6, D6 #2)", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const files = await host.workspace(workspace).files();
     assert(files.kind === "available");
     const receipt = await files.api.batch().put({ path: "a.md", contents: "a" }).apply();
@@ -212,7 +222,10 @@ describe("resources", () => {
     const { kernel, host } = await world({ plugins: [chatOnly] });
     const added = await host.workspaces.add({ kind: "chat-only", locator: null });
     assert(added.kind === "added");
-    const session = await host.sessions.create({ workspace: added.workspace });
+    const { session } = await host.sessions.start({
+      workspace: added.workspace,
+      content: "Hi.",
+    });
     await kernel.plugins.runtime(session.id).ready;
 
     expect((await session.info()).activation).toEqual({ kind: "active" });
@@ -226,7 +239,7 @@ describe("resources", () => {
 
   it("hides project skills, prompts and system files but keeps context files when projectResources is false", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const before = await scanResources(kernel, session.id);
 
     expect(before.project).not.toBeNull();
@@ -259,7 +272,7 @@ describe("resources", () => {
   it("reads ancestors through the workspace's own files, not the host's, and none from a sandbox confined to its root", async () => {
     const disk = seeded();
     const { kernel, host, workspace } = await world({ disk });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const resources = await scanResources(kernel, session.id);
 
     expect(resources.user).toBeNull();
@@ -279,7 +292,10 @@ describe("resources", () => {
       { projectResources: true },
     );
     assert(added.kind === "added");
-    const boxed = await remoteHost.sessions.create({ workspace: added.workspace });
+    const { session: boxed } = await remoteHost.sessions.start({
+      workspace: added.workspace,
+      content: "Hi.",
+    });
     const scanned = await scanResources(remote, boxed.id);
 
     expect(scanned.user).toBeNull();
@@ -305,7 +321,7 @@ describe("resources", () => {
       ],
     });
 
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const { registries } = kernel.plugins.runtime(session.id);
     const sections = registries.prompt.list();
     const context = sections.find((section) => section.id === "project-context");

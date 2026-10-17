@@ -12,8 +12,10 @@ it("names an unnamed session once from a title request, and a later run asks not
   );
 
   await using host = await open(fake, [rename]);
-  const session = await host.sessions.create();
-  await (await session.send("Why does fetch time out?")).settled();
+  const { session, receipt: started } = await host.sessions.start({
+    content: "Why does fetch time out?",
+  });
+  await started.settled();
 
   expect(await until(async () => (await session.info()).name ?? undefined)).toBe(
     "Timeout for flaky fetch",

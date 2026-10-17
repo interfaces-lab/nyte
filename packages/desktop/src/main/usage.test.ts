@@ -37,8 +37,8 @@ test("host.usage reads a real completed chat and keeps external histories separa
       content: [{ type: "text", text: "Done" }],
       usage: { input: 100, output: 20, cacheRead: 10, reasoning: 5 },
     });
-    const session = await host.sessions.create({ name: "Usage chat" });
-    await (await session.send("Work")).settled();
+    const { receipt } = await host.sessions.start({ name: "Usage chat", content: "Work" });
+    await receipt.settled();
     const today = localDay(Date.now());
     const report = await made.host.call(1, "host.usage", { sinceDay: today, untilDay: today });
     assert.equal(report.nyteError, null);

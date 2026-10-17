@@ -152,8 +152,8 @@ export const operations = {
     [sessionInfo],
     [{ id: session }],
   ),
-  "sessions.create input": operation(
-    OPERATIONS["sessions.create"].input,
+  "sessions.start input": operation(
+    OPERATIONS["sessions.start"].input,
     {
       id: session,
       name: "Parser",
@@ -161,10 +161,15 @@ export const operations = {
       parent: session,
       configuration: { thinking: "high" },
       prompt: { kind: "layer", text: "Be brief.", order: 2 },
+      content: userContent,
     },
-    { prompt: { kind: "append", text: "x" } },
+    { name: "Parser" },
   ),
-  "sessions.create output": operation(OPERATIONS["sessions.create"].output, sessionInput, {}),
+  "sessions.start output": operation(
+    OPERATIONS["sessions.start"].output,
+    { session, receipt, message },
+    { session, receipt },
+  ),
   "sessions.list input": operation(
     OPERATIONS["sessions.list"].input,
     { parents: { kind: "children", session }, cursor, limit: 10 },

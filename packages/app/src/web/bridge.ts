@@ -95,13 +95,15 @@ export function createWebBridge(): WebBridge {
 
   const bridge: NyteBridge = {
     clientSurface: "web",
+    platform: browserPlatform(),
+    machineName: undefined,
     get relay() {
       return relay;
     },
     host: {
       onMenuCommand: () => () => undefined,
       setThemePreference: () => undefined,
-      state: async () => ({ workspace: selected, platform: browserPlatform() }),
+      state: async () => ({ workspace: selected }),
       endpoint: async () => {
         if (endpoint === undefined) throw new Error(NOT_CONNECTED);
 

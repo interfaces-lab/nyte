@@ -33,6 +33,7 @@ const model = (id: string, name: string): ModelInfo => ({
   name,
   reasoning: false,
   thinking: ["off"],
+  defaultThinking: "off",
   fast: null,
   contextWindow: 128_000,
   compactAt: 100_000,

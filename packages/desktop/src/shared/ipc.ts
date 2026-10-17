@@ -15,7 +15,15 @@ export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
+export const WINDOW_PAINTED_CHANNEL = "nyte:window-painted";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
+
+/** This computer's name, which main reads when it creates a window so the first frame never asks. */
+export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
+
+/** Present when no other window of this launch was open: the window adopts the strip the last one saved. */
+export const FIRST_WINDOW_ARGUMENT = "--nyte-first-window";
 
 /** Operations main answers itself: native dialogs and menus, fonts, updates and the browser panel. */
 export const MAIN_OPERATION_PATHS = [
@@ -82,6 +90,11 @@ export type HostCallPath = (typeof HOST_PROCESS_PATHS)[number];
 
 export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
+  readonly platform: NyteBridge["platform"];
+  readonly machineName: NyteBridge["machineName"];
+  readonly firstWindow: boolean;
+  /** The interface drew its first frame, so main can show the window without a blank flash. */
+  windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: Pick<
     HostBridge,

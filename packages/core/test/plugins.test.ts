@@ -1,4 +1,4 @@
-import { asSeq, standard } from "@nyte-ai/schema";
+import { asId, asSeq, standard } from "@nyte-ai/schema";
 import type { SessionCatalogView } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
@@ -185,7 +185,7 @@ describe("plugin runtime", () => {
     expect(report.plugins).toEqual([{ kind: "activated", id: "greeter", issues: [] }]);
     expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
 
-    const later = await host.sessions.create();
+    const { session: later } = await host.sessions.start({ content: "Hi." });
 
     expect(await later.command("hello")).toEqual({ kind: "ran", output: "v2" });
     expect(kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["greeter"]);
@@ -404,7 +404,7 @@ describe("plugin api", () => {
       },
     ];
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const catalog: SessionCatalogView = {
       commands: [
@@ -505,7 +505,10 @@ describe("commands", () => {
     assert(sent.kind === "sent");
 
     const admitted = (await kernel.store.refs.log(session.id, asSeq(0), 100)).find(
-      (event) => event.kind === "input" && event.change === "admitted",
+      (event) =>
+        event.kind === "input" &&
+        event.change === "admitted" &&
+        event.message === asId<"message">(sent.receipt),
     );
 
     expect(admitted).toMatchObject({

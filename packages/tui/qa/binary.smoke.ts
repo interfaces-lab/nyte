@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "bun:test";
@@ -5,7 +8,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { openPty } from "./pty.ts";
 import type { Pty } from "./pty.ts";
-import { PLUGIN_ANSWER, readBinaryCode, serveForBinary } from "./service.ts";
+import { freshHome, PLUGIN_ANSWER, readBinaryCode, serveForBinary } from "./service.ts";
 import type { TestService } from "./service.ts";
 
 const BINARY =
@@ -157,6 +160,29 @@ test("SIGTERM during a run exits 143 with a cancelled result", async () => {
   expect(await child.exited).toBe(143);
   expect(records(stdout).at(-1)).toMatchObject({ type: "result", kind: "cancelled" });
 });
+
+test("before its service is registered, the TUI paints the recorded model and keys typed at launch, and takes Enter", async () => {
+  await using home = await freshHome();
+  const recorded = { model: { provider: "test", id: "recorded" }, effort: "off", fast: false };
+  await writeFile(join(home.nyteHome, "tui-first-frame.json"), `${JSON.stringify(recorded)}\n`);
+  await using pty = await openPty({ binary: BINARY, cwd: home.cwd, env: home.env, typed: "hi" });
+
+  await pty.waitFor(
+    (screen) => screen.text.includes("❯ hi") && screen.text.includes("│ recorded │"),
+  );
+  const painted = performance.now() - pty.spawnedAt;
+  const registered = existsSync(home.registration);
+  pty.press("chat.submit");
+  await pty.waitFor((screen) => screen.text.includes("sends when Nyte connects"));
+  const accepted = performance.now() - pty.spawnedAt;
+  const registeredAtSend = existsSync(home.registration);
+  console.log(
+    `spawn to the composer with typed keys and the recorded model: ${painted.toFixed(0)} ms; to the sent message waiting for the host: ${accepted.toFixed(0)} ms`,
+  );
+
+  expect(registered).toBe(false);
+  expect(registeredAtSend).toBe(false);
+}, 30_000);
 
 test("the TUI asks to trust a folder with project files; trusting it loads the plugin's command", async () => {
   await using service = await serveForBinary({ plugin: true, code: CODE });

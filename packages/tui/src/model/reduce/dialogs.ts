@@ -19,8 +19,19 @@ import type { Effect } from "../effect.ts";
 import type { Intent, Outcome } from "../msg.ts";
 import { readQuestionDraft } from "../question.ts";
 import { keyboardDialog } from "../screen.ts";
+import { chatFolder, followedSession } from "../state.ts";
 import type { PendingOp, State } from "../state.ts";
-import { andThen, busy, insertText, mint, refuse, stay, withLocal, withNotice } from "../step.ts";
+import {
+  andThen,
+  busy,
+  insertText,
+  mint,
+  refuse,
+  refuseUnstarted,
+  stay,
+  withLocal,
+  withNotice,
+} from "../step.ts";
 import type { Reduce, SomeHandlers, Step } from "../step.ts";
 
 export const dialogHandlers = {
@@ -126,7 +137,7 @@ export function openDialog(
   now: number,
   reduce: Reduce,
 ): Step {
-  const followed = state.facts.session;
+  const followed = state.facts.chat;
   const minted = mint(state, "dialog");
   const { id } = minted;
 
@@ -174,8 +185,10 @@ export function openDialog(
       );
     }
 
-    case "tree":
-      if (followed === null) return refuse(state, "Wait for the chat to open", now);
+    case "tree": {
+      const session = followedSession(state);
+
+      if (session === null) return refuseUnstarted(state, now, "Wait for the chat to open");
 
       if (busy(state))
         return refuse(state, "Wait for the current run before changing the chat branch", now);
@@ -192,8 +205,10 @@ export function openDialog(
           selected: null,
           composerEmpty: state.local.draft.text.trim() === "",
         },
-        [{ kind: "load", dialog: id, request: { kind: "tree", session: followed.id } }],
+        [{ kind: "load", dialog: id, request: { kind: "tree", session: session.id } }],
       );
+    }
+
     case "inspector":
       return push(minted.state, {
         kind: "inspector",
@@ -231,15 +246,18 @@ export function openDialog(
       ]);
     }
 
-    case "mcp":
-      if (followed === null) return refuse(state, "Wait for the chat to open", now);
+    case "mcp": {
+      const folder = followed === null ? null : chatFolder(followed);
+
+      if (folder?.kind !== "folder") return refuse(state, "Wait for the chat to open", now);
 
       return openDialog(
         state,
-        { kind: "list", purpose: { kind: "mcp", workspace: followed.info.workspace } },
+        { kind: "list", purpose: { kind: "mcp", workspace: folder.id } },
         now,
         reduce,
       );
+    }
 
     case "mcp-details":
       return push(

@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { SdkError } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { SessionView } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { Connection } from "@nyte-ai/core";
@@ -13,11 +13,14 @@ import { cleanups, client, closeOpened, open, text, users } from "./connection.t
 afterEach(closeOpened);
 
 describe("client", () => {
-  it("creates a session, sends, settles, and folds a head.watch view equal to the host's after each step", async () => {
+  it("starts a session with its first message, settles, and folds a head.watch view equal to the host's after each step", async () => {
     const host = await open();
     const connection = await client(host);
     host.fake.reply(text("Hello."), text("Again."));
-    const session = await connection.sessions.create({ name: "triage" });
+    const { session, receipt } = await connection.sessions.start({
+      name: "triage",
+      content: "Hi.",
+    });
     const watching = session.watch()[Symbol.asyncIterator]();
 
     const converged = async (): Promise<SessionView> => {
@@ -30,9 +33,8 @@ describe("client", () => {
       }
     };
 
-    const receipt = await session.send("Hi.");
-
-    expect(receipt.message).toBe(receipt.id);
+    expect(receipt.id).toBe(asId<"receipt">(session.id));
+    expect(receipt.message).toBe(asId<"message">(session.id));
     expect(await receipt.settled()).toMatchObject({ kind: "completed" });
     expect(await receipt.landed()).toMatchObject({ kind: "landed" });
     expect(await receipt.status()).toMatchObject({
@@ -52,6 +54,29 @@ describe("client", () => {
     expect(second.revision).toBe((await host.view(session.id)).revision);
     expect(await session.view()).toEqual(await host.view(session.id));
     await watching.return?.();
+  });
+
+  it("retries a start whose answer the link lost under the same id, starting one chat", async () => {
+    const host = await open();
+    const connection = await client(host);
+    host.fake.reply(text("Hello."));
+    let posts = 0;
+
+    host.intercept(async (request, next) => {
+      if (readOperation(request) !== "sessions.start") return next(request);
+      posts += 1;
+      const response = await next(request);
+
+      if (posts > 1) return response;
+
+      throw new TypeError("fetch failed");
+    });
+
+    const { session, receipt } = await connection.sessions.start({ content: "Hi." });
+
+    expect(posts).toBe(2);
+    expect(await receipt.settled()).toMatchObject({ kind: "completed" });
+    expect((await connection.sessions.list()).items.map((info) => info.id)).toEqual([session.id]);
   });
 
   it("rebuilds capabilities: files available with a bound api, git unsupported on a chat-only workspace", async () => {
@@ -287,8 +312,9 @@ describe("client", () => {
     const host = await open();
     const connection = await client(host);
     host.fake.reply(text("Waited."));
-    const session = await connection.sessions.create();
-    const receipt = await session.send("Hi.");
+    const { receipt } = await connection.sessions.start({
+      content: "Hi.",
+    });
     const failed = Promise.withResolvers<void>();
     let waits = 0;
 
@@ -425,7 +451,7 @@ describe("client", () => {
   it("ends every stream and fails requests unavailable once closed", async () => {
     const host = await open();
     const connection = await client(host);
-    const session = await connection.sessions.create();
+    const { session } = await connection.sessions.start({ content: "Hi." });
     const watching = session.watch()[Symbol.asyncIterator]();
     await watching.next();
     const pending = watching.next();

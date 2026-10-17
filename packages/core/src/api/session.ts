@@ -11,7 +11,6 @@ import type {
   Paged,
   ParentFilter,
   PrincipalId,
-  RefUpdate,
   RemoveSessionOutcome,
   Revision,
   RunId,
@@ -25,32 +24,34 @@ import type { Part, PartDefinition } from "../contract/parts.ts";
 import { decodeSeenRecord, decodeSessionRecord } from "../contract/records.ts";
 import type { HeadRecord, RunRecord, SessionRecord } from "../contract/records.ts";
 import type { Head, Session, Sessions } from "../contract/session.ts";
-import { sendNow } from "../engine/admission.ts";
+import { admitDeciding, sendNow } from "../engine/admission.ts";
 import { refusalError, staticContributions } from "../engine/contributions.ts";
 import { recordAcquisition } from "../engine/durable.ts";
 import { stopRun } from "../engine/fence.ts";
-import { receiptHandle, withdraw } from "../engine/receipts.ts";
+import { receiptHandle, sendReceipt, withdraw } from "../engine/receipts.ts";
 import { runHandle } from "../engine/runs.ts";
-import { listSessionWaits } from "../engine/waits.ts";
+import { discardSession, releaseStart, stopStart } from "../engine/start.ts";
 import { runCommand } from "../extend/registry.ts";
-import { dropScans } from "../extend/resources.ts";
 import { configure } from "../extend/settings.ts";
 import { commit } from "../fold/commit.ts";
-import { releaseParts } from "../store/parts.ts";
 import { headRef, seenRef, sessionRef, workspaceRef } from "../store/refs.ts";
 import {
   attempt,
+  coversRecord,
   liveRuns,
   load,
   MAIN,
   put,
   readInbox,
+  readReceipt,
   readSession,
   requireSession,
   sessionEvent,
   STALE,
 } from "../store/session.ts";
+import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
+import { followTrace, traced } from "../util/trace.ts";
 import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
 import { createPart, partHandle } from "./part.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -154,8 +155,14 @@ export function activationSession(
 export function createSessions(kernel: Kernel, context: ConnectionContext): Sessions {
   return {
     watch: (input) => watchSessions(kernel, context.principal, input),
-    create: async (input) =>
-      sessionHandle(kernel, context, await create(kernel, context, input ?? {})),
+    async start(input) {
+      const id = await start(kernel, context, input);
+
+      return {
+        session: sessionHandle(kernel, context, id),
+        receipt: sendReceipt(kernel, id, asId<"receipt">(id)),
+      };
+    },
     list: (input) => listSessions(kernel, context.principal, input),
   };
 }
@@ -322,10 +329,11 @@ export function watchSessions(
   });
 }
 
-async function create(
+/** Starts the chat `input` describes: one commit stores the session with its first message deciding, then before_send releases it. A replay under the same id and input returns the same chat. */
+async function start(
   kernel: Kernel,
   context: ConnectionContext,
-  input: NonNullable<Parameters<Sessions["create"]>[0]>,
+  input: Parameters<Sessions["start"]>[0],
 ): Promise<SessionId> {
   const origin = context.origin;
   const minted = input.id ?? asId<"session">(crypto.randomUUID());
@@ -341,78 +349,99 @@ async function create(
         );
 
   const id = typeof acquired === "string" ? asId<"session">(acquired) : minted;
+  const receipt = asId<"receipt">(id);
 
-  if ((await readSession(kernel.store, id)) !== null) return id;
-  const parent =
-    input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
-  const workspace =
-    input.workspace ?? parent?.record.workspace ?? kernel.host.current().defaultWorkspace;
-
-  if (workspace === null)
-    throw new SdkError("unknown", "No workspace was named and the host has none by default.");
-
-  if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
-    throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);
-
-  const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
-  const at = Date.now();
-
-  const record: SessionRecord = {
-    id,
+  const digest = await objectId({
     name: input.name ?? null,
+    workspace: input.workspace ?? null,
     parent: input.parent ?? null,
-    origin:
-      origin === null || origin.run === null || origin.head === null
-        ? null
-        : { run: origin.run, head: origin.head, call: origin.call },
-    workspace,
-    pinned: false,
-    archived: false,
-    createdAt: at,
-    lastActivityAt: at,
-    heads: [{ name: MAIN, stack: null, selected, lastRun: null }],
+    configuration: input.configuration ?? null,
     prompt: input.prompt ?? null,
-  };
+    content: input.content,
+  });
 
-  const target = await put(kernel.store, "session", record, at);
-  const effective = selected ?? (await defaults(kernel, id));
+  followTrace(id, receipt);
 
-  const configured: readonly RefUpdate[] =
-    effective === null
-      ? []
-      : [
-          {
-            name: sessionRef(id),
-            target,
-            events: [{ head: MAIN, kind: "configured", selected, effective }],
-          },
-        ];
+  return traced("host.admit", receipt, { session: id }, async () => {
+    await attempt(`Starting ${id}`, async () => {
+      if ((await readSession(kernel.store, id)) !== null) {
+        const started = (await readReceipt(kernel.store, id, receipt))?.record;
 
-  const outcome = await commit(kernel, [
-    {
-      name: sessionRef(id),
-      target,
-      expect: "absent",
-      events: [await sessionEvent(kernel, record)],
-    },
-    ...configured,
-  ]);
+        if (started?.kind === "send" && started.digest === digest) return id;
 
-  if (outcome.kind === "set") await Promise.allSettled([kernel.plugins.runtime(id).ready]);
+        throw new SdkError("invalid", `Session ${id} already exists.`);
+      }
+      const parent =
+        input.parent === undefined ? null : await requireSession(kernel.store, input.parent);
+      const workspace =
+        input.workspace ?? parent?.record.workspace ?? kernel.host.current().defaultWorkspace;
 
-  return id;
+      if (workspace === null)
+        throw new SdkError("unknown", "No workspace was named and the host has none by default.");
+
+      if ((await kernel.store.refs.get(workspaceRef(workspace))) === null)
+        throw new SdkError("unknown", `Workspace ${workspace} is not registered on this host.`);
+
+      const selected = await resolveInitialConfiguration(kernel, id, input.configuration);
+      const effective = selected ?? (await defaults(kernel, id));
+
+      if (effective.kind !== "exact") throw refusalError(effective);
+      const at = Date.now();
+
+      const record: SessionRecord = {
+        id,
+        name: input.name ?? null,
+        parent: input.parent ?? null,
+        origin:
+          origin === null || origin.run === null || origin.head === null
+            ? null
+            : { run: origin.run, head: origin.head, call: origin.call },
+        workspace,
+        pinned: false,
+        archived: false,
+        createdAt: at,
+        lastActivityAt: at,
+        heads: [{ name: MAIN, stack: null, selected, lastRun: null }],
+        prompt: input.prompt ?? null,
+      };
+
+      const outcome = await commit(kernel, [
+        {
+          name: sessionRef(id),
+          target: await put(kernel.store, "session", record, at),
+          expect: "absent",
+          events: [
+            await sessionEvent(kernel, record),
+            { head: MAIN, kind: "configured", selected, effective },
+          ],
+        },
+        ...(await admitDeciding(kernel, id, {
+          content: input.content,
+          configuration: effective,
+          covered: await coversRecord(kernel, record),
+          at,
+          digest,
+          principal: context.principal,
+        })),
+      ]);
+
+      return outcome.kind === "set" ? id : STALE;
+    });
+
+    await releaseStart(kernel, context, id);
+
+    return id;
+  });
 }
 
-async function defaults(kernel: Kernel, session: SessionId): Promise<Configuration | null> {
-  const result = await kernel.resolveConfiguration({
+function defaults(kernel: Kernel, session: SessionId) {
+  return kernel.resolveConfiguration({
     session,
     head: MAIN,
     selected: null,
     patch: null,
     contributions: staticContributions(kernel),
   });
-
-  return result.kind === "exact" ? result : null;
 }
 
 async function resolveInitialConfiguration(
@@ -513,43 +542,7 @@ async function remove(
 
     if (children.length > 0) return { kind: "has-children", children };
 
-    const refs = [
-      ...(await kernel.store.refs.list(`${sessionRef(session)}/`)),
-      ...(await kernel.store.refs.list(`kv/session:${session}/`)),
-      ...(await listSessionWaits(kernel.store, session)),
-    ];
-
-    const outcome = await commit(kernel, [
-      ...refs.map((ref): RefUpdate => ({ name: ref.name, target: null, expect: ref.revision })),
-      {
-        name: sessionRef(session),
-        target: null,
-        expect: found.ref.revision,
-        events: [await sessionEvent(kernel, found.record)],
-      },
-    ]);
-
-    if (outcome.kind === "stale") return STALE;
-    kernel.plugins.state.assigned.delete(session);
-    dropScans(kernel, (key) => key === session);
-    await kernel.plugins.close(session);
-    kernel.sessions.forget(session);
-    releaseParts(kernel.partTable, session);
-
-    await Promise.allSettled([
-      ...kernel.jobs
-        .list(found.record.workspace)
-        .flatMap((job) =>
-          job.view.session === session && job.view.state.kind === "running"
-            ? [job.process.stop()]
-            : [],
-        ),
-      kernel.pages.release({ session }),
-    ]);
-
-    await kernel.environments.detach(session);
-
-    return { kind: "removed" };
+    return (await discardSession(kernel, found, null)) ? { kind: "removed" } : STALE;
   });
 }
 
@@ -558,6 +551,9 @@ async function stop(
   session: SessionId,
 ): Promise<{ readonly stopped: readonly RunId[]; readonly withdrawn: readonly MessageId[] }> {
   const found = await requireSession(kernel.store, session);
+  const discarded = await stopStart(kernel, session);
+
+  if (discarded !== null) return { stopped: [], withdrawn: [discarded] };
   const stopped: RunId[] = [];
   const withdrawn: MessageId[] = [];
 

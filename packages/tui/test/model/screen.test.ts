@@ -27,11 +27,8 @@ function child(view: SessionView, id = "c1"): Task {
 }
 
 describe("blocked", () => {
-  test("one ordered rule: starting, switching, no session, directory, authentication, editor", () => {
-    expect(blockedBy(blank())).toEqual({ kind: "starting" });
-    expect(blockedBy(play(blank(), { kind: "phase", phase: { kind: "ready" } }).state)).toEqual({
-      kind: "no-session",
-    });
+  test("one ordered rule: switching, no session, directory, authentication, editor", () => {
+    expect(blockedBy(blank())).toEqual({ kind: "no-session" });
 
     const state = ready(idle);
 
@@ -60,7 +57,7 @@ describe("blocked", () => {
 
     const opened = play(
       blank(),
-      { kind: "phase", phase: { kind: "ready" } },
+      { kind: "host-opened" },
       { kind: "session-opened", session: S1, info: session.info, selection: session.selection },
     ).state;
 

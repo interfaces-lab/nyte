@@ -2,6 +2,7 @@ import type { Json } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../lib/catalog.ts";
 import { keycap } from "../lib/constants.ts";
 import type { Intent } from "./msg.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 export interface SettingChoice {
@@ -44,7 +45,7 @@ function jsonId(value: Json): string {
 }
 
 export function settingRows(state: State): readonly SettingRow[] {
-  const session = state.facts.session;
+  const session = state.facts.chat;
   const { settings } = state.facts;
   const catalog = state.facts.catalog.catalog;
   const models = catalog === null ? [] : availableModels(catalog);
@@ -54,29 +55,30 @@ export function settingRows(state: State): readonly SettingRow[] {
   const providerName = (provider: string): string =>
     catalog?.providers.find((candidate) => candidate.id === provider)?.name ?? provider;
 
-  const plugin = (session?.view?.catalog.settings ?? []).flatMap((setting): SettingRow[] =>
-    setting.choices === null
-      ? []
-      : [
-          {
-            id: setting.id,
-            label: setting.label,
-            current: jsonId(setting.value),
-            choices: setting.choices.map((choice) => ({
-              id: jsonId(choice.value),
-              label: choice.label,
-              description: choice.badge ?? "",
-              apply: {
-                kind: "apply-setting",
-                id: setting.id,
-                label: setting.label,
-                scope: setting.scope,
-                value: choice.value,
-              },
-            })),
-            whileBusy: false,
-          },
-        ],
+  const plugin = (followedSession(state)?.view?.catalog.settings ?? []).flatMap(
+    (setting): SettingRow[] =>
+      setting.choices === null
+        ? []
+        : [
+            {
+              id: setting.id,
+              label: setting.label,
+              current: jsonId(setting.value),
+              choices: setting.choices.map((choice) => ({
+                id: jsonId(choice.value),
+                label: choice.label,
+                description: choice.badge ?? "",
+                apply: {
+                  kind: "apply-setting",
+                  id: setting.id,
+                  label: setting.label,
+                  scope: setting.scope,
+                  value: choice.value,
+                },
+              })),
+              whileBusy: false,
+            },
+          ],
   );
 
   return [
@@ -202,7 +204,7 @@ export function matchChoice(row: SettingRow, argument: string): SettingChoice | 
 }
 
 export function busyRefusal(state: State, row: SettingRow): Intent | null {
-  const execution = state.facts.session?.view?.execution;
+  const execution = followedSession(state)?.view?.execution;
 
   return execution !== undefined && execution.kind !== "idle" && !row.whileBusy
     ? { kind: "refuse", reason: `Wait for the current run before changing ${row.label}` }

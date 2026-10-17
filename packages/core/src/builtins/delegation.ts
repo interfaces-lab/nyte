@@ -50,6 +50,9 @@ const taskParameters = standard(
 
 const createParameters = standard(
   Type.Object({
+    prompt: Type.String({
+      description: "The subagent's first message; it starts working on it at once.",
+    }),
     title: Type.Optional(Type.String({ description: "A short name for the subagent's session." })),
     ...selectionParameters,
     role: Type.Optional(
@@ -99,14 +102,15 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
   class: (args) => ({ kind: "delegate", child: null, role: "task", title: args.title ?? null }),
   replay: "safe",
   async execute(args, invocation) {
-    const child = await invocation.sdk.sessions.create({
+    const { session: child, receipt } = await invocation.sdk.sessions.start({
       parent: invocation.session.id,
       name: args.title,
       configuration: await childConfiguration(invocation, args),
+      content: args.prompt,
     });
 
     const run = await invocation.memo("run", async () => {
-      const landing = await (await sendOnce(invocation, child, args.prompt)).landed();
+      const landing = await receipt.landed();
 
       return landing.kind === "landed" ? landing.run : null;
     });
@@ -121,20 +125,21 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
 const create: ToolDefinition<Infer<typeof createParameters>> = {
   name: "create",
   description:
-    "Create a subagent session and return its id, to send it messages and await it later.",
+    "Start a subagent on a first message and return its id, to send it more messages and await it later.",
   parameters: createParameters,
   class: (args) => ({ kind: "delegate", child: null, role: "create", title: args.title ?? null }),
   effects: "none",
   replay: "safe",
   async execute(args, invocation) {
-    const child = await invocation.sdk.sessions.create({
+    const { session: child } = await invocation.sdk.sessions.start({
       parent: invocation.session.id,
       name: args.title,
       configuration: await childConfiguration(invocation, args),
       prompt: args.role === undefined ? undefined : { kind: "layer", text: args.role },
+      content: args.prompt,
     });
 
-    return reply(`Created subagent ${child.id}.`);
+    return reply(`Started subagent ${child.id}.`);
   },
 };
 
@@ -399,6 +404,8 @@ function scheduled(message: Message | undefined): string {
       return "it runs once its current work ends";
     case "attached":
       return "it rides with its next turn";
+    case "deciding":
+      return "its plugins are deciding it";
   }
 }
 

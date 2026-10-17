@@ -21,9 +21,6 @@ const STRIP_KEY = "nyte.desktop.tabs.v1";
 /** Each tab's drafts and images live under this prefix and its id. */
 const TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
 
-/** Every window holds this shared lock, so a starting window knows whether it is the first. */
-const WINDOW_LOCK = "nyte.desktop.window";
-
 const strict = { additionalProperties: false };
 
 const historySchema = Type.Object(
@@ -167,24 +164,6 @@ function forgetTabs(shouldForget: (tabId: string) => boolean): void {
   } catch {}
 }
 
-/** Whether no other window of this launch is open; it then adopts the saved strip. */
-async function firstWindow(): Promise<boolean> {
-  if (!("locks" in navigator)) return true;
-
-  try {
-    const { held = [] } = await navigator.locks.query();
-    void navigator.locks.request(
-      WINDOW_LOCK,
-      { mode: "shared" },
-      () => new Promise(() => undefined),
-    );
-
-    return !held.some((lock) => lock.name === WINDOW_LOCK);
-  } catch {
-    return true;
-  }
-}
-
 class WindowTabs {
   #strip = false;
   #state: WindowState = initialWindow("tab");
@@ -202,28 +181,26 @@ class WindowTabs {
     return this.#startupDestination;
   }
 
-  /** Restore a reload synchronously; resolves once a first window has adopted the saved strip. */
-  start(): Promise<void> {
+  /** Restore a reload's strip, or adopt the saved one in the launch's first window. */
+  start(firstWindow: boolean): void {
     this.#strip = true;
     this.#startupDestination = false;
     const reloaded = parseStrip(read(storage("sessionStorage"), STRIP_KEY));
     this.#state = reloaded ?? initialWindow(crypto.randomUUID());
     window.addEventListener("focus", () => this.#mirror());
 
-    return firstWindow().then((first) => {
-      if (!first || reloaded !== undefined) return;
-      const saved = parseStrip(read(storage("localStorage"), STRIP_KEY));
-      const kept = knownTabIds(saved ?? this.#state);
-      forgetTabs((tabId) => !kept.has(tabId));
+    if (!firstWindow || reloaded !== undefined) return;
+    const saved = parseStrip(read(storage("localStorage"), STRIP_KEY));
+    const kept = knownTabIds(saved ?? this.#state);
+    forgetTabs((tabId) => !kept.has(tabId));
 
-      if (saved === undefined) {
-        this.#startupDestination = true;
+    if (saved === undefined) {
+      this.#startupDestination = true;
 
-        return;
-      }
+      return;
+    }
 
-      this.#apply(saved);
-    });
+    this.#apply(saved);
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {

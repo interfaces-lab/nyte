@@ -17,7 +17,9 @@ export interface TableSpec {
   readonly editing?: "steer" | "queue";
   readonly shell?: boolean;
   readonly completion?: "slash" | "skill" | "cd" | "empty";
-  readonly blocked?: "starting" | "switching" | "authenticating";
+  readonly blocked?: "switching" | "authenticating";
+  readonly waiting?: boolean;
+  readonly models?: boolean;
   readonly dialog?: boolean;
   readonly followUp?: "steer" | "queue";
   readonly queue?: readonly {
@@ -188,6 +190,8 @@ export function tableInput(spec: TableSpec): TableInput {
     completion: buildCompletion(spec.completion),
     dialog: spec.dialog === true ? PALETTE : null,
     blocked: buildBlocked(spec.blocked),
+    waiting: spec.waiting ?? false,
+    models: spec.models ?? true,
     queue,
     followUp: spec.followUp ?? "steer",
     tasks: spec.tasks ?? 0,

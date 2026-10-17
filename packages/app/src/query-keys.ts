@@ -5,6 +5,10 @@ export const keys = {
   hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
   workspaces: ["workspaces"] as const,
+  /** The last run's folders, shown until the live list arrives. */
+  firstFrameWorkspaces: ["first-frame", "workspaces"] as const,
+  /** The last run's recent chats, shown until the live directory arrives. */
+  firstFrameRoots: ["first-frame", "roots"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
   /**

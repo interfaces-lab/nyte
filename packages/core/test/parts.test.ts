@@ -217,7 +217,7 @@ describe("parts", () => {
 
   it("creates a part outside the transcript: its ref, its event, and view.parts", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes", "no"] },
@@ -249,13 +249,13 @@ describe("parts", () => {
         owner: null,
       },
     ]);
-    expect(view.messages).toEqual([]);
+    expect(view.messages.map((message) => message.id)).toEqual([session.id]);
   });
 
   it("lands a transcript part outside a run as a commit on main in one set", async () => {
     const recorded = recording(await memoryStore().open());
     const { kernel, host } = await setup({ store: recorded.store });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(text, {
       state: { markdown: "Hello.", signature: null },
@@ -288,7 +288,7 @@ describe("parts", () => {
 
   it("replays a create with the same id and state, and refuses another state or kind", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const id: PartId = asId("q1");
 
     const input = {
@@ -335,7 +335,7 @@ describe("parts", () => {
 
   it("refuses an uncontributed definition with onAction", async () => {
     const { host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     await expect(
       session.parts.create(picker, { state: { picked: null }, placement: { kind: "panel" } }),
@@ -344,7 +344,7 @@ describe("parts", () => {
 
   it("updates by value and by function, and answers invalid, missing and closed", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes"] },
@@ -381,7 +381,7 @@ describe("parts", () => {
 
   it("settles an ownerless modal's answer with its first act", async () => {
     const { host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes", "no"] },
@@ -398,7 +398,7 @@ describe("parts", () => {
 
   it("checks an act on a handle bound by id against the creating definition", async () => {
     const { host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes"] },
@@ -420,7 +420,7 @@ describe("parts", () => {
 
   it("answers a non-modal part with null immediately, before and after actions or close", async () => {
     const { host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes"] },
@@ -441,7 +441,7 @@ describe("parts", () => {
   it("runs a contributed onAction: its output, rejected, unknown-action, invalid input and no-owner", async () => {
     const { kernel, host } = await setup();
     const dispose = kernel.partDefinitions.register(picker, "plugin");
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(picker, {
       state: { picked: null },
@@ -473,7 +473,7 @@ describe("parts", () => {
   it("closes a part: a pending act resolves closed, answer() null, and a second close resolves", async () => {
     const { kernel, host } = await setup();
     kernel.partDefinitions.register(picker, "plugin");
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(picker, {
       state: { picked: null },
@@ -500,7 +500,7 @@ describe("parts", () => {
     const first = await setup();
     const cold = await setup({ store: first.kernel.store });
     const waiting = await setup({ store: first.kernel.store });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes", "no"] },
@@ -524,7 +524,7 @@ describe("parts", () => {
     const first = await setup();
     const cold = await setup({ store: first.kernel.store });
     const other = await setup({ store: first.kernel.store });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["FIRST", "SECOND"] },
@@ -563,7 +563,7 @@ describe("parts", () => {
   it("answers null after another host closes the part, dropping the answer held here (D6 audit 4)", async () => {
     const first = await setup();
     const other = await setup({ store: first.kernel.store });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes"] },
@@ -607,7 +607,7 @@ describe("parts", () => {
     };
 
     const { host } = await setup({ store });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(question, {
       state: { title: "Deploy?", choices: ["yes", "no"] },

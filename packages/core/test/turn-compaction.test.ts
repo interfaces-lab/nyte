@@ -29,8 +29,8 @@ describe("turn compaction", () => {
     );
 
     await using host = await open(fake, { plugins: [policy] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     await (await session.send("Second?")).settled();
 
     expect(fake.requests).toHaveLength(3);
@@ -64,8 +64,10 @@ describe("turn compaction", () => {
     );
 
     await using host = await open(fake, { plugins: [plugin, policy] });
-    const session = await host.sessions.create();
-    await (await session.send("First question?")).settled();
+    const { session, receipt: started } = await host.sessions.start({
+      content: "First question?",
+    });
+    await started.settled();
     const logged = events(host.kernel, session.id);
     const end = await (await session.send("Second question?")).settled();
 
@@ -148,8 +150,10 @@ describe("turn compaction", () => {
     );
 
     await using host = await open(fake, { plugins: [recorder().plugin, policy] });
-    const session = await host.sessions.create();
-    await (await session.send("First question?")).settled();
+    const { session, receipt: started } = await host.sessions.start({
+      content: "First question?",
+    });
+    await started.settled();
     expect((await (await session.send("Second question?")).settled()).kind).toBe("completed");
 
     expect(fake.requests).toHaveLength(4);
@@ -180,8 +184,10 @@ describe("turn compaction", () => {
     );
 
     await using host = await open(fake, { plugins: [recorder().plugin, policy] });
-    const session = await host.sessions.create();
-    await (await session.send("Echo it.")).settled();
+    const { receipt: started } = await host.sessions.start({
+      content: "Echo it.",
+    });
+    await started.settled();
 
     const prompt = lastUserText(fake, 1);
 
@@ -201,8 +207,8 @@ describe("turn compaction", () => {
     );
 
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     const logged = events(host.kernel, session.id);
     const end = await (await session.send("Second?")).settled();
 
@@ -226,8 +232,8 @@ describe("turn compaction", () => {
     const fake = fakeModels();
     fake.reply({ error: "prompt is too long: 213462 tokens > 200000 maximum" });
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const end = await (await session.send("Only?")).settled();
+    const { receipt: first } = await host.sessions.start({ content: "Only?" });
+    const end = await first.settled();
 
     expect(end).toMatchObject({ kind: "failed", failure: { class: "context_window" } });
   });
@@ -244,10 +250,9 @@ describe("turn compaction", () => {
     );
 
     await using host = await open(fake, { plugins: [plugin] });
-    const session = await host.sessions.create();
+    const { session, receipt } = await host.sessions.start({ content: "Count." });
 
-    expect(await session.compact()).toEqual({ kind: "nothing-to-compact" });
-    await (await session.send("Count.")).settled();
+    await receipt.settled();
     await (await session.send("Again.")).settled();
     const started = await session.compact({ instructions: "Keep the numbers." });
 
@@ -289,8 +294,8 @@ describe("turn compaction", () => {
     );
 
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    await (await session.send("One?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "One?" });
+    await started.settled();
     await (await session.send("Two?")).settled();
 
     const first = (await session.view()).messages.find(

@@ -20,10 +20,10 @@ import type { MentionFile } from "./completion.ts";
 import type { DialogData, DialogId, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
 import type { DraftInsert, DraftSnapshot } from "./draft.ts";
 import type {
+  BlankChat,
   FailureReport,
   Notice,
   PendingOp,
-  Phase,
   QuestionRequest,
   QuestionTypedDraft,
   RemoteFacts,
@@ -61,6 +61,7 @@ export type Intent =
   | { readonly kind: "run-shell"; readonly command: string; readonly include: boolean }
   | { readonly kind: "stop-shell" }
   | { readonly kind: "clear-draft" }
+  | { readonly kind: "recall-first-message" }
   | { readonly kind: "quit" }
   | { readonly kind: "escape-tree"; readonly at: number }
   | { readonly kind: "refuse"; readonly reason: string; readonly tone?: Notice["tone"] }
@@ -158,13 +159,15 @@ type PasteSource =
   | { readonly kind: "clipboard" };
 
 export type Fact =
-  | { readonly kind: "phase"; readonly phase: Phase }
+  | { readonly kind: "host-opened" }
   | {
       readonly kind: "session-opened";
       readonly session: SessionId;
       readonly info: SessionInfo;
       readonly selection: Selection;
     }
+  | { readonly kind: "blank-opened"; readonly chat: BlankChat }
+  | { readonly kind: "blank-folder"; readonly session: SessionId; readonly workspace: WorkspaceId }
   | { readonly kind: "view"; readonly session: SessionId; readonly view: SessionView }
   | { readonly kind: "watch-ended"; readonly session: SessionId; readonly failure: string | null }
   | { readonly kind: "session-info"; readonly session: SessionId; readonly info: SessionInfo }

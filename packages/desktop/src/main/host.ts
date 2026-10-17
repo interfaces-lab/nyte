@@ -9,7 +9,7 @@ import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Host, HostView, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
 import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
-import { ConnectError, hostShare, machineName } from "@nyte-ai/connect/host";
+import { ConnectError, hostShare } from "@nyte-ai/connect/host";
 import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
 import type {
   HostEvent,
@@ -69,6 +69,8 @@ export interface DesktopHostDependencies {
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
   /** The browser panel's pages, which the desktop browser tools drive. */
   readonly agent: BrowserAgent;
+  /** How long to wait before opening the host, so a test can prove nothing on screen waits for it. */
+  readonly openDelayMs?: number | undefined;
 }
 
 /** One handler per operation the host process answers, so a missing or misshapen one is a type error. */
@@ -340,6 +342,9 @@ export class DesktopHost {
     performance.mark("nyte:host-start");
     const { home } = this.#deps;
     void completeShellEnvironment().then(() => performance.mark("nyte:shell-environment-ready"));
+    const delay = this.#deps.openDelayMs;
+
+    if (delay !== undefined) await new Promise((resolve) => setTimeout(resolve, delay));
 
     const host = await sdk.open({
       models: this.#deps.models,
@@ -527,11 +532,7 @@ export class DesktopHost {
   }
 
   #state(window: HostWindow) {
-    return {
-      workspace: this.#selections.get(window),
-      platform: process.platform,
-      machineName: machineName(),
-    };
+    return { workspace: this.#selections.get(window) };
   }
 
   /** Selects chat `session`'s folder for `window` without announcing it; the caller's reply carries it. */

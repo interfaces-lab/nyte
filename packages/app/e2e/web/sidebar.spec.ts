@@ -14,7 +14,7 @@ test("a folded sidebar list reveals 8 more chats per click", async ({ page }) =>
   const sidebar = page.getByRole("navigation", { name: "Sessions and workspaces" });
   await sidebar.getByRole("button", { name: `Archived ${String(ARCHIVED_SESSION_COUNT)}` }).click();
 
-  const rows = sidebar.getByRole("button", { name: /^Archived chat \d+ /u });
+  const rows = sidebar.getByRole("button", { name: /^(Unread )?Archived chat \d+ /u });
   await expect(rows).toHaveCount(5);
 
   await sidebar.getByRole("button", { name: "Show 8 More", exact: true }).click();

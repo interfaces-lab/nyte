@@ -2,10 +2,12 @@ export { App } from "./app.tsx";
 
 export type { UpdateState } from "./bridge.ts";
 
-export { connectLocalHost, loadHostState, queryClient, setUpdateStateForDemo } from "./queries.ts";
+export { connectLocalHost, queryClient, setUpdateStateForDemo } from "./queries.ts";
 
 export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
 
 export { startRendererStartup } from "./startup.ts";
 
-export { loadWindowHostState } from "./tabs/use-window-tabs.tsx";
+export { StartupFailure } from "./startup-failure.tsx";
+
+export { recordFirstFrame, seedFirstFrame } from "./first-frame.ts";

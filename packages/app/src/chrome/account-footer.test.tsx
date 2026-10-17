@@ -8,7 +8,7 @@ import { keys } from "../query-keys.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
 
-installBridge(createWebBridge().bridge);
+installBridge({ ...createWebBridge().bridge, machineName: "Studio Mac" });
 
 const pending = (): Promise<never> => new Promise<never>(() => undefined);
 
@@ -60,11 +60,7 @@ const NYTE = {
 function render(state: GitHubProviderState, view: ConnectView): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.add(client);
-  client.setQueryData(keys.host, {
-    platform: "darwin",
-    workspace: undefined,
-    machineName: "Studio Mac",
-  } satisfies HostState);
+  client.setQueryData(keys.host, { workspace: undefined } satisfies HostState);
   client.setQueryData([...keys.github, null], state);
   client.setQueryData(keys.connect, view);
 

@@ -1,6 +1,6 @@
 import type { SessionView } from "@nyte-ai/schema";
 import { isPart, text as textPart } from "@nyte-ai/core";
-import type { Connection } from "@nyte-ai/core";
+import type { Connection, Session } from "@nyte-ai/core";
 import { parseSse, readStreamFrame } from "@nyte-ai/protocol";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
@@ -32,6 +32,15 @@ export async function client(host: Served, journal = createSendJournal()): Promi
   cleanups.push(() => connection.close());
 
   return connection;
+}
+
+/** Starts a chat whose first exchange, `Hi.` answered `Ready.`, has settled, so a test begins from an idle chat. */
+export async function settledChat(host: Served, connection: Connection): Promise<Session> {
+  host.fake.reply(text("Ready."));
+  const { session, receipt } = await connection.sessions.start({ content: "Hi." });
+  await receipt.settled();
+
+  return session;
 }
 
 export function text(markdown: string) {

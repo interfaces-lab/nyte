@@ -74,6 +74,11 @@ it("keeps equal identities from different environment providers separate", async
 it("keeps old history readable but refuses a replacement environment", async () => {
   const { host, kernel, provider, disk, workspace } = await world();
   disk.put("/work/project/replacement.txt", "replacement folder");
+  const { session } = await host.sessions.start({
+    workspace,
+    name: "Original chat",
+    content: "Hi.",
+  });
   const inspect = provider.inspect.bind(provider);
   const attach = provider.attach.bind(provider);
   provider.inspect = async (target) => ({
@@ -85,7 +90,7 @@ it("keeps old history readable but refuses a replacement environment", async () 
     identity: asId("replacement"),
   });
 
-  const session = await host.sessions.create({ workspace, name: "Original chat" });
+  await kernel.environments.detach(session.id);
   expect(await session.info()).toMatchObject({ name: "Original chat", workspace });
   expect(await host.workspace(workspace).info()).toMatchObject({
     identity: "id:/work/project",

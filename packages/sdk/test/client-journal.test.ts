@@ -4,7 +4,7 @@ import { decodeInput } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { createSendJournal } from "../src/journal.ts";
 import { readOperation, until } from "./served.ts";
-import { client, closeOpened, open, text, users } from "./connection.ts";
+import { client, closeOpened, open, settledChat, text, users } from "./connection.ts";
 
 afterEach(closeOpened);
 
@@ -13,8 +13,8 @@ describe("client send journal", () => {
     const host = await open();
     const journal = createSendJournal();
     const first = await client(host, journal);
+    const session = await settledChat(host, first);
     host.fake.reply(text("Landed."));
-    const session = await first.sessions.create();
     let sends = 0;
     let admitted: () => void = () => undefined;
 
@@ -46,7 +46,7 @@ describe("client send journal", () => {
     const sending = first.session(session.id).send("Once.");
     const shown = await unsent;
 
-    expect(shown.messages.find((message) => message.kind === "user")).toMatchObject({
+    expect(shown.messages.findLast((message) => message.kind === "user")).toMatchObject({
       content: "Once.",
       status: { kind: "unsent", retrying: { reason: "fetch failed" } },
     });
@@ -61,11 +61,11 @@ describe("client send journal", () => {
     const second = await client(host, journal);
     const settled = await until(
       second.session(session.id).watch(),
-      (view) => view.execution.kind === "idle" && view.messages.length === 2,
+      (view) => view.execution.kind === "idle" && view.messages.length === 4,
     );
 
-    expect(users(settled)).toEqual(["Once."]);
-    expect(users(await host.view(session.id))).toEqual(["Once."]);
+    expect(users(settled)).toEqual(["Hi.", "Once."]);
+    expect(users(await host.view(session.id))).toEqual(["Hi.", "Once."]);
     expect(await journal.load()).toEqual([]);
   });
 
@@ -73,8 +73,8 @@ describe("client send journal", () => {
     const host = await open();
     const journal = createSendJournal();
     const first = await client(host, journal);
+    const session = await settledChat(host, first);
     host.fake.reply(text("Draft answer."), text("Final answer."));
-    const session = await first.sessions.create();
     const lost = Promise.withResolvers<void>();
     let posts = 0;
 
@@ -97,7 +97,7 @@ describe("client send journal", () => {
       users(view).includes("Draft."),
     );
 
-    const id = shown.messages.find((message) => message.kind === "user")?.id;
+    const id = shown.messages.findLast((message) => message.kind === "user")?.id;
     assert(id !== undefined);
     const final = first.session(session.id).send("Final.", { replace: id });
     await expect.poll(async () => (await journal.load()).length).toBe(2);
@@ -118,13 +118,13 @@ describe("client send journal", () => {
     await until(
       second.session(session.id).watch(),
       (view) =>
-        users(view).join() === "Final." &&
+        users(view).join() === "Hi.,Final." &&
         view.execution.kind === "idle" &&
         view.messages.every(
           (message) => message.kind !== "user" || message.status.kind !== "unsent",
         ),
     );
-    expect(users(await host.view(session.id))).toEqual(["Final."]);
+    expect(users(await host.view(session.id))).toEqual(["Hi.", "Final."]);
     await expect
       .poll(async () => {
         await second.session(session.id).view();
@@ -138,8 +138,8 @@ describe("client send journal", () => {
     const host = await open();
     const journal = createSendJournal();
     const connection = await client(host, journal);
+    const session = await settledChat(host, connection);
     host.fake.reply(text("Draft answer."), text("Final answer."));
-    const session = await connection.sessions.create();
 
     const bodies: {
       readonly id: string;
@@ -167,7 +167,7 @@ describe("client send journal", () => {
     await lost.promise;
     const shown = await until(session.watch(), (view) => users(view).includes("Draft."));
 
-    const id = shown.messages.find((message) => message.kind === "user")?.id;
+    const id = shown.messages.findLast((message) => message.kind === "user")?.id;
     assert(id !== undefined);
     const final = session.send("Final.", { replace: id });
     const [one, two] = await Promise.all([draft, final]);
@@ -182,9 +182,9 @@ describe("client send journal", () => {
     expect(two.id).toBe(bodies[2]?.id);
     await until(
       session.watch(),
-      (view) => users(view).join() === "Final." && view.execution.kind === "idle",
+      (view) => users(view).join() === "Hi.,Final." && view.execution.kind === "idle",
     );
-    expect(users(await host.view(session.id))).toEqual(["Final."]);
+    expect(users(await host.view(session.id))).toEqual(["Hi.", "Final."]);
     await expect
       .poll(async () => {
         await session.view();
@@ -198,8 +198,8 @@ describe("client send journal", () => {
     const host = await open();
     const journal = createSendJournal();
     const connection = await client(host, journal);
+    const session = await settledChat(host, connection);
     host.fake.reply(text("Draft answer."), text("Final answer."));
-    const session = await connection.sessions.create();
     let posts = 0;
     let release: () => void = () => undefined;
     let arrived: () => void = () => undefined;
@@ -227,7 +227,7 @@ describe("client send journal", () => {
     const draft = session.send("Draft.");
     await posted;
     const shown = await until(session.watch(), (view) => users(view).includes("Draft."));
-    const id = shown.messages.find((message) => message.kind === "user")?.id;
+    const id = shown.messages.findLast((message) => message.kind === "user")?.id;
     assert(id !== undefined);
     const final = session.send("Final.", { replace: id });
     await Promise.resolve();
@@ -239,15 +239,15 @@ describe("client send journal", () => {
     expect(posts).toBe(4);
     await until(
       session.watch(),
-      (view) => users(view).join() === "Final." && view.execution.kind === "idle",
+      (view) => users(view).join() === "Hi.,Final." && view.execution.kind === "idle",
     );
-    expect(users(await host.view(session.id))).toEqual(["Final."]);
+    expect(users(await host.view(session.id))).toEqual(["Hi.", "Final."]);
     expect(await journal.load()).toEqual([]);
   });
 
   it("returns from connect before replaying the journal, which lands once the link is back", async () => {
     const host = await open();
-    const session = await (await client(host)).sessions.create();
+    const session = await settledChat(host, await client(host));
     host.fake.reply(text("Replayed."));
     const journal = createSendJournal();
 
@@ -273,15 +273,15 @@ describe("client send journal", () => {
       view.messages.some((message) => message.kind === "user" && message.status.kind === "unsent"),
     );
 
-    expect(users(unsent)).toEqual(["Journaled."]);
+    expect(users(unsent)).toEqual(["Hi.", "Journaled."]);
     down = false;
 
     const landed = await until(
       connection.session(session.id).watch(),
-      (view) => view.execution.kind === "idle" && view.messages.length === 2,
+      (view) => view.execution.kind === "idle" && view.messages.length === 4,
     );
 
-    expect(users(landed)).toEqual(["Journaled."]);
+    expect(users(landed)).toEqual(["Hi.", "Journaled."]);
     expect(await journal.load()).toEqual([]);
   });
 
@@ -289,8 +289,8 @@ describe("client send journal", () => {
     const host = await open();
     const journal = createSendJournal();
     const connection = await client(host, journal);
+    const session = await settledChat(host, connection);
     host.fake.reply(text("Once."));
-    const session = await connection.sessions.create();
     let posts = 0;
 
     host.intercept(async (request, next) => {
@@ -318,8 +318,9 @@ describe("client send journal", () => {
     const journal = createSendJournal();
     const connection = await client(host, journal);
     host.fake.reply(text("One."), text("Two."), text("Three."));
-    const session = await connection.sessions.create();
-    const first = await session.send("Draft.");
+    const { session, receipt: first } = await connection.sessions.start({
+      content: "Draft.",
+    });
     await first.settled();
     await session.view();
     let down = true;
@@ -349,7 +350,7 @@ describe("client send journal", () => {
   it("shows an edit of a queued, acknowledged message once, never unsent beside it, and the view equals the host's after the run (ADV A F1, probe P1)", async () => {
     const host = await open();
     const connection = await client(host);
-    const session = await connection.sessions.create();
+    const session = await settledChat(host, connection);
     const halfway = Promise.withResolvers<void>();
     const resume = Promise.withResolvers<void>();
 
@@ -393,7 +394,7 @@ describe("client send journal", () => {
       session.watch(),
       (view) =>
         view.execution.kind === "idle" &&
-        users(view).join() === "First.,Second v2." &&
+        users(view).join() === "Hi.,First.,Second v2." &&
         view.heads.every((head) => !head.unread),
     );
 
@@ -412,7 +413,7 @@ describe("client send journal", () => {
 
   it("holds every journaled entry at connect, all shown unsent before the first lands, then delivers them in order (ADV C 4, probe P5)", async () => {
     const host = await open();
-    const session = await (await client(host)).sessions.create();
+    const session = await settledChat(host, await client(host));
     host.fake.reply(text("One answer."), text("Two answer."));
     const journal = createSendJournal();
 
@@ -438,19 +439,19 @@ describe("client send journal", () => {
 
     const unsent = await until(
       connection.session(session.id).watch(),
-      (view) => users(view).length === 2,
+      (view) => users(view).length === 3,
     );
 
-    expect(users(unsent)).toEqual(["One.", "Two."]);
+    expect(users(unsent)).toEqual(["Hi.", "One.", "Two."]);
     expect(
       unsent.messages.map((message) => message.kind === "user" && message.status.kind),
-    ).toEqual(["unsent", "unsent"]);
+    ).toEqual(["landed", false, "unsent", "unsent"]);
     down = false;
     await until(
       connection.session(session.id).watch(),
-      (view) => view.execution.kind === "idle" && view.messages.length === 4,
+      (view) => view.execution.kind === "idle" && view.messages.length === 6,
     );
-    expect(users(await host.view(session.id))).toEqual(["One.", "Two."]);
+    expect(users(await host.view(session.id))).toEqual(["Hi.", "One.", "Two."]);
     await expect.poll(() => journal.load()).toEqual([]);
   });
 });

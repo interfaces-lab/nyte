@@ -148,6 +148,8 @@ const ReceiptRecordType = Type.Union([
   record({
     ...RECEIPT,
     kind: Type.Literal("send"),
+    /** The principal a starting chat's before_send hooks decide its first message for; only that message's receipt has one. */
+    principal: Type.Optional(idSchema<"principal">()),
     outcome: nullable(
       typed<Awaited<ReturnType<SendReceipt["settled"]>>>()(
         Type.Union([

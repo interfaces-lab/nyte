@@ -3,6 +3,7 @@ import type { ChatCommand } from "../lib/constants.ts";
 import type { PowerlineState } from "../lib/format.ts";
 import { displayWidth } from "../lib/width.ts";
 import type { Interactions } from "./interactions.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 export interface FooterModel {
@@ -39,8 +40,9 @@ function basename(path: string): string {
 }
 
 export function footerFor(state: State, queued: number): FooterModel {
-  const session = state.facts.session;
-  const view = session?.view ?? null;
+  const chat = state.facts.chat;
+  const session = chat?.kind === "blank" && chat.unresolved === true ? null : chat;
+  const view = followedSession(state)?.view ?? null;
   const { workspace } = state.facts;
   const context = view?.context;
 

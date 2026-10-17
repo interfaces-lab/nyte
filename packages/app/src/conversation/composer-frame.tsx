@@ -6,8 +6,7 @@ import type { DragEvent, ReactElement, ReactNode } from "react";
 import type { Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { useHostState } from "../queries.ts";
-import { macPlatform } from "../platform.ts";
+import { nyte } from "../nyte.ts";
 import type { RunningMessagePreference } from "../preferences/index.ts";
 import { ImagePreview } from "./image-preview.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -144,7 +143,6 @@ export function ComposerFrame({
   const frameRef = useRef<HTMLFormElement>(null);
   const areaRef = useRef<ComposerEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const host = useHostState();
   const [dragging, setDragging] = useState<"files" | "mention">();
   const [editorNeedsExpansion, setEditorNeedsExpansion] = useState(false);
   const [narrow, setNarrow] = useState(false);
@@ -200,7 +198,7 @@ export function ComposerFrame({
       attachmentError !== undefined ||
       editing !== undefined);
 
-  const modifier = modifierKeyLabel(macPlatform(host.data?.platform));
+  const modifier = modifierKeyLabel(nyte.platform === "darwin");
 
   const sendLabel = answering ? "Send answer" : "Send message";
 

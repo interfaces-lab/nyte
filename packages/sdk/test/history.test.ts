@@ -27,14 +27,15 @@ it("pages a head's older messages and their turns into its views and keeps them 
   });
 
   cleanups.push(() => connection.close());
-  const session = await connection.sessions.create();
   host.fake.reply(
     ...["One.", "Two.", "Three.", "Four."].map((text) => ({
       content: [{ type: "text" as const, text }],
     })),
   );
+  const { session, receipt } = await connection.sessions.start({ content: "First." });
+  await receipt.settled();
 
-  for (const text of ["First.", "Second.", "Third."])
+  for (const text of ["Second.", "Third."])
     await (await session.send(text, { delivery: "queue" })).settled();
 
   const views = pagedViews(session, { tail: 2 });

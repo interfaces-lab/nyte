@@ -265,7 +265,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
         !messages.held || (message.source.kind !== "child" && message.source.kind !== "job"),
     );
 
-  const cwd = host.data?.workspace?.path;
+  const cwd = host.data.workspace?.path;
 
   const loadEarlier = useCallback(
     () => void loadEarlierMessages(sessionId, HISTORY_PAGE),

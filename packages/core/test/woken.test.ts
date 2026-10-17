@@ -40,7 +40,7 @@ describe("woken calls", () => {
   it("steps on refresh only the calls another process woke, reading none of the parked ones", async () => {
     const holder = await setup();
     const other = await setup({ store: holder.kernel.store });
-    const session = await holder.host.sessions.create();
+    const { session } = await holder.host.sessions.start({ content: "Hi." });
     const soon = Date.now() + 1;
 
     await waitStep(holder.kernel, session.id, "c0", async (durable) =>
@@ -81,7 +81,7 @@ describe("woken calls", () => {
 
   it("drops a woken call's index when it parks on its next wait", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const soon = Date.now() + 1;
 
     const twice = async (durable: Durable): Promise<Json> => {
@@ -100,8 +100,8 @@ describe("woken calls", () => {
 
   it("drops a session's wait index, woken calls' included, with the session", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
-    const kept = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const { session: kept } = await host.sessions.start({ content: "Hi." });
     const soon = Date.now() + 1;
 
     await waitStep(kernel, session.id, "c1", async (durable) =>

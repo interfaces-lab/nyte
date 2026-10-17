@@ -498,6 +498,11 @@ export interface ExecutionState {
   readonly pending: Map<string, boolean>;
   readonly summaries: Set<string>;
   readonly callQueue: KeyedSerial<string>;
+  /** The chats whose first message this process is deciding, each with the abort a stop or remove fires. */
+  readonly starting: Map<
+    SessionId,
+    { readonly done: Promise<void>; readonly abort: AbortController }
+  >;
   timer: ReturnType<typeof setInterval> | null;
   closing: AbortController;
 }

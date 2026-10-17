@@ -18,7 +18,7 @@ import {
   useSessionActivity,
 } from "../queries.ts";
 import { connection } from "../sdk.tsx";
-import { macPlatform } from "../platform.ts";
+import { nyte } from "../nyte.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -124,7 +124,7 @@ export function Composer({
   const stopping = execution?.kind === "live" && execution.stopping;
   const [pendingEdit, setPendingEdit] = useState<PendingEdit>();
   const host = useHostState();
-  const mac = macPlatform(host.data?.platform);
+  const mac = nyte.platform === "darwin";
   const link = useHostLink();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const questions = useQuestionDock(sessionId);
@@ -141,7 +141,7 @@ export function Composer({
 
   const inlineSlot = useRef<HTMLDivElement | null>(null);
   const focusAfterMove = useRef(false);
-  const cwd = host.data?.workspace?.path;
+  const cwd = host.data.workspace?.path;
   const activity = useSessionActivity(floating ? sessionId : undefined, cwd);
 
   const attachInlineSlot = useCallback(

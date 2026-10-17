@@ -26,8 +26,10 @@ it("renders a canvas from the tool as an answer part, then replaces it in place 
   );
 
   await using host = await open(fake, [canvasPlugin]);
-  const session = await host.sessions.create();
-  await (await session.send("Show totals.")).settled();
+  const { session, receipt: started } = await host.sessions.start({
+    content: "Show totals.",
+  });
+  await started.settled();
 
   const drawn = await until(async () =>
     (await session.view()).messages.find((message) => isPart(message, canvas)),
@@ -111,8 +113,8 @@ it("answers the model with the compiler's diagnostics, positioned per line, and 
   );
 
   await using host = await open(fake, [canvasPlugin]);
-  const session = await host.sessions.create();
-  await (await session.send("Show it.")).settled();
+  const { session, receipt: started } = await host.sessions.start({ content: "Show it." });
+  await started.settled();
 
   const view = await session.view();
 

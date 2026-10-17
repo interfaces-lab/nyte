@@ -43,8 +43,11 @@ test("the renderer reaches the host over the local listener and a chat runs ther
   const connection = await connectLocal(made);
   made.fake.reply({ content: [{ type: "text", text: "hello from the host" }] });
 
-  const session = await connection.sessions.create({ name: "greeting" });
-  const receipt = await session.send("Say hello");
+  const { session, receipt } = await connection.sessions.start({
+    name: "greeting",
+    content: "Say hello",
+  });
+
   await receipt.settled();
   const view = await session.view();
 
@@ -76,8 +79,7 @@ test("keep awake holds while a head is live and lets go when its run ends", asyn
   const finish = Promise.withResolvers<void>();
   made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
 
-  const session = await connection.sessions.create();
-  const receipt = await session.send("Work");
+  const { receipt } = await connection.sessions.start({ content: "Work" });
   await vi.waitFor(() => assert.deepEqual(awake, [true]));
 
   finish.resolve();

@@ -1,5 +1,5 @@
 import { Value } from "typebox/value";
-import { CanvasInputSchema } from "../src/canvas/wire.ts";
+import { CanvasInputSchema, CanvasStartSchema } from "../src/canvas/wire.ts";
 import { buildRuntime, compileCanvas } from "./canvas.ts";
 import { readCanvas, storeCanvas } from "./canvas-store.ts";
 import { findModel, type ReviewHost } from "./host.ts";
@@ -38,6 +38,11 @@ export function canvasRoutes(core: () => Promise<{ readonly host: ReviewHost }>)
       }
 
       if (request.method === "POST" && path === "/session") {
+        const input: unknown = await request.json();
+
+        if (!Value.Check(CanvasStartSchema, input))
+          return Response.json({ error: "Provide the first message as prompt." }, { status: 400 });
+
         const { host } = await core();
 
         const model = await findModel(
@@ -45,9 +50,10 @@ export function canvasRoutes(core: () => Promise<{ readonly host: ReviewHost }>)
           process.env["NYTE_LAB_CANVAS_MODEL"] || "openai-codex/gpt-6-luna",
         );
 
-        const session = await host.sdk.sessions.create({
+        const { session } = await host.sdk.sessions.start({
           name: `canvas ${Date.now()}`,
           configuration: { model, agent: CANVAS_AGENT },
+          content: input.prompt,
         });
 
         return Response.json({

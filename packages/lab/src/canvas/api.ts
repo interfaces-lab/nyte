@@ -11,7 +11,7 @@ const ErrorSchema = Type.Object({ error: Type.String() });
 export async function canvasRequest<T extends TSchema>(
   schema: T,
   path: string,
-  body?: { readonly title: string; readonly source: string } | Record<string, never>,
+  body?: { readonly title: string; readonly source: string } | { readonly prompt: string },
 ): Promise<Static<T>> {
   const response = await fetch(`/core/canvas${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -30,7 +30,9 @@ export async function canvasRequest<T extends TSchema>(
 export const compileDemo = (input: { readonly title: string; readonly source: string }) =>
   canvasRequest(CanvasSnapshotSchema, "/compile", input);
 
-export const openCanvasSession = () => canvasRequest(SessionSchema, "/session", {});
+/** Start a live canvas chat with its first message. */
+export const startCanvasSession = (prompt: string) =>
+  canvasRequest(SessionSchema, "/session", { prompt });
 
 let client: Promise<Connection> | undefined;
 

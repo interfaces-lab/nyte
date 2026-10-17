@@ -433,9 +433,6 @@ export interface SelectedWorkspace {
 export interface HostState {
   /** Absent selects the id-only Home target, not the operating-system home folder. */
   readonly workspace: SelectedWorkspace | undefined;
-  readonly platform: NodeJS.Platform;
-  /** This computer's name. The web app's host has none to give. */
-  readonly machineName?: string;
   /**
    * The host's verified identity and the principal it named this client.
    * Present on registry hosts, where the selected folder and anything queued
@@ -718,8 +715,8 @@ export interface HostBridge {
   state(): Promise<HostState>;
   /**
    * The host state for a window reopening on chat `session`: when the window
-   * has no folder yet, the chat's folder is selected first, so the window's
-   * first frame shows the chat where it lives. A folder that is gone, or one
+   * has no folder yet, the chat's folder is selected first, without the
+   * announcement a folder opening makes. A folder that is gone, or one
    * whose project files still await a trust decision, is left for the window
    * to open. Absent where the host keeps no folder per window: the web app.
    */
@@ -813,6 +810,10 @@ export interface HostBridge {
 /** What `window.nyte` is: the shell's surface and the host namespace. Sessions, files and git are the connection's. */
 export interface NyteBridge {
   readonly clientSurface: ClientSurface;
+  /** The operating system the interface runs on, known before any host answers. */
+  readonly platform: NodeJS.Platform;
+  /** This computer's name. The web app has none to give. */
+  readonly machineName: string | undefined;
   /** Where the inline canvas runtime shell loads from. Absent, `/canvas/index.html` on this origin. */
   readonly canvasShell?: string;
   /** The web app reaches a desktop through the Nyte account relay. That desktop's provider and GitHub sign-ins stay on it. */

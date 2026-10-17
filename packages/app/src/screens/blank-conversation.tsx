@@ -1,6 +1,5 @@
 /** A new chat in a pane: its draft composer, until the first message starts the chat. */
 import { threadStyles } from "./thread.stylex.ts";
-import { modelConfiguration } from "./model-configuration.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -14,6 +13,8 @@ import {
 } from "react";
 import type { ReactElement } from "react";
 import type { CommandInfo, Delivery } from "@nyte-ai/sdk";
+import { Button } from "@nyte-ai/ui/button";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { ComposerFrame } from "../conversation/composer-frame.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
@@ -23,7 +24,8 @@ import type {
   ComposerSubmission,
 } from "../conversation/composer-document.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
-import { composerSendPlan, sendComposerMessage } from "../conversation/composer-send.ts";
+import { composerSendPlan } from "../conversation/composer-send.ts";
+import { startDraft } from "../conversation/draft-start.ts";
 import { ModelPicker } from "../conversation/model-picker.tsx";
 import { WorkspaceContext } from "./workspace-context.tsx";
 import {
@@ -35,9 +37,6 @@ import { activePane } from "../layout/pane-layout.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
 import { useCatalog, useHostState, useMentionFiles, useSetPreference } from "../queries.ts";
-import { connected } from "../sdk.tsx";
-
-import { errorMessage } from "../errors.ts";
 import { pickerDefaults } from "../preference-projection.ts";
 import { selectedModelOption } from "../conversation/model-picker-state.ts";
 
@@ -79,9 +78,11 @@ function useBlankViewBinding(
 }
 
 /**
- * A new chat: the draft composer until the first message creates the chat
- * and the pane moves to it. A failed start's raw cause is diagnostic only: it
- * rides in `title`, never in body copy.
+ * A new chat: the draft composer until the first message starts the chat
+ * and the pane moves to it once its first view arrived. The draft's status
+ * says what became of its send: held until the host connects, starting, or
+ * refused or failed with the draft editable again. A failed start's raw
+ * cause is diagnostic only: it rides in `title`, never in body copy.
  */
 export function BlankConversation({
   paneId,
@@ -92,20 +93,15 @@ export function BlankConversation({
 }): ReactElement {
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
-  const workspace = host.data?.workspace;
+  const workspace = host.data.workspace;
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace !== undefined);
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
-
-  const [startFailure, setStartFailure] = useState<
-    | { readonly kind: "start"; readonly cause: string }
-    | { readonly kind: "refused"; readonly message: string }
-  >();
-
-  const [sending, setSending] = useState(false);
-
+  const { status } = viewState;
+  const held = status.kind === "waiting" || status.kind === "starting";
+  const [pickerOpen, setPickerOpen] = useState(false);
   const attachments = viewState.composer.attachments;
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
@@ -126,59 +122,28 @@ export function BlankConversation({
   const selected = selectedModelOption(catalog.data?.models ?? [], defaults?.model);
   const current = selected?.option;
 
-  const start = async (
+  const start = (
     submission: ComposerSubmission,
     delivery: Delivery,
     document: ComposerDocumentState,
-  ): Promise<boolean> => {
-    if (sending || attachmentReads !== 0) return false;
+  ): boolean | Promise<boolean> => {
+    if (attachmentReads !== 0) return false;
 
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
     if (plan.kind !== "message") return false;
+    const draft = viewStore.readBlank(paneId);
 
-    if (catalog.data?.models.length === 0) {
-      setStartFailure({
-        kind: "refused",
-        message: "Connect a provider in Settings to choose a model.",
-      });
-
-      return false;
-    }
-
-    setSending(true);
-    setStartFailure(undefined);
-
-    const submitted = viewStore.takeBlank(paneId, {
-      ...viewStore.readBlank(paneId).composer,
+    const waiting = viewStore.beginSend(paneId, {
+      ...draft.composer,
       draft: document.text,
       selectionStart: document.selectionStart,
       selectionEnd: document.selectionEnd,
     });
 
-    try {
-      const connection = await connected();
-      const scope = workspace === undefined ? {} : { workspace: workspace.id };
+    if (waiting === undefined) return false;
 
-      const session = await connection.sessions.create(
-        defaults === undefined
-          ? scope
-          : { ...scope, configuration: modelConfiguration(defaults.model, defaults.thinkingLevel) },
-      );
-
-      await sendComposerMessage(connection.session(session.id), plan);
-      setAttachmentError(undefined);
-      setSending(false);
-      actions.openSessionInPane(paneId, session.id);
-
-      return true;
-    } catch (cause: unknown) {
-      viewStore.restoreBlank(paneId, submitted);
-      setSending(false);
-      setStartFailure({ kind: "start", cause: errorMessage(cause) });
-
-      return false;
-    }
+    return startDraft(viewStore, actions, draft.id, waiting, plan).then(() => true);
   };
 
   const addFiles = useCallback(
@@ -204,7 +169,7 @@ export function BlankConversation({
     [updateViewState],
   );
 
-  const dropDisabled = sending || host.data === undefined;
+  const dropDisabled = held;
   useLayoutEffect(() => {
     const element = blankRef.current;
 
@@ -222,7 +187,15 @@ export function BlankConversation({
   return (
     <div {...props(threadStyles.screen)}>
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
-      <div ref={blankRef} {...props(threadStyles.blank)}>
+      <div
+        ref={blankRef}
+        {...props(threadStyles.blank)}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || status.kind !== "waiting") return;
+          event.preventDefault();
+          viewStore.cancelSend(viewState.id);
+        }}
+      >
         <div {...props(threadStyles.blankColumn)}>
           <WorkspaceContext active={activePane(layout).id === paneId} />
           <ComposerFrame
@@ -245,7 +218,7 @@ export function BlankConversation({
             }
             onSubmit={start}
             placeholder="Ask Nyte, or type / for skills and @ for context"
-            disabled={sending || host.data === undefined}
+            disabled={held}
             suggestionCatalog={composerSource({ commands: NO_COMMANDS, skills: [] }, false)}
             mentionFiles={
               workspace === undefined
@@ -281,7 +254,9 @@ export function BlankConversation({
                 current={current}
                 thinkingLevel={defaults?.thinkingLevel}
                 fast={selected?.fast === true}
-                disabled={sending || host.data === undefined}
+                disabled={held}
+                open={pickerOpen}
+                onOpenChange={setPickerOpen}
                 onChange={(change) => {
                   const model = pickerDefaults(
                     {
@@ -297,15 +272,30 @@ export function BlankConversation({
               />
             }
           />
-          {startFailure !== undefined && (
+          {status.kind === "waiting" && (
+            <div role="status" {...props(text.base, threadStyles.startRow)}>
+              Sends when Nyte connects
+              <Button variant="ghost" size="xs" onClick={() => viewStore.cancelSend(viewState.id)}>
+                Cancel
+              </Button>
+            </div>
+          )}
+          {(status.kind === "refused" || status.kind === "failed") && (
             <div
               role="alert"
-              title={startFailure.kind === "start" ? startFailure.cause : undefined}
-              {...props(intent.danger, threadStyles.error)}
+              title={status.kind === "failed" ? status.cause : undefined}
+              {...props(
+                intent.danger,
+                threadStyles.error,
+                status.kind === "refused" && status.fix !== undefined && threadStyles.startRow,
+              )}
             >
-              {startFailure.kind === "start"
-                ? "Couldn’t start the chat. Try again."
-                : startFailure.message}
+              {status.kind === "failed" ? "Couldn’t start the chat. Try again." : status.message}
+              {status.kind === "refused" && status.fix === "choose-model" && (
+                <Button variant="ghost" size="xs" onClick={() => setPickerOpen(true)}>
+                  Choose Model
+                </Button>
+              )}
             </div>
           )}
         </div>

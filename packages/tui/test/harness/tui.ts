@@ -11,8 +11,9 @@ import type { AppOptions, MountedApp } from "../../src/app/main.tsx";
 import type { Store } from "../../src/app/store.ts";
 import { holdTypeahead } from "../../src/app/typeahead.ts";
 import type { BootOptions } from "../../src/effects/boot.ts";
-import type { ShellPort } from "../../src/effects/ports.ts";
 import { openCrashLog } from "../../src/effects/crash.ts";
+import type { SettingsPort, ShellPort } from "../../src/effects/ports.ts";
+import type { Selection } from "../../src/model/state.ts";
 import { keyStrokes } from "../../src/lib/constants.ts";
 import type { ChatCommand } from "../../src/lib/constants.ts";
 import { hostPort, pluginsPort } from "../../src/effects/host-port.ts";
@@ -45,8 +46,12 @@ export interface TuiOptions {
   readonly kit?: (kit: Kit) => Kit;
   /** Local ports in place of the fakes, such as a real `shell` running `!` commands; `cwd` is the TUI's folder (default its temp home). */
   readonly local?: { readonly shell?: ShellPort; readonly cwd?: string };
-  /** Starts `recorder` just before the app mounts, so frame timestamps count from mount. */
+  /** Starts `recorder` as soon as the renderer exists, before keys are held or the app mounts, so frame timestamps count from launch. */
   readonly record?: boolean;
+  /** What the last launch recorded for the first frame; none when omitted. */
+  readonly firstFrame?: Selection;
+  /** Replaces the fake settings, which read as `SETTINGS`. */
+  readonly settings?: SettingsPort;
 }
 
 /** The whole TUI on a test renderer, its timers on a `ManualClock`, over an in-process host. */
@@ -75,6 +80,14 @@ export interface Tui extends TestRendererSetup {
 }
 
 export async function startTui(options: TuiOptions = {}): Promise<Tui> {
+  const fixture = options.fixture ?? (await openTestHost());
+  const home = mkdtempSync(join(tmpdir(), "nyte-tui-app-"));
+  const fakes = fakePorts(fakeHost());
+  fakes.firstFrame.saved = options.firstFrame ?? null;
+  const cwd = options.local?.cwd ?? home;
+  const opening = Promise.withResolvers<void>();
+
+  if (options.opened !== false) opening.resolve();
   const clock = new ManualClock();
   clock.setTime(Date.now());
 
@@ -86,23 +99,21 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     clock,
   });
 
-  const typeahead = holdTypeahead(setup.renderer);
-
-  if (options.typed !== undefined) await setup.mockInput.typeText(options.typed);
-  const fixture = options.fixture ?? (await openTestHost());
-  const home = mkdtempSync(join(tmpdir(), "nyte-tui-app-"));
-  const fakes = fakePorts(fakeHost());
-  const cwd = options.local?.cwd ?? home;
-  const opening = Promise.withResolvers<void>();
-
-  if (options.opened !== false) opening.resolve();
   const recorder = new TestRecorder(setup.renderer);
 
   if (options.record === true) recorder.rec();
+  const typeahead = holdTypeahead(setup.renderer);
+
+  if (options.typed !== undefined) await setup.mockInput.typeText(options.typed);
 
   const mounting: AppOptions = {
     renderer: setup.renderer,
-    ports: { ...fakes, shell: options.local?.shell ?? fakes.shell, log: openCrashLog(home) },
+    ports: {
+      ...fakes,
+      shell: options.local?.shell ?? fakes.shell,
+      settings: options.settings ?? fakes.settings,
+      log: openCrashLog(home),
+    },
     cwd,
     typeahead,
     boot: { home, cwd, target: options.target ?? { kind: "new" }, model: null, effort: null },
@@ -213,7 +224,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     state,
     async ready() {
       await state(
-        (store) => store.state().facts.phase.kind === "ready" && store.screen().blocked === null,
+        (store) => store.state().facts.catalog.catalog !== null && store.screen().blocked === null,
       );
     },
     dispose,
@@ -261,7 +272,10 @@ export function cursorCell(
   return [column - 1, row - 1];
 }
 
-/** When the first recorded frame showing `text` was drawn, in ms since recording began. */
-export function shownAt(tui: Pick<Tui, "recorder">, text: string): number | undefined {
-  return tui.recorder.recordedFrames.find((recorded) => recorded.frame.includes(text))?.timestamp;
+/** When the first recorded frame that `shows` was drawn, in ms since recording began. */
+export function shownAt(
+  tui: Pick<Tui, "recorder">,
+  shows: (frame: string) => boolean,
+): number | undefined {
+  return tui.recorder.recordedFrames.find((recorded) => shows(recorded.frame))?.timestamp;
 }

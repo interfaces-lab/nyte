@@ -274,19 +274,21 @@ export async function readCalls(
   return calls.flatMap((call) => (call === null ? [] : [call.record]));
 }
 
+/** Whether `coverage` includes the session `record`, directly, by its workspace, or through an ancestor. */
 export async function covers(
   store: StoreConnection,
   coverage: ExecutionCoverage,
-  session: SessionId,
+  record: SessionRecord | null,
 ): Promise<boolean> {
   if (coverage.kind === "all") return true;
-  let current = await readSession(store, session);
 
-  if (coverage.kind === "workspace") return current?.record.workspace === coverage.workspace;
+  if (coverage.kind === "workspace") return record?.workspace === coverage.workspace;
+  let current = record;
+
   while (current !== null) {
-    if (coverage.sessions.includes(current.record.id)) return true;
-    const parent = current.record.parent;
-    current = parent === null ? null : await readSession(store, parent);
+    if (coverage.sessions.includes(current.id)) return true;
+    const parent = current.parent;
+    current = parent === null ? null : ((await readSession(store, parent))?.record ?? null);
   }
 
   return false;
@@ -341,16 +343,21 @@ export async function coveredSessions(
 }
 
 export async function coveredHere(kernel: Kernel, session: SessionId): Promise<boolean> {
+  return coversRecord(kernel, (await readSession(kernel.store, session))?.record ?? null);
+}
+
+/** Whether this process executes the session `record`, which need not be stored yet. */
+export async function coversRecord(kernel: Kernel, record: SessionRecord | null): Promise<boolean> {
   if (kernel.execution.kind === "dispatch") return true;
 
   if (
     kernel.execution.kind === "run" &&
-    (await covers(kernel.store, kernel.execution.coverage, session))
+    (await covers(kernel.store, kernel.execution.coverage, record))
   )
     return true;
 
   for (const coverage of kernel.executionState.covers.values())
-    if (await covers(kernel.store, coverage, session)) return true;
+    if (await covers(kernel.store, coverage, record)) return true;
 
   return false;
 }

@@ -59,11 +59,14 @@ async function openScenario(input: {
   });
 }
 
-/** Sends `prompt` as one traced submit and waits for its run; the trace id is the receipt id. */
+/** Starts a chat with `prompt` as one traced submit and waits for its run; the trace id is the chat's id, which names its receipt. */
 async function submit(host: Host, prompt: string): Promise<{ trace: string; session: Session }> {
-  const session = await host.sessions.create();
   const trace = crypto.randomUUID();
-  await (await session.send(prompt, { id: asId<"receipt">(trace) })).settled();
+  const { session, receipt } = await host.sessions.start({
+    id: asId<"session">(trace),
+    content: prompt,
+  });
+  await receipt.settled();
 
   return { trace, session };
 }

@@ -42,9 +42,10 @@ describe("turn", () => {
     );
 
     await using host = await open(fake, { plugins: [plugin] });
-    const session = await host.sessions.create();
-    const logged = events(host.kernel, session.id);
-    const end = await (await session.send("Go.")).settled();
+    const id = asId<"session">("chat");
+    const logged = events(host.kernel, id);
+    const { session, receipt: first } = await host.sessions.start({ id, content: "Go." });
+    const end = await first.settled();
 
     assert(end.kind === "completed");
     expect(end.usage).toMatchObject({ input: 250, output: 25, total: 275 });
@@ -138,8 +139,7 @@ describe("turn", () => {
       plugins: [{ id: "napper", contribute: { tools: [nap] } }],
     });
 
-    const session = await host.sessions.create();
-    const receipt = await session.send("Rest.");
+    const { session, receipt } = await host.sessions.start({ content: "Rest." });
 
     const parked = await until(async () => {
       const execution = (await session.view()).execution;
@@ -202,10 +202,11 @@ describe("turn", () => {
     );
 
     await using host = await open(fake, { plugins: [counted] });
-    const session = await host.sessions.create();
-    reload = () => host.kernel.plugins.reload(session.id);
+    const id = asId<"session">("chat");
+    reload = () => host.kernel.plugins.reload(id);
 
-    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+    const { receipt: first } = await host.sessions.start({ id, content: "Go." });
+    expect((await first.settled()).kind).toBe("completed");
     expect(seen).toEqual([1, 2]);
   });
 
@@ -249,8 +250,8 @@ describe("turn", () => {
     );
 
     await using host = await open(fake, { plugins: [plugin] });
-    const session = await host.sessions.create();
-    await (await session.send("One.")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "One." });
+    await started.settled();
     await (await session.send("Two.")).settled();
     await (await session.send("Three.")).settled();
 
@@ -330,8 +331,8 @@ describe("turn", () => {
       plugins: [{ id: "tools", contribute: { tools: [nap, echo] } }],
     });
 
-    const session = await host.sessions.create();
-    const end = await (await session.send("Go.")).settled();
+    const { session, receipt: first } = await host.sessions.start({ content: "Go." });
+    const end = await first.settled();
 
     expect(end.kind).toBe("completed");
 
@@ -375,8 +376,7 @@ describe("turn", () => {
     );
 
     await using host = await open(fake, { plugins: [plugin] });
-    const session = await host.sessions.create();
-    const first = await session.send("Start.");
+    const { session, receipt: first } = await host.sessions.start({ content: "Start." });
 
     await until(async () =>
       (await session.view()).messages.some(
@@ -440,8 +440,7 @@ describe("turn", () => {
     });
 
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const first = await session.send("Start.");
+    const { session, receipt: first } = await host.sessions.start({ content: "Start." });
 
     await streaming();
     const attach = await session.send("Context.", { delivery: "attach" });
@@ -514,8 +513,8 @@ describe("turn", () => {
     );
 
     await using host = await open(fake, { plugins: [recorder().plugin] });
-    const session = await host.sessions.create();
-    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+    const { session, receipt: first } = await host.sessions.start({ content: "Go." });
+    expect((await first.settled()).kind).toBe("completed");
 
     const view = await session.view();
     const run = landedRun(view.messages);
@@ -588,8 +587,7 @@ describe("turn", () => {
     );
 
     const stopped = await open(fake, { store: crashing, plugins: [recorder().plugin] });
-    const session = await stopped.sessions.create();
-    await session.send("Go.");
+    const { session } = await stopped.sessions.start({ content: "Go." });
     await until(() => (crashed ? true : undefined));
     await stopped.close();
     await expireLease(backing, session.id, main);
@@ -633,8 +631,7 @@ describe("turn", () => {
     });
 
     await using host = await open(fake, { plugins: [plugin] });
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
 
     const run = await until(async () => {
       const { execution } = await session.view();
@@ -674,8 +671,8 @@ describe("turn", () => {
     );
 
     await using host = await open(fake, { plugins: [recorder().plugin] });
-    const session = await host.sessions.create();
-    expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
+    const { session, receipt: first } = await host.sessions.start({ content: "Go." });
+    expect((await first.settled()).kind).toBe("completed");
 
     const outcomes = (await session.view()).messages.flatMap((message) =>
       isPart(message, tool) && message.state.phase === "settled" ? [message.state.outcome] : [],
@@ -701,9 +698,10 @@ describe("turn", () => {
     );
 
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const logged = events(host.kernel, session.id);
-    const receipt = await session.send("Go.");
+    const id = asId<"session">("chat");
+    const logged = events(host.kernel, id);
+    const { session, receipt: first } = await host.sessions.start({ id, content: "Go." });
+    const receipt = first;
 
     await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
     await vi.advanceTimersByTimeAsync(2_000);
@@ -748,9 +746,10 @@ describe("turn", () => {
     );
 
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const logged = events(host.kernel, session.id);
-    const receipt = await session.send("Go.");
+    const id = asId<"session">("chat");
+    const logged = events(host.kernel, id);
+    const { session, receipt: first } = await host.sessions.start({ id, content: "Go." });
+    const receipt = first;
 
     await until(() => (logged.some((event) => label(event) === "run:retrying") ? true : undefined));
 
@@ -797,9 +796,8 @@ describe("turn", () => {
     const fake = fakeModels({ models: [testModel("model")] });
     fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
     await using host = await open(fake);
-    const session = await host.sessions.create();
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     const early = session.watch()[Symbol.asyncIterator]();
-    const receipt = await session.send("Go.");
     let live: Message | undefined;
 
     while (live === undefined) {
@@ -831,9 +829,8 @@ describe("turn", () => {
     const fake = fakeModels({ models: [testModel("model")] });
     fake.reply({ content: [{ type: "text", text: "A partial answer" }], hold: true });
     await using host = await open(fake);
-    const session = await host.sessions.create();
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     const watching = session.watch()[Symbol.asyncIterator]();
-    const receipt = await session.send("Go.");
     let live: Message | undefined;
 
     while (live === undefined) {
@@ -890,8 +887,7 @@ describe("turn", () => {
       plugins: [{ id: "hang", contribute: { tools: [hang] } }],
     });
 
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     await started.promise;
 
     expect(await session.run(landedRun((await session.view()).messages)).stop()).toEqual({

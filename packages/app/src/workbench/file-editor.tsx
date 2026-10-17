@@ -27,7 +27,6 @@ import {
 } from "../pierre-worker-provider.tsx";
 import {
   keys,
-  useHostState,
   useSaveWorkspaceFile,
   useWorkspaceFile,
   workspaceFiles,
@@ -285,7 +284,6 @@ function TextFileEditor({
   const wordWrap = useSetting(preferences.fileWordWrap);
   const gitBlame = useSetting(preferences.fileGitBlame);
   const formatOnSave = useSetting(preferences.fileFormatOnSave);
-  const host = useHostState();
   const saveFile = useSaveWorkspaceFile();
   const disk = useWorkspaceFile(file.path);
   const dirty = snapshot.contents !== snapshot.savedContents;
@@ -495,7 +493,7 @@ function TextFileEditor({
             },
             revealPath !== undefined && {
               kind: "item",
-              label: revealLabel(host.data?.platform),
+              label: revealLabel(nyte.platform),
               run: () => void revealPath({ path: file.path }),
             },
           ]);

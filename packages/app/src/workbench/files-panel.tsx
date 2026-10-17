@@ -25,7 +25,6 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { WorkspaceFileTree } from "./file-tree.tsx";
 import { setTreeDrag } from "../conversation/composer-file-drop.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { preferences, useSetting, type Preference } from "../preferences/index.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
@@ -192,7 +191,7 @@ export function FilesPanel({
     context.close({ restoreFocus: false });
     const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
     const root = hostState.current?.workspace?.path;
-    const separator = hostState.current?.platform === "win32" ? "\\" : "/";
+    const separator = nyte.platform === "win32" ? "\\" : "/";
     const relative = item.path.replace(/\/$/, "");
 
     const absolutePath =
@@ -210,7 +209,7 @@ export function FilesPanel({
         absolutePath !== undefined &&
           revealPath !== undefined && {
             kind: "item",
-            label: revealLabel(hostState.current?.platform),
+            label: revealLabel(nyte.platform),
             run: () => void revealPath({ path: absolutePath }),
           },
         { kind: "separator" },
@@ -388,7 +387,7 @@ export function FilesPanel({
           <MenuContent align="end" xstyle={styles.menu}>
             <MenuItem
               layout="plain"
-              meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
+              meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
               disabled={!unsaved}
               onClick={() => {
                 if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
@@ -432,7 +431,7 @@ export function FilesPanel({
                   if (activeFile !== undefined) void revealPath({ path: activeFile.path });
                 }}
               >
-                {revealLabel(host.data?.platform)}
+                {revealLabel(nyte.platform)}
               </MenuItem>
             )}
             <MenuSeparator inset />
@@ -517,7 +516,7 @@ export function FilesPanel({
             >
               <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
                 <div {...props(styles.explorerHeader)}>
-                  {host.data?.workspace?.name ?? "Workspace"}
+                  {host.data.workspace?.name ?? "Workspace"}
                 </div>
                 {files.isError && (
                   <div role="alert" {...props(styles.empty)}>

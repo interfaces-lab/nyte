@@ -37,6 +37,7 @@ import type { ComposerPort, ScrollPort } from "../model/native.ts";
 import type { Selection } from "../model/state.ts";
 import type { McpAction } from "../model/effect.ts";
 import type { LoginDriver } from "../services/auth.ts";
+import type { SettingsRead } from "../services/settings.ts";
 
 export interface Ports {
   readonly host: HostPort;
@@ -44,6 +45,7 @@ export interface Ports {
   readonly composer: Handle<ComposerPort>;
   readonly scroll: Handle<ScrollPort>;
   readonly settings: SettingsPort;
+  readonly firstFrame: FirstFramePort;
   readonly plugins: PluginsPort;
   readonly shell: ShellPort;
   readonly files: FilesPort;
@@ -53,10 +55,18 @@ export interface Ports {
 
 export interface HostPort {
   session(id: SessionId): SessionPort;
-  create(input: {
-    readonly workspace: WorkspaceId | null;
-    readonly selection: Selection | null;
-  }): Promise<SessionId>;
+  workspace(id: WorkspaceId): WorkspacePort;
+  /** Registers `path`, or the folder the TUI opened in when `null`, as a workspace; with neither, resolves the host's default workspace. */
+  openFolder(path: string | null): Promise<WorkspaceId>;
+  /** Starts chat `id` with its first message; the same id and input start it once. A start that failed once it landed resolves as started; `taken` means an earlier start made chat `id` with other input. */
+  start(input: {
+    readonly id: SessionId;
+    readonly workspace: WorkspaceId;
+    readonly selection: Selection;
+    readonly content: UserContent;
+  }): Promise<
+    { readonly kind: "started"; readonly message: MessageId } | { readonly kind: "taken" }
+  >;
   rootSessions(): AsyncIterable<SessionInfo>;
   catalog(): AsyncIterable<Pick<HostView, "catalog">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
@@ -90,6 +100,14 @@ export interface HostPort {
   applySetting(id: string, value: Json): Promise<SettingOutcome>;
   tasks(session: SessionId): AsyncIterable<readonly Task[]>;
   blob(id: string): AsyncIterable<Uint8Array>;
+}
+
+export interface WorkspacePort {
+  readonly id: WorkspaceId;
+  /** The folder on this machine, or `null` when the workspace is elsewhere. */
+  cwd(): Promise<string | null>;
+  upload(bytes: Uint8Array): Promise<BlobId>;
+  mentions(signal: AbortSignal): Promise<readonly string[]>;
 }
 
 export interface SessionPort {
@@ -153,8 +171,18 @@ export interface TerminalPort {
 }
 
 export interface SettingsPort {
-  read(cwd: string): Promise<ResolvedSettings>;
+  /** Reads synchronously, so the first frame draws with the user's settings; a file that fails to parse is left out and listed. */
+  read(cwd: string): SettingsRead;
   write(cwd: string, patch: SettingsPatch): Promise<ResolvedSettings>;
+  /** Resolves once every write asked for so far has landed, so a read after it sees them. */
+  settled(): Promise<void>;
+}
+
+/** What the first frame draws before the host answers: the model a new chat starts on. */
+export interface FirstFramePort {
+  /** Reads synchronously; `null` when no launch recorded one yet, or the record doesn't parse. */
+  read(): Selection | null;
+  write(selection: Selection): Promise<void>;
 }
 
 export interface PluginsPort {

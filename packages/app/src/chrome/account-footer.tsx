@@ -22,7 +22,7 @@ import type { ReactElement, RefObject } from "react";
 import type { ConnectBridge, GitHubBridge } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
 import { openExternal } from "../open-external.ts";
-import { useHostState, useUpdateState } from "../queries.ts";
+import { useUpdateState } from "../queries.ts";
 import { updateLabel } from "../updates.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";
 import { useGitHubAccount } from "./github-account.ts";
@@ -119,7 +119,6 @@ export function AccountFooterMenu({
   readonly anchor: RefObject<HTMLDivElement | null>;
   readonly onOpenProfile: () => void;
 }): ReactElement {
-  const host = useHostState();
   const account = useGitHubAccount(github);
   const update = useUpdateState().data ?? { kind: "idle" };
   const busy = update.kind === "downloading" || update.kind === "installing";
@@ -149,7 +148,7 @@ export function AccountFooterMenu({
             </Row.Leading>
             <Row.Label xstyle={styles.accountLabel}>
               <span {...props(styles.accountName)}>
-                {signedIn?.login ?? host.data?.machineName ?? "Profile"}
+                {signedIn?.login ?? nyte.machineName ?? "Profile"}
               </span>
               {attention && (
                 <span

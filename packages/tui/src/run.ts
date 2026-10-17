@@ -71,22 +71,18 @@ export async function addFolder(connection: Connection, path: string): Promise<W
   return added.workspace;
 }
 
+/** The session a print run continues, or `null` when it starts a new chat. */
 export async function targetSession(
   connection: Connection,
   target: ResumeTarget,
-  workspace: WorkspaceId,
-): Promise<Session> {
-  const create = (): Promise<Session> => connection.sessions.create({ workspace });
-
+): Promise<Session | null> {
   switch (target.kind) {
     case "new":
-      return create();
+      return null;
     case "latest": {
-      for await (const info of rootSessions(connection))
-        if (info.heads.some((head) => head.tip.kind !== "start"))
-          return connection.session(info.id);
+      for await (const info of rootSessions(connection)) return connection.session(info.id);
 
-      return create();
+      return null;
     }
 
     case "session": {

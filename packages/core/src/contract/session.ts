@@ -114,20 +114,23 @@ export interface Session extends Head {
   part(id: PartId): Part<PartDefinition>;
 }
 
+/** The host's chats: watch and list them, and start one with its first message. */
 export interface Sessions {
   watch(input?: {
     readonly parents?: ParentFilter;
     readonly limit?: number;
   }): AsyncIterable<readonly SessionInfo[]>;
 
-  create(input?: {
+  /** Starts a chat with its first message. One commit creates the session and admits the message, so no session exists without one; until then a client holds a draft. `id` is minted when absent and names the chat, its first message and its receipt. Pass it to key a draft or to retry: the same id and input return the same start. Other input under that id, or an id naming an existing chat, is refused as invalid. Resolves once the session's before_send hooks decided the message. A refusal, a failing hook, or a stop before the decision removes the session and throws. */
+  start(input: {
     readonly id?: SessionId;
     readonly name?: string;
     readonly workspace?: WorkspaceId;
     readonly parent?: SessionId;
     readonly configuration?: Configuration | ConfigurationPatch;
     readonly prompt?: PromptOverride;
-  }): Promise<Session>;
+    readonly content: UserContent;
+  }): Promise<{ readonly session: Session; readonly receipt: SendReceipt }>;
 
   list(input?: {
     readonly parents?: ParentFilter;
@@ -153,6 +156,7 @@ export interface Head {
 
   tree(): Promise<TreeView>;
 
+  /** Moves the head to `position`; a user commit lands on its parent and hands its content back. Main never lands before its first message with nothing queued, since the chat would be empty: that move is refused as invalid, and `send(content, { replace })` rewrites the first message in one step instead. */
   move(position: Position, options?: MoveOptions): Promise<Receipt<MoveOutcome>>;
 
   compact(input?: {

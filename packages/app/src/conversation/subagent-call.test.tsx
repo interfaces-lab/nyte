@@ -38,7 +38,7 @@ const parent = asId<"session">("chat");
 const create = settledTool(
   "task",
   { kind: "delegate", child: null, role: "create", title: "Map the workbench" },
-  "Created subagent child.",
+  "Started subagent child.",
 );
 
 const childSession: SessionInfo = sessionRow("child", {

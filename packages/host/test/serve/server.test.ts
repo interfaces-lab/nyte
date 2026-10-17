@@ -69,19 +69,12 @@ function changed(change: (opened: StoreConnection) => StoreConnection): Store {
 }
 
 async function sent(handler: (request: Request) => Promise<Response>) {
-  const created = decodeOutput(
-    "sessions.create",
-    await (await post(handler, "sessions.create", {})).json(),
-  );
-
-  const receipt = decodeOutput(
-    "head.send",
+  return decodeOutput(
+    "sessions.start",
     await (
-      await post(handler, "head.send", { session: created.session, head: main, content: "Hi." })
+      await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
     ).json(),
   );
-
-  return { session: created.session, ...receipt };
 }
 
 describe("handler", () => {
@@ -257,8 +250,10 @@ describe("handler", () => {
     const { handler } = await served();
 
     const { session } = decodeOutput(
-      "sessions.create",
-      await (await post(handler, "sessions.create", {})).json(),
+      "sessions.start",
+      await (
+        await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
+      ).json(),
     );
 
     const controller = new AbortController();
@@ -437,8 +432,10 @@ describe("handler", () => {
     expect(view[0]).toHaveProperty("principal");
 
     const { session } = decodeOutput(
-      "sessions.create",
-      await (await post(handler, "sessions.create", {})).json(),
+      "sessions.start",
+      await (
+        await post(handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
+      ).json(),
     );
 
     const created = decodeOutput(
@@ -476,8 +473,10 @@ describe("handler", () => {
     const warm = await served({ store, plugins });
 
     const { session } = decodeOutput(
-      "sessions.create",
-      await (await post(warm.handler, "sessions.create", {})).json(),
+      "sessions.start",
+      await (
+        await post(warm.handler, "sessions.start", { id: crypto.randomUUID(), content: "Hi." })
+      ).json(),
     );
 
     const cold = await served({ store, plugins });
@@ -526,7 +525,11 @@ describe("handler", () => {
     fake.reply("One.");
     const { session, receipt } = await sent(handler);
     await post(handler, "receipt.settled", { session, receipt });
-    const move = { session, head: main, position: { kind: "start" }, id: "move-1" };
+    const { tip } = decodeOutput(
+      "head.tree",
+      await (await post(handler, "head.tree", { session, head: main })).json(),
+    );
+    const move = { session, head: main, position: tip, id: "move-1" };
     const moved = await post(handler, "head.move", move);
     const again = await post(handler, "head.move", move);
     const reused = await post(handler, "head.move", { ...move, options: { running: "stop" } });

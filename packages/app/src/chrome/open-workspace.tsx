@@ -202,7 +202,7 @@ export function WorkspaceDialogHost(): ReactElement | null {
 
   if (current === undefined) return null;
   const { path, origin, consent } = current;
-  const binding = host.data?.binding;
+  const binding = host.data.binding;
   const unseen = binding !== undefined && consent?.hostId !== binding.hostId;
 
   const grant = (grantWith: NonNullable<typeof trust>): void => {

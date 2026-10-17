@@ -82,7 +82,12 @@ const host = await sdk.open({
 });
 
 for (let index = 1; index <= ARCHIVED_SESSION_COUNT; index += 1) {
-  const session = await host.sessions.create({ name: `Archived chat ${String(index)}` });
+  const { session, receipt } = await host.sessions.start({
+    name: `Archived chat ${String(index)}`,
+    content: "Archive me",
+  });
+
+  await receipt.settled();
   await session.update({ archived: true });
 }
 
