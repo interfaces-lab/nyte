@@ -61,7 +61,8 @@ export function exposureName(exposure: McpExposure): McpExposureName {
   }
 }
 
-function target(server: McpServerView): string {
+/** Where a server runs: its url, or its command line. */
+export function target(server: McpServerView): string {
   return server.transport.kind === "http"
     ? server.transport.url
     : [server.transport.command, ...server.transport.args].join(" ");

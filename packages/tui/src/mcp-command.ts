@@ -11,7 +11,7 @@ import type {
 } from "@nyte-ai/sdk";
 import { alignedRows, ansiEnabled } from "./cli-style.ts";
 import { cliLoginDriver } from "./interaction.ts";
-import { exposureName } from "./model/mcp.ts";
+import { exposureName, target } from "./model/mcp.ts";
 import { addFolder } from "./run.ts";
 import { runLogin } from "./services/auth.ts";
 
@@ -264,12 +264,6 @@ function stateText(server: McpServerView): string {
   return state.kind === "disabled" ? "off" : state.kind;
 }
 
-function target(server: McpServerView): string {
-  return server.transport.kind === "http"
-    ? server.transport.url
-    : [server.transport.command, ...server.transport.args].join(" ");
-}
-
 function parseNamed(
   command: "remove" | "logout",
   args: readonly string[],
@@ -301,9 +295,8 @@ function parseAdd(args: readonly string[]): {
   readonly scope: McpScope;
 } {
   const split = args.findIndex((arg) => arg === "--");
-  const options = split < 0 ? args : args.slice(0, split);
+  const flags = split < 0 ? args : args.slice(0, split);
   const command = split < 0 ? [] : args.slice(split + 1);
-  const flags = options;
   let positional: string | undefined;
 
   let scope: McpScope = "user";
