@@ -25,31 +25,34 @@ function every(limit: number): Readonly<Record<StartupCase, number>> {
 
 /**
  * Every metric the bench reports. `budget` is the p95 ceiling the judged build must stay under,
- * by scenario; `null` reports without gating. Set from main c7094f5c against daniel/audit with
- * the host in its utility process (macOS arm64, packaged, 7 runs): each budget is the branch's
- * p95 plus 15% (memory plus 5%), and in the fresh scenario, the only one main can run, typed
- * input, composer, first paint, splash and long-task count are capped at main's median. Long-task
- * time and the longest task are the branch's p95 plus 15% in every scenario, measured without
- * strict execution order, where the entry's evaluation is one 60-94 ms task.
+ * by scenario; `null` reports without gating. Set from main c7094f5c against daniel/audit
+ * (macOS arm64, packaged, 7 runs, main's restored and heavy homes seeded by its own code): each
+ * budget is the branch's p95 plus 15% (memory plus 5%), and no latency or long-task budget sits
+ * above main's median in its scenario. Fresh and restored allow the one long task left, the
+ * entry's evaluation (60-94 ms), at main's median of 88 ms. Restored and heavy make one more
+ * IPC call and up to four more host requests than fresh since the window selects the restored
+ * chat's folder before its first frame (8e4ffea9); main makes 22 IPC calls there. First paint is
+ * the static splash in every scenario, held under main's fresh median (509-615 ms across runs):
+ * on a shared machine one contended launch in seven moved it 70-160 ms, past the 15% margin.
  */
 const metricFields = [
   {
     key: "spawnToTypedInputMs",
     label: "Spawn to typed input",
     unit: "ms",
-    budget: { fresh: 850, restored: 850, heavy: 950 },
+    budget: { fresh: 850, restored: 850, heavy: 900 },
   },
   {
     key: "spawnToComposerMs",
     label: "Spawn to composer",
     unit: "ms",
-    budget: { fresh: 775, restored: 800, heavy: 900 },
+    budget: { fresh: 775, restored: 800, heavy: 855 },
   },
   {
     key: "spawnToFirstPaintMs",
     label: "Spawn to first paint (FCP)",
     unit: "ms",
-    budget: every(495),
+    budget: every(505),
   },
   { key: "splashMs", label: "Splash visible", unit: "ms", budget: every(225) },
   { key: "keystrokeToPaintMs", label: "Keystroke to paint", unit: "ms", budget: every(16.7) },
@@ -63,26 +66,31 @@ const metricFields = [
     key: "longTasks",
     label: "Long tasks before composer",
     unit: "count",
-    budget: { fresh: 1, restored: 2, heavy: 3 },
+    budget: { fresh: 1, restored: 1, heavy: 2 },
   },
   {
     key: "longTaskMs",
     label: "Long-task time before composer",
     unit: "ms",
-    budget: { fresh: 110, restored: 165, heavy: 215 },
+    budget: { fresh: 88, restored: 88, heavy: 140 },
   },
   {
     key: "longestTaskMs",
     label: "Longest task before composer",
     unit: "ms",
-    budget: { fresh: 110, restored: 105, heavy: 90 },
+    budget: { fresh: 88, restored: 88, heavy: 86 },
   },
-  { key: "ipcCalls", label: "IPC round trips before composer", unit: "count", budget: every(3) },
+  {
+    key: "ipcCalls",
+    label: "IPC round trips before composer",
+    unit: "count",
+    budget: { fresh: 3, restored: 4, heavy: 4 },
+  },
   {
     key: "hostRequests",
     label: "Host requests before composer",
     unit: "count",
-    budget: { fresh: 1, restored: 13, heavy: 13 },
+    budget: { fresh: 1, restored: 17, heavy: 17 },
   },
   { key: "mainHeapBytes", label: "Main JS heap", unit: "bytes", budget: every(18 * MIB) },
   {
