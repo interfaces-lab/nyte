@@ -19,7 +19,7 @@ import { standard } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { Plugin } from "../core.ts";
 import { AcpProcess } from "./connection.ts";
-import { installedAgents, REGISTRY_URL, registryEntries } from "./registry.ts";
+import { installedAgents, registryEntries } from "./registry.ts";
 import seed from "./registry-seed.json" with { type: "json" };
 import type { AcpAgent } from "./registry.ts";
 import type { AcpThread } from "./thread.ts";
@@ -30,8 +30,6 @@ import type { MirrorArguments } from "./translate.ts";
 export type { AcpAgent } from "./registry.ts";
 
 const NOT_RUNNING = "The agent is no longer running this turn. Send a message to continue.";
-
-const REGISTRY_TTL_MS = 24 * 60 * 60 * 1_000;
 
 interface Binding {
   readonly env: ExecutionEnv;
@@ -93,10 +91,11 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
  * call, and a permission it asks for waits until Nyte records that call and
  * is then decided by `PluginApi.approve` under the call's ACP kind (a call
  * Nyte settles without running is refused). A stopped run cancels the
- * agent's turn. The registry list is fetched on a
- * networked catalog refresh at most daily and kept in the models store;
- * before the first fetch, the list shipped in `registry-seed.json` stands in.
- * `agents`, when given, replaces the registry lookup, as tests do.
+ * agent's turn. Which agents there are, and the command, arguments and
+ * environment each starts with, come from the registry list shipped in
+ * `registry-seed.json` alone, never from the network, so no remote entry
+ * picks what runs on this machine. `agents`, when given, replaces the
+ * registry lookup, as tests do.
  */
 export function acpAgents(options?: { readonly agents?: () => Promise<readonly AcpAgent[]> }) {
   let agents: readonly AcpAgent[] = [];
@@ -276,24 +275,9 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
         return;
       }
 
-      const stored = context.stored;
-      let entries = stored?.models ?? registryEntries(seed);
-      let persist: { readonly models: readonly unknown[]; readonly checkedAt: number } | undefined;
-
-      const stale =
-        stored?.checkedAt === undefined || Date.now() - stored.checkedAt > REGISTRY_TTL_MS;
-
-      if (context.allowNetwork && (context.force === true || stale)) {
-        const response = await context.catalog.fetch(REGISTRY_URL, { signal: context.signal });
-
-        if (!response.ok) throw new Error(`The ACP registry answered ${String(response.status)}.`);
-        entries = registryEntries(await response.json());
-        persist = { models: entries, checkedAt: Date.now() };
-      }
-
       await processEnvironment();
-      const found = await installedAgents(entries, process.env.PATH ?? "");
-      await context.publish({ persist, update: () => (agents = found) });
+      const found = await installedAgents(registryEntries(seed), process.env.PATH ?? "");
+      await context.publish({ update: () => (agents = found) });
     },
     stream: (model, context, streamOptions) =>
       stream(model, context, {

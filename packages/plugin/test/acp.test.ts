@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -313,14 +313,21 @@ it("stops a run by cancelling the agent's turn", async () => {
   ).toContainEqual({ method: "session/cancel" });
 });
 
-it("offers only the registry agents installed on this machine", async () => {
+it("offers only the registry agents installed on this machine, an npx one by its own bin", async () => {
   const bin = join(dir, "prefix", "bin");
-  const gemini = join(dir, "prefix", "lib", "node_modules", "@google", "gemini-cli");
+  const modules = join(dir, "prefix", "lib", "node_modules");
+  const gemini = join(modules, "@google", "gemini-cli");
+  const qwen = join(modules, "@qwen-code", "qwen-code");
   await mkdir(bin, { recursive: true });
   await mkdir(gemini, { recursive: true });
+  await mkdir(qwen, { recursive: true });
   await writeFile(join(gemini, "package.json"), JSON.stringify({ bin: { gemini: "index.js" } }));
+  await writeFile(join(gemini, "index.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
+  await symlink(join(gemini, "index.js"), join(bin, "gemini"));
+  await writeFile(join(qwen, "package.json"), JSON.stringify({ bin: { qwen: "cli.js" } }));
+  await writeFile(join(qwen, "cli.js"), "#!/usr/bin/env node\n", { mode: 0o755 });
 
-  for (const name of ["npx", "gemini", "goose"])
+  for (const name of ["npx", "goose", "qwen"])
     await writeFile(join(bin, name), "#!/bin/sh\n", { mode: 0o755 });
 
   const target = `${process.platform}-${process.arch === "arm64" ? "aarch64" : "x86_64"}`;
@@ -340,6 +347,11 @@ it("offers only the registry agents installed on this machine", async () => {
             [target]: { archive: "https://example.test/goose.tgz", cmd: "./goose", args: ["acp"] },
           },
         },
+      },
+      {
+        id: "qwen-code",
+        name: "Qwen Code",
+        distribution: { npx: { package: "@qwen-code/qwen-code@0.25.2", args: ["--acp"] } },
       },
       {
         id: "copilot",

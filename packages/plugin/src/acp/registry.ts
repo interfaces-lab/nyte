@@ -1,12 +1,9 @@
 import { constants } from "node:fs";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, realpath } from "node:fs/promises";
 import { basename, delimiter, dirname, join } from "node:path";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
-
-/** The ACP registry's current agent list. */
-export const REGISTRY_URL = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 
 /** An ACP agent this machine can start without downloading anything. */
 export interface AcpAgent {
@@ -43,7 +40,7 @@ const packageBin = Type.Object({
 
 const PACKAGE = /^(@?[^@]+)@[^@]+$/;
 
-/** The agent entries of a registry document, as fetched; anything else is no entries. */
+/** The agent entries of a registry document; anything else is no entries. */
 export function registryEntries(document: unknown): readonly unknown[] {
   return Value.Check(registry, document) ? document.agents : [];
 }
@@ -77,34 +74,53 @@ async function findOnPath(name: string, path: string): Promise<string | undefine
   return undefined;
 }
 
+async function resolved(path: string): Promise<string | undefined> {
+  try {
+    return await realpath(path);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The command a global install of package `spec` put beside `npx`, when it is that package's own bin: on Windows the `.cmd` shim that names the package, elsewhere a link that resolves into the package. A command of the same name from anywhere else is not the package. */
 async function globalBin(spec: string, path: string): Promise<string | undefined> {
   const name = PACKAGE.exec(spec)?.[1] ?? spec;
   const npx = await findOnPath("npx", path);
 
   if (npx === undefined) return undefined;
   const bin = dirname(npx);
-
-  const modules =
-    process.platform === "win32"
-      ? join(bin, "node_modules")
-      : join(dirname(bin), "lib", "node_modules");
+  const windows = process.platform === "win32";
+  const modules = windows ? join(bin, "node_modules") : join(dirname(bin), "lib", "node_modules");
+  const root = join(modules, name);
 
   let manifest: unknown;
 
   try {
-    manifest = JSON.parse(await readFile(join(modules, name, "package.json"), "utf8"));
+    manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
   } catch {
     return undefined;
   }
 
   if (!Value.Check(packageBin, manifest)) return undefined;
 
-  const command =
+  const [command, target] =
     typeof manifest.bin === "string"
-      ? basename(name)
-      : Object.keys(manifest.bin).find((key) => key !== "");
+      ? [basename(name), manifest.bin]
+      : (Object.entries(manifest.bin).find(([key]) => key !== "") ?? []);
 
-  return command === undefined ? undefined : findOnPath(command, path);
+  if (command === undefined || target === undefined) return undefined;
+
+  if (windows) {
+    const shim = join(bin, `${command}.cmd`);
+    const text = await readFile(shim, "utf8").catch(() => "");
+
+    return text.includes(`node_modules\\${name.replaceAll("/", "\\")}\\`) ? shim : undefined;
+  }
+
+  const linked = join(bin, command);
+  const [from, to] = await Promise.all([resolved(linked), resolved(join(root, target))]);
+
+  return from !== undefined && from === to && (await executable(linked)) ? linked : undefined;
 }
 
 async function installed(agent: RegistryAgent, path: string): Promise<AcpAgent | undefined> {
@@ -136,9 +152,9 @@ async function installed(agent: RegistryAgent, path: string): Promise<AcpAgent |
 /**
  * The registry agents installed on this machine, in registry order: a binary
  * agent whose command is on `path`, or an npx agent whose package is
- * installed globally beside `npx`, run with the registry's arguments. An
- * agent only the registry can download is left out, so choosing a model
- * never downloads one.
+ * installed globally beside `npx` (its own bin, not another command of the
+ * same name), run with the registry's arguments. An agent only the registry
+ * can download is left out, so choosing a model never downloads one.
  */
 export async function installedAgents(
   entries: readonly unknown[],
