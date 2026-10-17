@@ -11,9 +11,9 @@
       "types": "./dist/shell-inline.d.ts",
       "default": "./dist/shell-inline.js"
     },
-    "./shell-libraries": {
-      "types": "./dist/shell-libraries.d.ts",
-      "default": "./dist/shell-libraries.js"
+    "./shell-files": {
+      "types": "./dist/shell-files.d.ts",
+      "default": "./dist/shell-files.js"
     }
   },
   "scripts": {

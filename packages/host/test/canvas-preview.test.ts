@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { expect, it } from "vitest";
 import { chromiumCanvasPreview, findChromium } from "../src/canvas-preview.ts";
 import type { CanvasShellFiles } from "../src/canvas-preview.ts";
@@ -11,34 +13,18 @@ const canvasPackage = fileURLToPath(new URL("../../canvas/", import.meta.url));
 
 const galaxy = join(canvasPackage, "test/fixtures/repo-galaxy");
 
-/** Reads a built `export const name = <json>;` module of packages/canvas/dist without importing it, so the test can skip before a build. */
-async function readBuilt(file: string): Promise<unknown> {
-  const text = await readFile(join(canvasPackage, "dist", file), "utf8").catch(() => undefined);
-  const json = text === undefined ? undefined : /^export const \w+ = (.*);\s*$/su.exec(text)?.[1];
+/** Reads packages/canvas/dist/shell-files.js without importing it, so the test can skip before a build. */
+async function readShell(): Promise<CanvasShellFiles | undefined> {
+  const text = await readFile(join(canvasPackage, "dist", "shell-files.js"), "utf8").catch(
+    () => undefined,
+  );
+  const json = text === undefined ? undefined : /^export const files = (.*);\s*$/su.exec(text)?.[1];
+  const files: unknown = json === undefined ? undefined : JSON.parse(json);
 
-  return json === undefined ? undefined : JSON.parse(json);
+  return Value.Check(Type.Record(Type.String(), Type.String()), files) ? files : undefined;
 }
 
-const inline = await readBuilt("shell-inline.js");
-
-const libraries = await readBuilt("shell-libraries.js");
-
-const shell: CanvasShellFiles | undefined =
-  typeof inline === "object" &&
-  inline !== null &&
-  "html" in inline &&
-  typeof inline.html === "string" &&
-  typeof libraries === "object" &&
-  libraries !== null
-    ? {
-        html: inline.html,
-        libraries: Object.fromEntries(
-          Object.entries(libraries).flatMap(([path, code]) =>
-            typeof code === "string" ? [[path, code]] : [],
-          ),
-        ),
-      }
-    : undefined;
+const shell = await readShell();
 
 const chromium = findChromium();
 
@@ -129,7 +115,7 @@ it.skipIf(shell === undefined || chromium === undefined)(
 
 it("answers unavailable when there is no Chromium", async () => {
   expect(
-    await chromiumCanvasPreview({ html: "", libraries: {} }, () => undefined)(
+    await chromiumCanvasPreview({}, () => undefined)(
       { module: { runtime: 2, code: "", title: "" }, theme: "light" },
       new AbortController().signal,
     ),

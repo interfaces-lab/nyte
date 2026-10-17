@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CANVAS_RUNTIME } from "@nyte-ai/plugin/canvas/protocol";
 
@@ -37,7 +37,7 @@ const hash = `sha256-${createHash("sha256").update(script).digest("base64")}`;
 
 const csp = [
   "default-src 'none'",
-  `script-src '${hash}' 'self' blob:`,
+  `script-src '${hash}' blob:`,
   "style-src 'unsafe-inline'",
   "img-src data: blob:",
   "connect-src 'none'",
@@ -64,27 +64,25 @@ await writeFile(
   join(dist, "shell-inline.d.ts"),
   "export declare const shell: { readonly runtime: number; readonly html: string };\n",
 );
-// The libraries beside the inline shell, by path from it, for a host that serves the shell at a URL of its own (a headless preview); a WebView without one cannot load them.
-const libraries = Object.fromEntries(
+/** Every file of the shell directory, base64 by its path from it, for a host that serves the shell itself at a URL of its own (a headless preview), as the chat's clients serve dist/shell. */
+const files = Object.fromEntries(
   await Promise.all(
-    (await readdir(join(shell, "libraries"), { recursive: true }))
-      .filter((path) => path.endsWith(".js"))
+    (await readdir(shell, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(entry.parentPath, entry.name))
       .toSorted()
       .map(async (path) => [
-        `libraries/${path}`,
-        await readFile(join(shell, "libraries", path), "utf8"),
+        relative(shell, path).split(sep).join("/"),
+        (await readFile(path)).toString("base64"),
       ]),
   ),
 );
 
+await writeFile(join(dist, "shell-files.js"), `export const files = ${JSON.stringify(files)};\n`);
 await writeFile(
-  join(dist, "shell-libraries.js"),
-  `export const libraries = ${JSON.stringify(libraries)};\n`,
-);
-await writeFile(
-  join(dist, "shell-libraries.d.ts"),
-  "export declare const libraries: Readonly<Record<string, string>>;\n",
+  join(dist, "shell-files.d.ts"),
+  "export declare const files: Readonly<Record<string, string>>;\n",
 );
 process.stdout.write(
-  `dist/shell-inline.js: ${String(Math.round(inlined.length / 1024))} KB, script ${hash}; dist/shell-libraries.js: ${Object.keys(libraries).length} files\n`,
+  `dist/shell-inline.js: ${String(Math.round(inlined.length / 1024))} KB, script ${hash}; dist/shell-files.js: ${Object.keys(files).length} files\n`,
 );

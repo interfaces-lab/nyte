@@ -3,9 +3,9 @@
  * already on this machine, driven over the DevTools protocol on a pipe, so
  * nothing new is installed and no debugging port is opened. Each preview
  * starts its own browser with a throwaway profile and stops it after. The
- * page loads the inline shell from a made-up origin the previewer answers
- * itself, with the libraries beside it; every other request is refused, so
- * the canvas stays as sealed as in the chat.
+ * page loads the shell directory the chat serves, from a made-up origin the
+ * previewer answers itself under the chat's shell policy; every other
+ * request is refused, so the canvas stays as sealed as in the chat.
  */
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -29,16 +29,25 @@ import { Value } from "typebox/value";
 const ORIGIN = "http://canvas.preview/";
 
 /**
- * Returns the shell a previewer serves: the inline shell's HTML and the
- * library files beside it, by path from it (`libraries/three.js`).
+ * Returns the shell a previewer serves: every file of the canvas package's
+ * `dist/shell`, base64 by its path from it (`index.html`,
+ * `libraries/three.js`), as `@nyte-ai/canvas/shell-files` exports them.
  *
  * @category host
  * @since 0.1.0
  */
-export type CanvasShellFiles = {
-  readonly html: string;
-  readonly libraries: Readonly<Record<string, string>>;
-};
+export type CanvasShellFiles = Readonly<Record<string, string>>;
+
+/** The policy the chat's clients serve the shell's page under. */
+const SHELL_POLICY =
+  "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'";
+
+const SHELL_TYPES = new Map([
+  ["html", "text/html; charset=utf-8"],
+  ["js", "text/javascript; charset=utf-8"],
+  ["css", "text/css; charset=utf-8"],
+  ["woff2", "font/woff2"],
+]);
 
 /** The newest browser of `prefix` in Playwright's download cache, which the canvas package's own checks install. */
 function playwrightBrowser(prefix: string, executables: readonly string[]): string | undefined {
@@ -190,22 +199,19 @@ class Pipe {
   }
 }
 
-/** Answers the page's requests: the shell and its libraries from memory, nothing else at all. */
+/** Answers the page's requests: the shell's files from memory, nothing else at all. */
 function serve(pipe: Pipe, shell: CanvasShellFiles, sessionId: string): void {
   pipe.listen((method, params) => {
     if (method !== "Fetch.requestPaused" || !Value.Check(Paused, params)) return;
     const { requestId, request } = params;
-    const path = request.url.startsWith(ORIGIN)
+    const requested = request.url.startsWith(ORIGIN)
       ? request.url.slice(ORIGIN.length).split(/[?#]/u)[0]
       : undefined;
-    const body =
-      path === "" || path === "index.html"
-        ? shell.html
-        : path === undefined
-          ? undefined
-          : shell.libraries[path];
+    const path = requested === "" ? "index.html" : requested;
+    const body = path !== undefined && Object.hasOwn(shell, path) ? shell[path] : undefined;
+    const type = SHELL_TYPES.get(path?.split(".").at(-1) ?? "");
 
-    if (body === undefined) {
+    if (path === undefined || body === undefined || type === undefined) {
       void pipe
         .send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" }, sessionId)
         .catch(() => undefined);
@@ -220,13 +226,12 @@ function serve(pipe: Pipe, shell: CanvasShellFiles, sessionId: string): void {
           requestId,
           responseCode: 200,
           responseHeaders: [
-            {
-              name: "Content-Type",
-              value:
-                body === shell.html ? "text/html; charset=utf-8" : "text/javascript; charset=utf-8",
-            },
+            { name: "Content-Type", value: type },
+            ...(path === "index.html"
+              ? [{ name: "Content-Security-Policy", value: SHELL_POLICY }]
+              : []),
           ],
-          body: Buffer.from(body).toString("base64"),
+          body,
         },
         sessionId,
       )

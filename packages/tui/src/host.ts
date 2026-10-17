@@ -1,6 +1,5 @@
 import process from "node:process";
-import { shell } from "@nyte-ai/canvas/shell-inline";
-import { libraries } from "@nyte-ai/canvas/shell-libraries";
+import { files } from "@nyte-ai/canvas/shell-files";
 import { chromiumCanvasPreview } from "@nyte-ai/host/canvas-preview";
 import { canvasPlugin } from "@nyte-ai/plugin/core/canvas";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
@@ -14,10 +13,7 @@ export function openTerminalHost(
   if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "tui");
 
   return sdk.open({
-    plugins: [
-      codemodePlugin(codemodeRuntimeOptions()),
-      canvasPlugin(chromiumCanvasPreview({ html: shell.html, libraries })),
-    ],
+    plugins: [codemodePlugin(codemodeRuntimeOptions()), canvasPlugin(chromiumCanvasPreview(files))],
     execution,
   });
 }
