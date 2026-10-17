@@ -37,8 +37,9 @@ const streamEnd = "Stream end marker.";
 
 /**
  * Every metric this bench reports, with the judged build's ceiling (`max`) or floor (`min`), or
- * `null` to report only. Latency ceilings are main c7094f5c's medians on the same machine where
- * main sets the bar; the rest are absolute (one 60 Hz frame, no idle CPU, no leak).
+ * `null` to report only. Every ceiling is absolute (one 60 Hz frame, no idle CPU, no leak). The
+ * latencies main c7094f5c sets a bar for (opening the long chat, the panels, the switches) are
+ * reported, not gated: compare them with `--compare`'s baseline column.
  */
 const metricFields = [
   { key: "openTranscriptMs", label: "Open the 2,000-message chat", unit: "ms", max: null },
