@@ -259,9 +259,9 @@ export type CanvasModule = {
   readonly title: string;
 };
 
-/** Who answers `ui/initialize`. */
+/** Who answers `ui/initialize`: a client, or `nyte-preview`, the harness a previewer runs in place of one. */
 export type CanvasHostInfo = {
-  readonly name: "nyte-desktop" | "nyte-web" | "nyte-ios";
+  readonly name: "nyte-desktop" | "nyte-web" | "nyte-ios" | "nyte-preview";
   readonly version: string;
 };
 
@@ -459,7 +459,10 @@ export function readHostMessage(data: unknown): HostMessage | undefined {
     if (
       context === undefined ||
       typeof version !== "string" ||
-      (name !== "nyte-desktop" && name !== "nyte-web" && name !== "nyte-ios")
+      (name !== "nyte-desktop" &&
+        name !== "nyte-web" &&
+        name !== "nyte-ios" &&
+        name !== "nyte-preview")
     )
       return undefined;
 

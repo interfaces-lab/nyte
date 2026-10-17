@@ -137,60 +137,118 @@ function hostContext(theme: "light" | "dark"): CanvasHostContext {
   };
 }
 
-/**
- * The harness, as page source: it stands in for the client, so it answers
- * the shell's `ui/initialize` (already sent at load, so answered unasked),
- * posts the module once the shell is initialized, and keeps the size
- * reports, errors and console calls under `__nytePreview`. It runs in the
- * page's main world through the previewer's devtools channel, which the
- * shell's CSP does not govern; the canvas itself still runs under it.
- */
-function harness(request: CanvasPreviewRequest): string {
-  const initialize = initializeResult(
-    1,
-    { name: "nyte-desktop", version: String(CANVAS_RUNTIME) },
-    hostContext(request.theme),
-  );
+/** What the harness answers the shell with, and how it decides the canvas has settled. */
+type HarnessSetup = {
+  readonly initialize: ReturnType<typeof initializeResult>;
+  readonly render: ReturnType<typeof renderNotification>;
+  readonly quietMs: number;
+  readonly timeoutMs: number;
+  readonly consoleKept: number;
+};
 
-  return `(() => {
-  if (globalThis.__nytePreview !== undefined) return true;
-  if (globalThis.__nyteCanvas === undefined) return false;
-  const state = { height: 0, changed: 0, errors: [], console: [] };
-  const text = (value) => {
-    if (typeof value === "string") return value;
-    if (value instanceof Error) return value.stack ?? String(value);
-    try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
+/**
+ * The harness: it stands in for the client, so it answers the shell's
+ * `ui/initialize` (already sent at load, so answered unasked), posts the
+ * module once the shell is initialized, and keeps the size reports, errors
+ * and console calls under `__nytePreview`. It answers false until the
+ * shell's script has run. A previewer runs its source in the page's main
+ * world through its devtools channel, which the shell's CSP does not
+ * govern, so it uses only its argument and the page's globals; the canvas
+ * itself still runs under the CSP.
+ */
+function installHarness(setup: HarnessSetup): boolean {
+  if ("__nytePreview" in globalThis) return true;
+
+  if (!("__nyteCanvas" in globalThis)) return false;
+  const state = {
+    height: 0,
+    changed: 0,
+    errors: new Array<unknown>(),
+    console: new Array<{ readonly level: string; readonly text: string }>(),
   };
-  for (const level of ["log", "info", "warn", "error", "debug"]) {
+  // oxlint-disable-next-line unicorn/consistent-function-scoping -- the harness runs from its source in the page, so it holds its own helpers
+  const text = (value: unknown): string => {
+    if (typeof value === "string") return value;
+
+    if (value instanceof Error) return value.stack ?? String(value);
+
+    try {
+      return JSON.stringify(value) ?? String(value);
+    } catch {
+      return String(value);
+    }
+  };
+
+  for (const level of ["log", "info", "warn", "error", "debug"] as const) {
     const original = console[level].bind(console);
-    console[level] = (...values) => {
-      if (state.console.length < ${CONSOLE_KEPT}) state.console.push({ level, text: values.map(text).join(" ").slice(0, 2000) });
+    console[level] = (...values: unknown[]) => {
+      if (state.console.length < setup.consoleKept)
+        state.console.push({ level, text: values.map(text).join(" ").slice(0, 2000) });
       original(...values);
     };
   }
-  addEventListener("message", (event) => {
+
+  addEventListener("message", (event: MessageEvent<unknown>) => {
     const data = event.data;
-    if (data === null || typeof data !== "object") return;
-    if (data.method === "ui/notifications/initialized") postMessage(${JSON.stringify(renderNotification(request.module))}, "*");
-    if (data.method === "ui/notifications/size-changed") { state.height = data.params.height; state.changed = performance.now(); }
-    if (data.method === "notifications/message") state.errors.push(data.params.data);
+
+    if (typeof data !== "object" || data === null || !("method" in data)) return;
+    const params = "params" in data && typeof data.params === "object" ? data.params : null;
+
+    if (data.method === "ui/notifications/initialized") postMessage(setup.render, "*");
+
+    if (
+      data.method === "ui/notifications/size-changed" &&
+      params !== null &&
+      "height" in params &&
+      typeof params.height === "number"
+    ) {
+      state.height = params.height;
+      state.changed = performance.now();
+    }
+
+    if (data.method === "notifications/message" && params !== null && "data" in params)
+      state.errors.push(params.data);
   });
-  globalThis.__nytePreview = {
-    settle: () => new Promise((resolve) => {
-      const since = performance.now();
-      const check = () => {
-        const now = performance.now();
-        const quiet = now - Math.max(state.changed, since) > ${SETTLE_QUIET_MS};
-        if ((quiet && (state.height > 0 || state.errors.length > 0)) || now - since > ${SETTLE_TIMEOUT_MS})
-          resolve({ height: state.height, errors: state.errors, console: state.console });
-        else setTimeout(check, 50);
-      };
-      check();
-    }),
-  };
-  postMessage(${JSON.stringify(initialize)}, "*");
+  Object.defineProperty(globalThis, "__nytePreview", {
+    value: {
+      settle: () =>
+        new Promise((resolve) => {
+          const since = performance.now();
+          const check = (): void => {
+            const now = performance.now();
+            const quiet = now - Math.max(state.changed, since) > setup.quietMs;
+
+            if (
+              (quiet && (state.height > 0 || state.errors.length > 0)) ||
+              now - since > setup.timeoutMs
+            )
+              resolve({ height: state.height, errors: state.errors, console: state.console });
+            else setTimeout(check, 50);
+          };
+          check();
+        }),
+    },
+  });
+  postMessage(setup.initialize, "*");
+
   return true;
-})()`;
+}
+
+/** Returns the expression that installs the harness for `request` in a preview page. */
+function harness(request: CanvasPreviewRequest): string {
+  const setup: HarnessSetup = {
+    initialize: initializeResult(
+      1,
+      { name: "nyte-preview", version: String(CANVAS_RUNTIME) },
+      hostContext(request.theme),
+    ),
+    render: renderNotification(request.module),
+    quietMs: SETTLE_QUIET_MS,
+    timeoutMs: SETTLE_TIMEOUT_MS,
+    consoleKept: CONSOLE_KEPT,
+  };
+
+  return `(${installHarness.toString()})(${JSON.stringify(setup)})`;
 }
 
 async function settle(page: CanvasPreviewPage) {
