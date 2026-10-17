@@ -22,7 +22,15 @@ import type { RecordKind } from "@nyte-ai/core/store";
 import { isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
-import { changedPaths, derivedRefs, MAPPING, migratedLog, migratedRecord } from "./mapping.ts";
+import {
+  changedPaths,
+  derivedRefs,
+  MAPPING,
+  migratedLog,
+  migratedRecord,
+  readOldToolDecision,
+  readToolDecision,
+} from "./mapping.ts";
 
 type Decode = (object: Json | null) => object | null;
 
@@ -73,6 +81,7 @@ export interface MigrationReport {
   readonly log: { readonly sessions: number; readonly events: number; readonly relogged: number };
   readonly fieldChanges: Readonly<Record<string, number>>;
   readonly decoded: Readonly<Record<string, number>>;
+  readonly hookDecisions: Readonly<Record<string, number>>;
   readonly sessionIndex: { readonly rows: number; readonly pendingWork: number };
   readonly problems: readonly string[];
 }
@@ -83,6 +92,41 @@ function count(map: Map<string, number>, key: string): void {
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/**
+ * How a before_tool hook call's stored result fared, judged by decoding it
+ * rather than by the step's rewrite: a result the store-13 decoder read must
+ * read today as the same decision (a `modify` as that call's args), and one it
+ * could not read must be kept as it was. Null for any other record, or one
+ * whose hook has not settled.
+ */
+function hookDecision(
+  before: Json,
+  after: Json | null,
+):
+  | "read alike"
+  | "kept unreadable"
+  | "decides differently"
+  | "rewrote an unreadable result"
+  | null {
+  if (!isJsonObject(before) || before.kind !== "call" || !isJsonObject(before.body)) return null;
+  const { kind, id, result } = before.body;
+
+  if (kind !== "hook" || !text(id).startsWith("hook:before_tool:") || result === null) return null;
+  const now = isJsonObject(after) && isJsonObject(after.body) ? after.body.result : undefined;
+  const old = readOldToolDecision(result);
+
+  if (old === null)
+    return Value.Equal(now, result) ? "kept unreadable" : "rewrote an unreadable result";
+  const decided = readToolDecision(now);
+
+  const same =
+    old.action === "modify"
+      ? decided?.action === "modify" && Value.Equal(decided.value, old.value.args)
+      : Value.Equal(decided, old);
+
+  return same ? "read alike" : "decides differently";
 }
 
 /** A changed field's path with array indexes and `nested` call keys as `*`, so a report counts fields rather than positions. */
@@ -192,6 +236,7 @@ export async function verifyMigration(
     const refsBefore = readRefs(database, "before");
     const refsAfter = readRefs(database, "main");
     const outcomes = new Map<string, number>();
+    const hookDecisions = new Map<string, number>();
     const derived = new Map<string, string | null>();
 
     for (const [name, row] of refsBefore) {
@@ -211,6 +256,13 @@ export async function verifyMigration(
 
       const record = decodeObject(row.body);
       const expected = migratedRecord(from, record);
+
+      const decision =
+        from < 14 ? hookDecision(record, now.body === null ? null : decodeObject(now.body)) : null;
+
+      if (decision === "decides differently" || decision === "rewrote an unreadable result")
+        problems.push(`ref ${name} (before_tool hook) ${decision}`);
+      else if (decision !== null) count(hookDecisions, decision);
       const kind =
         isJsonObject(record) && typeof record.kind === "string" ? record.kind : "no kind";
 
@@ -378,6 +430,9 @@ export async function verifyMigration(
       ),
       decoded: Object.fromEntries(
         [...decoded].sort(([left], [right]) => left.localeCompare(right)),
+      ),
+      hookDecisions: Object.fromEntries(
+        [...hookDecisions].sort(([left], [right]) => left.localeCompare(right)),
       ),
       sessionIndex: { rows: indexRows.length, pendingWork: pendingRows.length },
       problems,

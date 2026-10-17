@@ -71,6 +71,9 @@ it(
 
           for (const [key, value] of Object.entries(report.fieldChanges))
             tally(`field ${key}`, value);
+
+          for (const [key, value] of Object.entries(report.hookDecisions))
+            tally(`hook decisions ${key}`, value);
         } finally {
           rmSync(folder, { recursive: true, force: true });
         }

@@ -1,8 +1,18 @@
 import { decodeCallRecord, decodeRunRecord, parseSessionRef } from "@nyte-ai/core/store";
 import type { CallRecord } from "@nyte-ai/core/store";
-import { compile, FileStatusType, HunkType, isJsonObject, writePatch } from "@nyte-ai/schema";
+import {
+  compile,
+  FileStatusType,
+  HunkType,
+  isJsonObject,
+  JsonType,
+  ToolCallType,
+  withJson,
+  writePatch,
+} from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 type JsonObject = { readonly [key: string]: Json };
@@ -105,9 +115,36 @@ export const MAPPING = [
     step: "2026-10-16-hook-tool-args",
     target: "call records of kind hook whose id starts `hook:before_tool:`",
     change:
-      'an object `intent` holding `args` becomes `{ principal }` (null where absent); a `{ action: "modify", value: <object> }` result becomes `{ action: "modify", value: <value.args or null> }`',
+      'an object `intent` holding `args` becomes `{ principal }` (null where absent); a `modify` result whose value is a ToolCall, the only one the old decoder read, becomes `{ action: "modify", value: <value.args> }`; any other result is kept',
   },
 ] as const;
+
+function decisionType<T extends TSchema>(value: T) {
+  return Type.Union([
+    Type.Object({ action: Type.Literal("continue") }),
+    Type.Object({ action: Type.Literal("modify"), value }),
+    Type.Object({ action: Type.Literal("reject"), reason: Type.String() }),
+    Type.Object({ action: Type.Literal("error"), message: Type.String() }),
+  ]);
+}
+
+/** A before_tool hook call's result as store version 13 decoded it: a `modify` holds the whole changed ToolCall. */
+const OLD_TOOL_DECISION = compile(withJson(decisionType(ToolCallType)));
+
+/** A before_tool hook call's result as today's store decodes it: a `modify` holds the changed args alone. */
+const TOOL_DECISION = compile(withJson(decisionType(JsonType)));
+
+/** The decision a before_tool hook call's stored result held for store version 13, or null when that decoder could not read it. */
+export function readOldToolDecision(result: Json | undefined) {
+  return result !== undefined && OLD_TOOL_DECISION.Check(result)
+    ? OLD_TOOL_DECISION.Decode(result)
+    : null;
+}
+
+/** The decision a before_tool hook call's stored result holds today, or null when it can't be read. */
+export function readToolDecision(result: Json | undefined) {
+  return result !== undefined && TOOL_DECISION.Check(result) ? TOOL_DECISION.Decode(result) : null;
+}
 
 /** Whether the step a store reaches `version` with runs on a store stamped `from`. */
 function runs(from: number, version: number): boolean {
@@ -184,8 +221,10 @@ function migrateCall(from: number, body: JsonObject): JsonObject {
     if (isJsonObject(hookIntent) && "args" in hookIntent)
       next = { ...next, intent: { principal: hookIntent.principal ?? null } };
 
-    if (isJsonObject(result) && result.action === "modify" && isJsonObject(result.value))
-      next = { ...next, result: { action: "modify", value: result.value.args ?? null } };
+    const decision = readOldToolDecision(result);
+
+    if (decision?.action === "modify")
+      next = { ...next, result: { action: "modify", value: decision.value.args } };
   }
 
   return next;

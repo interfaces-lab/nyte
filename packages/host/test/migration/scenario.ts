@@ -9,6 +9,7 @@ import {
   HunkType,
   isJsonObject,
   JsonType,
+  ToolClassType,
   WaitOutcomeType,
   withJson,
 } from "@nyte-ai/schema";
@@ -127,7 +128,18 @@ function records(from: number): fc.Arbitrary<Entry> {
             },
           ),
           outcome: legacyOutcome,
-          modify: fc.record({ args: json, other: json }, { requiredKeys: [] }),
+          modify: fc.oneof(
+            {
+              arbitrary: fc.record({
+                call: ID,
+                name: fc.constantFrom("bash", "edit"),
+                args: json,
+                class: schemaArbitrary(withJson(ToolClassType)),
+              }),
+              weight: 3,
+            },
+            { arbitrary: fc.record({ args: json, other: json }, { requiredKeys: [] }), weight: 1 },
+          ),
         }),
       )
       .map(([session, other, own, value, time, legacy]) => {

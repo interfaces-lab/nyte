@@ -5,6 +5,8 @@ import {
   isJson,
   isJsonObject,
   SdkError,
+  ToolCallType,
+  withJson,
   writePatch,
 } from "@nyte-ai/schema";
 import type { Json, ObjectId } from "@nyte-ai/schema";
@@ -458,7 +460,10 @@ const BeforeToolHookType = Type.Object({
   id: Type.String({ pattern: "^hook:before_tool:" }),
 });
 
-/** A before_tool hook call's intent repeated the tool call its part holds, and a gate's `modify` result the whole changed call. The intent keeps its principal, and the result the changed args alone. */
+/** The changed call a `modify` result held before the hook-tool-args step, as the before_tool decoder then read it. */
+const ToolCalls = compile(withJson(ToolCallType));
+
+/** A before_tool hook call's intent repeated the tool call its part holds, and a gate's `modify` result the whole changed call. The intent keeps its principal, and a result whose changed call the old decoder read keeps that call's args alone; one it could not read is kept as it was. */
 const hookToolArgs: RewriteStep = {
   kind: "rewrite",
   name: "2026-10-16-hook-tool-args",
@@ -473,8 +478,8 @@ const hookToolArgs: RewriteStep = {
       if (isJsonObject(intent) && "args" in intent)
         next = { ...next, intent: { principal: intent.principal ?? null } };
 
-      if (isJsonObject(result) && result.action === "modify" && isJsonObject(result.value))
-        next = { ...next, result: { action: "modify", value: result.value.args ?? null } };
+      if (isJsonObject(result) && result.action === "modify" && ToolCalls.Check(result.value))
+        next = { ...next, result: { action: "modify", value: result.value.args } };
 
       return next;
     });
