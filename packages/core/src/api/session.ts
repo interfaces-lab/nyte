@@ -51,7 +51,7 @@ import {
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
-import { followTrace, traced } from "../util/trace.ts";
+import { followedTrace, followTrace, traced } from "../util/trace.ts";
 import { createHead, headHandle, mergeHead, removeHead } from "./head.ts";
 import { createPart, partHandle } from "./part.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -329,7 +329,7 @@ export function watchSessions(
   });
 }
 
-/** Starts the chat `input` describes: one commit stores the session with its first message deciding, then before_send releases it. A replay under the same id and input returns the same chat. */
+/** Starts the chat `input` describes: one commit stores the session with its first message deciding, then before_send releases it. A replay under the same id and input returns the same chat. A chat a tool call starts, as a subagent's task, joins the trace its caller's session follows. */
 async function start(
   kernel: Kernel,
   context: ConnectionContext,
@@ -360,9 +360,10 @@ async function start(
     content: input.content,
   });
 
-  followTrace(id, receipt);
+  const trace = (origin === null ? null : followedTrace(origin.session)) ?? receipt;
+  followTrace(id, trace);
 
-  return traced("host.admit", receipt, { session: id }, async () => {
+  return traced("host.admit", trace, { session: id }, async () => {
     await attempt(`Starting ${id}`, async () => {
       if ((await readSession(kernel.store, id)) !== null) {
         const started = (await readReceipt(kernel.store, id, receipt))?.record;
