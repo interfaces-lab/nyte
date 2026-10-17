@@ -360,7 +360,6 @@ export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void
       )
         return;
       kernel.sessions.setCatalog(session, catalog);
-      bumpGeneration(kernel);
     });
 
   queues.set(session, next);

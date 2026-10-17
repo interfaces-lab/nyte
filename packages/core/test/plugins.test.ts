@@ -7,6 +7,7 @@ import { toolSource } from "../src/extend/registry.ts";
 import { LOCAL, text } from "../src/index.ts";
 import type { Plugin, PluginApi } from "../src/index.ts";
 import { main, setup } from "../src/harness.ts";
+import { memoryStore } from "../src/store.ts";
 import { ok, echo, opaque, volume, says, provider, loaded } from "./plugin-support.ts";
 
 afterEach(() => {
@@ -383,7 +384,7 @@ describe("plugin api", () => {
     ).toEqual(["a", "b"]);
   });
 
-  it("publishes the catalog as a seq-0 event a warm fold takes and a cold fold seeds, and bumps the generation", async () => {
+  it("publishes the catalog as a seq-0 event a warm fold takes and a cold fold seeds, and keeps the generation", async () => {
     const { kernel, host } = await setup();
     const generation = kernel.host.current().catalog;
     const events: SessionCatalogView[] = [];
@@ -444,7 +445,7 @@ describe("plugin api", () => {
 
     expect(events).toEqual([catalog]);
     expect((await session.view()).catalog).toEqual(catalog);
-    expect(kernel.host.current().catalog).not.toBe(generation);
+    expect(kernel.host.current().catalog).toBe(generation);
 
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
@@ -452,6 +453,25 @@ describe("plugin api", () => {
 
     expect(hold.state().catalog.commands).toEqual([]);
     hold.release();
+  });
+
+  it("keeps the generation when a restarted host opens a chat's watch", async () => {
+    const store = await memoryStore().open();
+    const plugins = [{ id: "greeter", contribute: { commands: [says("hello", "hi")] } }];
+    const first = await setup({ store, plugins });
+    const { session } = await first.host.sessions.start({ content: "Hi." });
+    const second = await setup({ store, plugins });
+    const generation = second.kernel.host.current().catalog;
+    const views = second.host.session(session.id).watch()[Symbol.asyncIterator]();
+
+    await views.next();
+    await second.kernel.plugins.runtime(session.id).ready;
+
+    expect(second.kernel.sessions.catalog(session.id).commands).toEqual([
+      expect.objectContaining({ name: "greeter/hello" }),
+    ]);
+    expect(second.kernel.host.current().catalog).toBe(generation);
+    await views.return?.();
   });
 });
 
