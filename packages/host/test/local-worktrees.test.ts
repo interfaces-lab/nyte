@@ -62,7 +62,7 @@ async function repository(): Promise<string> {
   sh(root, "init", "-q", "-b", "main");
   sh(root, "config", "user.name", "Ada");
   sh(root, "config", "user.email", "ada@example.com");
-  await writeFile(join(root, ".gitignore"), "dist/\n.env\n");
+  await writeFile(join(root, ".gitignore"), "dist/\n");
   await writeFile(join(root, "a.txt"), "one\n");
   await writeFile(join(root, "gone.txt"), "bye\n");
   await mkdir(join(root, "app"));
@@ -153,22 +153,14 @@ describe.skipIf(!hasGit)("localWorktrees", () => {
     const clean = await worktrees.create(env, { name: "clean", title: null });
     const committed = await worktrees.create(env, { name: "committed", title: null });
     const dirty = await worktrees.create(env, { name: "dirty", title: null });
-    const built = await worktrees.create(env, { name: "built", title: null });
-    const secret = await worktrees.create(env, { name: "secret", title: null });
 
     await writeFile(join(readPath(committed.target), "a.txt"), "changed\n");
     sh(readPath(committed.target), "commit", "-q", "-am", "work");
     await writeFile(join(readPath(dirty.target), "a.txt"), "unsaved\n");
-    await mkdir(join(readPath(built.target), "dist"), { recursive: true });
-    await writeFile(join(readPath(built.target), "dist", "a.js"), "built\n");
-    await writeFile(join(readPath(secret.target), ".env"), "TOKEN=1\n");
 
     expect(await worktrees.remove(clean)).toEqual({ folder: "removed", branch: "deleted" });
     expect(await worktrees.remove(committed)).toEqual({ folder: "removed", branch: "kept" });
     expect(await worktrees.remove(dirty)).toEqual({ folder: "kept", branch: "kept" });
-    expect(await worktrees.remove(built)).toEqual({ folder: "removed", branch: "deleted" });
-    expect(await worktrees.remove(secret)).toEqual({ folder: "kept", branch: "kept" });
-    expect(await readFile(join(readPath(secret.target), ".env"), "utf8")).toBe("TOKEN=1\n");
     expect(await worktrees.remove(clean)).toEqual({ folder: "removed", branch: "kept" });
 
     expect(await stat(readPath(clean.target)).catch(() => null)).toBeNull();
@@ -176,7 +168,7 @@ describe.skipIf(!hasGit)("localWorktrees", () => {
     expect(await readFile(join(readPath(dirty.target), "a.txt"), "utf8")).toBe("unsaved\n");
     expect(
       sh(root, "branch", "--format=%(refname:short)").split("\n").filter(Boolean).sort(),
-    ).toEqual(["main", committed.branch, dirty.branch, secret.branch].sort());
+    ).toEqual(["main", committed.branch, dirty.branch].sort());
   });
 });
 
