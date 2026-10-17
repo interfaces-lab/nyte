@@ -1,15 +1,9 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import type {
-  CommandOutcome,
-  MessageId,
-  SessionId,
-  WorkspaceCommandOutcome,
-  WorkspaceId,
-} from "@nyte-ai/sdk";
+import type { CommandOutcome, WorkspaceCommandOutcome, WorkspaceId } from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
-import { followedSession } from "../model/state.ts";
-import type { Notice, Selection, State } from "../model/state.ts";
+import { followedSession, rowStatus } from "../model/state.ts";
+import type { Notice, Selection } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
 import { ignoredSettingsText } from "../services/settings.ts";
 import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
@@ -407,22 +401,4 @@ export function stampNotice(context: HandlerContext, tone: Notice["tone"], text:
 
 export function errorNotice(context: HandlerContext, error: unknown): Notice {
   return stampNotice(context, "error", `error: ${errorMessage(error)}`);
-}
-
-export function rowStatus(
-  state: State,
-  session: SessionId,
-  message: MessageId,
-): "pending" | "landed" | "unsent" | "absent" {
-  const followed = followedSession(state);
-
-  if (followed === null || followed.id !== session || followed.view === null) return "absent";
-
-  const row = followed.view.messages.find(
-    (candidate) => candidate.kind === "user" && candidate.id === message,
-  );
-
-  if (row === undefined || row.kind !== "user") return "absent";
-
-  return row.status.kind;
 }

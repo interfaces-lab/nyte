@@ -10,10 +10,10 @@ import type {
 import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import { indexSkills } from "../model/commands.ts";
+import { rowStatus } from "../model/state.ts";
 import type { BlankChat, Submission } from "../model/state.ts";
 import { availableModels, findModel } from "../lib/catalog.ts";
 import { errorMessage } from "../lib/format.ts";
-import { rowStatus } from "./commands.ts";
 import type { PluginsPort } from "./ports.ts";
 import type { HandlerContext } from "./scope.ts";
 import { blankWorkspace, defaultSelection, follow } from "./session.ts";

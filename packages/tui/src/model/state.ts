@@ -339,6 +339,24 @@ export function followedSession(state: State): FollowedSession | null {
   return chat?.kind === "session" ? chat : null;
 }
 
+export function rowStatus(
+  state: State,
+  session: SessionId,
+  message: MessageId,
+): "pending" | "landed" | "unsent" | "absent" {
+  const followed = followedSession(state);
+
+  if (followed === null || followed.id !== session || followed.view === null) return "absent";
+
+  const row = followed.view.messages.find(
+    (candidate) => candidate.kind === "user" && candidate.id === message,
+  );
+
+  if (row === undefined || row.kind !== "user") return "absent";
+
+  return row.status.kind;
+}
+
 export function followedShells(state: State): readonly ShellJob[] {
   const followed = state.facts.chat?.id ?? null;
 
