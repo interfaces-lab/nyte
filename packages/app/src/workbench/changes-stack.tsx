@@ -1,4 +1,5 @@
 import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
+import type { CodeViewLineSelection, SelectedLineRange } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem, CodeViewReactOptions } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
@@ -10,6 +11,7 @@ import { FileTypeIcon } from "../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Button } from "@nyte-ai/ui/button";
+import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../conversation/add-to-chat.ts";
 import type { DiffFilesLoader } from "../conversation/diff-expansion.ts";
 import {
   DIFF_SEPARATOR_CSS,
@@ -19,13 +21,17 @@ import {
 import { diffStyles } from "../conversation/diff.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
+import { nyte } from "../nyte.ts";
+import { macPlatform } from "../platform.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
+import { keyOwner } from "../shell/focus-owner.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
+import { diffRangeExcerpt } from "./diff-range.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 
@@ -96,7 +102,8 @@ interface ScrollReport {
 /**
  * The first header starts flush with the file tree's filter row. React clears
  * the viewer ref on unmount, so a scroll report timer that outlives the stack
- * writes nothing.
+ * writes nothing. Lines picked in a diff go to the chat from the gutter's
+ * button, the file header's Add to Chat, or its chord.
  */
 export function ChangesStack({
   items,
@@ -141,6 +148,44 @@ export function ChangesStack({
   const model = useMemo(() => codeItems(items, collapsedPaths), [codeItems, items, collapsedPaths]);
   const collapsed = useMemo(() => new Set(collapsedPaths), [collapsedPaths]);
   const scrollReport = useRef<ScrollReport>({ top: scrollTop, timer: undefined, path: undefined });
+  const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
+  const sources = useRef(model.sourceById);
+  const mac = macPlatform(nyte.platform);
+
+  useLayoutEffect(() => {
+    sources.current = model.sourceById;
+  }, [model.sourceById]);
+
+  const addRange = useCallback((id: string, range: SelectedLineRange): boolean => {
+    const item = viewer.current?.getItem(id);
+    const source = sources.current.get(id);
+
+    if (item?.type !== "diff" || source === undefined) return false;
+    const reference = diffRangeExcerpt(source.path, item.fileDiff, range);
+
+    if (reference === undefined || !addToChat({ reference })) return false;
+    viewer.current?.clearSelectedLines();
+
+    return true;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (selection === null) return undefined;
+
+    const add = (event: KeyboardEvent): void => {
+      const owner = keyOwner();
+
+      if (event.defaultPrevented || !addsToChat(event, mac)) return;
+
+      if (owner !== undefined && owner.closest("[data-changes-stack]") === null) return;
+
+      if (addRange(selection.id, selection.range)) event.preventDefault();
+    };
+
+    window.addEventListener("keydown", add);
+
+    return () => window.removeEventListener("keydown", add);
+  }, [addRange, mac, selection]);
 
   const options = useMemo(
     () =>
@@ -156,8 +201,15 @@ export function ChangesStack({
         onPostRender: (node, _instance, phase) => {
           if (phase !== "unmount") adaptDiffExpanders(node);
         },
+        enableLineSelection: true,
+        onGutterUtilityClick: (
+          range: SelectedLineRange,
+          context: { readonly item: { readonly id: string } },
+        ) => {
+          addRange(context.item.id, range);
+        },
       }) satisfies CodeViewReactOptions<string, undefined>,
-    [theme, layout, loadDiffFiles, wordWrap],
+    [theme, layout, loadDiffFiles, wordWrap, addRange],
   );
 
   useLayoutEffect(() => {
@@ -203,6 +255,15 @@ export function ChangesStack({
           demand={onDemandPatch}
           onToggleCollapsed={onToggleCollapsed}
         >
+          {selection?.id === codeItem.id && (
+            <Button
+              iconOnly
+              icon="new-chat"
+              aria-label={ADD_TO_CHAT_LABEL}
+              aria-keyshortcuts={mac ? "Meta+Shift+L" : "Control+Shift+L"}
+              onClick={() => addRange(selection.id, selection.range)}
+            />
+          )}
           {onRevertPath !== undefined && (
             <Button
               iconOnly
@@ -228,12 +289,15 @@ export function ChangesStack({
       );
     },
     [
+      addRange,
       collapsed,
+      mac,
       model.sourceById,
       onDemandPatch,
       onRevertPath,
       onToggleCollapsed,
       onViewedChange,
+      selection,
       viewedState,
     ],
   );
@@ -248,7 +312,9 @@ export function ChangesStack({
         containerRef={(node) => {
           if (node === null) return;
           node.dataset.nyteScrollport = "balanced";
+          node.dataset.changesStack = "";
         }}
+        onSelectedLinesChange={setSelection}
         renderCustomHeader={renderHeader}
         renderAnnotation={(annotation) => (
           <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>
