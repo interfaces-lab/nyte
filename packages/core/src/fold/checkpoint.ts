@@ -49,10 +49,8 @@ import type { CommitRecord, PartRecord } from "../contract/records.ts";
 import { decodeObject } from "../store/log.ts";
 import { STORE_VERSION } from "../store/migrations.ts";
 import { dev } from "../util/dev-log.ts";
+import { FOLD_CODE } from "./code.ts";
 import { EMPTY_CATALOG } from "./fold.ts";
-
-/** The checkpoint format. Bump it whenever folding the same events can give a different state, so no build restores a fold an older one computed differently. */
-const FOLD_CHECKPOINT_VERSION = 1;
 
 /** Past this many events since the last checkpoint, the next settled fold writes one, so a cold fold replays about this many and a run's. */
 const REPLAY_EVENTS = 1_024;
@@ -66,8 +64,15 @@ const message = idSchema<"message">();
 
 const turn = idSchema<"turn">();
 
+/** What a checkpoint is stamped with: the fold code, the store version and the build that wrote it. */
+const FoldCheckpointStamp = Type.Object({
+  code: Type.Literal(FOLD_CODE),
+  store: Type.Literal(STORE_VERSION),
+  build: Type.String(),
+});
+
 const FoldCheckpointType = Type.Object({
-  version: Type.Literal(FOLD_CHECKPOINT_VERSION),
+  code: Type.Literal(FOLD_CODE),
   store: Type.Number(),
   build: Type.String(),
   seq: SeqType,
@@ -158,6 +163,8 @@ const FoldCheckpointType = Type.Object({
 });
 
 type FoldCheckpointBody = Static<typeof FoldCheckpointType>;
+
+const stamps = compile(FoldCheckpointStamp);
 
 const validator = compile(
   cyclicWithJson({ Root: FoldCheckpointType, WaitOutcome: WaitOutcomeType }, "Root"),
@@ -295,7 +302,7 @@ function encodeFoldCheckpoint(state: FoldState, build: string): string | null {
   );
 
   const body: FoldCheckpointBody = {
-    version: FOLD_CHECKPOINT_VERSION,
+    code: FOLD_CODE,
     store: STORE_VERSION,
     build,
     seq: state.seq,
@@ -343,16 +350,33 @@ function encodeFoldCheckpoint(state: FoldState, build: string): string | null {
   return JSON.stringify(body);
 }
 
-/** Returns the fold a checkpoint holds as `principal` sees it, or null for text this format, store version and `build` did not write: a migration may have rewritten the records and events it folded. */
+/** Returns the fold a checkpoint holds as `principal` sees it, or null for text this fold code, store version and `build` did not write (a migration may have rewritten the records and events it folded), its stamp checked before the whole body is validated. */
 function decodeFoldCheckpoint(
   text: string,
   build: string,
   session: SessionId,
   principal: PrincipalId,
 ): FoldState | null {
+  const parsing = performance.now();
   const body = decodeObject(text);
+  const checking = performance.now();
 
-  if (!validator.Check(body) || body.store !== STORE_VERSION || body.build !== build) return null;
+  if (!stamps.Check(body) || body.build !== build) {
+    dev("fold", "checkpoint of other code, store or build", { session });
+
+    return null;
+  }
+
+  const valid = validator.Check(body);
+
+  dev("fold", "checkpoint read", {
+    session,
+    bytes: text.length,
+    parseMs: Math.round(checking - parsing),
+    checkMs: Math.round(performance.now() - checking),
+  });
+
+  if (!valid) return null;
   const parts = new Map(body.parts);
   const messages = new Map(body.messages);
   const turns = new Map(body.turns);
