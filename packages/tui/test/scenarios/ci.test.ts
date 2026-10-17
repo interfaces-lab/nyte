@@ -11,6 +11,7 @@ import {
 } from "@nyte-ai/host/bench";
 import { clearSpans, enableTracing } from "@nyte-ai/sdk/client";
 import { shellPort } from "../../src/effects/local-ports.ts";
+import { followedSession } from "../../src/model/state.ts";
 import { startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 import {
@@ -80,7 +81,7 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
   );
 
   const trace = lastTrace(tui.store);
-  const session = tui.store.state().facts.session?.id;
+  const session = followedSession(tui.store.state())?.id;
 
   if (session === undefined) throw new Error("No session was followed.");
   const waterfall = await traceWaterfall(trace, { ci: home.traceFile });

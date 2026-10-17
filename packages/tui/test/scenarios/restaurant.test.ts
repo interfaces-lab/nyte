@@ -7,6 +7,7 @@ import {
   restaurantScript,
 } from "@nyte-ai/host/bench";
 import { clearSpans, enableTracing } from "@nyte-ai/sdk/client";
+import { followedSession } from "../../src/model/state.ts";
 import { shownAt, startTui } from "../harness/tui.ts";
 import {
   epochNow,
@@ -50,9 +51,9 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
   });
 
   await tui.frame((frame) => frame.includes(`❯ ${RESTAURANT_PROMPT}`));
-  const typedAt = shownAt(tui, `❯ ${RESTAURANT_PROMPT}`) ?? Infinity;
+  const typedAt = shownAt(tui, (frame) => frame.includes(`❯ ${RESTAURANT_PROMPT}`)) ?? Infinity;
 
-  expect(tui.store.state().facts.phase.kind).toBe("starting");
+  expect(tui.store.state().facts.host).not.toBe("open");
   expect(typedAt).toBeLessThanOrEqual(50);
   await saveFrame(tui, "U-01-typed-while-host-opens");
 
@@ -72,7 +73,7 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
   await saveFrame(tui, "U-05-answer");
 
   expect(turns.pending()).toEqual([]);
-  const session = tui.store.state().facts.session?.id;
+  const session = followedSession(tui.store.state())?.id;
 
   if (session === undefined) throw new Error("No session was followed.");
   const trace = lastTrace(tui.store);

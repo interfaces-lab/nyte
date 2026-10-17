@@ -10,6 +10,7 @@ import { readSpans } from "@nyte-ai/sdk/client";
 import type { SpanName } from "@nyte-ai/sdk";
 import type { CapturedFrame, RGBA } from "@opentui/core";
 import type { Store } from "../../src/app/store.ts";
+import { followedSession } from "../../src/model/state.ts";
 import type { Tui } from "../harness/tui.ts";
 
 /** Where scenario frames, waterfalls and gap tables are saved; nothing is written when unset. */
@@ -59,7 +60,7 @@ export async function openScenarioHost(input: {
 
 /** The receipt id the TUI sent the last user message with, which is that submit's trace. */
 export function lastTrace(store: Store): string {
-  const view = store.state().facts.session?.view;
+  const view = followedSession(store.state())?.view;
   const sent = view?.messages.findLast((message) => message.kind === "user");
 
   if (sent === undefined) throw new Error("No user message has landed.");

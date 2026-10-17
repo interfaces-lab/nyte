@@ -31,8 +31,8 @@ test("loading: the composer takes typing while the host is still opening", async
   await tui.frame((frame) => composerShows(frame, "draft while loading"));
   await saveFrame(tui, "state-loading");
 
-  expect(tui.store.screen().blocked).toEqual({ kind: "starting" });
-  expect(shownAt(tui, "❯ draft while loading")).toBeLessThanOrEqual(50);
+  expect(tui.store.state().facts.host).not.toBe("open");
+  expect(shownAt(tui, (frame) => frame.includes("❯ draft while loading"))).toBeLessThanOrEqual(50);
 });
 
 test("streaming: a reply mid-stream shows its text and the working row", async () => {
