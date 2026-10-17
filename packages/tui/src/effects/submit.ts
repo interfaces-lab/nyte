@@ -3,7 +3,7 @@ import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import { indexSkills } from "../model/commands.ts";
 import type { BlankChat, Submission } from "../model/state.ts";
-import { findModel } from "../lib/catalog.ts";
+import { availableModels, findModel } from "../lib/catalog.ts";
 import { errorMessage } from "../lib/format.ts";
 import { rowStatus } from "./commands.ts";
 import type { PluginsPort } from "./ports.ts";
@@ -166,9 +166,7 @@ async function start(
 
     if (current.unresolved === true) dispatch({ kind: "selection", session: chat.id, selection });
 
-    const models = catalog.providers.flatMap((provider) => provider.models);
-
-    if (findModel(models, selection.model) === undefined) {
+    if (findModel(availableModels(catalog), selection.model) === undefined) {
       refuse(`${selection.model.id} isn't available. ctrl+p picks another.`);
 
       return false;

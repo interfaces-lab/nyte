@@ -9,7 +9,7 @@ import type { FollowedSession, State, Submission } from "../../src/model/state.t
 import { until } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
 import type { FakePorts } from "../fixture/ports.ts";
-import { SETTINGS, buildState } from "../fixture/state.ts";
+import { CATALOG, SETTINGS, buildState } from "../fixture/state.ts";
 import { CONFIGURATION, followed, buildView } from "../fixture/view.ts";
 
 const skipVersionCheck = process.env["NYTE_SKIP_VERSION_CHECK"];
@@ -558,6 +558,47 @@ test("the first send from a blank chat starts it with that message, then follows
   expect(refused.ports.host.starts).toEqual([]);
   expect(await refused.received("send-refused")).toMatchObject({ reason: "Not today." });
   expect(refused.dispatched.map((msg) => msg.kind)).not.toContain("session-opened");
+});
+
+test("a first message on a signed-out provider's model goes back with the fix, and nothing starts", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b-signed-out"),
+    folder: { kind: "folder", id: asId<"workspace">("workspace") },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-signed-out",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+
+  const app = harness({
+    facts: {
+      ...base.facts,
+      chat: blank,
+      catalog: {
+        generation: 1,
+        catalog: {
+          ...CATALOG,
+          providers: CATALOG.providers.map((provider) => ({ ...provider, credential: "missing" })),
+        },
+      },
+    },
+    local: { ...base.local, submissions: [first] },
+  });
+
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await app.runner.settled();
+
+  expect(app.ports.host.starts).toEqual([]);
+  expect(await app.received("send-refused")).toMatchObject({
+    reason: "model isn't available. ctrl+p picks another.",
+  });
 });
 
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {
