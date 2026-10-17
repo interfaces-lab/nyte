@@ -257,6 +257,7 @@ export async function run(): Promise<string> {
 
   const card = await until(() => stage.querySelector("[data-part='ask/approval']"), "the approval");
   await painted();
+  await capture("approval-arrived");
 
   if (card.querySelector("h2")?.textContent !== "Run this command?")
     failures.push(`title reads ${card.querySelector("h2")?.textContent ?? "nothing"}`);
@@ -266,8 +267,24 @@ export async function run(): Promise<string> {
   if (labels(card).join(" | ") !== "Allow once | Allow for this session | Deny")
     failures.push(`answers read ${labels(card).join(" | ")}`);
 
-  if (document.activeElement?.textContent !== "Allow once")
+  if (document.activeElement !== card)
     failures.push(`focus starts on ${document.activeElement?.textContent ?? "nothing"}`);
+
+  press("Enter");
+  await painted();
+
+  if (acts.length > 0) failures.push(`Enter on the arriving card sent ${acts.join()}`);
+
+  press("ArrowLeft");
+
+  if (document.activeElement?.textContent !== "Deny")
+    failures.push(`← from the card moves to ${document.activeElement?.textContent ?? "nothing"}`);
+
+  card.focus();
+  press("ArrowRight");
+
+  if (document.activeElement?.textContent !== "Allow once")
+    failures.push(`→ from the card moves to ${document.activeElement?.textContent ?? "nothing"}`);
 
   press("ArrowRight");
 

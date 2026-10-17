@@ -4,6 +4,7 @@ import type { KeyboardEvent, ReactElement } from "react";
 import { APPROVAL_ACTIONS, approvalPrompt } from "@nyte-ai/plugin/approvals/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -45,18 +46,24 @@ const NEXT = new Set(["ArrowRight", "ArrowDown"]);
 
 const PREVIOUS = new Set(["ArrowLeft", "ArrowUp"]);
 
-/** Arrow keys move between the answers and Escape denies, as in the terminal's approval list. */
+/** Arrow keys move between the answers, from the card onto the first or the last, and Escape denies, as in the terminal's approval list. */
 function moveFocus(event: KeyboardEvent<HTMLDivElement>): void {
   const step = NEXT.has(event.key) ? 1 : PREVIOUS.has(event.key) ? -1 : 0;
 
   if (step === 0) return;
   const buttons = [...event.currentTarget.querySelectorAll("button")];
   const current = buttons.findIndex((button) => button === document.activeElement);
-  const next = buttons.at((current + step) % buttons.length);
+  const next =
+    current === -1 ? buttons.at(step > 0 ? 0 : -1) : buttons.at((current + step) % buttons.length);
 
   if (next === undefined) return;
   event.preventDefault();
   next.focus();
+}
+
+/** Takes the keyboard when a card arrives, on the card itself rather than an answer, so an Enter meant for the composer cannot allow the call. */
+function takeFocus(card: HTMLDivElement | null): void {
+  card?.focus();
 }
 
 function ApprovalCard({
@@ -74,16 +81,24 @@ function ApprovalCard({
   return (
     <div
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.defaultPrevented || blocked) return;
+        if (event.key !== "Escape") {
+          moveFocus(event);
+
+          return;
+        }
+
+        if (event.defaultPrevented || blocked) return;
         event.preventDefault();
         event.stopPropagation();
         answer.mutate({ request, decision: "deny" });
       }}
       role="group"
+      tabIndex={-1}
+      ref={takeFocus}
       aria-labelledby={`${id}-title`}
       aria-describedby={prompt.detail === "" ? undefined : `${id}-detail`}
       data-part="ask/approval"
-      {...props(styles.card)}
+      {...props(styles.card, focus.ringInset)}
     >
       <h2 id={`${id}-title`} {...props(text.base, styles.title)}>
         {prompt.title}
@@ -96,13 +111,12 @@ function ApprovalCard({
           {prompt.detail}
         </pre>
       )}
-      <div {...props(styles.actions)} onKeyDown={moveFocus}>
+      <div {...props(styles.actions)}>
         {APPROVAL_ACTIONS.map(({ action, label }, index) => (
           <Button
             key={action}
             size="sm"
             variant={index === 0 ? "solid" : "outline"}
-            autoFocus={index === 0}
             aria-keyshortcuts={action === "deny" ? "Escape" : undefined}
             disabled={blocked}
             onClick={() => answer.mutate({ request, decision: action })}

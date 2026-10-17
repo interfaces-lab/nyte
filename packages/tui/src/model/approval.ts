@@ -6,6 +6,9 @@ import type { Task } from "../lib/tasks.ts";
 import type { ListDialog } from "./dialogs/list.ts";
 import type { ApprovalLocal } from "./state.ts";
 
+/** Where a new approval's highlight starts: on Deny, so an Enter meant for the composer cannot allow the call. */
+const DENY = APPROVAL_ACTIONS.findIndex(({ action }) => action === "deny");
+
 /** The approval the panel asks: the followed chat's first, else a subagent's. */
 export interface ApprovalModel extends OpenApproval {
   readonly session: SessionId;
@@ -38,7 +41,7 @@ export function currentApproval(
   return null;
 }
 
-/** The panel for `approval`: its question as the heading, the command or path above the three answers. */
+/** The panel for `approval`: its question as the heading, the command or path above the three answers, Deny highlighted until the user moves. */
 export function approvalPanel(
   approval: ApprovalModel | null,
   local: ApprovalLocal,
@@ -71,7 +74,7 @@ export function approvalPanel(
       })),
     },
     query: "",
-    highlighted: local.part === approval.part ? local.highlighted : 0,
+    highlighted: local.part === approval.part ? local.highlighted : DENY,
     answering: null,
     busy: local.sending === approval.part,
   };

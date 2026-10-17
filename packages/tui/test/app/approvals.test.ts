@@ -63,7 +63,7 @@ async function asking(): Promise<Tui> {
   };
 }
 
-test("an approval takes the keyboard, ↓ and Enter allow the call, and the run goes on", async () => {
+test("an approval takes the keyboard on Deny, ↑ and Enter allow the call, and the run goes on", async () => {
   await using tui = await asking();
   tui.fixture.reply(toolCall("deploy", { command: "make deploy" }), {
     content: [{ type: "text", text: "Deployed it." }],
@@ -72,12 +72,12 @@ test("an approval takes the keyboard, ↓ and Enter allow the call, and the run 
 
   const asked = await tui.frame((frame) => frame.includes("Run this command?"));
   expect(asked).toContain("make deploy");
-  expect(row(asked, "Allow once")).toContain("❯");
+  expect(row(asked, "Deny")).toContain("❯");
+  expect(row(asked, "Allow once")).not.toContain("❯");
   expect(asked).toContain("Allow for this session");
-  expect(asked).toContain("Deny");
   expect(ran).toEqual([]);
 
-  tui.press("picker.next");
+  tui.press("picker.previous");
   await tui.frame((frame) => row(frame, "Allow for this session").includes("❯"));
   tui.press("picker.accept");
   await tui.frame(
