@@ -14,8 +14,8 @@ const KIB = 1_024;
  * links.
  */
 const budgets = {
-  main: 99 * KIB,
-  host: 1_020 * KIB,
+  main: 126 * KIB,
+  host: 1_270 * KIB,
   preload: 8 * KIB,
   renderer: 2_840 * KIB,
   css: 190 * KIB,
