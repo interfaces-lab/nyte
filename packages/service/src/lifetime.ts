@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import process from "node:process";
-import type { Attachment, ServiceClient } from "./routes.ts";
+import type { Attachment, Busy, ServiceClient } from "./routes.ts";
 
 /**
  * How long the service runs with no attached client before it stops: five minutes. Long
@@ -83,6 +83,23 @@ export class Lifetime {
     const terminals = await terminalsByPid(attached.map((entry) => entry.pid));
 
     return attached.map((entry) => ({ ...entry, tty: terminals.get(entry.pid) ?? null }));
+  }
+
+  /**
+   * Stops the service for a client of another build, unless a client other than process
+   * `caller` is attached or `working` reports work; then it keeps running and returns why.
+   * The stop waits a tick so the caller's response is written first.
+   */
+  async retire(caller: number): Promise<Busy | undefined> {
+    const others = (): number => [...this.#attached].filter((entry) => entry.pid !== caller).length;
+    const working = others() === 0 && (await this.#working().catch(() => true));
+
+    if (others() > 0 || working) return { clients: others(), working };
+
+    this.close();
+    this.#options.timers.wait(this.#options.idle, 0);
+
+    return undefined;
   }
 
   close(): void {

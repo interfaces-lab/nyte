@@ -13,8 +13,8 @@ import { Value } from "typebox/value";
 import { serviceBuild } from "./build.ts";
 import { alive, lockHolder, logPath, readRegistration, registrationPath } from "./registration.ts";
 import type { Registration } from "./registration.ts";
-import { SERVICE_ROUTES, ServiceClientSchema, ServiceEventSchema } from "./routes.ts";
-import type { ServiceClient, ServiceEvent } from "./routes.ts";
+import { BusySchema, SERVICE_ROUTES, ServiceClientSchema, ServiceEventSchema } from "./routes.ts";
+import type { Busy, ServiceClient, ServiceEvent } from "./routes.ts";
 
 const START_TIMEOUT_MS = 20_000;
 
@@ -46,8 +46,9 @@ export async function findService(home: string): Promise<Registration | undefine
 
 /**
  * Returns the running service of this client's build, starting one when none runs. A
- * service of another build is stopped and replaced; one that won't stop fails with the
- * build skew and the fix. The client then stays attached until `signal` aborts or the
+ * service of another build is stopped and replaced while no other client uses it and no
+ * run or job works in it; otherwise, or when it won't stop, this fails with the build skew
+ * and the fix. The client then stays attached until `signal` aborts or the
  * process exits, which keeps the service from stopping while idle.
  */
 export async function ensureService(options: EnsureServiceOptions): Promise<Registration> {
@@ -61,14 +62,40 @@ export async function ensureService(options: EnsureServiceOptions): Promise<Regi
   return registration;
 }
 
+/**
+ * Asks the service of another build to retire, which it refuses while another client is
+ * attached or a run or job is working. A service that can't answer the route predates it
+ * and is stopped with SIGTERM.
+ */
 async function replace(home: string, found: Registration, build: string): Promise<void> {
-  const stopped = await stopService(home).catch(() => false);
+  const url = new URL(SERVICE_ROUTES.retire, found.url);
+  url.searchParams.set("pid", String(process.pid));
+
+  const answer = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${found.token}` },
+  }).catch(() => undefined);
+
+  if (answer?.status === 409)
+    throw new Error(busy(found, build, Value.Parse(BusySchema, await answer.json())));
+
+  const stopped =
+    answer?.ok === true ? await exited(found.pid) : await stopService(home).catch(() => false);
 
   if (!stopped && alive(found.pid)) throw new Error(skew(found, build));
 }
 
 function skew(found: Registration, build: string): string {
   return `The Nyte service (pid ${String(found.pid)}) runs build ${found.version} but this nyte is build ${build}; stop it with \`nyte service stop\` and try again.`;
+}
+
+function busy(found: Registration, build: string, reason: Busy): string {
+  const users =
+    reason.clients > 0
+      ? `${String(reason.clients)} other ${reason.clients === 1 ? "client still uses" : "clients still use"} it`
+      : "a run or job is still working in it";
+
+  return `The Nyte service (pid ${String(found.pid)}) runs build ${found.version} but this nyte is build ${build}, and ${users}. Quit them, or stop it with \`nyte service stop\`, and try again.`;
 }
 
 /**
@@ -131,6 +158,15 @@ export async function stopService(home: string): Promise<boolean> {
     return false;
   }
 
+  if (await exited(pid)) return true;
+
+  throw new Error(
+    `The Nyte service (pid ${String(pid)}) didn't stop within 5 s. Stop it with \`kill ${String(pid)}\`.`,
+  );
+}
+
+/** Waits up to `STOP_TIMEOUT_MS` for process `pid` to exit; false when it still runs. */
+async function exited(pid: number): Promise<boolean> {
   const deadline = Date.now() + STOP_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
@@ -138,9 +174,7 @@ export async function stopService(home: string): Promise<boolean> {
     await scheduler.wait(STOP_POLL_MS);
   }
 
-  throw new Error(
-    `The Nyte service (pid ${String(pid)}) didn't stop within 5 s. Stop it with \`kill ${String(pid)}\`.`,
-  );
+  return false;
 }
 
 /**

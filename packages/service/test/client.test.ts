@@ -172,6 +172,23 @@ describe("ensureService", () => {
     expect(alive(old.pid)).toBe(false);
   });
 
+  it("keeps a service of another build while another client uses it", async () => {
+    const old = await ensureService({ home, version: "v1", command: fakeService(v1, 0) });
+    const other = new URL(SERVICE_ROUTES.attach, old.url);
+    other.searchParams.set("pid", String(process.ppid));
+    const held = new AbortController();
+    const attached = fetch(other, { signal: held.signal });
+    await attached;
+
+    await expect(
+      ensureService({ home, version: "v2", command: fakeService(v2, 0) }),
+    ).rejects.toThrow(
+      `The Nyte service (pid ${String(old.pid)}) runs build ${v1} but this nyte is build ${v2}, and 1 other client still uses it. Quit them, or stop it with \`nyte service stop\`, and try again.`,
+    );
+    expect(alive(old.pid)).toBe(true);
+    held.abort();
+  });
+
   it(
     "names both builds and the fix when the other build won't stop",
     { timeout: 15_000 },

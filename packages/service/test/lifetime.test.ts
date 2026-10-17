@@ -127,4 +127,17 @@ describe("the service's lifetime", () => {
     clock.fire();
     await until(() => idled);
   });
+
+  it("refuses to retire for a client of another build while a job runs", async () => {
+    const added = await host.workspaces.add({ kind: "local", path: cwd });
+
+    if (added.kind !== "added" && added.kind !== "exists") throw new Error(added.kind);
+    const job = await host.workspace(added.workspace).jobs.start({ command: "sleep 30" });
+
+    await expect(ensureService({ home, version: "v2", command: NEVER_STARTED })).rejects.toThrow(
+      "and a run or job is still working in it.",
+    );
+    expect(idled).toBe(false);
+    await job.stop();
+  });
 });

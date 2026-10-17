@@ -10,6 +10,7 @@ export const SERVICE_ROUTES = {
   unlink: "/_nyte/service/connect/unlink",
   attach: "/_nyte/service/attach",
   clients: "/_nyte/service/clients",
+  retire: "/_nyte/service/retire",
 } as const;
 
 export const ServiceEventSchema = Type.Union([
@@ -36,3 +37,11 @@ export const ServiceClientSchema = Type.Object({
 });
 
 export type ServiceClient = Static<typeof ServiceClientSchema>;
+
+/** Why a service refused to retire: how many clients other than the caller are attached, and whether a run or job is working. */
+export const BusySchema = Type.Object({
+  clients: Type.Integer({ minimum: 0 }),
+  working: Type.Boolean(),
+});
+
+export type Busy = Static<typeof BusySchema>;

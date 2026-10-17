@@ -171,6 +171,14 @@ async function route(
   if (request.method === "GET" && pathname === SERVICE_ROUTES.clients)
     return Response.json(await lifetime.clients());
 
+  if (request.method === "POST" && pathname === SERVICE_ROUTES.retire) {
+    const busy = await lifetime.retire(Number(new URL(request.url).searchParams.get("pid")));
+
+    return busy === undefined
+      ? new Response(null, { status: 202 })
+      : Response.json(busy, { status: 409 });
+  }
+
   if (request.method === "GET" && pathname === SERVICE_ROUTES.connect)
     return Response.json(await connect.view());
 

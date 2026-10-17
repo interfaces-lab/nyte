@@ -3,7 +3,8 @@
  * host id, and renames its registration, under build `build`, into place `delay` ms after it
  * listens, the way `startService` does. A `stale` service answers every other request the
  * way a host built before an operation answers it; a `stubborn` one also ignores SIGTERM. A
- * `fresh` service holds each attach request open until it exits, as `startService` does.
+ * `fresh` service holds each attach request open until it exits and refuses to retire while
+ * a client other than the caller is attached, as `startService` does.
  * Run from the service home as `node fake-service.ts <build> <delay> [fresh|stale|stubborn]`.
  */
 import { once } from "node:events";
@@ -29,6 +30,9 @@ if (lock.kind === "held") {
 
 const hostId = `host-${String(process.pid)}`;
 
+/** The pid of each attach request held open, once per request. */
+const attached: number[] = [];
+
 const server = createServer((request, response) => {
   response.setHeader(HOST_HEADER, hostId);
 
@@ -43,8 +47,30 @@ const server = createServer((request, response) => {
     return;
   }
 
-  if (request.url?.startsWith(SERVICE_ROUTES.attach) === true) {
+  const url = new URL(request.url ?? "/", "http://fake");
+
+  if (url.pathname === SERVICE_ROUTES.attach) {
+    const pid = Number(url.searchParams.get("pid"));
+    attached.push(pid);
+    request.on("close", () => attached.splice(attached.lastIndexOf(pid), 1));
     response.flushHeaders();
+
+    return;
+  }
+
+  if (url.pathname === SERVICE_ROUTES.retire) {
+    const caller = Number(url.searchParams.get("pid"));
+    const clients = attached.filter((pid) => pid !== caller).length;
+
+    if (clients > 0) {
+      response.statusCode = 409;
+      response.end(JSON.stringify({ clients, working: false }));
+
+      return;
+    }
+
+    response.statusCode = 202;
+    response.end(() => void stop());
 
     return;
   }
