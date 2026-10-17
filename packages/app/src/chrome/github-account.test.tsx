@@ -4,22 +4,23 @@ import { setImmediate } from "node:timers/promises";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, test, vi } from "vitest";
-import type { GitHubBridge, GitHubProviderState, HostState } from "../bridge.ts";
+import type { GitHubApi, GitHubState } from "@nyte-ai/sdk";
+import type { HostState } from "../bridge.ts";
 import { keys } from "../query-keys.ts";
 import { useGitHubAccount } from "./github-account.ts";
 
 const github = {
-  state: vi.fn<GitHubBridge["state"]>(),
-  signIn: vi.fn<GitHubBridge["signIn"]>(),
-  signOut: vi.fn<GitHubBridge["signOut"]>(),
-  createPullRequest: vi.fn<GitHubBridge["createPullRequest"]>(),
+  state: vi.fn<GitHubApi["state"]>(),
+  signIn: vi.fn<GitHubApi["signIn"]>(),
+  signOut: vi.fn<GitHubApi["signOut"]>(),
+  createPullRequest: vi.fn<GitHubApi["createPullRequest"]>(),
 };
 
 const clients = new Set<QueryClient>();
 
-const signedOut = { kind: "signed_out", repository: undefined } satisfies GitHubProviderState;
+const signedOut = { kind: "signed_out", repository: undefined } satisfies GitHubState;
 
-function ready(name: string): GitHubProviderState {
+function ready(name: string): GitHubState {
   return {
     kind: "ready",
     account: { login: "octocat", name: undefined, avatarUrl: undefined },
@@ -104,7 +105,7 @@ test("a fetched provider error remains available to render and a refresh recover
     kind: "error",
     repository: undefined,
     message: "GitHub API rate limit exceeded",
-  } satisfies GitHubProviderState;
+  } satisfies GitHubState;
 
   github.state.mockResolvedValueOnce(failure).mockResolvedValueOnce(signedOut);
 
@@ -149,7 +150,7 @@ test.each(["signIn", "signOut"] as const)(
   async (operation) => {
     const client = fixture();
     const otherClient = fixture();
-    const pending = Promise.withResolvers<GitHubProviderState>();
+    const pending = Promise.withResolvers<GitHubState>();
     github[operation].mockReturnValueOnce(pending.promise);
     const mutation = probe(client).auth.mutateAsync(operation);
 
@@ -172,8 +173,8 @@ test.each(["signIn", "signOut"] as const)(
 
 test("auth operations from different observers cannot change shared credentials concurrently", async () => {
   const client = fixture();
-  const signingIn = Promise.withResolvers<GitHubProviderState>();
-  const signingOut = Promise.withResolvers<GitHubProviderState>();
+  const signingIn = Promise.withResolvers<GitHubState>();
+  const signingOut = Promise.withResolvers<GitHubState>();
   github.signIn.mockReturnValueOnce(signingIn.promise);
   github.signOut.mockReturnValueOnce(signingOut.promise);
   const signIn = probe(client).auth.mutateAsync("signIn");
@@ -204,7 +205,7 @@ test("auth finishing after a workspace switch refreshes all targets without cach
   }
 
   selectWorkspace(client, "/projects/one");
-  const pending = Promise.withResolvers<GitHubProviderState>();
+  const pending = Promise.withResolvers<GitHubState>();
   github.signIn.mockReturnValueOnce(pending.promise);
   const mutation = probe(client).auth.mutateAsync("signIn");
   selectWorkspace(client, "/projects/two");
@@ -254,7 +255,7 @@ test("auth cancels a pre-auth status read before it can replace the cached accou
   const client = fixture();
   const connected = ready("one");
   client.setQueryData([...keys.github, "/projects/one"], connected);
-  const staleRead = Promise.withResolvers<GitHubProviderState>();
+  const staleRead = Promise.withResolvers<GitHubState>();
   github.state.mockReturnValueOnce(staleRead.promise).mockResolvedValueOnce(signedOut);
   github.signOut.mockResolvedValueOnce(signedOut);
   const account = probe(client);

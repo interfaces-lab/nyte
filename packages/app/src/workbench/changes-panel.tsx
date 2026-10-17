@@ -249,6 +249,8 @@ interface ChangesPanelProps {
    * its own when this is unset; a host that supplies it owns the confirmation.
    */
   readonly onRevertPath?: (path: string) => void;
+  /** Opens a pull request or check page; the system browser when absent. */
+  readonly onOpenLink?: (url: string) => void;
 }
 
 interface ChangesPanelViewProps extends ChangesPanelProps {
@@ -291,6 +293,7 @@ function ChangesPanelView({
   onRevealPath,
   onScrollTop,
   onRevertPath,
+  onOpenLink,
   turns,
   turnsError,
   liveRun,
@@ -856,6 +859,7 @@ function ChangesPanelView({
         onFilterFiles={filterFiles}
         allFilesCollapsed={allCollapsed}
         onToggleCollapseAll={toggleCollapseAll}
+        onOpenLink={onOpenLink}
       />
       {rows.length === 0 ? (
         <div

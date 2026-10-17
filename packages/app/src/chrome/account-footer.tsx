@@ -19,7 +19,8 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import type { ConnectBridge, GitHubBridge } from "../bridge.ts";
+import type { GitHubApi } from "@nyte-ai/sdk";
+import type { ConnectBridge } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
 import { openExternal } from "../open-external.ts";
 import { useUpdateState } from "../queries.ts";
@@ -114,7 +115,7 @@ export function AccountFooterMenu({
   anchor,
   onOpenProfile,
 }: {
-  readonly github: GitHubBridge;
+  readonly github: GitHubApi;
   readonly connect: ConnectBridge;
   readonly anchor: RefObject<HTMLDivElement | null>;
   readonly onOpenProfile: () => void;

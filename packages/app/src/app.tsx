@@ -56,10 +56,6 @@ function useHostEvents(router: AppRouter): void {
           acceptHostSettings(event.settings);
 
           return;
-        case "github_changed":
-          void queryClient.invalidateQueries({ queryKey: keys.github });
-
-          return;
         case "server_changed":
           void queryClient.invalidateQueries({ queryKey: keys.server });
 

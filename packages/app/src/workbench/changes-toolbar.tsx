@@ -389,6 +389,8 @@ interface ChangesToolbarProps {
   /** Every file in the scope is collapsed, so the command offers to expand instead. */
   readonly allFilesCollapsed: boolean;
   readonly onToggleCollapseAll: () => void;
+  /** Opens a pull request or check page; the system browser when absent. */
+  readonly onOpenLink?: (url: string) => void;
 }
 
 export function ChangesToolbar({
@@ -410,6 +412,7 @@ export function ChangesToolbar({
   onFilterFiles,
   allFilesCollapsed,
   onToggleCollapseAll,
+  onOpenLink,
 }: ChangesToolbarProps): ReactElement {
   const [showAllTurns, setShowAllTurns] = useState(false);
   const mac = macPlatform(undefined);
@@ -602,6 +605,7 @@ export function ChangesToolbar({
           branch={branch}
           revision={repository.revision}
           fileCount={scopeFileCount ?? 0}
+          onOpenLink={onOpenLink}
         />
       )}
     </>

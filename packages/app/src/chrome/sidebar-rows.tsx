@@ -17,7 +17,7 @@ import { props } from "@stylexjs/stylex";
 import { motion } from "motion/react";
 import { useState } from "react";
 import type { MouseEvent, ReactElement } from "react";
-import type { GitHubRepository } from "../bridge.ts";
+import type { GitHubRepository } from "@nyte-ai/sdk";
 import { formatTimeAgo } from "../components/ui.tsx";
 import { draftPreviewText } from "../conversation/message-references.ts";
 import type { ChatDraft } from "../layout/session-view-state.ts";

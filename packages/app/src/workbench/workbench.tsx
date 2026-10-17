@@ -383,6 +383,16 @@ function PanelContent({
                   scrollTop: Math.max(0, scrollTop),
                 })
               }
+              onOpenLink={
+                nyte.host.browser === undefined
+                  ? undefined
+                  : (url) =>
+                      workbenchController.actions.openTab({
+                        view: viewKey,
+                        tab: { kind: "browser", url },
+                        activate: true,
+                      })
+              }
             />
           )}
         </Deferred>

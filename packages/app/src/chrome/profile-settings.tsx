@@ -16,12 +16,12 @@ import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type {
-  ConnectBridge,
-  GitHubBridge,
+  GitHubApi,
   GitHubPullRequest,
   GitHubPullRequestContext,
   GitHubRepository,
-} from "../bridge.ts";
+} from "@nyte-ai/sdk";
+import type { ConnectBridge } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { nyte } from "../nyte.ts";
 import { openExternal } from "../open-external.ts";
@@ -34,7 +34,7 @@ import {
   useConnectView,
 } from "./connect-view.ts";
 import { ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
-import { signOutDescription, useGitHubAccount } from "./github-account.ts";
+import { signOutDescription, useGitHub, useGitHubAccount } from "./github-account.ts";
 import { LinkTray } from "./link-tray.tsx";
 import { DeviceCodePanel } from "./sign-in-panels.tsx";
 
@@ -486,7 +486,7 @@ function PullRequestRow({
 }
 
 /** The GitHub CLI login and what it reaches in the selected workspace. */
-function GitHubGroup({ github }: { readonly github: GitHubBridge }): ReactElement {
+function GitHubGroup({ github }: { readonly github: GitHubApi }): ReactElement {
   const account = useGitHubAccount(github);
   const state = account.query.data;
   const repository = state?.repository;
@@ -585,7 +585,7 @@ export function ProfileSettings({
 }: {
   readonly onOpenEnvironments: () => void;
 }): ReactElement {
-  const { github } = nyte.host;
+  const github = useGitHub();
   const desktop = nyte.clientSurface === "desktop";
 
   return (

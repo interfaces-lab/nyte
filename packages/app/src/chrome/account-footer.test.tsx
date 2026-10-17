@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, test } from "vitest";
-import type { ConnectView, GitHubProviderState, HostState } from "../bridge.ts";
+import type { GitHubState } from "@nyte-ai/sdk";
+import type { ConnectView, HostState } from "../bridge.ts";
 import { installBridge } from "../nyte.ts";
 import { keys } from "../query-keys.ts";
 import { createWebBridge } from "../web/bridge.ts";
@@ -40,7 +41,7 @@ const GITHUB = {
   },
   signedOut: { kind: "signed_out" },
   missing: { kind: "cli_missing" },
-} satisfies Record<string, GitHubProviderState>;
+} satisfies Record<string, GitHubState>;
 
 const NYTE = {
   signedIn: {
@@ -57,7 +58,7 @@ const NYTE = {
   },
 } satisfies Record<string, ConnectView>;
 
-function render(state: GitHubProviderState, view: ConnectView): string {
+function render(state: GitHubState, view: ConnectView): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.add(client);
   client.setQueryData(keys.host, { workspace: undefined } satisfies HostState);

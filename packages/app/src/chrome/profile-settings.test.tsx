@@ -3,7 +3,8 @@ import { asId } from "@nyte-ai/schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, test } from "vitest";
-import type { ConnectView, GitHubProviderState, HostState, NyteBridge } from "../bridge.ts";
+import type { GitHubApi, GitHubState } from "@nyte-ai/sdk";
+import type { ConnectView, HostState, NyteBridge } from "../bridge.ts";
 import { installBridge } from "../nyte.ts";
 import { keys } from "../query-keys.ts";
 import { createWebBridge } from "../web/bridge.ts";
@@ -14,16 +15,18 @@ const web: NyteBridge = { ...createWebBridge().bridge, machineName: "Studio Mac"
 
 const pending = (): Promise<never> => new Promise<never>(() => undefined);
 
-const github = { state: pending, signIn: pending, signOut: pending, createPullRequest: pending };
-
-const withEnvironment: NyteBridge = { ...web, host: { ...web.host, github } };
+const github: GitHubApi = {
+  state: pending,
+  signIn: pending,
+  signOut: pending,
+  createPullRequest: pending,
+};
 
 const desktop: NyteBridge = {
   ...web,
   clientSurface: "desktop",
   host: {
     ...web.host,
-    github,
     connect: {
       state: pending,
       link: pending,
@@ -37,14 +40,14 @@ const desktop: NyteBridge = {
   },
 };
 
-installBridge(withEnvironment);
+installBridge(web);
 
 const clients = new Set<QueryClient>();
 
 afterEach(() => {
   for (const client of clients) client.clear();
   clients.clear();
-  installBridge(withEnvironment);
+  installBridge(web);
 });
 
 const repository = {
@@ -63,7 +66,7 @@ const GITHUB = {
   },
   signedOut: { kind: "signed_out", repository },
   missing: { kind: "cli_missing", repository },
-} satisfies Record<string, GitHubProviderState>;
+} satisfies Record<string, GitHubState>;
 
 const environment = { id: "env-1", name: "Studio Mac", address: "https://connect.test/r/env-1" };
 
@@ -92,13 +95,14 @@ const NYTE = {
   },
 } satisfies Record<string, ConnectView>;
 
-function render(github: GitHubProviderState, connect: ConnectView | undefined): string {
+function render(state: GitHubState, connect: ConnectView | undefined): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.add(client);
   client.setQueryData(keys.host, {
     workspace: { id: asId<"workspace">("repo"), path: "/srv/repo", name: "repo" },
   } satisfies HostState);
-  client.setQueryData([...keys.github, "/srv/repo"], github);
+  client.setQueryData([...keys.github, "capability", asId<"workspace">("repo")], github);
+  client.setQueryData([...keys.github, "/srv/repo"], state);
 
   if (connect !== undefined) client.setQueryData(keys.connect, connect);
 

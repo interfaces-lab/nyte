@@ -55,7 +55,7 @@ import { closeSettings, type SettingsSection } from "../settings/index.ts";
 import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
-import { useGitHubState } from "./github-account.ts";
+import { useGitHub, useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { shellActions, useOverlays, useStagePage } from "./shell-state.ts";
@@ -178,7 +178,7 @@ export function Sidebar(): ReactElement {
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const router = useRouter();
   const settingsOpen = useMatch({ from: "/settings/$section", shouldThrow: false }) !== undefined;
-  const github = nyte.host.github;
+  const github = useGitHub();
   const githubState = useGitHubState(github);
   const openFolder = folderPicker();
   const reveal = useListReveal();
