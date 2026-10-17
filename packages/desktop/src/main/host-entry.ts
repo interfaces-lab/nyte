@@ -102,6 +102,7 @@ function open(options: HostProcessOptions): void {
     usageScan: new UsageScanWorker(home, new URL("./usage-worker.js", import.meta.url)),
     rendererOrigin: options.rendererOrigin,
     openDelayMs: options.openDelayMs,
+    endpoint: options.endpoint,
     remoteAccessPlugins: { cloudflare: new CloudflareTunnelPlugin({ home: join(home, ".nyte") }) },
     connect,
     keepAwake: (awake) => post({ kind: "awake", awake }),

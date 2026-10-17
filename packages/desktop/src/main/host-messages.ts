@@ -24,6 +24,14 @@ export interface HostProcessOptions {
   readonly account: AccountState | null;
   /** How long the host waits before it opens; a development build sets it so a test can hold the host. */
   readonly openDelayMs: number | undefined;
+  /** The endpoint renderers hold from the host this one replaces, or undefined at launch. */
+  readonly endpoint?: HostEndpoint;
+}
+
+/** Where the host listens for renderers and the token they present. */
+export interface HostEndpoint {
+  readonly url: string;
+  readonly token: string;
 }
 
 /** Something the host process needs main for: the browser panel, the signed-in account, or an offscreen canvas preview. */

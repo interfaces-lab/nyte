@@ -39,6 +39,7 @@ import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
 import { desktopSettings, desktopSettingsPlugin } from "./host-settings.ts";
+import type { HostEndpoint } from "./host-messages.ts";
 import { ExpectedHostError, retainDiagnostic } from "./errors.ts";
 import { callTable } from "./ipc-call.ts";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
@@ -73,6 +74,8 @@ export interface DesktopHostDependencies {
   readonly agent: BrowserAgent;
   /** How long to wait before opening the host, so a test can prove nothing on screen waits for it. */
   readonly openDelayMs?: number | undefined;
+  /** Listen here again, as renderers of a host that stopped still hold it; a new port when it is taken. */
+  readonly endpoint?: HostEndpoint;
   /** Renders canvas previews offscreen in main; without it, as in tests, canvas_preview is not offered. */
   readonly preview?: CanvasPreviewer;
 }
@@ -365,13 +368,20 @@ export class DesktopHost {
 
     performance.mark("nyte:host-opened");
 
-    const token = newToken();
+    const { endpoint } = this.#deps;
+    const token = endpoint?.token ?? newToken();
 
-    const listener = await host.listen({
-      transport: { kind: "http" },
-      auth: { kind: "token", token },
-      origins: [this.#deps.rendererOrigin],
-    });
+    const listen = (port?: number) =>
+      host.listen({
+        transport: { kind: "http", port },
+        auth: { kind: "token", token },
+        origins: [this.#deps.rendererOrigin],
+      });
+
+    const listener =
+      endpoint === undefined
+        ? await listen()
+        : await listen(Number(new URL(endpoint.url).port)).catch(() => listen());
 
     performance.mark("nyte:endpoint-ready");
 
