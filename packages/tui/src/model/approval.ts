@@ -16,7 +16,7 @@ export interface ApprovalModel extends OpenApproval {
 }
 
 /** Where an approval's answer goes. */
-export interface ApprovalRequest {
+interface ApprovalRequest {
   readonly session: SessionId;
   readonly part: PartId;
 }

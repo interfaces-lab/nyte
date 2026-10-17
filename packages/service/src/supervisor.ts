@@ -6,7 +6,7 @@ import { scheduler } from "node:timers/promises";
 import { logPath } from "./registration.ts";
 
 /** The launchd label of the installed service; a systemd unit is named `nyte.service`. */
-export const SERVICE_LABEL = "sh.nyte.service";
+const SERVICE_LABEL = "sh.nyte.service";
 
 const SYSTEMD_UNIT = "nyte.service";
 
