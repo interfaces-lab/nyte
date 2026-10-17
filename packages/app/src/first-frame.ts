@@ -65,7 +65,8 @@ function parseFrame(stored: string | null, host: string): FirstFrame | undefined
   }
 }
 
-function forgetFirstFrame(): void {
+/** Drop the stored snapshot, as when the host behind its connection changed. */
+export function forgetFirstFrame(): void {
   try {
     localStorage.removeItem(FIRST_FRAME_KEY);
   } catch {}

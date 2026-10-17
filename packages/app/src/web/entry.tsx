@@ -15,7 +15,7 @@ import { App } from "../app.tsx";
 import { loadLocalResources } from "../queries.ts";
 import { createAppRouter } from "../router.tsx";
 import { connection as installedConnection, connectionProblem, hostChanged } from "../sdk.tsx";
-import { recordFirstFrame, seedFirstFrame } from "../first-frame.ts";
+import { forgetFirstFrame, recordFirstFrame, seedFirstFrame } from "../first-frame.ts";
 import { startRendererStartup } from "../startup.ts";
 import { StartupFailure } from "../startup-failure.tsx";
 import type { Connection } from "./bridge.ts";
@@ -127,11 +127,15 @@ function showConnectScreen(initial?: Connection, failure?: ConnectFailure): void
 /**
  * A refused saved token never works again: a local or Tailscale token ends with
  * its share, and a removed device's token stays revoked, so it is forgotten.
+ * Another host behind the address makes the last run's snapshot someone
+ * else's, so it goes too.
  */
 function refuse(connection: Connection, fromLink: boolean, cause: unknown): void {
   const refused = connectionProblem(cause).kind === "authentication";
 
   if (refused && !fromLink) forgetConnection();
+
+  if (hostChanged(cause)) forgetFirstFrame();
   showConnectScreen(
     refused ? { url: connection.url, token: "" } : connection,
     connectFailure(cause),
@@ -158,7 +162,7 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
             const problem = connectionProblem(cause).kind;
 
             if (problem === "authentication" || hostChanged(cause))
-              refuse(connection, fromLink, cause);
+              refuse(connection, false, cause);
             throw cause;
           },
         ),
