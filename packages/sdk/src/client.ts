@@ -28,6 +28,8 @@ type ClientContext = {
   readonly credential: CredentialSource;
   readonly journal: RequestJournal;
   readonly journaled: readonly JournalEntry[];
+  /** The `connection.watch` that connecting read the host's first view from, left open for the first host watch to continue. */
+  readonly hostFrames?: AsyncIterator<Json>;
 };
 
 type Bound = {
@@ -49,6 +51,9 @@ export function createClient(transport: Transport, context: ClientContext): Conn
   };
 
   bound.journal.replay(context.journaled);
+  let hostFrames = context.hostFrames;
+
+  link.signal.addEventListener("abort", () => void hostFrames?.return?.(), { once: true });
 
   const close = async (): Promise<void> => {
     link.close("client");
@@ -83,7 +88,12 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     },
     session: (id) => sessionHandle(bound, id),
     workspace: (id) => workspaceHandle(rows, id),
-    watch: () => watchHost(rows),
+    watch: () => {
+      const opened = hostFrames;
+      hostFrames = undefined;
+
+      return watchHost(rows, opened);
+    },
     blob: (id) => rows.bytes("connection.blob", { id }),
     models: {
       list: () => rows.call("models.list", {}),

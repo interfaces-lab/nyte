@@ -1,6 +1,6 @@
-import { asId } from "@nyte-ai/schema";
-import type { HostView, SessionView } from "@nyte-ai/schema";
-import { CHANNEL_PATH, createTransport, STREAM_HEADER } from "@nyte-ai/protocol";
+import { asId, isJson, isJsonObject } from "@nyte-ai/schema";
+import type { HostView, Json, SessionView } from "@nyte-ai/schema";
+import { CANCEL_PATH, CHANNEL_PATH, createTransport, STREAM_HEADER } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { createSendJournal, journalLoop } from "../src/journal.ts";
 import { createLink, createRows } from "../src/rows.ts";
@@ -23,8 +23,6 @@ afterEach(closeOpened);
 describe("client streaming", () => {
   it("streams a reply's text as appends on the message the first frame sent, never the whole text again", async () => {
     const host = await open();
-    const connection = await client(host);
-    const session = await settledChat(host, connection);
     const heads = new Set<string>();
     const appended: string[] = [];
 
@@ -48,6 +46,9 @@ describe("client streaming", () => {
         response,
       );
     });
+
+    const connection = await client(host);
+    const session = await settledChat(host, connection);
 
     host.fake.reply({
       content: [{ type: "text", text: "x".repeat(400) }],
@@ -244,17 +245,20 @@ describe("client streaming", () => {
     host.fake.reply(text("Shared."));
     let opened = 0;
     let closed = 0;
+    const streams = new Set<Json>();
 
     host.intercept(async (request, next) => {
-      if (readOperation(request) === "head.watch") opened += 1;
-      if (readOperation(request) === CHANNEL_PATH)
-        request.signal.addEventListener(
-          "abort",
-          () => {
-            closed += 1;
-          },
-          { once: true },
-        );
+      if (readOperation(request) === "head.watch") {
+        opened += 1;
+        streams.add(request.headers.get(STREAM_HEADER));
+      }
+
+      if (readOperation(request) === CANCEL_PATH) {
+        const body: unknown = await request.clone().json();
+
+        if (isJson(body) && isJsonObject(body) && streams.has(body.stream ?? null)) closed += 1;
+      }
+
       return next(request);
     });
 

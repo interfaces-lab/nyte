@@ -272,7 +272,6 @@ describe("client", () => {
 
   it("skips a frame that fails its schema with a dev line", async () => {
     const host = await open();
-    const connection = await client(host);
     const lines: string[] = [];
     dev.on((line) => lines.push(line));
     cleanups.push(async () => dev.off());
@@ -307,6 +306,7 @@ describe("client", () => {
       );
     });
 
+    const connection = await client(host);
     const first = await until(connection.sessions.watch(), () => true);
 
     expect(Array.isArray(first)).toBe(true);

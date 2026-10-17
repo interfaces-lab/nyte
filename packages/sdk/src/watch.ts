@@ -3,6 +3,7 @@ import type {
   HeadName,
   HostView,
   HostViewWire,
+  Json,
   Message,
   SessionId,
   SessionView,
@@ -149,11 +150,12 @@ export function watchHead(
   );
 }
 
-export function watchHost(rows: Rows): AsyncIterable<HostView> {
+/** Returns the host's views, continuing `opened` when connecting left its `connection.watch` open. */
+export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterable<HostView> {
   return coalesce(
     pushed<HostView>((sink) => {
       let view: HostView | null = null;
-      const frames = rows.watch("connection.watch", {})[Symbol.asyncIterator]();
+      const frames = rows.watch("connection.watch", {}, opened)[Symbol.asyncIterator]();
 
       void (async () => {
         try {

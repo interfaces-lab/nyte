@@ -65,7 +65,12 @@ export interface Rows {
     options?: RequestOptions,
   ): Promise<ByteReader>;
   frames<N extends FrameName>(name: N, input: OperationInput<N>): AsyncIterable<OperationOutput<N>>;
-  watch<N extends FrameName>(name: N, input: OperationInput<N>): AsyncIterable<OperationOutput<N>>;
+  /** Frames that resume across link losses; `opened` is a stream of this watch already open, read before any is opened. */
+  watch<N extends FrameName>(
+    name: N,
+    input: OperationInput<N>,
+    opened?: AsyncIterator<Json>,
+  ): AsyncIterable<OperationOutput<N>>;
   output(input: OperationInput<"job.output">): AsyncIterable<OutputFrame>;
 }
 
@@ -197,9 +202,9 @@ export function createRows(transport: Transport, link: Link): Rows {
         (frame) => decoded(name, frame),
         link.signal,
       ),
-    watch: (name, input) =>
+    watch: (name, input, opened) =>
       through(
-        resumable(transport, link, name, encodeInput(name, input)),
+        resumable(transport, link, name, encodeInput(name, input), opened),
         (frame) => decoded(name, frame),
         link.signal,
       ),
@@ -218,11 +223,12 @@ function resumable(
   link: Link,
   name: OperationName,
   input: Json,
+  opened: AsyncIterator<Json> | undefined,
 ): AsyncIterable<Json> {
   return closable<Json>(() => {
     const stop = new AbortController();
     const signal = AbortSignal.any([stop.signal, link.signal]);
-    let frames: AsyncIterator<Json> | null = null;
+    let frames: AsyncIterator<Json> | null = opened ?? null;
     let attempts = 0;
 
     const release = (): void => {
