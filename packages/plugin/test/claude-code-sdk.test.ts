@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import type {
+  CanUseTool,
   McpSdkServerConfigWithInstance,
   Options,
+  PermissionResult,
   SDKMessage,
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -14,9 +16,11 @@ import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, assert, beforeEach, expect, it, vi } from "vitest";
+import approvalsPlugin from "../src/approvals/approvals.ts";
+import { openApprovals, PERMISSIONS } from "../src/approvals/schema.ts";
 import { claudeCodeSdk } from "../src/claude-code-sdk/index.ts";
 import type { StartQuery } from "../src/claude-code-sdk/session.ts";
-import { open, testModel } from "./fake-models.ts";
+import { open, testModel, until } from "./fake-models.ts";
 
 type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
 
@@ -29,6 +33,12 @@ interface Claude {
   prompt(): Promise<SDKUserMessage | undefined>;
   emit(...messages: readonly SDKMessage[]): void;
   mcp(method: string, params: JsonObject): Promise<Json>;
+  ask(
+    name: string,
+    input: JsonObject,
+    id: string,
+    agent?: string,
+  ): Promise<PermissionResult | null>;
 }
 
 const MODEL = "claude-opus-4-7";
@@ -63,6 +73,16 @@ const note: ToolDefinition<{ text: string }> = {
 };
 
 const tools: Plugin<"core"> = { id: "tools", contribute: { tools: [note] } };
+
+const gate: Plugin<"core"> = {
+  id: "gate",
+  hooks: {
+    before_tool: (call) =>
+      call.class.kind === "shell" && call.class.command.startsWith("rm")
+        ? { action: "reject", reason: "No deleting." }
+        : { action: "continue" },
+  },
+};
 
 beforeEach(() => {
   vi.stubEnv("CLAUDE_CONFIG_DIR", tmpdir());
@@ -241,6 +261,18 @@ function fakeClaude(script: (claude: Claude) => Promise<void>) {
 
         return answered.promise;
       },
+      ask: async (name, input, id, agent) => {
+        const decide: CanUseTool | undefined = options.canUseTool;
+
+        return decide === undefined
+          ? null
+          : decide(name, input, {
+              signal: new AbortController().signal,
+              toolUseID: id,
+              requestId: randomUUID(),
+              agentID: agent,
+            });
+      },
     };
 
     script(claude).then(ran.resolve, ran.reject);
@@ -331,4 +363,105 @@ it("runs a Nyte tool Claude Code calls through the nyte MCP server as the sessio
     class: { kind: "custom", label: "Noting hi" },
     outcome: { kind: "ok", content: [{ kind: "text", text: "Pinned hi." }] },
   });
+});
+
+it("lets Claude Code run a call its gate allows and denies one the gate rejects, with the reason", async () => {
+  const asked: (PermissionResult | null)[] = [];
+
+  const claude = fakeClaude(async (fake) => {
+    await fake.prompt();
+    fake.emit(begin(), ...toolUse(0, "toolu_ls", "Bash", { command: "ls" }));
+    fake.emit(...toolUse(1, "toolu_rm", "Bash", { command: "rm -rf build" }), ...end("tool_use"));
+    asked.push(await fake.ask("Bash", { command: "ls" }, "toolu_ls"));
+    fake.emit(toolResult("toolu_ls", "src", false));
+    const denied = await fake.ask("Bash", { command: "rm -rf build" }, "toolu_rm");
+    asked.push(denied);
+    fake.emit(toolResult("toolu_rm", denied?.behavior === "deny" ? denied.message : "", true));
+    fake.emit(begin(), ...text(0, "Kept the build."), ...end("end_turn"), finished());
+  });
+
+  await using host = await openClaude(claude.start, [tools, gate]);
+  const { session, receipt } = await host.sessions.start({ content: "Clean up.", configuration });
+  const settled = await receipt.settled();
+  await claude.done;
+
+  assert(settled.kind === "completed");
+  expect(asked).toEqual([
+    { behavior: "allow" },
+    { behavior: "deny", message: "The tool call was rejected: No deleting." },
+  ]);
+
+  const outcomes = (await session.view()).messages.flatMap((message) =>
+    isPart(message, tool) && message.state.phase === "settled" ? [message.state.outcome] : [],
+  );
+
+  expect(outcomes).toMatchObject([
+    { kind: "ok", content: [{ kind: "text", text: "src" }] },
+    { kind: "rejected", reason: "No deleting." },
+  ]);
+});
+
+it("denies a call Nyte rejected once Nyte runs a later call from the same message", async () => {
+  const asked: (PermissionResult | null)[] = [];
+
+  const claude = fakeClaude(async (fake) => {
+    await fake.prompt();
+    fake.emit(begin(), ...toolUse(0, "toolu_rm", "Bash", { command: "rm -rf build" }));
+    fake.emit(...toolUse(1, "toolu_ls", "Bash", { command: "ls" }), ...end("tool_use"));
+    asked.push(await fake.ask("Bash", { command: "rm -rf build" }, "toolu_rm"));
+    fake.emit(toolResult("toolu_rm", "Denied.", true));
+    asked.push(await fake.ask("Bash", { command: "ls" }, "toolu_ls"));
+    fake.emit(toolResult("toolu_ls", "src", false));
+    fake.emit(begin(), ...text(0, "Listed."), ...end("end_turn"), finished());
+  });
+
+  await using host = await openClaude(claude.start, [tools, gate]);
+  const { receipt } = await host.sessions.start({ content: "Clean up.", configuration });
+  const settled = await receipt.settled();
+  await claude.done;
+
+  assert(settled.kind === "completed");
+  expect(asked).toEqual([
+    { behavior: "deny", message: "Nyte did not run this tool call." },
+    { behavior: "allow" },
+  ]);
+});
+
+it("asks the user under the permissions policy before a Claude Code subagent's call runs", async () => {
+  const asked: (PermissionResult | null)[] = [];
+
+  const claude = fakeClaude(async (fake) => {
+    await fake.prompt();
+    fake.emit(begin(), ...toolUse(0, "toolu_agent", "Agent", { description: "Clean" }));
+    fake.emit(...end("tool_use"));
+    asked.push(await fake.ask("Bash", { command: "rm -rf build" }, "toolu_sub", "agent-1"));
+    fake.emit(toolResult("toolu_agent", "The subagent stopped.", false));
+    fake.emit(begin(), ...text(0, "Stopped."), ...end("end_turn"), finished());
+  });
+
+  await using host = await openClaude(claude.start, [tools, approvalsPlugin]);
+  expect(await host.settings.apply(PERMISSIONS, "ask")).toEqual({ kind: "applied" });
+  const { session, receipt } = await host.sessions.start({ content: "Clean up.", configuration });
+
+  const [pending] = await until(async () => {
+    const approvals = openApprovals(await session.view());
+
+    return approvals.length > 0 ? approvals : undefined;
+  });
+
+  assert(pending !== undefined);
+  expect(pending).toMatchObject({
+    tool: "Bash",
+    reason: "shell",
+    class: { kind: "shell", command: "rm -rf build" },
+  });
+  await session.part(pending.part).act("deny", {});
+  expect((await receipt.settled()).kind).toBe("completed");
+  await claude.done;
+  expect(asked).toEqual([
+    {
+      behavior: "deny",
+      message: "The user denied this tool call. Ask them how to proceed instead of retrying it.",
+    },
+  ]);
 });
