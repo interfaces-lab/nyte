@@ -1,6 +1,7 @@
 import type { McpServerView, WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, findModel, modelId } from "../lib/catalog.ts";
 import { usageCard, usageLines } from "../lib/usage.ts";
+import { pluginCommands } from "../model/commands.ts";
 import type { DialogData } from "../model/dialogs/dialog.ts";
 import { mcpActionChoices, mcpDetailLines, mcpServerChoices } from "../model/mcp.ts";
 import type { Choice } from "../model/dialogs/list.ts";
@@ -238,7 +239,7 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
         }),
       ];
 
-      const commands = followedSession(read())?.view?.catalog.commands ?? [];
+      const commands = pluginCommands(read());
 
       if (commands.length > 0)
         lines.push(`Commands: ${commands.map((command) => `/${command.name}`).join(" ")}`);

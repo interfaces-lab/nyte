@@ -51,6 +51,7 @@ import {
   UserStatusSchema,
   ViewFrameSchema,
   ViewOptionsSchema,
+  WorkspaceCommandOutcomeSchema,
   asSeq,
 } from "../../src/index.ts";
 import {
@@ -113,6 +114,11 @@ export const sessionCases = {
   CommandOutcomeSchema: sample(
     CommandOutcomeSchema,
     { kind: "invalid", issues: [issue] },
+    { kind: "sent" },
+  ),
+  WorkspaceCommandOutcomeSchema: sample(
+    WorkspaceCommandOutcomeSchema,
+    { kind: "prompt", content: userContent },
     { kind: "sent" },
   ),
   UpdateOutcomeSchema: sample(UpdateOutcomeSchema, { kind: "busy", runs: [run] }, { kind: "busy" }),

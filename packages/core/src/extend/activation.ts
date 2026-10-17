@@ -37,6 +37,18 @@ export async function activateSession(
   settle(kernel, session, workspace, await attached);
 }
 
+/** The plugins a new chat in `workspace` loads: the built-ins, the host's, then the folder's own once it is trusted. */
+export async function newChatPlugins(
+  kernel: Kernel,
+  workspace: WorkspaceId,
+): Promise<readonly Plugin<"core">[]> {
+  return [
+    ...kernel.plugins.builtins,
+    ...kernel.plugins.host,
+    ...(await projectPlugins(kernel, workspace)),
+  ];
+}
+
 async function projectPlugins(
   kernel: Kernel,
   workspace: WorkspaceId,

@@ -146,8 +146,15 @@ export function indexSkills(state: State): ReadonlyMap<string, SkillInfo> {
   );
 }
 
-function pluginCommands(state: State): readonly CommandInfo[] {
-  return followedSession(state)?.view?.catalog.commands ?? [];
+/** The followed chat's plugin commands, or those a blank chat's folder would offer it. */
+export function pluginCommands(state: State): readonly CommandInfo[] {
+  const { chat, folderCommands } = state.facts;
+
+  if (chat?.kind === "session") return chat.view?.catalog.commands ?? [];
+
+  return chat?.folder.kind === "folder" && folderCommands?.workspace === chat.folder.id
+    ? folderCommands.commands
+    : [];
 }
 
 export function slashNamespace(state: State): readonly SlashCommand[] {

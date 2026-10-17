@@ -422,6 +422,43 @@ export function createPluginRuntime(
   return runtime;
 }
 
+/**
+ * Activates the valid ones of `plugins` in `host` for stand-in chat `session`, with no
+ * environment or resources; one whose activation fails is left out. `dispose` ends them all.
+ */
+export async function activateApart(
+  kernel: Kernel,
+  session: SessionId,
+  host: InstanceHost,
+  plugins: readonly Plugin<"core">[],
+): Promise<{
+  readonly api: (owner: string) => PluginApi<"core"> | undefined;
+  readonly dispose: Disposer;
+}> {
+  const active = new Map<string, Active>();
+
+  for (const { plugin, ok } of preflight(plugins, [])) {
+    if (!ok) continue;
+    const instance = createInstance(kernel, { plugin, session, ...UNRESOLVED });
+    const leave = instance.join(host);
+
+    try {
+      install(plugin, instance.api);
+      await bounded(plugin.activate?.(instance.api));
+      active.set(plugin.id, { instance, leave });
+    } catch {
+      leave();
+    }
+  }
+
+  return {
+    api: (owner) => active.get(owner)?.instance.api,
+    dispose() {
+      for (const { leave } of [...active.values()].reverse()) leave();
+    },
+  };
+}
+
 export function checkPlugins(plugins: readonly Plugin<"core">[]): PluginCheckReport {
   return {
     plugins: preflight(plugins, []).map(({ plugin, issues, ok }) => ({

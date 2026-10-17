@@ -8,6 +8,7 @@ import { LOCAL, text } from "../src/index.ts";
 import type { Plugin, PluginApi } from "../src/index.ts";
 import { main, setup } from "../src/harness.ts";
 import { memoryStore } from "../src/store.ts";
+import { world } from "./fake-env.ts";
 import { ok, echo, opaque, volume, says, provider, loaded } from "./plugin-support.ts";
 
 afterEach(() => {
@@ -535,6 +536,68 @@ describe("commands", () => {
       message: sent.receipt,
       content: "Review the diff.",
       source: { kind: "action", label: "Ask", command: "cmds/ask" },
+    });
+  });
+
+  it("lists and runs a new chat's commands before any chat, the folder's own only while it is trusted", async () => {
+    const imported: string[][] = [];
+
+    const folder: Plugin<"core"> = {
+      id: "folder",
+      activate(api) {
+        api.contribute.commands.add({
+          name: "probe",
+          title: "Probe",
+          description: "Answers from the folder.",
+          run: () => "answered",
+        });
+        api.contribute.commands.add({
+          name: "ask",
+          title: "Ask",
+          description: "Starts a chat.",
+          run: () => ({ prompt: "Review this." }),
+        });
+      },
+    };
+
+    const chatOnly: Plugin<"core"> = {
+      id: "chat-only",
+      async activate(api) {
+        await api.session.info();
+        api.contribute.commands.add({
+          name: "never",
+          title: "Never",
+          description: "Needs a chat.",
+          run: () => "never",
+        });
+      },
+    };
+
+    const { host, workspace } = await world({
+      plugins: [{ id: "host", contribute: { commands: [says("hello", "hi")] } }, chatOnly],
+      loadPlugins: async (paths) => {
+        imported.push([...paths]);
+
+        return [folder];
+      },
+    });
+    const at = host.workspace(workspace);
+
+    expect((await at.commands()).map((command) => command.name)).toEqual([
+      "host/hello",
+      "folder/probe",
+      "folder/ask",
+    ]);
+    expect(imported).toEqual([["/work/project/.nyte/plugins/x.ts"]]);
+    expect(await at.command("probe")).toEqual({ kind: "ran", output: "answered" });
+    expect(await at.command("folder/ask")).toEqual({ kind: "prompt", content: "Review this." });
+    expect(await at.command("never")).toEqual({ kind: "unknown" });
+    expect((await host.sessions.list()).items).toEqual([]);
+
+    expect(await at.update({ projectResources: false })).toEqual({ kind: "updated" });
+    expect((await at.commands()).map((command) => command.name)).toEqual(["host/hello"]);
+    await expect(host.workspace(asId("missing")).commands()).rejects.toMatchObject({
+      code: "unknown",
     });
   });
 });

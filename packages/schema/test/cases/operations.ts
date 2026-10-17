@@ -24,6 +24,7 @@ import {
   issue,
   sessionInfo,
   userContent,
+  catalog,
   sendOptions,
   userMessage,
   turnInfo,
@@ -356,6 +357,16 @@ export const operations = {
   "part.close input": operation(OPERATIONS["part.close"].input, { session, part }, { session }),
   "part.close output": operation(OPERATIONS["part.close"].output, null, {}),
   "workspace.info input": operation(OPERATIONS["workspace.info"].input, workspaceInput, {}),
+  "workspace.commands output": operation(
+    OPERATIONS["workspace.commands"].output,
+    [catalog.commands[0]],
+    [{ name: "x" }],
+  ),
+  "workspace.command input": operation(
+    OPERATIONS["workspace.command"].input,
+    { workspace, name: "qa-probe/qa-probe", args: { focus: ["tests"] } },
+    { workspace, args: {} },
+  ),
   "workspace.watch input": operation(OPERATIONS["workspace.watch"].input, workspaceInput, {
     workspace: 1,
   }),

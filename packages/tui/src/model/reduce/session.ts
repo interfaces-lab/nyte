@@ -276,16 +276,16 @@ export const sessionHandlers = {
   },
   quit: (state) => ({ state, effects: [{ kind: "exit", code: 0 }] }),
   "plugin-command": (state, msg, now) => {
-    const followed = followedSession(state);
+    const { chat } = state.facts;
 
-    if (followed === null) return refuseUnstarted(state, now);
+    if (chat === null) return refuseUnstarted(state, now);
 
     return {
       state,
       effects: [
         {
           kind: "run-command",
-          session: followed.id,
+          session: chat.id,
           name: msg.name,
           argument: msg.argument === "" ? null : msg.argument,
           delivery: msg.delivery ?? (busy(state) ? followUpDelivery(state) : "queue"),

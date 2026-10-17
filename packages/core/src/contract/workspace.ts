@@ -9,6 +9,7 @@ import type {
   CallId,
   Capability,
   ChangeSet,
+  CommandInfo,
   ConsoleEntry,
   Cursor,
   DiffOptions,
@@ -61,6 +62,7 @@ import type {
   SessionId,
   SnapshotId,
   StopOutcome,
+  WorkspaceCommandOutcome,
   WorkspaceId,
   WorkspaceInfo,
   WorkspaceInspection,
@@ -541,6 +543,20 @@ export interface Workspace {
   }): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
 
   reload(): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
+
+  /**
+   * The plugin commands a new chat here would offer, before any chat exists: those of the
+   * plugins its first message would load, project plugins only once the folder is trusted.
+   */
+  commands(): Promise<readonly CommandInfo[]>;
+
+  /**
+   * Runs command `name` of {@link Workspace.commands} without a chat. A command that answers
+   * with a prompt runs nothing more: its `prompt` outcome is the first message of the chat it
+   * asks to start.
+   */
+  command(name: string, args?: Json): Promise<WorkspaceCommandOutcome>;
+
   readonly jobs: Jobs;
 
   job(id: JobId): Job;

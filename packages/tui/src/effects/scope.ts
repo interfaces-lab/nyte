@@ -30,6 +30,7 @@ export interface Scope {
   readonly logins: Map<DialogId, LoginChannel>;
   readonly watches: Set<Promise<void>>;
   catalogGeneration: number;
+  folderCommandsGeneration: number;
   readonly exit: PromiseWithResolvers<{ readonly code: number }>;
 }
 
@@ -64,6 +65,7 @@ export function createScope(): Scope {
     logins: new Map(),
     watches: new Set(),
     catalogGeneration: 0,
+    folderCommandsGeneration: 0,
     exit: Promise.withResolvers(),
   };
 }

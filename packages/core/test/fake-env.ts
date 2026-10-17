@@ -284,6 +284,7 @@ export async function world(options?: {
   readonly browser?: boolean;
   readonly disk?: Disk;
   readonly execution?: Kernel["execution"];
+  readonly loadPlugins?: Kernel["plugins"]["load"];
 }): Promise<{
   readonly kernel: Kernel;
   readonly host: Omit<Host, "listen">;
@@ -308,6 +309,7 @@ export function kernelOver(
     readonly builtins?: readonly Plugin<"core">[];
     readonly home?: string;
     readonly execution?: Kernel["execution"];
+    readonly loadPlugins?: Kernel["plugins"]["load"];
   },
 ): Kernel {
   return createKernel({
@@ -332,6 +334,7 @@ export function kernelOver(
     home: options?.home,
     execution: options?.execution,
     builtins: options?.builtins,
+    loadPlugins: options?.loadPlugins,
     hostPlugins: [{ id: "fake-environment", environment: provider }, ...(options?.plugins ?? [])],
   });
 }

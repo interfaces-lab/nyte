@@ -40,7 +40,10 @@ export const factHandlers = {
     }),
     effects:
       msg.chat.folder.kind === "folder"
-        ? [{ kind: "check-trust", workspace: msg.chat.folder.id, ask: "if-needed" }]
+        ? [
+            { kind: "check-trust", workspace: msg.chat.folder.id, ask: "if-needed" },
+            { kind: "load-folder-commands", workspace: msg.chat.folder.id },
+          ]
         : [],
   }),
   "blank-folder": (state, msg) => {
@@ -51,7 +54,10 @@ export const factHandlers = {
 
     return {
       state: withFacts(state, { chat: { ...chat, folder: { kind: "folder", id: msg.workspace } } }),
-      effects: [{ kind: "check-trust", workspace: msg.workspace, ask: "if-needed" }],
+      effects: [
+        { kind: "check-trust", workspace: msg.workspace, ask: "if-needed" },
+        { kind: "load-folder-commands", workspace: msg.workspace },
+      ],
     };
   },
   view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
@@ -90,6 +96,18 @@ export const factHandlers = {
       : stay(withFacts(state, { catalog: { generation: msg.generation, catalog: msg.catalog } })),
   settings: (state, msg) => stay(withFacts(state, { settings: msg.settings })),
   "host-settings": (state, msg) => stay(withFacts(state, { hostSettings: msg.settings })),
+  "folder-commands": (state, msg) =>
+    msg.generation < (state.facts.folderCommands?.generation ?? -1)
+      ? stay(state)
+      : stay(
+          withFacts(state, {
+            folderCommands: {
+              generation: msg.generation,
+              workspace: msg.workspace,
+              commands: msg.commands,
+            },
+          }),
+        ),
   workspace: (state, msg) =>
     stay(
       withLocal(withFacts(state, { workspace: msg.workspace }), {

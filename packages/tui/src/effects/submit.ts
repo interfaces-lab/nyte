@@ -1,4 +1,12 @@
-import type { BlobId, Delivery, SkillInfo, SubmitDraft, UserContent } from "@nyte-ai/sdk";
+import type {
+  BlobId,
+  Delivery,
+  MessageId,
+  SkillInfo,
+  SubmitDraft,
+  UserContent,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import { indexSkills } from "../model/commands.ts";
@@ -143,41 +151,13 @@ async function start(
       return false;
     }
 
-    const current = read().facts.chat;
+    const started = await startChat(chat, workspace, decision.draft.content, context);
 
-    if (current?.kind !== "blank" || current.id !== chat.id) {
-      refuse("The chat changed before the message was sent.");
-
-      return false;
-    }
-
-    const catalog = read().facts.catalog.catalog ?? (await ports.host.listModels());
-
-    const selection =
-      current.unresolved === true
-        ? defaultSelection(catalog, read().facts.settings.thinkingLevel)
-        : current.selection;
-
-    if (selection === null) {
-      refuse("No models are available. /login connects a provider.");
+    if (started.kind === "refused") {
+      refuse(started.reason);
 
       return false;
     }
-
-    if (current.unresolved === true) dispatch({ kind: "selection", session: chat.id, selection });
-
-    if (findModel(availableModels(catalog), selection.model) === undefined) {
-      refuse(`${selection.model.id} isn't available. ctrl+p picks another.`);
-
-      return false;
-    }
-
-    const started = await ports.host.start({
-      id: chat.id,
-      workspace,
-      selection,
-      content: decision.draft.content,
-    });
 
     if (started.kind === "taken") {
       await follow(chat.id, false, context);
@@ -195,6 +175,72 @@ async function start(
   await follow(chat.id, false, context);
 
   return true;
+}
+
+/** Starts blank chat `chat` with a command's `prompt` as its first message, then follows it; a send to the chat meanwhile waits for the start. */
+export async function startWithPrompt(
+  chat: BlankChat,
+  workspace: WorkspaceId,
+  prompt: UserContent,
+  context: HandlerContext,
+): Promise<void> {
+  const { scope } = context;
+
+  const done = startChat(chat, workspace, prompt, context).then(async (started) => {
+    if (started.kind === "refused") throw new Error(`The chat didn't start: ${started.reason}`);
+    await follow(chat.id, false, context);
+
+    if (started.kind === "taken")
+      throw new Error("This chat had already started. Run the command again.");
+
+    return true;
+  });
+
+  scope.starting = { id: chat.id, done: done.catch(() => false) };
+
+  try {
+    await done;
+  } finally {
+    if (scope.starting?.id === chat.id) scope.starting = null;
+  }
+}
+
+/** Starts blank chat `chat` in `workspace` with `content` as its first message, on the chat's model; a chat that changed or has no usable model is refused, with why. */
+async function startChat(
+  chat: BlankChat,
+  workspace: WorkspaceId,
+  content: UserContent,
+  context: HandlerContext,
+): Promise<
+  | { readonly kind: "started"; readonly message: MessageId }
+  | { readonly kind: "taken" }
+  | { readonly kind: "refused"; readonly reason: string }
+> {
+  const { dispatch, ports, read } = context;
+  const current = read().facts.chat;
+
+  if (current?.kind !== "blank" || current.id !== chat.id)
+    return { kind: "refused", reason: "The chat changed before the message was sent." };
+
+  const catalog = read().facts.catalog.catalog ?? (await ports.host.listModels());
+
+  const selection =
+    current.unresolved === true
+      ? defaultSelection(catalog, read().facts.settings.thinkingLevel)
+      : current.selection;
+
+  if (selection === null)
+    return { kind: "refused", reason: "No models are available. /login connects a provider." };
+
+  if (current.unresolved === true) dispatch({ kind: "selection", session: chat.id, selection });
+
+  if (findModel(availableModels(catalog), selection.model) === undefined)
+    return {
+      kind: "refused",
+      reason: `${selection.model.id} isn't available. ctrl+p picks another.`,
+    };
+
+  return ports.host.start({ id: chat.id, workspace, selection, content });
 }
 
 function refuseSubmission(submission: Submission, reason: string, context: HandlerContext): void {

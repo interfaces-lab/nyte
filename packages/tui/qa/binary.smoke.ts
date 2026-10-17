@@ -184,17 +184,13 @@ test("before its service is registered, the TUI paints the recorded model and ke
   expect(registeredAtSend).toBe(false);
 }, 30_000);
 
-test("the TUI asks to trust a folder with project files; trusting it loads the plugin's command into the chat", async () => {
+test("the TUI asks to trust a folder with project files; trusting it loads the plugin's command", async () => {
   await using service = await serveForBinary({ plugin: true, code: CODE });
-  service.reply({ content: [{ type: "text", text: "Started in the trusted folder." }] });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
 
   await pty.waitFor((screen) => screen.text.includes("Trust this folder"));
   pty.press("picker.accept");
   await ready(pty);
-  pty.type("hi nyte");
-  pty.press("chat.submit");
-  await pty.waitFor((screen) => screen.text.includes("Started in the trusted folder."));
   pty.type("/qa-probe");
   await pty.waitFor((screen) => screen.text.includes("Show that the project plugin loaded"));
   pty.press("chat.submit");

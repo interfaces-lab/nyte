@@ -1,4 +1,5 @@
 import type {
+  CommandInfo,
   CommitId,
   Delivery,
   Json,
@@ -175,6 +176,12 @@ export type Fact =
   | { readonly kind: "selection"; readonly session: SessionId; readonly selection: Selection }
   | { readonly kind: "catalog"; readonly generation: number; readonly catalog: ModelCatalogView }
   | { readonly kind: "host-settings"; readonly settings: readonly SettingInfo[] }
+  | {
+      readonly kind: "folder-commands";
+      readonly generation: number;
+      readonly workspace: WorkspaceId;
+      readonly commands: readonly CommandInfo[];
+    }
   | { readonly kind: "settings"; readonly settings: ResolvedSettings }
   | { readonly kind: "tasks"; readonly session: SessionId; readonly tasks: readonly Task[] }
   | { readonly kind: "workspace"; readonly workspace: WorkspaceFacts }

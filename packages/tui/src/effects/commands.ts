@@ -1,6 +1,12 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import type { MessageId, SessionId } from "@nyte-ai/sdk";
+import type {
+  CommandOutcome,
+  MessageId,
+  SessionId,
+  WorkspaceCommandOutcome,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
 import { followedSession } from "../model/state.ts";
 import type { Notice, Selection, State } from "../model/state.ts";
@@ -8,6 +14,7 @@ import { errorMessage } from "../lib/format.ts";
 import { ignoredSettingsText } from "../services/settings.ts";
 import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 import {
+  blankWorkspace,
   fallback,
   buildConfigPatch,
   openBlank,
@@ -16,6 +23,7 @@ import {
   rememberThinking,
   toSelection,
 } from "./session.ts";
+import { startWithPrompt } from "./submit.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
@@ -181,6 +189,25 @@ export async function checkTrust(
 
 export async function setTrust(effect: Of<"set-trust">, context: HandlerContext): Promise<void> {
   await context.ports.host.trust(effect.workspace, effect.value);
+  const { chat } = context.read().facts;
+
+  if (
+    chat?.kind === "blank" &&
+    chat.folder.kind === "folder" &&
+    chat.folder.id === effect.workspace
+  )
+    await loadFolderCommands(effect.workspace, context);
+}
+
+/** Reads the plugin commands a new chat in `workspace` would offer, for the blank chat there. */
+export async function loadFolderCommands(
+  workspace: WorkspaceId,
+  context: HandlerContext,
+): Promise<void> {
+  const { dispatch, ports, scope } = context;
+  const generation = (scope.folderCommandsGeneration += 1);
+  const commands = await ports.host.workspace(workspace).commands();
+  dispatch({ kind: "folder-commands", generation, workspace, commands });
 }
 
 export async function applySetting(
@@ -198,13 +225,36 @@ export async function applySetting(
     throw new Error(`Could not set ${effect.label}`);
 }
 
+/** Runs a plugin command in the followed chat, or in a blank chat's folder, where a command answering with a prompt starts the chat with it. */
 export async function runCommand(
   effect: Of<"run-command">,
   context: HandlerContext,
 ): Promise<void> {
-  const { dispatch, ports } = context;
-  const outcome = await ports.host.session(effect.session).command(effect.name, effect.argument);
+  const { ports, read } = context;
+  const { chat } = read().facts;
 
+  if (chat?.kind !== "blank" || chat.id !== effect.session) {
+    settleCommand(
+      await ports.host.session(effect.session).command(effect.name, effect.argument),
+      effect,
+      context,
+    );
+
+    return;
+  }
+
+  const workspace = await blankWorkspace(chat, context);
+  const outcome = await ports.host.workspace(workspace).command(effect.name, effect.argument);
+
+  if (outcome.kind === "prompt") await startWithPrompt(chat, workspace, outcome.content, context);
+  else settleCommand(outcome, effect, context);
+}
+
+function settleCommand(
+  outcome: Exclude<CommandOutcome | WorkspaceCommandOutcome, { readonly kind: "prompt" }>,
+  effect: Of<"run-command">,
+  { dispatch }: HandlerContext,
+): void {
   switch (outcome.kind) {
     case "ran":
       if (outcome.output !== null) dispatch({ kind: "inform", tone: "info", text: outcome.output });

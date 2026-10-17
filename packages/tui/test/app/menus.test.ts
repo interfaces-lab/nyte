@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import type { Plugin } from "@nyte-ai/core";
+import { chatOnly } from "@nyte-ai/host/bench";
+import { asId } from "@nyte-ai/schema";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
 import { openTestHost } from "../fixture/host.ts";
 import { belowComposer, composerShows, startTui } from "../harness/tui.ts";
@@ -74,6 +77,65 @@ test("every slash menu opens under the composer and closes without sending", asy
   await tui.frame((frame) => !belowComposer(frame, "Keyboard shortcuts"));
   expect(tui.fixture.requests).toHaveLength(1);
   expect(tui.store.screen().run.kind).toBe("idle");
+});
+
+test("a blank chat in a trusted folder offers its project plugin's command and runs it before any message", async () => {
+  const loaded: string[] = [];
+
+  const probe: Plugin<"core"> = {
+    id: "qa-probe",
+    activate(api) {
+      api.contribute.commands.add({
+        name: "qa-probe",
+        title: "QA probe",
+        description: "Show that the project plugin loaded",
+        run: () => "QA plugin answered",
+      });
+    },
+  };
+
+  await using fixture = await openTestHost({
+    environment: {
+      id: "folder",
+      environment: {
+        kind: "local",
+        inspect: async () => ({
+          identity: asId("folder"),
+          availability: { kind: "available" },
+          projectSources: [".nyte/plugins/qa-probe"],
+        }),
+        attach: (target) => {
+          const base = chatOnly.environment;
+
+          if (base === undefined) throw new Error("chatOnly provides no environment.");
+
+          return base.attach(target);
+        },
+      },
+    },
+    workspace: { kind: "local", path: "/work/project" },
+    loadPlugins: async (paths) => {
+      loaded.push(...paths);
+
+      return [probe];
+    },
+  });
+  const [workspace] = await fixture.host.workspaces.list();
+
+  if (workspace === undefined) throw new Error("The host registered no workspace.");
+  await fixture.host.workspace(workspace.id).update({ projectResources: true });
+
+  await using tui = await startTui({ fixture });
+  await tui.ready();
+  await tui.mockInput.typeText("/qa-probe");
+  await tui.frame((frame) => belowComposer(frame, "Show that the project plugin loaded"));
+  tui.press("chat.submit");
+  await tui.frame((frame) => frame.includes("QA plugin answered"));
+
+  expect(loaded).toContain("/work/project/.nyte/plugins/qa-probe");
+  expect(tui.store.state().facts.chat?.kind).toBe("blank");
+  expect((await fixture.host.sessions.list()).items).toEqual([]);
+  expect(fixture.requests).toHaveLength(0);
 });
 
 test("settings lists the thinking level and Esc closes it", async () => {

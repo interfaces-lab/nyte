@@ -156,6 +156,8 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     },
     update: refuse,
     reload: refuse,
+    commands: refuse,
+    command: refuse,
     jobs: { start: refuse, recover: refuse, list: refuse, watch: refused },
     job: (job: JobId) => ({
       id: job,

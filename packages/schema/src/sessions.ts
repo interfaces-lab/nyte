@@ -2,7 +2,7 @@ import { Type } from "typebox";
 import { ValidationIssueType } from "./errors.ts";
 import { idSchema } from "./ids.ts";
 import { JsonObjectType, JsonType, withJson } from "./json.ts";
-import { PositionType } from "./messages.ts";
+import { PositionType, UserContentType } from "./messages.ts";
 import { ModelRefType } from "./models.ts";
 import { ExecutionType } from "./runs.ts";
 import { standard } from "./schema.ts";
@@ -119,6 +119,17 @@ export const CommandOutcomeType = Type.Union([
 
 export type CommandOutcome = Decoded<typeof CommandOutcomeType>;
 
+/** What a command run outside any chat did: `prompt` is the first message of the chat it asks to start. */
+export const WorkspaceCommandOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("ran"), output: nullable(Type.String()) }),
+  Type.Object({ kind: Type.Literal("prompt"), content: UserContentType }),
+  Type.Object({ kind: Type.Literal("invalid"), issues: Type.Array(ValidationIssueType) }),
+  Type.Object({ kind: Type.Literal("unknown") }),
+  Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
+]);
+
+export type WorkspaceCommandOutcome = Decoded<typeof WorkspaceCommandOutcomeType>;
+
 export const UpdateOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("updated") }),
   Type.Object({ kind: Type.Literal("busy"), runs: Type.Array(idSchema<"run">()) }),
@@ -154,6 +165,10 @@ export const SessionCatalogViewSchema: Schema<SessionCatalogView> = standard(
 );
 
 export const CommandOutcomeSchema: Schema<CommandOutcome> = standard(CommandOutcomeType);
+
+export const WorkspaceCommandOutcomeSchema: Schema<WorkspaceCommandOutcome> = standard(
+  WorkspaceCommandOutcomeType,
+);
 
 export const UpdateOutcomeSchema: Schema<UpdateOutcome> = standard(UpdateOutcomeType);
 

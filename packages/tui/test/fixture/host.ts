@@ -8,6 +8,7 @@ import { chatOnly, fakeModels, testModel } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
 import { asId } from "@nyte-ai/schema";
+import type { WorkspaceTarget } from "@nyte-ai/schema";
 
 export type Reply = FakeModels["reply"] extends (...replies: readonly (infer R)[]) => void
   ? R
@@ -34,6 +35,10 @@ export async function openTestHost(options?: {
   readonly models?: readonly ReturnType<typeof testModel>[];
   /** The machine's GitHub CLI login the host serves; default none. */
   readonly github?: GitHubAccountApi;
+  /** The host's default workspace, which `environment` provides; default a `chat-only` one. */
+  readonly workspace?: WorkspaceTarget;
+  /** Imports a trusted workspace's project plugins; default none load. */
+  readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
 }): Promise<TestHost> {
   dev.off();
   const models = fakeModels({ models: options?.models });
@@ -42,10 +47,11 @@ export async function openTestHost(options?: {
     store: memoryStore(),
     models: models.models,
     plugins: [options?.environment ?? chatOnly, questionPlugin, ...(options?.plugins ?? [])],
-    workspace: { kind: "chat-only", locator: null },
+    workspace: options?.workspace ?? { kind: "chat-only", locator: null },
     home: null,
     description: { name: "tui-test", platform: process.platform, version: "0.0.0" },
     github: options?.github,
+    loadPlugins: options?.loadPlugins,
   });
 
   let closed: Promise<void> | null = null;

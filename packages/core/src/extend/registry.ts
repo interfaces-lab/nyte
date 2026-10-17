@@ -22,6 +22,7 @@ import type {
   ToolSource,
 } from "../contract/kernel.ts";
 import type {
+  Command,
   Registries,
   Registry,
   RegistryDraft,
@@ -310,24 +311,7 @@ async function sessionCatalog(
   const { registries } = runtime;
 
   return {
-    commands: registries.commands.entries().flatMap(({ item, owner }): readonly CommandInfo[] => {
-      const args = item.arguments === undefined ? null : converted(item.arguments, "input");
-
-      if (args === undefined) return [];
-
-      return [
-        {
-          name: `${owner}/${item.name}`,
-          owner,
-          side: "core",
-          title: item.title,
-          description: item.description,
-          arguments: args,
-          category: item.category,
-          keywords: item.keywords,
-        },
-      ];
-    }),
+    commands: commandInfos(registries),
     settings: await settingInfos(kernel, session),
     skills: registries.skills.entries().map(({ item, owner }) => ({
       name: item.name,
@@ -344,6 +328,27 @@ async function sessionCatalog(
     })),
     tools: toolSource(runtime).list(),
   };
+}
+
+export function commandInfos(registries: RegistrySet): readonly CommandInfo[] {
+  return registries.commands.entries().flatMap(({ item, owner }): readonly CommandInfo[] => {
+    const args = item.arguments === undefined ? null : converted(item.arguments, "input");
+
+    if (args === undefined) return [];
+
+    return [
+      {
+        name: `${owner}/${item.name}`,
+        owner,
+        side: "core",
+        title: item.title,
+        description: item.description,
+        arguments: args,
+        category: item.category,
+        keywords: item.keywords,
+      },
+    ];
+  });
 }
 
 export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void> {
@@ -446,11 +451,54 @@ async function runHeld(
   name: string,
   args: Json | undefined,
 ): Promise<CommandOutcome> {
-  const entries = runtime.registries.commands.entries();
+  const invoked = await invokeCommand(kernel, context, session, runtime, name, args);
+
+  if (invoked.kind !== "returned") return invoked;
+  const { result, command, owner } = invoked;
+
+  if (typeof result === "string") return { kind: "ran", output: result };
+
+  if (result === undefined) return { kind: "ran", output: null };
+
+  try {
+    const receipt = await sendNow(kernel, {
+      session,
+      head: MAIN,
+      context,
+      content: result.prompt,
+      options: {
+        source: { kind: "action", label: command.title, command: `${owner}/${command.name}` },
+      },
+    });
+
+    return { kind: "sent", receipt: receipt.id };
+  } catch (error) {
+    return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** Finds command `name`, its owner's qualified name first, checks `args` and runs it. */
+export async function invokeCommand(
+  kernel: Kernel,
+  context: ConnectionContext,
+  session: SessionId,
+  plugins: Pick<PluginRuntime, "registries" | "api">,
+  name: string,
+  args: Json | undefined,
+): Promise<
+  | {
+      readonly kind: "returned";
+      readonly result: Awaited<ReturnType<Command["run"]>>;
+      readonly command: Command;
+      readonly owner: string;
+    }
+  | Extract<CommandOutcome, { readonly kind: "invalid" | "unknown" | "failed" }>
+> {
+  const entries = plugins.registries.commands.entries();
   const qualified = entries.filter((entry) => `${entry.owner}/${entry.item.name}` === name);
   const bare = entries.filter((entry) => entry.item.name === name);
   const [found] = qualified.length === 1 ? qualified : bare.length === 1 ? bare : [];
-  const api = found === undefined ? undefined : runtime.api(found.owner);
+  const api = found === undefined ? undefined : plugins.api(found.owner);
 
   if (found === undefined || api === undefined) return { kind: "unknown" };
   const { item: command, owner } = found;
@@ -470,21 +518,7 @@ async function runHeld(
       caller: context.principal,
     });
 
-    if (typeof result === "string") return { kind: "ran", output: result };
-
-    if (result === undefined) return { kind: "ran", output: null };
-
-    const receipt = await sendNow(kernel, {
-      session,
-      head: MAIN,
-      context,
-      content: result.prompt,
-      options: {
-        source: { kind: "action", label: command.title, command: `${owner}/${command.name}` },
-      },
-    });
-
-    return { kind: "sent", receipt: receipt.id };
+    return { kind: "returned", result, command, owner };
   } catch (error) {
     return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
   }
