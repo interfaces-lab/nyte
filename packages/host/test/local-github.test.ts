@@ -345,6 +345,22 @@ describe("localGitHub", () => {
       "Fix tab close",
       "--fill",
     ]);
+
+    await github(root).createPullRequest({ body: "Closing a tab keeps the draft." });
+    expect((await calls()).findLast((call) => call.args[1] === "create")).toEqual({
+      args: [
+        "pr",
+        "create",
+        "--repo",
+        "octo/hello",
+        "--head",
+        "feature",
+        "--body-file",
+        "-",
+        "--fill",
+      ],
+      stdin: "Closing a tab keeps the draft.",
+    });
   });
 
   it("names a branch that tracks a fork by its owner, against the upstream repository", async () => {

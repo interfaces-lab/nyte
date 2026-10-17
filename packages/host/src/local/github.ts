@@ -658,10 +658,11 @@ export function localGitHub(options?: {
         "--head",
         head,
         ...(title === "" ? [] : ["--title", title]),
-        ...(title === "" || body === "" ? ["--fill"] : ["--body-file", "-"]),
+        ...(body === "" ? [] : ["--body-file", "-"]),
+        ...(title === "" || body === "" ? ["--fill"] : []),
         ...(input.draft === true ? ["--draft"] : []),
       ],
-      { input: title === "" ? "" : body, timeoutMs: CREATE_TIMEOUT_MS },
+      { input: body, timeoutMs: CREATE_TIMEOUT_MS },
     );
 
     if (result.kind === "missing") return { kind: "cli_missing" };
