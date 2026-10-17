@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/sdk";
+import type { SessionId, WorkspaceId } from "@nyte-ai/sdk";
 import type { DialogId } from "../model/dialogs/dialog.ts";
 import type { Msg } from "../model/msg.ts";
 import type { State } from "../model/state.ts";
@@ -23,6 +23,8 @@ export interface Scope {
   /** The blank chat whose first send is starting it; later sends to it wait for `done`, whether it started. */
   starting: { readonly id: SessionId; readonly done: Promise<boolean> } | null;
   previous: SessionId | null;
+  /** The launch folder's registration with the host, made once however many callers need it; forgotten when it fails. */
+  launchFolder: Promise<WorkspaceId> | null;
   readonly pastes: Set<Promise<void>>;
   readonly shells: Map<string, { stop(): void; readonly done: Promise<void> }>;
   readonly logins: Map<DialogId, LoginChannel>;
@@ -56,6 +58,7 @@ export function createScope(): Scope {
     followed: null,
     starting: null,
     previous: null,
+    launchFolder: null,
     pastes: new Set(),
     shells: new Map(),
     logins: new Map(),

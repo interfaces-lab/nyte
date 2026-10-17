@@ -44,13 +44,20 @@ export async function settleFolder(chat: BlankChat, context: HandlerContext): Pr
     await refreshWorkspace(context, cwd, { mentions: workspace, signal: context.signal });
 }
 
-/** The workspace a blank chat starts in; a chat still in its launch folder registers that folder first. */
+/** The workspace a blank chat starts in; a chat still in its launch folder waits for that folder's one registration. */
 export async function blankWorkspace(
   chat: BlankChat,
   context: HandlerContext,
 ): Promise<WorkspaceId> {
   if (chat.folder.kind === "folder") return chat.folder.id;
-  const workspace = await context.ports.host.openFolder(null);
+  const { scope } = context;
+
+  scope.launchFolder ??= context.ports.host.openFolder(null).catch((cause: unknown) => {
+    scope.launchFolder = null;
+    throw cause;
+  });
+
+  const workspace = await scope.launchFolder;
   context.dispatch({ kind: "blank-folder", session: chat.id, workspace });
 
   return workspace;

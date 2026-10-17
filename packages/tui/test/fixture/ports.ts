@@ -60,6 +60,8 @@ export interface FakeHost extends HostPort {
   readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
   readonly starts: Parameters<HostPort["start"]>[0][];
+  /** Each folder registration asked of the host, by path; `null` is the launch folder. */
+  readonly folders: (string | null)[];
 }
 
 function queue<T>(): AsyncIterable<T> & {
@@ -245,6 +247,7 @@ export function fakeHost(): FakeHost {
   const defaults: ModelRef[] = [];
   const hostSettings: FakeHost["hostSettings"] = [];
   const starts: FakeHost["starts"] = [];
+  const folders: FakeHost["folders"] = [];
   let catalog = CATALOG;
 
   const addSession = (id: string): FakeSession => {
@@ -260,6 +263,7 @@ export function fakeHost(): FakeHost {
     hostSettings,
     addSession,
     starts,
+    folders,
     session: (id) => addSession(id),
     workspace: (id) => ({
       id,
@@ -267,7 +271,11 @@ export function fakeHost(): FakeHost {
       upload: async () => asId("blob-1"),
       mentions: async () => [],
     }),
-    openFolder: async () => asId("workspace"),
+    async openFolder(path) {
+      folders.push(path);
+
+      return asId("workspace");
+    },
     async start(input) {
       starts.push(input);
 

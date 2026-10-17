@@ -601,6 +601,43 @@ test("a first message on a signed-out provider's model goes back with the fix, a
   });
 });
 
+test("a first message sent while boot settles the launch folder registers that folder once", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b-launch"),
+    folder: { kind: "launch-folder" },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-launch",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+
+  const app = harness({
+    facts: { ...base.facts, chat: blank },
+    local: { ...base.local, submissions: [first] },
+  });
+
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await until(() => (app.ports.host.starts.length === 1 ? true : undefined));
+
+  expect(app.ports.host.folders).toEqual([null]);
+  app.controller.abort();
+  await app.runner.dispose();
+});
+
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {
   const app = harness(buildState(followed(PENDING)));
   app.runner.run({
