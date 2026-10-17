@@ -253,7 +253,16 @@ function records(from: number): fc.Arbitrary<Entry> {
       }),
     fc
       .tuple(ID, body("workspace"), at)
-      .map(([id, value, time]) => entry("workspace", `workspaces/${id}`, value, time)),
+      .map(([id, value, time]) =>
+        entry(
+          "workspace",
+          `workspaces/${id}`,
+          older(from, 16)
+            ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== "isolation"))
+            : value,
+          time,
+        ),
+      ),
     fc
       .tuple(ID, ID, body("commit"), at)
       .map(([session, head, value, time]) =>

@@ -171,6 +171,20 @@ export const MAPPING = [
       "adds `sessions/<s>/ended/<run>` for each run that only session `<s>`'s log ended, whose `sessions/<s>` ref exists and whose `runs/` and `ended/` refs don't, at the run's latest record holding a snapshot (greatest `at`, then id) when that record reads as today's run record",
     covers: ["from 14", "added sessions/*/ended"],
   },
+  {
+    version: 16,
+    step: "2026-10-16-workspace-isolation",
+    target: "workspace records",
+    change: "gains `isolation: null` where absent",
+    covers: ["from 15", "field workspace /body/isolation"],
+  },
+  {
+    version: 17,
+    step: "2026-10-16-fold-checkpoints",
+    target: "tables",
+    change: "creates fold_checkpoints (sqlite only)",
+    covers: ["from 16"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
@@ -310,10 +324,14 @@ function migrateBody(from: number, kind: Json | undefined, body: JsonObject): Js
         : body;
     case "principals":
       return runs(from, 2) ? migratePrincipals(body) : body;
-    case "workspace":
-      return runs(from, 6) && body.projectResources === true
-        ? { ...body, projectResources: null }
-        : body;
+    case "workspace": {
+      const trusted =
+        runs(from, 6) && body.projectResources === true
+          ? { ...body, projectResources: null }
+          : body;
+
+      return runs(from, 16) ? withDefaults(trusted, { isolation: null }) : trusted;
+    }
     case "part": {
       const state = body.state;
 
