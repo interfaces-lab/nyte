@@ -144,7 +144,11 @@ test("a settings file that doesn't parse is left out of the first frame's settin
   try {
     await using tui = await startTui({
       opened: false,
-      settings: { read: () => store.read(root), write: async () => store.read(root).settings },
+      settings: {
+        read: () => store.read(root),
+        write: async () => store.read(root).settings,
+        settled: () => store.settled(),
+      },
     });
 
     await tui.frame((frame) => frame.includes("Ignored"));

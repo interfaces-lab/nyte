@@ -23,6 +23,11 @@ export interface SettingsRead {
   readonly invalid: readonly SettingsProblem[];
 }
 
+/** What the TUI tells the user about settings files left out of a read. */
+export function ignoredSettingsText(invalid: readonly SettingsProblem[]): string {
+  return invalid.map((problem) => `Ignored ${problem.path}: ${problem.reason}`).join("\n");
+}
+
 type FileRead =
   | { readonly kind: "read"; readonly file: SettingsFile }
   | { readonly kind: "invalid"; readonly problem: SettingsProblem };
@@ -102,6 +107,11 @@ export class FileSettingsStore {
       ),
       invalid: [global, project].flatMap((read) => (read.kind === "invalid" ? [read.problem] : [])),
     };
+  }
+
+  /** Resolves once every write queued so far has settled. */
+  settled(): Promise<void> {
+    return this.writes.settled();
   }
 
   /** Writes `patch` into the global file; refuses while that file doesn't parse, so a fix by hand isn't overwritten. */

@@ -109,6 +109,7 @@ export function settingsPort(): SettingsPort {
 
       return store.read(cwd).settings;
     },
+    settled: () => store.settled(),
   };
 }
 

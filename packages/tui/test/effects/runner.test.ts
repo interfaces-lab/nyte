@@ -638,6 +638,49 @@ test("a first message sent while boot settles the launch folder registers that f
   await app.runner.dispose();
 });
 
+test("/reload reads settings after pending writes land, and names a settings file it left out", async () => {
+  const order: string[] = [];
+  const dispatched: Msg[] = [];
+  const ports = fakePorts(fakeHost());
+
+  const runner = createRunner({
+    ports: {
+      ...ports,
+      settings: {
+        ...ports.settings,
+        settled: async () => {
+          order.push("settled");
+        },
+        read: () => {
+          order.push("read");
+
+          return {
+            settings: SETTINGS,
+            invalid: [{ path: "/home/settings.json", reason: "invalid JSON" }],
+          };
+        },
+      },
+    },
+    dispatch: (msg) => {
+      dispatched.push(msg);
+    },
+    read: () => buildState(followed(LANDED)),
+    signal: new AbortController().signal,
+    opened: Promise.resolve(),
+  });
+
+  runner.run({ kind: "reload" });
+  await runner.settled();
+
+  expect(order).toEqual(["settled", "read"]);
+  expect(dispatched.find((msg) => msg.kind === "op-finished")).toMatchObject({
+    notice: {
+      tone: "warning",
+      text: "Reloaded this workspace's resources · 0 skills\nIgnored /home/settings.json: invalid JSON",
+    },
+  });
+});
+
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {
   const app = harness(buildState(followed(PENDING)));
   app.runner.run({

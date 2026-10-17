@@ -5,6 +5,7 @@ import type { Effect } from "../model/effect.ts";
 import { followedSession } from "../model/state.ts";
 import type { Notice, Selection, State } from "../model/state.ts";
 import { errorMessage } from "../lib/format.ts";
+import { ignoredSettingsText } from "../services/settings.ts";
 import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 import {
   fallback,
@@ -299,18 +300,20 @@ export async function reload(effect: Of<"reload">, context: HandlerContext): Pro
 
     if (outcome === "missing") throw new Error("This chat's workspace is no longer registered.");
     const cwd = read().facts.workspace.cwd;
-    dispatch({ kind: "settings", settings: ports.settings.read(cwd).settings });
+    await ports.settings.settled();
+    const { settings, invalid } = ports.settings.read(cwd);
+    dispatch({ kind: "settings", settings });
     await refreshWorkspace(context, cwd);
     const skills = followedSession(read())?.view?.catalog.skills.length ?? 0;
+    const reloaded = `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`;
 
     dispatch({
       kind: "op-finished",
       op: "reload",
-      notice: stampNotice(
-        context,
-        "ok",
-        `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`,
-      ),
+      notice:
+        invalid.length === 0
+          ? stampNotice(context, "ok", reloaded)
+          : stampNotice(context, "warning", `${reloaded}\n${ignoredSettingsText(invalid)}`),
     });
   } catch (error) {
     dispatch({ kind: "op-finished", op: "reload", notice: null });

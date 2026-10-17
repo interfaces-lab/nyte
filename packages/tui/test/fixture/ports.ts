@@ -505,6 +505,7 @@ export function fakePorts(host: FakeHost): FakePorts {
 
         return settings;
       },
+      settled: async () => undefined,
     },
     plugins,
     shell,

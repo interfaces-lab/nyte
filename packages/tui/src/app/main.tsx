@@ -19,6 +19,7 @@ import type { BootOptions } from "../effects/boot.ts";
 import { createReporter, installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { hostPort, pluginsPort } from "../effects/host-port.ts";
 import { createHandle, filesPort, settingsPort, shellPort } from "../effects/local-ports.ts";
+import { ignoredSettingsText } from "../services/settings.ts";
 import type { CrashLog, HostPort, PluginsPort, Ports, TerminalPort } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
 import { terminalPort } from "../effects/terminal-port.ts";
@@ -171,7 +172,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     store.dispatch({
       kind: "inform",
       tone: "warning",
-      text: invalid.map((problem) => `Ignored ${problem.path}: ${problem.reason}`).join("\n"),
+      text: ignoredSettingsText(invalid),
     });
   void store.runner.exited.then(({ code }) => closing.resolve(code));
 

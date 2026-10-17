@@ -176,6 +176,8 @@ export interface SettingsPort {
   /** Reads synchronously, so the first frame draws with the user's settings; a file that fails to parse is left out and listed. */
   read(cwd: string): SettingsRead;
   write(cwd: string, patch: SettingsPatch): Promise<ResolvedSettings>;
+  /** Resolves once every write asked for so far has landed, so a read after it sees them. */
+  settled(): Promise<void>;
 }
 
 /** What the first frame draws before the host answers: the model a new chat starts on. */
