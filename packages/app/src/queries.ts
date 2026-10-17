@@ -208,16 +208,20 @@ export async function workspaceGit(): Promise<GitApi> {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
-/** A window opens on Home, so its host state is known before the host answers; workspace events replace it. */
+/**
+ * A window opens on Home, so its host state is known before the host answers.
+ * It never fetches on its own: `loadLocalResources` and workspace events write it.
+ */
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
 export function useHostState() {
-  return useQuery({
+  const { data } = useQuery({
     queryKey: keys.host,
-    queryFn: readHost,
+    queryFn: skipToken,
     initialData: OPENING_HOST_STATE,
-    staleTime: Infinity,
   });
+
+  return { data: data ?? OPENING_HOST_STATE };
 }
 
 export function useUpdateState() {
