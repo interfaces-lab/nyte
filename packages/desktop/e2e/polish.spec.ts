@@ -63,9 +63,9 @@ function workbench(page: Page): Locator {
 }
 
 /**
- * Saves the window's pixels (as macOS composites them, so guest browser
- * views and the traffic lights show; a page screenshot when it cannot) and
- * `scope`'s accessibility tree as `<surface>/<state>-<label>`. A judged run
+ * Saves `scope`'s accessibility tree, then the window's pixels (as macOS
+ * composites them, so guest browser views and the traffic lights show; a page
+ * screenshot when it cannot), as `<surface>/<state>-<label>`. A judged run
  * also holds a `committed` scope to its snapshot in `polish.spec.ts-snapshots`.
  */
 async function capture(
@@ -82,14 +82,14 @@ async function capture(
 
   const { page } = target;
 
-  if (!(await captureWindow(target.application, `${base}.png`)))
-    await page.screenshot({ path: `${base}.png`, caret: "hide" }).catch(() => undefined);
-
   const aria = await (scope ?? page.locator("body"))
     .ariaSnapshot({ timeout: 5_000 })
     .catch((cause: unknown) => `# not shown: ${String(cause).split("\n")[0] ?? ""}\n`);
 
   await writeFile(`${base}.aria.yml`, aria);
+
+  if (!(await captureWindow(target.application, `${base}.png`)))
+    await page.screenshot({ path: `${base}.png`, caret: "hide" }).catch(() => undefined);
 
   if (JUDGED && committed && scope !== undefined)
     await expect(scope).toMatchAriaSnapshot({ name: `${surface}-${state}.aria.yml` });
@@ -776,7 +776,7 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
 
   await phase(
     run,
-    "reconnecting: the host process goes away",
+    "reconnecting: the host process goes away, main restarts it, and the composer sends again",
     [
       ["composer", "reconnecting"],
       ["window", "reconnecting"],
@@ -797,19 +797,25 @@ test(`polish evidence (${LABEL}) for scenarios U and D`, async () => {
       )?.pid;
 
       if (pid === undefined) throw new Error("This build runs its host in the main process.");
+
+      const notice = page
+        .getByRole("status")
+        .or(page.getByRole("alert"))
+        .filter({ hasText: /host|connect/iu })
+        .first();
+
       process.kill(pid, "SIGKILL");
-      await composer(page).focus();
-      await page.keyboard.type(RECONNECT_PROMPT);
-      await page.keyboard.press("Enter");
-      await expect(
-        page
-          .getByRole("status")
-          .or(page.getByRole("alert"))
-          .filter({ hasText: /host|connect/iu })
-          .first(),
-      ).toBeVisible({ timeout: 20_000 });
+      await expect(notice).toBeVisible({ timeout: 20_000 });
       await capture(run, desktop, "composer", "reconnecting", page.getByRole("main"));
       await capture(run, desktop, "window", "reconnecting");
+      await expect(notice).toBeHidden({ timeout: 20_000 });
+      await page.keyboard.press("ControlOrMeta+n");
+      await expect(composer(page)).toBeFocused();
+      await page.keyboard.type(RECONNECT_PROMPT);
+      await page.keyboard.press("Enter");
+      await expect(messages(page).getByText(`Echo: ${RECONNECT_PROMPT}`)).toBeVisible({
+        timeout: 20_000,
+      });
     },
   );
 });
