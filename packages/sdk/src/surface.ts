@@ -119,6 +119,7 @@ export type {
   DurableEvent,
   EndReason,
   EnvironmentIdentity,
+  ExcerptSource,
   Execution,
   Failure,
   ExecutionCoverage,

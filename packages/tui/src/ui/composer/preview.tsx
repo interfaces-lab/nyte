@@ -10,6 +10,7 @@ const MAX_PREVIEW_ROWS = 10;
 function previewText(part: Exclude<DraftPart, { readonly kind: "image" }>): string {
   switch (part.kind) {
     case "paste":
+    case "excerpt":
       return part.text;
     case "shell":
       return part.output;

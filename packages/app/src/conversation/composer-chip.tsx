@@ -23,6 +23,12 @@ function referenceIcon(reference: MessageReference): IconName {
       return "more";
     case "clipboard":
       return "copy";
+    case "excerpt":
+      return reference.source.kind === "diff"
+        ? "diff"
+        : reference.source.kind === "terminal"
+          ? "console"
+          : "code-brackets";
     default: {
       const exhaustive: never = reference;
 
@@ -105,18 +111,20 @@ export function ComposerChipView({
     </span>
   );
 
-  if (reference.kind === "clipboard") {
+  const title = referenceTitle(reference);
+
+  if (reference.kind === "clipboard" || reference.kind === "excerpt") {
     return (
       <PreviewCard>
         <PreviewCardTrigger render={chip} />
-        <PreviewCardContent side="top" xstyle={composerStyles.clipboardPreview}>
-          <div {...props(text.xs, composerStyles.clipboardText)}>{reference.body}</div>
+        <PreviewCardContent side="top" aria-label={title} xstyle={composerStyles.clipboardPreview}>
+          <div {...props(text.xs, composerStyles.clipboardText)}>
+            {reference.kind === "clipboard" ? reference.body : reference.text}
+          </div>
         </PreviewCardContent>
       </PreviewCard>
     );
   }
-
-  const title = referenceTitle(reference);
 
   return title === undefined ? (
     chip

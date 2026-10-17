@@ -3,6 +3,7 @@ import type {
   BlobId,
   CommitId,
   Configuration,
+  ExcerptSource,
   HeadName,
   Json,
   MessageSource,
@@ -666,6 +667,11 @@ async function userContent(
             type: "text",
             text: `<skill name="${escapeAttribute(item.name)}" location="${escapeAttribute(item.location)}">\nRead the skill's file at its location and follow it.\n</skill>`,
           });
+        case "excerpt":
+          return Promise.resolve({
+            type: "text",
+            text: `<excerpt ${excerptAttributes(item.source)}>\n${item.text}\n</excerpt>`,
+          });
       }
     }),
   );
@@ -750,6 +756,29 @@ async function mentionContent(
     };
   } finally {
     await reader.close();
+  }
+}
+
+/** The attributes that tell the model where an excerpt's text was taken. */
+function excerptAttributes(source: ExcerptSource): string {
+  const attribute = (name: string, value: string): string => `${name}="${escapeAttribute(value)}"`;
+
+  switch (source.kind) {
+    case "diff": {
+      const lines =
+        source.start === source.end
+          ? String(source.start)
+          : `${String(source.start)}-${String(source.end)}`;
+
+      return `source="diff" ${attribute("path", source.path)} side="${source.side}" lines="${lines}"`;
+    }
+
+    case "terminal":
+      return source.command === undefined
+        ? `source="terminal"`
+        : `source="terminal" ${attribute("command", source.command)}`;
+    case "browser":
+      return `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
   }
 }
 

@@ -1,4 +1,4 @@
-import type { Thinking, ToolClass, UserContent } from "@nyte-ai/sdk";
+import type { ExcerptSource, Thinking, ToolClass, UserContent } from "@nyte-ai/sdk";
 import { formatDuration, toolTitle } from "@nyte-ai/plugin/client/presentation";
 import type { ToolTense } from "@nyte-ai/plugin/client/presentation";
 import type { RemoteFacts } from "../model/state.ts";
@@ -88,6 +88,39 @@ export function unchangedLinesLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
 }
 
+/** An excerpt by where it came from: `a.ts:4-6`, `Terminal pnpm test`, `Element main > a`. */
+export function excerptLabel(source: ExcerptSource, text: string): string {
+  switch (source.kind) {
+    case "diff": {
+      const name = source.path.split("/").at(-1) ?? source.path;
+
+      const lines =
+        source.start === source.end
+          ? String(source.start)
+          : `${String(source.start)}-${String(source.end)}`;
+
+      return `${name}:${lines}`;
+    }
+
+    case "terminal": {
+      const command = source.command?.trim().replace(/\s+/gu, " ");
+      const lines = text.split("\n").length;
+
+      return command === undefined || command === ""
+        ? `Terminal ${String(lines)} ${lines === 1 ? "line" : "lines"}`
+        : `Terminal ${command}`;
+    }
+
+    case "browser":
+      return `Element ${source.selector}`;
+    default: {
+      const _exhaustive: never = source;
+
+      return _exhaustive;
+    }
+  }
+}
+
 export function userText(content: UserContent): string {
   if (typeof content === "string") return content;
 
@@ -102,6 +135,8 @@ export function userText(content: UserContent): string {
           return `@${part.path}`;
         case "skill":
           return `/${part.name}`;
+        case "excerpt":
+          return `[${excerptLabel(part.source, part.text)}]`;
         default: {
           const _exhaustive: never = part;
 
