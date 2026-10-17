@@ -33,8 +33,11 @@ function every(limit: number): Readonly<Record<StartupCase, number>> {
  * IPC calls before the composer; main makes 22 there. A restored chat's folder is selected by
  * the host (`host.restore`) without a reload, so its `workspace.files` and `workspace.git` reads
  * join the first burst of host requests: 14 in most runs, and up to 17 when the folder's
- * `files.scan`, `git.watch` and a stream cancel start before the composer. First paint is the
- * shell's first frame in every scenario, held at 495 ms, under main's fresh median (509-615 ms).
+ * `files.scan`, `git.watch` and a stream cancel start before the composer. With no splash, first
+ * contentful paint is the shell itself, drawn once the window shows, so it is reported next
+ * to main's splash and not gated. First meaningful paint is the shell's first frame, which the main
+ * process waits for to show the window: the branch's p95 over 14 launches per scenario plus 15%
+ * (645, 543 and 561 ms), under main c7094f5c's fresh median of 844 ms.
  */
 const metricFields = [
   {
@@ -50,10 +53,16 @@ const metricFields = [
     budget: { fresh: 775, restored: 800, heavy: 855 },
   },
   {
-    key: "spawnToFirstPaintMs",
-    label: "Spawn to first paint (FCP)",
+    key: "spawnToShellMs",
+    label: "Spawn to first meaningful paint",
     unit: "ms",
-    budget: every(495),
+    budget: { fresh: 740, restored: 625, heavy: 645 },
+  },
+  {
+    key: "spawnToFirstContentfulPaintMs",
+    label: "Spawn to first contentful paint",
+    unit: "ms",
+    budget: null,
   },
   { key: "spawnToWindowShownMs", label: "Spawn to window shown", unit: "ms", budget: null },
   {
@@ -698,7 +707,8 @@ async function measure(
             ? []
             : sinceSpawn(firstKeystroke.startTime + firstKeystroke.duration),
         spawnToComposerMs: sinceSpawn(ready.readyMs),
-        spawnToFirstPaintMs: sinceSpawn(fcp),
+        spawnToShellMs: sinceSpawn(renderer.shellReadyMs),
+        spawnToFirstContentfulPaintMs: sinceSpawn(fcp),
         spawnToWindowShownMs:
           created === null || windowShownEpochMs === undefined
             ? []
@@ -887,6 +897,8 @@ async function run(options: Options): Promise<void> {
     clocks: {
       spawn:
         "Renderer epoch (performance.timeOrigin + startTime) minus Electron main process.getCreationTime().",
+      firstMeaningfulPaint:
+        "Renderer nyte:shell-ready mark: the animation frame after the shell first commits, which main waits for before it shows the window.",
       composer:
         "Renderer performance.now() on the first animation frame where the composer is editable, visible, and over the scenario's chat.",
       typedInput:
