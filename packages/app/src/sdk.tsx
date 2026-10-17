@@ -157,6 +157,12 @@ class WatchStore<T> {
 
   getState = (): WatchState<T> => this.state;
 
+  /** Shows `value` until the watch's own frames arrive, unless one already has. */
+  prime(value: T): void {
+    if (this.state.value !== undefined) return;
+    this.publish({ value, error: undefined });
+  }
+
   next(): Promise<T> {
     return new Promise((resolve, reject) => {
       const seen = this.state.value;
@@ -374,6 +380,30 @@ export const sessionWatch = watchFamily(
     return tracePaints(views, session, nextFrame);
   },
 );
+
+const previews = new Map<SessionId, Promise<void>>();
+
+/**
+ * Reads a chat's view once and primes its watch with it, so opening the chat
+ * shows it at once. A read, unlike a watch, leaves the chat unread.
+ */
+export function preloadSession(session: SessionId): Promise<void> {
+  if (sessionWatch(session).value !== undefined) return Promise.resolve();
+
+  const pending =
+    previews.get(session) ??
+    connected()
+      .then((current) => current.session(session).view())
+      .then(
+        (view) => sessionWatch(session).prime(view),
+        () => undefined,
+      )
+      .finally(() => previews.delete(session));
+
+  previews.set(session, pending);
+
+  return pending;
+}
 
 /**
  * Page up to `limit` older messages into a session's watch, resolving how many

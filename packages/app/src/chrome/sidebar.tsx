@@ -14,7 +14,7 @@
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
-import type { SessionId, WorkspaceId } from "@nyte-ai/sdk";
+import type { SessionId, SessionInfo, WorkspaceId } from "@nyte-ai/sdk";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -69,7 +69,7 @@ import {
   type ListContext,
   type ListedSession,
 } from "./sidebar-lists.tsx";
-import type { RailRows, SessionPlace } from "./sidebar-rows.tsx";
+import { NeighbourPreload, type RailRows, type SessionPlace } from "./sidebar-rows.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import {
   clearSessionFilters,
@@ -110,6 +110,20 @@ async function showSession(sessionId: SessionId, target: OpenTarget | "beside"):
 
   const controller = windowTabs.controller();
   controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
+}
+
+/** The chats listed just above and below `sessionId`, in the rail's order. */
+function listedNeighbours(
+  ordered: readonly SessionInfo[],
+  sessionId: SessionId,
+): readonly SessionId[] {
+  const index = ordered.findIndex((session) => session.id === sessionId);
+
+  if (index === -1) return [];
+
+  return [ordered[index - 1], ordered[index + 1]].flatMap((session) =>
+    session === undefined ? [] : [session.id],
+  );
 }
 
 function showDraft(draftId: string): void {
@@ -310,6 +324,34 @@ export function Sidebar(): ReactElement {
     })
     .toSorted((left, right) => order(left.session, right.session));
 
+  const activeDirectory =
+    paneSession === undefined
+      ? undefined
+      : sessionDirectory.data?.find((directory) =>
+          directory.sessions.some((session) => session.id === paneSession.id),
+        );
+
+  const neighbours =
+    activeSessionId === undefined
+      ? []
+      : listedNeighbours(
+          flat
+            ? (listed ?? []).map(({ session }) => session)
+            : sessionsForView(
+                (activeDirectory &&
+                  localSessions(
+                    sessionDirectory.data ?? [],
+                    activeDirectory.workspacePath === null ? null : activeDirectory.workspace,
+                  )) ??
+                  [],
+                view,
+                "local",
+                undefined,
+                workingSessions,
+              ).flatMap((group) => group.sessions),
+          activeSessionId,
+        );
+
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & RailWorkspace))[] = [
     ...(homeVisible ? [{ kind: "home" } as const] : []),
     ...(workspaces.data ?? [])
@@ -377,6 +419,13 @@ export function Sidebar(): ReactElement {
   return (
     <aside {...props(styles.rail)}>
       <SidebarContent>
+        {activeSessionId !== undefined && (
+          <NeighbourPreload
+            key={[activeSessionId, ...neighbours].join(" ")}
+            active={activeSessionId}
+            neighbours={neighbours}
+          />
+        )}
         <div {...props(styles.primaryActions)}>
           <NewChatRow showDrafts={showDrafts} paletteOpen={paletteOpen} mac={mac} />
 

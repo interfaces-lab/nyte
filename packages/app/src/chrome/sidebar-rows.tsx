@@ -27,7 +27,7 @@ import type { OpenTarget } from "../tabs/model.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { sessionWatch } from "../sdk.tsx";
+import { preloadSession, sessionWatch } from "../sdk.tsx";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { StatusGlyph } from "./status-glyph.tsx";
 
@@ -217,10 +217,7 @@ export function SessionRow({
   const warm = (): void => {
     cancelWarm();
 
-    if (!selected)
-      void sessionWatch(session.id)
-        .next()
-        .catch(() => undefined);
+    if (!selected) void preloadSession(session.id);
   };
 
   useMountEffect(() => cancelWarm);
@@ -414,4 +411,53 @@ export function SessionRow({
       </TooltipContent>
     </Tooltip>
   );
+}
+
+/**
+ * Preloads the chats listed either side of the open one, as main did, so moving
+ * to one shows it without a round trip to the host. It waits for the open chat's
+ * first frame, the paint after it and an idle period, so it never competes with
+ * the open or a stream. Keyed by the open chat and its neighbours, so a move
+ * cancels it.
+ */
+export function NeighbourPreload({
+  active,
+  neighbours,
+}: {
+  readonly active: SessionId;
+  readonly neighbours: readonly SessionId[];
+}): null {
+  useMountEffect(() => {
+    const opened = sessionWatch(active);
+    let leave: (() => void) | undefined;
+    let frame: number | undefined;
+    let idle: number | undefined;
+
+    const afterPaint = (): void => {
+      frame = requestAnimationFrame(() => {
+        idle = requestIdleCallback(() => {
+          for (const sessionId of neighbours) void preloadSession(sessionId);
+        });
+      });
+    };
+
+    if (opened.value === undefined)
+      leave = opened.subscribe(() => {
+        if (opened.value === undefined) return;
+        leave?.();
+        leave = undefined;
+        afterPaint();
+      });
+    else afterPaint();
+
+    return () => {
+      leave?.();
+
+      if (frame !== undefined) cancelAnimationFrame(frame);
+
+      if (idle !== undefined) cancelIdleCallback(idle);
+    };
+  });
+
+  return null;
 }
