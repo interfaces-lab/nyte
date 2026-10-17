@@ -15,6 +15,16 @@ import { alive, lockHolder, logPath, readRegistration, registrationPath } from "
 import type { Registration } from "./registration.ts";
 import { SERVICE_ROUTES, ServiceClientSchema, ServiceEventSchema } from "./routes.ts";
 import type { ServiceClient, ServiceEvent } from "./routes.ts";
+import {
+  findSupervisor,
+  relaunchUnit,
+  removeUnit,
+  startUnit,
+  supervisedPid,
+  unitInstalled,
+  writeUnit,
+} from "./supervisor.ts";
+import type { Supervisor, UnitPlan } from "./supervisor.ts";
 
 const START_TIMEOUT_MS = 20_000;
 
@@ -43,18 +53,32 @@ export async function findService(home: string): Promise<Registration | undefine
 /**
  * Returns the running service of this client's build, starting one when none runs. A
  * service of another build is stopped and replaced; one that won't stop fails with the
- * build skew and the fix. The client then stays attached until `signal` aborts or the
- * process exits, which keeps the service from stopping while idle.
+ * build skew and the fix. With the service installed, its supervisor starts and replaces
+ * it on this client's command. The client then stays attached until `signal` aborts or
+ * the process exits, which keeps the service from stopping while idle.
  */
 export async function ensureService(options: EnsureServiceOptions): Promise<Registration> {
   const build = await serviceBuild(options.version);
   const found = await findService(options.home);
-
-  if (found !== undefined && found.version !== build) await replace(options.home, found, build);
-  const registration = found?.version === build ? found : await start(options, build);
+  const registration = found?.version === build ? found : await startBuild(options, build, found);
   attach(registration, build, options.signal);
 
   return registration;
+}
+
+async function startBuild(
+  options: EnsureServiceOptions,
+  build: string,
+  found: Registration | undefined,
+): Promise<Registration> {
+  const supervisor = findSupervisor(options.home);
+
+  if (supervisor !== undefined && (await unitInstalled(options.home)))
+    return supervise(options, supervisor, build, found);
+
+  if (found !== undefined) await replace(options.home, found, build);
+
+  return start(options, build);
 }
 
 async function replace(home: string, found: Registration, build: string): Promise<void> {
@@ -121,26 +145,73 @@ export async function stopService(home: string): Promise<boolean> {
   );
 }
 
+/** How the service is installed: `unsupported` on a platform without launchd or systemd, `absent` with no unit, or `installed` with the pid its supervisor runs it as, null when the supervisor runs none. */
+export type Supervision =
+  | { readonly kind: "unsupported" }
+  | { readonly kind: "absent"; readonly supervisor: Supervisor }
+  | { readonly kind: "installed"; readonly supervisor: Supervisor; readonly pid: number | null };
+
+export async function readSupervision(home: string): Promise<Supervision> {
+  const supervisor = findSupervisor(home);
+
+  if (supervisor === undefined) return { kind: "unsupported" };
+
+  if (!(await unitInstalled(home))) return { kind: "absent", supervisor };
+
+  return { kind: "installed", supervisor, pid: await supervisedPid(supervisor) };
+}
+
+/** What `installService` did: wrote the unit and started the service under it, or found both already so. */
+export interface Installed {
+  readonly kind: "installed" | "unchanged";
+  readonly supervisor: Supervisor;
+  readonly registration: Registration;
+}
+
 /**
- * Starts the service and waits for it to register. The registration file is the readiness
- * signal: the service renames it into place once it listens, so each change to it (or the
- * child exiting) wakes one check instead of a timer polling for it.
+ * Installs the service as a launch agent (macOS) or systemd user unit (Linux) running
+ * `command`: the supervisor starts it at login and after a crash, and it never stops for
+ * being idle. A running service the supervisor doesn't run, or one of another build, is
+ * stopped and started under the supervisor. Installing again with the same command and
+ * environment changes nothing.
  */
+export async function installService(options: EnsureServiceOptions): Promise<Installed> {
+  const supervisor = findSupervisor(options.home);
+
+  if (supervisor === undefined)
+    throw new Error(
+      `Installing the Nyte service needs launchd (macOS) or systemd (Linux); this is ${process.platform}.`,
+    );
+  const build = await serviceBuild(options.version);
+  const found = await findService(options.home);
+
+  if (
+    found?.version === build &&
+    (await supervisedPid(supervisor)) === found.pid &&
+    !(await writeUnit(supervisor, unitPlan(options)))
+  )
+    return { kind: "unchanged", supervisor, registration: found };
+
+  return {
+    kind: "installed",
+    supervisor,
+    registration: await supervise(options, supervisor, build, found),
+  };
+}
+
+/** Stops the service the supervisor runs and removes its unit; false when none was installed. A service started outside the supervisor keeps running until it's idle. */
+export async function uninstallService(home: string): Promise<boolean> {
+  const supervisor = findSupervisor(home);
+
+  return supervisor !== undefined && removeUnit(supervisor);
+}
+
+/** Starts the service as a detached child of this client and waits for it to register. */
 async function start(options: EnsureServiceOptions, build: string): Promise<Registration> {
-  const log = logPath(options.home);
-  const registration = registrationPath(options.home);
-  await mkdir(dirname(log), { recursive: true, mode: 0o700 });
-  await mkdir(dirname(registration), { recursive: true, mode: 0o700 });
-  const offset = (await stat(log).catch(() => undefined))?.size ?? 0;
-  const output = await open(log, "a", 0o600);
+  const log = await openLog(options.home);
+  const output = await open(log.path, "a", 0o600);
   const [command, ...args] = options.command;
-  let wake = Promise.withResolvers<void>();
-
-  const watcher = watch(dirname(registration), (_event, file) => {
-    if (file === null || file === basename(registration)) wake.resolve();
-  });
-
-  let gone = false;
+  const exited = Promise.withResolvers<void>();
 
   try {
     const child = spawn(command, args, {
@@ -150,50 +221,135 @@ async function start(options: EnsureServiceOptions, build: string): Promise<Regi
     });
 
     child.unref();
-    await output.close();
-
-    const exited = (): void => {
-      gone = true;
-      wake.resolve();
-    };
-
-    child.once("exit", exited);
-    child.once("error", exited);
-    const timeout = setTimeout(() => wake.resolve(), START_TIMEOUT_MS);
-    const deadline = Date.now() + START_TIMEOUT_MS;
-
-    try {
-      while (Date.now() < deadline) {
-        const exitedBefore = gone;
-        const found = await findService(options.home);
-
-        if (found?.version === build) return found;
-
-        if (found !== undefined) throw new Error(skew(found, build));
-
-        if (exitedBefore && (await lockHolder(options.home)) === undefined)
-          throw new Error(`${await failureIn(log, offset)} See ${log}.`);
-        await wake.promise;
-        wake = Promise.withResolvers<void>();
-      }
-    } finally {
-      clearTimeout(timeout);
-    }
+    child.once("exit", () => exited.resolve());
+    child.once("error", () => exited.resolve());
   } finally {
-    watcher.close();
+    await output.close();
   }
 
-  throw new Error(`The Nyte service didn't start within 20 s. See ${log}.`);
+  return awaitRegistration(options.home, build, log, exited.promise);
 }
 
-async function failureIn(log: string, offset: number): Promise<string> {
-  const text = await readFile(log, "utf8").catch(() => "");
-  const lines = text.slice(offset).split("\n");
-  const error = lines.findLast((line) => line.startsWith("error: "));
+/**
+ * Has the installed unit run this client's command and waits for its registration. The
+ * unit is rewritten to the command first; when that changed it or a service of another
+ * build runs, the supervisor stops the service and starts the unit again, so it never
+ * restarts the old build behind the client's back.
+ */
+async function supervise(
+  options: EnsureServiceOptions,
+  supervisor: Supervisor,
+  build: string,
+  found: Registration | undefined,
+): Promise<Registration> {
+  const log = await openLog(options.home);
+  const changed = await writeUnit(supervisor, unitPlan(options));
 
-  return error === undefined
-    ? "The Nyte service exited before it was ready."
-    : error.slice("error: ".length);
+  try {
+    if (changed || found !== undefined)
+      await relaunchUnit(supervisor, () => stopService(options.home));
+    else await startUnit(supervisor);
+  } catch (cause) {
+    if (found !== undefined && alive(found.pid)) throw new Error(skew(found, build));
+
+    throw cause;
+  }
+
+  return awaitRegistration(options.home, build, log, new Promise(() => undefined));
+}
+
+/** What the installed unit runs for a client: its command in its home, with its PATH and service port. */
+function unitPlan(options: EnsureServiceOptions): UnitPlan {
+  const inherited = ["PATH", "NYTE_SERVICE_PORT"].flatMap((name) => {
+    const value = process.env[name];
+
+    return value === undefined ? [] : [[name, value] as const];
+  });
+
+  return {
+    home: options.home,
+    command: options.command,
+    environment: { HOME: options.home, ...Object.fromEntries(inherited) },
+  };
+}
+
+interface ServiceLog {
+  readonly path: string;
+  /** The log's size before this start, so only the start's own lines explain a failure. */
+  readonly offset: number;
+}
+
+async function openLog(home: string): Promise<ServiceLog> {
+  const path = logPath(home);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  await mkdir(dirname(registrationPath(home)), { recursive: true, mode: 0o700 });
+
+  return { path, offset: (await stat(path).catch(() => undefined))?.size ?? 0 };
+}
+
+/**
+ * Waits for the service of `build` to register. The registration file is the readiness
+ * signal: the service renames it into place once it listens, so each change to it, a line
+ * in the log, or the started process exiting wakes one check instead of a timer polling.
+ * An `error: ` line or the exit, with nothing left holding the lock, fails the start.
+ */
+async function awaitRegistration(
+  home: string,
+  build: string,
+  log: ServiceLog,
+  exited: Promise<void>,
+): Promise<Registration> {
+  const registration = registrationPath(home);
+  let wake = Promise.withResolvers<void>();
+  let gone = false;
+
+  const watchers = [
+    watch(dirname(registration), (_event, file) => {
+      if (file === null || file === basename(registration)) wake.resolve();
+    }),
+    watch(dirname(log.path), () => wake.resolve()),
+  ];
+
+  void exited.then(() => {
+    gone = true;
+    wake.resolve();
+  });
+
+  const timeout = setTimeout(() => wake.resolve(), START_TIMEOUT_MS);
+  const deadline = Date.now() + START_TIMEOUT_MS;
+
+  try {
+    while (Date.now() < deadline) {
+      const exitedBefore = gone;
+      const found = await findService(home);
+
+      if (found?.version === build) return found;
+
+      if (found !== undefined) throw new Error(skew(found, build));
+      const failure = await failureIn(log);
+
+      if ((exitedBefore || failure !== undefined) && (await lockHolder(home)) === undefined)
+        throw new Error(
+          `${failure ?? "The Nyte service exited before it was ready."} See ${log.path}.`,
+        );
+      await wake.promise;
+      wake = Promise.withResolvers<void>();
+    }
+  } finally {
+    clearTimeout(timeout);
+
+    for (const watcher of watchers) watcher.close();
+  }
+
+  throw new Error(`The Nyte service didn't start within 20 s. See ${log.path}.`);
+}
+
+/** The last `error: ` line the service logged since `log.offset`, without its prefix. */
+async function failureIn(log: ServiceLog): Promise<string | undefined> {
+  const text = await readFile(log.path, "utf8").catch(() => "");
+  const lines = text.slice(log.offset).split("\n");
+
+  return lines.findLast((line) => line.startsWith("error: "))?.slice("error: ".length);
 }
 
 async function answers(registration: Registration): Promise<boolean> {

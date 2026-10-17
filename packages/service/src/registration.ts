@@ -79,7 +79,7 @@ export function alive(pid: number): boolean {
 }
 
 export function logPath(home: string): string {
-  return join(home, ".nyte", "service.log");
+  return join(home, ".nyte", "logs", "service.log");
 }
 
 export async function readRegistration(home: string): Promise<Registration | undefined> {

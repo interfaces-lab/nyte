@@ -13,6 +13,7 @@ import { acquireLock, removeRegistration, writeRegistration } from "./registrati
 import type { Registration } from "./registration.ts";
 import { AttachmentSchema, SERVICE_ROUTES } from "./routes.ts";
 import type { ServiceEvent } from "./routes.ts";
+import { unitInstalled } from "./supervisor.ts";
 
 export interface StartServiceOptions {
   readonly open: () => Promise<Host>;
@@ -71,7 +72,8 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
 
   const lifetime = new Lifetime(
     { grace: IDLE_GRACE_MS, timers: REAL_TIMERS, idle: terminate, ...options.lifetime },
-    () => working(host),
+    async () =>
+      (await unitInstalled(home)) || (await connect.view()).kind === "linked" || working(host),
   );
 
   let listener: Listener | undefined;

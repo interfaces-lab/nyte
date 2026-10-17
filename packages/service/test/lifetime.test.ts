@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
+import { generateMachineKey, publicKeySet } from "@nyte-ai/connect/signing";
 import { sdk } from "@nyte-ai/sdk";
 import type { Host } from "@nyte-ai/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -14,6 +15,7 @@ import {
   startService,
 } from "../src/index.ts";
 import type { Timers } from "../src/index.ts";
+import { findSupervisor } from "../src/supervisor.ts";
 
 /** Timers that wait until the test fires them. */
 function manualTimers() {
@@ -69,17 +71,21 @@ describe("the service's lifetime", () => {
     clock = manualTimers();
     idled = false;
 
+    close = await serve(undefined);
+  });
+
+  const serve = async (connect: { readonly origin: string } | undefined) => {
     const service = await startService({
       open: async () => host,
       home,
       port: 0,
       version: "v1",
-      connect: undefined,
+      connect,
       lifetime: { timers: clock.timers, idle: () => void (idled = true) },
     });
 
-    close = () => service.close();
-  });
+    return () => service.close();
+  };
 
   afterEach(async () => {
     await close();
@@ -126,5 +132,53 @@ describe("the service's lifetime", () => {
     await job.stop();
     clock.fire();
     await until(() => idled);
+  });
+
+  it.runIf(findSupervisor("/") !== undefined)("never stops while it's installed", async () => {
+    const unit = findSupervisor(home)?.unit ?? "";
+    await mkdir(dirname(unit), { recursive: true });
+    await writeFile(unit, "");
+
+    clock.fire();
+    await until(() => clock.pending.size === 1);
+    expect(idled).toBe(false);
+
+    await rm(unit);
+    clock.fire();
+    await until(() => idled);
+  });
+
+  it("never stops while this machine is linked to a Nyte account", async () => {
+    await close();
+    const origin = "https://connect.nyte.test";
+    const signing = { ...(await generateMachineKey()), kid: "broker-1" };
+
+    await writeFile(
+      join(home, ".nyte", "connect.json"),
+      JSON.stringify({
+        version: 4,
+        enabled: false,
+        link: {
+          origin,
+          environment: { id: "0b6f4d8e-6c0a-4a43-9d0e-5f0c1f6a7b21", name: "Test Mac" },
+          owner: { id: "user_1", label: "test@example.com" },
+          key: await generateMachineKey(),
+          brokerKeys: publicKeySet([signing]),
+          devices: [],
+          revocations: [],
+          consumed: [],
+        },
+        linkKey: null,
+        unlinks: [],
+      }),
+      { mode: 0o600 },
+    );
+    clock = manualTimers();
+    host = await sdk.open({ home, workspace: { kind: "local", path: cwd } });
+    close = await serve({ origin });
+
+    clock.fire();
+    await until(() => clock.pending.size === 1);
+    expect(idled).toBe(false);
   });
 });

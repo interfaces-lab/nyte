@@ -38,8 +38,9 @@ export function terminate(): void {
 
 /**
  * Counts the client processes attached to the service and stops it once none has been
- * attached for the grace period, unless `working` reports a run driving or a job alive,
- * in which case it checks again a grace period later.
+ * attached for the grace period, unless `working` reports a reason to stay (the service
+ * installed, Connect linked, a run driving or a job alive), in which case it checks again
+ * a grace period later.
  */
 export class Lifetime {
   readonly #options: LifetimeOptions;

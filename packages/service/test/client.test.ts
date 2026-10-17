@@ -157,7 +157,7 @@ describe("ensureService", () => {
 
     await expect(
       ensureService({ home, version: "v1", command: failingService("error: Port 9 is taken.") }),
-    ).rejects.toThrow(`Port 9 is taken. See ${join(home, ".nyte", "service.log")}.`);
+    ).rejects.toThrow(`Port 9 is taken. See ${join(home, ".nyte", "logs", "service.log")}.`);
     expect(Date.now() - begun).toBeLessThan(5_000);
   });
 });
