@@ -34,7 +34,7 @@ const MEASURING = process.env.NYTE_SCENARIO_U_MEASURE === "1";
 const TOKEN = "nyte-scenario-u-token-0123456789abcdef";
 
 function messages(page: Page) {
-  return page.getByRole("region", { name: "Messages" });
+  return page.getByRole("region", { name: "Messages", exact: true });
 }
 
 function workbench(page: Page) {

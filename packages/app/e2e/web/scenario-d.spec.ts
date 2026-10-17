@@ -23,7 +23,7 @@ import {
 import { ciWebHost } from "./scenario-d-server.ts";
 
 function messages(page: Page): Locator {
-  return page.getByRole("region", { name: "Messages" });
+  return page.getByRole("region", { name: "Messages", exact: true });
 }
 
 function chatPane(page: Page): Locator {

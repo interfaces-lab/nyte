@@ -1,4 +1,4 @@
-import { _electron, expect } from "@playwright/test";
+import { _electron, errors as playwrightErrors, expect } from "@playwright/test";
 import type { CDPSession, ElectronApplication, Page } from "@playwright/test";
 import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
@@ -719,11 +719,16 @@ async function measure(
 
         for (let turn = 1; turn <= options.soakTurns; turn++) {
           await send(page, `/soak ${turn}`);
-          const answered = await expect(messages(page))
-            .toContainText(`Soak answer ${turn}.`, { timeout: 20_000 })
+          const answered = await messages(page)
+            .getByText(`Soak answer ${turn}.`)
+            .waitFor({ timeout: 20_000 })
             .then(
               () => true,
-              () => false,
+              (cause: unknown) => {
+                if (cause instanceof playwrightErrors.TimeoutError) return false;
+
+                throw cause;
+              },
             );
 
           if (!answered) {
