@@ -38,8 +38,10 @@ const streamEnd = "Stream end marker.";
 /**
  * Every metric this bench reports, with the judged build's ceiling (`max`) or floor (`min`), or
  * `null` to report only. Every ceiling is absolute (one 60 Hz frame, no idle CPU, no leak, the long
- * chat open within 100 ms). The other latencies main c7094f5c sets a bar for (the panels, the
- * switches) are reported, not gated: compare them with `--compare`'s baseline column.
+ * chat open within 100 ms), except the cold Terminal, Files and Changes panels: main c7094f5c's
+ * median over nine runs on the same machine plus 25%. The other latencies main sets a bar for (the
+ * Browser panel, warm panels, the switches) are reported, not gated: compare them with
+ * `--compare`'s baseline column.
  */
 const metricFields = [
   { key: "openTranscriptMs", label: "Open the 2,000-message chat", unit: "ms", max: 100 },
@@ -52,11 +54,11 @@ const metricFields = [
   { key: "scrollFrameP95Ms", label: "Frame time p95, scrolling", unit: "ms", max: 16.7 * 1.5 },
   { key: "browserColdMs", label: "Browser panel, cold", unit: "ms", max: null },
   { key: "browserWarmMs", label: "Browser panel, warm", unit: "ms", max: null },
-  { key: "terminalColdMs", label: "Terminal panel, cold", unit: "ms", max: null },
+  { key: "terminalColdMs", label: "Terminal panel, cold", unit: "ms", max: 55.3 * 1.25 },
   { key: "terminalWarmMs", label: "Terminal panel, warm", unit: "ms", max: null },
-  { key: "filesColdMs", label: "Files panel, cold", unit: "ms", max: null },
+  { key: "filesColdMs", label: "Files panel, cold", unit: "ms", max: 15.8 * 1.25 },
   { key: "filesWarmMs", label: "Files panel, warm", unit: "ms", max: null },
-  { key: "changesColdMs", label: "Changes panel, cold", unit: "ms", max: null },
+  { key: "changesColdMs", label: "Changes panel, cold", unit: "ms", max: 13.5 * 1.25 },
   { key: "changesWarmMs", label: "Changes panel, warm", unit: "ms", max: null },
   { key: "idleCpuPercent", label: "Idle CPU, all processes", unit: "%", max: 0.5 },
   { key: "idleWakeups", label: "Idle wakeups/s, all processes", unit: "count", max: null },
