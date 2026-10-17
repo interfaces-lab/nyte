@@ -32,6 +32,7 @@ import { headRef, parseHeadRef, runRef } from "../store/refs.ts";
 import { EMPTY_REVISION, load } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { followedTrace, startSpan, tracing } from "../util/trace.ts";
+import { foldCheckpointing } from "./checkpoint.ts";
 import { emptyFold, fold } from "./fold.ts";
 import { withPair } from "./project.ts";
 
@@ -53,7 +54,10 @@ interface FoldFeed {
   dispose(): void;
 }
 
-type Feeds = Pick<Kernel, "store" | "bus" | "publisher" | "sessions" | "jobs" | "pages">;
+type Feeds = Pick<
+  Kernel,
+  "store" | "bus" | "publisher" | "sessions" | "jobs" | "pages" | "description"
+>;
 
 type LiveStreams = ReadonlyMap<SessionId, ReadonlyMap<PartId, LiveStream>>;
 
@@ -74,27 +78,68 @@ const PUBLISH_LINGER = 30_000;
 
 const NO_PAIRS: ReadonlyMap<HeadName, HeadPair> = new Map();
 
+/** Returns the kernel's folds, one per session shared by its holders: each starts from the session's fold checkpoint where the store keeps one, reads the log past it, and offers itself for a new checkpoint once read and as each run ends. */
 export function createFoldCache(kernel: Feeds): FoldCache {
   const entries = new Map<SessionId, Entry>();
   const streams = trackStreams(kernel.bus);
 
   const build = (session: SessionId, principal: PrincipalId): Entry => {
+    let ready = false;
+
+    const checkpoints = foldCheckpointing(
+      kernel,
+      session,
+      () => entry.state,
+      () => streams.has(session),
+    );
+
     const entry: Entry = {
       state: emptyFold({ session, principal }),
       holders: 0,
       linger: undefined,
-      feed: openFoldFeed(kernel, streams, session, ({ event, head }) => {
-        const folded = fold(entry.state, event);
-        const name = movedHead(event);
-        const next = head === null || name === null ? folded : withPair(folded, name, head);
+      feed: openFoldFeed(
+        kernel,
+        streams,
+        session,
+        async () => {
+          let restored = await checkpoints.restore(principal);
 
-        if (next === entry.state) return;
-        entry.state = next;
+          if (restored === null) return 0;
 
-        for (const listener of entry.listeners) listener(next);
-      }),
+          for (const name of restored.heads.keys())
+            restored = withPair(
+              restored,
+              name,
+              readHeadPair(await kernel.store.refs.get(headRef(session, name))),
+            );
+
+          entry.state = restored;
+
+          return restored.seq;
+        },
+        ({ event, head }) => {
+          const folded = fold(entry.state, event);
+          const name = movedHead(event);
+          const next = head === null || name === null ? folded : withPair(folded, name, head);
+
+          if (next === entry.state) return;
+          entry.state = next;
+
+          if (ready && event.kind === "run" && event.change === "ended") checkpoints.settle();
+
+          for (const listener of entry.listeners) listener(next);
+        },
+      ),
       listeners: new Set(),
     };
+
+    void entry.feed.ready.then(
+      () => {
+        ready = true;
+        checkpoints.settle();
+      },
+      () => undefined,
+    );
 
     return entry;
   };
@@ -372,6 +417,7 @@ function openFoldFeed(
   kernel: Feeds,
   streams: LiveStreams,
   session: SessionId,
+  restore: () => Promise<number>,
   push: (item: FeedItem) => void,
 ): FoldFeed {
   let through = 0;
@@ -457,6 +503,9 @@ function openFoldFeed(
 
   const ready = (async () => {
     try {
+      through = await restore();
+
+      if (!open) return;
       await readPast();
 
       if (!open) return;

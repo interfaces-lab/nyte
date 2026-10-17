@@ -382,6 +382,7 @@ export function createKernel(input: KernelOptions): Kernel {
     host: input.host,
     folds: createFoldCache({
       store: input.store,
+      description: input.description,
       bus,
       publisher,
       sessions,

@@ -72,6 +72,8 @@ export type {
 export type { Head, Receipt, Run, SendReceipt, Session, Sessions } from "./contract/session.ts";
 
 export type {
+  FoldCheckpoint,
+  FoldCheckpoints,
   ObjectStore,
   RefStore,
   SessionIndex,

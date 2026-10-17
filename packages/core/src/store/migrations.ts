@@ -492,6 +492,18 @@ const workspaceIsolation: RewriteStep = {
   },
 };
 
+/** One fold checkpoint per session, a cache over the log that core rewrites when a fold settles and ignores when it cannot decode one. Postgres keeps none. */
+const foldCheckpoints: SchemaStep = {
+  kind: "schema",
+  name: "2026-10-16-fold-checkpoints",
+  sql: {
+    sqlite: [
+      "CREATE TABLE IF NOT EXISTS fold_checkpoints (session TEXT PRIMARY KEY, seq INTEGER NOT NULL, body TEXT NOT NULL)",
+    ],
+    postgres: [],
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -508,6 +520,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   wokenCalls,
   hookToolArgs,
   workspaceIsolation,
+  foldCheckpoints,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
