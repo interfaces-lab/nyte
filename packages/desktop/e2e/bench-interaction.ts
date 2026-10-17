@@ -37,12 +37,12 @@ const streamEnd = "Stream end marker.";
 
 /**
  * Every metric this bench reports, with the judged build's ceiling (`max`) or floor (`min`), or
- * `null` to report only. Every ceiling is absolute (one 60 Hz frame, no idle CPU, no leak). The
- * latencies main c7094f5c sets a bar for (opening the long chat, the panels, the switches) are
- * reported, not gated: compare them with `--compare`'s baseline column.
+ * `null` to report only. Every ceiling is absolute (one 60 Hz frame, no idle CPU, no leak, the long
+ * chat open within 100 ms). The other latencies main c7094f5c sets a bar for (the panels, the
+ * switches) are reported, not gated: compare them with `--compare`'s baseline column.
  */
 const metricFields = [
-  { key: "openTranscriptMs", label: "Open the 2,000-message chat", unit: "ms", max: null },
+  { key: "openTranscriptMs", label: "Open the 2,000-message chat", unit: "ms", max: 100 },
   { key: "keystrokeMs", label: "Keystroke to paint, in that chat", unit: "ms", max: 16.7 },
   { key: "keystrokeWaitingMs", label: "  with vsync wait", unit: "ms", max: null },
   { key: "streamFrameP95Ms", label: "Frame time p95, streaming", unit: "ms", max: 16.7 * 1.5 },
