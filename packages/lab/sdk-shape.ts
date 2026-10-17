@@ -303,10 +303,11 @@ export async function readGit(workspace: Workspace) {
 }
 
 /**
- * GitHub goes through the serving machine's `gh`: its login, the repository
- * the workspace's remotes name, and the checked-out branch's pull request
- * with its check rollup. Missing `gh`, a signed-out CLI and a folder without
- * a GitHub remote are states and outcomes, not failures.
+ * GitHub goes through the serving machine's `gh`: the host serves its one
+ * login as `connection.github`, and a workspace's `github` the repository its
+ * remotes name and the checked-out branch's pull request with its check
+ * rollup. Missing `gh`, a signed-out CLI and a folder without a GitHub remote
+ * are states and outcomes, not failures.
  */
 export async function openPullRequest(workspace: Workspace) {
   const capability = await workspace.github();
@@ -314,7 +315,7 @@ export async function openPullRequest(workspace: Workspace) {
   if (capability.kind !== "available") return capability;
   const state = await capability.api.state();
 
-  if (state.kind !== "ready" || state.pullRequest.kind === "ready") return state;
+  if (state.pullRequest.kind !== "none") return state;
 
   return capability.api.createPullRequest({ title: "Fix tab close", body: "Why it changed." });
 }
