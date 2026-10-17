@@ -93,9 +93,11 @@ export async function hasBranch(
  * show as uncommitted there too. A workspace below the repository's root gets
  * the same folder below the worktree's.
  *
- * `remove` keeps a worktree with uncommitted changes, folder and branch;
- * otherwise it removes the folder (`git worktree remove`) and deletes the
- * branch unless it moved past `base`.
+ * `remove` keeps a worktree, folder and branch, while it holds uncommitted
+ * changes or ignored files, since none were copied in and one may be a
+ * `.env` or a local database (a wholly ignored folder such as `node_modules`
+ * or a build's output aside); otherwise it removes the folder
+ * (`git worktree remove`) and deletes the branch unless it moved past `base`.
  */
 export function localWorktrees(options?: {
   readonly home?: string;
@@ -192,7 +194,13 @@ export function localWorktrees(options?: {
         ])
       ).split("\n");
 
-      if ((await git(root, ["status", "--porcelain"])).trim() !== "")
+      const status = await git(root, ["status", "--porcelain", "--ignored", "-z"]);
+
+      if (
+        status
+          .split("\0")
+          .some((entry) => entry !== "" && !(entry.startsWith("!! ") && entry.endsWith("/")))
+      )
         return { folder: "kept", branch: "kept" };
       await git(common, ["worktree", "remove", root]);
 
