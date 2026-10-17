@@ -53,9 +53,10 @@ export async function findService(home: string): Promise<Registration | undefine
 /**
  * Returns the running service of this client's build, starting one when none runs. A
  * service of another build is stopped and replaced; one that won't stop fails with the
- * build skew and the fix. With the service installed, its supervisor starts and replaces
- * it on this client's command. The client then stays attached until `signal` aborts or
- * the process exits, which keeps the service from stopping while idle.
+ * build skew and the fix. With the service installed, its supervisor starts the unit as
+ * installed, never rewritten: a service of another build there fails with the skew and
+ * `nyte service install` as the fix. The client then stays attached until `signal`
+ * aborts or the process exits, which keeps the service from stopping while idle.
  */
 export async function ensureService(options: EnsureServiceOptions): Promise<Registration> {
   const build = await serviceBuild(options.version);
@@ -74,7 +75,7 @@ async function startBuild(
   const supervisor = findSupervisor(options.home);
 
   if (supervisor !== undefined && (await unitInstalled(options.home)))
-    return supervise(options, supervisor, build, found);
+    return startInstalled(options, supervisor, build, found);
 
   if (found !== undefined) await replace(options.home, found, build);
 
@@ -89,6 +90,10 @@ async function replace(home: string, found: Registration, build: string): Promis
 
 function skew(found: Registration, build: string): string {
   return `The Nyte service (pid ${String(found.pid)}) runs build ${found.version} but this nyte is build ${build}; stop it with \`nyte service stop\` and try again.`;
+}
+
+function installedSkew(found: Registration, build: string): string {
+  return `The installed Nyte service (pid ${String(found.pid)}) runs build ${found.version} but this nyte is build ${build}; run \`nyte service install\` from this nyte to make it the service.`;
 }
 
 /**
@@ -195,7 +200,13 @@ export async function installService(options: EnsureServiceOptions): Promise<Ins
   return {
     kind: "installed",
     supervisor,
-    registration: await supervise(options, supervisor, build, found),
+    registration: await supervise(
+      options,
+      supervisor,
+      build,
+      found,
+      await writeUnit(supervisor, unitPlan(options)),
+    ),
   };
 }
 
@@ -231,22 +242,50 @@ async function start(options: EnsureServiceOptions, build: string): Promise<Regi
 }
 
 /**
- * Has the installed unit run this client's command and waits for its registration. The
- * unit is rewritten to the command first; when that changed it or a service of another
- * build runs, the supervisor stops the service and starts the unit again, so it never
- * restarts the old build behind the client's back.
+ * Starts the installed unit as it is written, for a client that did not install it: only
+ * `nyte service install` writes the unit, so two installed builds never keep repointing it
+ * at each other. A service of another build, running or started from the unit, fails with
+ * how to make this build the service.
+ */
+async function startInstalled(
+  options: EnsureServiceOptions,
+  supervisor: Supervisor,
+  build: string,
+  found: Registration | undefined,
+): Promise<Registration> {
+  if (found !== undefined) throw new Error(installedSkew(found, build));
+  const log = await openLog(options.home);
+  await startUnit(supervisor);
+
+  try {
+    return await awaitRegistration(options.home, build, log, new Promise(() => undefined));
+  } catch (cause) {
+    const started = await findService(options.home);
+
+    if (started !== undefined && started.version !== build)
+      throw new Error(installedSkew(started, build), { cause });
+
+    throw cause;
+  }
+}
+
+/**
+ * Has the supervisor run the unit `nyte service install` just wrote and waits for its
+ * registration. When the unit `rewritten` or a service runs already, the supervisor stops
+ * the service and starts the unit again, so it never restarts the old build behind the
+ * client's back.
  */
 async function supervise(
   options: EnsureServiceOptions,
   supervisor: Supervisor,
   build: string,
   found: Registration | undefined,
+  rewritten: boolean,
 ): Promise<Registration> {
   const log = await openLog(options.home);
-  const changed = await writeUnit(supervisor, unitPlan(options));
 
   try {
-    if (changed || found !== undefined)
+    if (rewritten || found !== undefined)
       await relaunchUnit(supervisor, () => stopService(options.home));
     else await startUnit(supervisor);
   } catch (cause) {

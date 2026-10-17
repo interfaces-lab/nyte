@@ -120,15 +120,31 @@ describe("the installed service", () => {
     expect(await readSupervision(home)).toMatchObject({ pid: installed.registration.pid });
   });
 
-  it("replaces a supervised service of another build through the supervisor", async () => {
+  it("leaves an installed service of another build to install, which replaces it", async () => {
     const old = await installService({ home, version: "v1", command: fakeService(v1) });
 
-    const replaced = await ensureService({ home, version: "v2", command: fakeService(v2) });
+    await expect(ensureService({ home, version: "v2", command: fakeService(v2) })).rejects.toThrow(
+      `The installed Nyte service (pid ${String(old.registration.pid)}) runs build ${v1} but this nyte is build ${v2}; run \`nyte service install\` from this nyte to make it the service.`,
+    );
+    expect(alive(old.registration.pid)).toBe(true);
+    expect(await readFile(old.supervisor.unit, "utf8")).toContain(v1);
 
-    expect(replaced.version).toBe(v2);
+    const replaced = await installService({ home, version: "v2", command: fakeService(v2) });
+
+    expect(replaced.registration.version).toBe(v2);
     expect(alive(old.registration.pid)).toBe(false);
-    expect(await readSupervision(home)).toMatchObject({ kind: "installed", pid: replaced.pid });
     expect(await readFile(old.supervisor.unit, "utf8")).toContain(v2);
+  });
+
+  it("starts a stopped installed service as installed for a client of another build", async () => {
+    const old = await installService({ home, version: "v1", command: fakeService(v1) });
+    expect(await stopService(home)).toBe(true);
+
+    await expect(ensureService({ home, version: "v2", command: fakeService(v2) })).rejects.toThrow(
+      /runs build .* but this nyte is build .*; run `nyte service install` from this nyte/u,
+    );
+    expect(await readFile(old.supervisor.unit, "utf8")).toContain(v1);
+    expect((await readRegistration(home))?.version).toBe(v1);
   });
 
   it("has the supervisor start an installed service that was stopped", async () => {
@@ -146,7 +162,7 @@ describe("the installed service", () => {
     await installService({ home, version: "v1", command: fakeService(v1) });
     await stopService(home);
 
-    await expect(ensureService({ home, version: "v2", command: NEVER_STARTED })).rejects.toThrow(
+    await expect(installService({ home, version: "v2", command: NEVER_STARTED })).rejects.toThrow(
       `The client started the service itself. See ${logPath(home)}.`,
     );
   });
