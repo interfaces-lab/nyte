@@ -47,6 +47,7 @@ import { registerAccount } from "./account.ts";
 import type { AccountSession } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
 import { accountScheme } from "../account/scheme.ts";
+import { previewCanvasOffscreen } from "./canvas-preview.ts";
 import { canvasShellUrl, registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
@@ -407,6 +408,12 @@ function startHost(): HostProcess {
       answer: async (request, signal) => {
         if (request.kind === "agent")
           return { kind: "agent", answer: await answerAgent(browserSurfaces.agent, request.call) };
+
+        if (request.kind === "canvas-preview")
+          return {
+            kind: "canvas-preview",
+            outcome: await previewCanvasOffscreen(canvasShell, request.request),
+          };
 
         if (account === undefined) throw new Error("This build has no Nyte account.");
 

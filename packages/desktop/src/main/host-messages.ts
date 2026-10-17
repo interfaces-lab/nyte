@@ -4,6 +4,10 @@
  * input is still decoded, in the process that answers it.
  */
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type {
+  CanvasPreviewOutcome,
+  CanvasPreviewRequest,
+} from "@nyte-ai/plugin/core/canvas-preview";
 import type { CallReply, CallRequest } from "../shared/ipc.ts";
 import type { AccountState } from "./account-session.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
@@ -20,14 +24,16 @@ export interface HostProcessOptions {
   readonly account: AccountState | null;
 }
 
-/** Something the host process needs main for: the browser panel or the signed-in account. */
+/** Something the host process needs main for: the browser panel, the signed-in account, or an offscreen canvas preview. */
 export type HostAsk =
   | { readonly kind: "agent"; readonly call: AgentCall }
-  | { readonly kind: "account"; readonly call: AccountCall };
+  | { readonly kind: "account"; readonly call: AccountCall }
+  | { readonly kind: "canvas-preview"; readonly request: CanvasPreviewRequest };
 
 export type MainAnswer =
   | { readonly kind: "agent"; readonly answer: AgentAnswer }
-  | { readonly kind: "account"; readonly answer: AccountAnswer };
+  | { readonly kind: "account"; readonly answer: AccountAnswer }
+  | { readonly kind: "canvas-preview"; readonly outcome: CanvasPreviewOutcome };
 
 /** Something main asks the host process for. */
 export type MainAsk =
