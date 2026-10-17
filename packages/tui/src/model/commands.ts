@@ -1,4 +1,4 @@
-import type { CommandInfo, SkillInfo } from "@nyte-ai/sdk";
+import type { CommandInfo, SkillInfo, WorkspaceCatalogView } from "@nyte-ai/sdk";
 import {
   availableSlashCommands,
   hasInlineSkills,
@@ -9,7 +9,6 @@ import type { BuiltinSlashName, SlashCommand } from "../lib/slash.ts";
 import type { Intent } from "./msg.ts";
 import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.ts";
 import type { SettingRow } from "./settings.ts";
-import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 interface CommandEntry {
@@ -141,20 +140,24 @@ function setting(state: State, row: SettingRow, argument: string): Intent {
 }
 
 export function indexSkills(state: State): ReadonlyMap<string, SkillInfo> {
-  return new Map(
-    (followedSession(state)?.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
-  );
+  return new Map(readChatCatalog(state).skills.map((skill) => [skill.name, skill]));
 }
 
-/** The followed chat's plugin commands, or those a blank chat's folder would offer it. */
 export function pluginCommands(state: State): readonly CommandInfo[] {
-  const { chat, folderCommands } = state.facts;
+  return readChatCatalog(state).commands;
+}
 
-  if (chat?.kind === "session") return chat.view?.catalog.commands ?? [];
+const NO_CATALOG: WorkspaceCatalogView = { commands: [], skills: [] };
 
-  return chat?.folder.kind === "folder" && folderCommands?.workspace === chat.folder.id
-    ? folderCommands.commands
-    : [];
+/** The followed chat's plugin commands and skills, or those a blank chat's folder would offer it. */
+function readChatCatalog(state: State): WorkspaceCatalogView {
+  const { chat, folderCatalog } = state.facts;
+
+  if (chat?.kind === "session") return chat.view?.catalog ?? NO_CATALOG;
+
+  return chat?.folder.kind === "folder" && folderCatalog?.workspace === chat.folder.id
+    ? folderCatalog.catalog
+    : NO_CATALOG;
 }
 
 export function slashNamespace(state: State): readonly SlashCommand[] {

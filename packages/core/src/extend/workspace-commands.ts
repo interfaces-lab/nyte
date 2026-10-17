@@ -1,8 +1,8 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
-  CommandInfo,
   Json,
   SessionId,
+  WorkspaceCatalogView,
   WorkspaceCommandOutcome,
   WorkspaceId,
 } from "@nyte-ai/schema";
@@ -12,15 +12,19 @@ import { readWorkspace } from "../env/environment.ts";
 import { newChatPlugins } from "./activation.ts";
 import { createHookDispatch } from "./hooks.ts";
 import { activateApart } from "./plugin-runtime.ts";
-import { commandInfos, createRegistrySet, invokeCommand } from "./registry.ts";
+import { commandInfos, createRegistrySet, invokeCommand, skillInfos } from "./registry.ts";
+import { scanWorkspaceResources } from "./resources.ts";
 import { settingHandle } from "./settings.ts";
 
-/** The commands a new chat in `workspace` would offer, read before the chat exists. */
-export function listWorkspaceCommands(
+/** The commands and skills a new chat in `workspace` would offer, read before the chat exists. */
+export function readWorkspaceCatalog(
   kernel: Kernel,
   workspace: WorkspaceId,
-): Promise<readonly CommandInfo[]> {
-  return withNewChatPlugins(kernel, workspace, async ({ registries }) => commandInfos(registries));
+): Promise<WorkspaceCatalogView> {
+  return withNewChatPlugins(kernel, workspace, async ({ registries }) => ({
+    commands: commandInfos(registries),
+    skills: skillInfos(registries),
+  }));
 }
 
 /** Runs command `name` as a new chat in `workspace` would offer it, without the chat: a prompt it answers with comes back for the chat it starts. */
@@ -47,8 +51,9 @@ export function runWorkspaceCommand(
 
 /**
  * Activates the plugins a new chat in `workspace` would load under a stand-in chat id no chat
- * has, hands them to `work`, then disposes them. A plugin whose activation needs the chat fails
- * here and contributes nothing; its issues stay with the chats that load it.
+ * has, over the resources that chat would read, hands them to `work`, then disposes them. A
+ * plugin whose activation needs the chat fails here and contributes nothing; its issues stay with
+ * the chats that load it.
  */
 async function withNewChatPlugins<T>(
   kernel: Kernel,
@@ -71,8 +76,11 @@ async function withNewChatPlugins<T>(
   });
 
   const host = { registries, hooks: createHookDispatch(kernel, session), report: () => {} };
-  const plugins = await newChatPlugins(kernel, workspace);
-  const activated = await activateApart(kernel, session, host, plugins);
+  const [plugins, inputs] = await Promise.all([
+    newChatPlugins(kernel, workspace),
+    scanWorkspaceResources(kernel, workspace),
+  ]);
+  const activated = await activateApart(kernel, session, host, plugins, inputs);
 
   try {
     await registries.materialize();

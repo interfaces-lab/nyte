@@ -269,6 +269,30 @@ describe("resources", () => {
     ]);
   });
 
+  it("offers a new chat's skills before any chat exists, the folder's own only while it is trusted", async () => {
+    const { host, workspace } = await world({
+      disk: seeded(),
+      home: "/home/ada",
+      plugins: [resourcesPlugin],
+    });
+    const at = host.workspace(workspace);
+    const skills = async () =>
+      (await at.catalog()).skills.map((skill) => [skill.name, skill.location]);
+
+    expect(await skills()).toEqual([
+      ["lint", "/home/ada/.agents/skills/lint/SKILL.md"],
+      ["review", "/home/ada/.nyte/skills/review/SKILL.md"],
+      ["shared", ".nyte/skills/shared/SKILL.md"],
+    ]);
+    expect(await at.update({ projectResources: false })).toEqual({ kind: "updated" });
+    expect(await skills()).toEqual([
+      ["lint", "/home/ada/.agents/skills/lint/SKILL.md"],
+      ["review", "/home/ada/.nyte/skills/review/SKILL.md"],
+      ["shared", "/home/ada/.nyte/skills/shared/SKILL.md"],
+    ]);
+    expect((await host.sessions.list()).items).toEqual([]);
+  });
+
   it("reads ancestors through the workspace's own files, not the host's, and none from a sandbox confined to its root", async () => {
     const disk = seeded();
     const { kernel, host, workspace } = await world({ disk });

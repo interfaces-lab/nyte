@@ -16,7 +16,7 @@ import { advance, cover, repair } from "../drive/execution.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
 import { createSettingsApi } from "../extend/settings.ts";
-import { listWorkspaceCommands, runWorkspaceCommand } from "../extend/workspace-commands.ts";
+import { readWorkspaceCatalog, runWorkspaceCommand } from "../extend/workspace-commands.ts";
 import { inspect } from "../store/inspect.ts";
 import { forwarded } from "../util/iterable.ts";
 import { watchHost } from "./host.ts";
@@ -102,7 +102,7 @@ export function createConnection(
   const workspace = (id: WorkspaceId): Workspace => {
     const handle: Workspace = {
       ...workspaceHandle(kernel, context, id, client),
-      commands: () => listWorkspaceCommands(kernel, id),
+      catalog: () => readWorkspaceCatalog(kernel, id),
       command: (name, args) => runWorkspaceCommand(kernel, context, id, name, args),
     };
 

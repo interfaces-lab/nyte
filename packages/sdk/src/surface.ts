@@ -269,6 +269,7 @@ export type {
   ViewOptions,
   WaitOutcome,
   WaitTarget,
+  WorkspaceCatalogView,
   WorkspaceCommandOutcome,
   WorkspaceId,
   WorkspaceInfo,

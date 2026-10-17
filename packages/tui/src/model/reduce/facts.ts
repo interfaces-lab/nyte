@@ -1,11 +1,12 @@
-import type { MessageId, SessionId, SessionView } from "@nyte-ai/sdk";
+import type { MessageId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../../lib/format.ts";
 import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
 import { addPart } from "../draft.ts";
+import type { Effect } from "../effect.ts";
 import type { Fact } from "../msg.ts";
 import { currentQuestion, sameQuestion } from "../question.ts";
-import { followedSession, followedShells } from "../state.ts";
+import { chatFolder, followedSession, followedShells } from "../state.ts";
 import type { FollowedSession, Handback, ShellJob, State } from "../state.ts";
 import { andThen, insertText, setDraft, stay, withFacts, withLocal, withNotice } from "../step.ts";
 import type { MsgOf, SomeHandlers, Step } from "../step.ts";
@@ -32,7 +33,7 @@ export const factHandlers = {
   "host-opened": (state) => stay(withFacts(state, { host: "open" })),
   "session-opened": (state, msg) => ({
     state: opened(state, msg),
-    effects: [{ kind: "check-trust", workspace: msg.info.workspace, ask: "if-needed" }],
+    effects: trustOnEntry(state, msg.info.workspace),
   }),
   "blank-opened": (state, msg) => ({
     state: withLocal(entered(withFacts(state, { chat: msg.chat, tasks: [] })), {
@@ -41,8 +42,8 @@ export const factHandlers = {
     effects:
       msg.chat.folder.kind === "folder"
         ? [
-            { kind: "check-trust", workspace: msg.chat.folder.id, ask: "if-needed" },
-            { kind: "load-folder-commands", workspace: msg.chat.folder.id },
+            ...trustOnEntry(state, msg.chat.folder.id),
+            { kind: "load-folder-catalog", workspace: msg.chat.folder.id },
           ]
         : [],
   }),
@@ -55,8 +56,8 @@ export const factHandlers = {
     return {
       state: withFacts(state, { chat: { ...chat, folder: { kind: "folder", id: msg.workspace } } }),
       effects: [
-        { kind: "check-trust", workspace: msg.workspace, ask: "if-needed" },
-        { kind: "load-folder-commands", workspace: msg.workspace },
+        ...trustOnEntry(state, msg.workspace),
+        { kind: "load-folder-catalog", workspace: msg.workspace },
       ],
     };
   },
@@ -96,15 +97,15 @@ export const factHandlers = {
       : stay(withFacts(state, { catalog: { generation: msg.generation, catalog: msg.catalog } })),
   settings: (state, msg) => stay(withFacts(state, { settings: msg.settings })),
   "host-settings": (state, msg) => stay(withFacts(state, { hostSettings: msg.settings })),
-  "folder-commands": (state, msg) =>
-    msg.generation < (state.facts.folderCommands?.generation ?? -1)
+  "folder-catalog": (state, msg) =>
+    msg.generation < (state.facts.folderCatalog?.generation ?? -1)
       ? stay(state)
       : stay(
           withFacts(state, {
-            folderCommands: {
+            folderCatalog: {
               generation: msg.generation,
               workspace: msg.workspace,
-              commands: msg.commands,
+              catalog: msg.catalog,
             },
           }),
         ),
@@ -126,6 +127,14 @@ export const factHandlers = {
     stay(withLocal(state, { failures: [...state.local.failures, msg.failure] })),
   tick: (state) => stay(state),
 } satisfies SomeHandlers;
+
+function trustOnEntry(state: State, workspace: WorkspaceId): readonly Effect[] {
+  const before = state.facts.chat === null ? null : chatFolder(state.facts.chat);
+
+  return before?.kind === "folder" && before.id === workspace
+    ? []
+    : [{ kind: "check-trust", workspace, ask: "if-needed" }];
+}
 
 function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): State {
   return entered(

@@ -109,6 +109,14 @@ export const SessionCatalogViewType = Type.Object({
 
 export type SessionCatalogView = Decoded<typeof SessionCatalogViewType>;
 
+/** What a new chat in a workspace would offer before it exists: its plugin commands and skills. */
+export const WorkspaceCatalogViewType = Type.Object({
+  commands: Type.Array(CommandInfoType),
+  skills: Type.Array(SkillInfoType),
+});
+
+export type WorkspaceCatalogView = Decoded<typeof WorkspaceCatalogViewType>;
+
 export const CommandOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("ran"), output: nullable(Type.String()) }),
   Type.Object({ kind: Type.Literal("sent"), receipt: idSchema<"receipt">() }),

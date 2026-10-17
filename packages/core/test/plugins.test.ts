@@ -583,7 +583,7 @@ describe("commands", () => {
     });
     const at = host.workspace(workspace);
 
-    expect((await at.commands()).map((command) => command.name)).toEqual([
+    expect((await at.catalog()).commands.map((command) => command.name)).toEqual([
       "host/hello",
       "folder/probe",
       "folder/ask",
@@ -595,8 +595,8 @@ describe("commands", () => {
     expect((await host.sessions.list()).items).toEqual([]);
 
     expect(await at.update({ projectResources: false })).toEqual({ kind: "updated" });
-    expect((await at.commands()).map((command) => command.name)).toEqual(["host/hello"]);
-    await expect(host.workspace(asId("missing")).commands()).rejects.toMatchObject({
+    expect((await at.catalog()).commands.map((command) => command.name)).toEqual(["host/hello"]);
+    await expect(host.workspace(asId("missing")).catalog()).rejects.toMatchObject({
       code: "unknown",
     });
   });

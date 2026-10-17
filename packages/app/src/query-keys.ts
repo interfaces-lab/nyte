@@ -5,6 +5,9 @@ export const keys = {
   hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
   workspaces: ["workspaces"] as const,
+  // Under workspaces, so a trust decision re-reads it too.
+  workspaceCatalog: (workspace: WorkspaceId | undefined) =>
+    ["workspaces", "catalog", workspace] as const,
   /** The last run's folders, shown until the live list arrives. */
   firstFrameWorkspaces: ["first-frame", "workspaces"] as const,
   /** The last run's recent chats, shown until the live directory arrives. */

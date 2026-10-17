@@ -9,6 +9,7 @@ import type {
   Schema,
   SessionCatalogView,
   SessionId,
+  SkillInfo,
   ValidationIssue,
 } from "@nyte-ai/schema";
 import { CORE_CONTEXT } from "../contract/host.ts";
@@ -313,12 +314,7 @@ async function sessionCatalog(
   return {
     commands: commandInfos(registries),
     settings: await settingInfos(kernel, session),
-    skills: registries.skills.entries().map(({ item, owner }) => ({
-      name: item.name,
-      owner,
-      description: item.description,
-      location: item.location,
-    })),
+    skills: skillInfos(registries),
     agents: registries.agents.entries().map(({ item, owner }) => ({
       id: item.id,
       owner,
@@ -328,6 +324,15 @@ async function sessionCatalog(
     })),
     tools: toolSource(runtime).list(),
   };
+}
+
+export function skillInfos(registries: RegistrySet): readonly SkillInfo[] {
+  return registries.skills.entries().map(({ item, owner }) => ({
+    name: item.name,
+    owner,
+    description: item.description,
+    location: item.location,
+  }));
 }
 
 export function commandInfos(registries: RegistrySet): readonly CommandInfo[] {

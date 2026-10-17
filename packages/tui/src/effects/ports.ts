@@ -1,6 +1,5 @@
 import type {
   BlobId,
-  CommandInfo,
   CommandOutcome,
   ConfigureOutcome,
   GitHubAccountState,
@@ -28,6 +27,7 @@ import type {
   Thinking,
   TreeView,
   UserContent,
+  WorkspaceCatalogView,
   WorkspaceCommandOutcome,
   WorkspaceId,
 } from "@nyte-ai/sdk";
@@ -113,9 +113,9 @@ export interface HostPort {
 
 export interface WorkspacePort {
   readonly id: WorkspaceId;
-  /** The plugin commands a new chat here would offer. */
-  commands(): Promise<readonly CommandInfo[]>;
-  /** Runs one of {@link WorkspacePort.commands} without a chat; a `prompt` outcome is the first message of the chat it starts. */
+  /** The plugin commands and skills a new chat here would offer. */
+  catalog(): Promise<WorkspaceCatalogView>;
+  /** Runs a command of {@link WorkspacePort.catalog} without a chat; a `prompt` outcome is the first message of the chat it starts. */
   command(name: string, argument: string | null): Promise<WorkspaceCommandOutcome>;
   /** The folder on this machine, or `null` when the workspace is elsewhere. */
   cwd(): Promise<string | null>;

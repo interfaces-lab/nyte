@@ -351,7 +351,7 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     },
 
     "workspace.info": ({ workspace: id }) => workspace(id).info(),
-    "workspace.commands": ({ workspace: id }) => workspace(id).commands(),
+    "workspace.catalog": ({ workspace: id }) => workspace(id).catalog(),
     "workspace.command": ({ workspace: id, name, args }) => workspace(id).command(name, args),
     "workspace.watch": async ({ workspace: id }) => workspace(id).watch(),
     "mcp.watch": async ({ workspace: id }) => workspace(id).mcp.watch(),

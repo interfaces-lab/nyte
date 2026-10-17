@@ -150,7 +150,7 @@ export type Effect =
       readonly workspace: WorkspaceId;
       readonly value: boolean | null;
     }
-  | { readonly kind: "load-folder-commands"; readonly workspace: WorkspaceId }
+  | { readonly kind: "load-folder-catalog"; readonly workspace: WorkspaceId }
   | { readonly kind: "login-answer"; readonly dialog: DialogId; readonly answer: string | null }
   | { readonly kind: "read-preview"; readonly marker: string; readonly path: string }
   | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string }

@@ -238,7 +238,7 @@ export function hostPort(
 function workspacePort(host: Connection, id: WorkspaceId): WorkspacePort {
   return {
     id,
-    commands: () => host.workspace(id).commands(),
+    catalog: () => host.workspace(id).catalog(),
     command: (name, argument) =>
       host.workspace(id).command(name, argument === null ? undefined : argument),
     async cwd() {

@@ -190,18 +190,18 @@ export async function setTrust(effect: Of<"set-trust">, context: HandlerContext)
     chat.folder.kind === "folder" &&
     chat.folder.id === effect.workspace
   )
-    await loadFolderCommands(effect.workspace, context);
+    await loadFolderCatalog(effect.workspace, context);
 }
 
-/** Reads the plugin commands a new chat in `workspace` would offer, for the blank chat there. */
-export async function loadFolderCommands(
+/** Reads the plugin commands and skills a new chat in `workspace` would offer, for the blank chat there. */
+export async function loadFolderCatalog(
   workspace: WorkspaceId,
   context: HandlerContext,
 ): Promise<void> {
   const { dispatch, ports, scope } = context;
-  const generation = (scope.folderCommandsGeneration += 1);
-  const commands = await ports.host.workspace(workspace).commands();
-  dispatch({ kind: "folder-commands", generation, workspace, commands });
+  const generation = (scope.folderCatalogGeneration += 1);
+  const catalog = await ports.host.workspace(workspace).catalog();
+  dispatch({ kind: "folder-catalog", generation, workspace, catalog });
 }
 
 export async function applySetting(

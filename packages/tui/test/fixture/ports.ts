@@ -1,7 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import { ManualClock } from "@opentui/core/testing";
 import type {
-  CommandInfo,
   CommandOutcome,
   HostView,
   ModelCatalogView,
@@ -11,6 +10,7 @@ import type {
   SessionView,
   SubmitDraft,
   UserContent,
+  WorkspaceCatalogView,
   WorkspaceCommandOutcome,
 } from "@nyte-ai/sdk";
 import { createHandle } from "../../src/effects/local-ports.ts";
@@ -64,8 +64,8 @@ export interface FakeHost extends HostPort {
   readonly starts: Parameters<HostPort["start"]>[0][];
   /** Each folder registration asked of the host, by path; `null` is the launch folder. */
   readonly folders: (string | null)[];
-  /** The plugin commands every workspace offers a new chat. */
-  folderCommands: readonly CommandInfo[];
+  /** The plugin commands and skills every workspace offers a new chat. */
+  folderCatalog: WorkspaceCatalogView;
   /** Each command run in a workspace without a chat. */
   readonly folderRuns: { readonly name: string; readonly argument: string | null }[];
   folderCommandResult: WorkspaceCommandOutcome | null;
@@ -272,13 +272,13 @@ export function fakeHost(): FakeHost {
     addSession,
     starts,
     folders,
-    folderCommands: [],
+    folderCatalog: { commands: [], skills: [] },
     folderRuns: [],
     folderCommandResult: null,
     session: (id) => addSession(id),
     workspace: (id) => ({
       id,
-      commands: async () => host.folderCommands,
+      catalog: async () => host.folderCatalog,
       async command(name, argument) {
         host.folderRuns.push({ name, argument });
 

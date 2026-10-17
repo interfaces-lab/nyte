@@ -623,6 +623,25 @@ export function useMentionFiles(enabled: boolean) {
   return useQuery(mentionFilesOptions(enabled));
 }
 
+/** The plugin commands and skills a new chat in the open workspace would offer. */
+export function useWorkspaceCatalog() {
+  const host = useHostState();
+  const workspace = host.data.workspace?.id;
+
+  return useQuery({
+    queryKey: keys.workspaceCatalog(workspace),
+    queryFn: async () => {
+      if (workspace === undefined) throw new Error("Open a workspace to list its skills");
+
+      return (await connected()).workspace(workspace).catalog();
+    },
+    enabled: workspace !== undefined,
+    staleTime: 10_000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  });
+}
+
 export function useWorkspaceFile(path: string | undefined) {
   return useQuery({
     queryKey: keys.workspaceFile(path ?? ""),

@@ -1,5 +1,4 @@
 import type {
-  CommandInfo,
   Delivery,
   MessageId,
   ModelCatalogView,
@@ -11,6 +10,7 @@ import type {
   SettingInfo,
   Thinking,
   ModelRef,
+  WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
@@ -35,8 +35,8 @@ export interface Facts {
   readonly catalog: CatalogFacts;
   /** The host's own settings, which a chat's catalog repeats; what a blank chat offers. */
   readonly hostSettings: readonly SettingInfo[];
-  /** The plugin commands a new chat in `workspace` would offer; what a blank chat there offers. */
-  readonly folderCommands: FolderCommands | null;
+  /** The plugin commands and skills a new chat in `workspace` would offer; what a blank chat there offers. */
+  readonly folderCatalog: FolderCatalog | null;
   readonly settings: ResolvedSettings;
   readonly tasks: readonly Task[];
   readonly shells: readonly ShellJob[];
@@ -88,10 +88,10 @@ export interface Selection {
   readonly fast: boolean;
 }
 
-interface FolderCommands {
+interface FolderCatalog {
   readonly generation: number;
   readonly workspace: WorkspaceId;
-  readonly commands: readonly CommandInfo[];
+  readonly catalog: WorkspaceCatalogView;
 }
 
 interface CatalogFacts {
@@ -286,7 +286,7 @@ export function initialState(bootstrap: Bootstrap): State {
       chat: bootstrap.chat,
       catalog: { generation: -1, catalog: null },
       hostSettings: [],
-      folderCommands: null,
+      folderCatalog: null,
       settings: bootstrap.settings,
       tasks: [],
       shells: [],

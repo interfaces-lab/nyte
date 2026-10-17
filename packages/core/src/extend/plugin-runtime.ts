@@ -424,13 +424,15 @@ export function createPluginRuntime(
 
 /**
  * Activates the valid ones of `plugins` in `host` for stand-in chat `session`, with no
- * environment or resources; one whose activation fails is left out. `dispose` ends them all.
+ * environment and `inputs` as its resources; one whose activation fails is left out. `dispose`
+ * ends them all.
  */
 export async function activateApart(
   kernel: Kernel,
   session: SessionId,
   host: InstanceHost,
   plugins: readonly Plugin<"core">[],
+  inputs: Resources | null,
 ): Promise<{
   readonly api: (owner: string) => PluginApi<"core"> | undefined;
   readonly dispose: Disposer;
@@ -439,7 +441,7 @@ export async function activateApart(
 
   for (const { plugin, ok } of preflight(plugins, [])) {
     if (!ok) continue;
-    const instance = createInstance(kernel, { plugin, session, ...UNRESOLVED });
+    const instance = createInstance(kernel, { plugin, session, env: UNRESOLVED.env, inputs });
     const leave = instance.join(host);
 
     try {

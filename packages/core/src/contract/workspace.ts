@@ -9,7 +9,6 @@ import type {
   CallId,
   Capability,
   ChangeSet,
-  CommandInfo,
   ConsoleEntry,
   Cursor,
   DiffOptions,
@@ -62,6 +61,7 @@ import type {
   SessionId,
   SnapshotId,
   StopOutcome,
+  WorkspaceCatalogView,
   WorkspaceCommandOutcome,
   WorkspaceId,
   WorkspaceInfo,
@@ -545,13 +545,14 @@ export interface Workspace {
   reload(): Promise<{ readonly kind: "updated" } | { readonly kind: "missing" }>;
 
   /**
-   * The plugin commands a new chat here would offer, before any chat exists: those of the
-   * plugins its first message would load, project plugins only once the folder is trusted.
+   * The plugin commands and skills a new chat here would offer, before any chat exists: those of
+   * the plugins its first message would load, project plugins and skills only once the folder is
+   * trusted.
    */
-  commands(): Promise<readonly CommandInfo[]>;
+  catalog(): Promise<WorkspaceCatalogView>;
 
   /**
-   * Runs command `name` of {@link Workspace.commands} without a chat. A command that answers
+   * Runs command `name` of {@link Workspace.catalog} without a chat. A command that answers
    * with a prompt runs nothing more: its `prompt` outcome is the first message of the chat it
    * asks to start.
    */

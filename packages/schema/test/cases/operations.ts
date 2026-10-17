@@ -357,10 +357,10 @@ export const operations = {
   "part.close input": operation(OPERATIONS["part.close"].input, { session, part }, { session }),
   "part.close output": operation(OPERATIONS["part.close"].output, null, {}),
   "workspace.info input": operation(OPERATIONS["workspace.info"].input, workspaceInput, {}),
-  "workspace.commands output": operation(
-    OPERATIONS["workspace.commands"].output,
-    [catalog.commands[0]],
-    [{ name: "x" }],
+  "workspace.catalog output": operation(
+    OPERATIONS["workspace.catalog"].output,
+    { commands: catalog.commands, skills: catalog.skills },
+    { commands: catalog.commands },
   ),
   "workspace.command input": operation(
     OPERATIONS["workspace.command"].input,

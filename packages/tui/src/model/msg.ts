@@ -1,5 +1,4 @@
 import type {
-  CommandInfo,
   CommitId,
   Delivery,
   Json,
@@ -12,6 +11,7 @@ import type {
   SessionInfo,
   SessionView,
   SettingInfo,
+  WorkspaceCatalogView,
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ChatCommand } from "../lib/constants.ts";
@@ -177,10 +177,10 @@ export type Fact =
   | { readonly kind: "catalog"; readonly generation: number; readonly catalog: ModelCatalogView }
   | { readonly kind: "host-settings"; readonly settings: readonly SettingInfo[] }
   | {
-      readonly kind: "folder-commands";
+      readonly kind: "folder-catalog";
       readonly generation: number;
       readonly workspace: WorkspaceId;
-      readonly commands: readonly CommandInfo[];
+      readonly catalog: WorkspaceCatalogView;
     }
   | { readonly kind: "settings"; readonly settings: ResolvedSettings }
   | { readonly kind: "tasks"; readonly session: SessionId; readonly tasks: readonly Task[] }

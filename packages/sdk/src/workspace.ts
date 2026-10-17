@@ -42,7 +42,7 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
     id: workspace,
     info: () => rows.call("workspace.info", { workspace }),
     watch: () => rows.watch("workspace.watch", { workspace }),
-    commands: () => rows.call("workspace.commands", { workspace }),
+    catalog: () => rows.call("workspace.catalog", { workspace }),
     command: (name, args) => rows.call("workspace.command", { workspace, name, args }),
     mcp: {
       watch: () => rows.watch("mcp.watch", { workspace }),

@@ -3,7 +3,7 @@ import type { SessionId, ValidationIssue, WorkspaceId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Plugin, PluginApi } from "../contract/plugin.ts";
-import type { FilesApi, Resources, ScanEntry } from "../contract/workspace.ts";
+import type { ExecutionEnv, FilesApi, Resources, ScanEntry } from "../contract/workspace.ts";
 import { classifyFileSupport, readWorkspace } from "../env/environment.ts";
 import { projectTrust, WORKSPACE_TRUST } from "../env/trust.ts";
 import { kvRef } from "../store/refs.ts";
@@ -39,7 +39,15 @@ export async function scanResources(kernel: Kernel, session: SessionId): Promise
 
   const entry: ScanEntry = {
     workspace,
-    resources: scan(kernel, session, workspace),
+    resources: scan(kernel, workspace, () => kernel.environments.attach(session)).then(
+      (resources) => {
+        const api = kernel.plugins.runtimes().get(session)?.api("resources");
+
+        for (const issue of resourceIssues(resources)) api?.report(issue);
+
+        return resources;
+      },
+    ),
     stop: () => watching.abort(),
   };
 
@@ -86,6 +94,11 @@ export function dropScans(
     table.delete(session);
     entry.stop();
   }
+}
+
+/** Scans the resources a new chat in `workspace` would read, before the chat exists, over the workspace's own attachment. */
+export function scanWorkspaceResources(kernel: Kernel, workspace: WorkspaceId): Promise<Resources> {
+  return scan(kernel, workspace, () => kernel.environments.attachWorkspace(workspace));
 }
 
 export function resourceIssues(resources: Resources): readonly ValidationIssue[] {
@@ -179,8 +192,8 @@ function tryReadResources(api: PluginApi<"core">): Resources | null {
 
 async function scan(
   kernel: Kernel,
-  session: SessionId,
   workspace: WorkspaceId,
+  attach: () => Promise<ExecutionEnv>,
 ): Promise<Resources> {
   const record = await readWorkspace(kernel.store, workspace);
   const user = await userFiles(kernel);
@@ -190,7 +203,7 @@ async function scan(
   const attached =
     record !== null &&
     classifyFileSupport(kernel.environments.provider(record.target.kind)) === "available"
-      ? kernel.environments.attach(session)
+      ? attach()
       : null;
 
   const env =
@@ -275,9 +288,6 @@ async function scan(
   };
 
   scanIssues.set(resources, issues);
-  const api = kernel.plugins.runtimes().get(session)?.api("resources");
-
-  for (const issue of issues) api?.report(issue);
 
   return resources;
 }

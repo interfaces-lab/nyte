@@ -177,7 +177,7 @@ export function workspaceHandle(
   context: Pick<ConnectionContext, "origin">,
   id: WorkspaceId,
   client: object | null = null,
-): Omit<Workspace, "commands" | "command"> {
+): Omit<Workspace, "catalog" | "command"> {
   const viewing = async (): Promise<SessionId | null> => {
     const origin = context.origin;
 

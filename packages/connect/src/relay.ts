@@ -173,7 +173,7 @@ export const RELAY_OPERATIONS = [
   "part.close",
   "workspace.info",
   "workspace.watch",
-  "workspace.commands",
+  "workspace.catalog",
   "workspace.command",
   "mcp.watch",
   "mcp.reconnect",

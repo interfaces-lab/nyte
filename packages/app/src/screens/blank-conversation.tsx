@@ -36,7 +36,13 @@ import {
 import { activePane } from "../layout/pane-layout.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
-import { useCatalog, useHostState, useMentionFiles, useSetPreference } from "../queries.ts";
+import {
+  useCatalog,
+  useHostState,
+  useMentionFiles,
+  useSetPreference,
+  useWorkspaceCatalog,
+} from "../queries.ts";
 import { pickerDefaults } from "../preference-projection.ts";
 import { selectedModelOption } from "../conversation/model-picker-state.ts";
 import { useReleaseStartupReads } from "../startup.ts";
@@ -97,6 +103,7 @@ export function BlankConversation({
   const workspace = host.data.workspace;
   const catalog = useCatalog();
   const workspaceFiles = useMentionFiles(workspace !== undefined);
+  const workspaceCatalog = useWorkspaceCatalog();
   const actions = usePaneActions();
   useReleaseStartupReads(true);
   const viewStore = usePaneViewStateStore();
@@ -221,7 +228,11 @@ export function BlankConversation({
             onSubmit={start}
             placeholder="Ask Nyte, or type / for skills and @ for context"
             disabled={held}
-            suggestionCatalog={composerSource({ commands: NO_COMMANDS, skills: [] }, false)}
+            suggestionCatalog={
+              workspace === undefined
+                ? { status: "ready", data: { commands: NO_COMMANDS, skills: [] } }
+                : composerSource(workspaceCatalog.data, workspaceCatalog.isError)
+            }
             mentionFiles={
               workspace === undefined
                 ? { status: "ready", data: [] }

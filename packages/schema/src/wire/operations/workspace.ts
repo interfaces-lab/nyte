@@ -13,7 +13,7 @@ import { McpChangeSchema, McpServerConfigType, McpViewSchema } from "../../mcp.t
 import { nullable } from "../nullable.ts";
 import { CapabilityWireSchema } from "../../primitives.ts";
 import { stopOutcomeSchema } from "../../runs.ts";
-import { CommandInfoType, WorkspaceCommandOutcomeSchema } from "../../sessions.ts";
+import { WorkspaceCatalogViewType, WorkspaceCommandOutcomeSchema } from "../../sessions.ts";
 import { WorkspaceInfoSchema } from "../../workspaces.ts";
 import { NOTHING, ON_WORKSPACE, wireObject, wireSchema, WORKSPACE } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
@@ -52,11 +52,11 @@ export const WORKSPACE_OPERATIONS = {
     input: ON_WORKSPACE,
     output: WorkspaceInfoSchema,
   },
-  "workspace.commands": {
+  "workspace.catalog": {
     ...PARTICIPANT,
     kind: "query",
     input: ON_WORKSPACE,
-    output: wireSchema(Type.Array(CommandInfoType)),
+    output: wireSchema(WorkspaceCatalogViewType),
   },
   "workspace.command": {
     ...PARTICIPANT,
