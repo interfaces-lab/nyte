@@ -99,7 +99,8 @@ function launchEnvironment(options: LaunchOptions) {
     ...options.environment,
     HOME: options.home,
     USERPROFILE: options.home,
-    NYTE_DESKTOP_HOST_DELAY_MS: options.hostDelayMs === undefined ? "" : String(options.hostDelayMs),
+    NYTE_DESKTOP_HOST_DELAY_MS:
+      options.hostDelayMs === undefined ? "" : String(options.hostDelayMs),
   };
 }
 
