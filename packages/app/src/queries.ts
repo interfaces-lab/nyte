@@ -400,15 +400,19 @@ export function useSessionSearch(search: string, enabled = true) {
   );
 }
 
+/** A chat's info: its session directory row, or a host read once the directory has answered without it. */
 export function useSession(sessionId: SessionId | undefined) {
   const projection = useSessionProjection();
-  const roots = useWatch(directoryWatch("all")).value;
-  const listed = roots?.find((session) => session.id === sessionId);
+  const directory = useWatch(directoryWatch("all"));
+  const listed = directory.value?.find((session) => session.id === sessionId);
 
   const read = useQuery({
     queryKey: keys.session(sessionId ?? asId<"session">("")),
     queryFn: () => (sessionId === undefined ? null : readSession(sessionId).catch(missingAsNull)),
-    enabled: listed === undefined && sessionId !== undefined,
+    enabled:
+      (directory.value !== undefined || directory.error !== undefined) &&
+      listed === undefined &&
+      sessionId !== undefined,
   });
 
   const row = listed ?? read.data;
