@@ -38,7 +38,7 @@ import { scriptedReply } from "../src/main/fixtures/e2e-models.ts";
 import { inspectProcessTree, survivors } from "./process-tree.ts";
 
 /** The id both builds list the scripted model under, as an Anthropic model. */
-export const POLISH_MODEL = "scripted-polish";
+const POLISH_MODEL = "scripted-polish";
 
 const BlockSchema = Type.Object({
   type: Type.String(),
