@@ -31,6 +31,11 @@ const WATCH_DELAY_MS = 100;
 
 const LINGER_MS = 30_000;
 
+const UNTRUSTED: McpChange = {
+  kind: "invalid",
+  message: "Project servers need a trusted folder on this machine.",
+};
+
 /**
  * Serves the servers in `<home>/.nyte/mcp.json`, and in a trusted local
  * workspace's `.nyte/mcp.json`, to the host's sessions. Each file is watched
@@ -698,11 +703,7 @@ function hub(input: {
       held(workspace, async (pool) => {
         const path = fileFor(pool, scope);
 
-        if (path === null)
-          return {
-            kind: "invalid",
-            message: "Project servers need a trusted folder on this machine.",
-          };
+        if (path === null) return UNTRUSTED;
 
         if (!isJson(config))
           return { kind: "invalid", message: "The server's config is not JSON." };
@@ -725,7 +726,7 @@ function hub(input: {
       held(workspace, async (pool) => {
         const path = fileFor(pool, scope);
 
-        if (path === null) return { kind: "missing" };
+        if (path === null) return UNTRUSTED;
 
         return write(path, (servers) => {
           if (!(server in servers)) return null;
