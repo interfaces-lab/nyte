@@ -68,9 +68,8 @@ it.skipIf(shell === undefined || chromium === undefined)(
 
     expect(report.errors).toEqual([]);
     expect([...report.png.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
-    expect(report.heights.map(({ width }) => width)).toEqual([808, 358]);
-    expect(report.heights[0]?.height).toBeGreaterThan(600);
-    expect(report.heights[1]?.height).toBeGreaterThan(report.heights[0]?.height ?? 0);
+    expect(report.heights.chat).toBeGreaterThan(600);
+    expect(report.heights.phone).toBeGreaterThan(report.heights.chat);
 
     const proof = process.env["NYTE_CANVAS_PROOF"];
 

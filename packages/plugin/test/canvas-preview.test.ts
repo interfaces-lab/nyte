@@ -1,7 +1,7 @@
 import { isPart } from "@nyte-ai/core";
 import { expect, it } from "vitest";
 import { canvas, canvasPlugin } from "../src/canvas/canvas.ts";
-import { CANVAS_PREVIEW_WIDTHS, runCanvasPreview } from "../src/canvas/canvas-preview.ts";
+import { runCanvasPreview } from "../src/canvas/canvas-preview.ts";
 import type {
   CanvasPreviewPage,
   CanvasPreviewReport,
@@ -16,10 +16,7 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 const report: CanvasPreviewReport = {
   png: PNG,
-  heights: [
-    { width: CANVAS_PREVIEW_WIDTHS.chat, height: 312 },
-    { width: CANVAS_PREVIEW_WIDTHS.phone, height: 2400 },
-  ],
+  heights: { chat: 312, phone: 2400 },
   errors: [{ phase: "render", message: "TypeError: x is undefined (chart.tsx:4:9)", stack: null }],
   console: [{ level: "warn", text: "three: low precision" }],
 };
@@ -63,10 +60,7 @@ it("drives a shell page: installs the harness once the shell runs, captures at t
 
   expect(await runCanvasPreview(page, request)).toEqual({
     png: PNG,
-    heights: [
-      { width: 808, height: 312 },
-      { width: 358, height: 640 },
-    ],
+    heights: { chat: 312, phone: 640 },
     errors: [],
     console: [{ level: "log", text: "hi" }],
   });

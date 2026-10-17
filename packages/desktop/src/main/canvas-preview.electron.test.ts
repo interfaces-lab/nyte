@@ -27,7 +27,7 @@ const Results = Type.Array(
   Type.Object({
     theme: Type.String(),
     png: Type.Number(),
-    heights: Type.Array(Type.Object({ width: Type.Number(), height: Type.Number() })),
+    heights: Type.Object({ chat: Type.Number(), phone: Type.Number() }),
     errors: Type.Array(Type.Object({ message: Type.String() })),
     console: Type.Array(Type.Object({ level: Type.String(), text: Type.String() })),
   }),
@@ -90,8 +90,7 @@ test.skipIf(!built)(
       for (const result of results) {
         expect(result.errors, result.theme).toEqual([]);
         expect(result.png, result.theme).toBeGreaterThan(10_000);
-        expect(result.heights.map(({ width }) => width)).toEqual([808, 358]);
-        expect(result.heights[0]?.height ?? 0).toBeGreaterThan(600);
+        expect(result.heights.chat, result.theme).toBeGreaterThan(600);
       }
 
       const proof = process.env["NYTE_CANVAS_PROOF"];

@@ -21,6 +21,9 @@ import type { CanvasHostContext, CanvasModule } from "./canvas-protocol.ts";
 /** The widths a preview measures at, in CSS pixels: the desktop chat column (its 840 px measure less the gutters) and a phone's. */
 export const CANVAS_PREVIEW_WIDTHS = { chat: 808, phone: 358 } as const;
 
+/** What the model reads each preview width as. */
+const WIDTH_NAMES = { chat: "the chat column", phone: "a phone" } as const;
+
 /** How long a preview waits for the canvas to settle at one width before it reports what it has. */
 const SETTLE_TIMEOUT_MS = 8000;
 
@@ -64,15 +67,15 @@ export type CanvasPreviewLog = { readonly level: string; readonly text: string }
 
 /**
  * Returns what a preview saw: a PNG of the canvas at the chat column's
- * width, its height at each width it was measured at, its errors and its
- * console.
+ * width, its height there and at a phone's (`CANVAS_PREVIEW_WIDTHS`), its
+ * errors and its console.
  *
  * @category plugins
  * @since 0.1.0
  */
 export type CanvasPreviewReport = {
   readonly png: Uint8Array;
-  readonly heights: readonly { readonly width: number; readonly height: number }[];
+  readonly heights: { readonly chat: number; readonly phone: number };
   readonly errors: readonly CanvasPreviewError[];
   readonly console: readonly CanvasPreviewLog[];
 };
@@ -234,10 +237,7 @@ export async function runCanvasPreview(
 
   return {
     png,
-    heights: [
-      { width: chat, height: narrow.height },
-      { width: phone, height: last.height },
-    ],
+    heights: { chat: narrow.height, phone: last.height },
     errors: last.errors.map((error) => ({ ...error, stack: error.stack ?? null })),
     console: last.console,
   };
@@ -245,12 +245,12 @@ export async function runCanvasPreview(
 
 /** Returns the preview as the model reads it beside the screenshot: heights, errors, console. */
 export function describeCanvasPreview(report: CanvasPreviewReport): string {
-  const heights = report.heights.map(({ width, height }) => {
-    const where = width === CANVAS_PREVIEW_WIDTHS.chat ? "the chat column" : "a phone";
+  const heights = (["chat", "phone"] as const).map((width) => {
+    const height = report.heights[width];
     const scrolls =
       height > CANVAS_MAX_HEIGHT ? `, so it scrolls past ${CANVAS_MAX_HEIGHT} px` : "";
 
-    return `At ${width} px wide (${where}) it is ${height} px tall${scrolls}.`;
+    return `At ${CANVAS_PREVIEW_WIDTHS[width]} px wide (${WIDTH_NAMES[width]}) it is ${height} px tall${scrolls}.`;
   });
   const errors =
     report.errors.length === 0
