@@ -25,7 +25,7 @@ import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
 import { keys, queryClient, readSession } from "./queries.ts";
-import { readRouteSession } from "./route-session.ts";
+import { routeChatExists } from "./route-session.ts";
 import { directoryWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
 import { preferences, useSetting } from "./preferences/index.ts";
@@ -394,17 +394,33 @@ function leaveMissingChat(router: AppRouter): void {
   const sessionId = currentRouteSession(router);
 
   if (sessionId === undefined) return;
-  void readRouteSession({
+  void routeChatExists({
     client: queryClient,
     sessionId,
+    listed: readDirectory,
     read: () => readSession(sessionId),
   }).then(
-    (session) => {
-      if (session === null && currentRouteSession(router) === sessionId)
+    (exists) => {
+      if (!exists && currentRouteSession(router) === sessionId)
         void router.navigate({ to: indexRoute.to, replace: true });
     },
     () => undefined,
   );
+}
+
+/** The session directory's first list, or none when its watch fails before one. */
+async function readDirectory(): Promise<readonly SessionInfo[]> {
+  const directory = directoryWatch("all");
+  const answered = Promise.withResolvers<void>();
+
+  const leave = directory.subscribe(() => {
+    if (directory.value !== undefined || directory.error !== undefined) answered.resolve();
+  });
+
+  if (directory.value === undefined && directory.error === undefined) await answered.promise;
+  leave();
+
+  return directory.value ?? [];
 }
 
 const settingsRoute = createRoute({
