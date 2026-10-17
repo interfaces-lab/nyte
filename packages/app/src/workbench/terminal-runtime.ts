@@ -1,6 +1,5 @@
-import { FitAddon, Ghostty, Terminal } from "ghostty-web";
+import { FitAddon, Terminal } from "ghostty-web";
 import type { ITheme } from "ghostty-web";
-import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
 import { serial } from "@nyte-ai/schema/serial";
 import { toast } from "@nyte-ai/ui/toast";
 import { preferences } from "../preferences/index.ts";
@@ -19,6 +18,7 @@ import {
   terminalPrinted,
 } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
+import { loadGhostty } from "./ghostty.ts";
 
 /** A command line the user entered, at the buffer row it was entered on. */
 interface CommandMark {
@@ -34,23 +34,12 @@ interface TerminalView {
   fit(): void;
 }
 
-let ghostty: Promise<Ghostty> | undefined;
-
 const views = new Map<string, TerminalView>();
 
 const selectionListeners = new Map<string, Set<() => void>>();
 
 function notifySelection(id: string): void {
   for (const listener of selectionListeners.get(id) ?? []) listener();
-}
-
-function loadGhostty(): Promise<Ghostty> {
-  ghostty ??= Ghostty.load(wasmUrl).catch((cause: unknown) => {
-    ghostty = undefined;
-    throw cause;
-  });
-
-  return ghostty;
 }
 
 /** Canvas terminals need resolved sRGB values, not CSS variables or color-mix expressions. */

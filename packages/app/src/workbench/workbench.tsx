@@ -45,9 +45,10 @@ import type {
 } from "./controller";
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
-import { Deferred } from "../deferred.tsx";
+import { Deferred, loadDeferred, readDeferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 
 /**
  * Views visited since launch stay mounted so a dev server terminal or a
@@ -124,19 +125,32 @@ function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElem
   );
 }
 
-function openWorkbenchTab({
-  view,
-  kind,
-  workspacePath,
-  capabilities,
-}: {
+interface WorkbenchTabRequest {
   readonly view: WorkbenchViewKey;
   readonly kind: WorkbenchTabKind;
   readonly workspacePath: string | null;
   readonly capabilities: ClientCapabilities;
-}): void {
-  if (!workbenchTabAvailable({ kind: "project" }, kind, capabilities)) return;
+}
 
+/**
+ * A panel from the workbench chunk opens once the chunk has loaded: mounting
+ * it earlier suspends, and React holds the revealed panel back for 300 ms.
+ * A failed load still opens the tab, whose panel retries the chunk.
+ */
+function openWorkbenchTab(request: WorkbenchTabRequest): void {
+  if (!workbenchTabAvailable({ kind: "project" }, request.kind, request.capabilities)) return;
+
+  if (request.kind === "browser" || readDeferred("workbench") !== undefined) {
+    addWorkbenchTab(request);
+
+    return;
+  }
+
+  const add = (): void => addWorkbenchTab(request);
+  void loadDeferred("workbench").then(add, add);
+}
+
+function addWorkbenchTab({ view, kind, workspacePath }: WorkbenchTabRequest): void {
   const id = workbenchController.actions.openTab({
     view,
     tab: defaultWorkbenchTab(kind),
@@ -144,6 +158,37 @@ function openWorkbenchTab({
   });
 
   if (kind === "terminal") void terminalActions.create({ id, workspacePath });
+}
+
+/**
+ * Once the first frame is up, loads the terminal's wasm and then the panels'
+ * chunk, each when the renderer idles, so a first panel opens without them.
+ * Safari has no idle callbacks and loads them on first open instead.
+ */
+function prefetchWorkbench(): () => void {
+  if (!("requestIdleCallback" in window)) return () => undefined;
+
+  let idle = 0;
+  let stopped = false;
+
+  const loadPanels = (): void => {
+    if (!stopped) idle = requestIdleCallback(() => void loadDeferred("workbench").catch(() => {}));
+  };
+
+  const frame = requestAnimationFrame(() => {
+    idle = requestIdleCallback(() => {
+      void loadDeferred("ghostty")
+        .then(({ loadGhostty }) => loadGhostty())
+        .catch(() => {})
+        .finally(loadPanels);
+    });
+  });
+
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(frame);
+    cancelIdleCallback(idle);
+  };
 }
 
 function FloatingWorkbenchPanel({
@@ -709,6 +754,8 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
 
   const viewKey = workbenchViewKey(workspacePath);
   const snapshot = useWorkbenchSnapshot();
+
+  useMountEffect(prefetchWorkbench);
 
   const visited = useSyncExternalStore(
     subscribeVisited,
