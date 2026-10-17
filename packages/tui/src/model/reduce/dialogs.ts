@@ -346,6 +346,9 @@ export function dialogCommand(state: State, input: DialogInput, now: number, red
     }
   }
 
+  if (dialog.kind === "list" && dialog.purpose.kind === "approval")
+    return approvalCommand(state, dialog, dialog.purpose, input, now, reduce);
+
   const result = reduceDialog(dialog, input);
 
   const onStack = state.local.dialogs.at(-1)?.id === dialog.id;
@@ -385,6 +388,37 @@ export function dialogCommand(state: State, input: DialogInput, now: number, red
             },
     });
   } else next = state;
+
+  return all(next, result.intents, now, reduce);
+}
+
+/** Keys on the approval panel: typing does nothing, the highlight is kept per part, and closing it denies. */
+function approvalCommand(
+  state: State,
+  dialog: ListDialog,
+  purpose: Extract<ListPurpose, { readonly kind: "approval" }>,
+  input: DialogInput,
+  now: number,
+  reduce: Reduce,
+): Step {
+  if (input.kind === "query" || input.kind === "paste" || input.kind === "edit") return stay(state);
+  const result = reduceDialog(dialog, input);
+  const after = result.dialog;
+
+  if (after === null)
+    return reduce(
+      state,
+      { kind: "choose", dialog: dialog.id, choice: "deny", typed: null, action: null },
+      now,
+    );
+
+  const next = withLocal(state, {
+    approval: {
+      ...state.local.approval,
+      part: purpose.part,
+      highlighted: after.kind === "list" ? after.highlighted : 0,
+    },
+  });
 
   return all(next, result.intents, now, reduce);
 }

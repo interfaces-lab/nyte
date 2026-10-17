@@ -218,6 +218,7 @@ export type Outcome =
         | { readonly kind: "failed"; readonly message: string };
       readonly typed: QuestionTypedDraft | null;
     }
+  | { readonly kind: "approved"; readonly part: PartId; readonly failure: string | null }
   | {
       readonly kind: "moved";
       readonly outcome: MoveOutcome;

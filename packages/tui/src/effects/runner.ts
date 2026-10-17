@@ -6,6 +6,7 @@ import type { BootOptions } from "./boot.ts";
 import {
   answer,
   applySetting,
+  approve,
   checkTrust,
   setTrust,
   changeDirectory,
@@ -168,6 +169,7 @@ const ROUTES: Routes = {
   withdraw: host(withdraw),
   "stop-run": host(stopRun),
   answer: host(answer),
+  approve: host(approve),
   move: host(move),
   configure: host(configure),
   "shell-start": local(shellStart),

@@ -319,6 +319,28 @@ function sessionPort(host: Connection, session: Session): SessionPort {
 
       return outcome.kind === "ok";
     },
+    async approve(part, decision) {
+      const outcome = await session.part(part).act(decision, {});
+
+      switch (outcome.kind) {
+        case "ok":
+          return null;
+        case "rejected":
+          return outcome.reason;
+        case "failed":
+          return outcome.message;
+        case "closed":
+          return "This request is no longer waiting.";
+        case "no-owner":
+        case "unknown-action":
+          return "This host can't answer tool approvals.";
+        default: {
+          const exhaustive: never = outcome;
+
+          return exhaustive;
+        }
+      }
+    },
     async move(position, options) {
       const receipt = await session.move(position, options);
 

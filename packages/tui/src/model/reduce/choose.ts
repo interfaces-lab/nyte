@@ -1,3 +1,4 @@
+import { APPROVAL_ACTIONS } from "@nyte-ai/plugin/approvals/schema";
 import { shortId } from "../../lib/format.ts";
 import type { ListPurpose } from "../dialogs/list.ts";
 import { NO_PARTS } from "../draft.ts";
@@ -36,6 +37,16 @@ export const chooseHandlers = {
 
     return choosePurpose(dialog.purpose.kind, dialog.purpose, state, msg, now, reduce);
   },
+  approved: (state, msg, now) => {
+    const local = state.local.approval;
+
+    if (local.sending !== msg.part) return stay(state);
+    const settled = withLocal(state, { approval: { ...local, sending: null } });
+
+    return msg.failure === null
+      ? stay(settled)
+      : refuse(settled, `Couldn't send your answer: ${msg.failure}`, now);
+  },
 } satisfies SomeHandlers;
 
 function choosePurpose<K extends ListPurpose["kind"]>(
@@ -50,6 +61,16 @@ function choosePurpose<K extends ListPurpose["kind"]>(
 }
 
 const CHOOSERS: Choosers = {
+  approval: (state, purpose, msg) => {
+    const decision = APPROVAL_ACTIONS.find((answer) => answer.action === msg.choice)?.action;
+
+    if (decision === undefined || state.local.approval.sending !== null) return stay(state);
+
+    return {
+      state: withLocal(state, { approval: { ...state.local.approval, sending: purpose.part } }),
+      effects: [{ kind: "approve", session: purpose.session, part: purpose.part, decision }],
+    };
+  },
   question: (state, purpose, msg, now, reduce) => {
     const choice = msg.choice;
     const question = tableInputFor(state, null).question;

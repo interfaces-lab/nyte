@@ -147,13 +147,23 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
   const width = useBodyWidth();
   const cap = useRowCap();
   const question = () => props.dialog.purpose.kind === "question";
+  const detailed = () => question() || props.dialog.purpose.kind === "approval";
+
+  const heading = () => {
+    const { purpose } = props.dialog;
+
+    if (purpose.kind === "approval") return purpose.heading;
+
+    return question() ? "Question" : props.dialog.title;
+  };
+
   const [detailContentRows, setDetailContentRows] = createSignal(1);
   const detailText = createMemo(() => props.dialog.title);
   const detailSequence = createMemo(() => props.dialog.detailScroll?.seq);
   const detailRows = () => Math.min(detailContentRows(), Math.max(1, Math.floor(cap() / 2)));
-  const detailOverflows = () => question() && detailContentRows() > detailRows();
+  const detailOverflows = () => detailed() && detailContentRows() > detailRows();
   const choiceRows = () =>
-    Math.max(1, cap() - (question() ? detailRows() : 0) - (detailOverflows() ? 1 : 0));
+    Math.max(1, cap() - (detailed() ? detailRows() : 0) - (detailOverflows() ? 1 : 0));
   let detail: ScrollBoxRenderable | undefined;
   const rows = createMemo(() => visibleChoices(props.dialog));
   const typed = () => typedLabel(props.dialog.purpose);
@@ -233,8 +243,8 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
   );
 
   return (
-    <Panel title={question() ? "Question" : props.dialog.title} hints={hints()}>
-      <Show when={question()}>
+    <Panel title={heading()} hints={hints()}>
+      <Show when={detailed()}>
         <scrollbox
           ref={(box) => {
             detail = box;
@@ -260,9 +270,11 @@ export function ListView(props: { readonly dialog: ListDialog }): JSX.Element {
         </scrollbox>
       </Show>
       <Show when={detailOverflows()}>
-        <Note text={`${keycap("picker.detail.up")}/${keycap("picker.detail.down")} question`} />
+        <Note
+          text={`${keycap("picker.detail.up")}/${keycap("picker.detail.down")} ${question() ? "question" : "details"}`}
+        />
       </Show>
-      <Show when={typed() === null && props.dialog.purpose.kind !== "question"}>
+      <Show when={typed() === null && !detailed()}>
         <QueryLine
           text={props.dialog.query}
           caret={props.dialog.caret}

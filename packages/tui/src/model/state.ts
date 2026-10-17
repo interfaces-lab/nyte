@@ -123,6 +123,7 @@ export interface Local {
   readonly editing: Editing | null;
   readonly dialogs: readonly Dialog[];
   readonly question: QuestionLocal;
+  readonly approval: ApprovalLocal;
   readonly notice: Notice | null;
   readonly failures: readonly FailureReport[];
   readonly pending: readonly PendingOp[];
@@ -203,6 +204,13 @@ export interface QuestionLocal {
   readonly drafts: ReadonlyMap<SessionId, ReadonlyMap<PartId, QuestionDraft>>;
 }
 
+/** The approval panel's highlight, kept for the part it was moved on, and the part whose answer is in flight. */
+export interface ApprovalLocal {
+  readonly part: PartId | null;
+  readonly highlighted: number;
+  readonly sending: PartId | null;
+}
+
 export interface Notice {
   readonly tone: "info" | "ok" | "warning" | "error";
   readonly text: string;
@@ -263,6 +271,7 @@ export function initialState(bootstrap: Bootstrap): State {
       host: "opening",
       chat: bootstrap.chat,
       catalog: { generation: -1, catalog: null },
+      hostSettings: [],
       settings: bootstrap.settings,
       tasks: [],
       shells: [],
@@ -271,12 +280,12 @@ export function initialState(bootstrap: Bootstrap): State {
       remote: { kind: "off" },
     },
     local: {
-      hostSettings: [],
       draft: EMPTY_DRAFT,
       completion: { kind: "closed", dismissed: null },
       editing: null,
       dialogs: [],
       question: { dismissed: null, highlighted: 0, drafts: new Map() },
+      approval: { part: null, highlighted: 0, sending: null },
       notice: null,
       failures: [],
       pending: [],

@@ -11,6 +11,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { SettingsPatch } from "../lib/settings-schema.ts";
+import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { DialogId, LoadRequest } from "./dialogs/dialog.ts";
 import type { DraftSnapshot } from "./draft.ts";
@@ -48,6 +49,12 @@ export type Effect =
       readonly part: PartId;
       readonly answers: QuestionAnswers;
       readonly typed: QuestionTypedDraft | null;
+    }
+  | {
+      readonly kind: "approve";
+      readonly session: SessionId;
+      readonly part: PartId;
+      readonly decision: ApprovalDecision;
     }
   | {
       readonly kind: "move";

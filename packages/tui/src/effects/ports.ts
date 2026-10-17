@@ -27,6 +27,7 @@ import type {
   UserContent,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { Clock } from "@opentui/core";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
@@ -128,6 +129,8 @@ export interface SessionPort {
   ): Promise<"revised" | "landed-first" | "gone">;
   stopRun(run: RunId): Promise<"stopped" | "missing">;
   answer(part: PartId, answers: QuestionAnswers): Promise<boolean>;
+  /** Answers an approval; resolves null once it is taken, else why it was not. */
+  approve(part: PartId, decision: ApprovalDecision): Promise<string | null>;
   move(position: Position, options: MoveOptions): Promise<MoveOutcome>;
   tree(): Promise<TreeView>;
   compact(instructions: string | null): Promise<"started" | "busy" | "nothing">;

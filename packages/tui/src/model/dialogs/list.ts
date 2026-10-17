@@ -50,6 +50,12 @@ export type ListPurpose =
       readonly session: SessionId;
       readonly part: PartId;
     }
+  | {
+      readonly kind: "approval";
+      readonly session: SessionId;
+      readonly part: PartId;
+      readonly heading: string;
+    }
   | { readonly kind: "resume"; readonly sessions: readonly SessionId[] }
   | { readonly kind: "palette" }
   | { readonly kind: "skills" }
@@ -109,6 +115,8 @@ export function typedLabel(purpose: ListPurpose): string | null {
 
 export function acceptLabel(purpose: ListPurpose): string {
   switch (purpose.kind) {
+    case "approval":
+      return "answer";
     case "queue":
       return "send now";
     case "settings":
@@ -122,6 +130,8 @@ export function acceptLabel(purpose: ListPurpose): string {
 
 export function cancelLabel(purpose: ListPurpose): string {
   if (purpose.kind === "question") return "later";
+
+  if (purpose.kind === "approval") return "deny";
 
   if (purpose.kind === "setting" || purpose.kind === "summary") return "back";
 
@@ -238,7 +248,7 @@ export function reduceList(dialog: ListDialog, command: DialogCommand): DialogSt
   switch (command.name) {
     case "picker.detail.up":
     case "picker.detail.down":
-      return dialog.purpose.kind === "question"
+      return dialog.purpose.kind === "question" || dialog.purpose.kind === "approval"
         ? unchanged({
             ...dialog,
             detailScroll: {

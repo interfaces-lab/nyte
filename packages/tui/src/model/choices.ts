@@ -173,6 +173,7 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
       ];
     }
     case "question":
+    case "approval":
     case "accounts":
     case "resume":
     case "summary":
@@ -189,6 +190,8 @@ export function listTitle(state: State, purpose: ListPurpose): string {
   switch (purpose.kind) {
     case "question":
       return "Question";
+    case "approval":
+      return purpose.heading;
     case "resume":
       return "Resume chat";
     case "palette":

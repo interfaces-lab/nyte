@@ -416,7 +416,7 @@ export function dialogKeys(dialog: Dialog): readonly ChatCommand[] {
     case "list":
       return [
         ...LIST_KEYS,
-        ...(dialog.purpose.kind === "question"
+        ...(dialog.purpose.kind === "question" || dialog.purpose.kind === "approval"
           ? (["picker.detail.up", "picker.detail.down"] as const)
           : []),
         ...listActions(dialog.purpose).map((action) => action.command),

@@ -187,6 +187,7 @@ function fakeSession(id: string): FakeSession {
 
       return session.answerResult;
     },
+    approve: async () => null,
     async move(position, options) {
       calls.move.push({ position, options });
 
