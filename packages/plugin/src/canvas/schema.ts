@@ -53,5 +53,5 @@ export const canvas = definePart({
   state,
   actions,
   fallback: (current, { id }) =>
-    `Canvas ${id}: ${current.title}.${current.error === null ? "" : ` It failed to render: ${current.error}`}`,
+    `Canvas ${id}: ${current.title}.${current.error === null ? "" : ` It failed to render: ${current.error}. Fix it by calling canvas_render with canvas "${id}".`}`,
 });

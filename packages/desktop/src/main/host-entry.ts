@@ -8,6 +8,10 @@ import { join } from "node:path";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { ConnectRuntime } from "@nyte-ai/connect/host";
 import { dev } from "@nyte-ai/core";
+import type {
+  CanvasPreviewOutcome,
+  CanvasPreviewRequest,
+} from "@nyte-ai/plugin/core/canvas-preview";
 import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { defaultSecrets } from "@nyte-ai/host/secrets";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
@@ -61,6 +65,18 @@ function open(options: HostProcessOptions): void {
     return answered.answer;
   };
 
+  const preview = async (
+    request: CanvasPreviewRequest,
+    signal: AbortSignal,
+  ): Promise<CanvasPreviewOutcome> => {
+    const answered = await rpc.ask({ kind: "canvas-preview", request }, signal);
+
+    if (answered.kind !== "canvas-preview")
+      throw new Error("Main answered a canvas preview about something else.");
+
+    return answered.outcome;
+  };
+
   const askAccount = async (call: AccountCall, signal?: AbortSignal): Promise<AccountAnswer> => {
     const answered = await rpc.ask({ kind: "account", call }, signal);
 
@@ -92,6 +108,7 @@ function open(options: HostProcessOptions): void {
     settingsChanged: (settings) => post({ kind: "settings", settings }),
     emitHostEvent: (event, window) => post({ kind: "event", event, window }),
     agent: remoteAgent(askAgent),
+    preview,
   });
 
   const secrets = defaultSecrets(home);

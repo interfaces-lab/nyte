@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
 import { asId } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
+import { canvasPlugin } from "@nyte-ai/plugin/core/canvas";
+import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
@@ -71,6 +73,8 @@ export interface DesktopHostDependencies {
   readonly agent: BrowserAgent;
   /** How long to wait before opening the host, so a test can prove nothing on screen waits for it. */
   readonly openDelayMs?: number | undefined;
+  /** Renders canvas previews offscreen in main; without it, as in tests, canvas_preview is not offered. */
+  readonly preview?: CanvasPreviewer;
 }
 
 /** One handler per operation the host process answers, so a missing or misshapen one is a type error. */
@@ -355,6 +359,7 @@ export class DesktopHost {
         desktopSettingsPlugin,
         desktopBrowserPlugin(this.#deps.agent, home),
         codemodePlugin(codemodeRuntimeOptions()),
+        canvasPlugin(this.#deps.preview),
       ],
     });
 

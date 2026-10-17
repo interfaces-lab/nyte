@@ -5,17 +5,22 @@
   "description": "Inline canvases: the nyte/canvas kit the agent writes TSX against, and the runtime shell every client loads it in.",
   "type": "module",
   "exports": {
+    "./fixtures": "./test/read-canvas-fixture.ts",
     "./kit": "./src/kit/index.ts",
     "./shell-inline": {
       "types": "./dist/shell-inline.d.ts",
       "default": "./dist/shell-inline.js"
+    },
+    "./shell-files": {
+      "types": "./dist/shell-files.d.ts",
+      "default": "./dist/shell-files.js"
     }
   },
   "scripts": {
-    "build": "vite build && node scripts/inline.mjs",
+    "build": "vite build && vite build -c vite.libraries.config.ts && node scripts/inline.mjs",
     "clean": "rm -rf node_modules .turbo dist",
     "test": "vitest --run",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit && tsgo --noEmit -p test/fixtures"
   },
   "dependencies": {
     "@fontsource-variable/inter": "5.3.0",
@@ -26,14 +31,26 @@
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/ui": "workspace:*",
     "@stylexjs/stylex": "0.19.0",
+    "d3-array": "3.2.4",
+    "d3-force": "3.0.0",
+    "d3-hierarchy": "3.1.2",
+    "d3-scale": "4.0.2",
+    "d3-shape": "3.2.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "three": "0.186.1"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
+    "@types/d3-array": "3.2.2",
+    "@types/d3-force": "3.0.10",
+    "@types/d3-hierarchy": "3.1.7",
+    "@types/d3-scale": "4.0.9",
+    "@types/d3-shape": "3.1.8",
     "@types/node": "^26.6.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/three": "0.186.0",
     "@vitejs/plugin-react": "6.1.1",
     "typescript": "6.0.3",
     "vite": "8.3.2",

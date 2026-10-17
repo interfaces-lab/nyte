@@ -22,6 +22,7 @@
     "./core/browser-tools": "./src/browser-tools.ts",
     "./core/canvas": "./src/canvas/canvas.ts",
     "./core/canvas-compile": "./src/canvas/canvas-compile.ts",
+    "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
     "./core/claude-code": "./examples/claude-code/index.ts",
     "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
     "./core/codemode": "./src/codemode.ts",

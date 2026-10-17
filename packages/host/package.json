@@ -18,6 +18,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./bench": "./src/bench/index.ts",
+    "./canvas-preview": "./src/canvas-preview.ts",
     "./credentials": "./src/credentials.ts",
     "./durable-object": "./src/durable-object.ts",
     "./identity": "./src/identity.ts",
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
+    "@nyte-ai/canvas": "workspace:*",
     "@nyte-ai/connect": "workspace:*",
     "@types/node": "^26.6.5",
     "@types/pg": "8.23.1",
