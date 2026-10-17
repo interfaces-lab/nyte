@@ -19,6 +19,7 @@ import { runCanvasPreview } from "@nyte-ai/plugin/core/canvas-preview";
 import type {
   CanvasPreviewOutcome,
   CanvasPreviewPage,
+  CanvasPreviewRequest,
   CanvasPreviewer,
 } from "@nyte-ai/plugin/core/canvas-preview";
 import { Type } from "typebox";
@@ -26,8 +27,6 @@ import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 const ORIGIN = "http://canvas.preview/";
-
-const PREVIEW_TIMEOUT_MS = 45_000;
 
 /**
  * Returns the shell a previewer serves: the inline shell's HTML and the
@@ -238,7 +237,7 @@ function serve(pipe: Pipe, shell: CanvasShellFiles, sessionId: string): void {
 async function previewIn(
   pipe: Pipe,
   shell: CanvasShellFiles,
-  request: Parameters<CanvasPreviewer>[0],
+  request: CanvasPreviewRequest,
 ): Promise<CanvasPreviewOutcome> {
   const target = read(
     Type.Object({ targetId: Type.String() }),
@@ -317,7 +316,8 @@ function stop(child: ChildProcess): Promise<void> {
 /**
  * Returns a previewer over a headless Chromium on this machine
  * (`findChromium`), serving `shell`; it answers `unavailable` when there is
- * no Chromium or it fails to start.
+ * no Chromium or it fails to start, and stops the browser when the
+ * preview's signal aborts.
  *
  * @category host
  * @since 0.1.0
@@ -326,7 +326,7 @@ export function chromiumCanvasPreview(
   shell: CanvasShellFiles,
   executable: () => string | undefined = findChromium,
 ): CanvasPreviewer {
-  return async (request) => {
+  return async (request, signal) => {
     const path = executable();
 
     if (path === undefined)
@@ -362,24 +362,21 @@ export function chromiumCanvasPreview(
         return { kind: "unavailable", reason: "Chromium did not open its DevTools pipe." };
       const pipe = new Pipe(input, output);
       child.once("error", (error) => pipe.close(error));
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<CanvasPreviewOutcome>((resolve) => {
-        timer = setTimeout(
-          () =>
-            resolve({ kind: "unavailable", reason: "The preview took longer than 45 seconds." }),
-          PREVIEW_TIMEOUT_MS,
-        );
-      });
+      const stopped = Promise.withResolvers<never>();
+      const stop = (): void => stopped.reject(new Error("The preview was stopped."));
+      signal.addEventListener("abort", stop, { once: true });
 
       try {
-        return await Promise.race([previewIn(pipe, shell, request), timeout]);
+        signal.throwIfAborted();
+
+        return await Promise.race([previewIn(pipe, shell, request), stopped.promise]);
       } catch (error) {
         return {
           kind: "unavailable",
           reason: `Chromium could not render the preview: ${error instanceof Error ? error.message : String(error)}`,
         };
       } finally {
-        clearTimeout(timer);
+        signal.removeEventListener("abort", stop);
         void pipe.send("Browser.close").catch(() => undefined);
         pipe.close(new Error("The preview finished."));
       }

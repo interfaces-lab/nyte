@@ -1,11 +1,10 @@
 /**
- * The desktop canvas previewer, in main: an offscreen window loads the real
- * canvas shell from its scheme, so the canvas runs under the same CSP and
- * origin as in the chat, and `runCanvasPreview` drives it. The host process
- * asks for a preview over its RPC (`host-messages.ts`). Previews run one at
- * a time in one window, which reloads the shell for each and closes after a
- * minute without one: a fresh offscreen window right after another closed
- * never finishes loading.
+ * The desktop canvas previewer, in main: each preview opens its own
+ * offscreen window on the real canvas shell from its scheme, lets
+ * `runCanvasPreview` drive it, and destroys it after, so a canvas that
+ * hangs its renderer takes nothing down with it once the preview's signal
+ * aborts. The host process asks for a preview over its RPC
+ * (`host-messages.ts`).
  */
 import { BrowserWindow } from "electron";
 import { runCanvasPreview } from "@nyte-ai/plugin/core/canvas-preview";
@@ -15,18 +14,7 @@ import type {
   CanvasPreviewRequest,
 } from "@nyte-ai/plugin/core/canvas-preview";
 
-const PREVIEW_TIMEOUT_MS = 45_000;
-
-const IDLE_CLOSE_MS = 60_000;
-
-let held: BrowserWindow | undefined;
-
-let idle: ReturnType<typeof setTimeout> | undefined;
-
-let queue: Promise<unknown> = Promise.resolve();
-
 function previewWindow(): BrowserWindow {
-  if (held !== undefined && !held.isDestroyed()) return held;
   const window = new BrowserWindow({
     show: false,
     width: 808,
@@ -44,7 +32,6 @@ function previewWindow(): BrowserWindow {
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.webContents.setFrameRate(60);
-  held = window;
 
   return window;
 }
@@ -54,8 +41,9 @@ function painted(window: BrowserWindow): Promise<void> {
   return new Promise((resolve) => {
     let frames = 0;
     const done = (): void => {
-      window.webContents.off("paint", paint);
       clearTimeout(fallback);
+
+      if (!window.isDestroyed()) window.webContents.off("paint", paint);
       resolve();
     };
     const paint = (): void => {
@@ -69,11 +57,17 @@ function painted(window: BrowserWindow): Promise<void> {
   });
 }
 
-async function preview(
+/**
+ * Renders a preview offscreen in the shell at `shellUrl`, or answers
+ * unavailable when the window fails to load the shell or `signal` aborts
+ * first; the window is destroyed either way.
+ */
+export async function previewCanvasOffscreen(
   shellUrl: string,
   request: CanvasPreviewRequest,
+  signal: AbortSignal,
 ): Promise<CanvasPreviewOutcome> {
-  clearTimeout(idle);
+  if (signal.aborted) return { kind: "unavailable", reason: "The preview was stopped." };
   const window = previewWindow();
   const contents = window.webContents;
   const page: CanvasPreviewPage = {
@@ -88,50 +82,25 @@ async function preview(
       return new Uint8Array((await contents.capturePage()).toPNG());
     },
   };
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stopped = Promise.withResolvers<never>();
+  const stop = (): void => stopped.reject(new Error("The preview was stopped."));
+  signal.addEventListener("abort", stop, { once: true });
 
   try {
-    await window.loadURL(shellUrl);
+    const run = async (): Promise<CanvasPreviewOutcome> => {
+      await window.loadURL(shellUrl);
 
-    return await Promise.race([
-      runCanvasPreview(page, request).then((report): CanvasPreviewOutcome => ({
-        kind: "rendered",
-        report,
-      })),
-      new Promise<CanvasPreviewOutcome>((resolve) => {
-        timer = setTimeout(
-          () =>
-            resolve({ kind: "unavailable", reason: "The preview took longer than 45 seconds." }),
-          PREVIEW_TIMEOUT_MS,
-        );
-      }),
-    ]);
+      return { kind: "rendered", report: await runCanvasPreview(page, request) };
+    };
+
+    return await Promise.race([run(), stopped.promise]);
   } catch (error) {
     return {
       kind: "unavailable",
       reason: `The preview window could not render the canvas: ${error instanceof Error ? error.message : String(error)}`,
     };
   } finally {
-    clearTimeout(timer);
-    await window.loadURL("about:blank").catch(() => undefined);
-    idle = setTimeout(() => {
-      held = undefined;
-      window.destroy();
-    }, IDLE_CLOSE_MS);
+    signal.removeEventListener("abort", stop);
+    window.destroy();
   }
-}
-
-/**
- * Renders a preview offscreen in the shell at `shellUrl` once the previews
- * before it finish, or answers unavailable when the window fails to load
- * the shell or the preview runs past 45 seconds.
- */
-export function previewCanvasOffscreen(
-  shellUrl: string,
-  request: CanvasPreviewRequest,
-): Promise<CanvasPreviewOutcome> {
-  const next = queue.then(() => preview(shellUrl, request));
-  queue = next.catch(() => undefined);
-
-  return next;
 }

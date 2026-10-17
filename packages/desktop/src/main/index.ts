@@ -90,6 +90,9 @@ let rendererUrl: string;
 
 let canvasShell: string;
 
+/** Aborts the canvas previews in flight once the last window closes, so a hidden preview window neither holds the app open nor renders for no one. */
+let previewsOpen = new AbortController();
+
 function macOSTrafficLightPosition(zoomFactor: number) {
   const diameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
 
@@ -412,7 +415,11 @@ function startHost(): HostProcess {
         if (request.kind === "canvas-preview")
           return {
             kind: "canvas-preview",
-            outcome: await previewCanvasOffscreen(canvasShell, request.request),
+            outcome: await previewCanvasOffscreen(
+              canvasShell,
+              request.request,
+              AbortSignal.any([signal, previewsOpen.signal]),
+            ),
           };
 
         if (account === undefined) throw new Error("This build has no Nyte account.");
@@ -708,6 +715,11 @@ function createWindow(): NyteWindow {
     windows.delete(id);
     browserSurfaces.releaseWindow(id);
     hostProcess?.release(id);
+
+    if (windows.size === 0) {
+      previewsOpen.abort();
+      previewsOpen = new AbortController();
+    }
   });
 
   return entry;

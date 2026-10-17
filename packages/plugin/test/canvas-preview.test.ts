@@ -1,5 +1,5 @@
 import { isPart } from "@nyte-ai/core";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { canvas, canvasPlugin } from "../src/canvas/canvas.ts";
 import { CANVAS_PREVIEW_WIDTHS, runCanvasPreview } from "../src/canvas/canvas-preview.ts";
 import type {
@@ -149,4 +149,39 @@ it("says when this host has no preview, and offers the tool only to a host with 
   expect(plain[0]?.description).not.toContain("canvas_preview");
   expect(previewing?.map((tool) => tool.name)).toEqual(["canvas_render", "canvas_preview"]);
   expect(previewing?.[0]?.description).toMatch(/^Before rendering, call `canvas_preview`/);
+});
+
+it("aborts a preview that runs past 45 seconds and tells the model it took too long", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const fake = fakeModels();
+  const started = Promise.withResolvers<AbortSignal>();
+
+  fake.reply(
+    { content: [{ type: "toolCall", id: "p1", name: "canvas_preview", arguments: { source } }] },
+    { content: [{ type: "text", text: "Rendering instead." }] },
+  );
+
+  try {
+    await using host = await open(fake, [
+      canvasPlugin((_request, signal) => {
+        started.resolve(signal);
+
+        return new Promise(() => undefined);
+      }),
+    ]);
+    const session = await host.sessions.create();
+    const turn = await session.send("Preview it.");
+    const signal = await started.promise;
+    await vi.advanceTimersByTimeAsync(45_000);
+    await turn.settled();
+
+    expect(signal.aborted).toBe(true);
+    expect(
+      JSON.stringify(
+        fake.requests.at(-1)?.context.messages.find((message) => message.role === "toolResult"),
+      ),
+    ).toContain("No preview here: The preview took longer than 45 seconds.");
+  } finally {
+    vi.useRealTimers();
+  }
 });

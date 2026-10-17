@@ -16,7 +16,11 @@ import {
 } from "./canvas-protocol.ts";
 import { compileCanvas } from "./canvas-compile.ts";
 import { CANVAS_PREVIEW_WIDTHS, describeCanvasPreview } from "./canvas-preview.ts";
-import type { CanvasPreviewer } from "./canvas-preview.ts";
+import type {
+  CanvasPreviewOutcome,
+  CanvasPreviewRequest,
+  CanvasPreviewer,
+} from "./canvas-preview.ts";
 import type { CompileError } from "./canvas-compile.ts";
 import type { Plugin } from "@nyte-ai/plugin/core";
 import { canvas as canvasContract } from "./schema.ts";
@@ -210,6 +214,38 @@ const previewParameters = standard(
   }),
 );
 
+/** How long a preview may take, from the call to its report. */
+const PREVIEW_TIMEOUT_MS = 45_000;
+
+/** Runs one preview, aborting the previewer's signal and answering unavailable past the timeout; it throws when the turn stops first. */
+async function previewWithin(
+  preview: CanvasPreviewer,
+  request: CanvasPreviewRequest,
+  signal: AbortSignal,
+): Promise<CanvasPreviewOutcome> {
+  signal.throwIfAborted();
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), PREVIEW_TIMEOUT_MS);
+  const stop = AbortSignal.any([signal, deadline.signal]);
+  const stopped = new Promise<"stopped">((resolve) =>
+    stop.addEventListener("abort", () => resolve("stopped"), { once: true }),
+  );
+
+  try {
+    const outcome = await Promise.race([preview(request, stop), stopped]);
+
+    if (outcome !== "stopped") return outcome;
+  } finally {
+    clearTimeout(timer);
+  }
+  signal.throwIfAborted();
+
+  return {
+    kind: "unavailable",
+    reason: `The preview took longer than ${PREVIEW_TIMEOUT_MS / 1000} seconds.`,
+  };
+}
+
 function previewTool(preview: CanvasPreviewer): ToolDefinition<Infer<typeof previewParameters>> {
   return {
     name: "canvas_preview",
@@ -220,10 +256,14 @@ function previewTool(preview: CanvasPreviewer): ToolDefinition<Infer<typeof prev
     replay: "safe",
     async execute(args, invocation) {
       const compiled = await compile(args, invocation);
-      const outcome = await preview({
-        module: { runtime: compiled.runtime, code: compiled.code, title: "Preview" },
-        theme: args.theme ?? "light",
-      });
+      const outcome = await previewWithin(
+        preview,
+        {
+          module: { runtime: compiled.runtime, code: compiled.code, title: "Preview" },
+          theme: args.theme ?? "light",
+        },
+        invocation.signal,
+      );
 
       if (outcome.kind === "unavailable")
         return {

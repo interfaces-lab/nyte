@@ -65,8 +65,11 @@ function open(options: HostProcessOptions): void {
     return answered.answer;
   };
 
-  const preview = async (request: CanvasPreviewRequest): Promise<CanvasPreviewOutcome> => {
-    const answered = await rpc.ask({ kind: "canvas-preview", request });
+  const preview = async (
+    request: CanvasPreviewRequest,
+    signal: AbortSignal,
+  ): Promise<CanvasPreviewOutcome> => {
+    const answered = await rpc.ask({ kind: "canvas-preview", request }, signal);
 
     if (answered.kind !== "canvas-preview")
       throw new Error("Main answered a canvas preview about something else.");

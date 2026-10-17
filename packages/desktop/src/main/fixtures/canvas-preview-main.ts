@@ -44,17 +44,49 @@ async function run(): Promise<void> {
   const results = [];
 
   for (const theme of ["dark", "light"] as const) {
-    const outcome = await previewCanvasOffscreen(canvasShellUrl(scheme), {
-      module: { runtime: compiled.runtime, code: compiled.code, title: "Fixture" },
-      theme,
-    });
+    const outcome = await previewCanvasOffscreen(
+      canvasShellUrl(scheme),
+      { module: { runtime: compiled.runtime, code: compiled.code, title: "Fixture" }, theme },
+      new AbortController().signal,
+    );
 
     if (outcome.kind !== "rendered") throw new Error(outcome.reason);
     writeFileSync(join(directory, `preview-${theme}.png`), outcome.report.png);
     results.push({ theme, ...outcome.report, png: outcome.report.png.byteLength });
   }
 
-  writeFileSync(join(directory, "result.json"), JSON.stringify(results, null, 2));
+  const hung = await compileCanvas("export default function Loop() {\n  for (;;) {}\n}");
+  const plain = await compileCanvas(
+    'import { Text } from "nyte/canvas";\nexport default () => <Text>After the loop</Text>;',
+  );
+
+  if (hung.kind === "failed" || plain.kind === "failed")
+    throw new Error("A probe did not compile.");
+  const started = performance.now();
+  const stuck = await previewCanvasOffscreen(
+    canvasShellUrl(scheme),
+    { module: { runtime: hung.runtime, code: hung.code, title: "Loop" }, theme: "light" },
+    AbortSignal.timeout(3000),
+  );
+  const stoppedAfter = performance.now() - started;
+  const after = await previewCanvasOffscreen(
+    canvasShellUrl(scheme),
+    { module: { runtime: plain.runtime, code: plain.code, title: "After" }, theme: "light" },
+    AbortSignal.timeout(30_000),
+  );
+
+  writeFileSync(
+    join(directory, "result.json"),
+    JSON.stringify(
+      {
+        galaxy: results,
+        hung: { kind: stuck.kind, ms: Math.round(stoppedAfter) },
+        after: after.kind === "rendered" ? { kind: after.kind, ...after.report, png: 0 } : after,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 run().then(

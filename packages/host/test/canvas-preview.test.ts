@@ -58,10 +58,13 @@ it.skipIf(shell === undefined || chromium === undefined)(
     );
 
     if (compiled.kind !== "compiled") throw new Error(JSON.stringify(compiled.errors));
-    const outcome = await chromiumCanvasPreview(shell)({
-      module: { runtime: compiled.runtime, code: compiled.code, title: "Repo galaxy" },
-      theme: "dark",
-    });
+    const outcome = await chromiumCanvasPreview(shell)(
+      {
+        module: { runtime: compiled.runtime, code: compiled.code, title: "Repo galaxy" },
+        theme: "dark",
+      },
+      new AbortController().signal,
+    );
 
     if (outcome.kind !== "rendered") throw new Error(outcome.reason);
     const { report } = outcome;
@@ -95,10 +98,13 @@ it.skipIf(shell === undefined || chromium === undefined)(
     );
 
     if (compiled.kind !== "compiled") throw new Error(JSON.stringify(compiled.errors));
-    const outcome = await chromiumCanvasPreview(shell)({
-      module: { runtime: compiled.runtime, code: compiled.code, title: "Broken" },
-      theme: "light",
-    });
+    const outcome = await chromiumCanvasPreview(shell)(
+      {
+        module: { runtime: compiled.runtime, code: compiled.code, title: "Broken" },
+        theme: "light",
+      },
+      new AbortController().signal,
+    );
 
     if (outcome.kind !== "rendered") throw new Error(outcome.reason);
 
@@ -109,14 +115,30 @@ it.skipIf(shell === undefined || chromium === undefined)(
   },
 );
 
+it.skipIf(shell === undefined || chromium === undefined)(
+  "stops the browser of a canvas that hangs its page once the signal aborts",
+  { timeout: 30_000 },
+  async () => {
+    if (shell === undefined) return;
+    const compiled = await compileCanvas("export default function Loop() {\n  for (;;) {}\n}");
+
+    if (compiled.kind !== "compiled") throw new Error(JSON.stringify(compiled.errors));
+    const started = performance.now();
+    const outcome = await chromiumCanvasPreview(shell)(
+      { module: { runtime: compiled.runtime, code: compiled.code, title: "Loop" }, theme: "light" },
+      AbortSignal.timeout(3000),
+    );
+
+    expect(outcome).toMatchObject({ kind: "unavailable" });
+    expect(performance.now() - started).toBeLessThan(10_000);
+  },
+);
+
 it("answers unavailable when there is no Chromium", async () => {
   expect(
-    await chromiumCanvasPreview(
-      { html: "", libraries: {} },
-      () => undefined,
-    )({
-      module: { runtime: 2, code: "", title: "" },
-      theme: "light",
-    }),
+    await chromiumCanvasPreview({ html: "", libraries: {} }, () => undefined)(
+      { module: { runtime: 2, code: "", title: "" }, theme: "light" },
+      new AbortController().signal,
+    ),
   ).toEqual({ kind: "unavailable", reason: "No Chrome or Chromium was found on this machine." });
 });

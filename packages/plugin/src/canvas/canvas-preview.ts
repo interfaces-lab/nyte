@@ -93,12 +93,18 @@ export type CanvasPreviewOutcome =
 
 /**
  * Renders a compiled canvas off-screen in the real shell. A host passes one
- * to `canvasPlugin` to give the model `canvas_preview`.
+ * to `canvasPlugin` to give the model `canvas_preview`, which gives each
+ * preview 45 seconds. When `signal` aborts (past that, or the turn
+ * stopped), the previewer tears its renderer down, so a canvas that hangs
+ * its page holds up no later preview.
  *
  * @category plugins
  * @since 0.1.0
  */
-export type CanvasPreviewer = (request: CanvasPreviewRequest) => Promise<CanvasPreviewOutcome>;
+export type CanvasPreviewer = (
+  request: CanvasPreviewRequest,
+  signal: AbortSignal,
+) => Promise<CanvasPreviewOutcome>;
 
 /**
  * Returns the page a previewer loaded the shell in, top-level, for

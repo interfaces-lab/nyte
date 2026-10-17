@@ -23,18 +23,21 @@ const built = await access(join(shellRoot, "libraries", "three.js")).then(
   () => false,
 );
 
-const Results = Type.Array(
-  Type.Object({
-    theme: Type.String(),
-    png: Type.Number(),
-    heights: Type.Object({ chat: Type.Number(), phone: Type.Number() }),
-    errors: Type.Array(Type.Object({ message: Type.String() })),
-    console: Type.Array(Type.Object({ level: Type.String(), text: Type.String() })),
-  }),
-);
+const Report = Type.Object({
+  png: Type.Number(),
+  heights: Type.Object({ chat: Type.Number(), phone: Type.Number() }),
+  errors: Type.Array(Type.Object({ message: Type.String() })),
+  console: Type.Array(Type.Object({ level: Type.String(), text: Type.String() })),
+});
+
+const Results = Type.Object({
+  galaxy: Type.Array(Type.Intersect([Report, Type.Object({ theme: Type.String() })])),
+  hung: Type.Object({ kind: Type.String(), ms: Type.Number() }),
+  after: Type.Intersect([Report, Type.Object({ kind: Type.Literal("rendered") })]),
+});
 
 test.skipIf(!built)(
-  "previews the multi-file repo-galaxy offscreen in real Electron, from the scheme-served shell",
+  "previews the multi-file repo-galaxy offscreen in real Electron, from the scheme-served shell, and a canvas that hangs its renderer holds up no later preview",
   { timeout: 150_000 },
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-canvas-preview-"));
@@ -87,11 +90,16 @@ test.skipIf(!built)(
 
       if (!Value.Check(Results, results)) throw new Error(JSON.stringify(results));
 
-      for (const result of results) {
+      for (const result of results.galaxy) {
         expect(result.errors, result.theme).toEqual([]);
         expect(result.png, result.theme).toBeGreaterThan(10_000);
         expect(result.heights.chat, result.theme).toBeGreaterThan(600);
       }
+
+      expect(results.hung.kind).toBe("unavailable");
+      expect(results.hung.ms).toBeLessThan(10_000);
+      expect(results.after.errors).toEqual([]);
+      expect(results.after.heights.chat).toBeGreaterThan(0);
 
       const proof = process.env["NYTE_CANVAS_PROOF"];
 
