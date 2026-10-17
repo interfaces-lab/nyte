@@ -130,7 +130,7 @@ it("says when this host has no preview, and offers the tool only to a host with 
   await using host = await open(fake, [
     canvasPlugin(async () => ({ kind: "unavailable", reason: "No Chrome or Chromium was found." })),
   ]);
-  const { session, receipt } = await host.sessions.start({ content: "Preview it." });
+  const { receipt } = await host.sessions.start({ content: "Preview it." });
   await receipt.settled();
 
   expect(
