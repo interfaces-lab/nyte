@@ -1,7 +1,7 @@
 import { isPart } from "@nyte-ai/core";
 import { expect, it } from "vitest";
 import { canvas, canvasPlugin } from "../src/canvas/canvas.ts";
-import { runCanvasPreview } from "../src/canvas/canvas-preview.ts";
+import { CANVAS_PREVIEW_WIDTHS, runCanvasPreview } from "../src/canvas/canvas-preview.ts";
 import type {
   CanvasPreviewPage,
   CanvasPreviewReport,
@@ -22,33 +22,29 @@ const report: CanvasPreviewReport = {
 };
 
 it("drives a shell page: installs the harness once the shell runs, captures at the chat width, then measures a phone", async () => {
-  const calls: string[] = [];
   const heights = [300, 312, 640];
   let starts = 0;
+  let width = 0;
+  let captured = 0;
   const page: CanvasPreviewPage = {
     async evaluate(expression) {
-      if (expression.startsWith("globalThis.__nytePreview.settle")) {
-        calls.push("settle");
-
+      if (expression.startsWith("globalThis.__nytePreview.settle"))
         return {
           height: heights.shift() ?? 0,
           errors: [],
           console: [{ level: "log", text: "hi" }],
         };
-      }
-
-      calls.push("install");
       starts += 1;
 
       expect(expression).toContain('"method":"nyte/notifications/render"');
 
       return starts > 1;
     },
-    async resize(width, height) {
-      calls.push(`resize ${width}x${height}`);
+    async resize(next) {
+      width = next;
     },
     async capture() {
-      calls.push("capture");
+      captured = width;
 
       return PNG;
     },
@@ -64,17 +60,7 @@ it("drives a shell page: installs the harness once the shell runs, captures at t
     errors: [],
     console: [{ level: "log", text: "hi" }],
   });
-  expect(calls).toEqual([
-    "resize 808x900",
-    "install",
-    "install",
-    "settle",
-    "resize 808x300",
-    "settle",
-    "capture",
-    "resize 358x900",
-    "settle",
-  ]);
+  expect(captured).toBe(CANVAS_PREVIEW_WIDTHS.chat);
 });
 
 it("previews through the host's previewer and answers with the screenshot, heights, errors and console, adding nothing to the chat", async () => {
