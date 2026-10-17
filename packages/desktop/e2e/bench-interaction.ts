@@ -440,6 +440,18 @@ async function treeTotals(application: ElectronApplication) {
   return { processes: tree.length, rss: tree.reduce((total, row) => total + row.residentBytes, 0) };
 }
 
+/** Electron's CPU and idle wakeups per process, averaged since the previous call. */
+async function appMetrics(application: ElectronApplication) {
+  return application.evaluate(({ app }) =>
+    app.getAppMetrics().map((entry) => ({
+      type: entry.type,
+      name: entry.name,
+      wakeups: entry.cpu.idleWakeupsPerSecond,
+      cpu: entry.cpu.percentCPUUsage,
+    })),
+  );
+}
+
 /** CPU seconds per process of the tree from `ps`, whose `time` reads [[hh:]mm:]ss.cc. */
 async function cpuSeconds(
   root: number | undefined,
@@ -654,6 +666,7 @@ async function measure(
       await step(page, errors, "idle", async () => {
         await page.waitForTimeout(5_000);
         const pid = application.process().pid;
+        await appMetrics(application);
         const before = await cpuSeconds(pid);
         const started = performance.now();
         await page.waitForTimeout(options.idleSeconds * 1_000);
@@ -666,14 +679,7 @@ async function measure(
           cpuPercent: ((row.seconds - (before.get(processId)?.seconds ?? 0)) / wall) * 100,
         }));
 
-        const wakeups = await application.evaluate(({ app }) =>
-          app.getAppMetrics().map((entry) => ({
-            type: entry.type,
-            name: entry.name,
-            wakeups: entry.cpu.idleWakeupsPerSecond,
-            cpu: entry.cpu.percentCPUUsage,
-          })),
-        );
+        const wakeups = await appMetrics(application);
 
         notes.idle = { perProcess, wakeups, wallSeconds: wall };
         add(
