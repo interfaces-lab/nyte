@@ -129,7 +129,7 @@ describe("the canvas compiler", () => {
         outcome.code,
         `Error: boom\n    at boom (blob:null/1f2e:${thrown}:9)\n    at View (blob:null/1f2e:${thrown - 6}:10)\n    at Shell (assets/index.js:1:2)`,
       ),
-    ).toBe("boom.ts:2:9");
+    ).toBe("boom.ts:2");
     expect(locateCanvasStack("export default 1;", "at x (blob:null/a:1:1)")).toBeUndefined();
   });
 

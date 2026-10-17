@@ -131,12 +131,12 @@ export function locateCanvasPosition(
   return span === undefined ? undefined : { file: span[0], line: line - span[1] + 1, column };
 }
 
-/** Returns `file:line:column` for the first frame of a stack that runs in a compiled module, which the shell loads from a blob URL. */
+/** Returns `file:line` for the first frame of a stack that runs in a compiled module, which the shell loads from a blob URL. Sucrase keeps lines, not columns, so a stack's column belongs to the compiled code and is left out. */
 export function locateCanvasStack(code: string, stack: string): string | undefined {
   for (const frame of stack.matchAll(/blob:[^\s)]+:(\d+):(\d+)/gu)) {
     const position = locateCanvasPosition(code, Number(frame[1]), Number(frame[2]));
 
-    if (position !== undefined) return `${position.file}:${position.line}:${position.column}`;
+    if (position !== undefined) return `${position.file}:${position.line}`;
   }
 
   return undefined;

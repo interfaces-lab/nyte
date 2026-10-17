@@ -73,7 +73,7 @@ export async function run(): Promise<string> {
       () => "The broken canvas reported nothing",
     );
 
-    if (!/^TypeError: .* \(main\.tsx:5:\d+\)$/u.test(reported.join("\n")))
+    if (!/^TypeError: .* \(main\.tsx:5\)$/u.test(reported.join("\n")))
       return `Reported ${JSON.stringify(reported)}`;
 
     if (caption() !== reported[0]) return `The caption shows ${JSON.stringify(caption())}`;

@@ -104,7 +104,7 @@ it.skipIf(shell === undefined || chromium === undefined)(
     if (outcome.kind !== "rendered") throw new Error(outcome.reason);
 
     expect(outcome.report.errors).toMatchObject([
-      { phase: "render", message: expect.stringMatching(/^TypeError: .* \(main\.tsx:5:\d+\)$/u) },
+      { phase: "render", message: expect.stringMatching(/^TypeError: .* \(main\.tsx:5\)$/u) },
     ]);
     expect(outcome.report.console).toContainEqual({ level: "warn", text: "rows 0" });
   },
