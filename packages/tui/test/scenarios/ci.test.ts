@@ -90,7 +90,6 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
     expect.arrayContaining([
       "composer.submit",
       "host.admit",
-      "skill.load",
       "mcp.call",
       "mcp.serve",
       "canvas.compile",
@@ -118,7 +117,6 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
     ...spanHops(waterfall, {
       "composer.submit": 50,
       "host.admit": 50,
-      "skill.load": 25,
       "canvas.compile": 50,
       "part.publish": 25,
       "client.paint": 50,

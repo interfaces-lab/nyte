@@ -30,7 +30,6 @@ export const HOPS: ReadonlyMap<string, Hop> = new Map([
   ["host.admit", hop("core/src/engine/admission.ts:send", 25, 25)],
   ["turn.start", hop("core/src/agent/turn.ts:prepareRequest", 795, 540)],
   ["model.stream", hop("core/src/agent/turn.ts:stream", 200, 160)],
-  ["skill.load", hop("core/src/builtins/environment.ts:read.execute", 25, 25)],
   ["mcp.connect", hop("host/src/mcp/hub.ts:connectTraced", 825, 555)],
   ["mcp.call:search_places", hop("host/src/mcp/tools.ts:execute", 80, 70)],
   ["mcp.serve", hop("host/src/bench/scenarios/mcp-server.mjs:serve", 70, 65)],

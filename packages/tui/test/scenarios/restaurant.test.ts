@@ -85,7 +85,6 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
       "host.admit",
       "turn.start",
       "model.stream",
-      "skill.load",
       "mcp.call",
       "mcp.serve",
       "tool.run",
@@ -115,7 +114,6 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
     ...spanHops(waterfall, {
       "composer.submit": 50,
       "host.admit": 50,
-      "skill.load": 25,
       "canvas.compile": 50,
       "part.publish": 25,
       "client.paint": 50,

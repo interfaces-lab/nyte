@@ -36,7 +36,7 @@ Each one is a plain Node script with no dependencies. `mcp-server.mjs` holds the
 
 ## Trace spans
 
-A user submit is traced under its receipt id, which the client already sends with `head.send`, so tracing adds no wire field. The hops record `performance.measure` entries named after their span: `composer.submit`, `sdk.send`, `host.admit`, `turn.start`, `model.stream`, `skill.load`, `mcp.connect`, `mcp.call`, `mcp.serve`, `tool.run`, `canvas.compile`, `canvas.paint`, `pty.spawn`, `pty.output`, `part.publish`, `client.paint`. Each entry's `detail.trace` holds the trace id.
+A user submit is traced under its receipt id, which the client already sends with `head.send`, so tracing adds no wire field. The hops record `performance.measure` entries named after their span: `composer.submit`, `sdk.send`, `host.admit`, `turn.start`, `model.stream`, `mcp.connect`, `mcp.call`, `mcp.serve`, `tool.run`, `canvas.compile`, `canvas.paint`, `pty.spawn`, `pty.output`, `part.publish`, `client.paint`. Each entry's `detail.trace` holds the trace id.
 
 How the trace id moves between hops:
 

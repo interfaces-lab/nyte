@@ -5,7 +5,6 @@ export const SPAN_NAMES = [
   "host.admit",
   "turn.start",
   "model.stream",
-  "skill.load",
   "mcp.connect",
   "mcp.call",
   "mcp.serve",

@@ -144,7 +144,7 @@ it("lands a steer sent during the places call after the call settles, in the sam
   const traced = waterfall(trace, [{ process: "mcp:places", spans: child }]);
   const steered = waterfall(steerTrace);
 
-  expectInOrder(traced.rows, ["host.admit", "skill.load", "mcp.call", "mcp.serve"]);
+  expectInOrder(traced.rows, ["host.admit", "tool.run", "mcp.call", "mcp.serve"]);
   expectInOrder(steered.rows, ["host.admit", "turn.start", "canvas.compile", "model.stream"]);
   expect(steered.rows.filter((row) => row.name === "mcp.call" && row.traced)).toEqual([]);
 

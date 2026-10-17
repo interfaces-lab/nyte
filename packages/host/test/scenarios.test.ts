@@ -154,7 +154,7 @@ it("runs scenario U: skill, places MCP, canvas, answer, one trace across host an
     "host.admit",
     "turn.start",
     "model.stream",
-    "skill.load",
+    "tool.run",
     "turn.start",
     "mcp.call",
     "mcp.serve",
@@ -200,7 +200,7 @@ it("runs scenario U through codemode, the MCP call nested in the script", async 
   expect(lastToolText(fake.requests[2])).toContain("luigi");
   expect((await readSpanFile(home.traceFile)).map((span) => span.trace)).toEqual([trace]);
   expectInOrder(buildWaterfall(trace, [{ process: "host", spans: readSpans() }]).rows, [
-    "skill.load",
+    "tool.run",
     "tool.run",
     "mcp.call",
     "canvas.compile",
@@ -277,7 +277,7 @@ it("runs scenario D over the CI MCP server: log tail, canvas, test, fix, rerun, 
   expectInOrder(waterfall.rows, [
     "host.admit",
     "turn.start",
-    "skill.load",
+    "tool.run",
     "mcp.call",
     "mcp.serve",
     "mcp.call",
