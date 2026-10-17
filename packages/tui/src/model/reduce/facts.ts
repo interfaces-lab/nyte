@@ -70,9 +70,16 @@ export const factHandlers = {
   selection: (state, msg) => {
     const { chat } = state.facts;
 
-    return chat === null || chat.id !== msg.session
-      ? stay(state)
-      : stay(withFacts(state, { chat: { ...chat, selection: msg.selection } }));
+    if (chat === null || chat.id !== msg.session) return stay(state);
+
+    return stay(
+      withFacts(state, {
+        chat:
+          chat.kind === "blank"
+            ? { kind: "blank", id: chat.id, folder: chat.folder, selection: msg.selection }
+            : { ...chat, selection: msg.selection },
+      }),
+    );
   },
   tasks: followedOnly<MsgOf<"tasks">>((state, _session, msg) =>
     stay(questionMoved(state, withFacts(state, { tasks: msg.tasks }))),

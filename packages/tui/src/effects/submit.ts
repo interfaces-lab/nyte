@@ -8,7 +8,7 @@ import { errorMessage } from "../lib/format.ts";
 import { rowStatus } from "./commands.ts";
 import type { PluginsPort } from "./ports.ts";
 import type { HandlerContext } from "./scope.ts";
-import { blankWorkspace, follow } from "./session.ts";
+import { blankWorkspace, defaultSelection, follow } from "./session.ts";
 
 export async function submit(
   submission: Submission,
@@ -152,10 +152,24 @@ async function start(
     }
 
     const catalog = read().facts.catalog.catalog ?? (await ports.host.listModels());
+
+    const selection =
+      current.unresolved === true
+        ? defaultSelection(catalog, read().facts.settings.thinkingLevel)
+        : current.selection;
+
+    if (selection === null) {
+      refuse("No models are available. /login connects a provider.");
+
+      return false;
+    }
+
+    if (current.unresolved === true) dispatch({ kind: "selection", session: chat.id, selection });
+
     const models = catalog.providers.flatMap((provider) => provider.models);
 
-    if (findModel(models, current.selection.model) === undefined) {
-      refuse(`${current.selection.model.id} isn't available. ctrl+p picks another.`);
+    if (findModel(models, selection.model) === undefined) {
+      refuse(`${selection.model.id} isn't available. ctrl+p picks another.`);
 
       return false;
     }
@@ -163,7 +177,7 @@ async function start(
     const started = await ports.host.start({
       id: chat.id,
       workspace,
-      selection: current.selection,
+      selection,
       content: decision.draft.content,
     });
 

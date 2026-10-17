@@ -40,7 +40,8 @@ function basename(path: string): string {
 }
 
 export function footerFor(state: State, queued: number): FooterModel {
-  const session = state.facts.chat;
+  const chat = state.facts.chat;
+  const session = chat?.kind === "blank" && chat.unresolved === true ? null : chat;
   const view = followedSession(state)?.view ?? null;
   const { workspace } = state.facts;
   const context = view?.context;

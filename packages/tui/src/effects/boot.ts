@@ -12,6 +12,7 @@ import {
   fallbackSelection,
   follow,
   openBlank,
+  PLACEHOLDER_SELECTION,
   sameSelection,
   settleFolder,
   watchHost,
@@ -30,20 +31,26 @@ export interface BootOptions {
 
 /**
  * The chat a launch draws on its first frame, before the host answers: a blank chat on the
- * model the last launch resolved, at the thinking level asked for or remembered. `null` when
- * the launch resumes a session, names a model the catalog must resolve, or none was recorded.
+ * model the last launch resolved, at the thinking level asked for or remembered. Without a
+ * recorded model, or with one the catalog must resolve from a flag, the chat waits unresolved
+ * for boot to choose. `null` when the launch resumes a session.
  */
 export function launchChat(
   options: BootOptions,
   recorded: Selection | null,
   settings: ResolvedSettings,
 ): BlankChat | null {
-  if (options.target.kind !== "new" || options.model !== null || recorded === null) return null;
+  if (options.target.kind !== "new") return null;
+  const id = asId<"session">(crypto.randomUUID());
+  const folder = { kind: "launch-folder" } as const;
+
+  if (options.model !== null || recorded === null)
+    return { kind: "blank", id, folder, selection: PLACEHOLDER_SELECTION, unresolved: true };
 
   return {
     kind: "blank",
-    id: asId(crypto.randomUUID()),
-    folder: { kind: "launch-folder" },
+    id,
+    folder,
     selection: { ...recorded, effort: options.effort ?? settings.thinkingLevel ?? recorded.effort },
   };
 }
@@ -92,7 +99,7 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   if (target === null && chat?.kind === "blank") {
     const sending = context.read().local.submissions.some((sent) => sent.session === chat.id);
 
-    if (!sending && !sameSelection(chat.selection, selection))
+    if ((chat.unresolved === true || !sending) && !sameSelection(chat.selection, selection))
       dispatch({ kind: "selection", session: chat.id, selection });
     await settleFolder(chat, context);
   } else if (target === null)

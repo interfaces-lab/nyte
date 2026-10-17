@@ -53,6 +53,11 @@ export interface BlankChat {
   readonly id: SessionId;
   readonly folder: ChatFolder;
   readonly selection: Selection;
+  /**
+   * Set on a launch's first chat when no model is known before the host answers: `selection`
+   * is a stand-in the footer leaves out, and the first send starts on the host's default.
+   */
+  readonly unresolved?: true;
 }
 
 /** Where a blank chat starts: the folder the TUI launched in until the host registers it, then that workspace. */

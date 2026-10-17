@@ -142,7 +142,7 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
         : null,
     dialog,
     blocked: blockedBy(state),
-    waiting: waitingMessage(state) !== null,
+    waiting: waitingMessages(state).length > 0,
     models: state.facts.catalog.catalog !== null,
     queue,
     followUp: state.facts.settings.followUp,
@@ -157,13 +157,13 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
   };
 }
 
-/** The first message of the blank chat on screen while it waits for the host to open, or `null`. */
-export function waitingMessage(state: State): Submission | null {
+/** The messages sent to the blank chat on screen while they wait for the host to open, oldest first. */
+export function waitingMessages(state: State): readonly Submission[] {
   const { chat } = state.facts;
 
-  if (chat?.kind !== "blank" || state.facts.host === "open") return null;
+  if (chat?.kind !== "blank" || state.facts.host === "open") return [];
 
-  return state.local.submissions.find((sent) => sent.session === chat.id) ?? null;
+  return state.local.submissions.filter((sent) => sent.session === chat.id);
 }
 
 function editingModel(state: State, queue: readonly QueueRow[]): EditingModel | null {

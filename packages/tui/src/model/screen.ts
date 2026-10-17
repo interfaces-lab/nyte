@@ -24,15 +24,15 @@ import { currentQuestion, questionPanel, questionTitle } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
 import { followedSession, followedShells } from "./state.ts";
 import type { FailureReport, Notice, ShellJob, State } from "./state.ts";
-import { tableInputFor, waitingMessage } from "./table-input.ts";
+import { tableInputFor, waitingMessages } from "./table-input.ts";
 import type { Blocked, EditingModel, RunModel } from "./table-input.ts";
 import { deriveTranscript } from "./transcript.ts";
 import type { TranscriptModel } from "./transcript.ts";
 
 export interface ScreenModel {
   readonly opening: boolean;
-  /** The text of a new chat's first message while it waits for the host to open. */
-  readonly waiting: string | null;
+  /** The text of each message sent to a new chat while it waits for the host to open, oldest first. */
+  readonly waiting: readonly string[];
   readonly watch: WatchModel | null;
   readonly run: RunModel;
   readonly question: QuestionModel | null;
@@ -150,7 +150,13 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const view = session?.view ?? null;
   const blank = state.facts.chat?.kind === "blank" ? state.facts.chat : null;
   const starting = state.local.submissions.some((sent) => sent.session === blank?.id);
-  const waiting = waitingMessage(state);
+
+  const waiting = keepEqual(
+    previous?.waiting,
+    waitingMessages(state).map((sent) => sent.snapshot.text.replaceAll(/\s+/gu, " ").trim()),
+    (left, right) => left === right,
+  );
+
   const dialog = keyboardDialog(state);
   const input = tableInputFor(state, dialog);
   const queue = keepEqual(previous?.queue, input.queue, sameQueueRow);
@@ -167,8 +173,8 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
   const markers = keepEqual(previous?.markers, liveMarkers(state.local.draft), sameSpan);
 
   return {
-    opening: view === null && (blank === null || (starting && waiting === null)),
-    waiting: waiting === null ? null : waiting.snapshot.text.replaceAll(/\s+/gu, " ").trim(),
+    opening: view === null && (blank === null || (starting && waiting.length === 0)),
+    waiting,
     watch: session?.watch.kind === "failed" ? { failure: session.watch.failure } : null,
     run: input.run,
     question,

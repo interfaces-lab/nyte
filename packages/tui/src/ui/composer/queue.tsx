@@ -199,21 +199,21 @@ export function QueueRows(): JSX.Element {
       flexShrink={0}
       marginLeft={1}
       marginRight={1}
-      visible={queue().length > 0 || app.screen().waiting !== null}
+      visible={queue().length > 0 || app.screen().waiting.length > 0}
     >
-      <Show when={app.screen().waiting}>
-        {(text: Accessor<string>) => (
+      <For each={app.screen().waiting}>
+        {(text, index) => (
           <Line
-            id="waiting-row"
+            id={`waiting-row-${String(index())}`}
             glyph={GLYPHS.sending}
             tone={app.kit.theme().dim}
-            text={text()}
+            text={text}
             textTone={app.kit.theme().user}
             label="sends when Nyte connects"
             hint={null}
           />
         )}
-      </Show>
+      </For>
       <For each={queue()}>
         {(row, index) => (
           <QueueLine

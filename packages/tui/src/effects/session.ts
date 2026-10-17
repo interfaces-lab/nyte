@@ -20,7 +20,7 @@ import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 
 const HISTORY_PAGE = 200;
 
-const PLACEHOLDER_SELECTION: Selection = {
+export const PLACEHOLDER_SELECTION: Selection = {
   model: { provider: "none", id: "none" },
   effort: "medium",
   fast: false,

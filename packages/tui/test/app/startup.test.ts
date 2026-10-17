@@ -110,17 +110,27 @@ test("a recorded model the host no longer lists hands the message back and names
   expect(await Array.fromAsync(rootSessions(tui.fixture.host))).toHaveLength(0);
 });
 
-test("without a recorded model the first frame takes keys, and the chat opens with the host", async () => {
+test("without a recorded model the first frame takes keys and Enter, shows every waiting message, and starts on the host's default", async () => {
   await using tui = await startTui({ opened: false, typed: "typed at launch", record: true });
 
   await tui.frame((frame) => frame.includes("❯ typed at launch"));
   expect(shownAt(tui, (frame) => frame.includes("❯ typed at launch"))).toBeLessThanOrEqual(50);
-  expect(tui.store.screen().blocked).toEqual({ kind: "no-session" });
+  expect(tui.store.screen().blocked).toBeNull();
+
+  tui.mockInput.pressEnter();
+  await tui.send("and a follow-up");
+  await tui.frame(
+    (frame) =>
+      frame.includes("typed at launch") &&
+      frame.includes("and a follow-up") &&
+      frame.split("sends when Nyte connects").length === 3,
+  );
 
   tui.openHost();
-  await tui.ready();
-  expect(tui.store.state().local.draft.text).toBe("typed at launch");
-  expect(tui.fixture.requests).toHaveLength(0);
+  await tui.state((store) => store.state().facts.chat?.kind === "session");
+  expect(await Array.fromAsync(rootSessions(tui.fixture.host))).toHaveLength(1);
+  expect(lastUserText(await tui.fixture.requested(1))).toBe("typed at launch");
+  expect(tui.store.state().facts.chat?.selection).toEqual(CURRENT);
 });
 
 test("a settings file that doesn't parse is left out of the first frame's settings, and a notice names it", async () => {
