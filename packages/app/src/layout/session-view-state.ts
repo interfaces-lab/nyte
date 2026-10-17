@@ -46,12 +46,29 @@ export interface BlankViewState {
 }
 
 /**
- * Whether a draft takes edits, or holds a first message waiting to start its
- * chat. Each send gets its own `sending` object: the start goes ahead only
- * while the draft still holds that one, so a cancel, a park or a newer send
- * withdraws it. Never persisted; a relaunch shows the draft editable.
+ * Where a draft's first message stands. `waiting` holds it until the host
+ * connects, and a cancel withdraws it; `starting` has gone to the host and
+ * can no longer be withdrawn. `refused` and `failed` take edits again and
+ * say why the last send started no chat; a refusal the user can fix by
+ * choosing another model says so. Each send gets its own `waiting` object:
+ * the start goes ahead only while the draft still holds that one, so a
+ * cancel or a newer send withdraws it. The send belongs to the draft, not to
+ * a pane: moving or parking the draft keeps it. Never persisted; a relaunch
+ * shows the draft editable.
  */
-export type DraftStatus = { readonly kind: "editing" } | { readonly kind: "sending" };
+export type DraftStatus =
+  | { readonly kind: "editing" }
+  | { readonly kind: "waiting" }
+  | { readonly kind: "starting" }
+  | {
+      readonly kind: "refused";
+      readonly message: string;
+      readonly fix: "choose-model" | undefined;
+    }
+  | { readonly kind: "failed"; readonly cause: string };
+
+/** How a send ended without a chat. */
+export type DraftFailure = Extract<DraftStatus, { kind: "refused" } | { kind: "failed" }>;
 
 export interface ChatDraft extends BlankViewState {
   readonly id: string;
@@ -209,11 +226,6 @@ function hydrateDraft(draft: PersistedChatDraft, images: PersistedImages | undef
   };
 }
 
-/** A parked draft takes edits: parking it withdraws a send it was waiting on. */
-function parkedDraft(draft: ChatDraft): ChatDraft {
-  return draft.status.kind === "editing" ? draft : { ...draft, status: EDITING };
-}
-
 function persistablePane(state: PaneDraftState): Static<typeof paneDraftsSchema> {
   const parked: PersistedChatDraft[] = [];
 
@@ -364,7 +376,7 @@ export class SessionViewStateStore {
     const current = drafts.active;
 
     if (!draftHasContent(current)) return;
-    drafts.parked.set(current.id, parkedDraft(current));
+    drafts.parked.set(current.id, current);
     drafts.active = this.#createDraft();
     this.#emit();
   }
@@ -379,7 +391,7 @@ export class SessionViewStateStore {
     const target = this.#draftState(paneId);
 
     if (draftHasContent(target.active)) {
-      target.parked.set(target.active.id, parkedDraft(target.active));
+      target.parked.set(target.active.id, target.active);
     }
 
     if (located.kind === "active") {
@@ -419,14 +431,14 @@ export class SessionViewStateStore {
   /**
    * Holds the pane's draft, as sent, for the start of its chat; the draft
    * stays on screen under its id until the chat opens. Refused while the
-   * draft already waits on a send.
+   * draft already waits on a send or its start is under way.
    */
   beginSend(paneId: PaneId, composer: ComposerViewState): DraftStatus | undefined {
     const drafts = this.#draftState(paneId);
     const current = drafts.active;
 
-    if (current.status.kind === "sending") return undefined;
-    const status: DraftStatus = { kind: "sending" };
+    if (current.status.kind === "waiting" || current.status.kind === "starting") return undefined;
+    const status: DraftStatus = { kind: "waiting" };
 
     drafts.active = {
       ...current,
@@ -440,15 +452,35 @@ export class SessionViewStateStore {
     return status;
   }
 
-  /** The send did not start a chat, or was withdrawn: the draft takes edits again, as it was sent. */
-  cancelSend(draftId: string): void {
-    for (const drafts of this.#drafts.values()) {
-      if (drafts.active.id !== draftId || drafts.active.status.kind === "editing") continue;
-      drafts.active = { ...drafts.active, status: EDITING };
-      this.#emit();
+  /** The host connected while the draft still held `waiting`: its start goes ahead and can no longer be withdrawn. */
+  commitSend(draftId: string, waiting: DraftStatus): boolean {
+    if (this.#findDraft(draftId)?.draft.status !== waiting) return false;
+    this.#setStatus(draftId, { kind: "starting" });
 
-      return;
-    }
+    return true;
+  }
+
+  /** Withdraws a send that still waits for the host: the draft takes edits again, as it was sent. */
+  cancelSend(draftId: string): void {
+    if (this.#findDraft(draftId)?.draft.status.kind !== "waiting") return;
+    this.#setStatus(draftId, EDITING);
+  }
+
+  /** The send started no chat: the draft takes edits again, as it was sent, and says why. */
+  failSend(draftId: string, failure: DraftFailure): void {
+    this.#setStatus(draftId, failure);
+  }
+
+  #setStatus(draftId: string, status: DraftStatus): void {
+    const located = this.#findDraft(draftId);
+
+    if (located === undefined) return;
+    const drafts = this.#draftState(located.paneId);
+    const next = { ...located.draft, status };
+
+    if (located.kind === "active") drafts.active = next;
+    else drafts.parked.set(draftId, next);
+    this.#emit();
   }
 
   #draftState(paneId: PaneId): PaneDraftState {

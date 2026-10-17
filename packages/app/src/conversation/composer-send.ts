@@ -69,7 +69,7 @@ export async function uploadComposerContent(content: ComposerContent): Promise<U
   return [...content.parts, ...content.files, ...uploaded];
 }
 
-type ComposerSendPlan =
+export type ComposerSendPlan =
   | { readonly kind: "empty" }
   | { readonly kind: "command"; readonly command: ParsedPluginCommand; readonly delivery: Delivery }
   | { readonly kind: "message"; readonly content: ComposerContent; readonly delivery: Delivery };

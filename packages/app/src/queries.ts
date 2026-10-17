@@ -8,7 +8,8 @@ import {
 } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { useMemo, useSyncExternalStore } from "react";
-import { asId } from "@nyte-ai/schema";
+import { asId, ModelRefType } from "@nyte-ai/schema";
+import { Value } from "typebox/value";
 import { toast } from "@nyte-ai/ui/toast";
 import type {
   ChangeSet,
@@ -116,6 +117,15 @@ const readWorkspaces = async () => (await connected()).workspaces.list();
 
 const readModelCatalog = async () => (await connected()).models.list();
 
+function newestCatalogQuery() {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ["catalog", "models"] })
+    .filter((query) => query.state.data !== undefined)
+    .toSorted((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)
+    .at(0);
+}
+
 function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
   if (previous !== undefined) return previous;
 
@@ -130,7 +140,34 @@ function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalo
     : queryClient.getQueryData<ModelCatalogView>(recent.queryKey);
 }
 
-function selectedWorkspaceId(): WorkspaceId | undefined {
+const DEFAULT_MODEL_MUTATION = ["catalog", "default"] as const;
+
+/**
+ * The catalog a new chat's start checks its model against, once the host
+ * answers: the newest live answer, or a fresh read when only the last run's
+ * seed is cached. A pick still being saved outranks the host's default.
+ */
+export async function readStartCatalog(): Promise<DesktopCatalog> {
+  const newest = newestCatalogQuery();
+
+  const live =
+    newest !== undefined && newest.state.dataUpdatedAt > 0
+      ? queryClient.getQueryData<ModelCatalogView>(newest.queryKey)
+      : undefined;
+
+  const catalog = toDesktopCatalog(live ?? (await readModelCatalog()));
+
+  const picked = queryClient
+    .getMutationCache()
+    .findAll({ mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" })
+    .at(-1)?.state.variables;
+
+  return Value.Check(ModelRefType, picked)
+    ? { ...catalog, defaults: { model: picked, thinkingLevel: undefined } }
+    : catalog;
+}
+
+export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
@@ -654,7 +691,7 @@ export function useCatalog(_sessionId?: SessionId) {
   const generation = useCatalogGeneration();
 
   const pending = useMutationState<MutationState<unknown, Error, ModelRef>>({
-    filters: { mutationKey: ["catalog", "default"], status: "pending" },
+    filters: { mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" },
   });
 
   return useQuery({
@@ -760,7 +797,7 @@ export function useSetPreference() {
   const client = useQueryClient();
 
   return useMutation({
-    mutationKey: ["catalog", "default"],
+    mutationKey: DEFAULT_MODEL_MUTATION,
     scope: { id: "catalog-default" },
     mutationFn: async (model: ModelRef) => {
       const outcome = await (await connected()).models.setDefault(model);

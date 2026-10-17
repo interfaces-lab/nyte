@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import { asId } from "@nyte-ai/schema";
 import { PaneController } from "../layout/pane-controller.ts";
+import { activeSelection } from "../layout/pane-layout.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 
 function writeDraft(controller: PaneController, text: string, paneId: PaneId = "primary"): void {
@@ -117,18 +118,42 @@ test("a send holds the live editor document under the draft's id and refuses a s
   assert.equal(controller.viewState.readBlank("primary").status.kind, "editing");
 });
 
-test("parking a draft that waits on a send withdraws the send", () => {
+test("a send belongs to its draft: parking keeps it, and a start under way cannot be withdrawn", () => {
   const controller = new PaneController({ storageKey: "park-sending-draft" });
   writeDraft(controller, "First request");
   const { id, composer } = controller.viewState.readBlank("primary");
-  const status = controller.viewState.beginSend("primary", composer);
+  const waiting = controller.viewState.beginSend("primary", composer);
+  assert.ok(waiting !== undefined);
 
   controller.newChat();
+  assert.equal(controller.viewState.readDraft(id)?.status, waiting);
 
-  const parked = controller.viewState.readDraft(id);
-  assert.equal(parked?.composer.draft, "First request");
-  assert.notEqual(parked?.status, status);
-  assert.equal(parked?.status.kind, "editing");
+  assert.equal(controller.viewState.commitSend(id, waiting), true);
+  assert.equal(controller.viewState.commitSend(id, waiting), false);
+  controller.viewState.cancelSend(id);
+  assert.equal(controller.viewState.readDraft(id)?.status.kind, "starting");
+
+  controller.viewState.failSend(id, { kind: "failed", cause: "host went away" });
+  assert.deepEqual(controller.viewState.readDraft(id)?.status, {
+    kind: "failed",
+    cause: "host went away",
+  });
+  assert.equal(controller.viewState.readDraft(id)?.composer.draft, "First request");
+});
+
+test("a started draft opens its chat only in the pane that shows it", () => {
+  const controller = new PaneController({ storageKey: "open-started-draft" });
+  writeDraft(controller, "Started elsewhere");
+  const { id } = controller.viewState.readBlank("primary");
+  const other = asId<"session">("other");
+  controller.selectSession(other);
+
+  controller.openDraftChat(id, asId<"session">(id));
+  assert.deepEqual(activeSelection(controller.getSnapshot().layout), {
+    kind: "session",
+    sessionId: other,
+  });
+  assert.equal(controller.viewState.readDraft(id), undefined);
 });
 
 test("late removal of a parked draft preserves the pane's newer draft", () => {

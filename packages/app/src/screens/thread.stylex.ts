@@ -96,7 +96,8 @@ export const threadStyles = create({
     fontSize: type.fontBase,
   },
   error: { paddingInlineStart: space.s1, color: role.contentSecondary, fontSize: type.fontBase },
-  pendingStart: {
+  /** A line under a new chat's composer that carries an action at its end. */
+  startRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
