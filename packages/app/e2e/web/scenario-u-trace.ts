@@ -21,13 +21,16 @@ interface Hop {
  * Scenario U's hops, keyed by span name and, where one name times several
  * things, the tool or part it served. Each budget is the hop's p95 over five
  * measured runs plus 25%, rounded up to 5 ms, desktop then web; a hop measured in single milliseconds
- * gets 25 ms, since a 10 ms budget missed on scheduler noise alone.
+ * gets 25 ms, since a 10 ms budget missed on scheduler noise alone. The
+ * submit's first three hops time sessions.start, which starts the chat with
+ * its first message, and were measured again with canvas_render once the
+ * canvas compiled as a module graph.
  * `tool.run:question` is the user's answer and has no budget.
  */
 export const HOPS: ReadonlyMap<string, Hop> = new Map([
-  ["composer.submit", hop("app/src/conversation/composer-send.ts:sendComposerMessage", 55, 25)],
-  ["sdk.send", hop("sdk/src/client.ts:send", 55, 25)],
-  ["host.admit", hop("core/src/engine/admission.ts:send", 25, 25)],
+  ["composer.submit", hop("app/src/conversation/composer-send.ts:startComposerChat", 55, 50)],
+  ["sdk.send", hop("sdk/src/client.ts:sessions.start", 55, 50)],
+  ["host.admit", hop("core/src/api/session.ts:start", 40, 45)],
   ["turn.start", hop("core/src/agent/turn.ts:prepareRequest", 795, 540)],
   ["model.stream", hop("core/src/agent/turn.ts:stream", 200, 160)],
   ["mcp.connect", hop("host/src/mcp/hub.ts:connectTraced", 825, 555)],
@@ -35,7 +38,7 @@ export const HOPS: ReadonlyMap<string, Hop> = new Map([
   ["mcp.serve", hop("host/src/bench/scenarios/mcp-server.mjs:serve", 70, 65)],
   ["tool.run:read", hop("core/src/agent/turn.ts:execute", 25, 25)],
   ["tool.run:mcp__places__search_places", hop("core/src/agent/turn.ts:execute", 110, 70)],
-  ["tool.run:canvas_render", hop("core/src/agent/turn.ts:execute", 30, 25)],
+  ["tool.run:canvas_render", hop("core/src/agent/turn.ts:execute", 30, 35)],
   ["tool.run:bash", hop("core/src/agent/turn.ts:execute", 4210, 4020)],
   ["canvas.compile", hop("plugin/src/canvas/canvas.ts:canvas_render.execute", 25, 25)],
   ["canvas.paint", hop("app/src/conversation/canvas-frame.tsx:CanvasFrame", 455, 170)],
