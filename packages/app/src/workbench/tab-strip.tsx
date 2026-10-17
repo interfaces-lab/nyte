@@ -479,7 +479,7 @@ export function WorkbenchTabStrip({
                           Copy Selection
                         </ContextMenuItem>
                         <ContextMenuItem
-                          icon="new-chat"
+                          icon="paperclip"
                           onClick={() => readDeferred("workbench")?.addTerminalToChat(terminal.id)}
                         >
                           Add Selection to Chat

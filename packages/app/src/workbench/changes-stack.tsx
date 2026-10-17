@@ -258,7 +258,7 @@ export function ChangesStack({
           {selection?.id === codeItem.id && (
             <Button
               iconOnly
-              icon="new-chat"
+              icon="paperclip"
               aria-label={ADD_TO_CHAT_LABEL}
               aria-keyshortcuts={mac ? "Meta+Shift+L" : "Control+Shift+L"}
               onClick={() => addRange(selection.id, selection.range)}

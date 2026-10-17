@@ -62,7 +62,7 @@ function AddSelectionToChat({ id }: { readonly id: string }): ReactElement | nul
       <Button
         variant="outline"
         size="sm"
-        icon="new-chat"
+        icon="paperclip"
         aria-keyshortcuts={macPlatform(undefined) ? "Meta+Shift+L" : "Control+Shift+L"}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => addTerminalToChat(id)}
