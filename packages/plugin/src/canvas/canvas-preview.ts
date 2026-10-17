@@ -137,6 +137,12 @@ function hostContext(theme: "light" | "dark"): CanvasHostContext {
   };
 }
 
+/** The page globals the harness talks to the shell through, which a host without the DOM library still types. */
+type HarnessPage = {
+  addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
+  postMessage(message: unknown, targetOrigin: string): void;
+};
+
 /** What the harness answers the shell with, and how it decides the canvas has settled. */
 type HarnessSetup = {
   readonly initialize: ReturnType<typeof initializeResult>;
@@ -147,8 +153,9 @@ type HarnessSetup = {
 };
 
 /**
- * The harness: it stands in for the client, so it answers the shell's
- * `ui/initialize` (already sent at load, so answered unasked), posts the
+ * The harness, called with the page's global as `this`: it stands in for
+ * the client, so it answers the shell's `ui/initialize` (already sent at
+ * load, so answered unasked), posts the
  * module once the shell is initialized, and keeps the size reports, errors
  * and console calls under `__nytePreview`. It answers false until the
  * shell's script has run. A previewer runs its source in the page's main
@@ -156,7 +163,7 @@ type HarnessSetup = {
  * govern, so it uses only its argument and the page's globals; the canvas
  * itself still runs under the CSP.
  */
-function installHarness(setup: HarnessSetup): boolean {
+function installHarness(this: HarnessPage, setup: HarnessSetup): boolean {
   if ("__nytePreview" in globalThis) return true;
 
   if (!("__nyteCanvas" in globalThis)) return false;
@@ -188,13 +195,13 @@ function installHarness(setup: HarnessSetup): boolean {
     };
   }
 
-  addEventListener("message", (event: MessageEvent<unknown>) => {
+  this.addEventListener("message", (event) => {
     const data = event.data;
 
     if (typeof data !== "object" || data === null || !("method" in data)) return;
     const params = "params" in data && typeof data.params === "object" ? data.params : null;
 
-    if (data.method === "ui/notifications/initialized") postMessage(setup.render, "*");
+    if (data.method === "ui/notifications/initialized") this.postMessage(setup.render, "*");
 
     if (
       data.method === "ui/notifications/size-changed" &&
@@ -229,7 +236,7 @@ function installHarness(setup: HarnessSetup): boolean {
         }),
     },
   });
-  postMessage(setup.initialize, "*");
+  this.postMessage(setup.initialize, "*");
 
   return true;
 }
@@ -248,7 +255,7 @@ function harness(request: CanvasPreviewRequest): string {
     consoleKept: CONSOLE_KEPT,
   };
 
-  return `(${installHarness.toString()})(${JSON.stringify(setup)})`;
+  return `(${installHarness.toString()}).call(globalThis, ${JSON.stringify(setup)})`;
 }
 
 async function settle(page: CanvasPreviewPage) {
