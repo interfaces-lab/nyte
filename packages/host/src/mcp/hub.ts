@@ -609,6 +609,7 @@ function hub(input: {
         const entry = pool.config.servers.get(server);
 
         if (entry === undefined) return { kind: "missing" };
+        const override = entry.override !== null;
 
         return write(entry.override ?? entry.path, (servers) => {
           const current = servers[server];
@@ -616,7 +617,14 @@ function hub(input: {
           if (!isJsonObject(current)) return null;
           const { enabled: _previous, ...rest } = current;
 
-          return { ...servers, [server]: enabled ? rest : { ...rest, enabled: false } };
+          return {
+            ...servers,
+            [server]: override
+              ? { ...rest, enabled }
+              : enabled
+                ? rest
+                : { ...rest, enabled: false },
+          };
         });
       }),
     login(workspace, server) {
