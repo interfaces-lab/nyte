@@ -106,7 +106,16 @@ export const SETTINGS_PAGES = {
     title: "Agent",
     group: "tools",
     needs: ["providers"],
-    keywords: ["model", "reasoning", "thinking", "context", "compaction", "cache"],
+    keywords: [
+      "model",
+      "reasoning",
+      "thinking",
+      "context",
+      "compaction",
+      "cache",
+      "permissions",
+      "approvals",
+    ],
     Page: AgentSettings,
   },
   editor: {
