@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { TCyclic, TProperties, TSchema } from "typebox";
-import { compile, standard } from "./schema.ts";
+import { Guard } from "typebox/guard";
+import { standard } from "./schema.ts";
 import type { Decoded, Schema } from "./schema.ts";
 
 export type Json =
@@ -43,11 +44,16 @@ export const JsonValueSchema: Schema<Json> = standard(withJson(JsonType));
 
 export const JsonObjectSchema: Schema<JsonSchema> = standard(withJson(JsonObjectType));
 
-const json = compile(withJson(JsonType));
-
+/** Walked by hand: under a renderer's CSP a cyclic TypeBox check runs interpreted, tens of milliseconds over a long chat's view frame. */
 // oxlint-disable-next-line nyte-code/no-is-helper-names -- the public guard every package narrows untyped input with
 export function isJson(value: unknown): value is Json {
-  return json.Check(value);
+  if (Guard.IsArray(value)) return value.every(isJson);
+
+  if (Guard.IsObject(value)) return Object.values(value).every(isJson);
+
+  return (
+    Guard.IsNull(value) || Guard.IsString(value) || Guard.IsBoolean(value) || Guard.IsNumber(value)
+  );
 }
 
 // oxlint-disable-next-line nyte-code/no-is-helper-names -- the public guard every package narrows a JSON value to an object with
