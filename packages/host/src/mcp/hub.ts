@@ -3,7 +3,7 @@ import { StdioTransport } from "@earendil-works/pi-mcp";
 import type { McpClient, Tool } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import type { OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
-import { processEnvironment, closable, dev, traced } from "@nyte-ai/core";
+import { processEnvironment, closable, dev, forwarded, traced } from "@nyte-ai/core";
 import type { Login, PluginStorage, ToolDefinition } from "@nyte-ai/core";
 import type { McpHub, McpHubFactory, McpServerBrief, McpWorkspace } from "@nyte-ai/core/server";
 import { isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
@@ -620,51 +620,56 @@ function hub(input: {
         });
       }),
     login(workspace, server) {
-      const begun = held(workspace, async (pool): Promise<Login> => {
-        const entry = pool.config.servers.get(server);
+      let begun: Promise<Login> | null = null;
 
-        if (entry === undefined) return failedLogin(`No MCP server is named ${server}.`);
-        const { transport } = entry;
+      const begin = (): Promise<Login> =>
+        (begun ??= held(workspace, async (pool): Promise<Login> => {
+          const entry = pool.config.servers.get(server);
 
-        if (transport.kind !== "http")
-          return failedLogin(`${server} runs a command, so it has nothing to sign in to.`);
+          if (entry === undefined) return failedLogin(`No MCP server is named ${server}.`);
+          const { transport } = entry;
 
-        if (Object.keys(transport.headers).some((name) => name.toLowerCase() === "authorization"))
-          return failedLogin(`${server} sends its own Authorization header.`);
-        const key = oauthKey(server, transport.url);
+          if (transport.kind !== "http")
+            return failedLogin(`${server} runs a command, so it has nothing to sign in to.`);
 
-        if (signingIn.has(key)) return failedLogin(`A sign-in to ${server} is already running.`);
-        let settings: ReturnType<typeof oauthSettings>;
+          if (Object.keys(transport.headers).some((name) => name.toLowerCase() === "authorization"))
+            return failedLogin(`${server} sends its own Authorization header.`);
+          const key = oauthKey(server, transport.url);
 
-        try {
-          settings = oauthSettings(transport.oauth, server);
-        } catch (error) {
-          return failedLogin(errorMessage(error));
-        }
+          if (signingIn.has(key)) return failedLogin(`A sign-in to ${server} is already running.`);
+          let settings: ReturnType<typeof oauthSettings>;
 
-        signingIn.add(key);
-        pool.holders += 1;
+          try {
+            settings = oauthSettings(transport.oauth, server);
+          } catch (error) {
+            return failedLogin(errorMessage(error));
+          }
 
-        return signIn({
-          server,
-          serverUrl: transport.url,
-          store: oauthStore(input.secrets, key),
-          settings,
-          challenge: pool.links.get(server)?.challenge() ?? null,
-          signedIn: () => restartSignedIn(key),
-          ended: () => {
-            signingIn.delete(key);
-            pool.holders -= 1;
-            idle(pool);
-          },
-        });
-      });
+          signingIn.add(key);
+          pool.holders += 1;
+
+          return signIn({
+            server,
+            serverUrl: transport.url,
+            store: oauthStore(input.secrets, key),
+            settings,
+            challenge: pool.links.get(server)?.challenge() ?? null,
+            signedIn: () => restartSignedIn(key),
+            ended: () => {
+              signingIn.delete(key);
+              pool.holders -= 1;
+              idle(pool);
+            },
+          });
+        }));
 
       return {
-        async *steps() {
-          yield* (await begun).steps();
+        steps: () => forwarded(async () => (await begin()).steps()),
+        async answer(code) {
+          if (begun === null)
+            throw new SdkError("invalid", "Read the login's steps before answering.");
+          await (await begun).answer(code);
         },
-        answer: async (code) => (await begun).answer(code),
       };
     },
     logout: (workspace, server) =>

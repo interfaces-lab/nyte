@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -326,4 +327,44 @@ it("waits for sign-in when the server needs OAuth, and refuses to sign in to a c
     kind: "invalid",
     message: "files runs a command and has no sign-in.",
   });
+});
+
+it("stops a sign-in at once when its steps end, so the next one can start", async () => {
+  const silent = createServer(() => undefined);
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+  const address = silent.address();
+  assert(address !== null && typeof address === "object");
+  const url = `http://127.0.0.1:${String(address.port)}/mcp`;
+  const folder = await home({ slow: { url } });
+
+  const hub = createMcpHub({ home: folder, connect: () => fakeServer() })({
+    secrets: {
+      get: async () => undefined,
+      set: async () => undefined,
+      delete: async () => undefined,
+    },
+  });
+
+  const workspace = { id: asId<"workspace">("w"), root: null, trusted: false };
+  const first = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
+  const pending = first.next();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const started = Date.now();
+  await first.return?.();
+
+  expect(await pending).toEqual({ done: true, value: undefined });
+  expect(Date.now() - started).toBeLessThan(500);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const second = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
+  const next = await Promise.race([
+    second.next(),
+    new Promise((resolve) => setTimeout(() => resolve("still running"), 300)),
+  ]);
+
+  expect(next).not.toMatchObject({ value: { reason: "A sign-in to slow is already running." } });
+  await second.return?.();
+  await hub.close();
+  silent.closeAllConnections();
+  silent.close();
 });
