@@ -254,7 +254,8 @@ function hub(input: {
           try {
             await refresh();
           } catch (error) {
-            if (client === next) drop(errorMessage(error));
+            if (client === next)
+              drop(`${entry.name} failed to list its tools: ${errorMessage(error)}`);
           }
         });
         await refresh();

@@ -246,11 +246,7 @@ function listLines(view: McpView): readonly string[] {
     ...alignedRows(rows, color),
     ...view.servers.flatMap((server) =>
       server.state.kind === "failed"
-        ? [
-            "",
-            `${server.name}: ${server.state.message}`,
-            ...(server.state.stderr === null ? [] : [server.state.stderr]),
-          ]
+        ? ["", server.state.message, ...(server.state.stderr === null ? [] : [server.state.stderr])]
         : server.state.kind === "needs-sign-in"
           ? ["", `${server.name}: run \`nyte mcp login ${server.name}\` to sign in.`]
           : [],
