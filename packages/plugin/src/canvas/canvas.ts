@@ -124,6 +124,8 @@ function describeErrors(errors: readonly CompileError[]): string {
     .join("\n");
 }
 
+const encoder = new TextEncoder();
+
 /** Compiles a tool call's canvas, or throws the diagnostics for the model to fix. */
 async function compile(
   args: { readonly source: string; readonly files?: Readonly<Record<string, string>> },
@@ -132,7 +134,13 @@ async function compile(
   const compiled = await traced(
     "canvas.compile",
     followedTrace(invocation.session.id),
-    { bytes: args.source.length, files: Object.keys(args.files ?? {}).length },
+    {
+      bytes: [args.source, ...Object.values(args.files ?? {})].reduce(
+        (sum, text) => sum + encoder.encode(text).byteLength,
+        0,
+      ),
+      files: Object.keys(args.files ?? {}).length,
+    },
     () => compileCanvas(args.source, args.files),
   );
 
