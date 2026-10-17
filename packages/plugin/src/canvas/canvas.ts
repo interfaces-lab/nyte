@@ -4,11 +4,14 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import {
+  CANVAS_ENTRY,
   CANVAS_MAX_HEIGHT,
   CANVAS_MIN_HEIGHT_HINT,
   CANVAS_SOURCE_LIMIT,
   KIT,
   KIT_SPECIFIER,
+  LIBRARY_VERSIONS,
+  REACT_DOM_EXPORTS,
   TINTS,
 } from "./canvas-protocol.ts";
 import { compileCanvas } from "./canvas-compile.ts";
@@ -49,8 +52,13 @@ const parameters = standard(
     title: Type.String({ minLength: 1, maxLength: 120, description: "Shown above the canvas." }),
     source: Type.String({
       maxLength: CANVAS_SOURCE_LIMIT,
-      description: "One TSX module whose default export is the component.",
+      description: `${CANVAS_ENTRY}: the TSX module whose default export is the component.`,
     }),
+    files: Type.Optional(
+      Type.Record(Type.String(), Type.String({ maxLength: CANVAS_SOURCE_LIMIT }), {
+        description: `The canvas's other modules, keyed by path from ${CANVAS_ENTRY}'s folder (\`chart.tsx\`, \`lib/scale.ts\`), which it imports as \`./chart\` or \`./lib/scale.ts\`.`,
+      }),
+    ),
     canvas: Type.Optional(
       Type.String({
         description: "The id of a canvas to replace in place; omit to add a new one.",
@@ -78,8 +86,14 @@ const kitReference = Object.entries(KIT)
  * @since 0.1.0
  */
 export const CANVAS_DESCRIPTION = [
-  "Render a React canvas inline in the chat. `source` is one TSX module whose default export is a component.",
-  `Only two imports exist: \`react\` and \`${KIT_SPECIFIER}\`; nothing else resolves (no npm packages, no URLs, no fetch, no relative files). \`eval\` and \`new Function\` are unavailable at run time.`,
+  `Render a React canvas inline in the chat. \`source\` is ${CANVAS_ENTRY}, a TSX module whose default export is a component; split a large canvas into \`files\` it imports by relative path. Every file counts toward one ${Math.round(CANVAS_SOURCE_LIMIT / 1024)} KB budget.`,
+  `Imports: \`react\`, \`react-dom\` (${REACT_DOM_EXPORTS.map((name) => `\`${name}\``).join(" and ")} only), \`${KIT_SPECIFIER}\`, the canvas's own files, and these libraries, each loaded only by a canvas that imports it: ${Object.entries(
+    LIBRARY_VERSIONS,
+  )
+    .map(([name, version]) => `\`${name}\` ${version}`)
+    .join(
+      ", ",
+    )}. \`three\` is the core module without its addons, so orbit a camera yourself. Nothing else resolves (no other npm packages, no URLs, no fetch). \`eval\` and \`new Function\` are unavailable at run time.`,
   `The canvas runs sandboxed with no network, sized to its content (up to ${CANVAS_MAX_HEIGHT} px, then it scrolls), on the chat's background with the user's theme applied through the kit.`,
   "Use the kit for layout, text, data and charts; never hard-code colours, fonts or backgrounds. An `<a href>` to an http(s) URL opens in the user's browser, and one to a workspace path such as `src/app.ts:42` opens that file at that line; other schemes are refused. Pass `canvas` to replace an earlier canvas in place.",
   "",
@@ -91,14 +105,16 @@ export const CANVAS_DESCRIPTION = [
   kitReference,
 ].join("\n");
 
-/** Returns the diagnostics as the model reads them: one per line, positioned when the compiler knows where. */
+/** Returns the diagnostics as the model reads them: one per line, positioned in their file when the compiler knows where. */
 function describeErrors(errors: readonly CompileError[]): string {
   return errors
-    .map((error) =>
-      error.line === null
-        ? error.text
-        : `canvas.tsx:${error.line}:${error.column ?? 0} ${error.text}`,
-    )
+    .map((error) => {
+      if (error.file === null) return error.text;
+
+      return error.line === null
+        ? `${error.file}: ${error.text}`
+        : `${error.file}:${error.line}:${error.column ?? 0} ${error.text}`;
+    })
     .join("\n");
 }
 
@@ -116,8 +132,8 @@ const render: ToolDefinition<Infer<typeof parameters>> = {
     const compiled = await traced(
       "canvas.compile",
       followedTrace(invocation.session.id),
-      { bytes: args.source.length },
-      () => compileCanvas(args.source),
+      { bytes: args.source.length, files: Object.keys(args.files ?? {}).length },
+      () => compileCanvas(args.source, args.files),
     );
 
     if (compiled.kind === "failed")

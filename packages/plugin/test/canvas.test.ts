@@ -1,7 +1,12 @@
 import { isPart } from "@nyte-ai/core";
 import { expect, it } from "vitest";
 import canvasPlugin, { CANVAS_DESCRIPTION, canvas } from "../src/canvas/canvas.ts";
-import { KIT_EXPORTS, KIT_SPECIFIER } from "../src/canvas/canvas-protocol.ts";
+import {
+  CANVAS_RUNTIME,
+  KIT_EXPORTS,
+  KIT_SPECIFIER,
+  LIBRARY_EXPORTS,
+} from "../src/canvas/canvas-protocol.ts";
 import { fakeModels, open, until } from "./fake-models.ts";
 
 const first = `import { Text } from "${KIT_SPECIFIER}";\nexport default () => <Text>1</Text>;`;
@@ -35,10 +40,10 @@ it("renders a canvas from the tool as an answer part, then replaces it in place 
 
   expect(drawn).toMatchObject({
     role: "answer",
-    state: { runtime: 1, title: "Totals", height: 120, error: null },
+    state: { runtime: CANVAS_RUNTIME, title: "Totals", height: 120, error: null },
   });
-  expect(drawn.state.code).toContain("const { Text } = globalThis.__nyteCanvas.kit;");
-  expect(drawn.state.code).toContain("export default");
+  expect(drawn.state.code).toContain("var _canvas = require('nyte/canvas');");
+  expect(drawn.state.code).toContain('export default __require("main.tsx").default;');
   expect(
     canvas.fallback(
       { runtime: 1, title: "Totals", code: "", height: null, error: null },
@@ -122,12 +127,17 @@ it("answers the model with the compiler's diagnostics, positioned per line, and 
     ?.context.messages.find((message) => message.role === "toolResult");
 
   expect(JSON.stringify(result)).toContain(
-    `The canvas did not compile:\\ncanvas.tsx:1:0 \\"${KIT_SPECIFIER}\\" has no export named \\"Nope\\".\\nThe module must \`export default\` a component.`,
+    `The canvas did not compile:\\nmain.tsx:1:0 \\"${KIT_SPECIFIER}\\" has no export named \\"Nope\\".\\nmain.tsx: The module must \`export default\` a component.`,
   );
 });
 
-it("describes the tool with every kit export and the two imports", () => {
-  expect(CANVAS_DESCRIPTION).toContain(`\`react\` and \`${KIT_SPECIFIER}\``);
+it("describes the tool with every kit export, every import and the libraries", () => {
+  expect(CANVAS_DESCRIPTION).toContain(
+    `Imports: \`react\`, \`react-dom\` (\`createPortal\` and \`flushSync\` only), \`${KIT_SPECIFIER}\`, the canvas's own files`,
+  );
+
+  for (const name of Object.keys(LIBRARY_EXPORTS))
+    expect(CANVAS_DESCRIPTION).toContain(`\`${name}\` `);
   expect(CANVAS_DESCRIPTION).toContain("`eval` and `new Function` are unavailable");
 
   for (const name of KIT_EXPORTS) expect(CANVAS_DESCRIPTION).toContain(`- ${name} `);

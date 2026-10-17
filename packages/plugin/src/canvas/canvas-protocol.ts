@@ -1,22 +1,27 @@
 /**
  * The inline canvas contract every side shares, with no dependencies: the
- * runtime version, the two import surfaces a canvas module may use, the
- * size caps, and the JSON-RPC messages between a client and the runtime
- * shell, in the MCP Apps shape (`ui/*` methods as upstream defines them,
- * `nyte/*` for the one extension). Builders make a message; readers narrow
- * `unknown` data from a `message` event into a typed one or `undefined`.
+ * runtime version, the import surfaces a canvas module may use, the size
+ * caps, where a compiled module's source files sit in it, and the JSON-RPC
+ * messages between a client and the runtime shell, in the MCP Apps shape
+ * (`ui/*` methods as upstream defines them, `nyte/*` for the one extension).
+ * Builders make a message; readers narrow `unknown` data from a `message`
+ * event into a typed one or `undefined`.
  */
+import { CANVAS_LIBRARIES } from "./canvas-libraries.ts";
 
-/** The kit surface a compiled module was built against. Bump on any change to `KIT` or a kit component's props; a shell renders a canvas whose runtime is at most its own. */
-export const CANVAS_RUNTIME = 1;
+/** The shell surface a compiled module was built against. Bump on any change to `KIT`, a kit component's props, the libraries or the global; a shell renders a canvas whose runtime is at most its own. Runtime 2 added `react-dom`, the libraries and multi-file modules. */
+export const CANVAS_RUNTIME = 2;
 
-/** The global the shell installs before importing a module: `{ runtime, react, jsxRuntime, kit }`. */
+/** The global the shell installs before importing a module: `{ runtime, react, jsxRuntime, reactDom, kit, library }`, where `library(specifier)` loads one of `LIBRARY_EXPORTS`' modules. */
 export const CANVAS_GLOBAL = "__nyteCanvas";
 
 /** The import specifier for the kit. */
 export const KIT_SPECIFIER = "nyte/canvas";
 
-/** Bytes of TSX the tool accepts. */
+/** The entry module's file name: the tool's `source`, which its other files are imported from. */
+export const CANVAS_ENTRY = "main.tsx";
+
+/** Bytes of TSX the tool accepts, across every file of one canvas. */
 export const CANVAS_SOURCE_LIMIT = 65_536;
 
 /** Bytes of compiled module a part may hold. */
@@ -77,6 +82,84 @@ export const REACT_EXPORTS = [
 ] as const;
 
 export const JSX_RUNTIME_EXPORTS = ["Fragment", "jsx", "jsxs"] as const;
+
+/** The two `react-dom` names a canvas may import; the shell owns the root, so nothing that mounts one. */
+export const REACT_DOM_EXPORTS = ["createPortal", "flushSync"] as const;
+
+/** Every name each library exports, by its import specifier. */
+export const LIBRARY_EXPORTS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.exports.split(" ")]),
+);
+
+/** Each library's pinned version, by its import specifier. */
+export const LIBRARY_VERSIONS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(CANVAS_LIBRARIES).map(([name, library]) => [name, library.version]),
+);
+
+const FILES_COMMENT = /^\/\*nyte-canvas-files:(\[[^\n]*?\])\*\//u;
+
+/**
+ * A source file's place in a compiled module: its name, the module line its
+ * first line sits on, and how many lines it has.
+ */
+export type CanvasFileSpan = readonly [file: string, start: number, lines: number];
+
+/** Returns the comment a compiled module opens with, naming where each source file sits in it. */
+export function canvasFilesComment(spans: readonly CanvasFileSpan[]): string {
+  return `/*nyte-canvas-files:${JSON.stringify(spans)}*/`;
+}
+
+/** A position in one of a canvas's source files, lines from 1. */
+export type CanvasSourcePosition = {
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+};
+
+/** Returns the source position a compiled module's line and column come from, or undefined on the linker's own lines and in a module without the files comment. */
+export function locateCanvasPosition(
+  code: string,
+  line: number,
+  column: number,
+): CanvasSourcePosition | undefined {
+  const comment = FILES_COMMENT.exec(code);
+
+  if (comment === null) return undefined;
+  const spans = parseSpans(comment[1] ?? "");
+  const span = spans.find(([, start, lines]) => line >= start && line < start + lines);
+
+  return span === undefined ? undefined : { file: span[0], line: line - span[1] + 1, column };
+}
+
+/** Returns `file:line:column` for the first frame of a stack that runs in a compiled module, which the shell loads from a blob URL. */
+export function locateCanvasStack(code: string, stack: string): string | undefined {
+  for (const frame of stack.matchAll(/blob:[^\s)]+:(\d+):(\d+)/gu)) {
+    const position = locateCanvasPosition(code, Number(frame[1]), Number(frame[2]));
+
+    if (position !== undefined) return `${position.file}:${position.line}:${position.column}`;
+  }
+
+  return undefined;
+}
+
+function parseSpans(text: string): readonly CanvasFileSpan[] {
+  try {
+    const parsed: unknown = JSON.parse(text);
+
+    return Array.isArray(parsed)
+      ? parsed.flatMap((entry: unknown): CanvasFileSpan[] =>
+          Array.isArray(entry) &&
+          typeof entry[0] === "string" &&
+          typeof entry[1] === "number" &&
+          typeof entry[2] === "number"
+            ? [[entry[0], entry[1], entry[2]]]
+            : [],
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * The hues a series, a sparkline or a meter may name; charts without one take
