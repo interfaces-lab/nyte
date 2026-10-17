@@ -116,6 +116,38 @@ export function closable<T>(
   };
 }
 
+/**
+ * Iterates the iterable `start` resolves to, calling `start` on the first
+ * pull: an iterable nobody reads never starts. Ending the iteration returns
+ * the inner iterator at once, even while a pull waits, so a cancelled watch
+ * or login stops instead of waiting for its next value.
+ *
+ * @category watch
+ * @since 0.1.0
+ */
+export function forwarded<T>(start: () => Promise<AsyncIterable<T>>): AsyncIterable<T> {
+  return closable<T>(() => {
+    let inner: AsyncIterator<T> | null = null;
+    let closed = false;
+
+    const opened = start().then((iterable) => {
+      inner = iterable[Symbol.asyncIterator]();
+
+      if (closed) void inner.return?.();
+
+      return inner;
+    });
+
+    return {
+      pull: async () => (await opened).next(),
+      close() {
+        closed = true;
+        void inner?.return?.();
+      },
+    };
+  });
+}
+
 export function coalesce<T>(source: AsyncIterable<T>, frameMs = 16): AsyncIterable<T> {
   return closable<T>(() => {
     const iterator = source[Symbol.asyncIterator]();

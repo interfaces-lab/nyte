@@ -17,6 +17,7 @@ import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
 import { createSettingsApi } from "../extend/settings.ts";
 import { inspect } from "../store/inspect.ts";
+import { forwarded } from "../util/iterable.ts";
 import { watchHost } from "./host.ts";
 import { createSessions, sessionHandle } from "./session.ts";
 
@@ -102,10 +103,12 @@ export function createConnection(
 
     return gated("workspace", handle, authority, {
       mcp: gated("mcp", handle.mcp, authority, {
-        async *watch() {
-          gate(authority, "mcp.watch");
-          yield* handle.mcp.watch();
-        },
+        watch: () =>
+          forwarded(async () => {
+            gate(authority, "mcp.watch");
+
+            return handle.mcp.watch();
+          }),
         login(server) {
           gate(authority, "mcp.login");
 
