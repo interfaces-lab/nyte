@@ -187,6 +187,7 @@ async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalo
   const fallback =
     providers.find(
       (provider) =>
+        models.getProvider(provider.id)?.explicitOnly !== true &&
         (provider.credential === "configured" || provider.credential === "verified") &&
         provider.models.length > 0,
     )?.models[0]?.ref ?? null;
@@ -364,6 +365,7 @@ async function defaultModel(kernel: Kernel, models: Models): Promise<ModelRef | 
   if (stored !== null) return stored;
 
   for (const provider of models.getProviders()) {
+    if (provider.explicitOnly === true) continue;
     const credential = await kernel.modelState.check(models, provider).catch(() => "failed");
 
     if (credential !== "configured" && credential !== "verified") continue;

@@ -228,7 +228,7 @@ async function prepare(build: Build, options: Options, directory: string): Promi
 }
 
 async function launch(build: Build, fixture: Fixture, origin: string) {
-  const kept = ["PATH", "SHELL", "USER", "LOGNAME", "TMPDIR", "LANG", "TERM"].flatMap((name) => {
+  const kept = ["SHELL", "USER", "LOGNAME", "TMPDIR", "LANG", "TERM"].flatMap((name) => {
     const value = process.env[name];
 
     return value === undefined ? [] : [[name, value]];
@@ -240,6 +240,7 @@ async function launch(build: Build, fixture: Fixture, origin: string) {
     cwd: dirname(build.executable),
     env: {
       ...Object.fromEntries(kept),
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
       HOME: fixture.home,
       CFFIXED_USER_HOME: fixture.home,
       NYTE_OFFLINE: "1",

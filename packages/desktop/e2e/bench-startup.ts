@@ -271,7 +271,6 @@ async function seedHome(script: string, directory: string, scenario: StartupCase
 
 function launchEnvironment(fixture: StartupFixture) {
   const kept = new Set([
-    "PATH",
     "SHELL",
     "USER",
     "LOGNAME",
@@ -298,6 +297,7 @@ function launchEnvironment(fixture: StartupFixture) {
 
   return {
     ...Object.fromEntries(inherited),
+    PATH: process.platform === "win32" ? (process.env.PATH ?? "") : "/usr/bin:/bin:/usr/sbin:/sbin",
     HOME: fixture.home,
     USERPROFILE: fixture.home,
     CFFIXED_USER_HOME: fixture.home,

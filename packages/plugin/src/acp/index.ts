@@ -94,8 +94,9 @@ function mirrorTool(live: ReadonlyMap<string, Live>): ToolDefinition<MirrorArgum
  * agent's turn. Which agents there are, and the command, arguments and
  * environment each starts with, come from the registry list shipped in
  * `registry-seed.json` alone, never from the network, so no remote entry
- * picks what runs on this machine. `agents`, when given, replaces the
- * registry lookup, as tests do.
+ * picks what runs on this machine. An installed agent is listed but runs
+ * only once the user picks it, never as a default the host chooses.
+ * `agents`, when given, replaces the registry lookup, as tests do.
  */
 export function acpAgents(options?: { readonly agents?: () => Promise<readonly AcpAgent[]> }) {
   let agents: readonly AcpAgent[] = [];
@@ -256,6 +257,7 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
     name: "ACP agents",
     baseUrl: "process://acp",
     capabilities: { steer: false },
+    explicitOnly: true,
     auth: {
       apiKey: {
         name: "Installed ACP agents",

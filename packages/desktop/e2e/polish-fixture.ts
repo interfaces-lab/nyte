@@ -1,6 +1,6 @@
 import { _electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
@@ -457,10 +457,11 @@ const McpFileSchema = Type.Object({
 
 /**
  * Builds the polish home under `parent`: scenario D's home, repo and CI server,
- * scenario U's places server, skill and site, an empty `.zshrc`, both
- * builds' MCP files (`mcp.json` on this branch, `nyte.json`'s `mcp` before
- * it), and the models store listing the scripted model at `model` as
- * Anthropic's only model, checked now so no build refreshes it.
+ * scenario U's places server, skill and site, an empty `.zshrc`, a `bin`
+ * holding only `node`, both builds' MCP files (`mcp.json` on this branch,
+ * `nyte.json`'s `mcp` before it), and the models store listing the scripted
+ * model at `model` as Anthropic's only model, checked now so no build
+ * refreshes it.
  */
 export async function polishHome(parent: string, model: string): Promise<PolishHome> {
   const repo = await pushedCiRepo(parent);
@@ -479,6 +480,8 @@ export async function polishHome(parent: string, model: string): Promise<PolishH
   await writeFile(join(home, ".nyte", "mcp.json"), JSON.stringify({ mcpServers: servers }));
   await writeFile(join(home, ".nyte", "nyte.json"), JSON.stringify({ mcp: servers }));
   await writeFile(join(home, ".zshrc"), "");
+  await mkdir(join(home, "bin"));
+  await symlink(process.execPath, join(home, "bin", "node"));
   await writeFile(
     join(home, ".nyte", "models-store.json"),
     JSON.stringify({
@@ -498,7 +501,7 @@ export async function polishHome(parent: string, model: string): Promise<PolishH
   };
 }
 
-const KEPT = ["PATH", "SHELL", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL", "TERM"];
+const KEPT = ["SHELL", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL", "TERM"];
 
 /** A packaged build launched over a polish home. */
 export interface PackagedDesktop {
@@ -512,7 +515,9 @@ export interface PackagedDesktop {
 /**
  * Launches the packaged `executable` with `home` as HOME (so a build that
  * ignores `--user-data-dir` still keeps its profile inside it), an Anthropic
- * key, and the scripted catalog's URL, and waits for its shell.
+ * key, the scripted catalog's URL, and a PATH of the home's `bin` and the
+ * system folders, so no agent on the developer's PATH joins the catalog,
+ * and waits for its shell.
  */
 export async function launchPackaged(input: {
   readonly executable: string;
@@ -538,6 +543,7 @@ export async function launchPackaged(input: {
     ],
     env: {
       ...kept,
+      PATH: `${join(input.home, "bin")}:/usr/bin:/bin:/usr/sbin:/sbin`,
       HOME: input.home,
       USERPROFILE: input.home,
       NYTE_MODELS_URL: `${input.model}/catalog`,

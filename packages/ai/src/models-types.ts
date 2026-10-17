@@ -115,6 +115,8 @@ export interface Provider<TApi extends Api = Api> {
   readonly promptCache?: PromptCachePolicy;
   /** What this provider's models do around a turn; absent, what a model Nyte's own loop drives does: steers, stops a subagent alone, and leaves permissions to Nyte. */
   readonly capabilities?: ModelCapabilities;
+  /** True when its models run only once the user picks one: a host choosing a default for the user passes over it, as for agents found installed rather than signed into. */
+  readonly explicitOnly?: boolean;
 
   /**
    * Required: at least one of `apiKey`/`oauth`. Every provider has auth
