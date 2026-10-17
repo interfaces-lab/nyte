@@ -121,14 +121,15 @@ test("execution and attention indicators take priority over unread completion", 
  * than what it renders. Asserting that they differ, not what they are, leaves
  * restyling free.
  */
-test("every row state looks different from the others", () => {
-  const looksLike = (markup: string): string =>
-    (markup.match(/class="([^"]*)"/)?.[1] ?? "")
-      .split(" ")
-      .filter((token) => token !== "" && !token.includes("__"))
-      .sort()
-      .join(" ");
+function looksLike(markup: string): string {
+  return (markup.match(/class="([^"]*)"/)?.[1] ?? "")
+    .split(" ")
+    .filter((token) => token !== "" && !token.includes("__"))
+    .sort()
+    .join(" ");
+}
 
+test("every row state looks different from the others", () => {
   const looks = [
     ...(["working", "waiting", "retry", "failed"] as const).map((mark) =>
       looksLike(renderToStaticMarkup(<StatusDot mark={mark} />)),

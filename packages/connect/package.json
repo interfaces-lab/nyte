@@ -10,7 +10,8 @@
     "./relay": "./src/relay.ts",
     "./enrollment": "./src/enrollment.ts",
     "./account-config": "./src/account-config.ts",
-    "./host": "./src/host/index.ts"
+    "./host": "./src/host/index.ts",
+    "./private-file": "./src/host/private-file.ts"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",

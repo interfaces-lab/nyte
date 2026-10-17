@@ -1,12 +1,14 @@
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { STORE_VERSION, envelope, memoryStore } from "@nyte-ai/core";
-import { asId, asSeq } from "@nyte-ai/schema";
-import type { DurableEvent, SessionId } from "@nyte-ai/schema";
+import { composeHost } from "@nyte-ai/core/server";
+import { STORE_VERSION, envelope, memoryStore } from "@nyte-ai/core/store";
+import { asId, asSeq, readHunks } from "@nyte-ai/schema";
+import type { DurableEvent, Json, SessionId } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { sqliteStore } from "../src/index.ts";
+import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
 import { storeConformance } from "./store-conformance.ts";
 
 const created: DurableEvent = { head: null, kind: "head", from: null, to: null, reason: "created" };
@@ -72,7 +74,7 @@ it("backfills existing session roots and pending work within the store migration
 });
 
 it.each(["activity", "sort_at"] as const)(
-  "upgrades the version-3 %s index without changing canonical data, once, with a backup",
+  "upgrades the version-3 %s index without changing canonical data, once, without a backup",
   async (column) => {
     const directory = await folder();
     const path = join(directory, "nyte.db");
@@ -185,25 +187,7 @@ it.each(["activity", "sort_at"] as const)(
       log: probe.prepare("SELECT * FROM log ORDER BY session, seq").all(),
     }).toEqual(canonical);
     probe.close();
-
-    const backups = (await readdir(join(directory, "backups"))).filter((file) =>
-      file.endsWith(".db"),
-    );
-
-    expect(backups).toHaveLength(1);
-
-    const backup = new DatabaseSync(join(directory, "backups", backups[0] ?? ""), {
-      readOnly: true,
-    });
-
-    expect(backup.prepare("SELECT version FROM store_meta").get()).toEqual({ version: 3 });
-    expect(backup.prepare("SELECT * FROM refs ORDER BY name").all()).toEqual(canonical.refs);
-    backup.close();
-    await store.open();
-    await store.close();
-    expect(
-      (await readdir(join(directory, "backups"))).filter((file) => file.endsWith(".db")),
-    ).toEqual(backups);
+    expect(await readdir(directory)).not.toContain("backups");
   },
 );
 
@@ -316,7 +300,7 @@ describe("sqliteStore", () => {
       })(),
     );
 
-    await refs.set([{ name: "sessions/s1/heads/main", target, event: created }]);
+    await refs.set([{ name: "sessions/s1/heads/main", target, events: [created] }]);
     await first.close();
 
     const second = sqliteStore({ path });
@@ -349,6 +333,64 @@ describe("sqliteStore", () => {
     expect(outcomes.map((outcome) => outcome.kind)).toEqual(["set", "stale"]);
     await left.close();
     await right.close();
+  });
+
+  it("moves its commit mark for another connection's commit, never for its own", async () => {
+    const path = join(await folder(), "nyte.db");
+    const left = sqliteStore({ path });
+    const right = sqliteStore({ path });
+    const one = await left.open();
+    const two = await right.open();
+    const target = await one.objects.put("base");
+    const before = await one.commitMark?.();
+    await one.refs.set([{ name: "kv/x", target }]);
+    const own = await one.commitMark?.();
+    await two.refs.set([{ name: "kv/y", target }]);
+
+    expect(before).toBeTypeOf("number");
+    expect(own).toBe(before);
+    expect(await one.commitMark?.()).not.toBe(own);
+    await left.close();
+    await right.close();
+  });
+
+  it("brings another host's commits on the same file to a polling host's directory and head watch", async () => {
+    const path = join(await folder(), "nyte.db");
+
+    const host = (poll?: number) =>
+      composeHost({
+        store: sqliteStore({ path }),
+        models: fakeModels().models,
+        plugins: [chatOnly],
+        workspace: { kind: "chat-only", locator: null },
+        execution: { kind: "admit-only" },
+        home: null,
+        description: { name: "test", platform: "darwin", version: "0.1.0" },
+        poll,
+      });
+
+    await using reader = await host(20);
+    await using writer = await host();
+    const { session: created } = await writer.sessions.start({ name: "Before", content: "Hi." });
+    const directory = reader.sessions.watch()[Symbol.asyncIterator]();
+    const views = reader.session(created.id).watch()[Symbol.asyncIterator]();
+    await views.next();
+    await created.update({ name: "After" });
+    await created.send("From the writer.");
+
+    let listed = await directory.next();
+
+    while (listed.done !== true && listed.value[0]?.name !== "After")
+      listed = await directory.next();
+
+    let viewed = await views.next();
+
+    while (viewed.done !== true && viewed.value.messages.length < 2) viewed = await views.next();
+
+    assert(listed.done !== true && viewed.done !== true);
+    expect(viewed.value.messages[1]).toMatchObject({ kind: "user", content: "From the writer." });
+    await directory.return?.();
+    await views.return?.();
   });
 
   it("rewrites records written before the fields the decoders require, once, with a backup", async () => {
@@ -398,25 +440,22 @@ describe("sqliteStore", () => {
     ]);
     probe.close();
 
-    const backups = (await readdir(join(dir, "backups"))).filter((file) => file.endsWith(".db"));
+    const backups = await readdir(join(dir, "backups"));
 
     expect(backups).toHaveLength(1);
-    const backup = new DatabaseSync(join(dir, "backups", backups[0] ?? ""), { readOnly: true });
-
-    expect(
-      backup.prepare("SELECT target FROM refs WHERE name = ?").get("sessions/s1/calls/c1"),
-    ).toEqual({
-      target: "old-call",
+    expect(JSON.parse(await readFile(join(dir, "backups", backups[0] ?? ""), "utf8"))).toEqual({
+      refs: [
+        { name: "sessions/s1/calls/c1", target: "old-call", revision: "r0" },
+        { name: "sessions/s1/inbox", target: "old-inbox", revision: "r0" },
+      ],
+      log: [],
     });
-    backup.close();
 
     const again = sqliteStore({ path });
     await again.open();
     await again.close();
 
-    expect(
-      (await readdir(join(dir, "backups"))).filter((file) => file.endsWith(".db")),
-    ).toHaveLength(1);
+    expect(await readdir(join(dir, "backups"))).toEqual(backups);
   });
 
   it("opens a store an older Nyte migrated, keeping its rows, its log and its migrations table", async () => {
@@ -456,6 +495,165 @@ describe("sqliteStore", () => {
     probe.close();
   });
 
+  it("turns stored edit patches from hunks into unified text, logged events included, once, with a backup", async () => {
+    const dir = await folder();
+    const path = join(dir, "nyte.db");
+    const fresh = sqliteStore({ path });
+    await fresh.open();
+    await fresh.close();
+
+    const hunks = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 2,
+        header: null,
+        lines: [
+          { kind: "remove", text: "a" },
+          { kind: "add", text: "b" },
+          { kind: "add", text: "c", noNewline: true },
+        ],
+      },
+    ];
+
+    const fields = {
+      path: "a.ts",
+      status: "modified",
+      digest: "d1",
+      kind: "text",
+      added: 2,
+      removed: 1,
+    };
+
+    const legacy = { ...fields, hunks };
+
+    const outcome = { kind: "ok", content: [], output: legacy, parts: [] };
+    const call = { kind: "call", parent: null, at: 1, body: { id: "c1", result: outcome } };
+    const part = { kind: "part", parent: null, at: 1, body: { id: "c1", state: { outcome } } };
+    const settled = {
+      head: "main",
+      kind: "call",
+      call: "c1",
+      part: "c1",
+      change: "settled",
+      outcome,
+      changes: null,
+    };
+    const seeded = new DatabaseSync(path);
+    const insert = seeded.prepare("INSERT INTO objects (id, body) VALUES (?, ?)");
+    insert.run("old-call", JSON.stringify(call));
+    insert.run("old-part", JSON.stringify(part));
+    seeded.exec(
+      "INSERT INTO refs VALUES ('sessions/s1/calls/c1', 'old-call', 'r1'), ('sessions/s1/parts/c1', 'old-part', 'r2')",
+    );
+    seeded.prepare("INSERT INTO log VALUES ('s1', 1, 5, ?)").run(JSON.stringify(settled));
+    seeded.exec("UPDATE store_meta SET version = 6");
+    seeded.close();
+
+    const store = sqliteStore({ path });
+    const { objects, refs } = await store.open();
+    const read = async (name: string) => objects.get((await refs.get(name))?.target ?? asId(""));
+    const unified = { ...fields, patch: expect.any(String) };
+
+    expect(await read("sessions/s1/calls/c1")).toMatchObject({
+      body: { id: "c1", result: { ...outcome, output: unified } },
+    });
+    expect(await read("sessions/s1/parts/c1")).toMatchObject({
+      body: { id: "c1", state: { outcome: { ...outcome, output: unified } } },
+    });
+    const [event] = await refs.log(asId("s1"), asSeq(0), 10);
+    assert(event?.kind === "call" && event.change === "settled" && event.outcome.kind === "ok");
+    const output = event.outcome.output;
+    assert(
+      typeof output === "object" &&
+        output !== null &&
+        "patch" in output &&
+        typeof output.patch === "string",
+    );
+
+    expect(output).toEqual({ ...fields, patch: output.patch });
+    expect(readHunks(output.patch)).toEqual(hunks);
+    await store.close();
+
+    const backups = await readdir(join(dir, "backups"));
+
+    expect(JSON.parse(await readFile(join(dir, "backups", backups[0] ?? ""), "utf8"))).toEqual({
+      refs: [
+        { name: "sessions/s1/calls/c1", target: "old-call", revision: "r1" },
+        { name: "sessions/s1/parts/c1", target: "old-part", revision: "r2" },
+      ],
+      log: [{ session: "s1", seq: 1, event: JSON.stringify(settled) }],
+    });
+
+    const again = sqliteStore({ path });
+    await again.open();
+    await again.close();
+
+    expect(await readdir(join(dir, "backups"))).toEqual(backups);
+  });
+
+  it("logs a call's name, args and class once, on its part, keeping what an intent said that its part did not", async () => {
+    const path = join(await folder(), "nyte.db");
+    const fresh = sqliteStore({ path });
+    await fresh.open();
+    await fresh.close();
+
+    const read = { kind: "read", path: "a.ts" };
+
+    const created = (part: string, args: Json) => ({
+      head: "main",
+      kind: "part",
+      part,
+      change: "created",
+      partKind: "tool",
+      placement: { kind: "transcript", role: "step" },
+      state: { call: part, name: "read", args, class: read, phase: "calling" },
+      version: 1,
+      run: "r1",
+      owner: null,
+    });
+
+    const intent = (part: string, args: Json) => ({
+      head: "main",
+      kind: "call",
+      call: part,
+      part,
+      change: "intent",
+      name: "read",
+      args,
+      class: read,
+    });
+
+    const logged = [
+      created("c1", { path: "a.ts" }),
+      intent("c1", { path: "a.ts" }),
+      created("c2", { path: "a.ts" }),
+      intent("c2", { path: "b.ts" }),
+    ];
+
+    const seeded = new DatabaseSync(path);
+    const insert = seeded.prepare("INSERT INTO log VALUES ('s1', ?, 5, ?)");
+    logged.forEach((event, index) => insert.run(index + 1, JSON.stringify(event)));
+    seeded.exec(`INSERT INTO objects (id, body) VALUES ('o1', '{"kept":true}')`);
+    seeded.exec("INSERT INTO refs VALUES ('kv/a', 'o1', 'r1')");
+    seeded.exec("UPDATE store_meta SET version = 7");
+    seeded.close();
+
+    const store = sqliteStore({ path });
+    const { refs } = await store.open();
+    const events = await refs.log(asId("s1"), asSeq(0), 10);
+    await store.close();
+    const ids = { head: "main", kind: "call", change: "intent", seq: 2, at: 5 };
+
+    expect(events).toEqual([
+      { ...created("c1", { path: "a.ts" }), seq: 1, at: 5 },
+      { ...ids, call: "c1", part: "c1" },
+      { ...created("c2", { path: "b.ts" }), seq: 3, at: 5 },
+      { ...ids, call: "c2", part: "c2", seq: 4 },
+    ]);
+  });
+
   it("forgets the old default trust of stored workspaces, keeping a declined one, once", async () => {
     const path = join(await folder(), "nyte.db");
     const fresh = sqliteStore({ path });
@@ -484,7 +682,7 @@ describe("sqliteStore", () => {
     seeded.exec(
       "INSERT INTO refs VALUES ('workspaces/a', 'trusted', 'r1'), ('workspaces/b', 'declined', 'r2')",
     );
-    seeded.exec(`UPDATE store_meta SET version = ${String(STORE_VERSION - 1)}`);
+    seeded.exec("UPDATE store_meta SET version = 5");
     seeded.close();
 
     const read = async () => {

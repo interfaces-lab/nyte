@@ -10,8 +10,11 @@ import {
   CALL_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
+  FIRST_WINDOW_ARGUMENT,
+  MACHINE_NAME_ARGUMENT,
   THEME_PREFERENCE_CHANNEL,
   WINDOW_FULLSCREEN_CHANNEL,
+  WINDOW_PAINTED_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type {
@@ -49,10 +52,12 @@ contextBridge.exposeInMainWorld("nyteAccount", {
   report: (report) => ipcRenderer.send(ACCOUNT_CHANNELS.report, report),
 } satisfies AccountBridge);
 
+/**
+ * One host operation. Only Nyte's main process handles CALL_CHANNEL; it decodes the
+ * path's request and answers in the matching `CallReplyFor<P>` envelope.
+ */
 async function call<P extends CallPath>(path: P, input: CallInput<P>): Promise<CallOutput<P>> {
-  // SAFETY: only Nyte's main process handles CALL_CHANNEL; it decodes the path-specific
-  // request and echoes that path in the matching CallReplyFor<P> envelope.
-  const result = (await ipcRenderer.invoke(CALL_CHANNEL, { path, input })) as CallReplyFor<P>;
+  const result: CallReplyFor<P> = await ipcRenderer.invoke(CALL_CHANNEL, { path, input });
 
   if (!result.ok) return Promise.reject(bridgeError(result.error));
 
@@ -81,10 +86,16 @@ const canvasShell = process.argv
 
 const bridge = {
   clientSurface: "desktop",
+  platform: process.platform,
+  machineName: process.argv
+    .find((argument) => argument.startsWith(`${MACHINE_NAME_ARGUMENT}=`))
+    ?.slice(MACHINE_NAME_ARGUMENT.length + 1),
+  firstWindow: process.argv.includes(FIRST_WINDOW_ARGUMENT),
+  windowPainted: () => ipcRenderer.send(WINDOW_PAINTED_CHANNEL),
   ...(canvasShell === undefined ? {} : { canvasShell }),
   host: {
+    /** Only the main process sends this private channel; the IPC event is never exposed. */
     onMenuCommand(listener: (command: AppMenuCommand) => void) {
-      // Only the main process sends this private channel; never expose the IPC event.
       const wrapped = (_event: Electron.IpcRendererEvent, command: AppMenuCommand): void => {
         listener(command);
       };
@@ -97,6 +108,7 @@ const bridge = {
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
     endpoint: none("host.endpoint"),
     state: none("host.state"),
+    restore: object("host.restore"),
     fonts: none("host.fonts"),
     usage: object("host.usage"),
     openWorkspace: object("host.openWorkspace"),
@@ -137,14 +149,6 @@ const bridge = {
     openPluginsFolder: none("host.openPluginsFolder"),
     pathForFile: (file: File) => webUtils.getPathForFile(file),
     contextMenu: object("host.contextMenu"),
-    terminal: {
-      create: object("host.terminal.create"),
-      write: object("host.terminal.write"),
-      resize: object("host.terminal.resize"),
-      acknowledge: object("host.terminal.acknowledge"),
-      idle: object("host.terminal.idle"),
-      close: object("host.terminal.close"),
-    },
     browser: {
       open: object("host.browser.open"),
       navigate: object("host.browser.navigate"),
@@ -152,18 +156,18 @@ const bridge = {
       perform: object("host.browser.perform"),
       close: object("host.browser.close"),
       captureFrame: object("host.browser.captureFrame"),
+      pickElement: object("host.browser.pickElement"),
       find: object("host.browser.find"),
       cancelDownload: object("host.browser.cancelDownload"),
       login: object("host.browser.login"),
       history: object("host.browser.history"),
       forgetHistory: object("host.browser.forgetHistory"),
-      focusPage: object("host.browser.focusPage"),
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
       setFocus: (message: BrowserFocusMessage) => ipcRenderer.send(BROWSER_FOCUS_CHANNEL, message),
     },
+    /** HOST_EVENT_CHANNEL is private to Nyte main and emits only HostEvent. */
     onEvent(listener: (event: HostEvent) => void) {
-      // HOST_EVENT_CHANNEL is private to Nyte main and emits only HostEvent.
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);
       };
@@ -192,11 +196,13 @@ function syncWindowZoom(): void {
 
 window.addEventListener("resize", syncWindowZoom);
 
-// Only Nyte main sends this private channel, and only a boolean.
-ipcRenderer.on(WINDOW_FULLSCREEN_CHANNEL, (_event, fullscreen: boolean) => {
+/** Only Nyte main sends WINDOW_FULLSCREEN_CHANNEL, and only a boolean. */
+function markFullscreen(_event: Electron.IpcRendererEvent, fullscreen: boolean): void {
   if (fullscreen) document.documentElement.dataset["fullscreen"] = "";
   else delete document.documentElement.dataset["fullscreen"];
-});
+}
+
+ipcRenderer.on(WINDOW_FULLSCREEN_CHANNEL, markFullscreen);
 
 window.addEventListener(
   "DOMContentLoaded",

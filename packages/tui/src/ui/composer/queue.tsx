@@ -27,8 +27,8 @@ function dropTarget(
   onto: MessageId,
 ): ReorderTo | null {
   const pending = rows.flatMap((row) => (row.withdrawable ? [row.id] : []));
-  const from = pending.indexOf(dragged);
-  const to = pending.indexOf(onto);
+  const from = pending.findIndex((id) => id === dragged);
+  const to = pending.findIndex((id) => id === onto);
 
   if (from === -1 || to === -1 || from === to) return null;
 
@@ -50,6 +50,7 @@ function placeMark(place: Place, theme: CliTheme): RowMark {
     case "sending":
       return { glyph: GLYPHS.sending, tone: theme.dim };
     case "uncovered":
+    case "deciding":
       return { glyph: GLYPHS.queue, tone: theme.dim };
     default: {
       const _exhaustive: never = place;
@@ -151,7 +152,7 @@ function Line(props: {
   );
 }
 
-export function QueueLine(props: {
+function QueueLine(props: {
   readonly row: QueueRow;
   readonly hint: string | null;
   readonly onPress: () => void;
@@ -198,8 +199,21 @@ export function QueueRows(): JSX.Element {
       flexShrink={0}
       marginLeft={1}
       marginRight={1}
-      visible={queue().length > 0}
+      visible={queue().length > 0 || app.screen().waiting.length > 0}
     >
+      <For each={app.screen().waiting}>
+        {(text, index) => (
+          <Line
+            id={`waiting-row-${String(index())}`}
+            glyph={GLYPHS.sending}
+            tone={app.kit.theme().dim}
+            text={text}
+            textTone={app.kit.theme().user}
+            label="sends when Nyte connects"
+            hint={null}
+          />
+        )}
+      </For>
       <For each={queue()}>
         {(row, index) => (
           <QueueLine

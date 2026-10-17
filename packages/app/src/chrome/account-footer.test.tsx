@@ -2,17 +2,16 @@ import assert from "node:assert/strict";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, test } from "vitest";
-import type { ConnectView, GitHubProviderState, HostState } from "../bridge.ts";
+import type { GitHubAccountState } from "@nyte-ai/sdk";
+import type { ConnectView, HostState } from "../bridge.ts";
 import { installBridge } from "../nyte.ts";
 import { keys } from "../query-keys.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
 
-installBridge(createWebBridge().bridge);
+installBridge({ ...createWebBridge().bridge, machineName: "Studio Mac" });
 
 const pending = (): Promise<never> => new Promise<never>(() => undefined);
-
-const github = { state: pending, signIn: pending, signOut: pending, createPullRequest: pending };
 
 const connect = {
   state: pending,
@@ -36,11 +35,10 @@ const GITHUB = {
   ready: {
     kind: "ready",
     account: { login: "octocat", name: "The Octocat", avatarUrl: undefined },
-    pullRequest: { kind: "none" },
   },
   signedOut: { kind: "signed_out" },
   missing: { kind: "cli_missing" },
-} satisfies Record<string, GitHubProviderState>;
+} satisfies Record<string, GitHubAccountState>;
 
 const NYTE = {
   signedIn: {
@@ -57,21 +55,16 @@ const NYTE = {
   },
 } satisfies Record<string, ConnectView>;
 
-function render(state: GitHubProviderState, view: ConnectView): string {
+function render(state: GitHubAccountState, view: ConnectView): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.add(client);
-  client.setQueryData(keys.host, {
-    platform: "darwin",
-    workspace: undefined,
-    machineName: "Studio Mac",
-  } satisfies HostState);
-  client.setQueryData([...keys.github, null], state);
+  client.setQueryData(keys.host, { workspace: undefined } satisfies HostState);
+  client.setQueryData([...keys.github, "account"], state);
   client.setQueryData(keys.connect, view);
 
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <AccountFooterMenu
-        github={github}
         connect={connect}
         anchor={{ current: null }}
         onOpenProfile={() => undefined}

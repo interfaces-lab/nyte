@@ -11,9 +11,17 @@ addEventListener("message", (event) => {
     const module = JSON.parse(message.params.code);
     if (module.height) post({ jsonrpc: "2.0", method: "ui/notifications/size-changed", params: { height: module.height } });
     if (module.error) error(module.error);
+    if (module.link) document.body.innerHTML = '<a href="' + module.link + '" style="display:block;height:100vh">link</a>';
   }
+  if (message.id === "link-1" && message.result) error("link:" + (message.result.isError ? "failed" : "ok"));
   if (message.method === "ui/notifications/host-context-changed") error("context:" + message.params.theme);
 });
+document.addEventListener("click", (event) => {
+  const anchor = event.target.closest("a");
+  if (anchor === null) return;
+  event.preventDefault();
+  if (event.isTrusted) post({ jsonrpc: "2.0", id: "link-1", method: "ui/open-link", params: { url: anchor.getAttribute("href") } });
+}, true);
 post({ jsonrpc: "2.0", id: 1, method: "ui/initialize", params: { protocolVersion: "2026-01-26", appInfo: { name: "nyte-canvas", version: "1" }, appCapabilities: {} } });
 </script>`;
 

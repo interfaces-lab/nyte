@@ -78,6 +78,8 @@ interface Drag {
   readonly gap: number;
   readonly grabAt: number;
   readonly offset: number;
+  /** The index the item started at. */
+  readonly from: number;
   readonly target: number;
 }
 
@@ -92,6 +94,9 @@ function startDrag(
   id: string,
   clientX: number,
 ): Drag | undefined {
+  const from = order.findIndex((item) => item === id);
+
+  if (from === -1) return undefined;
   const listLeft = list.getBoundingClientRect().left - list.scrollLeft;
   const lefts = new Map<string, number>();
   const widths = new Map<string, number>();
@@ -119,10 +124,12 @@ function startDrag(
     gap,
     grabAt: contentX(list, clientX),
     offset: 0,
-    target: order.indexOf(id),
+    from,
+    target: from,
   };
 }
 
+/** A neighbour gives way once the leading edge of the dragged item passes its centre. */
 function moveDrag(drag: Drag, list: HTMLElement, clientX: number): Drag {
   const left = drag.lefts.get(drag.id) ?? 0;
   const width = drag.widths.get(drag.id) ?? 0;
@@ -136,27 +143,26 @@ function moveDrag(drag: Drag, list: HTMLElement, clientX: number): Drag {
       : (drag.lefts.get(last) ?? left) + (drag.widths.get(last) ?? width) - width;
 
   const placed = Math.min(max, Math.max(min, left + contentX(list, clientX) - drag.grabAt));
-  const from = drag.order.indexOf(drag.id);
+  const { from } = drag;
 
-  const centreOf = (id: string): number =>
+  const readCentre = (id: string): number =>
     (drag.lefts.get(id) ?? 0) + (drag.widths.get(id) ?? 0) / 2;
 
-  // A neighbour gives way once the leading edge of the dragged item passes its centre.
   const target =
     placed >= left
       ? from +
-        drag.order.filter((id, index) => index > from && centreOf(id) < placed + width).length
-      : from - drag.order.filter((id, index) => index < from && centreOf(id) > placed).length;
+        drag.order.filter((id, index) => index > from && readCentre(id) < placed + width).length
+      : from - drag.order.filter((id, index) => index < from && readCentre(id) > placed).length;
 
   return { ...drag, offset: placed - left, target };
 }
 
 /** How far an item slides to make room while another passes it. */
-function shiftOf(drag: Drag, id: string): number {
+function slideDistance(drag: Drag, id: string): number {
   if (id === drag.id) return drag.offset;
 
-  const from = drag.order.indexOf(drag.id);
-  const index = drag.order.indexOf(id);
+  const { from } = drag;
+  const index = drag.order.findIndex((item) => item === id);
   const room = (drag.widths.get(drag.id) ?? 0) + drag.gap;
 
   if (from < drag.target && index > from && index <= drag.target) return -room;
@@ -173,6 +179,7 @@ interface SortableState {
 
 const SortableContext = createContext<SortableState | undefined>(undefined);
 
+/** The pointer and the list's scroll both move the dragged item, so either recomputes it. */
 export function SortableList({
   ids,
   listRef,
@@ -210,7 +217,6 @@ export function SortableList({
     return current;
   };
 
-  /** The pointer and the list's scroll both move the item, so either recomputes it. */
   const follow = (list: HTMLElement): void => {
     let clientX: number | undefined;
 
@@ -260,7 +266,7 @@ export function SortableList({
       onDragEnd={() => {
         const current = finish();
 
-        if (current === undefined || current.target === current.order.indexOf(current.id)) return;
+        if (current === undefined || current.target === current.from) return;
 
         if (ids.join("\n") !== current.order.join("\n")) return;
 
@@ -292,7 +298,7 @@ export function SortableItem({
 
   const { drag, items } = context;
   const { setNodeRef, listeners } = useDraggable({ id });
-  const shift = drag === undefined ? 0 : shiftOf(drag, id);
+  const shift = drag === undefined ? 0 : slideDistance(drag, id);
 
   const ref = useCallback(
     (element: HTMLDivElement | null): void => {

@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { layer, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { appearance, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -151,7 +151,7 @@ export const workbenchStyles = create({
   launcherCard: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
       ":active": role.bgPressed,
     },
     flexDirection: "column",
@@ -162,7 +162,7 @@ export const workbenchStyles = create({
     borderRadius: 0,
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
       ":focus-visible": role.contentPrimary,
     },
     textAlign: "center",
@@ -181,7 +181,7 @@ export const workbenchStyles = create({
     backgroundColor: "transparent",
     "--_sash-rule": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent },
+      ":hover": { [media.hover]: role.borderPrimaryTranslucent },
       ":focus-visible": role.borderStrongTranslucent,
     },
     "--_sash-delay": { default: "0s", ":hover": "300ms" },

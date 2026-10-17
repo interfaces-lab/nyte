@@ -1,6 +1,6 @@
 import type { JSX } from "@opentui/solid";
 import { createMemo, Show } from "solid-js";
-import type { PartMessage } from "../../lib/view-helpers.ts";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import { Markdown } from "./markdown.tsx";
 
 export function hasIncompleteHeadingPrefix(text: string): boolean {

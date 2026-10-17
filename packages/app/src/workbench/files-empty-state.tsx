@@ -8,10 +8,10 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { Row } from "@nyte-ai/ui/row";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { isFolder } from "../conversation/message-references.ts";
+import { mentionsFolder } from "../conversation/message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
-import { macPlatform } from "../platform.ts";
 import { treeStatus } from "./tree-theme.ts";
+import { nyte } from "../nyte.ts";
 
 const MATCH_LIMIT = 50;
 
@@ -34,10 +34,10 @@ export function FilesEmptyState({
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const needle = query.trim().toLocaleLowerCase();
-  const mod = macPlatform(undefined) ? "⌘" : "Ctrl";
+  const mod = nyte.platform === "darwin" ? "⌘" : "Ctrl";
 
   const { rank, byPath } = useMemo(() => {
-    const openable = (files ?? []).filter((file) => !isFolder(file));
+    const openable = (files ?? []).filter((file) => !mentionsFolder(file));
 
     return {
       rank: createFileRanking(openable, MATCH_LIMIT),

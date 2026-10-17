@@ -13,7 +13,6 @@ const styles = create({
     gap: 2,
     width: 300,
     padding: 8,
-    borderRadius: radius.surface,
   },
   item: {
     display: "flex",

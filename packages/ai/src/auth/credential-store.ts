@@ -1,9 +1,10 @@
 /**
  * Default in-memory `CredentialStore`. Apps inject persistent stores (Nyte's
  * `FileCredentialStore` in store.ts); this one backs tests and ephemeral
- * hosts. Writes are serialized per provider through a promise chain and
- * queued work can be cancelled before it runs.
+ * hosts. Writes run one at a time per provider, and queued work can be
+ * cancelled before it runs.
  */
+import { keyedSerial } from "@nyte-ai/schema/serial";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
 import type {
   AuthOperationOptions,
@@ -15,32 +16,24 @@ import type {
 /**
  * Default in-memory credential store. Apps inject persistent stores.
  * Keyed by `Provider.id`, with accounts and selection stored together.
- * Writes are serialized per provider through a promise chain.
+ * Writes run one at a time per provider.
  */
 export class InMemoryCredentialStore implements CredentialStore {
   private credentials = new Map<string, CredentialAccounts>();
-  private chains = new Map<string, Promise<unknown>>();
+  private readonly writes = keyedSerial<string>();
 
-  /** Serialize tasks per provider id without releasing the chain before active work settles. */
+  /** Runs `task` after the provider's earlier writes; a cancelled caller stops waiting, and a task cancelled before it starts never runs. */
   private enqueue<T>(
     providerId: string,
     task: () => Promise<T>,
     options?: AuthOperationOptions,
   ): Promise<T> {
     const signal = operationSignal(options?.signal);
-    const previous = this.chains.get(providerId) ?? Promise.resolve();
 
-    const queued = (async () => {
-      await previous.catch(() => {});
+    const queued = this.writes.run(providerId, () => {
       signal.throwIfAborted();
 
       return task();
-    })();
-
-    const tail = queued.catch(() => {});
-    this.chains.set(providerId, tail);
-    void tail.then(() => {
-      if (this.chains.get(providerId) === tail) this.chains.delete(providerId);
     });
 
     return raceWithAbortSignal(queued, signal);
@@ -69,6 +62,7 @@ export class InMemoryCredentialStore implements CredentialStore {
     );
   }
 
+  /** Stores what `fn` returns even after abort: a rotated token has no second copy. */
   modify(
     providerId: string,
     fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,
@@ -80,7 +74,6 @@ export class InMemoryCredentialStore implements CredentialStore {
         const current = this.credentials.get(providerId);
         const next = await fn(current);
 
-        // A rotated token has no second copy, so `CredentialStore` stores it even after abort.
         if (next !== undefined) {
           if (next.accounts.length === 0) this.credentials.delete(providerId);
           else this.credentials.set(providerId, next);

@@ -28,10 +28,11 @@ import type {
 import { editorContentStyle, focusComposer, useComposerSurface } from "./composer-surface.tsx";
 import { clipboardReferenceFromPaste } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 export interface ComposerEditorHandle {
-  readonly element: HTMLDivElement | null;
+  /** The editable root, or null once the editor is destroyed. */
+  readElement(): HTMLDivElement | null;
   focus(options?: FocusOptions): void;
   read(): ComposerSubmission;
   readDocument(): ComposerDocumentState;
@@ -39,6 +40,8 @@ export interface ComposerEditorHandle {
   insertReference(reference: MessageReference, start?: number, end?: number): void;
   /** Insert at the text under a viewport point, else at the caret. */
   dropReferences(references: readonly MessageReference[], clientX: number, clientY: number): void;
+  /** Hands files to the composer as a paste would; dropped where it takes no files. */
+  attachFiles(files: readonly File[]): void;
 }
 
 export interface ComposerComboboxState {
@@ -88,7 +91,8 @@ function nodeRects(node: Node): readonly DOMRect[] {
 /**
  * Where a collapsed selection sits. Chromium reports no usable box beside a
  * chip: the trailing <br> after it has zero height at the baseline, and an
- * empty text node has no rect at all. The neighbours know the line instead.
+ * empty text node has no rect at all. The neighbours know the line instead:
+ * after a line break the caret opens the next line at the block's start edge.
  */
 function caretBox(range: Range): CaretBox | undefined {
   const own = range.getClientRects()[0];
@@ -100,7 +104,6 @@ function caretBox(range: Range): CaretBox | undefined {
   const after = siblings[range.startOffset];
 
   if (before?.nodeName === "BR") {
-    // After a line break the caret opens the next line at the block's start edge.
     const line = nodeRects(before).at(-1);
     const block = container instanceof Element ? container.getBoundingClientRect() : undefined;
 
@@ -131,15 +134,21 @@ function caretBox(range: Range): CaretBox | undefined {
   return { x: rect.left, top: rect.top, height: rect.height };
 }
 
-function sameReferences(
-  left: readonly MessageReference[],
-  right: readonly MessageReference[],
-): boolean {
-  return (
-    left.length === right.length && left.every((reference, index) => reference === right[index])
-  );
-}
-
+/**
+ * The composer's editable surface.
+ *
+ * - `reported` is the last document this editor reported, so the parent's copy
+ *   of it is an echo, not an instruction. `observed` also holds composition
+ *   updates whose report is deliberately deferred.
+ * - Composition can end without a transaction, so `compositionend` reports too;
+ *   ProseMirror has cleared its composing flag by then.
+ * - A drop lands at the pointer, or at the caret on engines that lack
+ *   `caretPositionFromPoint`.
+ * - The drawn caret only mirrors the native selection and never sets it. An
+ *   invisible glyph measures the font so the caret keeps its height on an empty
+ *   line, and the native caret stays wherever Chromium reports no reliable box
+ *   or the caret scrolled away.
+ */
 export function ComposerEditor({
   ref,
   inputRef,
@@ -166,15 +175,14 @@ export function ComposerEditor({
   });
 
   const caretRef = useRef<HTMLSpanElement>(null);
-  /** The last document this editor reported; the parent's copy of it is an echo, not an instruction. */
   const reported = useRef<ComposerDocumentState | undefined>(undefined);
-  /** Includes composition updates whose parent report is deliberately deferred. */
   const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
+  const onFilesSelectedRef = useRef(onFilesSelected);
 
   const handle = useMemo<ComposerEditorHandle>(
     () => ({
-      get element() {
+      readElement: () => {
         const root = editor.isDestroyed ? null : editor.view.dom;
 
         return root instanceof HTMLDivElement ? root : null;
@@ -205,7 +213,6 @@ export function ComposerEditor({
         const view = editor.view;
         const page = view.dom.ownerDocument;
 
-        // Older engines lack the standard call; there the drop lands at the caret.
         const caret =
           "caretPositionFromPoint" in page ? page.caretPositionFromPoint(clientX, clientY) : null;
 
@@ -225,12 +232,19 @@ export function ComposerEditor({
         for (const reference of references) insertComposerReference(tr, reference);
         view.dispatch(closeHistory(tr).scrollIntoView());
       },
+      attachFiles(files) {
+        onFilesSelectedRef.current?.(files);
+      },
     }),
     [editor],
   );
 
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
+
+  useLayoutEffect(() => {
+    onFilesSelectedRef.current = onFilesSelected;
+  }, [onFilesSelected]);
 
   useLayoutEffect(
     () =>
@@ -295,7 +309,13 @@ export function ComposerEditor({
 
       const references = composerReferences(state.doc);
 
-      if (!sameReferences(references, lastReferences.current)) {
+      const previousReferences = lastReferences.current;
+
+      const referencesChanged =
+        references.length !== previousReferences.length ||
+        references.some((reference, index) => reference !== previousReferences[index]);
+
+      if (referencesChanged) {
         lastReferences.current = references;
         onReferencesChange?.(references);
       }
@@ -310,7 +330,6 @@ export function ComposerEditor({
     const onTransaction = ({ transaction }: EditorEvents["transaction"]): void =>
       report(transaction.getMeta(COMPOSER_RESTORE) === true);
 
-    // Composition can end without a transaction; ProseMirror has cleared its flag by now.
     const onCompositionEnd = (): void => report(false);
     const root = editor.view.dom;
     editor.on("transaction", onTransaction);
@@ -339,7 +358,6 @@ export function ComposerEditor({
     view.updateState(clearComposerHistory(view.state));
   }, [editor, externalDocument]);
 
-  // The drawn caret only mirrors the native selection. It never sets it.
   useLayoutEffect(() => {
     const root = editor.view.dom;
     const caret = caretRef.current;
@@ -383,11 +401,9 @@ export function ComposerEditor({
         const typography = getComputedStyle(root);
         const lineHeight = Number.parseFloat(typography.lineHeight);
         caret.style.font = typography.font;
-        // The invisible glyph measures the font, so the caret keeps its height on an empty line.
         const height = Math.min(glyph.getBoundingClientRect().height || lineHeight, lineHeight);
         const x = box.x - bounds.left;
         const y = box.top - bounds.top + Math.max(0, (box.height - height) / 2);
-        // The native caret stays wherever Chromium reports no reliable box or the caret scrolled away.
         const inView = y >= 0 && y + height <= root.clientHeight + 1;
         caret.hidden = !inView;
         root.dataset["customCaret"] = String(inView);

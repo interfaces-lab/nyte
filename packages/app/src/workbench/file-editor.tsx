@@ -4,7 +4,7 @@ import type { EditorOptions, EditorType } from "@pierre/diffs/edit";
 import { CodeView, EditProvider } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useImperativeHandle,
@@ -14,10 +14,10 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { MouseEvent, ReactElement, Ref } from "react";
-import type { FileDocument } from "@nyte-ai/sdk";
+import type { FileDocument, FileEvent } from "@nyte-ai/sdk";
 import { button, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
-import { diffStyles } from "../conversation/styles.stylex.ts";
+import { diffStyles } from "../conversation/diff.stylex.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
 import {
@@ -26,13 +26,15 @@ import {
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
 import {
-  useHostState,
+  keys,
   useSaveWorkspaceFile,
   useWorkspaceFile,
   workspaceFiles,
   workspaceGit,
 } from "../queries.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
+import { watchFamily } from "../sdk.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -42,6 +44,13 @@ import { fileActions } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
 type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
+
+/** Disk events for one open file, so an edit made elsewhere reaches its editor. */
+const diskEvents = watchFamily((_connection, path: string): AsyncIterable<readonly FileEvent[]> =>
+  (async function* () {
+    yield* (await workspaceFiles()).watch({ paths: [path] });
+  })(),
+);
 
 export interface FileEditorHandle {
   save(): Promise<void>;
@@ -127,6 +136,7 @@ const styles = create({
     backgroundColor: role.bgBase,
   },
   error: { color: role.contentSecondary },
+  saveText: { flex: "0 1 auto" },
   statusText: {
     flex: 1,
     minWidth: 0,
@@ -136,12 +146,15 @@ const styles = create({
   },
 });
 
-/** Format/reload are ordinary undoable edits; they do not recreate the editor or its history. */
+/**
+ * Format/reload are ordinary undoable edits; they do not recreate the editor or
+ * its history. CodeView exposes the Editor before its first document has
+ * attached, and positions cannot address the middle of a CRLF pair.
+ */
 function replaceContents(
   editor: Pick<Editor, "getFile" | "getText" | "applyEdits">,
   contents: string,
 ): void {
-  // CodeView exposes the Editor before its first document has attached.
   if (editor.getFile() === undefined) return;
   const previous = editor.getText();
 
@@ -158,7 +171,6 @@ function replaceContents(
     nextEnd -= 1;
   }
 
-  // Positions cannot address the middle of a CRLF pair.
   if (start > 0 && previous[start - 1] === "\r" && previous[start] === "\n") start -= 1;
 
   if (end > 0 && previous[end - 1] === "\r" && previous[end] === "\n") {
@@ -177,6 +189,22 @@ function replaceContents(
       newText: contents.slice(start, nextEnd),
     },
   ]);
+}
+
+/** While its tab is active, keeps the editor's copy of a file current with the disk. */
+function DiskSync({ path }: { readonly path: string }): null {
+  const queryClient = useQueryClient();
+
+  useMountEffect(() => {
+    const queryKey = keys.workspaceFile(path);
+    void queryClient.refetchQueries({ queryKey, exact: true, stale: true });
+
+    return diskEvents(path).subscribe(
+      () => void queryClient.refetchQueries({ queryKey, exact: true }),
+    );
+  });
+
+  return null;
 }
 
 export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
@@ -203,6 +231,12 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   );
 }
 
+/**
+ * The autosave timer is armed inside the buffer subscription, which is bound
+ * once per buffer; it reads the current save and the preference at fire time,
+ * so turning Auto Save off also drops a pending save. Formatting lands as an
+ * ordinary edit, so it stays on the undo stack.
+ */
 function TextFileEditor({
   ref,
   viewKey,
@@ -250,7 +284,6 @@ function TextFileEditor({
   const wordWrap = useSetting(preferences.fileWordWrap);
   const gitBlame = useSetting(preferences.fileGitBlame);
   const formatOnSave = useSetting(preferences.fileFormatOnSave);
-  const host = useHostState();
   const saveFile = useSaveWorkspaceFile();
   const disk = useWorkspaceFile(file.path);
   const dirty = snapshot.contents !== snapshot.savedContents;
@@ -283,8 +316,6 @@ function TextFileEditor({
         : undefined,
     });
 
-  // The autosave timer is armed inside the buffer subscription, which is bound
-  // once per buffer; it reads the current save and the preference at fire time.
   const autosave = useRef({ enabled: autoSave, save });
   useLayoutEffect(() => {
     autosave.current = { enabled: autoSave, save };
@@ -321,7 +352,6 @@ function TextFileEditor({
           timer = undefined;
           const pending = autosave.current;
 
-          // Read at fire time: turning Auto Save off also drops a pending save.
           if (pending.enabled) void pending.save();
         }, 1000);
       }
@@ -391,7 +421,6 @@ function TextFileEditor({
           },
         ]);
     },
-    // Everything else this reads is a ref, stable for the life of the tab.
     [buffer, file.path],
   );
 
@@ -419,7 +448,6 @@ function TextFileEditor({
     buffer.discard(result.data);
   };
 
-  /** Formatting lands as an ordinary edit, so it stays on the undo stack. */
   const format = async (): Promise<void> => {
     const current = buffer.getSnapshot();
 
@@ -465,7 +493,7 @@ function TextFileEditor({
             },
             revealPath !== undefined && {
               kind: "item",
-              label: revealLabel(host.data?.platform),
+              label: revealLabel(nyte.platform),
               run: () => void revealPath({ path: file.path }),
             },
           ]);
@@ -490,6 +518,7 @@ function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
+      {active && <DiskSync key={file.path} path={file.path} />}
       <PierreWorkerProvider>
         <EditProvider createEditor={createEditor}>
           <CodeView
@@ -516,43 +545,34 @@ function TextFileEditor({
           />
         </EditProvider>
       </PierreWorkerProvider>
-      {gitBlame && (
-        <div {...props(styles.status)} title={blameText}>
-          <span>Line {line}</span>
-          <span {...props(styles.statusText)}>{blameText}</span>
-        </div>
-      )}
-      {snapshot.status.kind !== "idle" && (
-        <div
-          role={
-            snapshot.status.kind === "error" || snapshot.status.kind === "conflict"
-              ? "alert"
-              : "status"
-          }
-          {...props(
-            (snapshot.status.kind === "error" || snapshot.status.kind === "conflict") &&
-              intent.danger,
-            styles.status,
-            (snapshot.status.kind === "error" || snapshot.status.kind === "conflict") &&
-              styles.error,
-          )}
+      <div {...props(styles.status)} title={gitBlame ? blameText : undefined}>
+        {gitBlame && (
+          <>
+            <span>Line {line}</span>
+            <span {...props(styles.statusText)}>{blameText}</span>
+          </>
+        )}
+        <span role="status" {...props(styles.statusText, styles.saveText)}>
+          {snapshot.status.kind === "saving"
+            ? "Saving…"
+            : snapshot.status.kind === "saved"
+              ? "Saved"
+              : ""}
+        </span>
+        <span
+          role="alert"
+          {...props(intent.danger, styles.error, styles.statusText, styles.saveText)}
         >
-          <span {...props(styles.statusText)}>
-            {snapshot.status.kind === "saving"
-              ? "Saving…"
-              : snapshot.status.kind === "saved"
-                ? dirty
-                  ? "Unsaved changes"
-                  : "Saved"
-                : snapshot.status.kind === "conflict"
-                  ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
-                  : snapshot.status.message}
-          </span>
-          {snapshot.status.kind === "error" && (
-            <Button onClick={() => void save()}>Retry Save</Button>
-          )}
-        </div>
-      )}
+          {snapshot.status.kind === "conflict"
+            ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
+            : snapshot.status.kind === "error"
+              ? snapshot.status.message
+              : ""}
+        </span>
+        {snapshot.status.kind === "error" && (
+          <Button onClick={() => void save()}>Retry Save</Button>
+        )}
+      </div>
     </div>
   );
 }

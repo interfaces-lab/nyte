@@ -15,19 +15,50 @@ export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
+export const WINDOW_PAINTED_CHANNEL = "nyte:window-painted";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
-export const HOST_OPERATION_PATHS = [
-  "host.endpoint",
-  "host.state",
+/** This computer's name, which main reads when it creates a window so the first frame never asks. */
+export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
+
+/** Present when no other window of this launch was open: the window adopts the strip the last one saved. */
+export const FIRST_WINDOW_ARGUMENT = "--nyte-first-window";
+
+/** Operations main answers itself: native dialogs and menus, fonts, updates and the browser panel. */
+export const MAIN_OPERATION_PATHS = [
   "host.fonts",
-  "host.usage",
-  "host.openWorkspace",
   "host.pickWorkspace",
-  "host.trustWorkspace",
-  "host.closeWorkspace",
   "host.updates.state",
   "host.updates.check",
+  "host.openExternal",
+  "host.confirmExternal",
+  "host.revealPath",
+  "host.openPluginsFolder",
+  "host.contextMenu",
+  "host.browser.open",
+  "host.browser.navigate",
+  "host.browser.menu",
+  "host.browser.perform",
+  "host.browser.close",
+  "host.browser.captureFrame",
+  "host.browser.pickElement",
+  "host.browser.find",
+  "host.browser.cancelDownload",
+  "host.browser.login",
+  "host.browser.history",
+  "host.browser.forgetHistory",
+] as const;
+
+/** Operations the host process answers: the Nyte host, its listeners and remote access. */
+const HOST_PROCESS_PATHS = [
+  "host.endpoint",
+  "host.state",
+  "host.restore",
+  "host.usage",
+  "host.openWorkspace",
+  "host.trustWorkspace",
+  "host.closeWorkspace",
   "host.server.state",
   "host.server.connect",
   "host.server.disconnect",
@@ -46,37 +77,25 @@ export const HOST_OPERATION_PATHS = [
   "host.connect.revokeDevice",
   "host.connect.openAccount",
   "host.connect.signOut",
-  "host.openExternal",
-  "host.confirmExternal",
-  "host.revealPath",
-  "host.openPluginsFolder",
-  "host.contextMenu",
-  "host.browser.open",
-  "host.browser.navigate",
-  "host.browser.menu",
-  "host.browser.perform",
-  "host.browser.close",
-  "host.browser.captureFrame",
-  "host.browser.find",
-  "host.browser.cancelDownload",
-  "host.browser.login",
-  "host.browser.history",
-  "host.browser.forgetHistory",
-  "host.browser.focusPage",
-  "host.terminal.create",
-  "host.terminal.write",
-  "host.terminal.resize",
-  "host.terminal.acknowledge",
-  "host.terminal.idle",
-  "host.terminal.close",
 ] as const;
 
-export type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
+export const HOST_OPERATION_PATHS = [...MAIN_OPERATION_PATHS, ...HOST_PROCESS_PATHS] as const;
+
+type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
 
 export type CallPath = HostOperationPath;
 
+export type MainCallPath = (typeof MAIN_OPERATION_PATHS)[number];
+
+export type HostCallPath = (typeof HOST_PROCESS_PATHS)[number];
+
 export type DesktopBridge = {
   readonly clientSurface: NyteBridge["clientSurface"];
+  readonly platform: NyteBridge["platform"];
+  readonly machineName: NyteBridge["machineName"];
+  readonly firstWindow: boolean;
+  /** The interface drew its first frame, so main can show the window without a blank flash. */
+  windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
   readonly host: Pick<
     HostBridge,
@@ -99,13 +118,13 @@ export type DesktopBridge = {
       Pick<
         HostBridge,
         | "usage"
+        | "restore"
         | "pickWorkspace"
         | "trustWorkspace"
         | "updates"
         | "revealPath"
         | "openPluginsFolder"
         | "contextMenu"
-        | "terminal"
         | "browser"
       >
     >;
@@ -120,7 +139,7 @@ type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
     : never;
 
 /** The authoritative path-to-method relationship carried by Electron IPC. */
-export type CallMethodByPath = {
+type CallMethodByPath = {
   readonly [P in CallPath]: BridgeMethod<DesktopBridge, P>;
 };
 
@@ -129,7 +148,7 @@ export type CallInput<P extends CallPath> =
 
 export type CallOutput<P extends CallPath> = Awaited<ReturnType<CallMethodByPath[P]>>;
 
-export type CallRequestFor<P extends CallPath> = P extends CallPath
+type CallRequestFor<P extends CallPath> = P extends CallPath
   ? { readonly path: P; readonly input: CallInput<P> }
   : never;
 
@@ -140,3 +159,12 @@ export type CallReplyFor<P extends CallPath> =
   | { readonly ok: false; readonly error: IpcFailure };
 
 export type CallReply = { readonly [P in CallPath]: CallReplyFor<P> }[CallPath];
+
+/** Answers one operation for a window, its input already decoded. */
+export type CallHandler<P extends CallPath> = (
+  window: number,
+  input: CallInput<P>,
+) => Promise<CallOutput<P>>;
+
+/** The operations one process answers; a path it does not answer is absent. */
+export type CallTable = { readonly [P in CallPath]?: CallHandler<P> };

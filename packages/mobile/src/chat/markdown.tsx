@@ -7,7 +7,7 @@ import { setStringAsync } from "expo-clipboard";
 import { FILE_LINK, markdownStyle, useTheme } from "../theme.ts";
 import { useTranscriptFont } from "../settings/preferences.ts";
 import { toast } from "../ui/toast.tsx";
-import { sessionIdOf } from "../view-helpers.ts";
+import { parseSessionId } from "../view-helpers.ts";
 
 const linkContextMenuItems = {
   [FILE_LINK]: [
@@ -44,7 +44,7 @@ export function openExternalLink(url: string): Promise<boolean> {
 
 function openLink(url: string): void {
   if (url.startsWith("agent:")) {
-    const session = sessionIdOf(url.slice("agent:".length));
+    const session = parseSessionId(url.slice("agent:".length));
 
     if (session !== undefined) router.push(`/chat/${session}`);
 

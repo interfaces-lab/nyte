@@ -1,4 +1,4 @@
-import { BatchOutcomeSchema, MoveOutcomeSchema, RunEndSchema } from "@nyte-ai/schema";
+import { BatchOutcomeSchema, MoveOutcomeSchema, RunEndSchema, SdkError } from "@nyte-ai/schema";
 import type {
   BatchOutcome,
   Json,
@@ -9,11 +9,10 @@ import type {
   Schema,
   SessionId,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { Receipt, Run, SendReceipt } from "@nyte-ai/core";
 import type { Rows } from "./rows.ts";
 
-export type SendOutcome = Awaited<ReturnType<SendReceipt["settled"]>>;
+type SendOutcome = Awaited<ReturnType<SendReceipt["settled"]>>;
 
 export function receiptHandle<O>(
   rows: Rows,
@@ -66,7 +65,7 @@ export function runHandle(rows: Rows, session: SessionId, id: RunId): Run {
   };
 }
 
-export function sendOutcome(value: Json): SendOutcome {
+function sendOutcome(value: Json): SendOutcome {
   if (typeof value === "object" && value !== null && "kind" in value && value.kind === "withdrawn")
     return { kind: "withdrawn" };
   const end = parsed(RunEndSchema, value);

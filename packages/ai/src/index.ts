@@ -21,12 +21,11 @@ export * from "./api/lazy.ts";
 
 export { OpenAICodexCompactionError } from "./api/openai-codex-compaction-error.ts";
 
-export type {
-  OpenAICodexCompactResult,
-  OpenAICodexResponsesOptions,
-} from "./api/openai-codex-responses.ts";
+export type { OpenAICodexCompactResult } from "./api/openai-codex-compact.ts";
 
-export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
+export type { OpenAICodexResponsesOptions } from "./api/openai-codex-protocol.ts";
+
+export type { OpenAICompletionsOptions } from "./api/openai-completions-params.ts";
 
 export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 
@@ -93,6 +92,8 @@ export * from "./session-resources.ts";
 
 export * from "./types.ts";
 
+export type { ApiOptionsMap, ApiStreamOptions } from "./api-options.ts";
+
 export * from "./utils/diagnostics.ts";
 
 export * from "./utils/estimate.ts";
@@ -134,6 +135,10 @@ export { opencodeProvider } from "./providers/opencode.ts";
 export { openaiProvider } from "./providers/openai.ts";
 
 export { openaiCodexProvider } from "./providers/openai-codex.ts";
+
+export { fetchOpenAICodexAccountLimits } from "./providers/openai-codex-limits.ts";
+
+export { fetchAnthropicAccountLimits } from "./providers/anthropic-limits.ts";
 
 export { openrouterProvider } from "./providers/openrouter.ts";
 

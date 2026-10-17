@@ -2,9 +2,12 @@ import type { SimpleStreamOptions } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
-import { composeHost, memoryStore } from "@nyte-ai/core";
-import type { BrowserApi, ComposeOptions, ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
+import type { BrowserApi, ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import type { ComposeOptions, ServedHost } from "@nyte-ai/core/server";
+import type { Kernel } from "@nyte-ai/core/testing";
 import { asId } from "@nyte-ai/schema";
+import { composeServer } from "@nyte-ai/core/testing";
 import type { Api, AssistantMessage, Model, TranscriptContext } from "@nyte-ai/schema/model";
 
 export type Block =
@@ -61,7 +64,10 @@ export function fakeModels(models?: readonly Model<Api>[], provider = "test"): F
   ) => {
     requests.push({ model, context, options });
 
-    return streamOf(model, queue.shift() ?? { error: "No reply was scripted for this request." });
+    return streamReply(
+      model,
+      queue.shift() ?? { error: "No reply was scripted for this request." },
+    );
   };
 
   registry.setProvider({
@@ -104,6 +110,15 @@ export const env: ExecutionEnv = {
   close: async () => undefined,
 };
 
+/** Composes a host as `composeHost` does, with its kernel beside it, for tests that read kernel state. */
+async function composed(
+  options: ComposeOptions,
+): Promise<ServedHost & { readonly kernel: Kernel }> {
+  const { host, kernel } = await composeServer(options);
+
+  return { ...host, kernel };
+}
+
 export function open(
   fake: FakeModels,
   plugins: readonly Plugin<"core">[],
@@ -113,10 +128,10 @@ export function open(
     readonly execution?: ComposeOptions["execution"];
     readonly poll?: number;
   },
-): ReturnType<typeof composeHost> {
+): Promise<ServedHost & { readonly kernel: Kernel }> {
   const browser = options?.browser;
 
-  return composeHost({
+  return composed({
     store: options?.store ?? memoryStore(),
     execution: options?.execution,
     poll: options?.poll,
@@ -139,7 +154,6 @@ export function open(
     ],
     workspace: { kind: "chat-only", locator: null },
     home: null,
-    operations: [],
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 }
@@ -160,7 +174,7 @@ export async function until<T>(
   }
 }
 
-function streamOf(model: Model<Api>, reply: Reply): AssistantMessageEventStream {
+function streamReply(model: Model<Api>, reply: Reply): AssistantMessageEventStream {
   const stream = new AssistantMessageEventStream();
 
   const message: AssistantMessage = {

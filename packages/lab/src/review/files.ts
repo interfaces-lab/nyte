@@ -26,9 +26,6 @@ export function reviewFiles(
   }));
 }
 
-const covers = (entry: string, path: string): boolean =>
-  entry.endsWith("/") ? path.startsWith(entry) : entry === path;
-
 /** A section's files, in the order its paths name them; a directory entry expands in path order. */
 export function sectionFiles<File extends { readonly path: string }>(
   section: GuideSection,
@@ -36,7 +33,7 @@ export function sectionFiles<File extends { readonly path: string }>(
 ): readonly File[] {
   return section.paths.flatMap((entry) =>
     files
-      .filter((file) => covers(entry, file.path))
+      .filter((file) => (entry.endsWith("/") ? file.path.startsWith(entry) : entry === file.path))
       .toSorted((left, right) => left.path.localeCompare(right.path)),
   );
 }

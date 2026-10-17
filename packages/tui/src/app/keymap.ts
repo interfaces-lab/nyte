@@ -18,7 +18,7 @@ import { chatCommands } from "../model/interactions.ts";
 import { readDraft } from "../ui/composer/composer.tsx";
 import type { Store } from "./store.ts";
 
-export interface KeymapOptions {
+interface KeymapOptions {
   readonly renderer: CliRenderer;
   readonly store: Store;
   readonly fallen: Accessor<(() => void) | null>;
@@ -279,8 +279,8 @@ function printable(event: KeyEvent): boolean {
   return first !== undefined && first >= 32 && first !== 127;
 }
 
+/** Whether `event` copies or clears a selection: Ctrl+C (by name or, as kitty reports a non-Latin layout, by its Latin base-layout C) or Escape. */
 function selectionKey(event: KeyEvent): boolean {
-  // Kitty can report a non-Latin key name with a Latin base-layout C.
   const c = event.name === "c" || event.baseCode === 99 || event.baseCode === 67;
 
   return (event.ctrl && c) || event.name === "escape";

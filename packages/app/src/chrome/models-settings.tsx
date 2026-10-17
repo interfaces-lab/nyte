@@ -1,8 +1,8 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
-import type { ReactElement } from "react";
+import { useRef, useState } from "react";
+import type { ReactElement, RefObject } from "react";
 import { toast } from "@nyte-ai/ui/toast";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -13,12 +13,14 @@ import { providerIcon } from "../conversation/model-picker-state.ts";
 import { nyte } from "../nyte.ts";
 import type { DesktopCatalog, ProviderStatus } from "../catalog.ts";
 import { useCatalog, useSetPreference } from "../queries.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { connection } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionMenu, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { cancelLogin, startLogin, useLoginAttempt } from "./login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { SettingsRow } from "../settings/rows.tsx";
 import { BrowserSignInPanel, DeviceCodePanel } from "./sign-in-panels.tsx";
 
@@ -120,15 +122,21 @@ export function NewChatsSection({
 function ApiKeyForm({
   label,
   pending,
+  field,
   onSubmit,
   onCancel,
 }: {
   label: string;
   pending: boolean;
+  field: RefObject<HTMLInputElement | null>;
   onSubmit: (key: string) => void;
   onCancel: () => void;
 }): ReactElement {
   const [key, setKey] = useState("");
+
+  useMountEffect(() => {
+    field.current?.focus();
+  });
 
   return (
     <form
@@ -141,6 +149,7 @@ function ApiKeyForm({
     >
       <div {...props(styles.keyRow)}>
         <Input
+          ref={field}
           variant="code"
           type="password"
           aria-label={label}
@@ -168,7 +177,7 @@ function ApiKeyForm({
       <span {...props(text.sm, styles.keyHint)}>
         {nyte.clientSurface === "web"
           ? "Stored on the machine running the server"
-          : "Stored on this Mac in ~/.nyte/auth.json"}
+          : "Stored on this Mac"}
       </span>
     </form>
   );
@@ -177,6 +186,7 @@ function ApiKeyForm({
 function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   const setPreference = useSetPreference();
   const [keyFormOpen, setKeyFormOpen] = useState(false);
+  const keyField = useRef<HTMLInputElement>(null);
   const running = useLoginAttempt(provider.id);
   const disconnected = provider.credential === "missing";
   const unknown = provider.credential === "unknown";
@@ -272,11 +282,12 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
                 render={
                   <Button variant="outline" loading={login.isPending} disabled={busy}>
                     Connect Provider
+                    <span {...props(srOnly)}> {provider.name}</span>
                     <Icon name="chevron-down" size={12} />
                   </Button>
                 }
               />
-              <MenuContent align="end">
+              <MenuContent align="end" finalFocus={() => keyField.current ?? true}>
                 <MenuItem onClick={() => login.mutate({ kind: "browser" })}>Sign In</MenuItem>
                 <MenuItem
                   icon="key"
@@ -304,6 +315,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
               }}
             >
               Connect Provider
+              <span {...props(srOnly)}> {provider.name}</span>
             </Button>
           )
         ) : !canSignOut ? undefined : (
@@ -331,6 +343,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
           <ApiKeyForm
             label="API key"
             pending={login.isPending}
+            field={keyField}
             onSubmit={(key) => login.mutate({ kind: "api_key", key })}
             onCancel={() => {
               stopLogin();

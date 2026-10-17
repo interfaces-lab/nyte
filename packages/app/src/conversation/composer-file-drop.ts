@@ -41,7 +41,7 @@ export function droppedTreeFiles(event: ComposerFileDropEvent): readonly Mention
     : [];
 }
 
-export function dropHandlers(args: {
+function dropHandlers(args: {
   readonly onFiles: (files: readonly File[]) => void;
   readonly disabled?: boolean;
 }) {

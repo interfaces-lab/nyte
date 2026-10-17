@@ -5,6 +5,7 @@ import open from "open";
 import type { LoginDriver } from "./services/auth.ts";
 import { ansiEnabled, bold, cyan, dim } from "./cli-style.ts";
 
+/** Asks `message` on the terminal through readline, which owns raw mode and editing; a `secret` answer suppresses all of readline's echo, redraws after backspace, paste and cursor moves included. */
 async function ask(
   message: string,
   signal: AbortSignal,
@@ -13,8 +14,6 @@ async function ask(
 ): Promise<string> {
   signal.throwIfAborted();
 
-  // Readline owns raw mode and editing. Suppress its entire echo for secrets,
-  // including redraws after backspace, paste, and cursor movement.
   const hidden = secret
     ? new Writable({
         write(_chunk, _encoding, callback) {

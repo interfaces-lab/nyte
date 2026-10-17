@@ -1,5 +1,6 @@
-import { SdkError, definePart, dev } from "@nyte-ai/core";
+import { definePart, dev } from "@nyte-ai/core";
 import type { ActionContext, ActionOutput, ToolDefinition } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
 import {
   answerInput,
@@ -76,6 +77,8 @@ const ask: ToolDefinition<Infer<typeof questionParameters>, Infer<typeof questio
     kind: "custom",
     label: args.questions.map((item) => item.header).join(", "),
   }),
+  effects: "none",
+  approval: "never",
   replay: "safe",
   async execute(args, invocation) {
     for (const item of args.questions) {

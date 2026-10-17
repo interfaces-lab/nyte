@@ -1,61 +1,28 @@
 import fuzzysort from "fuzzysort";
 import type { SkillInfo } from "@nyte-ai/sdk";
-import { completionTrigger } from "./view-helpers.ts";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 
-export interface ParsedSlashCommand {
+interface ParsedSlashCommand {
   readonly name: string;
   readonly argument: string;
 }
 
-export type ComposerSubmission =
+type ComposerSubmission =
   | { readonly kind: "empty" }
   | { readonly kind: "command"; readonly command: ParsedSlashCommand }
   | { readonly kind: "prompt"; readonly text: string }
   | { readonly kind: "shell"; readonly command: string; readonly retain: boolean };
 
-function isAsciiLetter(character: string | undefined): boolean {
-  if (character === undefined) return false;
-  const code = character.charCodeAt(0);
-
-  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-}
-
-function isSlashCommandNameCharacter(character: string): boolean {
-  const code = character.charCodeAt(0);
-
-  return isAsciiLetter(character) || (code >= 48 && code <= 57) || character === "-";
-}
+/** A slash command: `/`, a name of ASCII letters, digits and `-` that does not start with `-`, then optionally whitespace and its argument. */
+const SLASH_COMMAND = /^\/([A-Za-z0-9][A-Za-z0-9-]*)(?:\s(.*))?$/su;
 
 function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
   const value = input.trim();
-  const first = value[1];
-
-  if (
-    !value.startsWith("/") ||
-    first === undefined ||
-    first === "-" ||
-    !isSlashCommandNameCharacter(first)
-  ) {
-    return undefined;
-  }
 
   if (value.includes("\n") || value.includes("\r")) return undefined;
+  const [, name, argument = ""] = SLASH_COMMAND.exec(value) ?? [];
 
-  let nameEnd = 2;
-
-  while (nameEnd < value.length) {
-    const character = value[nameEnd];
-
-    if (character === undefined || character.trim() === "") break;
-
-    if (!isSlashCommandNameCharacter(character)) return undefined;
-    nameEnd += 1;
-  }
-
-  return {
-    name: value.slice(1, nameEnd).toLowerCase(),
-    argument: value.slice(nameEnd).trim(),
-  };
+  return name === undefined ? undefined : { name: name.toLowerCase(), argument: argument.trim() };
 }
 
 export function parseComposerSubmission(input: string): ComposerSubmission {
@@ -102,13 +69,14 @@ export const SLASH_COMMANDS = [
   },
   { name: "new", description: "Start a new chat", kind: "action" },
   { name: "cd", description: "Change this chat's working directory", kind: "action" },
-  { name: "compact", description: "Compact conversation history", kind: "action" },
+  { name: "compact", description: "Summarize the chat to free up context", kind: "action" },
   { name: "usage", description: "Show token usage and cost", kind: "action" },
   { name: "accounts", description: "Choose a saved account", kind: "action" },
   { name: "tasks", description: "Inspect subagents and background commands", kind: "action" },
-  { name: "tree", description: "Move to a session branch", kind: "action" },
+  { name: "tree", description: "Move to a chat branch", kind: "action" },
   { name: "edit", description: "Edit a message you sent", kind: "action" },
   { name: "plugins", description: "List loaded plugins", kind: "action" },
+  { name: "pr", description: "Show this branch's pull request and its checks", kind: "action" },
   { name: "trust", description: "Choose whether this folder's project files load", kind: "action" },
   {
     name: "mcp",
@@ -128,7 +96,7 @@ function aliasesFor(command: SlashCommand): readonly string[] {
   return command.aliases ?? [];
 }
 
-export interface SlashSetting {
+interface SlashSetting {
   readonly id: string;
   readonly label: string;
 }
@@ -268,7 +236,8 @@ interface SkillToken {
   readonly skill: SkillInfo;
 }
 
-function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): SkillToken[] {
+/** Each `/name` in `text` that names one of `skills`, at the start or after whitespace. */
+export function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): SkillToken[] {
   const tokens: SkillToken[] = [];
 
   for (const match of text.matchAll(INLINE_SKILL_PATTERN)) {
@@ -280,70 +249,9 @@ function skillTokens(text: string, skills: ReadonlyMap<string, SkillInfo>): Skil
 
   return tokens;
 }
+
 export function hasInlineSkills(text: string, skills: ReadonlyMap<string, SkillInfo>): boolean {
   return skillTokens(text, skills).some((token) => !opensDraft(text, token.start));
-}
-
-export function expandInlineSkills(text: string, skills: ReadonlyMap<string, SkillInfo>): string {
-  let expanded = "";
-  let cursor = 0;
-
-  for (const token of skillTokens(text, skills)) {
-    expanded += text.slice(cursor, token.start) + formatSkillInvocation(token.skill);
-    cursor = token.end;
-  }
-
-  return expanded + text.slice(cursor);
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
-export function formatSkillInvocation(skill: SkillInfo, additionalInstructions?: string): string {
-  const block =
-    `<skill name="${escapeXml(skill.name)}" location="${escapeXml(skill.location)}">\n` +
-    `Read the skill's file at its location and follow it.\n</skill>`;
-
-  return additionalInstructions === undefined || additionalInstructions === ""
-    ? block
-    : `${block}\n\n${additionalInstructions}`;
-}
-
-interface SkillInvocation {
-  readonly source: string;
-  readonly name: string;
-  readonly path: string;
-}
-
-const SKILL_INVOCATION_PATTERN =
-  /<skill name="([^"\n]*)" location="([^"\n]*)">\n[\s\S]*?\n<\/skill>/g;
-
-function unescapeXml(value: string): string {
-  return value
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&amp;", "&");
-}
-
-export function extractSkillInvocations(text: string): SkillInvocation[] {
-  const invocations: SkillInvocation[] = [];
-
-  for (const match of text.matchAll(SKILL_INVOCATION_PATTERN)) {
-    const [source, name, path] = match;
-
-    if (name === undefined || path === undefined) continue;
-    invocations.push({ source, name: unescapeXml(name), path: unescapeXml(path) });
-  }
-
-  return invocations;
 }
 
 export function slashCommandLabel(command: SlashCommand): string {

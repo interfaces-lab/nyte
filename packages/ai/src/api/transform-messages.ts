@@ -67,6 +67,8 @@ function downgradeUnsupportedImages<TApi extends Api>(
  * Normalize tool call ID for cross-provider compatibility.
  * OpenAI Responses API generates IDs that are 450+ chars with special characters like `|`.
  * Anthropic APIs require IDs matching ^[a-zA-Z0-9_-]+$ (max 64 chars).
+ * Null or undefined content from untyped callers (custom tools, hand-built histories, old session
+ * files) becomes an empty array first, so downstream code can rely on the type contract.
  */
 export function transformMessages<TApi extends Api>(
   messages: Message[],
@@ -75,8 +77,6 @@ export function transformMessages<TApi extends Api>(
 ): Message[] {
   const toolCallIdMap = new Map<string, string>();
 
-  // Normalize null/undefined content from untyped callers (custom tools, hand-built
-  // histories, old session files) so downstream code can rely on the type contract.
   const normalizedMessages = messages.map((msg) =>
     msg.content == null ? { ...msg, content: [] } : msg,
   );

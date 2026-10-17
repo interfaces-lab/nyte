@@ -4,7 +4,7 @@ import { SdkError } from "@nyte-ai/sdk";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { test } from "vitest";
-import { readRouteSession } from "./route-session.ts";
+import { readRouteSession, routeChatExists } from "./route-session.ts";
 import { keys } from "./query-keys.ts";
 
 function session(id: SessionId): SessionInfo {
@@ -44,8 +44,11 @@ test("overlapping intent and navigation share one SDK read and cache its result"
     assert.deepEqual(await navigation, info);
     assert.deepEqual(await readRouteSession({ client, sessionId: id, read }), info);
     assert.deepEqual(client.getQueryData(keys.session(id)), info);
-    // SDK request count is the preload contract, not an internal cache call sequence.
-    assert.equal(reads, 1);
+    assert.equal(
+      reads,
+      1,
+      "SDK request count is the preload contract, not an internal cache call sequence",
+    );
   } finally {
     client.clear();
   }
@@ -74,6 +77,57 @@ test("a missing session remains distinct from an SDK failure", async () => {
           throw new SdkError("unavailable", "Host down.");
         },
       }),
+    );
+  } finally {
+    client.clear();
+  }
+});
+
+test("a chat the directory lists exists without a host read", async () => {
+  const id = asId<"session">("listed-chat");
+  const client = new QueryClient();
+
+  try {
+    assert.equal(
+      await routeChatExists({
+        client,
+        sessionId: id,
+        listed: async () => [session(id)],
+        read: async () => assert.fail("A listed chat needs no host read."),
+      }),
+      true,
+    );
+  } finally {
+    client.clear();
+  }
+});
+
+test("a chat the directory does not list is read from the host, and a missing one does not exist", async () => {
+  const older = asId<"session">("older-chat");
+  const missing = asId<"session">("missing-chat");
+  const listed = async () => [session(asId<"session">("newest-chat"))];
+  const client = new QueryClient();
+
+  try {
+    assert.equal(
+      await routeChatExists({
+        client,
+        sessionId: older,
+        listed,
+        read: async () => session(older),
+      }),
+      true,
+    );
+    assert.equal(
+      await routeChatExists({
+        client,
+        sessionId: missing,
+        listed,
+        read: async () => {
+          throw new SdkError("unknown", "No such session.");
+        },
+      }),
+      false,
     );
   } finally {
     client.clear();

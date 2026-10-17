@@ -1,11 +1,11 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 /**
  * One transcript item. User prompts are the only ordinary contained message
  * region. Assistant prose stays flat, while reasoning, tools, and system
  * history use compact rows. Parts keep core's stable identity so settled and
  * streaming content exchange in place.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
@@ -17,12 +17,18 @@ import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { Message as ViewMessage, SessionView, UserContent } from "@nyte-ai/sdk";
+import {
+  failureNotice,
+  showsText,
+  showsThinking,
+  showsTool,
+} from "@nyte-ai/plugin/client/presentation";
+import type { TextMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { drawPart } from "../client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
-import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
-import { isToolMessage } from "../view-helpers.ts";
+import type { ConversationTurn } from "../view-helpers.ts";
 import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../workbench/change-tree.ts";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
@@ -33,7 +39,7 @@ import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
 import { SubagentGroupView, SubagentReportLine } from "./subagent-call.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
-import { ComposerFrame } from "./composer.tsx";
+import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";
@@ -44,15 +50,10 @@ import {
 } from "./composer-send.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { ImagePreview } from "./image-preview.tsx";
-import {
-  UserMessageText,
-  messageFiles,
-  messageImages,
-  useBlobUrl,
-  userMessageText,
-} from "./message-content.tsx";
+import { UserMessageText, messageFiles, messageImages } from "./message-content.tsx";
 import type { MessageFile } from "./message-content.tsx";
-import { messageDraftText } from "./message-references.ts";
+import { contentDraftText } from "./message-references.ts";
+import { useBlobUrl } from "../use-blob-url.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
 import {
@@ -60,19 +61,13 @@ import {
   bubbleStyles,
   messageStyles,
   turnStyles,
-} from "./styles.stylex.ts";
+} from "./turn.stylex.ts";
 import { StatusMarker } from "./row-surfaces.tsx";
+import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { failureNotice } from "./tool-copy.ts";
-import {
-  displayTranscriptParts,
-  isTextMessage,
-  isThinkingMessage,
-  userDisplayText,
-} from "./transcript-presentation.ts";
-import type { TextMessage } from "./transcript-presentation.ts";
+import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
 import { errorMessage } from "../errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 
@@ -187,7 +182,8 @@ interface UserEditState extends BranchModelChoice {
  * One user row. Without `onEdit` it is read-only, which also draws a message
  * that has left the composer but has no commit yet. Editing is composing
  * again from the sent content, so it is the same frame the composer uses:
- * attachments, the `+` menu, `@` and `/` completion, the model picker.
+ * attachments, the `+` menu, `@` and `/` completion, the model picker. The edit
+ * sits in a thread, so a workspace is open behind it for `@` mentions.
  */
 export function UserMessageView({
   content,
@@ -227,18 +223,19 @@ export function UserMessageView({
 
     return () => row.ownerDocument.removeEventListener("click", dismiss);
   }, [canDismissEdit]);
-  const original = userMessageText(content);
+  const original = contentDraftText(content);
   const pluginCatalog = usePluginCatalog();
-  // The edit sits in a thread, so a workspace is open behind it.
   const workspaceFiles = useMentionFiles(edit !== undefined);
 
   const begin = (): void => {
-    const text = messageDraftText(original);
-
     if (rowRef.current !== null) transcript.hold(rowRef.current);
     flushSync(() =>
       setEdit({
-        document: { text, selectionStart: text.length, selectionEnd: text.length },
+        document: {
+          text: original,
+          selectionStart: original.length,
+          selectionEnd: original.length,
+        },
         attachments: [],
         kept: messageFiles(content),
         attachmentReads: 0,
@@ -275,7 +272,7 @@ export function UserMessageView({
 
   const save = async (submission: ComposerSubmission): Promise<boolean> => {
     if (edit === undefined || edit.saving || onEdit === undefined) return false;
-    const draft = composerMessageContent(submission.text.trim(), edit.attachments, edit.kept);
+    const draft = composerMessageContent(submission.parts, edit.attachments, edit.kept);
 
     if (composerContentEmpty(draft)) {
       setEdit({ ...edit, error: "A message cannot be empty." });
@@ -508,10 +505,22 @@ function TurnChangesCard({
   );
 }
 
+/**
+ * A compaction shows while it runs, then folds its summary behind a
+ * disclosure; one that ended without a summary leaves the turn's own notice
+ * to explain.
+ */
 function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 
   if (isPart(message, compaction)) {
+    if (message.status.kind === "live")
+      return (
+        <StatusMarker role="status" variant="retrying">
+          Summarizing chat context…
+        </StatusMarker>
+      );
+
     return message.state.summary === null ? null : (
       <HistoryDisclosure label="Chat context summarized">
         <Prose markdown={message.state.summary} />
@@ -568,17 +577,17 @@ function TurnPartView({
     );
   }
 
-  if (isTextMessage(message))
+  if (showsText(message))
     return message.state.markdown.trim() === "" ? null : (
       <Prose markdown={message.state.markdown} />
     );
 
-  if (isThinkingMessage(message))
+  if (showsThinking(message))
     return (
       <ThinkingLine text={message.state.markdown} streaming={message.status.kind === "live"} />
     );
 
-  if (isToolMessage(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
+  if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
 
   return <NoteView message={message} />;
 }
@@ -592,6 +601,7 @@ const ResponseView = memo(function ResponseView({
     () => messages.map((message) => message.state.markdown.trim()).join("\n\n"),
     [messages],
   );
+
   const streaming = messages.some((message) => message.status.kind === "live");
 
   return markdown === "" ? null : <Prose markdown={markdown} streaming={streaming} />;
@@ -621,7 +631,7 @@ function turnChanges(
 ): SessionView["changes"] {
   const paths = new Set(
     turn.messages.flatMap((message) =>
-      isToolMessage(message) && message.state.phase === "settled"
+      showsTool(message) && message.state.phase === "settled"
         ? (message.state.changes?.paths ?? [])
         : [],
     ),
@@ -645,6 +655,7 @@ const TurnBody = memo(function TurnBody({
 
   if (drawsNothing(turn)) return null;
   const { state } = turn.info;
+
   const failure =
     state.kind === "ended" && state.end.kind === "failed"
       ? failureNotice(state.end.failure)
@@ -658,12 +669,7 @@ const TurnBody = memo(function TurnBody({
           const trailing = index === display.length - 1;
           const active = running && trailing;
 
-          if (
-            !active &&
-            item.messages.length === 1 &&
-            first !== undefined &&
-            isToolMessage(first)
-          ) {
+          if (!active && item.messages.length === 1 && first !== undefined && showsTool(first)) {
             return <TurnPartView key={first.id} message={first} cwd={cwd} density={density} />;
           }
 
@@ -716,6 +722,12 @@ const TurnBody = memo(function TurnBody({
           variant={failure.tone === "danger" ? "destructive" : "default"}
         >
           {failure.text}
+          {failure.recovery !== undefined && (
+            <>
+              {" "}
+              <RecoveryAction recovery={failure.recovery} />
+            </>
+          )}
         </StatusMarker>
       )}
       {!running && changes.length > 0 && (

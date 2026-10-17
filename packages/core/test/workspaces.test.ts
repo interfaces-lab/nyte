@@ -1,39 +1,27 @@
-import { asId, asSeq } from "@nyte-ai/schema";
-import type { Authority, CallId, Json, PatchSet, RunId } from "@nyte-ai/schema";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
+import type { Authority, CallId, Json, PatchSet, RunId, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  LOCAL,
-  SdkError,
-  authenticateToken,
-  envelope,
-  hostPrincipalsRef,
-  createConnection,
-  createFoldCache,
-  createHost,
-  createInvocation,
-  driveInProcess,
-  environmentPlugin,
-  project,
-  redeemPairing,
-  resourcesPlugin,
-  runStep,
-  viewHead,
-  workspaceHandle,
-  workspaceRef,
-} from "../src/index.ts";
-import type {
-  ConnectionContext,
-  Durable,
-  Kernel,
-  Page,
-  Plugin,
-  WorkspaceRecord,
-} from "../src/index.ts";
+import { createInvocation } from "../src/agent/tool-runner.ts";
+import { createHost } from "../src/api/connection.ts";
+import { environmentPlugin } from "../src/builtins/environment.ts";
+import { driveInProcess } from "../src/drive/execution.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { authenticateToken, redeemPairing } from "../src/engine/principals.ts";
+import { workspaceHandle } from "../src/env/workspaces.ts";
+import { resourcesPlugin } from "../src/extend/resources.ts";
+import { project } from "../src/fold/project.ts";
+import { viewHead } from "../src/fold/view.ts";
+import { createFoldCache } from "../src/fold/watch.ts";
+import { LOCAL } from "../src/index.ts";
+import { envelope, hostPrincipalsRef, workspaceRef } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ConnectionContext, Durable, Page, Plugin } from "../src/index.ts";
+import type { WorkspaceRecord } from "../src/store.ts";
 import { addWorkspace, collect, kernelOver, world } from "./fake-env.ts";
-import { main, until } from "./harness.ts";
+import { main, until } from "../src/harness.ts";
 
 function connectionAs(kernel: Kernel, authority: readonly Authority[]) {
-  return createConnection(kernel, {
+  return kernel.handles.connection({
     principal: asId("device"),
     authority: new Set(authority),
     credential: { kind: "token", token: "t" },
@@ -104,6 +92,7 @@ describe("workspaces", () => {
           addedBy: LOCAL,
           sessions: 0,
           writers: [],
+          isolation: null,
         },
       ]),
     );
@@ -111,7 +100,7 @@ describe("workspaces", () => {
 
   it("forgets a workspace only once no session uses it", async () => {
     const { host, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     expect(await host.workspace(workspace).info()).toMatchObject({ sessions: 1, writers: [] });
     expect(await host.workspaces.forget(workspace)).toEqual({
@@ -140,12 +129,12 @@ describe("workspaces", () => {
 
   it("keeps a participant-only tool from committing through its invocation's workspace (§52 rule 5)", async () => {
     const { kernel, host, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const memo: Durable["memo"] = async (_name, compute) => compute();
 
     const invocation = createInvocation(kernel, {
       session: session.id,
-      runtime: kernel.pluginsFor(session.id),
+      runtime: kernel.plugins.runtime(session.id),
       head: main,
       run: asId("r1"),
       call: asId("c1"),
@@ -157,8 +146,9 @@ describe("workspaces", () => {
       },
       signal: new AbortController().signal,
       workspace,
-      env: await kernel.env(session.id),
+      env: await kernel.environments.attach(session.id),
       durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
+      covered: false,
     });
 
     const git = await invocation.workspace.git();
@@ -172,13 +162,20 @@ describe("workspaces", () => {
   });
 
   it("activates a session: active, unavailable while unreachable, failed when attach throws, and reload retries", async () => {
-    const { host, provider, workspace } = await world();
-    const served = await host.sessions.create({ workspace });
+    const { kernel, host, provider, workspace } = await world();
+    const { session: served } = await host.sessions.start({ workspace, content: "Hi." });
+    const { session: unreachable } = await host.sessions.start({ workspace, content: "Hi." });
+    const { session: broken } = await host.sessions.start({ workspace, content: "Hi." });
+
+    const reactivate = async (session: SessionId): Promise<void> => {
+      await kernel.environments.detach(session);
+      await Promise.allSettled([kernel.plugins.reload(session)]);
+    };
 
     expect((await served.info()).activation).toEqual({ kind: "active" });
 
     provider.availability = { kind: "unavailable", reason: "unreachable" };
-    const unreachable = await host.sessions.create({ workspace });
+    await reactivate(unreachable.id);
 
     expect((await unreachable.info()).activation).toEqual({
       kind: "unavailable",
@@ -188,7 +185,7 @@ describe("workspaces", () => {
 
     provider.availability = null;
     provider.failure = "The disk is gone.";
-    const broken = await host.sessions.create({ workspace });
+    await reactivate(broken.id);
 
     expect((await broken.info()).activation).toEqual({
       kind: "failed",
@@ -241,20 +238,25 @@ describe("workspaces", () => {
       return attach(target);
     };
 
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    seen.splice(0);
     provider.failure = "The sandbox did not boot.";
-    const session = await host.sessions.create({ workspace });
-    await expect(kernel.pluginsFor(session.id).ready).rejects.toThrow("The sandbox did not boot.");
+    await kernel.environments.detach(session.id);
+    await Promise.allSettled([kernel.plugins.reload(session.id)]);
+    await expect(kernel.plugins.runtime(session.id).ready).rejects.toThrow(
+      "The sandbox did not boot.",
+    );
 
-    expect(kernel.activation(session.id)).toEqual({
+    expect(kernel.sessions.activation(session.id)).toEqual({
       kind: "failed",
       message: "The sandbox did not boot.",
     });
     expect(seen).toEqual([]);
 
     provider.failure = null;
-    await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
+    await until(() => (kernel.plugins.runtimes().has(session.id) ? undefined : true));
     const failed = attempts;
-    await kernel.pluginsFor(session.id).ready;
+    await kernel.plugins.runtime(session.id).ready;
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(seen).toEqual(["/work/project"]);
     expect(attempts).toBe(failed + 1);
@@ -263,7 +265,7 @@ describe("workspaces", () => {
   it("rejects an unknown session's activation instead of resolving it (E6, P4)", async () => {
     const { kernel } = await world();
 
-    await expect(kernel.pluginsFor(asId("nobody")).ready).rejects.toMatchObject({
+    await expect(kernel.plugins.runtime(asId("nobody")).ready).rejects.toMatchObject({
       code: "unknown",
     });
   });
@@ -313,6 +315,7 @@ describe("workspaces", () => {
       projectSources: [],
       addedBy: LOCAL,
       createdAt: 0,
+      isolation: null,
     };
 
     await kernel.store.refs.set([
@@ -333,11 +336,11 @@ describe("workspaces", () => {
 
   it("applies wraps in order and lazily, a wrap's browser served as the capability", async () => {
     const { kernel, host, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
-    const env = await kernel.env(session.id);
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const env = await kernel.environments.attach(session.id);
     const calls: string[] = [];
 
-    kernel.wrapEnv(session.id, (inner) => ({
+    kernel.environments.wrap(session.id, (inner) => ({
       ...inner,
       exec: (command, options) => {
         calls.push("first");
@@ -346,7 +349,7 @@ describe("workspaces", () => {
       },
     }));
 
-    const dispose = kernel.wrapEnv(session.id, (inner) => ({
+    const dispose = kernel.environments.wrap(session.id, (inner) => ({
       ...inner,
       exec: (command, options) => {
         calls.push("second");
@@ -537,11 +540,11 @@ describe("principals", () => {
     );
 
     expect(stored).not.toContain(redeemed.token);
-    expect(await authenticateToken(kernel, redeemed.token)).toEqual({
+    expect(await authenticateToken(kernel.store, redeemed.token)).toEqual({
       principal: redeemed.principal,
       authority: new Set(["participant"]),
     });
-    expect(await authenticateToken(kernel, "forged")).toBeNull();
+    expect(await authenticateToken(kernel.store, "forged")).toBeNull();
 
     let dropped = 0;
     kernel.connections.register(redeemed.principal, () => {
@@ -559,7 +562,7 @@ describe("principals", () => {
 
     expect(dropped).toBe(1);
     expect(await host.principals.list()).toEqual([]);
-    expect(await authenticateToken(kernel, redeemed.token)).toBeNull();
+    expect(await authenticateToken(kernel.store, redeemed.token)).toBeNull();
   });
 
   it("revokes an id no paired principal holds as a success, writing and marking nothing (§65, ADV C N3, probe N2)", async () => {
@@ -613,7 +616,7 @@ describe("activation (§37j–m)", () => {
 
   it("gates a pre-existing session's first send and command on a new kernel behind its activation", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     const gate: Plugin<"core"> = {
       id: "gate",
@@ -626,7 +629,7 @@ describe("activation (§37j–m)", () => {
     const second = kernelOver(kernel.store, provider, { plugins: [gate] });
     const fresh = createHost(second, credential);
 
-    expect(second.runtimes().has(session.id)).toBe(false);
+    expect(second.plugins.runtimes().has(session.id)).toBe(false);
     await expect(fresh.session(session.id).send("Hello.")).rejects.toMatchObject({
       code: "invalid",
       message: "Closed.",
@@ -639,7 +642,7 @@ describe("activation (§37j–m)", () => {
 
   it("lets a plugin send and run a prompt command from its own activate without waiting on that activation", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     const chatty: Plugin<"core"> = {
       id: "chatty",
@@ -666,21 +669,21 @@ describe("activation (§37j–m)", () => {
       (await fresh.session(session.id).view()).messages.map((message) =>
         message.kind === "user" ? message.content : message.kind,
       ),
-    ).toEqual(["Hello from activate.", "Nudged.", "After."]);
+    ).toEqual(["Hi.", "Hello from activate.", "Nudged.", "After."]);
   });
 
   it("relocates a session: its environment, cwd and plugins follow the new workspace", async () => {
     const { kernel, host, workspace } = await world({ plugins: [environmentPlugin] });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const other = await addWorkspace(host, "/work/other");
 
-    expect((await kernel.env(session.id)).cwd).toBe("/work/project");
+    expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/project");
     expect(await session.update({ workspace: other })).toEqual({ kind: "updated" });
-    expect((await kernel.env(session.id)).cwd).toBe("/work/other");
+    expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/other");
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(
-      kernel
-        .pluginsFor(session.id)
+      kernel.plugins
+        .runtime(session.id)
         .registries.prompt.list()
         .find((section) => section.id === "cwd")?.text,
     ).toContain("/work/other");
@@ -707,8 +710,8 @@ describe("activation (§37j–m)", () => {
     };
 
     const { kernel, host, workspace } = await world({ plugins: [flaky], builtins: [builtin] });
-    const session = await host.sessions.create({ workspace });
-    const first = kernel.pluginsFor(session.id);
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const first = kernel.plugins.runtime(session.id);
 
     expect(first.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "fake-environment"]);
 
@@ -717,8 +720,8 @@ describe("activation (§37j–m)", () => {
 
     expect(first.plugins()).toEqual([]);
     expect(
-      kernel
-        .pluginsFor(session.id)
+      kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toEqual(["builtin", "fake-environment", "flaky"]);
@@ -726,7 +729,7 @@ describe("activation (§37j–m)", () => {
     const own: Plugin<"core"> = { id: "own" };
     await host.plugins.replace([own], { session: session.id });
     await host.workspace(workspace).reload();
-    const runtime = kernel.pluginsFor(session.id);
+    const runtime = kernel.plugins.runtime(session.id);
 
     expect(runtime.assigned()).toEqual([own]);
     expect(runtime.plugins().map((plugin) => plugin.id)).toEqual(["builtin", "own"]);
@@ -754,11 +757,11 @@ describe("activation (§37j–m)", () => {
       execution: { kind: "admit-only" },
     });
 
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     expect(
-      kernel
-        .pluginsFor(session.id)
+      kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toContain("probe");
@@ -773,11 +776,12 @@ describe("activation (§37j–m)", () => {
     });
 
     const driver = driveInProcess(kernel, { kind: "workspace", workspace });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(provider.attaches).toBe(1);
-    expect((await kernel.env(session.id)).cwd).toBe("/work/project");
+    expect((await kernel.environments.attach(session.id)).cwd).toBe("/work/project");
+    await session.stop();
     await driver.close();
   });
 });
@@ -862,7 +866,7 @@ describe("browser pages (§37i)", () => {
 
   it("shows a step's page on its head as an unlogged background item, seeded into cold folds, and a re-run adopts the recorded page", async () => {
     const { kernel, host, provider, workspace } = await world({ browser: true });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const call: CallId = asId("c1");
     const held: Page[] = [];
 

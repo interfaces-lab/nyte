@@ -2,13 +2,14 @@ import { createServer } from "node:http";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileCanvas } from "@nyte-ai/plugin/core/canvas";
+import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import {
   CANVAS_RUNTIME,
   initializeResult,
   renderNotification,
 } from "@nyte-ai/plugin/canvas/protocol";
-import { chromium } from "../../app/node_modules/@playwright/test/index.mjs";
+import { chromium } from "@playwright/test";
+import { readCanvasFixture } from "../test/read-canvas-fixture.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -73,23 +74,20 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
 const port = server.address().port;
 
-const compile = compileCanvas;
-
-const fixtures = (await readdir(join(root, "test/fixtures"))).filter((name) =>
-  name.endsWith(".tsx"),
+const fixtures = (await readdir(join(root, "test/fixtures"), { withFileTypes: true })).filter(
+  (entry) => entry.isDirectory() || entry.name.endsWith(".tsx"),
 );
 
 const modules = [];
 
-for (const name of fixtures) {
-  const outcome = await compile(await readFile(join(root, "test/fixtures", name), "utf8"));
+for (const entry of fixtures) {
+  const { source, files } = await readCanvasFixture(join(root, "test/fixtures", entry.name));
+  const outcome = await compileCanvas(source, files);
+  const name = entry.name.replace(/\.tsx$/, "");
 
   if (outcome.kind !== "compiled")
     throw new Error(`${name} did not compile: ${JSON.stringify(outcome.errors)}`);
-  modules.push({
-    name: name.replace(/\.tsx$/, ""),
-    module: { runtime: outcome.runtime, code: outcome.code, title: name },
-  });
+  modules.push({ name, module: { runtime: outcome.runtime, code: outcome.code, title: name } });
 }
 
 const context = (theme) => ({
@@ -198,7 +196,9 @@ for (const theme of ["light", "dark"]) {
 
           if (data.method === "ui/initialize")
             window.dispatchEvent(
-              new MessageEvent("message", { data: { ...config.initializeResult, id: data.id } }),
+              new MessageEvent("message", {
+                data: Object.assign({}, config.initializeResult, { id: data.id }),
+              }),
             );
 
           if (data.method === "ui/notifications/initialized")

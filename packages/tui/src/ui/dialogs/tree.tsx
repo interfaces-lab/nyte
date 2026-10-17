@@ -37,7 +37,7 @@ function roleColor(row: TreeRow, theme: CliTheme): string {
     case "checkpoint":
       return theme.warning;
     case "tool":
-      return theme.muted;
+      return theme.dim;
     default: {
       const _exhaustive: never = row.role;
 
@@ -164,7 +164,7 @@ export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
   createEffect(on(selected, (index) => revealRow(scroll, index)));
 
   return (
-    <Panel title="Session Tree" hints={hints}>
+    <Panel title="Chat Tree" hints={hints}>
       <Note text={help} />
       <QueryLine
         text={props.dialog.query}

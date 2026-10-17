@@ -13,7 +13,6 @@ import type {
   LinkTransactionLookup,
   LinkTransactionOpened,
   LinkTransactionStatus,
-  PublicJwk,
 } from "@nyte-ai/connect";
 import { publicKeySet, sha256 } from "@nyte-ai/connect/signing";
 import { lookupOwner, ownerStanding, verifySession } from "./clerk.ts";
@@ -22,16 +21,16 @@ import type { Context } from "./context.ts";
 import { claimRefusal } from "./environments.ts";
 import { Refusal, json, parseBody, requestText } from "./http.ts";
 import { verifyLinkProof } from "./proof.ts";
+import { claimEnvironment } from "./store/environments.ts";
 import {
   approveLinkTransaction,
   cancelLinkTransaction,
-  claimEnvironment,
   denyLinkTransaction,
   findLinkTransaction,
   findPendingLinkTransaction,
   openLinkTransaction,
-} from "./store.ts";
-import type { LinkTransaction } from "./store.ts";
+} from "./store/link-transactions.ts";
+import type { LinkTransaction } from "./store/rows.ts";
 
 function verifyUrl(context: Context): string {
   const origins = context.config.webOrigins;
@@ -40,10 +39,6 @@ function verifyUrl(context: Context): string {
   if (origin === undefined) throw new Refusal("internal", 503);
 
   return `${origin}/link`;
-}
-
-function keyOf(transaction: LinkTransaction): PublicJwk {
-  return { kty: "OKP", crv: "Ed25519", x: transaction.public_key };
 }
 
 async function provenTransaction(
@@ -57,7 +52,7 @@ async function provenTransaction(
   const thumbprint = await verifyLinkProof(context, {
     request: input.request,
     body,
-    publicKey: keyOf(transaction),
+    publicKey: { kty: "OKP", crv: "Ed25519", x: transaction.public_key },
   });
 
   if (thumbprint !== transaction.thumbprint) throw new Refusal("unauthorized");
@@ -65,7 +60,7 @@ async function provenTransaction(
   return { transaction, body };
 }
 
-function stateOf(transaction: LinkTransaction, now: number): LinkTransactionStatus["state"] {
+function resolveState(transaction: LinkTransaction, now: number): LinkTransactionStatus["state"] {
   if (transaction.state === "pending" && transaction.expires_at <= now) return "expired";
 
   if (
@@ -118,7 +113,7 @@ export async function openTransaction(context: Context, request: Request): Promi
         verifyUrl: page,
         expiresAt: transaction.expires_at,
         pollIntervalMs: LINK_POLL_INTERVAL_SECONDS * 1000,
-        state: stateOf(transaction, now),
+        state: resolveState(transaction, now),
       };
 
       return json(transaction.created_at === now ? 201 : 200, answer);
@@ -169,7 +164,7 @@ export async function approveTransaction(
 
   if (
     transaction === undefined ||
-    stateOf(transaction, now) !== "pending" ||
+    resolveState(transaction, now) !== "pending" ||
     keyFingerprint(transaction.thumbprint) !== body.fingerprint
   )
     throw new Refusal("not_found");
@@ -222,7 +217,7 @@ export async function pollTransaction(
   const { transaction } = await provenTransaction(context, { request, transactionId });
 
   await throttle(context, "linkPoll", transaction.id);
-  const answer: LinkTransactionStatus = { state: stateOf(transaction, context.now()) };
+  const answer: LinkTransactionStatus = { state: resolveState(transaction, context.now()) };
 
   return json(200, answer);
 }
@@ -293,7 +288,7 @@ export async function cancelTransaction(
   });
 
   if (cancelled === undefined) throw new Refusal("not_found");
-  const answer: LinkTransactionStatus = { state: stateOf(cancelled, context.now()) };
+  const answer: LinkTransactionStatus = { state: resolveState(cancelled, context.now()) };
 
   return json(200, answer);
 }

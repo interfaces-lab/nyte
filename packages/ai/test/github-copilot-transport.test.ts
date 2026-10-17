@@ -22,27 +22,27 @@ import {
   sse,
 } from "./github-copilot-fixture.ts";
 
-function isObject(value: unknown): value is Record<string, unknown> {
+function matchesRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requestBody(body: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(body);
-  assert.ok(isObject(parsed), `Expected a JSON object: ${body}`);
+  assert.ok(matchesRecord(parsed), `Expected a JSON object: ${body}`);
   return parsed;
 }
 
 function messageWithRole(body: Record<string, unknown>, role: string): Record<string, unknown> {
   assert.ok(Array.isArray(body.messages));
-  const message = body.messages.find((entry) => isObject(entry) && entry.role === role);
-  assert.ok(isObject(message), `Expected a ${role} message`);
+  const message = body.messages.find((entry) => matchesRecord(entry) && entry.role === role);
+  assert.ok(matchesRecord(message), `Expected a ${role} message`);
   return message;
 }
 
 function responseItem(body: Record<string, unknown>, type: string): Record<string, unknown> {
   assert.ok(Array.isArray(body.input));
-  const item = body.input.find((entry) => isObject(entry) && entry.type === type);
-  assert.ok(isObject(item), `Expected a ${type} response item`);
+  const item = body.input.find((entry) => matchesRecord(entry) && entry.type === type);
+  assert.ok(matchesRecord(item), `Expected a ${type} response item`);
   return item;
 }
 
@@ -161,12 +161,12 @@ describe("GitHub Copilot transport", () => {
       tool_calls: [{ id: "call_1" }],
     });
     const last = body.messages.at(-1);
-    assert.ok(isObject(last));
+    assert.ok(matchesRecord(last));
     assert.equal(last.role, "tool");
     assert.equal(last.tool_call_id, "call_1");
   });
 
-  test("an explicit budget chat definition sends thinking_budget and clamps unavailable effort", async () => {
+  test("an explicit budget chat definition sends thinking_budget and clamps unavailable effort to the highest offered level", async () => {
     const transport = fakeFetch({
       [`POST ${ORIGIN}/chat/completions`]: () =>
         sse([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]),
@@ -182,7 +182,6 @@ describe("GitHub Copilot transport", () => {
         maxTokensField: "max_tokens",
       },
     };
-    // `high` (16384 tokens) exceeds the range and clamps to the highest offered level.
     await completions
       .streamSimple(model, normalizeContext({ messages: [user("hi", 0)] }), {
         apiKey: SESSION_TOKEN,
@@ -335,7 +334,7 @@ describe("GitHub Copilot transport", () => {
     const firstBody = requestBody(initial.body);
     assert.equal(firstBody.store, false);
     assert.deepEqual(firstBody.include, ["reasoning.encrypted_content"]);
-    assert.ok(isObject(firstBody.reasoning));
+    assert.ok(matchesRecord(firstBody.reasoning));
     assert.equal(firstBody.reasoning.effort, "medium");
     const secondBody = requestBody(followUp.body);
     const replayed = responseItem(secondBody, "reasoning");
@@ -459,12 +458,12 @@ describe("GitHub Copilot transport", () => {
     const followBody = requestBody(followUp.body);
     assert.ok(Array.isArray(followBody.messages));
     const last = followBody.messages.at(-1);
-    assert.ok(isObject(last) && Array.isArray(last.content));
-    assert.ok(isObject(last.content[0]));
+    assert.ok(matchesRecord(last) && Array.isArray(last.content));
+    assert.ok(matchesRecord(last.content[0]));
     assert.equal(last.content[0].type, "tool_result");
   });
 
-  test("a budget Messages definition sends token thinking and clamps unavailable effort", async () => {
+  test("a budget Messages definition sends token thinking and clamps unavailable effort to the low budget", async () => {
     const transport = fakeFetch({
       [`POST ${ORIGIN}/v1/messages?beta=true`]: () =>
         anthropicSse([
@@ -506,9 +505,8 @@ describe("GitHub Copilot transport", () => {
     );
     assert.ok(request);
     const body = requestBody(request.body);
-    assert.ok(isObject(body.thinking));
+    assert.ok(matchesRecord(body.thinking));
     assert.equal(body.thinking.type, "enabled");
-    // `high` is outside the 4000-token range, so the request carries the `low` budget.
     assert.equal(body.thinking.budget_tokens, 2048);
   });
 });

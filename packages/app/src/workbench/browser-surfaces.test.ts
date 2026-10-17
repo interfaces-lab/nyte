@@ -4,7 +4,7 @@ import { applyBrowserAgentOpened } from "./browser-surfaces.ts";
 import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 
 test("an agent's page adds a quiet Browser tab, then navigates it in place", () => {
-  const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
+  const controller = createWorkbenchController(() => ({ browser: true }));
   const owner = "/workspace/agent";
   const view = workbenchViewKey(owner);
 

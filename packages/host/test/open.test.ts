@@ -1,12 +1,12 @@
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { memoryStore } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { Host, Store } from "@nyte-ai/core";
 import type { HostView } from "@nyte-ai/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { nyteProviders } from "@nyte-ai/ai";
-import { storedAccounts } from "../../ai/test/credential-fixture.ts";
+import { storedAccounts } from "./stored-accounts.ts";
 import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, localProvider, openHost } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
@@ -26,7 +26,7 @@ async function folder(): Promise<string> {
 
 const TOKEN = "a-token-of-16-chars";
 
-async function viewOf(host: Host): Promise<HostView> {
+async function firstView(host: Host): Promise<HostView> {
   for await (const view of host.watch()) return view;
 
   throw new Error("The host view ended.");
@@ -101,12 +101,12 @@ describe("openHost", () => {
     );
 
     const paths = async (host: Host) =>
-      (await viewOf(host)).settings.find((setting) => setting.id === "skills.paths")?.value;
+      (await firstView(host)).settings.find((setting) => setting.id === "skills.paths")?.value;
 
     const first = await open(home, store);
 
     expect(await paths(first)).toEqual(["/seeded"]);
-    expect((await viewOf(first)).plugins.find((row) => row.id === "settings")).toEqual({
+    expect((await firstView(first)).plugins.find((row) => row.id === "settings")).toEqual({
       id: "settings",
       source: "user",
       path: join(home, ".nyte", "settings.json"),
@@ -126,7 +126,7 @@ describe("openHost", () => {
     await writeFile(join(home, ".nyte", "settings.json"), "[1, 2]");
     await using host = await open(home);
 
-    expect((await viewOf(host)).plugins.find((row) => row.id === "settings")).toMatchObject({
+    expect((await firstView(host)).plugins.find((row) => row.id === "settings")).toMatchObject({
       path: join(home, ".nyte", "settings.json"),
       issues: [expect.objectContaining({ severity: "warning" })],
     });
@@ -140,7 +140,7 @@ describe("openHost", () => {
     await writeFile(join(dir, "broken.mjs"), "export default {;\n");
     await writeFile(join(dir, "reserved.mjs"), 'export default { id: "models" };\n');
     await using host = await open(home);
-    const rows = (await viewOf(host)).plugins;
+    const rows = (await firstView(host)).plugins;
 
     expect(rows.find((row) => row.id === "good")).toMatchObject({
       source: "user",
@@ -169,6 +169,7 @@ describe("openHost", () => {
     expect((await host.models.list()).providers.map((provider) => provider.id)).toEqual([
       ...nyteProviders().map((provider) => provider.id),
       "claude-code",
+      "acp",
     ]);
   });
 
@@ -234,7 +235,7 @@ describe("openHost", () => {
   it("defaults the store to <home>/.nyte/nyte.db and the workspace to the local folder process.cwd()", async () => {
     const home = await folder();
     const first = await openHost({ models: fakeModels().models, home });
-    const created = await first.sessions.create({});
+    const { session: created } = await first.sessions.start({ content: "Hi." });
     await first.close();
 
     expect(await readdir(join(home, ".nyte"))).toContain("nyte.db");
@@ -263,18 +264,18 @@ describe("openHost", () => {
     });
 
     const [info] = await host.workspaces.list();
-    await host.sessions.create({ workspace: info.id });
+    await host.sessions.start({ workspace: info.id, content: "Hi." });
 
     expect(info.projectResources).toBeNull();
     expect(info.projectSources).toContain(".nyte/plugins/mine.mjs");
-    expect((await viewOf(host)).plugins.map((row) => row.id)).not.toContain("mine");
+    expect((await firstView(host)).plugins.map((row) => row.id)).not.toContain("mine");
 
     expect(await host.workspace(info.id).update({ projectResources: true })).toEqual({
       kind: "updated",
     });
-    await host.sessions.create({ workspace: info.id });
+    await host.sessions.start({ workspace: info.id, content: "Hi." });
 
-    expect((await viewOf(host)).plugins.map((row) => row.id)).toContain("mine");
+    expect((await firstView(host)).plugins.map((row) => row.id)).toContain("mine");
   });
 
   it("listens with an identity from <home>/.nyte/identity.key and X-Nyte-Host on every answer", async () => {
@@ -410,7 +411,7 @@ describe("openHost", () => {
     expect((await host.models.list()).providers[0]?.credential).toBe("configured");
     expect(reads).toBe(0);
     fake.reply({ content: [{ type: "text", text: "hi" }] });
-    await (await (await host.sessions.create()).send("Hello")).settled();
+    await (await host.sessions.start({ content: "Hello" })).receipt.settled();
 
     expect(fake.requests).toHaveLength(1);
     expect(reads).toBe(1);
@@ -421,7 +422,7 @@ describe("openHost", () => {
     const dir = join(home, ".nyte", "plugins");
     await mkdir(dir, { recursive: true });
     await using host = await open(home);
-    const before = await viewOf(host);
+    const before = await firstView(host);
 
     expect(before.plugins.some((row) => row.id === "hot")).toBe(false);
     await writeFile(join(dir, "hot.mjs"), 'export default { id: "hot" };\n');

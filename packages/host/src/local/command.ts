@@ -2,7 +2,8 @@ import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
+import { processEnvironment } from "@nyte-ai/core";
 
 export type Ran = {
   readonly code: number | null;
@@ -11,7 +12,7 @@ export type Ran = {
   readonly truncated: boolean;
 };
 
-export function run(
+export async function run(
   file: string,
   args: readonly string[],
   options: {
@@ -19,14 +20,19 @@ export function run(
     readonly env?: Readonly<Record<string, string>>;
     readonly input?: string | Uint8Array;
     readonly limit?: number;
+    /** Kills the command after this long; it then ends with a null code. */
+    readonly timeoutMs?: number;
   },
 ): Promise<Ran> {
+  await processEnvironment();
+
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      timeout: options.timeoutMs,
     });
 
     const stdout: Buffer[] = [];
@@ -71,6 +77,7 @@ export async function findExecutable(
   directories: readonly string[] = [],
 ): Promise<string | null> {
   if (isAbsolute(name)) return (await executable(name)) ? name : null;
+  await processEnvironment();
   const path = (process.env.PATH ?? "").split(delimiter).filter((entry) => entry !== "");
 
   const extensions =

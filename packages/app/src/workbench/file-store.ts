@@ -85,6 +85,15 @@ function visit(
   return { history, historyIndex: history.length - 1 };
 }
 
+/**
+ * File tabs' runtime over the workbench controller's tabs. Opening a file
+ * changes both stores; the controller's notifications wait until the file's
+ * line has landed too, so a reader never sees the new tab at its old line.
+ *
+ * Restored tabs have no runtime until they are opened again. A view snapshot
+ * is stable until either store changes, so it can serve `useSyncExternalStore`.
+ * An edit pins a preview tab, so the next preview cannot replace it.
+ */
 export function createFileTabStore(
   controller: Pick<WorkbenchController, "actions" | "getView" | "subscribe"> = workbenchController,
 ) {
@@ -98,10 +107,10 @@ export function createFileTabStore(
 
   const listeners = new Set<() => void>();
   let revision = 0;
+  let opening = false;
 
   const getRuntimeView = (key: WorkbenchViewKey): FileViewRuntime => views.get(key) ?? EMPTY_VIEW;
 
-  // Restored tabs have no runtime until they are opened again.
   const runtime = (id: WorkbenchTabId): FileRuntime =>
     documents.get(id) ?? {
       navigationRevision: 0,
@@ -135,7 +144,6 @@ export function createFileTabStore(
       ];
     });
 
-  /** Stable until either store changes, so it can serve as a `useSyncExternalStore` snapshot. */
   const getView = (key: WorkbenchViewKey): FileTabs => {
     const controllerView = controller.getView(key);
     const cached = snapshots.get(key);
@@ -198,51 +206,55 @@ export function createFileTabStore(
   const open = (
     key: WorkbenchViewKey,
     location: FileLocation & { readonly preview?: boolean },
-    recordHistory: boolean,
+    next: (current: FileViewRuntime) => FileViewRuntime,
   ): void => {
-    const current = getRuntimeView(key);
     const preview = location.preview === true;
     const existing = find(key, location.path);
+    opening = true;
 
-    if (existing === undefined && preview) {
-      const replaceable = fileTabs(key).find((tab) => tab.preview && !tab.dirty && !tab.saving);
+    try {
+      if (existing === undefined && preview) {
+        const replaceable = fileTabs(key).find((tab) => tab.preview && !tab.dirty && !tab.saving);
 
-      if (replaceable !== undefined) {
-        controller.actions.closeTab({ view: key, id: replaceable.id });
-        documents.delete(replaceable.id);
+        if (replaceable !== undefined) {
+          controller.actions.closeTab({ view: key, id: replaceable.id });
+          documents.delete(replaceable.id);
+        }
       }
+
+      const id = controller.actions.openTab({
+        view: key,
+        tab: { kind: "file", path: location.path, preview },
+        activate: true,
+      });
+
+      const previous = runtime(id);
+      documents.set(id, {
+        ...previous,
+        line: location.line,
+        column: location.column,
+        length: location.length,
+        navigationRevision: previous.navigationRevision + 1,
+      });
+
+      if (existing !== undefined && !preview) pin(key, existing);
+    } finally {
+      opening = false;
     }
 
-    const id = controller.actions.openTab({
-      view: key,
-      tab: { kind: "file", path: location.path, preview },
-      activate: true,
-    });
-
-    const previous = runtime(id);
-    documents.set(id, {
-      ...previous,
-      line: location.line,
-      column: location.column,
-      length: location.length,
-      navigationRevision: previous.navigationRevision + 1,
-    });
-
-    if (existing !== undefined && !preview) pin(key, existing);
-    publish(key, recordHistory ? { ...current, ...visit(current, location) } : current);
+    publish(key, next(getRuntimeView(key)));
   };
 
   const navigate = (key: WorkbenchViewKey, historyIndex: number): void => {
     const location = getRuntimeView(key).history[historyIndex];
 
     if (location === undefined) return;
-    open(key, location, false);
-    publish(key, { ...getRuntimeView(key), historyIndex });
+    open(key, location, (current) => ({ ...current, historyIndex }));
   };
 
   const actions = {
     open(key: WorkbenchViewKey, location: FileLocation & { readonly preview?: boolean }): void {
-      open(key, location, true);
+      open(key, location, (current) => ({ ...current, ...visit(current, location) }));
     },
     reveal(key: WorkbenchViewKey, displayPath: string): void {
       const current = getRuntimeView(key);
@@ -288,7 +300,6 @@ export function createFileTabStore(
       documents.set(tab.id, { ...runtime(tab.id), saving });
       publish(key, getRuntimeView(key));
     },
-    /** An edit pins a preview tab, so the next preview cannot replace it. */
     setDraft(key: WorkbenchViewKey, path: string, draft: FileDraft | undefined): void {
       const tab = find(key, path);
 
@@ -323,7 +334,10 @@ export function createFileTabStore(
     getView,
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener);
-      const unsubscribe = controller.subscribe(listener);
+
+      const unsubscribe = controller.subscribe(() => {
+        if (!opening) listener();
+      });
 
       return () => {
         listeners.delete(listener);

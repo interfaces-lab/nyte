@@ -20,7 +20,7 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 
 ```tsx
 <Icon name="folder" />
-<Icon name="folder" variant="filled" />
+<Icon name="warning" variant="filled" />
 <Icon name="warning" size={14} label="Warning" />
 <Icon name="sparkle" size={12} />
 ```
@@ -51,7 +51,7 @@ const [visible, setVisible] = useState(true);
 | ----------- | ------------------------ | ------------ | ------------------------------------------- |
 | `name`      | `IconName`               |              |                                             |
 | `size`      | `number`                 | `16`         | Width and height in pixels.                 |
-| `variant`   | `"outlined" \| "filled"` | `"outlined"` | Stroke or fill.                             |
+| `variant`   | `"outlined" \| "filled"` | `"outlined"` | Fill needs a `FilledIconName`.              |
 | `label`     | `string`                 |              | Announced as `role="img"`. Omit to hide it. |
 | `xstyle`    | `XStyle`                 |              | See [Theming](/design/theming).             |
 | `className` | `string`                 |              | See [Theming](/design/theming).             |

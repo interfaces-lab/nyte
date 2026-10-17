@@ -18,7 +18,7 @@ const PAGES = [
 
 type Path = (typeof PAGES)[number][0];
 
-/* Painted from literals: each page loads a different palette, and this sits on all of them. */
+/** Painted from literals: each page loads a different palette, and this sits on all of them. */
 const styles = create({
   nav: {
     position: "fixed",

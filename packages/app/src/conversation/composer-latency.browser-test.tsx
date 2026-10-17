@@ -6,6 +6,7 @@
  * without waiting for paint, so a blocked main thread shows up as several
  * characters landing in one frame, which is the lag a person sees.
  */
+import "../../test/window-bridge.ts";
 // oxlint-disable-next-line no-restricted-imports -- the stream loop runs only while the flag is set
 import { StrictMode, memo, useEffect, useState } from "react";
 import type { ReactElement } from "react";
@@ -15,7 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { ComposerFrame } from "./composer.tsx";
+import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerDocumentState } from "./composer-document.ts";
 import { Prose } from "./prose.tsx";
 
@@ -135,6 +136,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Typing starts once the first commit and the streaming load settle. A warm-up
+ * word absorbs one-time costs (history init, first layout of the frame): they
+ * belong to the app's first paint, not to the steady state a person types in.
+ */
 export async function run(streaming: boolean): Promise<LatencyReport> {
   const client = new QueryClient();
   const host = document.createElement("div");
@@ -157,15 +163,12 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
       </StrictMode>,
     ),
   );
-  // Let the first commit and the streaming load settle before typing starts.
   await wait(300);
 
   if (failure !== undefined) throw failure;
   const editor = editorElement();
   editor.focus();
 
-  // One-time costs (history init, first layout of the frame) belong to the app's
-  // first paint, not to the steady state a person types in.
   for (const character of "warm") {
     document.execCommand("insertText", false, character);
     await wait(KEY_INTERVAL_MS);

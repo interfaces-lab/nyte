@@ -8,6 +8,36 @@ const ATOMIC_PRIORITY = 1000;
 /** Above the highest component priority bucket, a pseudo-element under an at-rule. */
 const APP_OFFSET = 10_000;
 
+/**
+ * StyleX sees a `defineConsts` key only as `var(--hash)` and prices it as a
+ * plain property (3000) rather than the at-rule it stands for, which also
+ * lifts the rule a specificity level. Each leading `var(--hash){` wrapper is
+ * repriced as `@media` (200), so `[media.hover]` sorts exactly like the
+ * literal query; `assertMediaConsts` fails the build on any other condition
+ * const, whose key this would misprice.
+ */
+const CONST_KEY_OVERPRICE = 3000 - 200;
+
+const CONST_WRAPPERS = /^(?:var\(--[\w-]+\)\{)*/;
+
+/** A const value usable as a style key: an at-rule or a pseudo-class. */
+const CONDITION = /^[@:]/;
+
+/** Throw on a `defineConsts` condition other than `@media`, the only one the const-key repricing is right for. */
+function assertMediaConsts(rules) {
+  for (const [, rule] of rules) {
+    if (rule.constKey == null) continue;
+    const value = String(rule.constVal);
+
+    if (!CONDITION.test(value) || value.startsWith("@media")) continue;
+
+    throw new Error(
+      `The defineConsts value "${value}" is a condition other than @media. ` +
+        "nyte-stylex-order prices every const key as @media; write this condition as a literal key.",
+    );
+  }
+}
+
 function nyteStylexOrder({ types }) {
   return {
     name: "nyte-stylex-order",
@@ -15,6 +45,13 @@ function nyteStylexOrder({ types }) {
       const rules = file.metadata.stylex;
 
       if (!Array.isArray(rules)) return;
+      assertMediaConsts(rules);
+
+      for (const rule of rules) {
+        const wrappers = rule[1].ltr.match(CONST_WRAPPERS)[0].split("{").length - 1;
+
+        rule[2] -= wrappers * CONST_KEY_OVERPRICE;
+      }
 
       const atomic = rules.filter(
         ([name, rule, priority]) =>
@@ -78,4 +115,5 @@ const settledStylesheet = {
 export const stylex = {
   vite: (options) => [settledStylesheet, unplugin.vite(withOrder(options))],
   rollup: (options) => unplugin.rollup(withOrder(options)),
+  esbuild: (options) => unplugin.esbuild(withOrder(options)),
 };

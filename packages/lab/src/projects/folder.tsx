@@ -5,11 +5,11 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-export type FolderStyle = "paper" | "flat";
+type FolderStyle = "paper" | "flat";
 
-export type FolderFace = "blank" | "count" | "icon";
+type FolderFace = "blank" | "count" | "icon";
 
-export type FolderPages = "one" | "stack";
+type FolderPages = "one" | "stack";
 
 export interface FolderDesign {
   readonly style: FolderStyle;

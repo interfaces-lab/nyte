@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { deriveTranscript, turnStatus } from "../../src/model/transcript.ts";
-import type { Row } from "../../src/model/transcript.ts";
+import type { Row, TranscriptModel, TurnModel } from "../../src/model/transcript.ts";
 import type { ShellJob, TranscriptLocal } from "../../src/model/state.ts";
-import { mountWindow, revealEarlier, WINDOW } from "../../src/model/window.ts";
-import { viewOf } from "../fixture/view.ts";
+import { mountWindow, revealEarlier, revealLater, WINDOW } from "../../src/model/window.ts";
+import { buildView } from "../fixture/view.ts";
 
 const LOCAL: TranscriptLocal = {
   following: true,
@@ -11,6 +11,10 @@ const LOCAL: TranscriptLocal = {
   toolOutput: "collapsed",
   disclosures: new Set(),
 };
+
+function turnsIn(model: TranscriptModel): readonly TurnModel[] {
+  return model.rows.flatMap((row) => (row.kind === "turn" ? [row.turn] : []));
+}
 
 function shell(id: string, startedAt: number): ShellJob {
   return {
@@ -27,7 +31,7 @@ function shell(id: string, startedAt: number): ShellJob {
 
 describe("rows", () => {
   test("turns in view order, notes before their turn, shells by start time; queued messages are not rows", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed"))
         .turn("t2", (t) =>
@@ -45,11 +49,11 @@ describe("rows", () => {
     const model = deriveTranscript(view, [shell("s1", 4_000)], LOCAL, null);
 
     expect(model.rows.map((row) => row.key)).toEqual(["turn:t1", "shell:s1", "note:n1", "turn:t2"]);
-    expect([...model.turns.values()].map((turn) => turn.blocks.length)).toEqual([2, 2]);
+    expect(turnsIn(model).map((turn) => turn.blocks.length)).toEqual([2, 2]);
   });
 
   test("a turn with nothing landed yet is not a row: an ended one, or a queued message's", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.ended("stopped"))
         .turn("t2", (t) => t.user("x").ended("completed"))
@@ -61,34 +65,59 @@ describe("rows", () => {
   });
 
   test("a report that landed is a block of its turn, an action shows as its own block", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) =>
-        t
-          .report({ child: "s9" }, "ok")
-          .action("Fix lint", "prompt")
-          .ended("completed"),
+        t.report({ child: "s9" }, "ok").action("Fix lint", "prompt").ended("completed"),
       ),
     );
 
     const model = deriveTranscript(view, [], LOCAL, null);
-    const turn = [...model.turns.values()][0];
+    const [turn] = turnsIn(model);
 
-    expect(turn?.blocks.map((id) => model.messages.get(id)?.kind)).toEqual(["user", "user"]);
+    expect(turn?.blocks.map((message) => message.kind)).toEqual(["user", "user"]);
   });
 
   test("unchanged rows and turns keep their identity across frames", () => {
-    const view = viewOf((v) => v.turn("t1", (t) => t.user("a").text("b").ended("completed")));
+    const view = buildView((v) => v.turn("t1", (t) => t.user("a").text("b").ended("completed")));
     const first = deriveTranscript(view, [], LOCAL, null);
     const second = deriveTranscript(view, [], LOCAL, first);
 
     expect(second.rows).toBe(first.rows);
-    expect([...second.turns.values()][0]).toBe([...first.turns.values()][0]);
+    expect(turnsIn(second)[0]).toBe(turnsIn(first)[0]);
+  });
+  test("a streaming delta rebuilds only the live turn; settled turns keep their row", () => {
+    const view = buildView((v) =>
+      v
+        .turn("t1", (t) => t.user("a").text("b").ended("completed"))
+        .turn("t2", (t) => t.user("c").text("d", { id: "live", live: true }))
+        .live(),
+    );
+
+    const first = deriveTranscript(view, [], LOCAL, null);
+
+    const streamed = {
+      ...view,
+      messages: view.messages.map((message) =>
+        message.id === "live" && message.kind === "part"
+          ? { ...message, state: { markdown: "d e", signature: null } }
+          : message,
+      ),
+    };
+
+    const second = deriveTranscript(streamed, [], LOCAL, first);
+
+    expect(second.rows[0]).toBe(first.rows[0]);
+    expect(second.rows[1]).not.toBe(first.rows[1]);
+    expect(turnsIn(second)[1]?.blocks.map((message) => message.id)).toEqual([
+      expect.any(String),
+      "live",
+    ]);
   });
 });
 
 describe("turn status", () => {
   test("a settled turn reports Worked for from endedAt - startedAt", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed", { endedAt: 4_500 })),
     );
 
@@ -103,10 +132,10 @@ describe("turn status", () => {
   });
 
   test("a stop reads as an aborted failure", () => {
-    const view = viewOf((v) => v.turn("t1", (t) => t.user("a").text("b").ended("stopped")));
+    const view = buildView((v) => v.turn("t1", (t) => t.user("a").text("b").ended("stopped")));
     const model = deriveTranscript(view, [], LOCAL, null);
 
-    expect([...model.turns.values()][0]?.status).toMatchObject({
+    expect(turnsIn(model)[0]?.status).toMatchObject({
       kind: "settled",
       stopped: true,
       failure: { class: "aborted", message: "Run stopped." },
@@ -114,22 +143,22 @@ describe("turn status", () => {
   });
 
   test("the live turn shows retrying, thinking or working; a lone prompt before its run is unanswered", () => {
-    const thinking = viewOf((v) =>
+    const thinking = buildView((v) =>
       v.turn("t1", (t) => t.user("a").thinking("hmm", { live: true })).live(),
     );
 
-    const retrying = viewOf((v) =>
+    const retrying = buildView((v) =>
       v.turn("t1", (t) => t.user("a")).retrying("rate limited", 9_000),
     );
 
-    const working = viewOf((v) =>
+    const working = buildView((v) =>
       v.turn("t1", (t) => t.user("a").activity("Exploring").tool("read", { running: true })).live(),
     );
 
-    const unanswered = viewOf((v) => v.turn("t1", (t) => t.user("a"), { run: undefined }));
+    const unanswered = buildView((v) => v.turn("t1", (t) => t.user("a"), { run: undefined }));
 
     const status = (view: typeof thinking) =>
-      [...deriveTranscript(view, [], LOCAL, null).turns.values()][0]?.status;
+      turnsIn(deriveTranscript(view, [], LOCAL, null))[0]?.status;
 
     expect(status(thinking)).toMatchObject({ kind: "thinking" });
     expect(status(retrying)).toEqual({
@@ -143,7 +172,7 @@ describe("turn status", () => {
   });
 
   test("a turn waiting on a question says so", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("a").waiting("q1"))
         .question(
@@ -153,7 +182,7 @@ describe("turn status", () => {
         .waiting("q1"),
     );
 
-    expect([...deriveTranscript(view, [], LOCAL, null).turns.values()][0]?.status).toEqual({
+    expect(turnsIn(deriveTranscript(view, [], LOCAL, null))[0]?.status).toEqual({
       kind: "waiting",
       question: true,
     });
@@ -161,18 +190,18 @@ describe("turn status", () => {
 });
 
 function rows(count: number): readonly Row[] {
-  return Array.from({ length: count }, (_, index) => ({
-    kind: "note" as const,
+  return Array.from({ length: count }, (_, index): Row => ({
+    kind: "shell",
     key: `note:${String(index)}`,
-    message: `m${String(index)}`,
-  })).map((row): Row => ({ kind: "shell", key: row.key, job: row.message }));
+    job: shell(`m${String(index)}`, index),
+  }));
 }
 
 describe("mount window", () => {
   test("the tail mounts the last WINDOW.tail weight of rows", () => {
     const window = mountWindow(rows(100), () => 1, { kind: "tail" });
 
-    expect(window).toEqual({ start: 100 - WINDOW.tail, hidden: 100 - WINDOW.tail });
+    expect(window).toEqual({ start: 100 - WINDOW.tail, end: 100 });
   });
 
   test("revealing earlier moves the start back by WINDOW.step and anchors it by key", () => {
@@ -188,10 +217,38 @@ describe("mount window", () => {
     expect(mountWindow(all, () => 1, start).start).toBe(160 - WINDOW.step);
   });
 
+  test("browsing history mounts at most WINDOW.span weight; revealing later moves it forward", () => {
+    const all = rows(400);
+    const window = mountWindow(all, () => 1, { kind: "from", key: "note:20", index: 20 });
+
+    expect(window).toEqual({ start: 20, end: 20 + WINDOW.span });
+
+    const later = revealLater(all, () => 1, window);
+
+    expect(later).toEqual({
+      kind: "from",
+      key: `note:${String(20 + WINDOW.step)}`,
+      index: 20 + WINDOW.step,
+    });
+    expect(mountWindow(all, () => 1, later).end).toBe(20 + WINDOW.step + WINDOW.span);
+  });
+
+  test("a window that reaches the tail mounts through the last row", () => {
+    const all = rows(200);
+
+    expect(mountWindow(all, () => 1, { kind: "from", key: "note:120", index: 120 })).toEqual({
+      start: 120,
+      end: 200,
+    });
+  });
+
   test("an anchor survives rows inserted before it and falls back to its index when its row vanishes", () => {
     const all = rows(200);
     const start = { kind: "from" as const, key: "note:50", index: 50 };
-    const inserted = [{ kind: "shell" as const, key: "shell:x", job: "x" }, ...all];
+    const inserted: readonly Row[] = [
+      { kind: "shell", key: "shell:x", job: shell("x", 0) },
+      ...all,
+    ];
 
     expect(mountWindow(inserted, () => 1, start).start).toBe(51);
     expect(

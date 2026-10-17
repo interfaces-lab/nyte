@@ -4,17 +4,13 @@ import type { Configuration, ModelRef } from "@nyte-ai/schema";
 import type { AuthCheck } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import {
-  collectContributions,
-  createLogin,
-  modelInfo,
-  settingsVersion,
-  calculateUsage,
-  memoryStore,
-} from "../src/index.ts";
+import { calculateUsage } from "../src/agent/request.ts";
+import { collectContributions } from "../src/engine/contributions.ts";
+import { createLogin, modelInfo, settingsVersion } from "../src/extend/models.ts";
+import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
-import { main, until } from "./harness.ts";
+import { main, until } from "../src/harness.ts";
 
 const smart: ModelRef = { provider: "test", id: "smart" };
 
@@ -90,6 +86,7 @@ describe("models", () => {
     expect(test.models.map((model) => model.ref.id)).toEqual(["model", "smart"]);
     expect(test.models[0]).toMatchObject({
       thinking: ["off"],
+      defaultThinking: "off",
       fast: null,
       contextWindow: 50_000,
       compactAt: 10_000,
@@ -99,15 +96,17 @@ describe("models", () => {
       name: "Smart",
       reasoning: true,
       thinking: ["off", "low", "medium", "high", "xhigh"],
+      defaultThinking: "low",
       fast: { provider: "test", id: "smart-fast" },
       contextWindow: 200_000,
       compactAt: 160_000,
       maxOutput: 32_000,
       input: ["text", "image"],
+      capabilities: { steer: true },
       cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     });
-    const session = await host.sessions.create();
-    const runtime = host.kernel.pluginsFor(session.id);
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const runtime = host.kernel.plugins.runtime(session.id);
     await runtime.ready;
 
     expect(modelInfo(fake.models, { provider: "test", id: "smart-fast" }, runtime)).toMatchObject({
@@ -138,12 +137,14 @@ describe("models", () => {
   it("moves the catalog generation when a response changes a provider's account limits", async () => {
     const fake = catalog();
     await using host = await open(fake);
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const messages = [{ role: "user" as const, content: "Hi.", timestamp: 0 }];
     const window = { id: "five_hour", label: "5-hour", usedPercent: 40, resetsAt: 1_000 };
     const generation = () => host.kernel.host.current().catalog;
 
-    await until(() => (host.kernel.catalog(session.id).tools.length > 0 ? true : undefined));
+    await until(() =>
+      host.kernel.sessions.catalog(session.id).tools.length > 0 ? true : undefined,
+    );
 
     fake.reply(
       { content: [{ type: "text", text: "Plain." }] },
@@ -186,7 +187,7 @@ describe("models", () => {
     expect(host.kernel.host.current().catalog).not.toBe(before);
     expect((await host.models.list()).default).toEqual(smart);
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     expect(
       await host.kernel.resolveConfiguration({
@@ -194,7 +195,7 @@ describe("models", () => {
         head: main,
         selected: null,
         patch: null,
-        contributions: collectContributions(host.kernel.pluginsFor(session.id)),
+        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
       }),
     ).toMatchObject({ model: smart, thinking: "low" });
   });
@@ -505,7 +506,7 @@ describe("resolveConfiguration", () => {
   it("resolves patches field by field and checks exact configurations", async () => {
     const fake = catalog();
     await using host = await open(fake, { plugins: [extras] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const resolve = (
       patch: Configuration | Parameters<typeof host.kernel.resolveConfiguration>[0]["patch"],
@@ -516,11 +517,11 @@ describe("resolveConfiguration", () => {
         head: main,
         selected,
         patch,
-        contributions: collectContributions(host.kernel.pluginsFor(session.id)),
+        contributions: collectContributions(host.kernel.plugins.runtime(session.id)),
       });
 
     const version = await settingsVersion(
-      collectContributions(host.kernel.pluginsFor(session.id)).settings,
+      collectContributions(host.kernel.plugins.runtime(session.id)).settings,
     );
 
     const base = await resolve(null);
@@ -601,7 +602,7 @@ describe("request", () => {
     };
 
     await using host = await open(fake, { plugins: [watcher] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const output = standard(Type.Object({ title: Type.String() }));
     const events: string[] = [];
 
@@ -668,19 +669,16 @@ describe("request", () => {
     ]);
   });
 
-  it("prices usage from the model's rates unless the adapter priced it", () => {
-    const info = {
-      ref: basic,
-      name: "model",
-      reasoning: false,
-      thinking: ["off"] as const,
-      fast: null,
-      contextWindow: 1_000,
-      compactAt: 800,
-      maxOutput: 100,
-      input: ["text"] as const,
-      cost: { input: 2, output: 4, cacheRead: 1, cacheWrite: 0 },
-    };
+  it("prices usage from the model's rates, tiers and 1h cache writes included, unless the adapter priced it", () => {
+    const model = testModel("model", {
+      cost: {
+        input: 2,
+        output: 4,
+        cacheRead: 1,
+        cacheWrite: 3,
+        tiers: [{ inputTokensAbove: 200_000, input: 4, output: 8, cacheRead: 2, cacheWrite: 6 }],
+      },
+    });
 
     const message = {
       role: "assistant" as const,
@@ -692,7 +690,8 @@ describe("request", () => {
         input: 1_000_000,
         output: 500_000,
         cacheRead: 0,
-        cacheWrite: 0,
+        cacheWrite: 1_000_000,
+        cacheWrite1h: 500_000,
         totalTokens: 0,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
@@ -700,14 +699,14 @@ describe("request", () => {
       timestamp: 0,
     };
 
-    expect(calculateUsage(message, info)).toEqual({
+    expect(calculateUsage(message, model)).toEqual({
       input: 1_000_000,
       output: 500_000,
       cacheRead: 0,
-      cacheWrite: 0,
+      cacheWrite: 1_000_000,
       reasoning: null,
-      total: 1_500_000,
-      cost: { input: 2, output: 2, cacheRead: 0, cacheWrite: 0, total: 4 },
+      total: 2_500_000,
+      cost: { input: 4, output: 4, cacheRead: 0, cacheWrite: 7, total: 15 },
     });
 
     const priced = {
@@ -720,7 +719,7 @@ describe("request", () => {
       },
     };
 
-    expect(calculateUsage(priced, info)).toMatchObject({
+    expect(calculateUsage(priced, model)).toMatchObject({
       reasoning: 7,
       total: 1_500_010,
       cost: { total: 2 },

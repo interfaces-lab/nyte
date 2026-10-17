@@ -6,9 +6,6 @@
  */
 import type { ComponentType } from "react";
 import type { IconName } from "@nyte-ai/ui/icon";
-import { clientCapabilities } from "../client-actions.ts";
-import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { ProvidersSettings } from "../chrome/models-settings.tsx";
 import { ProfileSettingsPage } from "./profile.tsx";
 import { UsageRangePicker, UsageSettings } from "../chrome/usage-settings.tsx";
@@ -19,43 +16,8 @@ import { BrowserSettings } from "./browser.tsx";
 import { EditorSettings } from "./editor.tsx";
 import { GeneralSettings } from "./general.tsx";
 import { TerminalSettings } from "./terminal.tsx";
-
-/** What this host can back. A row or page shows only where everything it needs holds. */
-export interface SettingsContext {
-  /** ~/.nyte/settings.json is reachable: the desktop, not the web app or mobile. */
-  readonly hostSettings: boolean;
-  readonly mac: boolean;
-  /** The built-in browser panel exists. */
-  readonly browser: boolean;
-  readonly terminal: boolean;
-  /** Sign-ins and model defaults change here: the desktop, or a server environment not reached over the relay. */
-  readonly providers: boolean;
-  readonly account: boolean;
-  readonly usage: boolean;
-}
-
-export type Capability = keyof SettingsContext;
-
-/** Computed per call: the installed bridge decides, and tests install different ones. */
-export function settingsContext(): SettingsContext {
-  const ownEnvironment = nyte.clientSurface === "desktop";
-  const { browser, terminal } = clientCapabilities(nyte.host);
-
-  return {
-    hostSettings: nyte.host.settings !== undefined,
-    // Tests resolve pages under node, where there is no document to ask.
-    mac: typeof document !== "undefined" && macPlatform(undefined),
-    browser,
-    terminal,
-    providers: ownEnvironment,
-    account: ownEnvironment,
-    usage: nyte.host.usage !== undefined,
-  };
-}
-
-export function available(needs: readonly Capability[], context = settingsContext()): boolean {
-  return needs.every((need) => context[need]);
-}
+import { available, settingsContext } from "./capability.ts";
+import type { Capability } from "./capability.ts";
 
 export interface PageInfo {
   readonly icon: IconName;
@@ -144,7 +106,16 @@ export const SETTINGS_PAGES = {
     title: "Agent",
     group: "tools",
     needs: ["providers"],
-    keywords: ["model", "reasoning", "thinking", "context", "compaction", "cache"],
+    keywords: [
+      "model",
+      "reasoning",
+      "thinking",
+      "context",
+      "compaction",
+      "cache",
+      "permissions",
+      "approvals",
+    ],
     Page: AgentSettings,
   },
   editor: {
@@ -171,7 +142,7 @@ export const SETTINGS_PAGES = {
     icon: "console",
     title: "Terminal",
     group: "tools",
-    needs: ["terminal"],
+    needs: [],
     keywords: ["shell", "scrollback", "cursor", "blink"],
     Page: TerminalSettings,
   },
@@ -203,9 +174,9 @@ export const SETTINGS_PAGES = {
 
 export type SettingsSection = keyof typeof SETTINGS_PAGES;
 
-const ORDER = Object.keys(SETTINGS_PAGES).filter(isPageId);
+const ORDER = Object.keys(SETTINGS_PAGES).filter(namesSettingsPage);
 
-function isPageId(value: string): value is SettingsSection {
+function namesSettingsPage(value: string): value is SettingsSection {
   return Object.hasOwn(SETTINGS_PAGES, value);
 }
 
@@ -233,10 +204,6 @@ export function settingsSectionGroups(
 }
 
 /** The route's param check: a page this host shows. */
-export function isSettingsSection(value: string): value is SettingsSection {
-  return isPageId(value) && available(SETTINGS_PAGES[value].needs);
-}
-
-export function settingsTitle(section: SettingsSection): string {
-  return SETTINGS_PAGES[section].title;
+export function showsSettingsSection(value: string): value is SettingsSection {
+  return namesSettingsPage(value) && available(SETTINGS_PAGES[value].needs);
 }

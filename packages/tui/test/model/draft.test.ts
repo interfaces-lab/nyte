@@ -11,7 +11,6 @@ import {
   pendingUploads,
   sameSnapshot,
   snapshot,
-  unreadFiles,
 } from "../../src/model/draft.ts";
 import type { DraftModel, DraftParts } from "../../src/model/draft.ts";
 
@@ -19,7 +18,7 @@ function draft(text: string, parts: DraftParts = NO_PARTS) {
   return { text, cursor: text.length, row: "only" as const, parts };
 }
 
-const NO_INPUTS = { bodies: new Map(), uploads: new Map(), skills: new Map() };
+const NO_INPUTS = { uploads: new Map(), skills: new Map() };
 
 describe("draftModel", () => {
   test.each([
@@ -105,10 +104,10 @@ describe("markers", () => {
     const current = draft(`${b.marker} and ${b.marker}`, b.parts);
 
     expect(liveMarkers(current).map((span) => [span.marker, span.from])).toEqual([
-      ["[Paste #2 1 lines]", 0],
-      ["[Paste #2 1 lines]", 23],
+      ["[Paste #2 1 chars]", 0],
+      ["[Paste #2 1 chars]", 23],
     ]);
-    expect([...snapshot(current).parts.keys()]).toEqual(["[Paste #2 1 lines]"]);
+    expect([...snapshot(current).parts.keys()]).toEqual(["[Paste #2 1 chars]"]);
   });
 });
 
@@ -126,25 +125,17 @@ describe("content", () => {
     expect(content).toBe('<shell command="echo kept" exit="0">\nkept\n</shell> what now?');
   });
 
-  test("a file marker inlines the body it was given, else becomes a mention", () => {
+  test("a file marker becomes a reference the host reads", () => {
     const { parts, marker } = addPart(NO_PARTS, {
       kind: "file",
       path: "/w/a b.ts",
       directory: false,
     });
 
-    const text = `read ${marker}`;
-
-    expect(unreadFiles({ text, parts })).toEqual(["/w/a b.ts"]);
-    expect(
-      draftContent(
-        { text, parts },
-        { ...NO_INPUTS, bodies: new Map([["/w/a b.ts", "const a = 1;"]]) },
-      ),
-    ).toBe('read <file src="file:///w/a%20b.ts">\nconst a = 1;\n</file>');
-    expect(
-      draftContent({ text, parts }, { ...NO_INPUTS, bodies: new Map([["/w/a b.ts", null]]) }),
-    ).toBe("read @file:///w/a%20b.ts");
+    expect(draftContent({ text: `read ${marker}`, parts }, NO_INPUTS)).toEqual([
+      { kind: "text", text: "read " },
+      { kind: "reference", path: "/w/a b.ts" },
+    ]);
   });
 
   test("images become file parts at their marker, once uploaded", () => {
@@ -169,7 +160,7 @@ describe("content", () => {
     ]);
   });
 
-  test("a leading /skill becomes its invocation block, inline ones expand in place", () => {
+  test("a leading or inline /skill becomes a skill part", () => {
     const skill: SkillInfo = {
       name: "review",
       owner: "w",
@@ -179,21 +170,23 @@ describe("content", () => {
 
     const skills = new Map([["review", skill]]);
 
+    const part = { kind: "skill", name: "review", location: "/s/review.md" } as const;
+
     expect(
       draftContent({ text: "/review the diff", parts: NO_PARTS }, { ...NO_INPUTS, skills }),
-    ).toBe(
-      '<skill name="review" location="/s/review.md">\nRead the skill\'s file at its location and follow it.\n</skill>\n\nthe diff',
-    );
+    ).toEqual([part, { kind: "text", text: "the diff" }]);
     expect(
       draftContent({ text: "please /review it", parts: NO_PARTS }, { ...NO_INPUTS, skills }),
-    ).toContain('please <skill name="review"');
+    ).toEqual([{ kind: "text", text: "please " }, part, { kind: "text", text: " it" }]);
   });
 });
 
 describe("round trips", () => {
   test("file, shell and image content comes back as the same markers", () => {
     const content = [
-      { kind: "text" as const, text: 'look <file src="file:///w/a.ts">\nbody\n</file> ' },
+      { kind: "text" as const, text: "look " },
+      { kind: "reference" as const, path: "/w/a.ts" },
+      { kind: "text" as const, text: " " },
       { kind: "file" as const, blob: asId<"blob">("b1"), mime: "image/png", name: "image-1.png" },
       { kind: "text" as const, text: ' <shell command="ls" exit="2">\nout\n</shell>' },
     ];
@@ -205,7 +198,6 @@ describe("round trips", () => {
       kind: "file",
       path: "/w/a.ts",
       directory: false,
-      body: "body",
     });
     expect(back.parts.get("[Shell ls]")).toEqual({
       kind: "shell",
@@ -213,19 +205,16 @@ describe("round trips", () => {
       output: "out\n",
       exit: 2,
     });
-    expect(draftContent(back, NO_INPUTS)).toEqual([
-      { kind: "text", text: 'look <file src="file:///w/a.ts">\nbody\n</file> ' },
-      { kind: "file", blob: asId("b1"), mime: "image/png", name: "image-1.png" },
-      { kind: "text", text: ' <shell command="ls" exit="2">\nout\n</shell>' },
-    ]);
+    expect(draftContent(back, NO_INPUTS)).toEqual(content);
   });
 
-  test("a mention and a skill block come back as their short forms", () => {
-    expect(draftFromContent("see @file:///w/src/").text).toBe("see [Folder src]");
+  test("a folder reference and a skill part come back as their short forms", () => {
+    expect(draftFromContent([{ kind: "reference", path: "/w/src/" }]).text).toBe("[Folder src]");
     expect(
-      draftFromContent(
-        '<skill name="review" location="/s/r.md">\nRead the skill\'s file at its location and follow it.\n</skill>\n\nnow',
-      ).text,
+      draftFromContent([
+        { kind: "skill", name: "review", location: "/s/r.md" },
+        { kind: "text", text: "now" },
+      ]).text,
     ).toBe("/review now");
   });
 

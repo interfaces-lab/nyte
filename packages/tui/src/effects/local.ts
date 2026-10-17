@@ -1,20 +1,23 @@
 import type { McpServerView, WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, findModel, modelId } from "../lib/catalog.ts";
 import { usageCard, usageLines } from "../lib/usage.ts";
+import { pluginCommands } from "../model/commands.ts";
 import type { DialogData } from "../model/dialogs/dialog.ts";
 import { mcpActionChoices, mcpDetailLines, mcpServerChoices } from "../model/mcp.ts";
 import type { Choice } from "../model/dialogs/list.ts";
 import type { ModelRow } from "../model/dialogs/model-picker.ts";
+import { gitHubLines } from "../lib/pull-request.ts";
 import type { Effect } from "../model/effect.ts";
+import { followedSession } from "../model/state.ts";
 import type { ShellJob } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate as selfUpdateBinary } from "../update.ts";
-import type { HandlerContext } from "./runner.ts";
+import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
 export async function shellStart(
   effect: Of<"shell-start">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const { dispatch, ports, scope } = context;
 
@@ -49,11 +52,17 @@ export async function shellStart(
   await done;
 }
 
-export async function shellStop(effect: Of<"shell-stop">, context: HandlerContext): Promise<void> {
+export async function shellStop(
+  effect: Of<"shell-stop">,
+  context: LocalHandlerContext,
+): Promise<void> {
   context.ports.shell.stop(effect.id);
 }
 
-export async function composer(effect: Of<"composer">, context: HandlerContext): Promise<void> {
+export async function composer(
+  effect: Of<"composer">,
+  context: LocalHandlerContext,
+): Promise<void> {
   const port = context.ports.composer.current();
 
   if (port === null) return;
@@ -92,7 +101,7 @@ export async function composer(effect: Of<"composer">, context: HandlerContext):
   }
 }
 
-export async function scroll(effect: Of<"scroll">, context: HandlerContext): Promise<void> {
+export async function scroll(effect: Of<"scroll">, context: LocalHandlerContext): Promise<void> {
   const port = context.ports.scroll.current();
 
   if (port === null) return;
@@ -188,9 +197,10 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
     case "usage": {
       const providers = await ports.host.usage();
       const state = read();
-      const view = state.facts.session?.view ?? null;
+      const view = followedSession(state)?.view ?? null;
 
-      if (view === null) throw new Error("No chat is open");
+      if (view === null && state.facts.chat?.kind !== "blank") throw new Error("No chat is open");
+
       return {
         kind: "text",
         lines: usageLines(usageCard(view, providers)),
@@ -229,13 +239,16 @@ async function loaded(effect: Of<"load">, context: HandlerContext): Promise<Dial
         }),
       ];
 
-      const commands = read().facts.session?.view?.catalog.commands ?? [];
+      const commands = pluginCommands(read());
 
       if (commands.length > 0)
         lines.push(`Commands: ${commands.map((command) => `/${command.name}`).join(" ")}`);
 
       return { kind: "text", lines: lines.length === 0 ? ["No plugins"] : lines };
     }
+
+    case "pull-request":
+      return { kind: "text", lines: gitHubLines(await ports.host.github(request.workspace)) };
 
     case "mcp-servers":
       return {
@@ -283,7 +296,7 @@ async function mcpServer(
 
 export async function listDirectory(
   effect: Of<"list-directory">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const entries = await context.ports.files.listDirectory(effect.path, effect.cwd);
   context.dispatch({ kind: "directory-listed", path: effect.path, entries });
@@ -291,7 +304,7 @@ export async function listDirectory(
 
 export async function resolveMention(
   effect: Of<"resolve-mention">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const file = await context.ports.files.resolveMention(effect.query, effect.cwd);
   context.dispatch({ kind: "mention-resolved", query: effect.query, cwd: effect.cwd, file });
@@ -299,7 +312,7 @@ export async function resolveMention(
 
 export async function readPreview(
   effect: Of<"read-preview">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const body = await context.ports.files.readText(effect.path);
   context.dispatch({ kind: "preview-loaded", marker: effect.marker, path: effect.path, body });
@@ -307,7 +320,7 @@ export async function readPreview(
 
 export async function resolvePaste(
   effect: Of<"resolve-paste">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const { dispatch, ports, scope } = context;
 
@@ -324,7 +337,7 @@ export async function resolvePaste(
 
 export async function readClipboard(
   effect: Of<"read-clipboard">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const { dispatch, ports, read } = context;
   const content = await ports.terminal.readClipboard();
@@ -356,7 +369,7 @@ export async function readClipboard(
 
 export async function readDialogClipboard(
   effect: Of<"read-dialog-clipboard">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const content = await context.ports.terminal.readClipboard();
   context.dispatch({
@@ -367,13 +380,13 @@ export async function readDialogClipboard(
   });
 }
 
-export async function copy(effect: Of<"copy">, context: HandlerContext): Promise<void> {
+export async function copy(effect: Of<"copy">, context: LocalHandlerContext): Promise<void> {
   context.ports.terminal.copy(effect.text);
 }
 
 export async function openEditor(
   effect: Of<"open-editor">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const { dispatch, ports } = context;
 
@@ -393,14 +406,14 @@ export async function openEditor(
 
 export async function openExternal(
   effect: Of<"open-external">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   context.ports.terminal.open(effect.target);
 }
 
 export async function writeSettings(
   effect: Of<"write-settings">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const settings = await context.ports.settings.write(
     context.read().facts.workspace.cwd,
@@ -412,7 +425,7 @@ export async function writeSettings(
 
 export async function selfUpdate(
   effect: Of<"self-update">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   const outcome = await selfUpdateBinary({
     ...(effect.version === null ? {} : { version: effect.version }),
@@ -436,10 +449,10 @@ export async function selfUpdate(
   });
 }
 
-export async function notify(effect: Of<"notify">, context: HandlerContext): Promise<void> {
+export async function notify(effect: Of<"notify">, context: LocalHandlerContext): Promise<void> {
   context.ports.terminal.notify(effect.title, effect.body, false);
 }
 
-export async function exit(effect: Of<"exit">, context: HandlerContext): Promise<void> {
+export async function exit(effect: Of<"exit">, context: LocalHandlerContext): Promise<void> {
   context.scope.exit.resolve({ code: effect.code });
 }

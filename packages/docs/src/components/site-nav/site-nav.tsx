@@ -17,7 +17,7 @@ const productSection: NavSection = {
   ],
 };
 
-/*
+/**
  * One bar, one position: sticky, dropped from the top so its pills sit
  * concentric with the plate's corner on pages that open with a plate. The
  * bar is a frosted pill. Over a plate the pill is transparent and the text

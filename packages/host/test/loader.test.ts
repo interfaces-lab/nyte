@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { composeHost, memoryStore } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadPluginDirectory, loadPluginFiles, pluginLoader } from "../src/index.ts";
 import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
@@ -138,11 +139,10 @@ describe("plugin sources on the host view (§41e)", () => {
       ]),
       workspace: { kind: "chat-only", locator: null },
       home: null,
-      operations: [],
       description: { name: "test", platform: "darwin", version: "0.1.0" },
     });
 
-    expect(host.kernel.host.current().plugins.filter((row) => row.source !== "builtin")).toEqual([
+    expect(host.server.pluginRows().filter((row) => row.source !== "builtin")).toEqual([
       { id: "chat-only", source: "inline", path: null, issues: [] },
       { id: "mine", source: "project", path: join(dir, "mine.mjs"), issues: [] },
       { id: "theirs", source: "user", path: join(home, "theirs.mjs"), issues: [] },

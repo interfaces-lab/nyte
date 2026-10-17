@@ -2,7 +2,7 @@ import type { TestRendererOptions, TestRendererSetup } from "@opentui/core/testi
 import { testRender } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
 
-export const SIZE = { width: 100, height: 32 } as const;
+const SIZE = { width: 100, height: 32 } as const;
 
 export async function render(
   node: () => JSX.Element,

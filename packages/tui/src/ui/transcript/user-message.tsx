@@ -1,13 +1,12 @@
 import { basename } from "node:path";
 import type { JSX } from "@opentui/solid";
-import { pathToFiletype } from "@opentui/core";
 import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import { shownContent } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { userPresentation } from "../../lib/presentation.ts";
-import type { AttachedFile, PresentedFile, PresentedShell } from "../../lib/presentation.ts";
-import { shownContent } from "../../lib/view-helpers.ts";
-import type { UserMessage } from "../../lib/view-helpers.ts";
+import type { AttachedFile, PresentedShell } from "../../lib/presentation.ts";
 import { PASTE_COLLAPSE_LINES } from "../../model/draft.ts";
 import { useTranscript } from "./scope.tsx";
 
@@ -91,13 +90,6 @@ export function UserMessageView(props: { readonly message: UserMessage }): JSX.E
       ? lines().slice(0, PASTE_PREVIEW_LINES).join("\n")
       : presentation().text;
 
-  const fileLabel = (file: PresentedFile, index: number): string =>
-    ` File ${basename(file.path)}${
-      file.text === undefined || open(`file:${String(index)}`)
-        ? ""
-        : ` +${String(lineCount(file.text))} lines`
-    } `;
-
   const shellLabel = (run: PresentedShell, index: number): string =>
     ` Shell ${run.command}${run.exitCode === 0 ? "" : ` exit ${String(run.exitCode)}`}${
       open(`shell:${String(index)}`) ? "" : ` +${String(lineCount(run.output))} lines`
@@ -154,14 +146,10 @@ export function UserMessageView(props: { readonly message: UserMessage }): JSX.E
             )}
           </For>
           <For each={presentation().files}>
-            {(file, index) => (
+            {(file) => (
               <Tag
-                label={fileLabel(file, index())}
-                onClick={() =>
-                  file.text === undefined
-                    ? app.dispatch({ kind: "open-external", target: file.path })
-                    : toggle(`file:${String(index())}`)
-                }
+                label={` File ${basename(file.path)} `}
+                onClick={() => app.dispatch({ kind: "open-external", target: file.path })}
               />
             )}
           </For>
@@ -183,21 +171,6 @@ export function UserMessageView(props: { readonly message: UserMessage }): JSX.E
           </For>
         </box>
       </Show>
-      <For each={presentation().files}>
-        {(file, index) => (
-          <Show when={file.text !== undefined && open(`file:${String(index())}`)}>
-            <code
-              content={file.text ?? ""}
-              filetype={pathToFiletype(file.path)}
-              syntaxStyle={app.kit.syntax().normal}
-              fg={theme().foreground}
-              selectionBg={theme().selectionBackground}
-              selectionFg={theme().selectionForeground}
-              width="100%"
-            />
-          </Show>
-        )}
-      </For>
       <For each={presentation().shells}>
         {(run, index) => (
           <Show when={open(`shell:${String(index())}`)}>

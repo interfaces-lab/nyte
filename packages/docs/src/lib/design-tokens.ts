@@ -1,10 +1,11 @@
-import tokensSource from "@nyte-ai/ui/styles/tokens.stylex?raw";
-
-/*
+/**
  * The design site prints token values from the source that declares them, so
  * a page can never disagree with @nyte-ai/ui. A token is either one value or
  * a fine-pointer default with a coarse-pointer override.
  */
+
+// oxlint-disable-next-line import/default -- Vite's ?raw query makes the file's text the default export.
+import tokensSource from "@nyte-ai/ui/styles/tokens.stylex?raw";
 
 export interface DeclaredToken {
   name: string;
@@ -32,11 +33,6 @@ export function declaredToken(name: string): DeclaredToken {
   const token = declared.get(name);
   if (!token) throw new Error(`@nyte-ai/ui declares no ${name}`);
   return token;
-}
-
-/** Every declared token whose name starts with `prefix`, in source order. */
-export function declaredTokens(prefix: string): DeclaredToken[] {
-  return [...declared.values()].filter((token) => token.name.startsWith(prefix));
 }
 
 /**

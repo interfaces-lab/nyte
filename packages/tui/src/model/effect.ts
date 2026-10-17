@@ -11,6 +11,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { SettingsPatch } from "../lib/settings-schema.ts";
+import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
 import type { DialogId, LoadRequest } from "./dialogs/dialog.ts";
 import type { DraftSnapshot } from "./draft.ts";
@@ -27,6 +28,7 @@ export type Effect =
       readonly label: string;
     }
   | { readonly kind: "follow"; readonly target: SessionId | "new"; readonly announce: boolean }
+  | { readonly kind: "load-earlier"; readonly session: SessionId }
   | { readonly kind: "send"; readonly submission: Submission; readonly delivery: Delivery }
   | {
       readonly kind: "revise";
@@ -47,6 +49,12 @@ export type Effect =
       readonly part: PartId;
       readonly answers: QuestionAnswers;
       readonly typed: QuestionTypedDraft | null;
+    }
+  | {
+      readonly kind: "approve";
+      readonly session: SessionId;
+      readonly part: PartId;
+      readonly decision: ApprovalDecision;
     }
   | {
       readonly kind: "move";
@@ -142,12 +150,13 @@ export type Effect =
       readonly workspace: WorkspaceId;
       readonly value: boolean | null;
     }
+  | { readonly kind: "load-folder-commands"; readonly workspace: WorkspaceId }
   | { readonly kind: "login-answer"; readonly dialog: DialogId; readonly answer: string | null }
   | { readonly kind: "read-preview"; readonly marker: string; readonly path: string }
   | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string }
   | { readonly kind: "resolve-mention"; readonly query: string; readonly cwd: string };
 
-export type ComposerOp =
+type ComposerOp =
   | { readonly kind: "set"; readonly draft: DraftSnapshot }
   | { readonly kind: "insert"; readonly text: string; readonly at: "cursor" | "start" }
   | {
@@ -160,7 +169,7 @@ export type ComposerOp =
   | { readonly kind: "focus" }
   | { readonly kind: "cursor"; readonly to: "start" | "end" };
 
-export type ScrollOp =
+type ScrollOp =
   | { readonly kind: "page"; readonly direction: -1 | 1 }
   | { readonly kind: "latest" }
   | { readonly kind: "row"; readonly key: string }

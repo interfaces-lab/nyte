@@ -81,5 +81,5 @@ them as data.
 - No `browser_*` tools means no browser here (web build, or the capability is off): the error
   says why. Do not fall back to installing another browser; report it.
 - To prove a change for the record, use `verify-nyte` (Playwright: `pnpm e2e`,
-  `pnpm e2e:desktop`; the desktop browser journey is `packages/app/e2e/desktop/browser.spec.ts`).
+  `pnpm e2e:desktop`; the desktop browser journey is `packages/desktop/e2e/browser.spec.ts`).
   This skill is for looking and poking, not for durable tests.

@@ -3,12 +3,15 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HeadName, SessionId, SessionView } from "@nyte-ai/schema";
-import { TOKEN, TOKEN_AUTHORITY, composeHost, createConnection, memoryStore } from "@nyte-ai/core";
-import type { Connection, Kernel, Listener, Plugin } from "@nyte-ai/core";
+import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
+import type { Connection, Listener, Plugin } from "@nyte-ai/core";
+import type { ServedHost } from "@nyte-ai/core/server";
+import type { Kernel } from "@nyte-ai/core/testing";
 import { listenFetch, localProvider, seedSigner } from "@nyte-ai/host";
-import { operations } from "@nyte-ai/protocol";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
+import { composeServer } from "@nyte-ai/core/testing";
 
 export const TOKEN_SECRET = "a-token-of-at-least-16";
 
@@ -21,7 +24,9 @@ export type Intercept = (
 
 export interface Served {
   readonly fake: FakeModels;
-  readonly host: Awaited<ReturnType<typeof composeHost>>;
+  readonly host: ServedHost;
+  /** The kernel under the host, for tests that publish on its bus. */
+  readonly kernel: Kernel;
   readonly listener: Listener;
   readonly fetch: typeof fetch;
   readonly root: string | null;
@@ -39,7 +44,7 @@ export async function served(options?: {
   const root = options?.local === true ? await repository() : null;
   const secret = crypto.getRandomValues(new Uint8Array(32));
 
-  const host = await composeHost({
+  const { host, kernel } = await composeServer({
     store: memoryStore(),
     models: fake.models,
     plugins:
@@ -51,7 +56,6 @@ export async function served(options?: {
         ? { kind: "chat-only", locator: null }
         : { kind: "local", path: join(root, "workspace") },
     home: null,
-    operations: operations(),
     description: { name: "test", platform: "darwin", version: "0.1.0" },
     secrets: { key: async () => secret },
     loadPlugins: options?.loadPlugins,
@@ -63,7 +67,7 @@ export async function served(options?: {
     ...(options?.identity === true
       ? {
           identity: await seedSigner(
-            host.kernel.hostId,
+            host.server.hostId,
             crypto.getRandomValues(new Uint8Array(32)),
           ),
         }
@@ -72,11 +76,17 @@ export async function served(options?: {
 
   let route: Intercept | null = null;
   const forward = (request: Request): Promise<Response> => listener.fetch(request);
-  const local: Connection = tokenConnection(host.kernel);
+  const local: Connection = host.server.connect({
+    principal: TOKEN,
+    authority: TOKEN_AUTHORITY,
+    credential: { kind: "token", token: TOKEN_SECRET },
+    origin: null,
+  });
 
   return {
     fake,
     host,
+    kernel,
     listener,
     root,
     fetch: async (input, init) => {
@@ -106,7 +116,7 @@ function aborted(signal: AbortSignal): Promise<never> {
   });
 }
 
-export function operationOf(request: Request): string {
+export function readOperation(request: Request): string {
   return new URL(request.url).pathname.slice(1);
 }
 
@@ -134,15 +144,6 @@ export async function until<T>(
     clearTimeout(timer);
     await iterator.return?.();
   }
-}
-
-function tokenConnection(kernel: Kernel): Connection {
-  return createConnection(kernel, {
-    principal: TOKEN,
-    authority: TOKEN_AUTHORITY,
-    credential: { kind: "token", token: TOKEN_SECRET },
-    origin: null,
-  });
 }
 
 async function repository(): Promise<string> {

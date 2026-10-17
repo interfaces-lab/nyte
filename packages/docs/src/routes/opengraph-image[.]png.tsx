@@ -8,7 +8,7 @@ const size = { width: 1200, height: 630 };
 
 let fonts: ReturnType<typeof googleFonts> | undefined;
 
-/* The site's social card. Geist Mono is fetched once per server instance. */
+/** The site's social card. Geist Mono is fetched once per server instance. */
 export const Route = createFileRoute("/opengraph-image.png")({
   server: {
     handlers: {

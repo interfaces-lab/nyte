@@ -4,19 +4,19 @@ import { DARK_THEME } from "../../src/lib/theme.ts";
 import type { Task } from "../../src/lib/tasks.ts";
 import { NO_PARTS } from "../../src/model/draft.ts";
 import { Screen } from "../../src/ui/screen.tsx";
-import { followed, viewOf } from "../fixture/view.ts";
+import { followed, buildView } from "../fixture/view.ts";
 import { blank, play, ready, typed } from "../model/support.ts";
 import { mount } from "./chrome/support.tsx";
 
-const empty = viewOf((v) => v);
+const empty = buildView((v) => v);
 
-const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
-const talked = viewOf((v) =>
+const talked = buildView((v) =>
   v.turn("t1", (t) => t.user("where is the tree").text("Here it is.").ended("completed")),
 );
 
-const queued = viewOf((v) =>
+const queued = buildView((v) =>
   v
     .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
     .pending("later please", { schedule: { kind: "next-turn", reason: "requested" } }),
@@ -124,7 +124,7 @@ describe("screen", () => {
 
     expect(row(frame, "Here it is.")).toBeLessThan(rule);
     expect(row(frame, "Already at that point in the chat")).toBeGreaterThan(rule);
-    expect(row(frame, "Session Tree")).toBeGreaterThan(
+    expect(row(frame, "Chat Tree")).toBeGreaterThan(
       row(frame, "Already at that point in the chat"),
     );
   });

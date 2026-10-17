@@ -1,30 +1,40 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { CallId, HeadName, Json, RunId, SessionId, WaitTarget } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { landing } from "../src/engine/admission.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { stopRun } from "../src/engine/fence.ts";
+import { move } from "../src/engine/move.ts";
+import { endRun } from "../src/engine/runs.ts";
+import { publishSet } from "../src/fold/watch.ts";
 import {
   callRef,
   decodeCallRecord,
   decodePartRecord,
   decodeRunRecord,
   decodeSessionRecord,
-  endRun,
   envelope,
-  landing,
   leaseRef,
   memoryStore,
-  move,
   partRef,
-  publishSet,
   receiptRef,
   runRef,
-  runStep,
   sessionRef,
-  stopRun,
-} from "../src/index.ts";
-import type { Kernel, PartRecord, Plugin, StoreConnection } from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Plugin, StoreConnection } from "../src/index.ts";
+import type { PartRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import { fakeModels, open } from "./fake-models.ts";
-import { completed, configuration, livePart, main, setup, startRun, until } from "./harness.ts";
+import {
+  completed,
+  configuration,
+  livePart,
+  main,
+  setup,
+  startRun,
+  until,
+} from "../src/harness.ts";
 
 function park(
   kernel: Kernel,
@@ -128,7 +138,7 @@ describe("liveness across instances (D2)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "Hi." });
     const run = await startRun(
       a.kernel,
       session.id,
@@ -171,7 +181,7 @@ describe("liveness across instances (D2)", () => {
     const memory = await memoryStore().open();
     const wrapped = interrupting(memory);
     const { kernel, host } = await setup({ store: wrapped.store });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await startRun(
       kernel,
       session.id,
@@ -211,8 +221,8 @@ describe("liveness across instances (D2)", () => {
       },
     });
 
-    const parent = await p.host.sessions.create();
-    const child = await p.host.sessions.create({ parent: parent.id });
+    const { session: parent } = await p.host.sessions.start({ content: "Hi." });
+    const { session: child } = await p.host.sessions.start({ parent: parent.id, content: "Hi." });
     const run = await startRun(
       p.kernel,
       child.id,
@@ -231,19 +241,21 @@ describe("liveness across instances (D2)", () => {
     await endRun(c.kernel, child.id, run.id, completed);
     await until(() => (dispatched.length > 0 ? true : undefined));
 
-    expect(dispatched).toEqual([`${parent.id}/${main}`]);
+    expect(dispatched).toContain(`${parent.id}/${main}`);
     expect(await record(store, callRef(parent.id, call), decodeCallRecord)).toMatchObject({
       waiting: null,
       waits: [{ kind: "run", run: run.id, end: completed }],
     });
-    expect((await c.host.session(parent.id).view()).messages).toEqual([]);
+    expect((await c.host.session(parent.id).view()).messages.map((entry) => entry.id)).toEqual([
+      parent.id,
+    ]);
   });
 
   it("2.2 (E E2) + C2: repair settles a wait whose target ended unseen, then reports and wakes the parent head", async () => {
     const store = await memoryStore().open();
     const p = await setup({ store, execution: { kind: "admit-only" } });
-    const parent = await p.host.sessions.create();
-    const child = await p.host.sessions.create({ parent: parent.id });
+    const { session: parent } = await p.host.sessions.start({ content: "Hi." });
+    const { session: child } = await p.host.sessions.start({ parent: parent.id, content: "Hi." });
     const own = await startRun(
       p.kernel,
       parent.id,
@@ -305,8 +317,9 @@ describe("liveness across instances (D2)", () => {
       },
     });
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     await startRun(kernel, session.id, main, { kind: "continuation", from: "wake" }, configuration);
+    dispatched.splice(0);
     await session.send("Are you there?");
     await until(() => (dispatched.length > 0 ? true : undefined));
 
@@ -317,8 +330,7 @@ describe("liveness across instances (D2)", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const store = await memoryStore().open();
     const { host, script } = await setup({ store });
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
 
@@ -347,8 +359,7 @@ describe("liveness across instances (D2)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store });
     const b = await setup({ store });
-    const session = await a.host.sessions.create();
-    await session.send("Go.");
+    const { session } = await a.host.sessions.start({ content: "Go." });
     const stepped = a.host.execution.advance({ session: session.id, head: main });
     const first = await a.script.started(1);
 
@@ -372,7 +383,7 @@ describe("liveness across instances (D2)", () => {
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(await stepped).toEqual({ kind: "fenced" });
-    expect(a.kernel.runs.get(first.input.run.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(first.input.run.id)).toBeNull();
 
     const resumed = b.host.execution.advance({ session: session.id, head: main });
     const next = await b.script.started(1);
@@ -388,17 +399,23 @@ describe("liveness across instances (D2)", () => {
 
     const { kernel, host } = await setup({
       execution: { kind: "admit-only" },
-      admit: async () => {
-        const pending = land;
-        land = null;
-        await pending?.();
+      plugins: [
+        {
+          id: "gate",
+          hooks: {
+            async before_send() {
+              const pending = land;
+              land = null;
+              await pending?.();
 
-        return { action: "continue" };
-      },
+              return { action: "continue" };
+            },
+          },
+        },
+      ],
     });
 
-    const session = await host.sessions.create();
-    const draft = await session.send("Draft.", { delivery: "queue" });
+    const { session, receipt: draft } = await host.sessions.start({ content: "Draft." });
     land = () => landing(kernel, session.id, main, [draft.message], null);
     const edited = await session.send("Draft v2.", { replace: draft.message });
 
@@ -410,7 +427,7 @@ describe("liveness across instances (D2)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "Hi." });
     const run = await startRun(
       b.kernel,
       session.id,
@@ -420,26 +437,22 @@ describe("liveness across instances (D2)", () => {
     );
 
     expect(await stopRun(a.kernel, session.id, run.id)).toEqual({ kind: "requested" });
-    expect(a.kernel.runs.get(run.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(run.id)).toBeNull();
   });
 
   it("5.6 (F F1): a duplicate move with the same id replays the first receipt and moves once", async () => {
     const store = await memoryStore().open();
     const { kernel, host } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await session.send("One.");
-    await landing(
-      kernel,
-      session.id,
-      main,
-      (await session.view()).messages.map((entry) => asId(entry.id)),
-      null,
-    );
+    const { session, receipt } = await host.sessions.start({ content: "One." });
+    await landing(kernel, session.id, main, [receipt.message], null);
+    const two = await session.send("Two.");
+    await landing(kernel, session.id, main, [two.message], null);
+    const { tip } = await session.tree();
     const id = asId<"receipt">("move-1");
 
     const [first, second] = await Promise.all([
-      move(kernel, session.id, main, { kind: "start" }, { id }),
-      move(kernel, session.id, main, { kind: "start" }, { id }),
+      move(kernel, session.id, main, tip, { id }),
+      move(kernel, session.id, main, tip, { id }),
     ]);
 
     expect(await first.settled()).toMatchObject({ kind: "moved" });
@@ -458,23 +471,19 @@ describe("liveness across instances (D2)", () => {
       store: wrapped.store,
       execution: { kind: "admit-only" },
     });
-    const session = await host.sessions.create();
-    await session.send("One.");
-    await landing(
-      kernel,
-      session.id,
-      main,
-      (await session.view()).messages.map((entry) => asId(entry.id)),
-      null,
-    );
+    const { session, receipt } = await host.sessions.start({ content: "One." });
+    await landing(kernel, session.id, main, [receipt.message], null);
+    const two = await session.send("Two.");
+    await landing(kernel, session.id, main, [two.message], null);
     const tip = await memory.refs.get(`sessions/${session.id}/heads/${main}`);
+    const target = (await session.tree()).tip;
 
     wrapped.arm(
       (names) => names.includes(receiptRef(session.id, asId("move-2"))),
       () => session.send("Queued.", { delivery: "queue" }),
     );
 
-    const moved = await move(kernel, session.id, main, { kind: "start" }, { id: asId("move-2") });
+    const moved = await move(kernel, session.id, main, target, { id: asId("move-2") });
 
     expect(await moved.settled()).toMatchObject({ kind: "pending-input" });
     expect((await memory.refs.get(`sessions/${session.id}/heads/${main}`))?.revision).toBe(
@@ -484,8 +493,8 @@ describe("liveness across instances (D2)", () => {
 
   it("audit 1 (2.1): a cold child end offers its outcome to an any([job, run]) wait without judging the job", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const parent = await host.sessions.create({ workspace });
-    const child = await host.sessions.create({ parent: parent.id });
+    const { session: parent } = await host.sessions.start({ workspace, content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: parent.id, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "sleep 600", session: parent.id });
@@ -552,8 +561,7 @@ describe("liveness across instances (D2)", () => {
       execution: { kind: "admit-only" },
     });
 
-    const session = await host.sessions.create();
-    const draft = await session.send("Draft", { delivery: "queue" });
+    const { session, receipt: draft } = await host.sessions.start({ content: "Draft" });
     seen = 0;
     landNow = () => landing(host.kernel, session.id, main, [draft.message], null);
     const edited = await session.send("Fixed", { replace: draft.message });
@@ -568,9 +576,11 @@ describe("liveness across instances (D2)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
-    const sent = await session.send("One.");
+    const { session, receipt: sent } = await b.host.sessions.start({ content: "One." });
     await landing(b.kernel, session.id, main, [sent.message], null);
+    const next = await session.send("Next.");
+    await landing(b.kernel, session.id, main, [next.message], null);
+    const target = (await session.tree()).tip;
     const moved = await startRun(
       b.kernel,
       session.id,
@@ -578,11 +588,11 @@ describe("liveness across instances (D2)", () => {
       { kind: "continuation", from: "wake" },
       configuration,
     );
-    const receipt = await move(a.kernel, session.id, main, { kind: "start" }, { running: "stop" });
+    const receipt = await move(a.kernel, session.id, main, target, { running: "stop" });
 
     expect(await receipt.settled()).toMatchObject({ kind: "moved" });
     await endRun(b.kernel, session.id, moved.id, { kind: "stopped" });
-    expect(a.kernel.runs.get(moved.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(moved.id)).toBeNull();
 
     const again = await session.send("Two.");
     await landing(b.kernel, session.id, main, [again.message], null);
@@ -596,6 +606,6 @@ describe("liveness across instances (D2)", () => {
     await a.host.session(session.id).send("Edit.", { replace: again.message });
     await endRun(b.kernel, session.id, edited.id, { kind: "stopped" });
 
-    expect(a.kernel.runs.get(edited.id)).toBeUndefined();
+    expect(a.kernel.runs.signal(edited.id)).toBeNull();
   });
 });

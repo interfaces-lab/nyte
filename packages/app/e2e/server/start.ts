@@ -4,81 +4,24 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import process from "node:process";
-import {
-  createAssistantMessageEventStream,
-  createModels,
-  InMemoryCredentialStore,
-  InMemoryModelsStore,
-} from "@nyte-ai/ai";
-import type { Provider } from "@nyte-ai/ai";
-import { localProvider, sqliteStore } from "@nyte-ai/host";
-import type { Api, AssistantMessage, Model } from "@nyte-ai/schema/model";
+import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
+import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
+import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
 import { sdk } from "@nyte-ai/sdk";
-import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN } from "./address.ts";
+import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
 
-const model: Model<Api> = {
+/** The echo provider answers `Echo: <message>`; a title request gets `Echo: <first message>`. */
+const { models } = fakeModels({
   id: "echo",
   name: "Echo",
-  api: "openai-responses",
-  provider: "echo",
-  baseUrl: "https://example.invalid",
-  reasoning: false,
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100_000,
-  maxTokens: 1_000,
-};
-
-const echo: Provider["stream"] = (selected, context) => {
-  const message = context.messages.findLast((candidate) => candidate.role === "user");
-
-  const said =
-    message?.role !== "user"
-      ? ""
-      : Array.isArray(message.content)
-        ? message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
-        : message.content;
-
-  const text = `Echo: ${said}`;
-
-  const answer: AssistantMessage = {
-    role: "assistant",
-    api: selected.api,
-    provider: selected.provider,
-    model: selected.id,
-    content: [{ type: "text", text }],
-    stopReason: "stop",
-    timestamp: Date.now(),
-    usage: {
-      input: 1,
-      output: 1,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 2,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-  };
-
-  const events = createAssistantMessageEventStream();
-  events.push({ type: "start", partial: { ...answer, content: [] } });
-  events.push({ type: "text_delta", contentIndex: 0, delta: text, partial: answer });
-  events.push({ type: "done", reason: "stop", message: answer });
-
-  return events;
-};
-
-const models = createModels({
-  credentials: new InMemoryCredentialStore(),
-  modelsStore: new InMemoryModelsStore(),
-});
-
-models.setProvider({
-  id: model.provider,
-  name: "Echo",
-  auth: { apiKey: { name: "Fixture", resolve: async () => ({ auth: { apiKey: "fixture" } }) } },
-  getModels: () => [model],
-  stream: echo,
-  streamSimple: echo,
+  models: [testModel("echo", { name: "Echo", provider: "echo" })],
+  into: createModels({
+    credentials: new InMemoryCredentialStore(),
+    modelsStore: new InMemoryModelsStore(),
+  }),
+  fallback: (request) => ({
+    content: [{ type: "text", text: `Echo: ${titleReply(request) ?? lastUserText(request)}` }],
+  }),
 });
 
 const appRoot = join(import.meta.dirname, "../../dist");
@@ -88,27 +31,29 @@ if (!existsSync(join(appRoot, "index.html"))) {
   process.exit(1);
 }
 
-const TYPES: Readonly<Record<string, string>> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".woff2": "font/woff2",
-  ".json": "application/json",
-};
+const TYPES = new Map([
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript"],
+  [".css", "text/css"],
+  [".svg", "image/svg+xml"],
+  [".png", "image/png"],
+  [".woff2", "font/woff2"],
+  [".json", "application/json"],
+]);
 
 async function serveApp(request: Request): Promise<Response | undefined> {
   const { pathname } = new URL(request.url);
 
   if (pathname.startsWith("/.nyte") || request.method !== "GET") return undefined;
+
   const path = normalize(join(appRoot, pathname));
+
   const file =
     path.startsWith(appRoot) && extname(path) !== "" ? path : join(appRoot, "index.html");
 
   try {
     return new Response(await readFile(file), {
-      headers: { "Content-Type": TYPES[extname(file)] ?? "application/octet-stream" },
+      headers: { "Content-Type": TYPES.get(extname(file)) ?? "application/octet-stream" },
     });
   } catch {
     return new Response("Not found", { status: 404 });
@@ -117,7 +62,7 @@ async function serveApp(request: Request): Promise<Response | undefined> {
 
 const cwd = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-web-")));
 
-await writeFile(join(cwd, "README.md"), "# E2E workspace\n\nThe workspace reached the browser.\n");
+await writeFile(join(cwd, "README.md"), `# E2E workspace\n\n${README_LINE}\n`);
 
 for (const args of [
   ["init", "-q"],
@@ -132,12 +77,18 @@ const host = await sdk.open({
   store: sqliteStore({ memory: true }),
   models,
   plugins: [{ id: "local", environment: localProvider({ home: cwd }) }],
+  github: localGitHubAccount({ home: cwd }),
   workspace: { kind: "local", path: cwd },
   home: cwd,
 });
 
 for (let index = 1; index <= ARCHIVED_SESSION_COUNT; index += 1) {
-  const session = await host.sessions.create({ name: `Archived chat ${String(index)}` });
+  const { session, receipt } = await host.sessions.start({
+    name: `Archived chat ${String(index)}`,
+    content: "Archive me",
+  });
+
+  await receipt.settled();
   await session.update({ archived: true });
 }
 

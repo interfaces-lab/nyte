@@ -27,6 +27,11 @@ export const glyph = defineConsts({
   box: "var(--nyte-glyph-box)",
 });
 
+/** Media queries used as keys: `":hover": { [media.hover]: … }` styles hover only where a fine pointer can hover. */
+export const media = defineConsts({
+  hover: "@media (hover: hover) and (pointer: fine)",
+});
+
 /** A control's minimum hit area and the gap between independent controls: 24 and 2, or 44 and 8 for touch. */
 export const target = defineConsts({
   min: "var(--nyte-target-min)",

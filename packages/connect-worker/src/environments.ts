@@ -31,8 +31,9 @@ import {
   listActiveEnvironments,
   revokeEnvironment,
   touchEnvironment,
-} from "./store.ts";
-import type { ClaimOutcome, Environment } from "./store.ts";
+} from "./store/environments.ts";
+import type { ClaimOutcome } from "./store/environments.ts";
+import type { Environment } from "./store/rows.ts";
 
 const EmptyObject = Type.Object({}, { additionalProperties: false });
 

@@ -6,10 +6,10 @@ import { indexedMention } from "../../src/model/completion.ts";
 import type { Effect } from "../../src/model/effect.ts";
 import { reduce } from "../../src/model/reduce.ts";
 import { deriveScreen } from "../../src/model/screen.ts";
-import { viewOf } from "../fixture/view.ts";
+import { buildView } from "../fixture/view.ts";
 import { NOW, play, ready, S1, typed } from "./support.ts";
 
-const queued = viewOf((v) =>
+const queued = buildView((v) =>
   v
     .turn("t1", (t) => t.user("go"))
     .live()
@@ -27,12 +27,10 @@ const queued = viewOf((v) =>
     .unsent("sending", { id: "m4" }),
 );
 
-const idle = viewOf((v) =>
+const idle = buildView((v) =>
   v
     .turn("t1", (t) => t.user("first prompt").text("ok").ended("completed"))
-    .turn("t2", (t) =>
-      t.report({ child: "s9" }, "report").text("noted").ended("completed"),
-    )
+    .turn("t2", (t) => t.report({ child: "s9" }, "report").text("noted").ended("completed"))
     .turn("t3", (t) => t.action("Fix lint", "long hidden prompt").text("done").ended("completed"))
     .turn("t4", (t) =>
       t.user('see <shell command="ls" exit="0">\nout\n</shell>').text("ok").ended("completed"),
@@ -150,7 +148,7 @@ describe("queue operations", () => {
   });
 
   test("an action row cannot be edited", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .pending(
           "prompt",
@@ -251,7 +249,7 @@ describe("send", () => {
       session: S1,
       selection: { effort: "high" },
     });
-    expect(step.state.facts.session?.selection.effort).toBe("high");
+    expect(step.state.facts.chat?.selection.effort).toBe("high");
     expect(step.state.local.notice?.text).toBe("Thinking level: high");
 
     const again = play(step.state, typed("/effort high"), { kind: "send", delivery: "queue" });
@@ -289,7 +287,7 @@ describe("send", () => {
   });
 
   test("a typed answer clears the composer and keeps a snapshot to hand back", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -546,7 +544,7 @@ describe("completion", () => {
 });
 
 describe("plugin commands", () => {
-  const view = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+  const view = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
   const withProbe: SessionView = {
     ...view,
@@ -626,6 +624,19 @@ describe("paste", () => {
         insert: { kind: "text", text: "x" },
       }).effects,
     ).toEqual([]);
+  });
+
+  test("a long single-line paste becomes a part, so typing after it stays cheap", () => {
+    const text = "x".repeat(5_000);
+
+    const pasted = play(ready(idle), {
+      kind: "paste-resolved",
+      generation: 0,
+      insert: { kind: "text", text },
+    });
+
+    expect(pasted.state.local.draft.text).toBe("[Paste #1 5000 chars] ");
+    expect([...pasted.state.local.draft.parts.values()]).toEqual([{ kind: "paste", text }]);
   });
 
   test("a pasted marker is followed by a space; the same image pasted twice goes in once", () => {
@@ -786,7 +797,7 @@ describe("session and view intents", () => {
     expect(thinking.effects).toEqual([
       { kind: "configure", session: S1, selection: { effort: "high" } },
     ]);
-    expect(thinking.state.facts.session?.selection.effort).toBe("high");
+    expect(thinking.state.facts.chat?.selection.effort).toBe("high");
 
     const model = play(ready(idle), { kind: "cycle-model", direction: 1 });
 
@@ -898,8 +909,8 @@ describe("session and view intents", () => {
     ]);
   });
 
-  test("Ctrl+End follows the latest again; revealing earlier keeps the viewport", () => {
-    const many = viewOf((v) => {
+  test("Ctrl+End follows the latest again; revealing earlier keeps the viewport, then pages older messages in", () => {
+    const many = buildView((v) => {
       let built = v;
 
       for (let index = 0; index < 30; index += 1)
@@ -919,6 +930,9 @@ describe("session and view intents", () => {
 
     expect(revealed.effects).toEqual([{ kind: "scroll", op: { kind: "keep-viewport" } }]);
     expect(deriveScreen(revealed.state, null).transcript.window.start).toBe(0);
+    expect(play(revealed.state, { kind: "reveal-earlier" }).effects).toEqual([
+      { kind: "load-earlier", session: S1 },
+    ]);
     expect(
       play(revealed.state, { kind: "scroll", to: "latest" }).state.local.transcript.window,
     ).toEqual({ kind: "tail" });

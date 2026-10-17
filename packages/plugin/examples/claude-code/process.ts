@@ -8,10 +8,10 @@ import { Value } from "typebox/value";
 import { envFlagEnabled } from "./env.ts";
 import { discoveredModelSchema } from "./model-catalog.ts";
 import type { DiscoveredClaudeModel } from "./model-catalog.ts";
-import { isRecord, parseRecord } from "./wire.ts";
+import { matchesRecord, parseRecord } from "./wire.ts";
 import type { JsonRecord } from "./wire.ts";
 
-export const INSTALL_HINT =
+const INSTALL_HINT =
   "Claude Code is not installed. Install it with `npm install -g @anthropic-ai/claude-code` " +
   "or set NYTE_CLAUDE_CODE_COMMAND to the executable.";
 
@@ -42,7 +42,7 @@ async function executable(path: string): Promise<boolean> {
   }
 }
 
-export async function resolveClaudeExecutable(
+async function resolveClaudeExecutable(
   env: Record<string, string | undefined> = process.env,
 ): Promise<string | undefined> {
   const command = configuredCommand(env);
@@ -267,12 +267,12 @@ export async function discoverClaudeModels(
       if (event.type !== "control_response") continue;
       const envelope = event.response;
 
-      if (!isRecord(envelope)) continue;
+      if (!matchesRecord(envelope)) continue;
 
       if (envelope.request_id !== requestId || envelope.subtype !== "success") continue;
       const response = envelope.response;
 
-      if (isRecord(response) && Array.isArray(response.models))
+      if (matchesRecord(response) && Array.isArray(response.models))
         models = response.models.filter((model) => Value.Check(discoveredModelSchema, model));
     }
 

@@ -1,15 +1,13 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { SdkError } from "@nyte-ai/core";
-import type { Host, Kernel, ListenOptions, Listener } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
+import type { ListenOptions, Listener } from "@nyte-ai/core";
+import type { ServedHost } from "@nyte-ai/core/server";
 import { encodeError, errorStatus } from "@nyte-ai/protocol";
 import { listenFetch } from "./listen-fetch.ts";
 
 /** Serves a composed host, the `Host.listen` `openHost` attaches: everything but the socket is `listenFetch`'s, and the `fetch` transport answers with it directly. The `http` transport binds `node:http` on `hostname` (default 127.0.0.1) and `port` (default 0), streaming each request body in and each response body out chunk by chunk, with a client gone aborting its request; a failed bind throws `SdkError("unavailable")` after releasing the execution. `disconnectClients()` also destroys every open Node response, and `close()` closes the socket once. */
-export async function listen(
-  host: Omit<Host, "listen"> & { readonly kernel: Kernel },
-  options: ListenOptions,
-): Promise<Listener> {
+export async function listen(host: ServedHost, options: ListenOptions): Promise<Listener> {
   const inner = await listenFetch(host, { ...options, transport: { kind: "fetch" } });
 
   if (options.transport.kind === "fetch") return inner;
@@ -107,7 +105,7 @@ async function respond(
   let request: Request;
 
   try {
-    request = requestOf(incoming, origin, controller.signal);
+    request = readRequest(incoming, origin, controller.signal);
   } catch (error) {
     await write(
       failure(new SdkError("invalid", error instanceof Error ? error.message : String(error))),
@@ -120,7 +118,7 @@ async function respond(
   await write(await fetch(request), outgoing);
 }
 
-function requestOf(incoming: IncomingMessage, origin: string, signal: AbortSignal): Request {
+function readRequest(incoming: IncomingMessage, origin: string, signal: AbortSignal): Request {
   const headers = new Headers();
 
   for (const [name, value] of Object.entries(incoming.headers)) {
@@ -136,12 +134,12 @@ function requestOf(incoming: IncomingMessage, origin: string, signal: AbortSigna
   const body =
     method === "GET" || method === "HEAD"
       ? {}
-      : { body: bodyOf(incoming), duplex: "half" as const };
+      : { body: streamBody(incoming), duplex: "half" as const };
 
   return new Request(url.href, { method, headers, signal, ...body });
 }
 
-function bodyOf(incoming: IncomingMessage): ReadableStream<Uint8Array> {
+function streamBody(incoming: IncomingMessage): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       incoming.on("data", (chunk: Buffer) => {
@@ -162,6 +160,12 @@ function bodyOf(incoming: IncomingMessage): ReadableStream<Uint8Array> {
 }
 
 async function write(response: Response, outgoing: ServerResponse): Promise<void> {
+  if (outgoing.destroyed) {
+    await response.body?.cancel().catch(() => undefined);
+
+    return;
+  }
+
   const headers: Record<string, string | string[]> = {};
 
   response.headers.forEach((value, name) => {

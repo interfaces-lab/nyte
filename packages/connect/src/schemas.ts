@@ -15,10 +15,6 @@
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
 
-// ---------------------------------------------------------------------------
-// Lifetimes and limits
-// ---------------------------------------------------------------------------
-
 /** A signed request proof is accepted for this long after `iat`. */
 export const PROOF_LIFETIME_SECONDS = 60;
 
@@ -64,10 +60,6 @@ export const TOKEN_TYPES = {
   receipt: "nyte-receipt+jwt",
   lease: "nyte-lease+jwt",
 } as const;
-
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
 
 /**
  * Broker routes, relative to `CONNECT_ORIGIN`. Ids are UUIDs checked before
@@ -140,9 +132,9 @@ export const LINK_AUTHORIZATION_LIFETIME_SECONDS = 60;
 export const LINK_POLL_INTERVAL_SECONDS = 5;
 
 /** Crockford-style base32 without vowels, so a code is never a word. */
-export const USER_CODE_ALPHABET = "0123456789BCDFGHJKMNPQRSTVWXZ";
+const USER_CODE_ALPHABET = "0123456789BCDFGHJKMNPQRSTVWXZ";
 
-export const USER_CODE_LENGTH = 8;
+const USER_CODE_LENGTH = 8;
 
 /**
  * Where phones reach a desktop: `<CONNECT_ORIGIN>/r/<environmentId>`, under
@@ -167,10 +159,6 @@ export const DESKTOP_ROUTES = {
   enroll: "/_nyte/connect/enroll",
   device: "/_nyte/connect/device",
 } as const;
-
-// ---------------------------------------------------------------------------
-// Primitives
-// ---------------------------------------------------------------------------
 
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
@@ -233,10 +221,6 @@ export const BrokerKeys = Type.Object({
 
 export type BrokerKeys = Static<typeof BrokerKeys>;
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
 export const ERROR_CODES = [
   /** No credential, or one that does not verify. */
   "unauthorized",
@@ -271,10 +255,6 @@ export const ErrorBody = Type.Object({
 
 export type ErrorBody = Static<typeof ErrorBody>;
 
-// ---------------------------------------------------------------------------
-// Desktop ↔ broker (machine-key proofs)
-// ---------------------------------------------------------------------------
-
 /**
  * `POST /v1/environments` with `Authorization: Bearer <Clerk session JWT>` and a
  * proof signed by the key being registered, whose `iss` is that key's RFC 7638
@@ -285,12 +265,10 @@ export const LinkRequest = strict({ publicKey: PublicJwk, name: Name });
 export type LinkRequest = Static<typeof LinkRequest>;
 
 /** Its relay address is not sent: every client derives it with `relayAddress`. */
-export const LinkedEnvironment = Type.Object({
+const LinkedEnvironment = Type.Object({
   id: Uuid,
   name: Name,
 });
-
-export type LinkedEnvironment = Static<typeof LinkedEnvironment>;
 
 /** `XXXX-XXXX`, as typed; the broker normalizes case and the separator. */
 export const UserCode = Type.String({ pattern: "^[A-Za-z0-9]{4}[- ]?[A-Za-z0-9]{4}$" });
@@ -461,10 +439,6 @@ export const ProofClaims = Type.Object({
 
 export type ProofClaims = Static<typeof ProofClaims>;
 
-// ---------------------------------------------------------------------------
-// Phone ↔ broker (Clerk session JWT)
-// ---------------------------------------------------------------------------
-
 export const EnvironmentSummary = Type.Object({
   id: Uuid,
   name: Name,
@@ -504,10 +478,6 @@ export const EnrollResponse = Type.Object({
 });
 
 export type EnrollResponse = Static<typeof EnrollResponse>;
-
-// ---------------------------------------------------------------------------
-// Broker → desktop (over the relay)
-// ---------------------------------------------------------------------------
 
 /** `POST /_nyte/connect/enroll` body, relayed by the broker itself and never from a phone. */
 export const EnrollEnvelope = strict({ authorization: CompactJws });

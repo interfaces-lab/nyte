@@ -55,7 +55,9 @@ function Row(props: {
   const effort = () => {
     const levels = props.row.info.thinking;
     const level = draft().effort;
-    const bars = "■".repeat(level === "off" ? 0 : Math.max(0, levels.indexOf(level) + 1));
+    const bars = "■".repeat(
+      level === "off" ? 0 : Math.max(0, levels.findIndex((candidate) => candidate === level) + 1),
+    );
     const empty = "□".repeat(Math.max(0, levels.length - bars.length));
 
     return wide()

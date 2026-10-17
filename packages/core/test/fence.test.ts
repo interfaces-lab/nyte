@@ -1,17 +1,17 @@
 import { asId } from "@nyte-ai/schema";
 import type { Message, RefUpdate, RunId, SetOutcome } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
+import { landing } from "../src/engine/admission.ts";
+import { stopRun } from "../src/engine/fence.ts";
+import { move } from "../src/engine/move.ts";
 import {
   decodeRunRecord,
   headRef,
-  landing,
   leaseRef,
   memoryStore,
-  move,
   receiptRef,
   runRef,
-  stopRun,
-} from "../src/index.ts";
+} from "../src/store.ts";
 import type { Plugin, Store, StoreConnection } from "../src/index.ts";
 import { fakeModels, open, testModel } from "./fake-models.ts";
 import {
@@ -20,10 +20,11 @@ import {
   label,
   livePart,
   main,
+  settledChat,
   setup,
   startRun,
   usage,
-} from "./harness.ts";
+} from "../src/harness.ts";
 
 function hooked(
   connection: StoreConnection,
@@ -47,13 +48,12 @@ function hookedStore(
 }
 
 function labels(updates: readonly RefUpdate[]): readonly string[] {
-  return updates.flatMap((update) => (update.event === undefined ? [] : [label(update.event)]));
+  return updates.flatMap((update) => (update.events ?? []).map(label));
 }
 
 function createdRun(updates: readonly RefUpdate[]) {
-  for (const update of updates)
-    if (update.event?.kind === "part" && update.event.change === "created" && update.event.run)
-      return update.event.run;
+  for (const event of updates.flatMap((update) => update.events ?? []))
+    if (event.kind === "part" && event.change === "created" && event.run) return event.run;
 
   return null;
 }
@@ -66,14 +66,16 @@ describe("the stop fence (ADV round 2)", () => {
     const opened = Promise.withResolvers<void>();
     const committed: (readonly string[])[] = [];
     let stop: ((run: ReturnType<typeof createdRun>) => Promise<unknown>) | null = null;
-    let stopped: Promise<unknown> | null = null;
+    const stopped = Promise.withResolvers<unknown>();
+    let stopping = false;
     let fenced = false;
 
     const store = hookedStore(async (updates, inner) => {
       const run = createdRun(updates);
 
-      if (run !== null && stop !== null && stopped === null) {
-        stopped = stop(run);
+      if (run !== null && stop !== null && !stopping) {
+        stopping = true;
+        stopped.resolve(stop(run));
         await fenceRead.promise;
         const outcome = await inner.set(updates);
         opened.resolve();
@@ -95,16 +97,14 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     await using host = await open(fake, { store });
-    const session = await host.sessions.create();
-    stop = (run) => (run === null ? Promise.resolve() : session.run(run).stop());
-    const receipt = await session.send("Go.");
+    const id = asId<"session">("fenced");
+    stop = (run) => (run === null ? Promise.resolve() : host.session(id).run(run).stop());
+    const { session, receipt } = await host.sessions.start({ id, content: "Go." });
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
-    expect(await stopped).toEqual({ kind: "requested" });
-    expect(committed.find((set) => set.includes("run:stopping"))).toEqual([
-      "run:stopping",
-      "part:failed",
-    ]);
+    expect(await stopped.promise).toEqual({ kind: "requested" });
+    expect(committed.find((set) => set.includes("run:stopping"))).toEqual(["run:stopping"]);
+    expect(committed.some((set) => set.includes("part:failed"))).toBe(true);
 
     const part = (await session.view()).messages.find((message) => message.kind === "part");
 
@@ -126,9 +126,9 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     await using host = await open(fake, { store });
-    const session = await host.sessions.create();
-    stop = (run) => (run === null ? Promise.resolve() : session.run(run).stop());
-    const receipt = await session.send("Go.");
+    const id = asId<"session">("fenced");
+    stop = (run) => (run === null ? Promise.resolve() : host.session(id).run(run).stop());
+    const { session, receipt } = await host.sessions.start({ id, content: "Go." });
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
     expect(stopped).toEqual({ kind: "requested" });
@@ -155,7 +155,7 @@ describe("the stop fence (ADV round 2)", () => {
       };
 
       const { kernel, host } = await setup({ store: counted, execution: { kind: "admit-only" } });
-      const session = await host.sessions.create();
+      const { session } = await host.sessions.start({ content: "Hi." });
       const old = asId<"run">("old");
 
       for (let index = 0; index < count; index += 1)
@@ -183,7 +183,7 @@ describe("the stop fence (ADV round 2)", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "Hi." });
     const first = await b.host.session(session.id).send("First.");
     const step = b.host.execution.advance({ session: session.id, head: main });
     const turn = await b.script.started(1);
@@ -204,7 +204,7 @@ describe("the stop fence (ADV round 2)", () => {
     let bumps = 0;
 
     const store = hooked(memory, async (updates, inner) => {
-      const fence = updates.find((update) => update.event?.kind === "run");
+      const fence = updates.find((update) => update.events?.some((event) => event.kind === "run"));
 
       if (fence !== undefined && labels(updates).includes("run:stopping") && bumps < 2) {
         bumps += 1;
@@ -218,8 +218,7 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     const { kernel, host, script } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     const run = (await script.started(1)).input.run.id;
 
@@ -248,8 +247,7 @@ describe("the stop fence (ADV round 2)", () => {
     });
 
     const { kernel, host, script } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await script.started(1);
     const run = turn.input.run.id;
@@ -277,36 +275,39 @@ describe("move receipts and summary guards (ADV F-2)", () => {
       if (crashed) throw new Error("The host crashed.");
       const outcome = await inner.set(updates);
 
-      crashed = updates.some(
-        (update) => update.event?.kind === "head" && update.event.reason === "moved",
-      );
+      crashed = updates
+        .flatMap((update) => update.events ?? [])
+        .some((event) => event.kind === "head" && event.reason === "moved");
 
       return outcome;
     });
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
-    const base = await session.send("Base.");
+    const { session, receipt: base } = await a.host.sessions.start({ content: "Base." });
     await landing(a.kernel, session.id, main, [base.message], null);
+    const next = await session.send("Next.");
+    await landing(a.kernel, session.id, main, [next.message], null);
+    const { tip, nodes } = await session.tree();
     const id = asId<"receipt">("crash");
 
-    await expect(move(a.kernel, session.id, main, { kind: "start" }, { id })).rejects.toThrow(
+    await expect(move(a.kernel, session.id, main, tip, { id })).rejects.toThrow(
       "The host crashed.",
     );
 
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
-    const replay = await move(b.kernel, session.id, main, { kind: "start" }, { id });
+    const replay = await move(b.kernel, session.id, main, tip, { id });
+    const landed = await memory.refs.get(headRef(session.id, main));
     const moved = {
       kind: "moved",
-      revision: "",
-      position: { kind: "start" },
+      revision: landed?.revision,
+      position: { kind: "commit", id: nodes[0]?.id },
       summary: null,
-      handback: null,
+      handback: "Next.",
     };
 
     expect(await replay.status()).toEqual({ kind: "settled", outcome: moved });
     expect(await replay.settled()).toEqual(moved);
-    expect(await memory.refs.get(headRef(session.id, main))).toBeNull();
+    expect(landed?.target).toBe(nodes[0]?.id);
   });
 
   it("refuses a summary move whose head got pending input while it summarised (F-2 2, N2)", async () => {
@@ -323,18 +324,16 @@ describe("move receipts and summary guards (ADV F-2)", () => {
       },
     });
 
-    const session = await host.sessions.create();
-    const base = await session.send("Base.");
+    const { session, receipt: base } = await host.sessions.start({ content: "Base." });
     await landing(kernel, session.id, main, [base.message], null);
+    const next = await session.send("Next.");
+    await landing(kernel, session.id, main, [next.message], null);
     const tip = await kernel.store.refs.get(headRef(session.id, main));
 
-    const receipt = await move(
-      kernel,
-      session.id,
-      main,
-      { kind: "start" },
-      { expect: tip?.revision, abandoned: { summarize: {} } },
-    );
+    const receipt = await move(kernel, session.id, main, (await session.tree()).tip, {
+      expect: tip?.revision,
+      abandoned: { summarize: {} },
+    });
 
     await entered.promise;
     const queued = await session.send("Queued.", { delivery: "queue" });
@@ -347,11 +346,11 @@ describe("move receipts and summary guards (ADV F-2)", () => {
 });
 
 describe("integration of round 2 (§61–§63)", () => {
-  it("lands no input into a run another instance fenced: the landing expects the run unfenced (A-2 N4, N7)", async () => {
+  it("lands no input into a run another instance fenced: the landing lands under the run's fence (A-2 N4, N7)", async () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "Hi." });
     await b.host.session(session.id).send("First.");
     const step = b.host.execution.advance({ session: session.id, head: main });
     const turn = await b.script.started(1);
@@ -385,8 +384,7 @@ describe("integration of round 2 (§61–§63)", () => {
     });
 
     const { host, script } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    const sent = await session.send("Go.");
+    const { session, receipt: sent } = await host.sessions.start({ content: "Go." });
     withdraw = () => sent.stop();
 
     expect(await host.execution.advance({ session: session.id, head: main })).toEqual({
@@ -416,9 +414,8 @@ describe("integration of round 2 (§61–§63)", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session, receipt: original } = await a.host.sessions.start({ content: "Original." });
     sessionName = receiptRef(session.id, id);
-    const original = await session.send("Original.");
     await landing(a.kernel, session.id, main, [original.message], null);
     const old = await memory.refs.get(headRef(session.id, main));
 
@@ -463,8 +460,8 @@ describe("integration of round 2 (§61–§63)", () => {
     );
 
     await using host = await open(fake, { plugins: [observer] });
-    const session = await host.sessions.create();
-    await (await session.send("First?")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "First?" });
+    await started.settled();
     observed.length = 0;
     const original = fake.models.streamSimple.bind(fake.models);
     let stop: () => Promise<unknown> = async () => undefined;
@@ -492,7 +489,7 @@ describe("integration of round 2 (§61–§63)", () => {
     const receipt = await session.send("Second?");
     stop = async () => {
       stop = async () => undefined;
-      await session.run(runOf((await session.view()).messages, "Second?")).stop();
+      await session.run(findRun((await session.view()).messages, "Second?")).stop();
     };
 
     expect(await receipt.settled()).toEqual({ kind: "stopped" });
@@ -518,7 +515,7 @@ describe("integration of round 2 (§61–§63)", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: memory, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const session = await settledChat(a.host, a.script);
     const head = { session: session.id, head: main };
     lease = leaseRef(session.id, main);
     const reports: string[] = [];
@@ -536,7 +533,7 @@ describe("integration of round 2 (§61–§63)", () => {
   });
 });
 
-function runOf(messages: readonly Message[], content: string): RunId {
+function findRun(messages: readonly Message[], content: string): RunId {
   for (const message of messages)
     if (
       message.kind === "user" &&

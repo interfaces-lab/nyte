@@ -1,9 +1,11 @@
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// Entries in `directory` written at or after `since` (epoch ms). Blockmaps and
-// electron-builder's config dumps are skipped. A directory stands in for the
-// app bundles inside it when it has any.
+/**
+ * Entries in `directory` written at or after `since` (epoch ms). Blockmaps and
+ * electron-builder's config dumps are skipped. A directory stands in for the
+ * app bundles inside it when it has any.
+ */
 export function artifacts(directory, since) {
   const rows = [];
 

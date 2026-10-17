@@ -22,7 +22,7 @@ import {
   rewriteInitialRequest,
 } from "./replay.ts";
 import { TurnRelay } from "./turn-relay.ts";
-import { isRecord, parseOutputEvent } from "./wire.ts";
+import { matchesRecord, parseOutputEvent } from "./wire.ts";
 import type {
   AnthropicStreamEvent,
   JsonRecord,
@@ -107,7 +107,7 @@ class AsyncQueue<T> {
         settled = true;
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
-        const index = this.waiters.indexOf(waiter);
+        const index = this.waiters.findIndex((pending) => pending === waiter);
 
         if (index >= 0) this.waiters.splice(index, 1);
         fn();
@@ -179,7 +179,7 @@ function canonicalJson(value: unknown): string {
 
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
 
-  if (!isRecord(value)) throw new Error("Expected a JSON value");
+  if (!matchesRecord(value)) throw new Error("Expected a JSON value");
 
   return `{${Object.entries(value)
     .filter(([, child]) => child !== undefined)
@@ -741,7 +741,7 @@ async function acquireProcess(
   });
 }
 
-export async function closeClaudeProcesses(sessionId?: string): Promise<void> {
+async function closeClaudeProcesses(sessionId?: string): Promise<void> {
   const workers = await withManagerLock(() => {
     if (sessionId) {
       const worker = processCache.get(sessionId);

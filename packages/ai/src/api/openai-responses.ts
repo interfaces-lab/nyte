@@ -1,9 +1,8 @@
 import OpenAI from "openai";
+import type { Stream } from "openai/streaming";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
-import { clampThinkingLevel } from "../models.ts";
 import { applyServiceTierPricing } from "../model-pricing.ts";
 import type {
-  AssistantMessage,
   CacheRetention,
   Context,
   Model,
@@ -25,42 +24,34 @@ import {
   resolveTranscriptTools,
 } from "../utils/transcript.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { getClientApiKey, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
+import { runAssistantStream } from "./assistant-stream.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import {
   convertResponsesMessages,
   convertResponsesTools,
-  processResponsesStream,
-  stripStreamingScratchState,
-  withPriorityTier,
-} from "./openai-responses-shared.ts";
+  type ResponsesInput,
+  type ResponsesTool,
+} from "./openai-responses-convert.ts";
+import { processResponsesStream, withPriorityTier } from "./openai-responses-stream.ts";
 import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
-import { buildBaseOptions } from "./simple-options.ts";
+import { buildBaseOptions, simpleReasoningEffort } from "./simple-options.ts";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 
 // OpenAI Responses rejects max_output_tokens below 16.
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
-function detectSessionAffinityFormat(
-  model: Pick<Model<"openai-responses">, "provider" | "baseUrl">,
-) {
-  return model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai")
-    ? "openrouter"
-    : "openai";
-}
-
 function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCompat> {
   return {
     supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
     supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
-    sessionAffinityFormat:
-      model.compat?.sessionAffinityFormat ?? detectSessionAffinityFormat(model),
+    sessionAffinityFormat: model.compat?.sessionAffinityFormat ?? "openai",
     supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
     supportsStrictMode: model.compat?.supportsStrictMode ?? false,
     supportsOpenAIGrammarTools: model.compat?.supportsOpenAIGrammarTools ?? false,
@@ -91,6 +82,18 @@ function getPromptCacheOptions(
   return undefined;
 }
 
+/**
+ * The Responses request body as sent. The SDK's create params cannot carry replayed checkpoint
+ * items, function tools without `strict`, or reasoning efforts newer than its union, such as
+ * "max", which the API accepts.
+ */
+type ResponsesRequest = Omit<ResponseCreateParamsStreaming, "input" | "tools" | "reasoning"> & {
+  input: ResponsesInput;
+  tools?: ResponsesTool[];
+  reasoning?: { effort: string; summary?: "auto" | "concise" | "detailed" | null };
+  prompt_cache_options?: { mode?: "explicit"; ttl?: "30m" };
+};
+
 export interface OpenAIResponsesOptions extends StreamOptions {
   reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   reasoningSummary?: "auto" | "detailed" | "concise" | null;
@@ -101,6 +104,7 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 /**
  * Compact through OpenAI's stateless endpoint, preserving its complete output window.
  * https://developers.openai.com/api/docs/guides/compaction#standalone-compact-endpoint
+ * Instructions travel separately, so the input does not repeat the system message.
  */
 export async function compactOpenAIResponsesContext(
   model: Model<"openai-responses">,
@@ -125,7 +129,6 @@ export async function compactOpenAIResponsesContext(
     cacheRetention,
   });
 
-  // Instructions travel separately so the request does not duplicate the system message.
   const initialSystemMessage = getInitialSystemMessage(transcript.messages);
   const instructions = initialSystemMessage
     ? getSystemMessageText(initialSystemMessage)
@@ -141,9 +144,7 @@ export async function compactOpenAIResponsesContext(
     false,
   ).input;
 
-  const requestOptions: NonNullable<Parameters<typeof client.responses.compact>[1]> = {
-    maxRetries: 0,
-  };
+  const requestOptions: OpenAI.RequestOptions = { maxRetries: 0 };
 
   const serviceTier = options?.serviceTier === "priority" ? "priority" : undefined;
 
@@ -153,11 +154,12 @@ export async function compactOpenAIResponsesContext(
 
   const response = await retryProviderRequest(
     () =>
-      client.responses
-        .compact(
-          { model: model.id, input, instructions, service_tier: serviceTier },
-          requestOptions,
-        )
+      client
+        .post("/responses/compact", {
+          body: { model: model.id, input, instructions, service_tier: serviceTier },
+          ...requestOptions,
+          __security: { bearerAuth: true },
+        })
         .asResponse(),
     {
       maxRetries: options?.maxRetries,
@@ -174,42 +176,24 @@ export async function compactOpenAIResponsesContext(
   return readOpenAICompactResponse(response, model, serviceTier);
 }
 
-/**
- * Generate function for OpenAI Responses API
- */
+/** Streams an OpenAI Responses request. */
 export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> = (
   model: Model<"openai-responses">,
   context: TranscriptContext,
   requested?: OpenAIResponsesOptions,
 ): AssistantMessageEventStream => {
   const options = withPriorityTier(requested);
-  const stream = new AssistantMessageEventStream();
 
   const normalizedContext = resolveTranscript(
     context,
     getCompat(model).supportsMidConvoSystemMessages,
   );
 
-  (async () => {
-    const output: AssistantMessage = {
-      role: "assistant",
-      content: [],
-      api: model.api,
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "pending",
-      timestamp: Date.now(),
-    };
-
-    try {
+  return runAssistantStream(
+    model,
+    options?.signal,
+    "OpenAI Responses",
+    async (output, stream) => {
       const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
       const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
       const compat = getCompat(model);
@@ -228,7 +212,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         compat,
       });
 
-      let params = buildParams(
+      const params = buildParams(
         model,
         normalizedContext,
         options,
@@ -237,11 +221,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         grammarToolInputProperties,
       );
 
-      const nextParams = await options?.onPayload?.(params, model);
-
-      if (nextParams !== undefined) {
-        params = nextParams as ResponseCreateParamsStreaming;
-      }
+      await options?.onPayload?.(params, model);
 
       const requestOptions: OpenAI.RequestOptions = { maxRetries: 0 };
 
@@ -250,7 +230,15 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
 
       const result = await retryProviderRequest(
-        () => client.responses.create(params, requestOptions).withResponse(),
+        () =>
+          client
+            .post<Stream<unknown>>("/responses", {
+              body: params,
+              ...requestOptions,
+              stream: true,
+              __security: { bearerAuth: true },
+            })
+            .withResponse(),
         {
           maxRetries: options?.maxRetries,
           maxRetryDelayMs: options?.maxRetryDelayMs,
@@ -270,35 +258,13 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         applyServiceTierPricing: (usage, serviceTier) =>
           applyServiceTierPricing(usage, serviceTier, model),
       });
-
-      if (options?.signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      if (output.stopReason === "pending") {
-        throw new Error("OpenAI Responses stream ended without a stop reason");
-      }
-
-      if (output.stopReason === "aborted" || output.stopReason === "error") {
-        throw new Error(output.errorMessage || "An unknown error occurred");
-      }
-
-      stream.push({ type: "done", reason: output.stopReason, message: output });
-      stream.end();
-    } catch (error) {
-      stripStreamingScratchState(output.content);
-
-      output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatProviderError(
+    },
+    (error) =>
+      formatProviderError(
         normalizeProviderError(error),
         `${model.provider === "openai" ? "OpenAI" : model.provider} API error`,
-      );
-      stream.push({ type: "error", reason: output.stopReason, error: output });
-      stream.end();
-    }
-  })();
-
-  return stream;
+      ),
+  );
 };
 
 export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOptions> = (
@@ -308,21 +274,10 @@ export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOption
 ): AssistantMessageEventStream => {
   getClientApiKey(model.provider, options?.apiKey, options?.headers);
 
-  const base = {
-    ...buildBaseOptions(model, context, options, options?.apiKey),
-    toolChoice: options?.toolChoice,
-  } satisfies OpenAIResponsesOptions;
-
-  const clampedReasoning = options?.reasoning
-    ? clampThinkingLevel(model, options.reasoning)
-    : undefined;
-
-  const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
-
   return stream(model, context, {
-    ...base,
-    reasoningEffort,
-  } satisfies OpenAIResponsesOptions);
+    ...buildBaseOptions(model, context, options),
+    reasoningEffort: simpleReasoningEffort(model, options?.reasoning),
+  });
 };
 
 function createClient(input: {
@@ -371,6 +326,15 @@ function createClient(input: {
   });
 }
 
+/**
+ * The Responses request body.
+ *
+ * - Later system messages anchor their own tool additions, and `addedToolNames` on a tool result
+ *   only loads request-list tools the transcript did not anchor, so nothing is declared twice.
+ * - Stateless (`store: false`) providers continue reasoning across turns only when every response
+ *   carries its encrypted reasoning back, so xAI and Copilot always request it.
+ * - `samplingParams` merge last, so custom keys override the named request fields.
+ */
 function buildParams(
   model: Model<"openai-responses">,
   context: TranscriptContext,
@@ -389,8 +353,6 @@ function buildParams(
       ? "tool-search"
       : undefined;
 
-  // Later system messages anchor their own additions; `addedToolNames` on a tool result
-  // only loads request-list tools the transcript did not anchor, so nothing is declared twice.
   const transcriptTools = resolveTranscriptTools(context.messages, deferredToolsMode !== undefined);
 
   const toolPlacement = splitDeferredTools(
@@ -410,9 +372,7 @@ function buildParams(
     },
   });
 
-  const params: ResponseCreateParamsStreaming & {
-    prompt_cache_options?: { mode?: "explicit"; ttl?: "30m" };
-  } = {
+  const params: ResponsesRequest = {
     model: model.id,
     input: messages,
     stream: true,
@@ -452,30 +412,17 @@ function buildParams(
         ? (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort)
         : "medium";
 
-      params.reasoning = {
-        // SAFETY: effort is the caller's level or the model's mapped level; the API accepts
-        // levels such as "max" that the SDK's ReasoningEffort union does not list yet.
-        effort: effort as NonNullable<typeof params.reasoning>["effort"],
-        summary: options?.reasoningSummary || "auto",
-      };
+      params.reasoning = { effort, summary: options?.reasoningSummary || "auto" };
       params.include = ["reasoning.encrypted_content"];
     } else if (model.provider !== "github-copilot" && model.thinkingLevelMap?.off !== null) {
-      params.reasoning = {
-        // SAFETY: the off level comes from model metadata written for this API.
-        effort: (model.thinkingLevelMap?.off ?? "none") as NonNullable<
-          typeof params.reasoning
-        >["effort"],
-      };
+      params.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
     }
 
-    // Stateless (store: false) providers can only continue reasoning across
-    // turns when every response carries its encrypted reasoning back.
     if (model.provider === "xai" || model.provider === "github-copilot") {
       params.include = ["reasoning.encrypted_content"];
     }
   }
 
-  // Last so custom keys override the named request fields.
   if (options?.samplingParams) {
     Object.assign(params, options.samplingParams);
   }

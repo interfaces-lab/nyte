@@ -3,6 +3,7 @@ import type { PressableProps } from "react-native";
 import type { AnimationConfig } from "./picker-animated-text-types.ts";
 import { GlassView, type GlassViewProps } from "expo-glass-effect";
 import type React from "react";
+// oxlint-disable-next-line no-restricted-imports -- a background change starts a Reanimated color tween from the color on screen
 import { memo, useCallback, useEffect, useRef } from "react";
 import {
   Pressable,

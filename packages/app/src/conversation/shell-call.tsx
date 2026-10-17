@@ -1,25 +1,30 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
-import { formatToolDuration, toolOutput, toolStatus } from "../view-helpers.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import {
+  condensedCommand,
+  formatDuration,
+  toolOutput,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { activityStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
-import { condensedCommand, toolVerbs } from "./tool-copy.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
-export type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
+type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
 type ShellTokenType =
   | "whitespace"
@@ -82,7 +87,7 @@ const styles = create({
     display: "block",
     paddingInline: space.s2,
     paddingBottom: space.s1_5,
-    color: role.contentTertiary,
+    color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
@@ -104,15 +109,15 @@ const styles = create({
     backgroundColor: role.bgBase,
     "--_icon-default": {
       default: "inline-flex",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
+      ":hover": { [media.hover]: "none" },
     },
     "--_icon-hover": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
+      ":hover": { [media.hover]: "inline-flex" },
     },
     "--_actions": {
       default: 0,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":hover": { [media.hover]: 1 },
       ":focus-within": 1,
     },
   },
@@ -240,7 +245,7 @@ function outputTail(text: string) {
 
 /** How long core measured the command took; a cut output already says so in its own last line. */
 function Facts({ durationMs }: { readonly durationMs: number }): ReactElement {
-  return <span {...props(styles.facts)}>{formatToolDuration(durationMs)}</span>;
+  return <span {...props(styles.facts)}>{formatDuration(durationMs)}</span>;
 }
 
 function CommandCode({
@@ -387,13 +392,16 @@ export const ShellCallView = memo(function ShellCallView({
   const running = status.tense === "running";
   const [open, setOpen] = useState(false);
   const { state } = message;
+
   const raw = running
     ? state.phase === "running"
       ? (state.progress?.text ?? "")
       : ""
     : toolOutput(state);
+
   const durationMs =
     message.status.kind === "settled" ? message.status.endedAt - message.at : undefined;
+
   const output = useMemo(() => terminalText(raw).trim(), [raw]);
   const tokens = useMemo(() => shellTokens(toolClass.command), [toolClass.command]);
   const description = toolClass.description?.trim() ?? "";
@@ -403,7 +411,8 @@ export const ShellCallView = memo(function ShellCallView({
       ? condensedCommand(toolClass.command, cwd)
       : `${description.charAt(0).toUpperCase()}${description.slice(1)}`;
 
-  const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
+  const verb =
+    status.tense === "none" || description !== "" ? undefined : toolVerbs(toolClass)[status.tense];
   const heading = verb === undefined ? label : `${verb} ${label}`;
   const follow = running ? output : undefined;
 

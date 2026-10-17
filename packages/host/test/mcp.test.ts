@@ -6,7 +6,8 @@ import { LATEST_PROTOCOL_VERSION, isJsonRpcRequest } from "@earendil-works/pi-mc
 import type { McpTransport } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
-import { isPart, memoryStore, tool } from "@nyte-ai/core";
+import { isPart, tool } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import type { Host } from "@nyte-ai/core";
 import type { McpView } from "@nyte-ai/schema";
@@ -116,7 +117,7 @@ it("calls a tool of a server in ~/.nyte/mcp.json as mcp__<server>__<tool>", asyn
 
   const folder = await home({ fake: { url: "https://fake.test/mcp", exposure: "direct" } });
   await using host = await open(folder, fake, () => fakeServer());
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -149,7 +150,7 @@ it("calls a tool of a server in ~/.nyte/mcp.json as mcp__<server>__<tool>", asyn
 it("gives tools codemode exposure by default and applies an edit to mcp.json", async () => {
   const folder = await home({ fake: { url: "https://fake.test/mcp" } });
   await using host = await open(folder, fakeModels(), () => fakeServer());
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -216,7 +217,7 @@ it("shows a dropped connection as failed and reconnects", async () => {
   let connects = 0;
   const folder = await home({ fake: { url: "https://fake.test/mcp" } });
   await using host = await open(folder, fakeModels(), () => fakeServer(++connects === 1));
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
 
   const views = host
     .workspace((await session.info()).workspace)
@@ -242,7 +243,7 @@ it("adds, turns off, reconnects and removes a server through mcp.json, keeping t
     return fakeServer();
   });
 
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const mcp = host.workspace((await session.info()).workspace).mcp;
   const views = mcp.watch()[Symbol.asyncIterator]();
   await next(views, (view) => view.servers.length === 0);
@@ -302,7 +303,7 @@ it("waits for sign-in when the server needs OAuth, and refuses to sign in to a c
     };
   });
 
-  const session = await host.sessions.create();
+  const { session } = await host.sessions.start({ content: "Hi." });
   const mcp = host.workspace((await session.info()).workspace).mcp;
   const views = mcp.watch()[Symbol.asyncIterator]();
 
@@ -326,6 +327,46 @@ it("waits for sign-in when the server needs OAuth, and refuses to sign in to a c
     kind: "invalid",
     message: "files runs a command and has no sign-in.",
   });
+});
+
+it("stops a sign-in at once when its steps end, so the next one can start", async () => {
+  const silent = createServer(() => undefined);
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+  const address = silent.address();
+  assert(address !== null && typeof address === "object");
+  const url = `http://127.0.0.1:${String(address.port)}/mcp`;
+  const folder = await home({ slow: { url } });
+
+  const hub = createMcpHub({ home: folder, connect: () => fakeServer() })({
+    secrets: {
+      get: async () => undefined,
+      set: async () => undefined,
+      delete: async () => undefined,
+    },
+  });
+
+  const workspace = { id: asId<"workspace">("w"), root: null, trusted: false };
+  const first = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
+  const pending = first.next();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const started = Date.now();
+  await first.return?.();
+
+  expect(await pending).toEqual({ done: true, value: undefined });
+  expect(Date.now() - started).toBeLessThan(500);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const second = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
+  const next = await Promise.race([
+    second.next(),
+    new Promise((resolve) => setTimeout(() => resolve("still running"), 300)),
+  ]);
+
+  expect(next).not.toMatchObject({ value: { reason: "A sign-in to slow is already running." } });
+  await second.return?.();
+  await hub.close();
+  silent.closeAllConnections();
+  silent.close();
 });
 
 it("keeps concurrent edits, writes a project override explicitly, refuses clashing names, and cancels a waiting watch", async () => {
@@ -381,44 +422,4 @@ it("keeps concurrent edits, writes a project override explicitly, refuses clashi
   expect(await pending).toEqual({ done: true, value: undefined });
   expect(Date.now() - started).toBeLessThan(100);
   await hub.close();
-});
-
-it("stops a sign-in at once when its steps end, so the next one can start", async () => {
-  const silent = createServer(() => undefined);
-  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
-  const address = silent.address();
-  assert(address !== null && typeof address === "object");
-  const url = `http://127.0.0.1:${String(address.port)}/mcp`;
-  const folder = await home({ slow: { url } });
-
-  const hub = createMcpHub({ home: folder, connect: () => fakeServer() })({
-    secrets: {
-      get: async () => undefined,
-      set: async () => undefined,
-      delete: async () => undefined,
-    },
-  });
-
-  const workspace = { id: asId<"workspace">("w"), root: null, trusted: false };
-  const first = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
-  const pending = first.next();
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  const started = Date.now();
-  await first.return?.();
-
-  expect(await pending).toEqual({ done: true, value: undefined });
-  expect(Date.now() - started).toBeLessThan(500);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-
-  const second = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
-  const next = await Promise.race([
-    second.next(),
-    new Promise((resolve) => setTimeout(() => resolve("still running"), 300)),
-  ]);
-
-  expect(next).not.toMatchObject({ value: { reason: "A sign-in to slow is already running." } });
-  await second.return?.();
-  await hub.close();
-  silent.closeAllConnections();
-  silent.close();
 });

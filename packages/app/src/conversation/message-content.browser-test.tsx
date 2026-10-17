@@ -73,16 +73,13 @@ export async function run(): Promise<string> {
     );
 
   try {
-    render(
-      '<skill name="review" location="/skills/review/SKILL.md">\nHidden instructions\n</skill>\n\nFix the regression. https://example.com/test',
-    );
+    render("[$review](/skills/review/SKILL.md) Fix the regression. https://example.com/test");
     await paint();
     check(
       host.querySelector('[data-composer-readonly][contenteditable="false"]') !== null,
       "read-only editor root",
     );
     check(host.textContent?.includes("/review") === true, "skill invocation renders a chip");
-    check(!host.textContent?.includes("Hidden instructions"), "instructions stay hidden");
     check(
       host.querySelector('[data-composer-chip="skill"] button[aria-label^="Remove " ]') === null,
       "readonly has no remove control",

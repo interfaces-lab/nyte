@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { DevRow } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { Plugin } from "vite";
+import { normalizePath, type Plugin } from "vite";
 
 export { stylex } from "@nyte-ai/ui/stylex";
 
@@ -29,6 +29,148 @@ export function dropInlinedGhosttyWasm(): Plugin {
   };
 }
 
+/**
+ * Each Central glyph module (`Icon*\/index.mjs`) is bundled standalone and
+ * inlines its own copy of the icon base component, about 1.3 KB per glyph.
+ * The import resolves every glyph against the package's one `CentralIconBase`
+ * module instead, so the base ships once. A glyph module that no longer has
+ * the bundled shape fails the build rather than shipping its copy.
+ */
+export function shareCentralIconBase(): Plugin {
+  const inlinedBase =
+    /^(import \w+ from"react";)import \w+ from"react";.*?;(\w+)\.displayName="CentralIconBase";.*?;(var \w+=\w+\.memo\()/su;
+
+  return {
+    name: "nyte:share-central-icon-base",
+    transform: {
+      filter: { id: /\/@central-icons-react\/[^/]+\/Icon[^/]+\/index\.mjs(?:\?|$)/u },
+      handler(code, id) {
+        const match = inlinedBase.exec(code);
+
+        if (match === null) this.error(`${id} no longer inlines CentralIconBase as expected`);
+
+        const [inlined, react, base, glyph] = match;
+
+        return {
+          code: `${react}import{CentralIconBase as ${base}}from"../CentralIconBase/index.mjs";${glyph}${code.slice(inlined.length)}`,
+          map: null,
+        };
+      },
+    },
+  };
+}
+
+/** A module the interface loads on first use, as an entry chunk of its own. */
+interface DeferredEntry {
+  /** File URL of the module that publishes the entry's runtime with `publishDeferred`. */
+  readonly module: string;
+  /** Paths under `node_modules/` that may load only through this entry. */
+  readonly packages: readonly string[];
+}
+
+const DEFERRED_URLS = normalizePath(
+  fileURLToPath(new URL("./src/deferred-urls.ts", import.meta.url)),
+);
+
+/**
+ * Builds each entry as a chunk of its own and fills `src/deferred-urls.ts`
+ * with their URLs, which `loadDeferred` injects as module scripts. The build
+ * fails if a listed package reaches the startup chunks, so a static import
+ * cannot quietly pull a deferred surface back into startup.
+
+ */
+export function deferredChunks(entries: Readonly<Record<string, DeferredEntry>>): Plugin {
+  const modules = Object.entries(entries).map(
+    ([name, entry]) => [name, normalizePath(fileURLToPath(entry.module))] as const,
+  );
+
+  const deferredModules = new Set(modules.map(([, module]) => module));
+
+  const forbidden = Object.values(entries).flatMap((entry) =>
+    entry.packages.map((path) => `/node_modules/${path}`),
+  );
+
+  let serving = false;
+
+  return {
+    name: "nyte:deferred-chunks",
+    configResolved(config) {
+      serving = config.command === "serve";
+    },
+    load(id) {
+      if (normalizePath(id.split("?", 1)[0] ?? id) !== DEFERRED_URLS) return;
+
+      const urls = modules.map(([name, module]) => {
+        const url = serving
+          ? JSON.stringify(`/@fs/${module}`)
+          : `import.meta.ROLLUP_FILE_URL_${this.emitFile({ type: "chunk", id: module, name })}`;
+
+        return `${JSON.stringify(name)}: ${url}`;
+      });
+
+      return `export default { ${urls.join(", ")} };`;
+    },
+    generateBundle(_options, bundle) {
+      const startup = Object.values(bundle)
+        .filter(
+          (output) =>
+            output.type === "chunk" &&
+            output.isEntry &&
+            !deferredModules.has(output.facadeModuleId ?? ""),
+        )
+        .map((output) => output.fileName);
+
+      const visited = new Set<string>();
+
+      for (const file of startup) {
+        if (visited.has(file)) continue;
+        visited.add(file);
+        const chunk = bundle[file];
+
+        if (chunk?.type !== "chunk") continue;
+
+        const leaked = Object.keys(chunk.modules).find((id) =>
+          forbidden.some((path) => id.includes(path)),
+        );
+
+        if (leaked !== undefined) {
+          this.error(`${leaked} reached the startup chunks; load it through its deferred entry`);
+        }
+
+        startup.push(...chunk.imports);
+      }
+    },
+  };
+}
+
+const KATEX = "\0nyte:katex";
+
+/**
+ * Streamdown imports katex only for its `latexGuard` option, which Nyte never
+ * sets, so the import resolves to a module that refuses to render. Any other
+ * importer fails the build: math rendering would need the real package.
+ */
+export function withoutKatex(): Plugin {
+  return {
+    name: "nyte:without-katex",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (source !== "katex") return;
+
+      if (importer?.includes("/node_modules/@lobehub/streamdown/") !== true) {
+        this.error(`katex is stubbed out for Streamdown; ${importer ?? "an entry"} imports it`);
+      }
+
+      return KATEX;
+    },
+    load(id) {
+      if (id !== KATEX) return;
+
+      return 'export function renderToString() { throw new Error("Nyte renders no LaTeX"); }';
+    },
+  };
+}
+
 const SHELL_DIRECTORY = fileURLToPath(new URL("../canvas/dist/shell/", import.meta.url));
 
 const SHELL_MISSING =
@@ -45,6 +187,11 @@ const SHELL_TYPES = new Map([
   [".map", "application/json"],
 ]);
 
+/**
+ * Serves the canvas shell under `/canvas` in development and copies it into
+ * the build. The sandboxed frame's origin is opaque, so its module script,
+ * stylesheet and fonts are CORS requests.
+ */
 export function canvasShell(): Plugin {
   let outDir = "dist";
 
@@ -75,8 +222,6 @@ export function canvasShell(): Plugin {
         void readFile(target).then(
           (body) => {
             response.setHeader("Content-Type", type);
-            // The sandboxed frame's origin is opaque, so its module script,
-            // stylesheet and fonts are CORS requests.
             response.setHeader("Access-Control-Allow-Origin", "*");
 
             if (type.startsWith("text/html")) {
@@ -116,7 +261,7 @@ const ROW = Type.Object({
   data: Type.String(),
 });
 
-function rowsOf(body: string): readonly DevRow[] {
+function parseRows(body: string): readonly DevRow[] {
   try {
     return Value.Parse(Type.Array(Type.Unknown()), JSON.parse(body)).filter((item) =>
       Value.Check(ROW, item),
@@ -159,7 +304,7 @@ export function devConsole(): Plugin {
           const chunks: Buffer[] = [];
           request.on("data", (chunk: Buffer) => chunks.push(chunk));
           request.on("end", () => {
-            accept(rowsOf(Buffer.concat(chunks).toString("utf8")));
+            accept(parseRows(Buffer.concat(chunks).toString("utf8")));
             response.statusCode = 204;
             response.end();
           });

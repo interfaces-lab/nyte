@@ -9,14 +9,19 @@ interface ProviderRetryOptions {
   maxRetries?: number;
   maxRetryDelayMs?: number;
   signal?: AbortSignal;
+  /** Vetoes a retry the SDK policy would allow, for provider-specific terminal failures. */
+  retryable?: (error: unknown) => boolean;
 }
+
+/** A server asked to wait longer than `maxRetryDelayMs` before retrying. */
+export class RetryDelayExceededError extends Error {}
 
 interface ProviderError extends Error {
   status: number | undefined;
   headers: Headers | undefined;
 }
 
-function isProviderError(error: unknown): error is ProviderError {
+function carriesHttpStatus(error: unknown): error is ProviderError {
   if (!(error instanceof Error) || !("status" in error) || !("headers" in error)) return false;
 
   return (
@@ -26,7 +31,7 @@ function isProviderError(error: unknown): error is ProviderError {
 }
 
 /** Mirrors the pinned OpenAI/Anthropic SDK retry policy; review when either SDK is upgraded. */
-function isRetryableProviderError(error: ProviderError): boolean {
+function sdkPolicyRetries(error: ProviderError): boolean {
   const shouldRetry = error.headers?.get("x-should-retry");
 
   if (shouldRetry === "true") return true;
@@ -48,7 +53,7 @@ function validateServerRetryDelayMs(
   const maxDelayMs = maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
 
   if (maxDelayMs > 0 && delayMs > maxDelayMs) {
-    throw new Error(
+    throw new RetryDelayExceededError(
       `Server requested ${Math.ceil(delayMs / 1000)}s retry delay (max: ${Math.ceil(maxDelayMs / 1000)}s). ${providerErrorMessage}`,
     );
   }
@@ -97,8 +102,10 @@ function createAbortError(): Error {
  * their backoff sleep interruptible. Their built-in retry timers ignore the
  * request AbortSignal, so callers must invoke the SDK with `maxRetries: 0` and
  * wrap the request with this helper. Provider-requested delays above
- * `maxRetryDelayMs` fail immediately (60 seconds by default); set it to zero to
- * disable the limit.
+ * `maxRetryDelayMs` fail immediately with a {@link RetryDelayExceededError} (60
+ * seconds by default); set it to zero to disable the limit. Adapters without an SDK
+ * throw errors carrying `status` and `headers` to take part in the same policy. Each retry is a
+ * fresh SDK request, so X-Stainless-Retry-Count stays zero.
  */
 export async function retryProviderRequest<T>(
   request: () => Promise<T>,
@@ -109,12 +116,16 @@ export async function retryProviderRequest<T>(
 
   for (;;) {
     try {
-      // Each retry is a fresh SDK request, so X-Stainless-Retry-Count remains zero.
       return await request();
     } catch (error) {
       if (options.signal?.aborted) throw createAbortError();
 
-      if (retriesRemaining <= 0 || !isProviderError(error) || !isRetryableProviderError(error))
+      if (
+        retriesRemaining <= 0 ||
+        !carriesHttpStatus(error) ||
+        !sdkPolicyRetries(error) ||
+        options.retryable?.(error) === false
+      )
         throw error;
 
       const retryIndex = maxRetries - retriesRemaining;

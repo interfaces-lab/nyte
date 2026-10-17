@@ -142,7 +142,7 @@ export const RELAY_OPERATIONS = [
   "workspaces.add",
   "workspaces.forget",
   "sessions.watch",
-  "sessions.create",
+  "sessions.start",
   "sessions.list",
   "session.info",
   "session.update",
@@ -173,6 +173,8 @@ export const RELAY_OPERATIONS = [
   "part.close",
   "workspace.info",
   "workspace.watch",
+  "workspace.commands",
+  "workspace.command",
   "mcp.watch",
   "mcp.reconnect",
   "mcp.setEnabled",
@@ -186,6 +188,7 @@ export const RELAY_OPERATIONS = [
   "workspace.patches",
   "workspace.files",
   "workspace.git",
+  "workspace.github",
   "workspace.browser",
   "jobs.start",
   "jobs.recover",
@@ -224,6 +227,11 @@ export const RELAY_OPERATIONS = [
   "git.commit",
   "git.branch",
   "git.push",
+  "github.account",
+  "github.signIn",
+  "github.signOut",
+  "github.state",
+  "github.createPullRequest",
   "browser.open",
   "browser.adopt",
   "browser.list",
@@ -253,7 +261,7 @@ export const RELAY_OPERATIONS = [
 ] as const;
 
 /** The host's discovery routes, each a `GET`; only `identity` takes a query, its `?nonce=`. */
-export const RELAY_DISCOVERY = {
+const RELAY_DISCOVERY = {
   identity: "/.nyte/identity",
   describe: "/.nyte/describe",
 } as const;
@@ -287,7 +295,6 @@ export const RelayRequestHeaders = strict({
   authorization: Type.Optional(HeaderValue),
   "content-type": Type.Optional(HeaderValue),
   accept: Type.Optional(HeaderValue),
-  "last-event-id": Type.Optional(HeaderValue),
   "x-nyte-input": Type.Optional(HeaderValue),
   "x-nyte-channel": Type.Optional(HeaderValue),
   "x-nyte-stream": Type.Optional(HeaderValue),
@@ -309,7 +316,7 @@ export const RelayResponseHeaders = strict({
 export type RelayResponseHeaders = Static<typeof RelayResponseHeaders>;
 
 /** Success or failure only: no informational or redirect status can be relayed. */
-export const RelayStatus = Type.Union([
+const RelayStatus = Type.Union([
   Type.Integer({ minimum: 200, maximum: 299 }),
   Type.Integer({ minimum: 400, maximum: 599 }),
 ]);
@@ -408,7 +415,6 @@ export const RELAY_REQUEST_HEADER_NAMES = [
   "authorization",
   "content-type",
   "accept",
-  "last-event-id",
   "x-nyte-input",
   "x-nyte-channel",
   "x-nyte-stream",
@@ -456,7 +462,7 @@ export function relayResponseHeaders(headers: Headers): RelayResponseHeaders {
  * `discovery` is the host's identity or description and takes `GET`;
  * `release` is the phone dropping its own credential and takes `DELETE`.
  */
-export interface PublicRelayTarget {
+interface PublicRelayTarget {
   readonly kind: "api" | "discovery" | "release";
   readonly environmentId: string;
   /** Path and query as the desktop receives them. */

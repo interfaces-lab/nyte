@@ -1,149 +1,225 @@
-import type { Configuration } from "./configuration.ts";
-import type { FileChange } from "./files.ts";
-import type {
-  CallId,
-  CommitId,
-  HeadName,
-  MessageId,
-  PartId,
-  PrincipalId,
-  RunId,
-  Seq,
-} from "./ids.ts";
-import type { Delivery, MessageSource, Schedule, UserContent } from "./messages.ts";
-import type { Failure } from "./model/message.ts";
-import type { ContextView, Usage } from "./models.ts";
-import type { Placement } from "./parts.ts";
-import type { Json } from "./primitives.ts";
-import type { BackgroundItem, RunEnd, RunView, WaitTarget } from "./runs.ts";
-import type { SessionCatalogView, SessionInfo } from "./sessions.ts";
-import type { ToolClass, ToolOutcome, ToolProgress } from "./tools.ts";
-import type { Activation } from "./workspaces.ts";
+import { Type } from "typebox";
+import type { TProperties } from "typebox";
+import { ConfigurationType } from "./configuration.ts";
+import { FailureType } from "./errors.ts";
+import { FileChangeType } from "./files.ts";
+import { idSchema, SeqType } from "./ids.ts";
+import { JsonType, withJson } from "./json.ts";
+import { DeliveryType, MessageSourceType, ScheduleType, UserContentType } from "./messages.ts";
+import { ContextViewType, UsageType } from "./models.ts";
+import { PlacementType } from "./parts.ts";
+import { BackgroundItemType, RunEndType, RunViewType, WaitTargetType } from "./runs.ts";
+import { standard } from "./schema.ts";
+import type { Decoded, Schema } from "./schema.ts";
+import { SessionCatalogViewType, SessionInfoType } from "./sessions.ts";
+import { ToolOutcomeType, ToolProgressType } from "./tools.ts";
+import { nullable } from "./wire/nullable.ts";
+import { ActivationType } from "./workspaces.ts";
 
-export type SessionEvent = { readonly seq: Seq; readonly at: number } & DurableEvent;
-
-export type DurableEvent = { readonly head: HeadName | null } & (
-  | {
-      readonly kind: "commit";
-      readonly id: CommitId;
-      readonly parent: CommitId | null;
-      readonly run: RunId | null;
-      readonly body: CommitBody;
-    }
-  | {
-      readonly kind: "head";
-      readonly from: CommitId | null;
-      readonly to: CommitId | null;
-      readonly reason: "moved" | "merged" | "created" | "removed";
-    }
-  | { readonly kind: "seen"; readonly principal: PrincipalId; readonly commit: CommitId | null }
-  | ({ readonly kind: "input"; readonly message: MessageId } & (
-      | {
-          readonly change: "admitted";
-          readonly content: UserContent;
-          readonly source: MessageSource;
-          readonly delivery: Delivery;
-          readonly schedule: Schedule;
-          readonly covered: boolean;
-          readonly configuration: Configuration;
-          readonly replaced: {
-            readonly previous: MessageId;
-            readonly stopped: RunId | null;
-          } | null;
-        }
-      | { readonly change: "scheduled"; readonly schedule: Schedule; readonly position: number }
-      | { readonly change: "landed"; readonly commit: CommitId; readonly run: RunId | null }
-      | { readonly change: "withdrawn" }
-      | { readonly change: "superseded"; readonly by: MessageId }
-    ))
-  | ({ readonly kind: "run"; readonly run: RunId } & (
-      | { readonly change: "started"; readonly view: RunView }
-      | { readonly change: "phase"; readonly phase: "responding" | "executing" }
-      | { readonly change: "waiting"; readonly on: WaitTarget }
-      | {
-          readonly change: "retrying";
-          readonly attempt: number;
-          readonly until: number;
-          readonly reason: string;
-        }
-      | { readonly change: "stopping" }
-      | { readonly change: "ended"; readonly end: RunEnd }
-    ))
-  | ({ readonly kind: "part"; readonly part: PartId } & (
-      | {
-          readonly change: "created";
-          readonly partKind: string;
-          readonly placement: Placement;
-          readonly state: Json;
-          readonly version: number;
-          readonly run: RunId | null;
-          readonly owner: string | null;
-        }
-      | { readonly change: "updated"; readonly state: Json; readonly version: number }
-      | { readonly change: "waiting"; readonly call: CallId }
-      | { readonly change: "settled"; readonly commit: CommitId; readonly endedAt: number }
-      | { readonly change: "failed"; readonly failure: Failure }
-      | {
-          readonly change: "answered";
-          readonly answer: { readonly action: string; readonly input: Json };
-        }
-      | { readonly change: "closed" }
-    ))
-  | ({ readonly kind: "call"; readonly call: CallId; readonly part: PartId } & (
-      | {
-          readonly change: "intent";
-          readonly name: string;
-          readonly args: Json;
-          readonly class: ToolClass;
-        }
-      | { readonly change: "waiting"; readonly on: WaitTarget }
-      | {
-          readonly change: "settled";
-          readonly outcome: ToolOutcome;
-          readonly changes: {
-            readonly added: number;
-            readonly removed: number;
-            readonly paths: readonly string[];
-          } | null;
-        }
-    ))
-  | { readonly kind: "background"; readonly item: BackgroundItem }
-  | {
-      readonly kind: "configured";
-      readonly selected: Configuration | null;
-      readonly effective: Configuration | null;
-    }
-  | {
-      readonly kind: "request";
-      readonly usage: Usage;
-      readonly context: ContextView;
-      readonly step: "assistant" | "compaction" | "summary" | "plugin";
-    }
-  | { readonly kind: "changes"; readonly files: readonly FileChange[] }
-  | { readonly kind: "session"; readonly info: SessionInfo }
-  | { readonly kind: "activation"; readonly activation: Activation }
-  | { readonly kind: "catalog"; readonly catalog: SessionCatalogView }
+const CHANGES = nullable(
+  Type.Object({ added: Type.Number(), removed: Type.Number(), paths: Type.Array(Type.String()) }),
 );
 
-export type PatchEvent = { readonly kind: "patch"; readonly part: PartId } & (
-  | { readonly append: string }
-  | { readonly markdown: string }
-  | { readonly progress: ToolProgress }
+const REPLACED = nullable(
+  Type.Object({ previous: idSchema<"message">(), stopped: nullable(idSchema<"run">()) }),
 );
 
-export type CommitBody =
-  | {
-      readonly kind: "user";
-      readonly message: MessageId;
-      readonly content: UserContent;
-      readonly source: MessageSource;
-      readonly delivery: Delivery;
-      readonly siblings: readonly CommitId[];
-    }
-  | { readonly kind: "part"; readonly part: PartId }
-  | { readonly kind: "compaction"; readonly part: PartId; readonly replaces: readonly CommitId[] }
-  | {
-      readonly kind: "branchSummary";
-      readonly part: PartId;
-      readonly replaces: readonly CommitId[];
-    };
+export const CommitBodyType = Type.Union([
+  Type.Object({
+    kind: Type.Literal("user"),
+    message: idSchema<"message">(),
+    content: UserContentType,
+    source: MessageSourceType,
+    delivery: DeliveryType,
+    siblings: Type.Array(idSchema<"commit">()),
+  }),
+  Type.Object({ kind: Type.Literal("part"), part: idSchema<"part">() }),
+  Type.Object({
+    kind: Type.Literal("compaction"),
+    part: idSchema<"part">(),
+    replaces: Type.Array(idSchema<"commit">()),
+  }),
+  Type.Object({
+    kind: Type.Literal("branchSummary"),
+    part: idSchema<"part">(),
+    replaces: Type.Array(idSchema<"commit">()),
+  }),
+]);
+
+export type CommitBody = Decoded<typeof CommitBodyType>;
+
+const INPUT = { kind: Type.Literal("input"), message: idSchema<"message">() };
+
+const RUN = { kind: Type.Literal("run"), run: idSchema<"run">() };
+
+const PART = { kind: Type.Literal("part"), part: idSchema<"part">() };
+
+const CALL = { kind: Type.Literal("call"), call: idSchema<"call">(), part: idSchema<"part">() };
+
+const PATCH = { kind: Type.Literal("patch"), part: idSchema<"part">() };
+
+function durableEvent<Common extends TProperties>(common: Common) {
+  return Type.Union([
+    Type.Object({
+      ...common,
+      kind: Type.Literal("commit"),
+      id: idSchema<"commit">(),
+      parent: nullable(idSchema<"commit">()),
+      run: nullable(idSchema<"run">()),
+      body: CommitBodyType,
+    }),
+    Type.Object({
+      ...common,
+      kind: Type.Literal("head"),
+      from: nullable(idSchema<"commit">()),
+      to: nullable(idSchema<"commit">()),
+      reason: Type.Enum(["moved", "merged", "created", "removed"]),
+    }),
+    Type.Object({
+      ...common,
+      kind: Type.Literal("seen"),
+      principal: idSchema<"principal">(),
+      commit: nullable(idSchema<"commit">()),
+    }),
+    Type.Object({
+      ...common,
+      ...INPUT,
+      change: Type.Literal("admitted"),
+      content: UserContentType,
+      source: MessageSourceType,
+      delivery: DeliveryType,
+      schedule: ScheduleType,
+      covered: Type.Boolean(),
+      configuration: ConfigurationType,
+      replaced: REPLACED,
+    }),
+    Type.Object({
+      ...common,
+      ...INPUT,
+      change: Type.Literal("scheduled"),
+      schedule: ScheduleType,
+      position: Type.Number(),
+    }),
+    Type.Object({
+      ...common,
+      ...INPUT,
+      change: Type.Literal("landed"),
+      commit: idSchema<"commit">(),
+      run: nullable(idSchema<"run">()),
+    }),
+    Type.Object({ ...common, ...INPUT, change: Type.Literal("withdrawn") }),
+    Type.Object({
+      ...common,
+      ...INPUT,
+      change: Type.Literal("superseded"),
+      by: idSchema<"message">(),
+    }),
+    Type.Object({ ...common, ...RUN, change: Type.Literal("started"), view: RunViewType }),
+    Type.Object({
+      ...common,
+      ...RUN,
+      change: Type.Literal("phase"),
+      phase: Type.Enum(["responding", "executing"]),
+    }),
+    Type.Object({ ...common, ...RUN, change: Type.Literal("waiting"), on: WaitTargetType }),
+    Type.Object({
+      ...common,
+      ...RUN,
+      change: Type.Literal("retrying"),
+      attempt: Type.Number(),
+      until: Type.Number(),
+      reason: Type.String(),
+    }),
+    Type.Object({ ...common, ...RUN, change: Type.Literal("stopping") }),
+    Type.Object({ ...common, ...RUN, change: Type.Literal("ended"), end: RunEndType }),
+    Type.Object({
+      ...common,
+      ...PART,
+      change: Type.Literal("created"),
+      partKind: Type.String(),
+      placement: PlacementType,
+      state: JsonType,
+      version: Type.Number(),
+      run: nullable(idSchema<"run">()),
+      owner: nullable(Type.String()),
+    }),
+    Type.Object({
+      ...common,
+      ...PART,
+      change: Type.Literal("updated"),
+      state: JsonType,
+      version: Type.Number(),
+    }),
+    Type.Object({ ...common, ...PART, change: Type.Literal("waiting"), call: idSchema<"call">() }),
+    Type.Object({
+      ...common,
+      ...PART,
+      change: Type.Literal("settled"),
+      commit: idSchema<"commit">(),
+      endedAt: Type.Number(),
+    }),
+    Type.Object({ ...common, ...PART, change: Type.Literal("failed"), failure: FailureType }),
+    Type.Object({
+      ...common,
+      ...PART,
+      change: Type.Literal("answered"),
+      answer: Type.Object({ action: Type.String(), input: JsonType }),
+    }),
+    Type.Object({ ...common, ...PART, change: Type.Literal("closed") }),
+    Type.Object({ ...common, ...CALL, change: Type.Literal("intent") }),
+    Type.Object({ ...common, ...CALL, change: Type.Literal("waiting"), on: WaitTargetType }),
+    Type.Object({
+      ...common,
+      ...CALL,
+      change: Type.Literal("settled"),
+      outcome: ToolOutcomeType,
+      changes: CHANGES,
+    }),
+    Type.Object({ ...common, kind: Type.Literal("background"), item: BackgroundItemType }),
+    Type.Object({
+      ...common,
+      kind: Type.Literal("configured"),
+      selected: nullable(ConfigurationType),
+      effective: nullable(ConfigurationType),
+    }),
+    Type.Object({
+      ...common,
+      kind: Type.Literal("request"),
+      usage: UsageType,
+      context: ContextViewType,
+      step: Type.Enum(["assistant", "compaction", "summary", "plugin"]),
+    }),
+    Type.Object({ ...common, kind: Type.Literal("changes"), files: Type.Array(FileChangeType) }),
+    Type.Object({ ...common, kind: Type.Literal("session"), info: SessionInfoType }),
+    Type.Object({ ...common, kind: Type.Literal("activation"), activation: ActivationType }),
+    Type.Object({ ...common, kind: Type.Literal("catalog"), catalog: SessionCatalogViewType }),
+  ]);
+}
+
+export const DurableEventType = durableEvent({ head: nullable(idSchema<"head">()) });
+
+export type DurableEvent = Decoded<typeof DurableEventType>;
+
+export const SessionEventType = durableEvent({
+  seq: SeqType,
+  at: Type.Number(),
+  head: nullable(idSchema<"head">()),
+});
+
+export type SessionEvent = Decoded<typeof SessionEventType>;
+
+export const PatchEventType = Type.Union([
+  Type.Object({ ...PATCH, append: Type.String() }),
+  Type.Object({ ...PATCH, markdown: Type.String() }),
+  Type.Object({ ...PATCH, progress: ToolProgressType }),
+]);
+
+export type PatchEvent = Decoded<typeof PatchEventType>;
+
+export const CommitBodySchema: Schema<CommitBody> = standard(CommitBodyType);
+
+export const DurableEventSchema: Schema<DurableEvent> = standard(withJson(DurableEventType));
+
+export const SessionEventSchema: Schema<SessionEvent> = standard(withJson(SessionEventType));
+
+export const PatchEventSchema: Schema<PatchEvent> = standard(withJson(PatchEventType));

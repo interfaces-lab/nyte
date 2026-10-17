@@ -4,9 +4,9 @@ import type { CompletionModel } from "../../src/model/completion.ts";
 import type { Dialog } from "../../src/model/dialogs/dialog.ts";
 import { draftModel, NO_PARTS } from "../../src/model/draft.ts";
 import type { DraftParts } from "../../src/model/draft.ts";
-import type { TableInput } from "../../src/model/interactions.ts";
+import type { TableInput } from "../../src/model/table-input.ts";
 import type { Place, QueueRow } from "../../src/model/queue.ts";
-import type { Blocked, RunModel } from "../../src/model/screen.ts";
+import type { Blocked, RunModel } from "../../src/model/table-input.ts";
 import type { Draft } from "../../src/model/state.ts";
 
 export interface TableSpec {
@@ -17,7 +17,9 @@ export interface TableSpec {
   readonly editing?: "steer" | "queue";
   readonly shell?: boolean;
   readonly completion?: "slash" | "skill" | "cd" | "empty";
-  readonly blocked?: "starting" | "switching" | "authenticating";
+  readonly blocked?: "switching" | "authenticating";
+  readonly waiting?: boolean;
+  readonly models?: boolean;
   readonly dialog?: boolean;
   readonly followUp?: "steer" | "queue";
   readonly queue?: readonly {
@@ -30,7 +32,7 @@ export interface TableSpec {
   readonly browsing?: boolean;
 }
 
-function runOf(spec: TableSpec["run"]): RunModel {
+function buildRun(spec: TableSpec["run"]): RunModel {
   switch (spec ?? "idle") {
     case "working":
       return { kind: "working", run: asId("r1"), stopping: false };
@@ -43,7 +45,7 @@ function runOf(spec: TableSpec["run"]): RunModel {
   }
 }
 
-function placeOf(place: "joining" | "next-turn" | "sending" | "uncovered"): Place {
+function buildPlace(place: "joining" | "next-turn" | "sending" | "uncovered"): Place {
   switch (place) {
     case "joining":
       return { kind: "joining", run: asId("r1") };
@@ -56,13 +58,13 @@ function placeOf(place: "joining" | "next-turn" | "sending" | "uncovered"): Plac
   }
 }
 
-function blockedOf(spec: TableSpec["blocked"]): Blocked | null {
+function buildBlocked(spec: TableSpec["blocked"]): Blocked | null {
   if (spec === undefined) return null;
 
   return spec === "authenticating" ? { kind: "authenticating", link: null } : { kind: spec };
 }
 
-function completionOf(spec: TableSpec["completion"]): CompletionModel | null {
+function buildCompletion(spec: TableSpec["completion"]): CompletionModel | null {
   if (spec === undefined) return null;
 
   if (spec === "empty")
@@ -126,7 +128,7 @@ export function tableInput(spec: TableSpec): TableInput {
   const queue: QueueRow[] = (spec.queue ?? []).map((row) => ({
     id: asId(row.id),
     text: row.id,
-    place: placeOf(row.place),
+    place: buildPlace(row.place),
     delivery: "steer",
     withdrawable: row.place !== "sending",
     editable: true,
@@ -136,7 +138,7 @@ export function tableInput(spec: TableSpec): TableInput {
   const typed = draftModel(draft);
 
   return {
-    run: runOf(spec.run),
+    run: buildRun(spec.run),
     question:
       spec.question === undefined
         ? null
@@ -185,9 +187,11 @@ export function tableInput(spec: TableSpec): TableInput {
             delivered: false,
           }
         : null,
-    completion: completionOf(spec.completion),
+    completion: buildCompletion(spec.completion),
     dialog: spec.dialog === true ? PALETTE : null,
-    blocked: blockedOf(spec.blocked),
+    blocked: buildBlocked(spec.blocked),
+    waiting: spec.waiting ?? false,
+    models: spec.models ?? true,
     queue,
     followUp: spec.followUp ?? "steer",
     tasks: spec.tasks ?? 0,

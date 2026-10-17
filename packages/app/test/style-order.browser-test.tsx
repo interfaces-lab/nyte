@@ -3,7 +3,7 @@ import { create, props } from "@stylexjs/stylex";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
-/*
+/**
  * Each override sorts before the component's own declaration for that
  * property, where one StyleX pass used to let the component win.
  */

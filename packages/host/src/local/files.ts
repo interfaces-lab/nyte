@@ -14,10 +14,11 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, matchesGlob, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
 import { spawn } from "node:child_process";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type {
   ByteReader,
   FileEntryView,
@@ -25,15 +26,17 @@ import type {
   FileVersion,
   FormatOutcome,
   SearchFrame,
+  SearchInput,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { FileBatch, FilesApi } from "@nyte-ai/core";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { sha256 } from "../hash.ts";
 import { findExecutable, run } from "./command.ts";
 import type { Ran } from "./command.ts";
 import { feed } from "./feed.ts";
 import { decodeText } from "./text.ts";
-import { codeOf, createIgnores, walkTree, watchTree } from "./tree.ts";
+import { readErrorCode, createIgnores, walkTree, watchPath, watchTree } from "./tree.ts";
 
 /** Returns a byte reader that carries the version of the file it read, which the server answers as `X-Nyte-Version` (§40h, §40p). */
 export type VersionedReader = ByteReader & { readonly version: FileVersion };
@@ -64,7 +67,7 @@ const WATCH_POLL_MS = 1_000;
 
 const FORMATTERS = ["oxfmt", "prettier", "biome"] as const;
 
-/** Returns a folder's files over `node:fs`: a relative path resolves against `root`, an absolute one is taken as given (the ancestor context files are read through it, §37g). A version is the SHA-256 of what is there, never an mtime: a file's contents (through a symlink, its target's), a directory's sorted entry names, and, for `stat` of a symlink itself, its target path. `read` answers `text` for UTF-8 without NUL up to 1 MiB, `large` above, `binary` otherwise, `missing` when absent (`SdkError("invalid")` for a directory); `bytes` streams the file with its size, a null mime and its version (`SdkError("unknown")` when absent); `stat` uses `lstat` (a symlink with its `target`), null when absent. `write` compares `expect` with the current version first (`stale { current }`, `absent` needing no file), answers `missing-parent` unless `parents`, and writes through a temporary file renamed into place (through a symlink, at its target), keeping an existing file's mode; `remove` compares `expect` the same way (`stale { current: null }` when nothing is there) and answers `saved` with the version it removed. `batch()` returns a plan whose `apply` and `upload()` reject with `SdkError("unavailable")`: core lays its own over them (`wrapFiles`). `format` runs `formatter`, else the first of `oxfmt`, `prettier` and `biome` under `<root>/node_modules/.bin`, then on the `PATH`, with the contents on stdin and the path for its config, answering `unchanged` when equal and `unavailable { reason }` when there is none or it fails. `scan` walks `directory` (default the root; an absolute one is walked as its own root and answered with absolute paths) breadth-first in pages of 500 entries, skipping `.git` and, unless `ignored: "include"` or the directory is itself ignored, what `.gitignore` files and `.git/info/exclude` ignore (`ignore`), then `complete`, or `incomplete` with `limit` after 50,000 entries or `permission` after an unreadable directory; entries carry no version. `find` matches the query against the scanned file paths, case-insensitively: exact name, name prefix, name substring, path substring, then a fuzzy subsequence, shorter first, at most `limit` (default 20, capped at 50), the scan reused for 5 s. `search` runs `ripgrep` (else `rg` on the PATH; with neither, a scan of the text files up to 1 MiB) for the literal query with smart case, yielding a `match` per matching line (1-based line and column, the line cut at 500 characters), then `complete`, or `truncated` at `limit` (default 200). `watch` uses a recursive `fs.watch` on the root (a 1 s poll where there is none), narrowed to `paths` when given and without ignored paths or directories, coalescing changes over 100 ms into `created`, `modified` and `removed` events with the version after (null when removed), a path's last change winning while the reader is behind. `signal` ends every open `watch`. */
+/** Returns a folder's files over `node:fs`: a relative path resolves against `root`, an absolute one is taken as given (the ancestor context files are read through it, §37g). A version is the SHA-256 of what is there, never an mtime: a file's contents (through a symlink, its target's), a directory's sorted entry names, and, for `stat` of a symlink itself, its target path. `read` answers `text` for UTF-8 without NUL up to 1 MiB, `large` above, `binary` otherwise, `missing` when absent (`SdkError("invalid")` for a directory); `bytes` streams the file with its size, a null mime and its version (`SdkError("unknown")` when absent); `stat` uses `lstat` (a symlink with its `target`), null when absent. `write` compares `expect` with the current version first (`stale { current }`, `absent` needing no file), answers `missing-parent` unless `parents`, and writes through a temporary file renamed into place (through a symlink, at its target), keeping an existing file's mode; `remove` compares `expect` the same way (`stale { current: null }` when nothing is there) and answers `saved` with the version it removed. `batch()` returns a plan whose `apply` and `upload()` reject with `SdkError("unavailable")`: core lays its own over them (`wrapFiles`). `format` runs `formatter`, else the first of `oxfmt`, `prettier` and `biome` under `<root>/node_modules/.bin`, then on the `PATH`, with the contents on stdin and the path for its config, answering `unchanged` when equal and `unavailable { reason }` when there is none or it fails. `scan` walks `directory` (default the root; an absolute one is walked as its own root and answered with absolute paths) breadth-first in pages of 500 entries, skipping `.git` and, unless `ignored: "include"` or the directory is itself ignored, what `.gitignore` files and `.git/info/exclude` ignore (`ignore`), then `complete`, or `incomplete` with `limit` after 50,000 entries or `permission` after an unreadable directory; entries carry no version. `find` matches the query against the scanned file paths, case-insensitively: exact name, name prefix, name substring, path substring, then a fuzzy subsequence, shorter first, at most `limit` (default 20, capped at 50), the scan reused for 5 s. `search` runs `ripgrep` (else `rg` on the PATH; with neither, a scan of the text files up to 1 MiB with a JavaScript regex) for the query, literal unless `regex`, with smart case unless `caseSensitive` is given, whole words alone when `wholeWord`, over the files the `include` globs pick (all when none) less the `exclude` globs; a file with a draft is searched in its draft's contents instead of on disk. It yields a `match` per matching line (1-based line and column and the first match's length, the line cut at 500 characters), drafts first, then `complete`, or `truncated` at `limit` (default 200); a regex or glob `rg` cannot read throws `SdkError("invalid")`. `watch` uses a recursive `fs.watch` on the root (a 1 s poll where there is none) or, given `paths`, a watch on each of them alone that waits for a missing one to appear and never polls, without ignored paths or directories, coalescing changes over 100 ms into `created`, `modified` and `removed` events with the version after (null when removed), a path's last change winning while the reader is behind. `signal` ends every open `watch`. */
 export function localFiles(
   root: string,
   options?: {
@@ -109,7 +112,7 @@ export function localFiles(
       const bytes = await readFile(target).catch(missing);
 
       if (bytes === null) return { kind: "missing", path };
-      const version = versionOf(bytes);
+      const version = hashVersion(bytes);
       const text = decodeText(bytes);
 
       return text === null
@@ -166,7 +169,7 @@ export function localFiles(
       if (stats.isSymbolicLink()) {
         const link = await readlink(target);
 
-        return { kind: "symlink", size: stats.size, version: versionOf(link), target: link };
+        return { kind: "symlink", size: stats.size, version: hashVersion(link), target: link };
       }
 
       if (stats.isDirectory())
@@ -205,7 +208,7 @@ export function localFiles(
         throw error;
       }
 
-      return { kind: "saved", version: versionOf(bytes) };
+      return { kind: "saved", version: hashVersion(bytes) };
     },
     async remove(path, removeOptions) {
       const target = absolute(path);
@@ -215,7 +218,7 @@ export function localFiles(
 
       const current =
         (await currentVersion(target)) ??
-        (link.isSymbolicLink() ? versionOf(await readlink(target)) : null);
+        (link.isSymbolicLink() ? hashVersion(await readlink(target)) : null);
 
       if (removeOptions?.expect !== undefined && removeOptions.expect !== current)
         return { kind: "stale", current };
@@ -262,9 +265,11 @@ export function localFiles(
       return rank(await scanned(), input.query, limit);
     },
     search(input) {
-      const limit = Math.max(1, input.limit ?? SEARCH_DEFAULT);
+      const drafts = new Map(
+        (input.drafts ?? []).map((draft) => [within(absolute(draft.path)), draft.contents]),
+      );
 
-      return search(root, input.query, limit, options?.ripgrep);
+      return search(root, input, drafts, options?.ripgrep);
     },
     watch(input) {
       const paths = (input?.paths ?? []).map((path) => within(absolute(path)));
@@ -277,12 +282,12 @@ export function localFiles(
   };
 }
 
-function versionOf(data: string | Uint8Array): FileVersion {
+function hashVersion(data: string | Uint8Array): FileVersion {
   return asId<"file-version">(sha256(data));
 }
 
 function missing(error: unknown): null {
-  const code = codeOf(error);
+  const code = readErrorCode(error);
 
   if (code === "ENOENT" || code === "ENOTDIR") return null;
 
@@ -310,7 +315,7 @@ async function hashFile(path: string): Promise<FileVersion> {
 }
 
 async function directoryVersion(path: string): Promise<FileVersion> {
-  return versionOf((await readdir(path)).sort().join("\n"));
+  return hashVersion((await readdir(path)).sort().join("\n"));
 }
 
 async function currentVersion(path: string): Promise<FileVersion | null> {
@@ -452,11 +457,13 @@ async function detectFormatter(root: string): Promise<string | null> {
 
 async function* search(
   root: string,
-  query: string,
-  limit: number,
+  input: SearchInput,
+  drafts: ReadonlyMap<string, string>,
   ripgrep: string | undefined,
 ): AsyncGenerator<SearchFrame> {
-  if (query === "") {
+  const limit = Math.max(1, input.limit ?? SEARCH_DEFAULT);
+
+  if (input.query === "") {
     yield { kind: "complete" };
 
     return;
@@ -464,56 +471,138 @@ async function* search(
 
   const binary = await findExecutable(ripgrep ?? "rg");
 
-  if (binary === null) {
-    yield* scanText(root, query, limit);
+  const matches =
+    binary === null ? scanText(root, input, drafts) : grep(binary, root, input, drafts);
 
-    return;
+  let count = 0;
+
+  for await (const match of matches) {
+    if (count >= limit) {
+      yield { kind: "truncated", limit };
+
+      return;
+    }
+
+    count += 1;
+    yield match;
   }
 
-  const child = spawn(
-    binary,
-    [
-      "--json",
-      "--fixed-strings",
-      "--smart-case",
-      "--no-config",
-      "--hidden",
-      "--no-require-git",
-      "--glob=!.git",
-      "--",
-      query,
-      ".",
-    ],
-    { cwd: root, stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
-  );
+  yield { kind: "complete" };
+}
 
+type SearchMatch = Extract<SearchFrame, { readonly kind: "match" }>;
+
+/** The `rg` flags that read the query the way `input` asks: literal unless `regex`, smart case unless `caseSensitive` is given, whole words when `wholeWord`. */
+function matchFlags(input: SearchInput): readonly string[] {
+  const casing =
+    input.caseSensitive === undefined
+      ? "--smart-case"
+      : input.caseSensitive
+        ? "--case-sensitive"
+        : "--ignore-case";
+
+  return [
+    "--json",
+    "--no-config",
+    "--no-messages",
+    casing,
+    ...(input.regex === true ? [] : ["--fixed-strings"]),
+    ...(input.wholeWord === true ? ["--word-regexp"] : []),
+  ];
+}
+
+/** The `rg` flags that pick the files a search reads: hidden ones too, never `.git`, then `include` and `exclude` as globs. */
+function fileFlags(input: SearchInput): readonly string[] {
+  return [
+    "--no-config",
+    "--hidden",
+    "--no-require-git",
+    "--glob=!.git",
+    ...(input.include ?? []).map((glob) => `--glob=${glob}`),
+    ...(input.exclude ?? []).map((glob) => `--glob=!${glob}`),
+  ];
+}
+
+/** Throws `SdkError("invalid")` with what `rg` printed when it stopped on an error, such as a bad regex or glob; `--no-messages` keeps unreadable files out of it. */
+function rejectFailure(code: number | null, stderr: string): void {
+  if (code === 2 && stderr.trim() !== "") throw new SdkError("invalid", stderr.trim());
+}
+
+function ripgrepPath(path: string): string {
+  return path.replace(/^\.\//, "").split(sep).join("/");
+}
+
+async function* grep(
+  binary: string,
+  root: string,
+  input: SearchInput,
+  drafts: ReadonlyMap<string, string>,
+): AsyncGenerator<SearchMatch> {
+  if (drafts.size > 0) {
+    const listed = await run(binary, ["--files", ...fileFlags(input), "."], { cwd: root });
+    rejectFailure(listed.code, listed.stderr);
+    const searched = new Set(listed.stdout.toString("utf8").split("\n").map(ripgrepPath));
+
+    for (const [path, contents] of drafts) {
+      if (!searched.has(path)) continue;
+
+      const ran = await run(binary, [...matchFlags(input), "--", input.query, "-"], {
+        cwd: root,
+        input: contents,
+      });
+
+      rejectFailure(ran.code, ran.stderr);
+
+      for (const line of ran.stdout.toString("utf8").split("\n")) {
+        const match = ripgrepMatch(line);
+
+        if (match !== null) yield { ...match, path };
+      }
+    }
+  }
+
+  const child = spawn(binary, [...matchFlags(input), ...fileFlags(input), "--", input.query, "."], {
+    cwd: root,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  const closed = new Promise<number | null>((resolve) => child.on("close", resolve));
   const lines = createInterface({ input: child.stdout, crlfDelay: Number.POSITIVE_INFINITY });
-  let count = 0;
 
   try {
     for await (const line of lines) {
       const match = ripgrepMatch(line);
 
-      if (match === null) continue;
-
-      if (count >= limit) {
-        yield { kind: "truncated", limit };
-
-        return;
-      }
-
-      count += 1;
-      yield match;
+      if (match !== null && !drafts.has(match.path)) yield match;
     }
 
-    yield { kind: "complete" };
+    rejectFailure(await closed, stderr);
   } finally {
     lines.close();
     child.kill();
   }
 }
 
-function ripgrepMatch(line: string): Extract<SearchFrame, { readonly kind: "match" }> | null {
+/** The `match` records `rg --json` prints, the fields a search frame takes from them. */
+const RipgrepMatchSchema = Type.Object({
+  type: Type.Literal("match"),
+  data: Type.Object({
+    path: Type.Object({ text: Type.String() }),
+    lines: Type.Object({ text: Type.String() }),
+    line_number: Type.Number(),
+    submatches: Type.Optional(Type.Array(Type.Unknown())),
+  }),
+});
+
+const SubmatchSchema = Type.Object({ start: Type.Number(), end: Type.Number() });
+
+function ripgrepMatch(line: string): SearchMatch | null {
   let record: unknown;
 
   try {
@@ -522,69 +611,96 @@ function ripgrepMatch(line: string): Extract<SearchFrame, { readonly kind: "matc
     return null;
   }
 
-  if (!isRecord(record) || record.type !== "match" || !isRecord(record.data)) return null;
+  if (!Value.Check(RipgrepMatchSchema, record)) return null;
   const { path, lines, line_number: number, submatches } = record.data;
-
-  if (!isRecord(path) || typeof path.text !== "string") return null;
-
-  if (!isRecord(lines) || typeof lines.text !== "string" || typeof number !== "number") return null;
-  const first = Array.isArray(submatches) ? submatches[0] : undefined;
-  const offset = isRecord(first) && typeof first.start === "number" ? first.start : 0;
+  const first = submatches?.[0];
+  const { start, end } = Value.Check(SubmatchSchema, first) ? first : { start: 0, end: 0 };
   const text = lines.text.replace(/\r?\n$/, "");
-  const before = new TextDecoder().decode(new TextEncoder().encode(text).subarray(0, offset));
+  const bytes = new TextEncoder().encode(text);
+  const decoder = new TextDecoder();
 
   return {
     kind: "match",
-    path: path.text.replace(/^\.\//, "").split(sep).join("/"),
+    path: ripgrepPath(path.text),
     line: number,
-    column: before.length + 1,
+    column: decoder.decode(bytes.subarray(0, start)).length + 1,
+    length: decoder.decode(bytes.subarray(start, end)).length,
     text: text.slice(0, SEARCH_LINE),
   };
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/** The regex the scan without `rg` matches each line with, read as `matchFlags` reads the query for `rg`; `SdkError("invalid")` when `regex` is not one. */
+function linePattern(input: SearchInput): RegExp {
+  const source = input.regex === true ? input.query : RegExp.escape(input.query);
+  const sensitive = input.caseSensitive ?? input.query !== input.query.toLowerCase();
+
+  try {
+    return new RegExp(
+      input.wholeWord === true ? `\\b(?:${source})\\b` : source,
+      sensitive ? "u" : "iu",
+    );
+  } catch (error) {
+    throw new SdkError("invalid", error instanceof Error ? error.message : String(error));
+  }
 }
 
-async function* scanText(root: string, query: string, limit: number): AsyncGenerator<SearchFrame> {
-  const sensitive = query !== query.toLowerCase();
-  const needle = sensitive ? query : query.toLowerCase();
-  let count = 0;
+/** Whether `path` passes the globs as `rg` reads them: one without a `/` matches a name at any depth, and an excluded directory excludes what is under it. */
+function passesFilters(path: string, input: SearchInput): boolean {
+  const parts = path.split("/");
+  const prefixes = parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+
+  const matches = (glob: string, target: string): boolean =>
+    matchesGlob(target, glob) || (!glob.includes("/") && matchesGlob(basename(target), glob));
+
+  const include = input.include ?? [];
+
+  return (
+    (include.length === 0 || include.some((glob) => matches(glob, path))) &&
+    !(input.exclude ?? []).some((glob) => prefixes.some((prefix) => matches(glob, prefix)))
+  );
+}
+
+async function* scanText(
+  root: string,
+  input: SearchInput,
+  drafts: ReadonlyMap<string, string>,
+): AsyncGenerator<SearchMatch> {
+  const pattern = linePattern(input);
 
   for await (const frame of walkTree(root, { ignored: "exclude" })) {
     if (frame.kind !== "entries") continue;
 
     for (const entry of frame.entries) {
-      if (entry.kind !== "file" || (entry.size ?? 0) > TEXT_LIMIT) continue;
-      const bytes = await readFile(join(root, entry.path)).catch(() => null);
-      const text = bytes === null ? null : decodeText(bytes);
+      if (entry.kind !== "file" || !passesFilters(entry.path, input)) continue;
+      const text =
+        drafts.get(entry.path) ?? (await readSearchable(join(root, entry.path), entry.size));
 
       if (text === null) continue;
 
-      for (const [index, line] of text.split("\n").entries()) {
-        const column = (sensitive ? line : line.toLowerCase()).indexOf(needle);
+      for (const [index, raw] of text.split("\n").entries()) {
+        const line = raw.replace(/\r$/, "");
+        const found = pattern.exec(line);
 
-        if (column < 0) continue;
+        if (found === null) continue;
 
-        if (count >= limit) {
-          yield { kind: "truncated", limit };
-
-          return;
-        }
-
-        count += 1;
         yield {
           kind: "match",
           path: entry.path,
           line: index + 1,
-          column: column + 1,
-          text: line.replace(/\r$/, "").slice(0, SEARCH_LINE),
+          column: found.index + 1,
+          length: found[0].length,
+          text: line.slice(0, SEARCH_LINE),
         };
       }
     }
   }
+}
 
-  yield { kind: "complete" };
+async function readSearchable(path: string, size: number | null): Promise<string | null> {
+  if ((size ?? 0) > TEXT_LIMIT) return null;
+  const bytes = await readFile(path).catch(() => null);
+
+  return bytes === null ? null : decodeText(bytes);
 }
 
 function watchFiles(
@@ -597,23 +713,19 @@ function watchFiles(
       const ignores = createIgnores(root);
       const known = new Map<string, FileVersion | null>();
       const started = Date.now();
-      let queue = Promise.resolve();
+      const reads = serial();
 
-      const wanted = (path: string): boolean =>
-        paths.length === 0 ||
-        paths.some((prefix) => prefix === "" || path === prefix || path.startsWith(`${prefix}/`));
-
-      const eventOf = async (path: string): Promise<FileEvent | null> => {
+      const readEvent = async (path: string): Promise<FileEvent | null> => {
         if (path.endsWith(".gitignore"))
           ignores.forget(path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "");
 
-        if (!wanted(path) || (await ignores.ignored(path, false))) return null;
-        const stats = await lstat(join(root, path)).catch(() => null);
+        if (await ignores.ignored(path, false)) return null;
+        const at = isAbsolute(path) ? path : join(root, path);
+        const stats = await lstat(at).catch(() => null);
 
         if (stats?.isDirectory() === true) return null;
 
-        const version =
-          stats === null ? null : await currentVersion(join(root, path)).catch(() => null);
+        const version = stats === null ? null : await currentVersion(at).catch(() => null);
 
         const before = known.get(path);
         known.set(path, version);
@@ -630,20 +742,54 @@ function watchFiles(
         return { kind: created ? "created" : "modified", path, version };
       };
 
-      const dispose = watchTree(root, { delay: WATCH_DELAY_MS, poll: WATCH_POLL_MS }, (changed) => {
-        queue = queue.then(async () => {
+      const listMoved = async (
+        prefix: string,
+        changed: ReadonlySet<string>,
+      ): Promise<readonly string[]> => {
+        const inside = [...changed].flatMap((path) => (path === "" ? [] : [`${prefix}/${path}`]));
+
+        if (!changed.has("")) return inside;
+        const below = [...known.keys()].filter((path) => path.startsWith(`${prefix}/`));
+
+        for await (const frame of walkTree(isAbsolute(prefix) ? prefix : join(root, prefix), {
+          ignored: "include",
+        }))
+          if (frame.kind === "entries")
+            for (const entry of frame.entries)
+              if (entry.kind === "file") below.push(`${prefix}/${entry.path}`);
+
+        return [prefix, ...below, ...inside];
+      };
+
+      const heard = (changed: Iterable<string> | Promise<Iterable<string>>): void => {
+        void reads.run(async () => {
           const events: FileEvent[] = [];
 
-          for (const path of changed) {
+          for (const path of await changed) {
             if (path === "") continue;
-            const event = await eventOf(path).catch(() => null);
+            const event = await readEvent(path).catch(() => null);
 
             if (event !== null) events.push(event);
           }
 
           if (events.length > 0) sink.push(events);
         });
-      });
+      };
+
+      const watching =
+        paths.length === 0 || paths.includes("")
+          ? [watchTree(root, { delay: WATCH_DELAY_MS, poll: WATCH_POLL_MS }, heard)]
+          : paths.map((prefix) =>
+              watchPath(
+                isAbsolute(prefix) ? prefix : join(root, prefix),
+                { delay: WATCH_DELAY_MS },
+                (changed) => heard(listMoved(prefix, changed)),
+              ),
+            );
+
+      const dispose = (): void => {
+        for (const stop of watching) stop();
+      };
 
       const end = (): void => sink.end();
       signal?.addEventListener("abort", end, { once: true });

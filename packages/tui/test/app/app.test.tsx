@@ -8,11 +8,12 @@ import type { Store } from "../../src/app/store.ts";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
 import { TERMINAL_TITLE_BASE } from "../../src/lib/format.ts";
 import { CLEARED } from "../../src/lib/program-status.ts";
+import { followedSession } from "../../src/model/state.ts";
 import { openTestHost } from "../fixture/host.ts";
-import { startApp } from "./start.tsx";
+import { startTui } from "../harness/tui.ts";
 
 function userTexts(store: Store): readonly string[] {
-  return (store.state().facts.session?.view?.messages ?? []).flatMap((message) =>
+  return (followedSession(store.state())?.view?.messages ?? []).flatMap((message) =>
     message.kind === "user" ? [JSON.stringify(message.content)] : [],
   );
 }
@@ -38,14 +39,14 @@ const idle = (store: Store): boolean => store.screen().run.kind === "idle";
 test("without copy-on-select, a right-click copies the transcript selection and another key clears it", async () => {
   await using fixture = await openTestHost();
   fixture.reply({ content: [{ type: "text", text: "Select this answer." }] });
-  await using app = await startApp(fixture);
+  await using app = await startTui({ fixture });
   await app.ready();
 
   await app.mockInput.typeText("hello");
   app.mockInput.pressEnter();
   const frame = await app.frame((text) => text.includes("Select this answer."));
   const row = frame.split("\n").findIndex((line) => line.includes("Select this answer."));
-  const column = (frame.split("\n")[row] ?? "").indexOf("Select");
+  const column = (frame.split("\n")[row] ?? "").split("Select")[0]?.length ?? 0;
 
   await app.mockMouse.drag(column, row, column + 5, row);
   await app.renderOnce();
@@ -64,7 +65,7 @@ test("Ctrl+Q then delete withdraws a queued message", async () => {
   await using fixture = await openTestHost();
   const release = Promise.withResolvers<void>();
   fixture.reply({ content: [{ type: "text", text: "Working on it." }], until: release.promise });
-  await using app = await startApp(fixture);
+  await using app = await startTui({ fixture });
   await app.ready();
 
   await app.mockInput.typeText("first");
@@ -88,7 +89,7 @@ test("Ctrl+Q then delete withdraws a queued message", async () => {
 
 test("a dialog's search field moves its caret and deletes by word, as an input does", async () => {
   await using fixture = await openTestHost();
-  await using app = await startApp(fixture);
+  await using app = await startTui({ fixture });
   await app.ready();
 
   app.mockInput.pressKey("k", { ctrl: true });
@@ -112,7 +113,7 @@ test("a dialog's search field moves its caret and deletes by word, as an input d
 
 test("API-key login supports paste, select all, delete and repaste without exposing its value", async () => {
   await using fixture = await openTestHost();
-  await using app = await startApp(fixture);
+  await using app = await startTui({ fixture });
   await app.ready();
   app.store.dispatch({ kind: "open", dialog: { kind: "auth", mode: "login", provider: "test" } });
   await app.state((store) => {
@@ -156,7 +157,7 @@ test("API-key login supports paste, select all, delete and repaste without expos
 
 test("cancelling a login prompt releases its effect before quitting", async () => {
   await using fixture = await openTestHost();
-  await using app = await startApp(fixture);
+  await using app = await startTui({ fixture });
   await app.ready();
   app.store.dispatch({ kind: "open", dialog: { kind: "auth", mode: "login", provider: "test" } });
   await app.state((store) => {
@@ -183,7 +184,8 @@ test("a render throw shows the error screen, logs it, and R recovers", async () 
   await using fixture = await openTestHost();
   const [broken, setBroken] = createSignal(false);
 
-  await using app = await startApp(fixture, {
+  await using app = await startTui({
+    fixture,
     kit: (kit) => ({
       ...kit,
       theme: () => {
@@ -211,24 +213,23 @@ test("a render throw shows the error screen, logs it, and R recovers", async () 
   await app.frame((frame) => frame.includes(COMPOSER_PLACEHOLDER));
 });
 
-test("Ctrl+C on an empty composer quits, and the exit names the resume command", async () => {
+test("launching and quitting with Ctrl+C before a send creates no session and names no resume command", async () => {
   await using fixture = await openTestHost();
-  await using app = await startApp(fixture);
+  await using app = await startTui({ fixture });
   await app.ready();
-  const session = app.store.state().facts.session?.id;
-
-  if (session === undefined) throw new Error("No session was followed.");
+  await app.frame((frame) => frame.includes(COMPOSER_PLACEHOLDER));
   app.mockInput.pressCtrlC();
 
   expect(await app.app.closing).toBe(0);
-  expect(exitText({ session, failures: [], crashes: [] })).toBe(
-    `\nTo resume previous session\nnyte --session=${session}\n`,
-  );
+  expect(app.store.state().facts.chat?.kind).toBe("blank");
+  expect((await fixture.host.sessions.list({ parents: { kind: "all" } })).items).toEqual([]);
+  const session = followedSession(app.store.state())?.id ?? null;
+  expect(exitText({ session, unsent: null, failures: [], crashes: [] })).toBe("");
 });
 
 test("a signal that destroys the renderer first still resets the terminal, and closing after it is quiet", async () => {
   await using fixture = await openTestHost();
-  await using app = await startApp(fixture);
+  await using app = await startTui({ fixture });
   await app.ready();
 
   app.renderer.destroy();

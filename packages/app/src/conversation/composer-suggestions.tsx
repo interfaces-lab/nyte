@@ -1,17 +1,17 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The `@` and `/` completion popup every composer editor shares: the message
  * composer and the in-transcript message edit. The hook owns the open token,
  * ranking, keyboard navigation, and the preview card; the caller wires it to
  * one `ComposerEditor` and renders `menu` beside it.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { completionTrigger } from "../view-helpers.ts";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 import type { MentionFile } from "./message-references.ts";
 import type { CommandInfo } from "@nyte-ai/sdk";
 import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
@@ -23,9 +23,9 @@ import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts
 import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
 import { composerEnterAction } from "./composer-keys.ts";
 import { mentionPreviewRows } from "./mention-preview.ts";
-import { CONVERSATION_MENTION, isFolder, sameReference } from "./message-references.ts";
+import { CONVERSATION_MENTION, mentionsFolder, sameReference } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 const NONE: readonly never[] = [];
 
@@ -118,11 +118,11 @@ const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web-search"]);
 /**
  * Scroll the popup's own list so the option is visible. `scrollIntoView` also
  * walks the fixed popup's ancestors and can drag the thread or the window with
- * it; this touches nothing but the list.
+ * it; this touches nothing but the list. The list is positioned, so option
+ * offsets are relative to it.
  */
 function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
   if (list === null) return;
-  // The list is positioned, so offsets are relative to it.
   const top = option.offsetTop;
   const bottom = top + option.offsetHeight;
 
@@ -239,7 +239,7 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
     case "mention":
       return undefined;
     case "file":
-      return isFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
+      return mentionsFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
     default: {
       const _exhaustive: never = suggestion;
 
@@ -268,14 +268,26 @@ function suggestionEmptyText(
   }
 }
 
+/** Where the trimmed query first appears in `text`, ignoring case; undefined when it is blank or absent. */
+function findQuery(
+  text: string,
+  query: string,
+): { readonly start: number; readonly end: number } | undefined {
+  const needle = query.trim().toLocaleLowerCase();
+
+  if (needle === "") return undefined;
+  const [before = "", ...after] = text.toLocaleLowerCase().split(needle);
+
+  if (after.length === 0) return undefined;
+
+  return { start: before.length, end: before.length + needle.length };
+}
+
 function descriptionExcerpt(description: string, query: string): string {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const match = findQuery(description, query);
 
-  if (normalizedQuery === "") return description;
-  const match = description.toLocaleLowerCase().indexOf(normalizedQuery);
-
-  if (match <= 36) return description;
-  const start = Math.max(0, match - 24);
+  if (match === undefined || match.start <= 36) return description;
+  const start = Math.max(0, match.start - 24);
 
   return `${start === 0 ? "" : "…"}${description.slice(start)}`;
 }
@@ -287,19 +299,17 @@ function HighlightedSuggestionText({
   readonly text: string;
   readonly query: string;
 }): ReactElement {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const match = normalizedQuery === "" ? -1 : text.toLocaleLowerCase().indexOf(normalizedQuery);
+  const match = findQuery(text, query);
 
-  if (match === -1) return <>{text}</>;
-  const end = match + normalizedQuery.length;
+  if (match === undefined) return <>{text}</>;
 
   return (
     <>
-      {text.slice(0, match)}
+      {text.slice(0, match.start)}
       <span {...props(intent.primary, composerStyles.suggestionMatch)}>
-        {text.slice(match, end)}
+        {text.slice(match.start, match.end)}
       </span>
-      {text.slice(end)}
+      {text.slice(match.end)}
     </>
   );
 }
@@ -414,6 +424,24 @@ interface ComposerSuggestions {
   readonly menu: ReactElement;
 }
 
+/**
+ * The `@` and `/` completion menu the composer drives.
+ *
+ * - Up to thousands of files rank per keystroke, so ranking stays off the
+ *   render path for renders that changed nothing it reads.
+ * - Inside Enter's key command a command's replacement is a queued nested
+ *   update; it commits before the microtask, so a running command submits the
+ *   command line.
+ * - A pressed row acts as itself or not at all, even when the list has not
+ *   caught up.
+ * - Plain Enter and Tab pick; a modifier keeps its meaning and sends past the
+ *   menu. When the token moved or went away under a stale menu, the key neither
+ *   picks nor sends.
+ * - The highlight belongs to the list on screen; a query the list has not
+ *   caught up with ranks afresh.
+ * - The editor drives the popup: a press or focus move inside the anchor is
+ *   editing, not dismissal, and `select` decides then.
+ */
 export function useComposerSuggestions({
   editorRef,
   anchorRef,
@@ -441,8 +469,6 @@ export function useComposerSuggestions({
   const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
   const kind = menu?.kind;
 
-  // Up to thousands of files rank per keystroke; keep that off the render path
-  // for renders that changed nothing the ranking reads.
   const suggestions = useMemo(
     () =>
       kind === undefined
@@ -508,8 +534,6 @@ export function useComposerSuggestions({
 
       editorRef.current?.replaceText(token.start, token.end, `/${suggestion.command.name} `);
 
-      // Inside Enter's key command the replacement is a queued nested update;
-      // it commits before the microtask, so the submit reads the command line.
       if (runs) queueMicrotask(onCommand);
     } else {
       addReference(suggestionReference(suggestion), token.start, token.end);
@@ -521,7 +545,6 @@ export function useComposerSuggestions({
   const rankLive = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
     suggestionsFor(token.kind, token.query, commands, skills, rankMentions, hasConversationContext);
 
-  /** A pressed row acts as itself or not at all, even when the list has not caught up. */
   const click = (suggestion: ComposerSuggestion): void => {
     const document = editorRef.current?.readDocument();
 
@@ -585,7 +608,6 @@ export function useComposerSuggestions({
       return true;
     }
 
-    // Plain Enter and Tab pick; the modifier keeps its meaning and sends past the menu.
     const picks =
       composerEnterAction(event) === "submit" || (event.key === "Tab" && !event.shiftKey);
 
@@ -593,7 +615,6 @@ export function useComposerSuggestions({
     const document = editorRef.current?.readDocument();
     const token = document === undefined ? undefined : liveToken(document, menu);
 
-    // The token moved or went away under a stale menu: neither pick nor send.
     if (token === undefined || document === undefined) {
       event.preventDefault();
       show(undefined);
@@ -601,7 +622,6 @@ export function useComposerSuggestions({
       return true;
     }
 
-    // The highlight belongs to the list on screen; a query it has not caught up with ranks afresh.
     const active = token.query === deferredQuery ? suggestions[activeIndex] : rankLive(token)[0];
 
     if (active === undefined) {
@@ -623,8 +643,6 @@ export function useComposerSuggestions({
         modal={false}
         onOpenChange={(open, details) => {
           if (open) return;
-          // The editor drives this popup. A press or focus move inside
-          // the anchor is editing, not dismissal; `select` decides then.
           const target = details.event.target;
 
           if (

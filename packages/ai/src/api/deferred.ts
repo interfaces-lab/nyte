@@ -1,44 +1,20 @@
-// One-shot provider calls. Each loads its client on first use so importing the
-// package root does not bundle every SDK.
+/**
+ * One-shot provider calls. Each loads its client on first use so importing the
+ * package root does not bundle every SDK.
+ */
 import { providerRequest } from "../model-variants.ts";
-import type {
-  AccountLimits,
-  AccountLimitsFetchOptions,
-  AccountLimitsTarget,
-  Context,
-  Model,
-} from "../types.ts";
+import type { Context, Model } from "../types.ts";
 import type { OpenAICompactResult } from "./openai-compact.ts";
-import type {
-  OpenAICodexCompactResult,
-  OpenAICodexResponsesOptions,
-} from "./openai-codex-responses.ts";
+import type { OpenAICodexCompactResult } from "./openai-codex-compact.ts";
+import type { OpenAICodexResponsesOptions } from "./openai-codex-protocol.ts";
 import type { OpenAIResponsesOptions } from "./openai-responses.ts";
-
-export async function fetchAnthropicAccountLimits(
-  model: AccountLimitsTarget,
-  options?: AccountLimitsFetchOptions,
-): Promise<AccountLimits> {
-  const api = await import("./anthropic-messages.ts");
-
-  return api.fetchAnthropicAccountLimits(model, options);
-}
-
-export async function fetchOpenAICodexAccountLimits(
-  model: AccountLimitsTarget,
-  options?: AccountLimitsFetchOptions,
-): Promise<AccountLimits> {
-  const api = await import("./openai-codex-responses.ts");
-
-  return api.fetchOpenAICodexAccountLimits(model, options);
-}
 
 export async function compactOpenAICodexContext(
   selected: Model<"openai-codex-responses">,
   context: Context,
   selectedOptions?: OpenAICodexResponsesOptions,
 ): Promise<OpenAICodexCompactResult> {
-  const api = await import("./openai-codex-responses.ts");
+  const api = await import("./openai-codex-compact.ts");
   const { model, options } = providerRequest(selected, selectedOptions);
 
   return api.compactOpenAICodexContext(model, context, options);

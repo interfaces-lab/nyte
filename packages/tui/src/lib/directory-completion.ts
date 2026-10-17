@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTERS = /[\x00-\x1f\x7f]/;
 
-export interface DirectoryQuery {
+interface DirectoryQuery {
   readonly start: number;
   readonly end: number;
   readonly path: string;

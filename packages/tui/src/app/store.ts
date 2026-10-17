@@ -1,6 +1,7 @@
 import { batch, createMemo, createRoot, createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { Runner, RunnerContext } from "../effects/runner.ts";
+import type { Runner } from "../effects/runner.ts";
+import type { RunnerContext } from "../effects/scope.ts";
 import type { Effect } from "../model/effect.ts";
 import type { Msg } from "../model/msg.ts";
 import { reduce } from "../model/reduce.ts";
@@ -17,10 +18,10 @@ export interface Store {
   dispose(): void;
 }
 
-export interface StoreOptions {
+interface StoreOptions {
   readonly initial: State;
   readonly now: () => number;
-  readonly runner: (context: Omit<RunnerContext, "ports" | "signal">) => Runner;
+  readonly runner: (context: Pick<RunnerContext, "dispatch" | "read">) => Runner;
   readonly report: (origin: "reducer", error: unknown) => void;
 }
 

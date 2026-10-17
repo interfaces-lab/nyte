@@ -1,13 +1,14 @@
 /**
- * The desktop window's tabs. One store per renderer: it owns the strip, gives
- * each tab its own pane controller, keeps the strip in sessionStorage for a
- * reload, and mirrors the focused window's strip to localStorage, which the
- * first window of the next launch adopts. The web app never starts it.
+ * The window's tabs, the one navigation model. One store per renderer: it owns
+ * the tabs and gives each its own pane controller. A desktop window starts it:
+ * the strip shows, survives a reload in sessionStorage, and is mirrored from
+ * the focused window to localStorage, which the first window of the next
+ * launch adopts. The web app shows its single tab as the page, which the URL
+ * keeps.
  */
 import type { Static } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { routeShellPages } from "../chrome/shell-state.ts";
 import { PaneController } from "../layout/pane-controller.ts";
 import { paneLayoutSchema, paneSelectionSchema } from "../layout/pane-layout.ts";
 import type { PaneLayout, PaneLayoutAction } from "../layout/pane-layout.ts";
@@ -19,9 +20,6 @@ const STRIP_KEY = "nyte.desktop.tabs.v1";
 
 /** Each tab's drafts and images live under this prefix and its id. */
 const TAB_KEY_PREFIX = "nyte.desktop.tab.v1:";
-
-/** Every window holds this shared lock, so a starting window knows whether it is the first. */
-const WINDOW_LOCK = "nyte.desktop.window";
 
 const strict = { additionalProperties: false };
 
@@ -136,12 +134,11 @@ function read(store: Storage | undefined, key: string): string | null {
   }
 }
 
+/** A full or denied store keeps the strip for this window only. */
 function write(store: Storage | undefined, key: string, value: string): void {
   try {
     store?.setItem(key, value);
-  } catch {
-    // A full or denied store keeps the strip for this window only.
-  }
+  } catch {}
 }
 
 /** The ids a strip still refers to: open tabs and the reopen list. */
@@ -149,7 +146,7 @@ function knownTabIds(state: WindowState): ReadonlySet<string> {
   return new Set([...state.tabs, ...state.closed.map(({ tab }) => tab)].map((tab) => tab.id));
 }
 
-/** Drop the stored drafts of tabs no strip refers to any more. */
+/** Drop the stored drafts of tabs no strip refers to any more; a failure leaves them, and they only cost space. */
 function forgetTabs(shouldForget: (tabId: string) => boolean): void {
   const local = storage("localStorage");
 
@@ -164,80 +161,46 @@ function forgetTabs(shouldForget: (tabId: string) => boolean): void {
     );
 
     for (const key of stale) local.removeItem(key);
-  } catch {
-    // Stale drafts only cost space.
-  }
-}
-
-/** Whether no other window of this launch is open; it then adopts the saved strip. */
-async function firstWindow(): Promise<boolean> {
-  if (!("locks" in navigator)) return true;
-
-  try {
-    const { held = [] } = await navigator.locks.query();
-    void navigator.locks.request(
-      WINDOW_LOCK,
-      { mode: "shared" },
-      () => new Promise(() => undefined),
-    );
-
-    return !held.some((lock) => lock.name === WINDOW_LOCK);
-  } catch {
-    return true;
-  }
+  } catch {}
 }
 
 class WindowTabs {
-  #enabled = false;
+  #strip = false;
   #state: WindowState = initialWindow("tab");
-  /** True only for the first window of a launch with nothing saved: the startup chat applies. */
-  #startupDestination = false;
+  /** False once a started window restores a strip: the startup chat applies to a fresh one only. */
+  #startupDestination = true;
   readonly #controllers = new Map<string, PaneController>();
   readonly #listeners = new Set<() => void>();
 
-  get enabled(): boolean {
-    return this.#enabled;
+  /** A started window draws the strip and takes tab commands; the web's one tab never does. */
+  get strip(): boolean {
+    return this.#strip;
   }
 
   get startupDestination(): boolean {
     return this.#startupDestination;
   }
 
-  /** Restore a reload synchronously; resolves once a first window has adopted the saved strip. */
-  start(): Promise<void> {
-    this.#enabled = true;
+  /** Restore a reload's strip, or adopt the saved one in the launch's first window. */
+  start(firstWindow: boolean): void {
+    this.#strip = true;
+    this.#startupDestination = false;
     const reloaded = parseStrip(read(storage("sessionStorage"), STRIP_KEY));
     this.#state = reloaded ?? initialWindow(crypto.randomUUID());
     window.addEventListener("focus", () => this.#mirror());
-    routeShellPages((page) =>
-      this.dispatch(
-        page === undefined
-          ? { kind: "leave-page" }
-          : {
-              kind: "open",
-              target: "here",
-              place:
-                page.kind === "customize"
-                  ? { kind: "customize", section: undefined, sessionId: page.sessionId }
-                  : { kind: "environments", section: undefined },
-            },
-      ),
-    );
 
-    return firstWindow().then((first) => {
-      if (!first || reloaded !== undefined) return;
-      const saved = parseStrip(read(storage("localStorage"), STRIP_KEY));
-      const kept = knownTabIds(saved ?? this.#state);
-      forgetTabs((tabId) => !kept.has(tabId));
+    if (!firstWindow || reloaded !== undefined) return;
+    const saved = parseStrip(read(storage("localStorage"), STRIP_KEY));
+    const kept = knownTabIds(saved ?? this.#state);
+    forgetTabs((tabId) => !kept.has(tabId));
 
-      if (saved === undefined) {
-        this.#startupDestination = true;
+    if (saved === undefined) {
+      this.#startupDestination = true;
 
-        return;
-      }
+      return;
+    }
 
-      this.#apply(saved);
-    });
+    this.#apply(saved);
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -322,13 +285,14 @@ class WindowTabs {
   }
 
   #save(): void {
+    if (!this.#strip) return;
     write(storage("sessionStorage"), STRIP_KEY, this.#serialized());
 
     if (document.hasFocus()) this.#mirror();
   }
 
   #mirror(): void {
-    if (this.#enabled) write(storage("localStorage"), STRIP_KEY, this.#serialized());
+    write(storage("localStorage"), STRIP_KEY, this.#serialized());
   }
 
   #serialized(): string {

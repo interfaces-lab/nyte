@@ -29,7 +29,7 @@ import {
   ENVIRONMENTS,
   GROUPINGS,
   hasSessionFilters,
-  isOption,
+  amongOptions,
   PULL_REQUESTS,
   SHOW_FIELDS,
   STATUSES,
@@ -148,7 +148,7 @@ export function WorkspaceControls({
               <MenuRadioGroup
                 value={value.grouping}
                 onValueChange={(grouping) => {
-                  if (isOption(grouping, GROUPINGS)) onChange({ ...value, grouping });
+                  if (amongOptions(grouping, GROUPINGS)) onChange({ ...value, grouping });
                 }}
               >
                 <MenuRadioItem value="inbox" icon="inbox-empty" closeOnClick={false}>

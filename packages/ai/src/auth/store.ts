@@ -81,31 +81,31 @@ function localOwnerPid(owner: string | undefined): number | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function isRunning(pid: number): boolean {
+/** A signal-0 probe; EPERM means the process exists but belongs to another user. */
+function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
 
     return true;
   } catch (error) {
-    // EPERM: the process exists but belongs to another user.
     return errorCode(error) === "EPERM";
   }
 }
 
+/** Undefined when the path is gone while being inspected; the next create attempt decides. */
 function ageMs(path: string): number | undefined {
   try {
     return Date.now() - statSync(path).mtimeMs;
   } catch {
-    // Gone while being inspected; the next create attempt decides.
     return undefined;
   }
 }
 
 /** Abandoned when the owning process is gone, and unconditionally once the lock ages out. */
-function isAbandoned(lockPath: string): boolean {
+function lockAbandoned(lockPath: string): boolean {
   const pid = localOwnerPid(readOwner(lockPath));
 
-  if (pid !== undefined && !isRunning(pid)) return true;
+  if (pid !== undefined && !processAlive(pid)) return true;
   const age = ageMs(lockPath);
 
   return age !== undefined && age > LOCK_ABANDONED_MS;
@@ -146,13 +146,13 @@ function createLock(lockPath: string, owner: string): boolean {
  * judged the lock abandoned before another client replaced it re-checks here
  * under exclusion and finds a live lock instead of deleting it. Without that,
  * two clients recovering from one crash both remove and create, and both end up
- * inside the critical section.
+ * inside the critical section. Reclaiming is two syscalls, so an aged recovery
+ * lock is residue from a crash and is removed.
  */
 function reclaimAbandonedLock(lockPath: string, owner: string): void {
   const recoveryPath = `${lockPath}.recovery`;
 
   if (!createLock(recoveryPath, owner)) {
-    // Reclaiming is two syscalls, so an aged recovery lock is residue from a crash.
     const age = ageMs(recoveryPath);
 
     if (age !== undefined && age > RECOVERY_STALE_MS) rmSync(recoveryPath, { force: true });
@@ -161,12 +161,18 @@ function reclaimAbandonedLock(lockPath: string, owner: string): void {
   }
 
   try {
-    if (isAbandoned(lockPath)) rmSync(lockPath, { force: true });
+    if (lockAbandoned(lockPath)) rmSync(lockPath, { force: true });
   } finally {
     rmSync(recoveryPath, { force: true });
   }
 }
 
+/**
+ * Takes the credential lock, reclaiming an abandoned one, until the timeout. Release keeps a
+ * lock that now names another process and drops an unreadable one, since leaking it blocks
+ * every client until it ages out. A failed release must not mask a completed write; the age
+ * cap recovers it.
+ */
 async function acquireLock(
   lockPath: string,
   signal: AbortSignal | undefined,
@@ -176,14 +182,11 @@ async function acquireLock(
   const lock: CredentialLock = {
     held: () => readOwner(lockPath) === owner,
     release: () => {
-      // Keep a lock that now names another process; drop an unreadable one,
-      // since leaking it blocks every client until it ages out.
       if (readOwner(lockPath) !== owner) return;
 
       try {
         rmSync(lockPath, { force: true });
       } catch {
-        // A failed release must not mask a completed write; the age cap recovers it.
         return;
       }
     },
@@ -200,7 +203,7 @@ async function acquireLock(
       throw new Error(`Timed out waiting for the credential lock at ${lockPath}`);
     }
 
-    if (isAbandoned(lockPath)) reclaimAbandonedLock(lockPath, owner);
+    if (lockAbandoned(lockPath)) reclaimAbandonedLock(lockPath, owner);
     await new Promise<void>((resolve) => {
       setTimeout(resolve, LOCK_RETRY_MS);
     });
@@ -243,10 +246,12 @@ export class FileCredentialStore implements CredentialStore {
     return parsed;
   }
 
-  /** Publish by rename so a concurrent reader never observes a half-written file. */
+  /**
+   * Publish by rename so a concurrent reader never observes a half-written file. An advisory
+   * lock cannot make the held check and the rename one step; the check keeps a holder that
+   * already lost its lock from overwriting the current owner.
+   */
   private save(lock: CredentialLock, entries: Record<string, unknown>): void {
-    // An advisory lock cannot make this check and the rename one step; it keeps
-    // a holder that already lost its lock from overwriting the current owner.
     if (!lock.held()) {
       throw new Error(`Another process took over ${this.lockPath}; nothing was written`);
     }
@@ -308,6 +313,10 @@ export class FileCredentialStore implements CredentialStore {
     return stored;
   }
 
+  /**
+   * Persists a credential `fn` produced even when the caller stopped waiting: a refresh rotates
+   * the token the stored one replaces, so dropping it would leave a spent credential on disk.
+   */
   modify(
     providerId: string,
     fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,
@@ -318,9 +327,6 @@ export class FileCredentialStore implements CredentialStore {
       const current = readCredentialAccounts(entries[providerId]);
       const next = await fn(current);
 
-      // A credential `fn` already produced is persisted even when the caller
-      // stopped waiting: a refresh rotates the token the stored one replaces,
-      // so dropping it here would leave a spent credential on disk.
       if (next !== undefined) {
         if (next.accounts.length === 0) delete entries[providerId];
         else entries[providerId] = next;

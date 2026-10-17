@@ -10,8 +10,8 @@
  * throws. `close()` restores it. WebSockets cannot be patched, so connect them
  * to `localUrl(...)`.
  *
- * Exported for other packages' interop tests, which import it by relative
- * path. It reads no `.dev.vars` or `.env` file and no live secret.
+ * The relay tests and the host link test share it. It reads no `.dev.vars`
+ * or `.env` file and no live secret.
  */
 import { fileURLToPath } from "node:url";
 import {
@@ -37,7 +37,7 @@ import {
   createProof,
   generateMachineKey,
   keyThumbprint,
-  publicKeyOf,
+  toPublicJwk,
   signClaims,
   verifyClaims,
 } from "@nyte-ai/connect/signing";
@@ -65,10 +65,6 @@ const TABLES = [
 
 const random = (bytes = 24) =>
   Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString("base64url");
-
-// ---------------------------------------------------------------------------
-// A desktop on its relay socket
-// ---------------------------------------------------------------------------
 
 export type OpenFrame = Extract<RelayFrame, { t: "open" }>;
 
@@ -147,7 +143,7 @@ export class RelayDesktop {
   ): Promise<Extract<RelayFrame, { t: T }>> {
     for (;;) {
       for (const [index, frame] of this.unread.entries())
-        if (isFrame(frame, t) && match(frame)) {
+        if (taggedAs(frame, t) && match(frame)) {
           this.unread.splice(index, 1);
 
           return frame;
@@ -159,7 +155,7 @@ export class RelayDesktop {
 
   /** Unread frames of one type, without waiting. */
   pending<T extends RelayFrame["t"]>(t: T): Extract<RelayFrame, { t: T }>[] {
-    return this.unread.filter((frame) => isFrame(frame, t));
+    return this.unread.filter((frame) => taggedAs(frame, t));
   }
 
   send(frame: DesktopFrame): void {
@@ -258,7 +254,7 @@ export class RelayDesktop {
   }
 }
 
-function isFrame<T extends RelayFrame["t"]>(
+function taggedAs<T extends RelayFrame["t"]>(
   frame: RelayFrame,
   t: T,
 ): frame is Extract<RelayFrame, { t: T }> {
@@ -323,10 +319,6 @@ export function enrollmentHandler(input: {
   };
 }
 
-// ---------------------------------------------------------------------------
-// The broker
-// ---------------------------------------------------------------------------
-
 export interface WorkerdBroker {
   /** `CONNECT_ORIGIN`: proofs' and Clerk's `aud`, and the base of relay addresses. */
   readonly origin: string;
@@ -340,6 +332,9 @@ export interface WorkerdBroker {
    * The unpatched fetch. A request for `origin` is dispatched straight to the
    * Worker, as the edge would, not through wrangler's dev proxy: that proxy
    * never passes a caller's disconnect on, so `request.signal` would not fire.
+   * A Blob or FormData body is the runtime Request's to encode, not the
+   * dispatcher's undici, and the Worker's response stream is piped into this
+   * runtime's own so cancel and abort cross the pipe.
    */
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
   /** A Clerk session JWT the broker accepts. */
@@ -446,7 +441,6 @@ export async function startWorkerdBroker(
     async fetch(input, init) {
       const body = init?.body;
 
-      // Their encoding is the runtime Request's to make, not the dispatcher's undici.
       if (body instanceof Blob || body instanceof FormData)
         return broker.fetch(new Request(input, init));
       const url = new URL(input instanceof Request ? input.url : input);
@@ -473,7 +467,6 @@ export async function startWorkerdBroker(
             },
       );
 
-      // The dispatcher's stream piped into this runtime's own; cancel and abort cross the pipe.
       const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
 
       response.body?.pipeTo(writable).catch(() => undefined);
@@ -531,7 +524,7 @@ export async function startWorkerdBroker(
         });
       const key = input.key ?? (await generateMachineKey());
       const body = JSON.stringify({
-        publicKey: publicKeyOf(key),
+        publicKey: toPublicJwk(key),
         name: input.name ?? "Studio Mac",
       });
       const response = await broker.fetch(`${origin}${BROKER_ROUTES.environments}`, {
@@ -541,7 +534,7 @@ export async function startWorkerdBroker(
           "content-type": "application/json",
           "nyte-proof": await createProof({
             key,
-            issuer: await keyThumbprint(publicKeyOf(key)),
+            issuer: await keyThumbprint(toPublicJwk(key)),
             audience: origin,
             method: "POST",
             path: BROKER_ROUTES.environments,

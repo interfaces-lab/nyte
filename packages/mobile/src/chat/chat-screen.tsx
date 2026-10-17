@@ -45,9 +45,13 @@ type ChatScreenProps = {
   delegateNames: ReadonlyMap<SessionId, string>;
   changes: SessionView["changes"] | undefined;
   onAskMerge: () => void;
-  prefill: { text: string; nonce: number } | undefined;
 };
 
+/**
+ * A session's transcript under a floating glass header, with the composer docked above the keyboard.
+ * The list spans the window while rows and the composer share one measured column, and the jump pill
+ * doubles as the way back to an off-screen question.
+ */
 export function ChatScreen({
   state,
   sessionId,
@@ -65,13 +69,10 @@ export function ChatScreen({
   delegateNames,
   changes,
   onAskMerge,
-  prefill,
 }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
-  // The glass header floats over the list; start the transcript below it.
   const headerHeight = insets.top + 44;
   const window = useWindowDimensions();
-  // The list spans the window; rows and the composer share one measured column.
   const [viewportWidth, setViewportWidth] = useState(window.width);
 
   const layout = useMemo(
@@ -87,7 +88,6 @@ export function ChatScreen({
   const running = state.execution.kind !== "idle";
   const stopping = state.execution.kind === "live" && state.execution.stopping;
   const { composerRef, onComposerLayout, anchorSend } = scroller;
-  // The jump pill doubles as the way back to an off-screen question.
   const answerable = openQuestion(state) !== undefined;
 
   return (
@@ -142,7 +142,6 @@ export function ChatScreen({
                 onChooseHead,
               }}
               placeholder="Follow up…"
-              prefill={prefill}
               gutters={{ left: layout.paddingLeft, right: layout.paddingRight }}
             />
           </View>
@@ -153,8 +152,7 @@ export function ChatScreen({
 }
 
 const styles = css.create({
-  // The route's view is native, so the screen fills by size rather than by
-  // growing as a flex child of it.
+  /** The route's view is native, so the screen fills by size rather than growing as a flex child. */
   screen: {
     display: "flex",
     flexDirection: "column",

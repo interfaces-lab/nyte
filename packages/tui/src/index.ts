@@ -1,6 +1,5 @@
 import process from "node:process";
 import type { Connection, LoginMethod } from "@nyte-ai/sdk";
-import { portConflict, probePort } from "@nyte-ai/service";
 import { accountCommand } from "./account-command.ts";
 import { mcpCommand } from "./mcp-command.ts";
 import { loginProvider, logoutProvider } from "./services/auth.ts";
@@ -24,13 +23,14 @@ import {
   wantsPrint,
 } from "./flags.ts";
 import type { RunFlags } from "./flags.ts";
-import { openTerminalHost } from "./host.ts";
+import { HostFailure, startHostThread } from "./hosting.ts";
 import { cliLoginDriver } from "./interaction.ts";
 import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
 import { addFolder, flagConfiguration, targetSession } from "./run.ts";
 import { connectLocalService, serviceCommandMain } from "./service.ts";
+import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
 import { PrintInvocation } from "./print-invocation.ts";
@@ -38,9 +38,11 @@ import { runTui } from "./app/main.tsx";
 
 const invocationArgs = process.argv.slice(2);
 
-const json = invocationArgs
-  .slice(0, invocationArgs.indexOf("--") < 0 ? invocationArgs.length : invocationArgs.indexOf("--"))
-  .includes("--json");
+const separator = invocationArgs.findIndex((arg) => arg === "--");
+
+const json = (separator < 0 ? invocationArgs : invocationArgs.slice(0, separator)).includes(
+  "--json",
+);
 
 const output = {
   write: (text: string): void => void process.stdout.write(text),
@@ -54,9 +56,11 @@ const signal = invocation.controller.signal;
 function untilInterrupted(): AbortSignal {
   invocation.handoff();
   const interrupted = new AbortController();
-  const end = (): void => interrupted.abort();
-  process.once("SIGINT", end);
-  process.once("SIGTERM", end);
+
+  const stop = onEnding(() => {
+    stop();
+    interrupted.abort();
+  });
 
   return interrupted.signal;
 }
@@ -139,6 +143,7 @@ async function authenticate(command: "login" | "logout", args: readonly string[]
       driver,
       providerId: options.providerId,
     });
+
     console.log(`${statusGlyph("ok", ansiEnabled())} ${result.message}`);
 
     return;
@@ -163,6 +168,7 @@ async function authenticate(command: "login" | "logout", args: readonly string[]
   console.log("  run `nyte` to start");
 }
 
+/** Runs `nyte update`. On a terminal the percent rows overwrite one line; piped, they stay discrete lines a log can read. */
 async function update(args: readonly string[]): Promise<void> {
   const options = parseUpdateArgs(args);
 
@@ -199,8 +205,6 @@ async function update(args: readonly string[]): Promise<void> {
   const version = options.version;
   console.error(`${bold("nyte", tty)} ${dim(`${VERSION} → ${version ?? "latest"}`, tty)}`);
 
-  // On a terminal the percent rows overwrite one line; piped, they stay
-  // discrete lines a log can read.
   let progressOpen = false;
 
   const endProgress = (): void => {
@@ -256,28 +260,25 @@ async function serve(args: readonly string[]): Promise<void> {
   const options = parseServeArgs(args);
   const interrupted = untilInterrupted();
   const token = options.token ?? crypto.randomUUID();
-  const host = await openTerminalHost();
-  invocation.defer(() => host.close());
 
-  const listener = await host
-    .listen({
-      transport: { kind: "http", port: options.port },
-      auth: { kind: "token", token },
-    })
-    .catch(async (cause: unknown) => {
-      const conflict = portConflict(options.port, await probePort(options.port));
+  const host = await startHostThread({ kind: "serve", port: options.port, token }).catch(
+    (cause: unknown) => {
+      throw cause instanceof HostFailure && cause.reason === "port-in-use"
+        ? new Error(`${cause.message} Free it, or pass another --port.`)
+        : cause;
+    },
+  );
 
-      throw conflict === undefined
-        ? cause
-        : new Error(`${conflict} Free it, or pass another --port.`);
-    });
-
-  output.write(`${listener.address}\n`);
+  invocation.defer(() => host.stop());
+  output.write(`${host.address}\n`);
 
   if (options.token === undefined) output.error(`token ${token}`);
 
-  if (!interrupted.aborted)
-    await new Promise((done) => interrupted.addEventListener("abort", done, { once: true }));
+  const stopped = new Promise((done) =>
+    interrupted.addEventListener("abort", done, { once: true }),
+  );
+
+  if (!interrupted.aborted) await Promise.race([stopped, host.ended]);
 }
 
 async function status(): Promise<void> {
@@ -330,21 +331,26 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
       );
   }
 
-  const session = await targetSession(host, flags.resume, await addFolder(host, process.cwd()));
-  invocation.sessionId = session.id;
+  const resumed = await targetSession(host, flags.resume);
   signal.throwIfAborted();
+  const content = flags.rest.join(" ");
+  const options = configuration === undefined ? {} : { configuration };
 
-  return printRun({
-    session,
-    content: flags.rest.join(" "),
-    json: flags.json,
-    quiet: flags.quiet,
-    output,
-    signal,
-    configuration,
-  });
+  const { session, receipt } =
+    resumed === null
+      ? await host.sessions.start({
+          workspace: await addFolder(host, process.cwd()),
+          content,
+          ...options,
+        })
+      : { session: resumed, receipt: await resumed.send(content, options) };
+
+  invocation.sessionId = session.id;
+
+  return printRun({ session, receipt, json: flags.json, quiet: flags.quiet, output, signal });
 }
 
+/** Runs one command. After the TUI it exits explicitly, because Bun's watch mode outlives `main`. */
 async function main(): Promise<PrintOutcome | undefined> {
   signal.throwIfAborted();
   const command = invocationArgs[0];
@@ -469,13 +475,8 @@ async function main(): Promise<PrintOutcome | undefined> {
 
   signal.throwIfAborted();
   invocation.handoff();
-  const exit = await runTui(resolveTuiResume(flags));
 
-  if (exit.kind === "signal") process.kill(process.pid, exit.signal);
-  // Bun's watch mode stays alive when main returns, even after the TUI closes.
-  else process.exit(0);
-
-  return undefined;
+  return process.exit(await runTui(resolveTuiResume(flags)));
 }
 
 let outcome: PrintOutcome | undefined;

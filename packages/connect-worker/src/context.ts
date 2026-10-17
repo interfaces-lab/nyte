@@ -7,10 +7,10 @@ import type { D1Database } from "./d1.ts";
 import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
 import type { Logger } from "./log.ts";
-import type { RelayStub } from "./relay-stub.ts";
-import { hit } from "./store.ts";
+import type { RelayStub } from "./relay-binding.ts";
+import { hit } from "./store/replays.ts";
 
-export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
+type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface Dependencies {
   /** Outbound requests: the Clerk Backend API only. */
@@ -75,7 +75,7 @@ const RATE_LIMITS = {
   relay: { windowMs: 60_000, limit: 1200 },
 } as const;
 
-export type RateLimit = keyof typeof RATE_LIMITS;
+type RateLimit = keyof typeof RATE_LIMITS;
 
 /** Count one request against `bucket` for `subject`. False once the window is full. */
 export async function allow(

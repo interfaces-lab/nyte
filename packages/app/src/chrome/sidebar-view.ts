@@ -64,16 +64,18 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
-export function sessionIsDraft(session: SessionInfo): boolean {
-  return session.name === null && session.heads.every((head) => head.tip.kind === "start");
-}
-
-export function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>): SessionStatus {
+/**
+ * `sessionMark` reports `waiting` only for a run parked on a reply; one parked
+ * on background work arrives here as `working`. A session is never a draft:
+ * `draft` is the client's chats that have not started.
+ */
+function deriveSessionStatus(
+  session: SessionInfo,
+  working: ReadonlySet<SessionId>,
+): Exclude<SessionStatus, "draft"> {
   const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
-    // `sessionMark` reports `waiting` only for a run parked on a reply; one
-    // parked on background work arrives here as `working`.
     case "waiting":
     case "failed":
       return "needs-attention";
@@ -81,11 +83,7 @@ export function statusOf(session: SessionInfo, working: ReadonlySet<SessionId>):
     case "working":
       return "working";
     case "idle":
-      if (sessionHasUnreadCompletion(session)) return "unread";
-
-      if (sessionIsDraft(session)) return "draft";
-
-      return "done";
+      return sessionHasUnreadCompletion(session) ? "unread" : "done";
     default: {
       const _exhaustive: never = mark;
 
@@ -99,7 +97,7 @@ export interface ShelfHold {
   readonly shelf: SessionShelf;
 }
 
-export function shelfOf(
+export function deriveShelf(
   session: SessionInfo,
   working: ReadonlySet<SessionId>,
   hold: ShelfHold | undefined,
@@ -110,12 +108,11 @@ export function shelfOf(
 
   if (session.pinned) return "inbox";
 
-  const status = statusOf(session, working);
+  const status = deriveSessionStatus(session, working);
 
   switch (status) {
     case "needs-attention":
     case "unread":
-    case "draft":
       return "inbox";
     case "working":
       return "working";
@@ -138,9 +135,9 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
 }
 
 /**
- * Needs a decision, then running, then finished and waiting on a look, then
- * drafts. Read state takes no part: opening a chat never moves it. A chat
- * leaves the ranking only when it is archived.
+ * Needs a decision, then running, then finished and waiting on a look. Read
+ * state takes no part: opening a chat never moves it. A chat leaves the
+ * ranking only when it is archived.
  */
 function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): number {
   const mark = sessionActivityMark(session, working.has(session.id));
@@ -153,7 +150,7 @@ function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): numbe
     case "working":
       return 1;
     case "idle":
-      return sessionIsDraft(session) ? 3 : 2;
+      return 2;
     default: {
       const _exhaustive: never = mark;
 
@@ -201,7 +198,9 @@ function groupSessions(
       };
 
       return STATUSES.flatMap((status) => {
-        const members = sessions.filter((session) => statusOf(session, working) === status);
+        const members = sessions.filter(
+          (session) => deriveSessionStatus(session, working) === status,
+        );
 
         return members.length === 0
           ? []
@@ -262,7 +261,8 @@ export function sessionsForView(
 
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
-      settings.statuses.length === 0 || settings.statuses.includes(statusOf(session, working)),
+      settings.statuses.length === 0 ||
+      settings.statuses.includes(deriveSessionStatus(session, working)),
   );
 
   const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, working));
@@ -290,7 +290,7 @@ export function clearSessionFilters(settings: SessionViewSettings): SessionViewS
   };
 }
 
-export function isOption<T extends string>(value: unknown, options: readonly T[]): value is T {
+export function amongOptions<T extends string>(value: unknown, options: readonly T[]): value is T {
   return options.some((option) => option === value);
 }
 

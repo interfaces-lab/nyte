@@ -1,4 +1,3 @@
-
 export interface SpecLine {
   readonly number: number;
   readonly text: string;

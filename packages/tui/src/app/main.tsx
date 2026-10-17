@@ -1,40 +1,40 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
+import type { Writable } from "node:stream";
 import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
 import {
   CliRenderEvents,
+  CliRenderer,
   MouseButton,
   NativeSession,
-  createCliRenderer,
   maybeMakeRenderable,
 } from "@opentui/core";
-import type { CliRenderer, Renderable } from "@opentui/core";
+import type { Renderable } from "@opentui/core";
 import { render } from "@opentui/solid";
 import { createRoot, createSignal } from "solid-js";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
+import { launchChat } from "../effects/boot.ts";
 import type { BootOptions } from "../effects/boot.ts";
 import { createReporter, installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { hostPort, pluginsPort } from "../effects/host-port.ts";
-import {
-  createHandle,
-  filesPort,
-  settingsPort,
-  shellPort,
-  systemClock,
-} from "../effects/local-ports.ts";
-import type { HostPort, Ports } from "../effects/ports.ts";
+import { createHandle, filesPort, settingsPort, shellPort } from "../effects/local-ports.ts";
+import { ignoredSettingsText } from "../services/settings.ts";
+import type { CrashLog, HostPort, PluginsPort, Ports, TerminalPort } from "../effects/ports.ts";
 import { createRunner } from "../effects/runner.ts";
 import { terminalPort } from "../effects/terminal-port.ts";
 import { sessionRecovery } from "../flags.ts";
 import type { RunFlags } from "../flags.ts";
+import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts";
+import type { Ending } from "../lifecycle.ts";
 import { connectLocalService, watchRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
-import type { ResolvedSettings } from "../lib/settings-schema.ts";
-import { resolveThemeMode } from "../lib/theme.ts";
-import type { PartMessage } from "../lib/view-helpers.ts";
-import { initialState } from "../model/state.ts";
+import type { Msg } from "../model/msg.ts";
+import { followedSession, initialState } from "../model/state.ts";
+import { waitingMessages } from "../model/table-input.ts";
 import type { FailureReport, TerminalFacts } from "../model/state.ts";
+import { firstFramePort } from "../services/first-frame.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
 import { registerSyntaxParsers } from "../services/syntax-parsers.ts";
 import type { Kit } from "./context.tsx";
@@ -45,63 +45,101 @@ import { installSinks } from "./sinks.ts";
 import { createStore } from "./store.ts";
 import type { Store } from "./store.ts";
 import { createTickers } from "./ticker.ts";
+import { holdTypeahead } from "./typeahead.ts";
+import type { Typeahead } from "./typeahead.ts";
 
-export type TuiExit =
-  | { readonly kind: "quit" }
-  | { readonly kind: "signal"; readonly signal: "SIGINT" | "SIGTERM" };
+/** Ports that work before the host opens. The app adds the host, its plugins and the renderer's clock. */
+type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
 
-const STARTUP_SETTINGS: ResolvedSettings = {
-  autoUpdate: false,
-  theme: "auto",
-  copyOnSelect: false,
-  scrollAcceleration: false,
-  followUp: "steer",
-};
+/** The host once it is reachable, and what the app closes with it. */
+interface OpenedHost {
+  readonly host: HostPort;
+  readonly plugins: PluginsPort;
+  readonly drawPart: (message: PartMessage) => Renderable | null;
+  close(): Promise<void>;
+}
 
 export interface AppOptions {
   readonly renderer: CliRenderer;
-  readonly ports: Ports;
+  readonly ports: LocalPorts;
   readonly cwd: string;
-  readonly drawPart: (message: PartMessage) => Renderable | null;
+  readonly boot: BootOptions;
+  /** Opens the host. The app paints and takes typing at once, and boots when this resolves. */
+  readonly open: (dispatch: (msg: Msg) => void) => Promise<OpenedHost>;
+  /** Keys held since the renderer began reading stdin, replayed once the composer has focus. */
+  readonly typeahead?: Typeahead;
   readonly kit?: (kit: Kit) => Kit;
+  /** The streams beside the renderer that write to its terminal; a write one fails is a hangup, as the renderer's input ending is. */
+  readonly outputs?: readonly Writable[];
 }
 
 export interface MountedApp {
   readonly store: Store;
+  /** The status the app ends with: 0 on quit, 1 when boot fails, and 129, a hangup, once its terminal or renderer is gone. */
   readonly closing: Promise<number>;
   readonly report: ReturnType<typeof createReporter>;
-  boot(options: BootOptions): void;
   startupError(): string | null;
   close(): Promise<void>;
 }
 
+/**
+ * Mounts the app on `renderer` and focuses the composer before the host exists, so input
+ * paints at once; opens the host alongside and boots once it is reachable. Every timer
+ * runs on `renderer.clock`.
+ */
 export async function mountApp(options: AppOptions): Promise<MountedApp> {
-  const { renderer, ports } = options;
+  const { renderer } = options;
   const controller = new AbortController();
   const closing = Promise.withResolvers<number>();
   const [fallen, setFallen] = createSignal<(() => void) | null>(null);
   let startupError: string | null = null;
+  let opened: OpenedHost | null = null;
+  const hostOpened = Promise.withResolvers<void>();
+  hostOpened.promise.catch(() => undefined);
+
+  const reachable = (): OpenedHost => {
+    if (opened === null) throw new Error("The host is still opening.");
+
+    return opened;
+  };
+
+  const ports: Ports = {
+    ...options.ports,
+    clock: renderer.clock,
+    get host() {
+      return reachable().host;
+    },
+    get plugins() {
+      return reachable().plugins;
+    },
+  };
 
   const report = createReporter(ports.log, (failure) =>
     root.store.dispatch({ kind: "failure", failure }),
   );
 
   const quit = (): void => closing.resolve(0);
+  const hangUp = (): void => closing.resolve(exitStatus("SIGHUP"));
+  const unwatchTerminal = watchTerminal(renderer.stdin, options.outputs ?? [], hangUp);
+  const { settings, invalid } = options.ports.settings.read(options.cwd);
+  const chat = launchChat(options.boot, options.ports.firstFrame.read(), settings);
 
   const root = createRoot((dispose) => {
     const store = createStore({
       initial: initialState({
         cwd: options.cwd,
-        settings: STARTUP_SETTINGS,
+        settings,
         terminal: terminalFacts(renderer),
+        chat,
       }),
-      now: () => ports.clock.now(),
+      now: () => renderer.clock.now(),
       report,
       runner: (context) =>
         createRunner({
           ports,
           read: context.read,
           signal: controller.signal,
+          opened: hostOpened.promise,
           dispatch(msg) {
             if (msg.kind === "effect-failed" && msg.effect === "boot") {
               startupError = msg.message;
@@ -114,19 +152,14 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     });
 
     const sinks = installSinks(store, ports.terminal);
-
-    const tickers = createTickers(ports.clock, (callback, intervalMs) => {
-      const timer = setInterval(callback, intervalMs);
-
-      return () => clearInterval(timer);
-    });
+    const tickers = createTickers(renderer.clock);
 
     const kit = createKit({
       renderer,
       theme: sinks.theme,
       tickers,
       blob: (id) => ports.host.blob(id),
-      drawPart: options.drawPart,
+      drawPart: (message) => opened?.drawPart(message) ?? null,
       attach: {
         composer: (port) => ports.composer.attach(port),
         scroll: (port) => ports.scroll.attach(port),
@@ -138,7 +171,24 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   });
 
   const { store } = root;
+
+  if (invalid.length > 0)
+    store.dispatch({
+      kind: "inform",
+      tone: "warning",
+      text: ignoredSettingsText(invalid),
+    });
   void store.runner.exited.then(({ code }) => closing.resolve(code));
+
+  const opening = options.open(store.dispatch).then((host) => {
+    opened = host;
+    hostOpened.resolve();
+    store.dispatch({ kind: "host-opened" });
+
+    return host;
+  });
+
+  opening.catch((cause: unknown) => hostOpened.reject(cause));
   const uninstallKeymap = installKeymap({ renderer, store, fallen, quit });
 
   const syncTerminal = (): void => {
@@ -170,7 +220,9 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   renderer.root.onMouseDown = (event) => {
     if (store.state().facts.settings.copyOnSelect || event.button !== Number(MouseButton.RIGHT))
       return;
+
     const selection = renderer.getSelection();
+
     const text =
       selection === null || (selection.isStart && selection.behavior === "cell")
         ? ""
@@ -183,6 +235,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   };
 
   renderer.once(CliRenderEvents.DESTROY, () => {
+    unwatchTerminal();
+    hangUp();
     root.sinks.dispose();
     renderer.off(CliRenderEvents.RESIZE, syncTerminal);
     renderer.off(CliRenderEvents.THEME_MODE, syncTerminal);
@@ -210,169 +264,202 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     renderer,
   );
 
+  store.runner.boot(options.boot);
+  options.typeahead?.release();
+  store.runner.run({ kind: "refresh-workspace", cwd: options.cwd });
+
   return {
     store,
     closing: closing.promise,
     report,
-    boot: (boot) => store.runner.boot(boot),
     startupError: () => startupError,
     async close() {
+      unwatchTerminal();
       controller.abort();
       await store.runner.dispose();
       root.sinks.dispose();
       uninstallKeymap();
+      const host = await opening.catch(() => null);
+      await host?.close();
     },
   };
 }
 
-export async function runTui(flags: RunFlags): Promise<TuiExit> {
+/** Why the TUI ends when its service goes away: the connection can't follow a service that restarted. */
+const SERVICE_LOST =
+  "error: The Nyte service stopped, or a nyte of another build replaced it, so this TUI lost its connection.";
+
+/**
+ * Runs the interactive TUI: connects to the service from the first instruction, holds keys
+ * typed before the app mounts, and prints the resume command on exit. The exit text waits
+ * for `renderer.closed`, because OpenTUI restores and clears the terminal after `destroy`
+ * returns and would wipe anything written before. When the service goes away the TUI ends with
+ * status 1, the reason, and the resume command. Resolves with the status to exit with; once
+ * the app ends or a signal arrives, shutdown has `SHUTDOWN_DEADLINE_MS` before the process exits.
+ */
+export async function runTui(flags: RunFlags): Promise<number> {
+  const connecting = connectLocalService();
+  connecting.catch(() => undefined);
   const cwd = process.cwd();
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
   const log = openCrashLog(home);
   const failures: string[] = [];
-  let exit: TuiExit = { kind: "quit" };
-  const signalled = Promise.withResolvers<void>();
+  const signalled = Promise.withResolvers<Ending>();
 
-  const onSignal = (signal: "SIGINT" | "SIGTERM"): void => {
-    exit = { kind: "signal", signal };
-    signalled.resolve();
-  };
+  const stopEnding = onEnding((ending) => {
+    exitWithin(exitStatus(ending));
+    signalled.resolve(ending);
+  });
 
-  const onSigint = (): void => onSignal("SIGINT");
-  const onSigterm = (): void => onSignal("SIGTERM");
-  process.on("SIGINT", onSigint);
-  process.on("SIGTERM", onSigterm);
-
-  const cleanup = async (resource: string, dispose: () => unknown): Promise<void> => {
+  const cleanup = async (resource: string, dispose: () => Promise<void>): Promise<void> => {
     try {
       await dispose();
     } catch (cause) {
-      failures.push(`${resource} cleanup failed: ${messageOf(cause)}`);
+      failures.push(`${resource} cleanup failed: ${failureText(cause)}`);
     }
   };
 
   registerSyntaxParsers();
   const native = new NativeSession(process.stdout);
 
-  const renderer = await createCliRenderer({
-    ...TUI_RENDERER_CONFIG,
-    nativeSession: native,
-    exitOnCtrlC: false,
-    autoFocus: false,
-    enableMouseMovement: true,
-    clearOnShutdown: true,
-    openConsoleOnError: false,
+  const renderer = new CliRenderer(
+    process.stdin,
+    process.stdout,
+    process.stdout.columns || 80,
+    process.stdout.rows || 24,
+    {
+      ...TUI_RENDERER_CONFIG,
+      nativeSession: native,
+      exitOnCtrlC: false,
+      autoFocus: false,
+      enableMouseMovement: true,
+      clearOnShutdown: true,
+      openConsoleOnError: false,
+    },
+  );
+
+  const typeahead = holdTypeahead(renderer);
+
+  await renderer.setupTerminal().catch(async (cause: unknown) => {
+    renderer.destroy();
+    await renderer.closed.catch(() => undefined);
+
+    throw cause;
   });
 
   const encoder = new TextEncoder();
   const terminal = terminalPort(renderer, { write: (text) => native.write(encoder.encode(text)) });
 
-  let opened: {
-    readonly port: HostPort;
-    readonly plugins: Awaited<ReturnType<typeof pluginsPort>>;
-  } | null = null;
-
-  const reachable = (): NonNullable<typeof opened> => {
-    if (opened === null) throw new Error("The host is still opening.");
-
-    return opened;
-  };
-
-  const ports: Ports = {
-    get host() {
-      return reachable().port;
-    },
-    get plugins() {
-      return reachable().plugins;
-    },
-    terminal,
-    composer: createHandle(),
-    scroll: createHandle(),
-    settings: settingsPort(),
-    shell: shellPort(),
-    files: filesPort(),
-    clock: systemClock,
-    log,
-  };
-
   const app = await mountApp({
     renderer,
-    ports,
     cwd,
-    drawPart: (message) => maybeMakeRenderable(renderer, opened?.plugins.draw(message)),
+    typeahead,
+    outputs: [process.stdout, process.stderr],
+    ports: {
+      terminal,
+      composer: createHandle(),
+      scroll: createHandle(),
+      settings: settingsPort(),
+      firstFrame: firstFramePort(join(home, "tui-first-frame.json")),
+      shell: shellPort(),
+      files: filesPort(),
+      log,
+    },
+    boot: { home, cwd, target: bootTarget(flags), ...flagSelection(flags) },
+    open: (dispatch) => openService({ connecting, renderer, terminal, log, cwd, dispatch }),
   });
 
   const unhook = installProcessHooks(app.report);
-  let host: ServiceSession | null = null;
-  let closed = false;
-  const remote = new AbortController();
 
-  const opening = (async (): Promise<void> => {
-    await terminal.painted();
-    host = await connectLocalService();
-    const { connection, registration } = host;
+  const lost = connecting.then(
+    (service) => service.lost.then(() => "lost" as const),
+    () => new Promise<never>(() => undefined),
+  );
 
-    void watchRemote(registration, remote.signal, (facts) =>
-      app.store.dispatch({ kind: "remote", remote: facts }),
-    ).catch((error: unknown) => {
-      if (!remote.signal.aborted) log.write("watch", error);
-    });
+  const ending = await Promise.race([app.closing, signalled.promise.then(exitStatus), lost]);
+  const status = ending === "lost" ? 1 : ending;
 
-    const plugins = await pluginsPort(connection, {
-      notify: (title, body, sound) => terminal.notify(title, body, sound),
-      report: (plugin, message) =>
-        app.store.dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
-    });
-
-    opened = { port: hostPort(connection, cwd), plugins };
-
-    if (!closed) app.boot({ home, cwd, target: bootTarget(flags), ...flagSelection(flags) });
-  })().catch((cause: unknown) => {
-    failures.unshift(`error: ${messageOf(cause)}`);
-  });
-
-  const code = await Promise.race([
-    app.closing,
-    signalled.promise.then(() => 0),
-    opening.then(() => (failures.length > 0 ? 1 : new Promise<number>(() => undefined))),
-  ]);
-
-  closed = true;
-  remote.abort();
-  await opening;
-  const session = app.store.state().facts.session?.id ?? null;
+  if (ending === "lost") failures.push(SERVICE_LOST);
+  stopEnding();
+  exitWithin(status);
+  const session = followedSession(app.store.state())?.id ?? null;
+  const waiting = waitingMessages(app.store.state()).map((sent) => sent.snapshot.text);
+  const unsent = waiting.length === 0 ? null : waiting.join("\n\n");
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 
   if (startupError !== null) failures.unshift(`error: ${startupError}`);
-  await cleanup("Plugins", () => opened?.plugins.dispose());
   await cleanup("Clipboard", () => terminal.dispose());
-  // OpenTUI 0.6 restores (and clears) the terminal after destroy returns; output written
-  // before `closed` settles would be wiped by that restore.
   await cleanup("Terminal", async () => {
     renderer.destroy();
     await renderer.closed;
   });
-  await cleanup("Host", () => host?.connection.close());
   unhook();
-  process.off("SIGINT", onSigint);
-  process.off("SIGTERM", onSigterm);
+  process.stdout.write(
+    exitText({ session, unsent, failures, crashes: app.store.state().local.failures }),
+  );
 
-  process.stdout.write(exitText({ session, failures, crashes: app.store.state().local.failures }));
+  return status === 0 && failures.length > 0 ? 1 : status;
+}
 
-  if ((code !== 0 || failures.length > 0) && exit.kind === "quit") process.exit(1);
+/** Opens the background service's host for the TUI: its plugins, and the Nyte Connect status. */
+async function openService(input: {
+  readonly connecting: Promise<ServiceSession>;
+  readonly renderer: CliRenderer;
+  readonly terminal: TerminalPort;
+  readonly log: CrashLog;
+  readonly cwd: string;
+  readonly dispatch: (msg: Msg) => void;
+}): Promise<OpenedHost> {
+  const { connection, registration } = await input.connecting;
+  const remote = new AbortController();
 
-  return exit;
+  const close = async (): Promise<void> => {
+    remote.abort();
+    await connection.close();
+  };
+
+  void watchRemote(registration, remote.signal, (facts) =>
+    input.dispatch({ kind: "remote", remote: facts }),
+  ).catch((cause: unknown) => {
+    if (!remote.signal.aborted) input.log.write("watch", cause);
+  });
+
+  const plugins = await pluginsPort(connection, {
+    notify: (title, body, sound) => input.terminal.notify(title, body, sound),
+    report: (plugin, message) =>
+      input.dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
+  }).catch(async (cause: unknown) => {
+    await close();
+
+    throw cause;
+  });
+
+  return {
+    host: hostPort(connection, input.cwd, () => nextFrame(input.renderer)),
+    plugins,
+    drawPart: (message) => drawnPart(input.renderer, plugins.draw(message)),
+    async close() {
+      try {
+        await plugins.dispose();
+      } finally {
+        await close();
+      }
+    },
+  };
 }
 
 export function exitText(input: {
   readonly session: SessionId | null;
+  /** A new chat's first message that was still waiting for the host. */
+  readonly unsent: string | null;
   readonly failures: readonly string[];
   readonly crashes: readonly FailureReport[];
 }): string {
   const lines = [
     ...input.crashes.map((crash) => `error: ${crash.message} (details in ${crash.logPath})`),
     ...input.failures,
+    ...(input.unsent === null ? [] : [`Not sent: ${input.unsent}`]),
     ...(input.session === null
       ? []
       : ["To resume previous session", sessionRecovery(input.session).command]),
@@ -381,13 +468,23 @@ export function exitText(input: {
   return lines.length === 0 ? "" : `\n${lines.map((line) => `${line}\n`).join("")}`;
 }
 
+/** The renderable a client plugin drew for a part, or null when none drew one and the transcript shows its fallback. */
+export function drawnPart(renderer: CliRenderer, drawn: unknown): Renderable | null {
+  return drawn === undefined || drawn === null ? null : maybeMakeRenderable(renderer, drawn);
+}
+
+/** Resolves once `renderer` has painted its next frame. */
+export function nextFrame(renderer: CliRenderer): Promise<void> {
+  return new Promise((resolve) => renderer.once(CliRenderEvents.FRAME, () => resolve()));
+}
+
 function terminalFacts(renderer: CliRenderer): TerminalFacts {
   const selection = renderer.getSelection();
 
   return {
     width: renderer.width,
     height: renderer.height,
-    theme: resolveThemeMode("auto", renderer.themeMode),
+    theme: renderer.themeMode,
     selection: renderer.hasSelection,
     dragging: selection?.isDragging ?? false,
   };
@@ -410,6 +507,6 @@ function flagSelection(flags: RunFlags): Pick<BootOptions, "model" | "effort"> {
   return { model, effort: flags.effort ?? null };
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function failureText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

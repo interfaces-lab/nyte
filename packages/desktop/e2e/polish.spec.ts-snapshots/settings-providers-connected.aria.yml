@@ -1,0 +1,25 @@
+- main:
+  - heading "Providers" [level=1]
+  - region "Connected providers":
+    - heading "Connected providers" [level=3]
+    - text: Anthropic
+    - 'button "Anthropic: Connected"'
+  - region "Popular providers":
+    - heading "Popular providers" [level=3]
+    - text: OpenCode Go Recommended Low-cost subscription for everyday use
+    - button "Connect Provider OpenCode Go"
+    - text: OpenCode Zen Recommended Curated models including Claude, GPT, Gemini, and more
+    - button "Connect Provider OpenCode Zen"
+    - text: GitHub Copilot Coding models through your GitHub Copilot subscription
+    - button "Connect Provider GitHub Copilot"
+    - text: OpenAI GPT and reasoning models from OpenAI
+    - button "Connect Provider OpenAI"
+    - text: OpenAI Codex Codex through your ChatGPT subscription
+    - button "Connect Provider OpenAI Codex"
+    - text: OpenRouter Models from multiple providers through one API
+    - button "Connect Provider OpenRouter"
+  - region "Other providers":
+    - heading "Other providers" [level=3]
+    - text: Vercel AI Gateway Add an API key to connect
+    - button "Connect Provider Vercel AI Gateway"
+    - text: Claude Code Connects through the environment ACP agents Connects through the environment

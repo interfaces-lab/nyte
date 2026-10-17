@@ -1,24 +1,20 @@
 import { asId, standard } from "@nyte-ai/schema";
-import type { CallId, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
+import type { CallId, JobView, Json, OutputFrame, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
-import {
-  LOCAL,
-  callRef,
-  createHost,
-  decodeCallRecord,
-  definePart,
-  jobHandle,
-  loadWaits,
-  workspaceHandle,
-  memoryStore,
-  runStep,
-  viewHead,
-} from "../src/index.ts";
-import type { ConnectionContext, Durable, Kernel } from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { jobHandle } from "../src/engine/jobs.ts";
+import { loadWaits } from "../src/engine/waits.ts";
+import { workspaceHandle } from "../src/env/workspaces.ts";
+import { viewHead } from "../src/fold/view.ts";
+import { LOCAL, definePart } from "../src/index.ts";
+import { callRef, decodeCallRecord, memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ConnectionContext, Durable } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { Process } from "./fake-env.ts";
-import { main, until } from "./harness.ts";
+import { main, until } from "../src/harness.ts";
 
 const question = definePart({
   kind: "test/question",
@@ -27,7 +23,7 @@ const question = definePart({
   fallback: (_state, { id }) => `Ask ${id}`,
 });
 
-function stepOf(session: SessionId, call: CallId): ConnectionContext {
+function stepContext(session: SessionId, call: CallId): ConnectionContext {
   let sequence = 0;
 
   return {
@@ -100,7 +96,7 @@ async function parkOn(
 describe("jobs", () => {
   it("starts a session's job: output, tail, background item, and an exit report attached to main", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const jobs = host.workspace(workspace).jobs;
     const job = await jobs.start({ command: "pnpm dev", session: session.id, title: "Dev server" });
     const process = await started(provider.processes, 1);
@@ -144,11 +140,11 @@ describe("jobs", () => {
     const view = await until(async () => {
       const current = await session.view();
 
-      return current.messages.length > 0 ? current : undefined;
+      return current.messages.length > 1 ? current : undefined;
     });
 
     expect(view.background).toEqual([expect.objectContaining({ id: job.id, state: "done" })]);
-    expect(view.messages[0]).toMatchObject({
+    expect(view.messages[1]).toMatchObject({
       kind: "user",
       content: "Job Dev server (pnpm dev) exited with code 0.\n\nready on :3000",
       source: { kind: "job", job: job.id },
@@ -159,7 +155,7 @@ describe("jobs", () => {
 
   it("sends no report when a parked wait consumed the job's end", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
 
     const job = await host
       .workspace(workspace)
@@ -193,10 +189,41 @@ describe("jobs", () => {
       { kind: "job", job: job.id, end: { kind: "exited", code: 2, reason: "exited" } },
     ]);
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect((await session.view()).messages).toEqual([]);
+    expect((await session.view()).messages.map((message) => message.id)).toEqual([session.id]);
     expect((await session.view()).background).toEqual([
       expect.objectContaining({ id: job.id, state: "failed" }),
     ]);
+  });
+
+  it("opens a late reader on the last 256 KiB of output, after a gap for what it dropped, and keeps the view's tail at 4 KiB", async () => {
+    const { host, provider, workspace } = await world();
+    const jobs = host.workspace(workspace).jobs;
+    const job = await jobs.start({ command: "pnpm dev" });
+    const process = await started(provider.processes, 1);
+    const line = new TextEncoder().encode(`${"x".repeat(1023)}\n`);
+
+    for (let index = 0; index < 300; index += 1) process.emit(line);
+    process.emit("ready\n");
+    const view = await until(async () => {
+      const [current] = await jobs.list();
+
+      return current?.tail.endsWith("ready\n") === true ? current : undefined;
+    });
+    const reader = job.output()[Symbol.asyncIterator]();
+    const gap = await reader.next();
+    const replay = await reader.next();
+
+    expect(gap.value).toEqual({ kind: "gap" });
+    assert(!replay.done && replay.value.kind === "bytes");
+    expect(replay.value.data.byteLength).toBe(256 * 1024);
+    expect(new TextDecoder().decode(replay.value.data).endsWith("x\nready\n")).toBe(true);
+    expect(view.tail.length).toBeLessThanOrEqual(4096);
+    expect(view.tail.startsWith("x")).toBe(true);
+    process.emit("live\n");
+    const live = await reader.next();
+    assert(!live.done && live.value.kind === "bytes");
+    expect(new TextDecoder().decode(live.value.data)).toBe("live\n");
+    await reader.return?.();
   });
 
   it("gives a slow reader a gap instead of stalling the process", async () => {
@@ -243,6 +270,71 @@ describe("jobs", () => {
     const tail = (await host.workspace(workspace).jobs.list())[0]?.tail;
 
     expect([tail?.length, tail?.endsWith("yend\n")]).toEqual([4096, true]);
+  });
+
+  it("holds a user's shell for a slow reader instead of skipping its output", async () => {
+    const { host, provider, workspace } = await world();
+    const jobs = host.workspace(workspace).jobs;
+    const job = await jobs.start({ pty: { columns: 80, rows: 24 } });
+    const process = await started(provider.processes, 1);
+    const slow = job.output()[Symbol.asyncIterator]();
+    const first = slow.next();
+    const chunk = new Uint8Array(16 * 1024).fill(121);
+
+    process.emit("start\n");
+    assert(!(await first).done);
+
+    for (let index = 0; index < 8; index += 1) process.emit(chunk);
+    process.emit("end\n");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect((await jobs.list())[0]?.tail.endsWith("end\n")).toBe(false);
+
+    const sizes: number[] = [];
+
+    while (sizes.at(-1) !== 4) {
+      const next = await slow.next();
+      assert(!next.done && next.value.kind === "bytes");
+      sizes.push(next.value.data.byteLength);
+    }
+
+    expect(sizes).toEqual([...Array.from({ length: 8 }, () => 16 * 1024), 4]);
+    process.exit(0);
+    expect(await slow.next()).toEqual({ done: false, value: { kind: "exit", code: 0 } });
+  });
+
+  it("stops a user's shell a minute after its last reader leaves, never one a reader holds or a session owns", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+    try {
+      const { host, provider, workspace } = await world();
+      const jobs = host.workspace(workspace).jobs;
+      const { session } = await host.sessions.start({ workspace, content: "Hi." });
+      const shell = await jobs.start({ pty: { columns: 80, rows: 24 } });
+      const owned = await jobs.start({ pty: { columns: 80, rows: 24 }, session: session.id });
+      await started(provider.processes, 2);
+      const reader = shell.output()[Symbol.asyncIterator]();
+      const opened = reader.next();
+
+      vi.advanceTimersByTime(120_000);
+      const state = async () =>
+        (await jobs.list()).map(
+          (job) => (job.id === shell.id ? "shell" : "owned") + ":" + job.state.kind,
+        );
+
+      expect(await state()).toEqual(["shell:running", "owned:running"]);
+
+      await reader.return?.();
+      expect(await opened).toEqual({ done: true, value: undefined });
+      vi.advanceTimersByTime(60_000);
+
+      expect(await shell.settled()).toEqual({ kind: "exited", code: null, reason: "terminated" });
+      expect((await jobs.list()).find((job) => job.id === owned.id)?.state).toEqual({
+        kind: "running",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("recovers a pty job by key, writes, resizes and stops it; a pipe job answers not-pty", async () => {
@@ -306,24 +398,43 @@ describe("jobs", () => {
     });
   });
 
-  it("yields the job list as it changes", async () => {
+  it("yields the job list, again after each job that moves, keeping every unmoved view, and forgets ended jobs past 32", async () => {
     const { host, provider, workspace } = await world();
     const jobs = host.workspace(workspace).jobs;
+    const server = await jobs.start({ command: "pnpm dev" });
+    await started(provider.processes, 1);
     const watched = jobs.watch()[Symbol.asyncIterator]();
     const opened = await watched.next();
 
     assert(!opened.done);
-    expect(opened.value).toEqual([]);
+    expect(opened.value.map((job) => job.id)).toEqual([server.id]);
+    provider.processes[0]?.emit("listening\n");
     await jobs.start({ command: "echo hi" });
-    await started(provider.processes, 1);
 
     const ended = await until(async () => {
       const next = await watched.next();
+      assert(!next.done);
 
-      return !next.done && next.value[0]?.state.kind === "exited" ? next.value : undefined;
+      return next.value.find((job) => job.command === "echo hi" && job.state.kind === "exited");
     });
 
-    expect(ended[0]).toMatchObject({ command: "echo hi", tail: "hi\n" });
+    expect(ended).toMatchObject({ command: "echo hi", tail: "hi\n" });
+
+    for (let index = 0; index < 32; index += 1) await jobs.start({ command: `echo ${index}` });
+    let before: readonly JobView[] = [];
+
+    const after = await until(async () => {
+      const next = await watched.next();
+      assert(!next.done);
+      const previous = before;
+      before = next.value;
+
+      return next.value.some((job) => job.id === ended.id)
+        ? undefined
+        : { previous, next: next.value };
+    });
+
+    expect(after.next.filter((job) => !after.previous.includes(job))).toEqual([]);
     await watched.return?.();
   });
 
@@ -362,7 +473,7 @@ describe("jobs", () => {
     const kernel = kernelOver(store, provider);
     const host = createHost(kernel, { credential: { kind: "token", token: "x" } });
     const workspace = await addWorkspace(host);
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "make", session: session.id });
@@ -393,12 +504,12 @@ describe("jobs", () => {
       waiting: null,
       waits: [{ kind: "job", job: job.id, end: { kind: "exited", code: 2 } }],
     });
-    expect((await session.view()).messages).toEqual([]);
+    expect((await session.view()).messages.map((message) => message.id)).toEqual([session.id]);
   });
 
   it("offers a cold host's answer only to its part: a wait on any of a running job and the part takes the answer (B F2)", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "make", session: session.id });
@@ -439,7 +550,7 @@ describe("jobs", () => {
 
   it("settles a wait on a job this instance does not hold as lost when another kernel loads it", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const job = await host
       .workspace(workspace)
       .jobs.start({ command: "make", session: session.id });
@@ -463,16 +574,36 @@ describe("jobs", () => {
     });
     expect(woken).toEqual([`${session.id}/${main}`]);
   });
+  it("leaves a wait on a job this instance does not hold parked when another kernel sees a commit", async () => {
+    const { kernel, host, provider, workspace } = await world();
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const job = await host
+      .workspace(workspace)
+      .jobs.start({ command: "make", session: session.id });
+    const call: CallId = asId("c1");
+
+    await parkOn(
+      kernel,
+      session.id,
+      call,
+      async (durable) => (await durable.wait({ kind: "job", job: job.id })).kind,
+    );
+
+    await kernelOver(kernel.store, provider).waits.refresh();
+
+    expect(await readCall(kernel, session.id, call)).toMatchObject({ waits: [] });
+  });
+
   it("answers a step's recorded job as lost after a restart, spawning nothing again (B F1, P1)", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const call: CallId = asId("c1");
     const handles: string[] = [];
 
     const body =
       (on: Kernel) =>
       async (durable: Durable): Promise<Json> => {
-        const job = await workspaceHandle(on, stepOf(session.id, call), workspace).jobs.start({
+        const job = await workspaceHandle(on, stepContext(session.id, call), workspace).jobs.start({
           command: "deploy --prod",
           session: session.id,
         });

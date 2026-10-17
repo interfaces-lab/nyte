@@ -1,6 +1,5 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, open, rename, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { open } from "node:fs/promises";
+import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
 import { Compile } from "typebox/compile";
@@ -16,6 +15,8 @@ import {
   Uuid,
 } from "../index.ts";
 import { PrivateJwk } from "../signing.ts";
+import { storeFailed } from "./errors.ts";
+import { writePrivateFile } from "./private-file.ts";
 
 /** Local revocations whose broker revoke has not been confirmed. */
 export const REVOCATION_LIMIT = 64;
@@ -97,7 +98,7 @@ const LinkKey = Type.Union([
 
 export type LinkKey = Static<typeof LinkKey>;
 
-export type PendingUnlink = Static<typeof PendingUnlink>;
+type PendingUnlink = Static<typeof PendingUnlink>;
 
 const ConnectFileType = strict({
   version: Type.Literal(4),
@@ -119,7 +120,7 @@ export const EMPTY_CONNECT_FILE: ConnectFile = {
   unlinks: [],
 };
 
-export type ConnectRead =
+type ConnectRead =
   | { readonly kind: "ready"; readonly file: ConnectFile }
   | { readonly kind: "failed" };
 
@@ -130,56 +131,26 @@ export class ConnectStoreFailed extends Error {
   }
 }
 
-async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(path, "r");
-
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
-}
-
-/** Write `text` to `path`, 0600, through an fsynced temporary file renamed into place. */
-export async function writePrivateFile(input: {
-  readonly path: string;
-  readonly text: string;
-}): Promise<void> {
-  const directory = dirname(input.path);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const temporary = `${input.path}.${randomBytes(8).toString("hex")}.tmp`;
-
-  try {
-    const handle = await open(temporary, "wx", 0o600);
-
-    try {
-      await handle.writeFile(input.text);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-
-    await rename(temporary, input.path);
-  } catch (cause) {
-    await rm(temporary, { force: true }).catch(() => undefined);
-    throw cause;
-  }
-
-  await syncDirectory(directory);
-}
-
+/**
+ * The Connect state file as every part of the runtime reads and changes it. `origin` is the
+ * broker this build talks to, so a link through any other is not current; `onFailed` runs when a
+ * `change` fails, before the caller hears `storeFailed`.
+ */
 export class ConnectStore {
   private readonly path: string;
+  private readonly origin: string | undefined;
+  private readonly onFailed: () => void;
   private loading: Promise<ConnectRead> | undefined;
   private loaded: ConnectRead | undefined;
-  private writes: Promise<unknown> = Promise.resolve();
+  private readonly writes = serial();
 
-  constructor(path: string) {
+  constructor(
+    path: string,
+    owner: { readonly origin?: string; readonly onFailed?: () => void } = {},
+  ) {
     this.path = path;
+    this.origin = owner.origin;
+    this.onFailed = owner.onFailed ?? (() => undefined);
   }
 
   /** The file as the last write left it; the disk is read once. */
@@ -199,6 +170,40 @@ export class ConnectStore {
     return this.loaded;
   }
 
+  /** The file, or `storeFailed` when it cannot be used. */
+  async ready(): Promise<ConnectFile> {
+    const read = await this.read();
+
+    if (read.kind === "failed") throw storeFailed();
+
+    return read.file;
+  }
+
+  /** The file as the last read or write left it, without waiting; undefined before the first read or after a failure. */
+  loadedFile(): ConnectFile | undefined {
+    return this.loaded?.kind === "ready" ? this.loaded.file : undefined;
+  }
+
+  /** The stored link when it is the one for `environmentId` through this build's broker. */
+  currentLink(environmentId: string): StoredLink | undefined {
+    const link = this.loadedFile()?.link ?? null;
+
+    return link !== null && link.environment.id === environmentId && link.origin === this.origin
+      ? link
+      : undefined;
+  }
+
+  /** Applies `change` as `update` does; a failure runs `onFailed` and rejects with `storeFailed`. */
+  async change(change: (file: ConnectFile) => ConnectFile): Promise<void> {
+    try {
+      await this.update((file) => ({ file: change(file), result: undefined }));
+    } catch (cause) {
+      if (!(cause instanceof ConnectStoreFailed)) throw cause;
+      this.onFailed();
+      throw storeFailed();
+    }
+  }
+
   /**
    * Apply `change` to the file as every earlier change left it, then persist.
    * Changes run one at a time. A failed write fails the store for good.
@@ -206,7 +211,7 @@ export class ConnectStore {
   update<T>(
     change: (file: ConnectFile) => { readonly file: ConnectFile; readonly result: T },
   ): Promise<T> {
-    const run = this.writes.then(async () => {
+    return this.writes.run(async () => {
       const loaded = await this.read();
 
       if (loaded.kind === "failed") throw new ConnectStoreFailed();
@@ -230,20 +235,11 @@ export class ConnectStore {
 
       return next.result;
     });
-
-    this.writes = run.catch(() => undefined);
-
-    return run;
   }
 
   /** Settles once every change queued so far, and any queued while waiting, has landed or failed. */
   async idle(): Promise<void> {
-    let tail: Promise<unknown>;
-
-    do {
-      tail = this.writes;
-      await tail;
-    } while (tail !== this.writes);
+    while (this.writes.busy) await this.writes.settled();
   }
 
   private async load(): Promise<ConnectRead> {
@@ -264,7 +260,9 @@ export class ConnectStore {
         await handle.close();
       }
     } catch (cause) {
-      return isMissing(cause) ? { kind: "ready", file: EMPTY_CONNECT_FILE } : { kind: "failed" };
+      return cause instanceof Error && "code" in cause && cause.code === "ENOENT"
+        ? { kind: "ready", file: EMPTY_CONNECT_FILE }
+        : { kind: "failed" };
     }
 
     try {

@@ -1,20 +1,77 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { props } from "@stylexjs/stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
+import { ADD_TO_CHAT_LABEL } from "../conversation/add-to-chat.ts";
 import { errorMessage } from "../errors";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { useSession, useWorkspaceJobs } from "../queries.ts";
 import { connection } from "../sdk.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import type { WorkbenchTabId } from "./controller.ts";
-import { mountTerminal } from "./terminal-runtime";
-import { isJobTerminal, terminalActions, useTerminal } from "./terminal-store";
+import { nyte } from "../nyte.ts";
+import {
+  addTerminalToChat,
+  mountTerminal,
+  subscribeTerminalSelection,
+  terminalHasSelection,
+} from "./terminal-runtime";
+import { getTerminal, terminalActions, useTerminal } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles } from "./terminal.stylex";
+
+/** "Starting terminal…" lies over the canvas, so the grid keeps its size when the shell comes up. */
+const startingStyles = create({
+  overlay: {
+    position: "absolute",
+    insetBlockStart: 0,
+    insetInline: 0,
+    zIndex: 1,
+    backgroundColor: role.bgBase,
+  },
+});
+
+/** Add to Chat floats over the grid's top corner while text is selected, clear of the prompt below. */
+const chatStyles = create({
+  action: {
+    position: "absolute",
+    insetBlockStart: space.s2,
+    insetInlineEnd: space.s3,
+    zIndex: 1,
+  },
+});
+
+function AddSelectionToChat({ id }: { readonly id: string }): ReactElement | null {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeTerminalSelection(id, listener),
+    [id],
+  );
+
+  const selected = useSyncExternalStore(subscribe, () => terminalHasSelection(id));
+
+  if (!selected) return null;
+
+  return (
+    <span {...props(chatStyles.action)}>
+      <Button
+        variant="outline"
+        size="sm"
+        icon="paperclip"
+        aria-keyshortcuts={nyte.platform === "darwin" ? "Meta+Shift+L" : "Control+Shift+L"}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => addTerminalToChat(id)}
+      >
+        {ADD_TO_CHAT_LABEL}
+      </Button>
+    </span>
+  );
+}
 
 function TerminalCanvas({
   id,
@@ -46,7 +103,7 @@ function TerminalStatus({
   readonly stop: () => void;
   readonly stopping: boolean;
 }): ReactElement | null {
-  if (isJobTerminal(tab)) {
+  if (tab.kind === "job") {
     if (tab.rendering.kind === "failed") {
       return (
         <div
@@ -105,7 +162,7 @@ function TerminalStatus({
   switch (tab.state.kind) {
     case "starting":
       return (
-        <div role="status" {...props(text.sm, terminalStyles.state)}>
+        <div role="status" {...props(text.sm, terminalStyles.state, startingStyles.overlay)}>
           Starting terminal…
         </div>
       );
@@ -127,7 +184,7 @@ function TerminalStatus({
       return (
         <div role="status" {...props(text.sm, terminalStyles.state)}>
           <span>
-            {tab.state.exitCode === 0
+            {tab.state.exitCode === 0 || tab.state.exitCode === null
               ? "Shell exited"
               : "Shell exited with code " + String(tab.state.exitCode)}
           </span>
@@ -154,16 +211,22 @@ export function TerminalPanel({
   readonly visible: boolean;
 }): ReactElement {
   const tab = useTerminal(tabId);
-  const jobSessionId = tab !== undefined && isJobTerminal(tab) ? tab.source.sessionId : undefined;
+
+  useMountEffect(() => {
+    if (getTerminal(tabId) === undefined)
+      void terminalActions.restore({ id: tabId, workspacePath });
+  });
+
+  const jobSessionId = tab !== undefined && tab.kind === "job" ? tab.sessionId : undefined;
   const workspace = useSession(jobSessionId).data?.workspace;
   const jobs = useWorkspaceJobs(jobSessionId === undefined ? undefined : workspace);
 
   const cancellation = useMutation({
     mutationFn: (current: TerminalTab) => {
-      if (!isJobTerminal(current) || workspace === undefined)
+      if (current.kind !== "job" || workspace === undefined)
         throw new Error("Only agent commands can be stopped here");
 
-      return connection().workspace(workspace).job(current.source.jobId).stop();
+      return connection().workspace(workspace).job(current.jobId).stop();
     },
   });
 
@@ -205,9 +268,10 @@ export function TerminalPanel({
                 void restart(tab);
               }}
             />
-            {(isJobTerminal(tab)
+            {(tab.kind === "job"
               ? tab.rendering.kind !== "failed"
               : tab.state.kind !== "failed") && <TerminalCanvas id={tab.id} visible={visible} />}
+            <AddSelectionToChat id={tab.id} />
           </div>
         </div>
       )}

@@ -2,7 +2,7 @@ import { normalizeContext } from "@nyte-ai/schema/model";
 import { describe, expect, it } from "vitest";
 import { Type } from "typebox";
 import { stream } from "../src/api/openai-responses.ts";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
+import { convertResponsesMessages } from "../src/api/openai-responses-convert.ts";
 import type { AssistantMessage, Context, JsonValue, Model } from "../src/types.ts";
 
 const model: Model<"openai-responses"> = {
@@ -192,8 +192,7 @@ describe("OpenAI Responses tool-call namespaces", () => {
 });
 
 describe("OpenAI Responses grammar tool replay", () => {
-  // earendil-works/radius#115: a gateway forwards another model's history as a foreign provider.
-  it("drops foreign item ids when replaying grammar calls as custom Responses items", () => {
+  it("drops foreign item ids when replaying grammar calls as custom Responses items, as a gateway forwarding another model's history sends them (radius#115)", () => {
     const output: AssistantMessage = {
       ...createOutput(),
       api: "pi-messages",

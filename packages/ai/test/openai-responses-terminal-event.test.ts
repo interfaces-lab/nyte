@@ -23,7 +23,7 @@ const pricedModel = {
   cost: { input: 1_000_000, output: 2_000_000, cacheRead: 3_000_000, cacheWrite: 0 },
 } satisfies Model<"openai-responses">;
 
-/** Feed wire JSON through the real OpenAI SDK and adapter, without replacing SDK methods. */
+/** Feed wire JSON through the real OpenAI SDK and adapter, without replacing SDK methods. Tool calls are snapshotted as emitted, so a later mutation cannot make a bad event look correct. */
 async function run(events: readonly JsonValue[], streamModel = model) {
   const source = stream(
     streamModel,
@@ -52,7 +52,6 @@ async function run(events: readonly JsonValue[], streamModel = model) {
     if (event.type === "text_start" || event.type === "text_end") {
       stopReasons.push(event.partial.stopReason);
     }
-    // Snapshot the emitted value so later mutation cannot make a bad event appear correct.
     if (event.type === "toolcall_end") toolCalls.push(structuredClone(event.toolCall));
   }
   return { result: await source.result(), kinds, stopReasons, toolCalls };
@@ -366,14 +365,13 @@ describe("OpenAI Responses terminal event handling", () => {
     );
   });
 
-  it("rejects parallel tool calls without output_index instead of running mixed-up calls", async () => {
+  it("rejects parallel tool calls without output_index, done events after all deltas as llama.cpp sends them, instead of running mixed-up calls", async () => {
     const call = (n: string) => ({
       type: "function_call",
       id: `fc_${n}`,
       call_id: `call_${n}`,
       name: "bash",
     });
-    // llama.cpp omits output_index from every event and sends both done events after all deltas.
     const result2 = await run([
       { type: "response.output_item.added", item: { ...call("a"), arguments: "" } },
       {

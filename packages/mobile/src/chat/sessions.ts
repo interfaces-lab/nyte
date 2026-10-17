@@ -1,9 +1,11 @@
 import type { Connection, SessionInfo } from "@nyte-ai/sdk";
 import { useMemo, useState } from "react";
+import { sessionMark } from "@nyte-ai/plugin/client/presentation";
+import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { describeHostError } from "../connection/connection.ts";
 import { useWatch } from "../connection/use-watch.ts";
 import type { Theme } from "../theme.ts";
-import { hasRun, sessionMark, type SessionMark } from "../view-helpers.ts";
+import { hasRun } from "../view-helpers.ts";
 
 const PAGE = 50;
 
@@ -24,7 +26,7 @@ export const statusLabels: Record<SessionMark, string> = {
   idle: "Ready",
 };
 
-export function isActive(session: SessionInfo): boolean {
+export function inProgress(session: SessionInfo): boolean {
   const mark = sessionMark(session);
 
   return mark === "working" || mark === "retry";
@@ -69,19 +71,6 @@ export function formatActivity(at: number, now: number): string {
   if (days < 7) return `${String(days)}d`;
 
   return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-/** Elapsed run time: 42s, 5m, 1h 12m. */
-export function elapsed(at: number, now: number): string {
-  const seconds = Math.max(0, Math.floor((now - at) / 1000));
-
-  if (seconds < 60) return `${String(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-
-  if (minutes < 60) return `${String(minutes)}m`;
-  const hours = Math.floor(minutes / 60);
-
-  return `${String(hours)}h ${String(minutes % 60)}m`;
 }
 
 /** The color and fill pair a session mark paints with. */

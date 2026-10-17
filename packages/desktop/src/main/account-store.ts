@@ -1,9 +1,8 @@
 import { readFile, rm } from "node:fs/promises";
+import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import { writePrivateFile } from "@nyte-ai/connect/host";
-import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
-import type { SecretsSource } from "@nyte-ai/host";
+import { writePrivateFile } from "@nyte-ai/connect/private-file";
 
 const savedSignIn = Compile(
   Type.Object(
@@ -15,14 +14,21 @@ const savedSignIn = Compile(
   ),
 );
 
+/** Seals text under this Mac's secrets key and opens it again; the host owns the key. */
+export interface SecretSealer {
+  seal(plain: string): Promise<string>;
+  /** Rejects when the text was sealed under another key or the key cannot be read now. */
+  open(sealed: string): Promise<string>;
+}
+
 export class AccountStore {
   private readonly path: string;
-  private readonly secrets: SecretsSource;
-  private writes: Promise<unknown> = Promise.resolve();
+  private readonly sealer: SecretSealer;
+  private readonly writes = serial();
 
-  constructor(options: { readonly path: string; readonly secrets: SecretsSource }) {
+  constructor(options: { readonly path: string; readonly sealer: SecretSealer }) {
     this.path = options.path;
-    this.secrets = options.secrets;
+    this.sealer = options.sealer;
   }
 
   /** The saved sign-in, its token still sealed; undefined when there is none to restore. */
@@ -34,27 +40,24 @@ export class AccountStore {
     }
   }
 
-  open(sealed: string): Promise<string | undefined> {
-    return openSecret(this.secrets, sealed).catch(() => undefined);
+  /** The token a saved sign-in sealed; rejects when the keychain cannot open it now. */
+  open(sealed: string): Promise<string> {
+    return this.sealer.open(sealed);
   }
 
+  /**
+   * Seals and writes the sign-in, or removes the file for none. A sign-in the
+   * keychain cannot seal rejects and leaves the saved one as it was.
+   */
   save(signIn: { readonly token: string; readonly label: string } | undefined): Promise<void> {
-    const run = this.writes.then(async () => {
-      const sealed =
-        signIn === undefined
-          ? undefined
-          : await sealSecret(this.secrets, signIn.token).catch(() => undefined);
-
-      if (signIn === undefined || sealed === undefined) return rm(this.path, { force: true });
+    return this.writes.run(async () => {
+      if (signIn === undefined) return rm(this.path, { force: true });
+      const sealed = await this.sealer.seal(signIn.token);
 
       return writePrivateFile({
         path: this.path,
         text: `${JSON.stringify({ sealed, label: signIn.label })}\n`,
       });
     });
-
-    this.writes = run.catch(() => undefined);
-
-    return run;
   }
 }

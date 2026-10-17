@@ -141,6 +141,39 @@ describe("localExec over pipes", () => {
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 0 });
   });
 
+  it("keeps a protocol pipe whole for a slow reader, its stderr tagged apart", async () => {
+    const job = await localExec(await folder())(
+      [
+        process.execPath,
+        "-e",
+        "process.stderr.write('warming up\\n'); process.stdout.write('x'.repeat(3 * 1024 * 1024)); process.stdout.write('END')",
+      ],
+      { stdio: "protocol" },
+    );
+
+    let stdout = "";
+    let stderr = "";
+    const kinds = new Set<string>();
+
+    for await (const frame of job.output()) {
+      kinds.add(frame.kind);
+
+      if (frame.kind !== "bytes") continue;
+
+      if (frame.stream === "stderr") stderr += decoder.decode(frame.data);
+      else {
+        stdout += decoder.decode(frame.data);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+    }
+
+    expect(kinds.has("gap")).toBe(false);
+    expect(stderr).toBe("warming up\n");
+    expect(stdout.length).toBe(3 * 1024 * 1024 + 3);
+    expect(stdout.endsWith("END")).toBe(true);
+    expect(await job.settled()).toEqual({ kind: "exited", code: 0, reason: "exited" });
+  });
+
   it("detaches readers on close and on the environment's signal, leaving the process running", async () => {
     const environment = new AbortController();
     const exec = localExec(await folder(), { signal: environment.signal });
@@ -183,21 +216,64 @@ describe("localExec where the pty module does not load (§41a)", () => {
   });
 });
 
+describe("localExec over a pty module", () => {
+  it("pauses the pty while its slowest reader is 256 KiB behind and resumes it within 64 KiB", async () => {
+    const paced: string[] = [];
+    let data: (text: string) => void = () => undefined;
+
+    const loadPty = () => ({
+      spawn: () => ({
+        onData: (listener: (text: string) => void) => {
+          data = listener;
+        },
+        onExit: () => undefined,
+        pause: () => paced.push("pause"),
+        resume: () => paced.push("resume"),
+        write: () => undefined,
+        resize: () => undefined,
+        kill: () => undefined,
+      }),
+    });
+
+    const job = await localExec(await folder(), { loadPty })([], {
+      pty: { columns: 80, rows: 24 },
+    });
+    const reader = job.output()[Symbol.asyncIterator]();
+    const chunk = "y".repeat(32 * 1024);
+    data(chunk);
+    await reader.next();
+
+    for (let index = 0; index < 9; index += 1) data(chunk);
+
+    expect(paced).toEqual(["pause"]);
+
+    for (let index = 0; index < 7; index += 1) await reader.next();
+
+    expect(paced).toEqual(["pause"]);
+    await reader.next();
+
+    expect(paced).toEqual(["pause", "resume"]);
+    await reader.return?.();
+  });
+});
+
 describe.skipIf(!ptyLoads)("localExec in a pty", () => {
   it("runs a command in a terminal, resizes it, and reports its exit", async () => {
     const exec = localExec(await folder());
-    const job = await exec('printf "%s" "$TERM"; sleep 0.2', { pty: { columns: 80, rows: 24 } });
+    const job = await exec('printf "%s %s" "$TERM" "$COLORTERM"; sleep 0.2', {
+      pty: { columns: 80, rows: 24 },
+    });
 
     expect(await job.resize({ columns: 100, rows: 30 })).toEqual({ kind: "resized" });
     const { text, frames } = await read(job);
 
-    expect(text).toContain("xterm-256color");
+    expect(text).toContain("xterm-256color truecolor");
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 0 });
     expect(await job.resize({ columns: 80, rows: 24 })).toEqual({ kind: "missing" });
   });
 
   it("runs the login shell for an empty command, takes keystrokes, and reads a prompt as idle", async () => {
-    const exec = localExec(await folder(), { shell: "/bin/sh" });
+    const exec = localExec(await folder(), { shell: () => "/bin/sh" });
     const job = await exec([], { pty: { columns: 80, rows: 24 } });
     const reader = job.output()[Symbol.asyncIterator]();
     let text = "";

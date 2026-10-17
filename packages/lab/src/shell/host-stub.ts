@@ -8,7 +8,13 @@ export const workspace = {
   name: "nyte",
 } satisfies SelectedWorkspace;
 
-const host = { workspace, platform: "darwin" } satisfies HostState;
+const host = { workspace } satisfies HostState;
+
+/** The bridge's plain values, which the interface reads without calling. */
+const fields = new Map<string, unknown>([
+  ["platform", "darwin"],
+  ["machineName", "Lab"],
+]);
 
 const answers = new Map<string, unknown>([
   ["host.state", host],
@@ -17,8 +23,13 @@ const answers = new Map<string, unknown>([
 
 function bridge(path: string): () => void {
   return new Proxy(function host() {}, {
-    get: (_target, key) =>
-      key === "then" ? undefined : bridge(path === "" ? String(key) : `${path}.${String(key)}`),
+    get: (_target, key) => {
+      if (key === "then") return undefined;
+
+      if (path === "" && fields.has(String(key))) return fields.get(String(key));
+
+      return bridge(path === "" ? String(key) : `${path}.${String(key)}`);
+    },
     apply: () => {
       if (/(^|\.)(on[A-Z]\w*|watch)$/.test(path)) return () => {};
 

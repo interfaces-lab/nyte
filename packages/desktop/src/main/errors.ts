@@ -1,7 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { SdkError } from "@nyte-ai/sdk";
 import type { IpcFailure, IpcResult } from "@nyte-ai/app/errors.ts";
-import { ConnectError } from "@nyte-ai/connect/host";
 
 /** Local-only, bounded diagnostics. Never export original exceptions to telemetry or IPC. */
 export const ipcDiagnostics = new Map<string, unknown>();
@@ -20,7 +18,10 @@ export function retainDiagnostic(diagnostic: {
   }
 }
 
-/** Only fixed, main-owned messages belong here. Never pass request or provider text. */
+/**
+ * A failure already safe to show the renderer: a fixed message main or the host process wrote,
+ * or an SDK failure the host process classified. Never pass request or provider text.
+ */
 export class ExpectedHostError extends Error {
   readonly error: IpcFailure;
 
@@ -31,12 +32,8 @@ export class ExpectedHostError extends Error {
   }
 }
 
-export function ipcFailure(cause: unknown): IpcFailure {
+function ipcFailure(cause: unknown): IpcFailure {
   if (cause instanceof ExpectedHostError) return cause.error;
-
-  if (cause instanceof ConnectError) return { code: "unavailable", message: cause.message };
-
-  if (cause instanceof SdkError) return { code: cause.code, message: cause.message };
   const correlationId = randomUUID();
   retainDiagnostic({ correlationId, cause });
 

@@ -34,15 +34,16 @@ If another task replaces build outputs or changes source during verification, re
 boundary. Use a pinned artifact for comparisons and rebuild once the source is stable.
 
 Desktop uses an offline scripted provider, a temporary HOME and an Electron profile created by
-`packages/app/e2e/desktop/launch.ts`. Build the three outputs in this order, then run one chapter.
+`packages/desktop/e2e/launch.ts`. Build the four outputs in this order, then run one chapter.
 All commands below run from the repository root.
 
 ```sh
 verification_root=$(mktemp -d /tmp/nyte-verification.XXXXXX)
+pnpm --dir packages/canvas build
 VITE_NYTE_CLERK_PUBLISHABLE_KEY= pnpm --dir packages/app build
 pnpm --dir packages/desktop build
 pnpm --dir packages/desktop build:e2e
-pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts --project=desktop e2e/desktop/chat.spec.ts --workers=1 --retries=0 --reporter=list --output="$verification_root/desktop"
+pnpm --dir packages/desktop exec playwright test --config e2e/playwright.config.ts e2e/chat.spec.ts --workers=1 --retries=0 --reporter=list --output="$verification_root/desktop"
 ```
 
 Stop on a failed build. Select the matching chapter instead of `chat.spec.ts` when appropriate.
@@ -77,7 +78,7 @@ through `NYTE_E2E_PORT` for the entire command. HTTP readiness still needs a usa
 
 ## Drive and observe
 
-Desktop selectors live in `packages/app/e2e/desktop/ui.ts`. The composer is
+Desktop selectors live in `packages/desktop/e2e/ui.ts`. The composer is
 `getByRole("combobox", { name: "Message" })`; transcript assertions use the `Messages` region's
 `log`. Use the chapter fixtures and existing user actions. Wait for the specific state required
 by the next action. Register event waits before the action and avoid fixed sleeps.
@@ -143,9 +144,9 @@ scenario may not write `evidence.json`. Preserve the wrapper's output and remain
 For performance, inspect `actions["text.idle"]` in the TUI report. QA enforces p95 at or below
 16.67 ms and maximum at or below 50 ms. Compare matching inputs on the same identified build;
 unit-test duration is not application latency. For packaged desktop startup, use
-`pnpm --dir packages/app bench:desktop --exe /absolute/path/to/Nyte --scenario fresh --runs 3 --warmup 1 --out /tmp/nyte-startup.json`.
-The executable must already be packaged. Report measured count, spread, failures and whether
-the five-second splash limit passed. Use `--compare` for two identified builds; a single-build
+`pnpm bench:desktop --exe /absolute/path/to/Nyte --scenario fresh --runs 3 --warmup 1 --out /tmp/nyte-startup.json`.
+The executable must already be packaged. Report measured count, spread, failures and which
+metric budgets passed. Use `--compare` for two identified builds; a single-build
 budget check does not establish a before/after speedup.
 
 Let runner cleanup finish after a pass or failure. If interrupted, inspect the recorded process

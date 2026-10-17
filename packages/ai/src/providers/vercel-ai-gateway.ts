@@ -4,10 +4,12 @@
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { verifyWithRequest } from "../auth/verify.ts";
-import { createProvider, type Provider } from "../models.ts";
+import type { Provider } from "../models-types.ts";
+import { createProvider } from "../provider.ts";
 
 const VERCEL_AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
 
+/** Vercel AI Gateway. Nyte-only: OIDC tokens authenticate only as a bearer, which API keys also accept, so every key is sent as `Authorization: Bearer`. */
 export function vercelAiGatewayProvider(): Provider<"anthropic-messages"> {
   const apiKey = envApiKeyAuth("Vercel AI Gateway API key", [
     "AI_GATEWAY_API_KEY",
@@ -21,7 +23,6 @@ export function vercelAiGatewayProvider(): Provider<"anthropic-messages"> {
     auth: {
       apiKey: {
         ...apiKey,
-        // Nyte-only: OIDC tokens authenticate only as a bearer, which API keys also accept.
         resolve: async (input) => {
           const result = await apiKey.resolve(input);
           if (!result?.auth.apiKey) return result;

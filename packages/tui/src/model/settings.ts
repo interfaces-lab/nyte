@@ -2,6 +2,7 @@ import type { Json } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../lib/catalog.ts";
 import { keycap } from "../lib/constants.ts";
 import type { Intent } from "./msg.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 export interface SettingChoice {
@@ -44,7 +45,7 @@ function jsonId(value: Json): string {
 }
 
 export function settingRows(state: State): readonly SettingRow[] {
-  const session = state.facts.session;
+  const session = state.facts.chat;
   const { settings } = state.facts;
   const catalog = state.facts.catalog.catalog;
   const models = catalog === null ? [] : availableModels(catalog);
@@ -54,7 +55,9 @@ export function settingRows(state: State): readonly SettingRow[] {
   const providerName = (provider: string): string =>
     catalog?.providers.find((candidate) => candidate.id === provider)?.name ?? provider;
 
-  const plugin = (session?.view?.catalog.settings ?? []).flatMap((setting): SettingRow[] =>
+  const plugin = (
+    followedSession(state)?.view?.catalog.settings ?? state.facts.hostSettings
+  ).flatMap((setting): SettingRow[] =>
     setting.choices === null
       ? []
       : [
@@ -74,7 +77,7 @@ export function settingRows(state: State): readonly SettingRow[] {
                 value: choice.value,
               },
             })),
-            whileBusy: false,
+            whileBusy: setting.scope === "host",
           },
         ],
   );
@@ -196,13 +199,16 @@ export function matchChoice(row: SettingRow, argument: string): SettingChoice | 
   return (
     row.choices.find(
       (choice) =>
-        choice.id === argument || choice.label === argument || choice.id.endsWith(`/${argument}`),
+        choice.id === argument ||
+        choice.id === JSON.stringify(argument) ||
+        choice.label === argument ||
+        choice.id.endsWith(`/${argument}`),
     ) ?? null
   );
 }
 
 export function busyRefusal(state: State, row: SettingRow): Intent | null {
-  const execution = state.facts.session?.view?.execution;
+  const execution = followedSession(state)?.view?.execution;
 
   return execution !== undefined && execution.kind !== "idle" && !row.whileBusy
     ? { kind: "refuse", reason: `Wait for the current run before changing ${row.label}` }

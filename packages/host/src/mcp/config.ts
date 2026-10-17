@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { McpExposureNameType, McpOAuthConfigType } from "@nyte-ai/schema";
-import { isJsonObject } from "@nyte-ai/core";
+import { isJsonObject, McpExposureNameType, McpOAuthConfigType } from "@nyte-ai/schema";
 import { isJson } from "@nyte-ai/schema";
 import type {
   Json,
@@ -48,7 +47,7 @@ const EXPOSURE: Readonly<Record<Static<typeof ExposureName>, McpExposure>> = {
   hidden: "hidden",
 };
 
-export type McpTransportConfig =
+type McpTransportConfig =
   | {
       readonly kind: "stdio";
       readonly command: string;

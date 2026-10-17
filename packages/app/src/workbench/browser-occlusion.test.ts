@@ -35,7 +35,6 @@ window.nyte = new Proxy(
         login: resolved,
         history: () => Promise.resolve([]),
         forgetHistory: resolved,
-        focusPage: resolved,
         setBounds: (message) => recorded.push(message),
         setFocus: () => {},
       },

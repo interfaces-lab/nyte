@@ -112,7 +112,7 @@ const SHADOW_CSS = `
 
 let highlighted: Promise<string> | undefined;
 
-/* Highlighted on the server with the desktop's options, once per instance, so the page ships no highlighter. */
+/** Highlighted on the server with the desktop's options, once per instance, so the page ships no highlighter. */
 export const editDiffHTML = createServerFn().handler(() => {
   highlighted ??= highlightEditDiff();
   return highlighted;

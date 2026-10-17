@@ -1,16 +1,17 @@
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import { deriveScreen } from "../../src/model/screen.ts";
-import { followed, viewOf } from "../fixture/view.ts";
+import { followed, buildView } from "../fixture/view.ts";
+import type { ViewBuilder } from "../fixture/view.ts";
 import { blank, CATALOG, play, ready, S1, typed } from "./support.ts";
 
-const working = viewOf((v) => v.turn("t1", (t) => t.user("hi")).live());
+const working = buildView((v) => v.turn("t1", (t) => t.user("hi")).live());
 
-const stopped = viewOf((v) =>
+const stopped = buildView((v) =>
   v.turn("t1", (t) => t.user("hi").ended("stopped")).idle({ run: "run-t1", end: "stopped" }),
 );
 
-const retracted = viewOf((v) => v.idle({ run: "run-t1", end: "stopped" }));
+const retracted = buildView((v) => v.idle({ run: "run-t1", end: "stopped" }));
 
 describe("views", () => {
   test("a view for a session we no longer follow is dropped", () => {
@@ -53,7 +54,7 @@ describe("views", () => {
   });
 
   test("a queue edit left open in a chat is still open on coming back to it", () => {
-    const queued = viewOf((v) =>
+    const queued = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .live()
@@ -108,16 +109,34 @@ describe("views", () => {
   });
 });
 
+function answered(v: ViewBuilder): ViewBuilder {
+  return v.turn("t0", (t) => t.user("first").text("ok").ended("completed"));
+}
+
 describe("run ended", () => {
-  test("a stop with an empty composer retracts the lone prompt; it lands once the view drops it", () => {
-    const ended = play(ready(working), { kind: "view", session: S1, view: stopped });
+  test("a stop with an empty composer retracts the prompt; it lands once the view drops it", () => {
+    const later = buildView((v) =>
+      answered(v)
+        .turn("t1", (t) => t.user("hi"))
+        .live(),
+    );
+
+    const ended = play(ready(later), {
+      kind: "view",
+      session: S1,
+      view: buildView((v) =>
+        answered(v)
+          .turn("t1", (t) => t.user("hi").ended("stopped"))
+          .idle({ run: "run-t1", end: "stopped" }),
+      ),
+    });
 
     expect(ended.effects).toEqual([
       { kind: "refresh-workspace", cwd: "/w" },
       {
         kind: "move",
         session: S1,
-        position: { kind: "commit", id: asId("commit-1") },
+        position: { kind: "commit", id: asId("commit-3") },
         options: {},
         handback: null,
       },
@@ -128,7 +147,7 @@ describe("run ended", () => {
       outcome: {
         kind: "moved",
         revision: asId("rev-2"),
-        position: { kind: "start" },
+        position: { kind: "commit", id: asId("commit-2") },
         summary: null,
         handback: "hi",
       },
@@ -136,8 +155,8 @@ describe("run ended", () => {
     });
 
     expect(outcome.effects).toEqual([]);
-
-    const landed = play(outcome.state, { kind: "view", session: S1, view: retracted });
+    const dropped = buildView((v) => answered(v).idle({ run: "run-t1", end: "stopped" }));
+    const landed = play(outcome.state, { kind: "view", session: S1, view: dropped });
 
     expect(landed.effects).toContainEqual({
       kind: "composer",
@@ -146,9 +165,15 @@ describe("run ended", () => {
     expect(landed.state.local.notice?.text).toBe("Stopped. Message is back in the composer.");
     expect(landed.state.local.draft.text).toBe("hi");
 
-    const again = play(landed.state, { kind: "view", session: S1, view: retracted });
+    const again = play(landed.state, { kind: "view", session: S1, view: dropped });
 
     expect(again.effects.filter((effect) => effect.kind === "composer")).toEqual([]);
+  });
+
+  test("a stop on the chat's first message keeps it: the chat would be empty", () => {
+    const ended = play(ready(working), { kind: "view", session: S1, view: stopped });
+
+    expect(ended.effects).toEqual([{ kind: "refresh-workspace", cwd: "/w" }]);
   });
 
   test("a stop with text in the composer retracts nothing", () => {
@@ -159,7 +184,7 @@ describe("run ended", () => {
   });
 
   test("a failed run says why", () => {
-    const failed = viewOf((v) =>
+    const failed = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi").text("x").ended("failed", { failure: "boom" }))
         .idle({ run: "run-t1", end: "failed" }),
@@ -173,7 +198,7 @@ describe("run ended", () => {
 
 describe("handbacks", () => {
   test("a refused send waits for an empty composer, then lands exactly once", () => {
-    const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+    const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
     const busy = play(ready(idle), typed("something new")).state;
 
     const refused = play(busy, {
@@ -195,7 +220,7 @@ describe("handbacks", () => {
   });
 
   test("a handback waits while a dialog is open", () => {
-    const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").ended("completed")));
+    const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").ended("completed")));
 
     const open = play(ready(idle), {
       kind: "open",
@@ -216,7 +241,7 @@ describe("handbacks", () => {
 
 describe("editing", () => {
   test("a queued message that lands while being edited ends the edit and keeps the text", () => {
-    const queued = viewOf((v) =>
+    const queued = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .live()
@@ -235,7 +260,7 @@ describe("editing", () => {
 
     expect(editing.state.local.editing?.message).toBe(asId("m9"));
 
-    const landedView = viewOf((v) =>
+    const landedView = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go").text("done").ended("completed"))
         .turn("t2", (t) => t.user("tweak me", { id: "m9" }))
@@ -257,7 +282,7 @@ describe("questions", () => {
       dialog: { kind: "list", purpose: { kind: "settings", highlight: null } },
     }).state;
 
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi").waiting("q1"))
         .question(
@@ -292,7 +317,7 @@ describe("questions", () => {
   });
 
   test("Esc on the question leaves it open for the composer; Enter on an empty draft reopens it", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -350,6 +375,7 @@ describe("shell commands", () => {
 
     expect(first.effects).toEqual([
       { kind: "composer", op: { kind: "insert", text: "[Shell echo kept] ", at: "start" } },
+      { kind: "refresh-workspace", cwd: "/w" },
     ]);
     expect(first.state.local.draft.parts.get("[Shell echo kept]")).toEqual({
       kind: "shell",
@@ -374,7 +400,7 @@ describe("shell commands", () => {
 
     const step = play(ready(working), { kind: "shell-job", job: other });
 
-    expect(step.effects).toEqual([]);
+    expect(step.effects).toEqual([{ kind: "refresh-workspace", cwd: "/w" }]);
     expect(deriveScreen(step.state, null).welcome).toBe(false);
     expect(
       deriveScreen(step.state, null).transcript.rows.some((row) => row.key.includes("shell-9")),
@@ -401,7 +427,10 @@ describe("shell commands", () => {
           job: { ...base, id: "k", include: true, state: { kind: "cancelled" } },
         },
       ).effects,
-    ).toEqual([]);
+    ).toEqual([
+      { kind: "refresh-workspace", cwd: "/w" },
+      { kind: "refresh-workspace", cwd: "/w" },
+    ]);
   });
 });
 

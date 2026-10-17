@@ -3,7 +3,7 @@
  */
 import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
-import type { Static, TSchema } from "typebox";
+import { type Static, type TSchema, Type } from "typebox";
 import type { TLocalizedValidationError } from "typebox/error";
 import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "@nyte-ai/schema/model";
@@ -11,6 +11,9 @@ import type { Tool, ToolCall } from "@nyte-ai/schema/model";
 const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
 
 const TYPEBOX_KIND = Symbol.for("TypeBox.Kind");
+
+/** A JSON object, never an array. */
+const JsonRecordSchema = Type.Record(Type.String(), Type.Unknown());
 
 interface JsonSchemaObject {
   type?: string | string[];
@@ -257,14 +260,8 @@ function coerceWithJsonSchema(value: unknown, schema: JsonSchemaObject): unknown
     }
   }
 
-  if (
-    schemaTypes.includes("object") &&
-    typeof nextValue === "object" &&
-    nextValue !== null &&
-    !Array.isArray(nextValue)
-  ) {
-    // SAFETY: nextValue is a non-null, non-array object cloned from JSON tool arguments, so it is a string-keyed record.
-    applySchemaObjectCoercion(nextValue as Record<string, unknown>, schema);
+  if (schemaTypes.includes("object") && Value.Check(JsonRecordSchema, nextValue)) {
+    applySchemaObjectCoercion(nextValue, schema);
   }
 
   if (schemaTypes.includes("array") && Array.isArray(nextValue)) {
@@ -289,10 +286,9 @@ function normalizeOptionalNulls(value: unknown, schema: JsonSchemaObject): void 
     return;
   }
 
-  if (typeof value !== "object" || value === null || !schema.properties) return;
+  if (!Value.Check(JsonRecordSchema, value) || !schema.properties) return;
 
-  // SAFETY: value is a non-null, non-array object cloned from JSON tool arguments, so it is a string-keyed record.
-  const object = value as Record<string, unknown>;
+  const object = value;
   const required = new Set(schema.required ?? []);
 
   for (const [key, propertySchema] of Object.entries(schema.properties)) {
@@ -311,9 +307,10 @@ function normalizeOptionalNulls(value: unknown, schema: JsonSchemaObject): void 
   }
 }
 
+/** A compiled validator, cached per schema object; boolean schemas cannot key the cache. */
 function getValidator(schema: Tool["parameters"]): ReturnType<typeof Compile> {
-  // SAFETY: tool parameter schemas are TypeBox or JSON Schema objects, never boolean schemas, so they are valid WeakMap keys.
-  const key = schema as object;
+  if (typeof schema !== "object") return Compile(schema);
+  const key = schema;
   const cached = validatorCache.get(key);
 
   if (cached) {
@@ -347,9 +344,14 @@ function formatValidationPath(error: TLocalizedValidationError): string {
  * @param tool The tool definition with TypeBox schema
  * @param toolCall The tool call from the LLM
  * @returns The validated (and potentially coerced) arguments
- * @throws Error with formatted message if validation fails
+ * @throws Error with formatted message if validation fails, or with the call's `argumentsError`
+ * when its arguments text was not a JSON object
  */
 export function validateToolArguments(tool: Tool, toolCall: ToolCall) {
+  if (toolCall.argumentsError !== undefined) {
+    throw new Error(`Invalid arguments for tool "${toolCall.name}": ${toolCall.argumentsError}`);
+  }
+
   return parseToolArguments(
     tool.parameters,
     toolCall.arguments,

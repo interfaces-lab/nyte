@@ -1,170 +1,22 @@
 import { asId, asSeq, standard } from "@nyte-ai/schema";
-import type { CallId, Json, RunId, SessionId, ToolOutcome } from "@nyte-ai/schema";
+import type { Json, ToolOutcome } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
+import { LOCAL, definePart, text, tool } from "../src/index.ts";
+import { callRef, memoryStore, partRef } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Session, StoreConnection, ToolDefinition } from "../src/index.ts";
+import { expireLease, main, recording, setup, until } from "../src/harness.ts";
 import {
-  ALL_AUTHORITY,
-  LOCAL,
-  callRef,
-  decodeCallRecord,
-  decodePartRecord,
-  decodeRunRecord,
-  definePart,
-  envelope,
-  executeCall,
-  isPart,
-  memoryStore,
-  partRef,
-  pollStore,
-  runRef,
-  text,
-  tool,
-} from "../src/index.ts";
-import type {
-  CallRecord,
-  ConnectionContext,
-  Kernel,
-  Session,
-  StoreConnection,
-  ToolDefinition,
-  ToolSource,
-} from "../src/index.ts";
-import { configuration, expireLease, main, recording, setup, startRun, until } from "./harness.ts";
-
-const caller: ConnectionContext = {
-  principal: LOCAL,
-  authority: ALL_AUTHORITY,
-  credential: { kind: "token", token: "x" },
-  origin: null,
-};
-
-const echoes: string[] = [];
-
-const echo = {
-  name: "echo",
-  description: "Echo the text.",
-  parameters: standard(Type.Object({ text: Type.String() })),
-  class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
-  execute: async (args) => {
-    echoes.push(args.text);
-
-    return { content: [{ kind: "text", text: args.text }] };
-  },
-} satisfies ToolDefinition<{ text: string }>;
-
-function source(definitions: readonly ToolDefinition[]): () => ToolSource {
-  return () => ({
-    get(name) {
-      const definition = definitions.find((candidate) => candidate.name === name);
-
-      return definition === undefined ? undefined : { definition, owner: "test" };
-    },
-    list: () => [],
-    activate: async () => undefined,
-  });
-}
-
-function slowTool(started: string[]) {
-  return {
-    ...echo,
-    name: "slow",
-    execute: (_args, invocation) =>
-      new Promise((resolve) => {
-        invocation.signal.addEventListener(
-          "abort",
-          () => resolve({ content: [{ kind: "text", text: "late" }] }),
-          { once: true },
-        );
-        started.push(invocation.call);
-      }),
-  } satisfies ToolDefinition<{ text: string }>;
-}
-
-async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
-  const run = await startRun(
-    kernel,
-    session,
-    main,
-    { kind: "continuation", from: "wake" },
-    configuration,
-  );
-
-  return run.id;
-}
-
-function call(
-  kernel: Kernel,
-  input: {
-    readonly session: SessionId;
-    readonly run: RunId;
-    readonly call: string;
-    readonly name: string;
-    readonly args: Json;
-    readonly signal?: AbortSignal;
-  },
-) {
-  return executeCall(kernel, {
-    session: input.session,
-    runtime: kernel.pluginsFor(input.session),
-    head: main,
-    run: input.run,
-    call: asId(input.call),
-    name: input.name,
-    args: input.args,
-    context: caller,
-    signal: input.signal ?? new AbortController().signal,
-  });
-}
-
-async function readCall(kernel: Kernel, session: SessionId, id: string): Promise<CallRecord> {
-  const ref = await kernel.store.refs.get(callRef(session, asId<"call">(id)));
-  const record = decodeCallRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
-  assert(record !== null);
-
-  return record;
-}
-
-async function readRun(kernel: Kernel, session: SessionId, run: RunId) {
-  const ref = await kernel.store.refs.get(runRef(session, run));
-  const record = decodeRunRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
-  assert(ref !== null && record !== null);
-
-  return { ref, record };
-}
-
-function scripted(taken: string[]): NonNullable<Parameters<typeof setup>[0]>["snapshots"] {
-  return async () => ({
-    before: async () => {
-      taken.push("before");
-
-      return asId("s0");
-    },
-    after: async () => {
-      taken.push("after");
-
-      return asId("s1");
-    },
-    diff: async (from, to) => ({
-      revision: to,
-      files:
-        from === asId("s0")
-          ? [{ path: "a.ts", status: "modified", stat: { kind: "text", added: 3, removed: 1 } }]
-          : [],
-    }),
-    patches: async () => [],
-  });
-}
-
-async function toolPart(session: Session, id: string) {
-  const message = (await session.view()).messages.find(
-    (candidate) => candidate.kind === "part" && candidate.part === asId(id),
-  );
-
-  assert(message !== undefined && isPart(message, tool));
-
-  return message;
-}
+  echoes,
+  echo,
+  toolPlugin,
+  slowTool,
+  liveRun,
+  call,
+  readCall,
+  toolPart,
+} from "./tool-support.ts";
 
 describe("tool calls", () => {
   it("records the intent before execute and the result after, through calling, running and settled", async () => {
@@ -188,9 +40,9 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ text: string }>;
 
-    const built = await setup({ store: recorded.store, tools: source([watched]) });
+    const built = await setup({ store: recorded.store, plugins: [toolPlugin([watched])] });
     kernel = built.kernel;
-    session = await built.host.sessions.create();
+    session = (await built.host.sessions.start({ content: "Hi." })).session;
     const run = await liveRun(kernel, session.id);
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
@@ -216,7 +68,7 @@ describe("tool calls", () => {
       kind: "tool",
       run,
       head: main,
-      intent: { name: "watched", args: { text: "hi" }, principal: LOCAL },
+      intent: { principal: LOCAL },
       result: ok,
       replay: "safe",
     });
@@ -249,17 +101,20 @@ describe("tool calls", () => {
 
   it("fails an unknown tool and invalid arguments, and rejects at before_tool without running", async () => {
     const { kernel, host } = await setup({
-      tools: source([echo]),
-      beforeTool: async (proposed) => ({
-        kind: "done",
-        value:
-          JSON.stringify(proposed.args) === JSON.stringify({ text: "forbidden" })
-            ? { action: "reject", reason: "Not that." }
-            : { action: "continue" },
-      }),
+      plugins: [
+        {
+          ...toolPlugin([echo]),
+          hooks: {
+            before_tool: (proposed) =>
+              JSON.stringify(proposed.args) === JSON.stringify({ text: "forbidden" })
+                ? { action: "reject", reason: "Not that." }
+                : { action: "continue" },
+          },
+        },
+      ],
     });
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const ran = echoes.length;
 
@@ -269,6 +124,21 @@ describe("tool calls", () => {
     expect(
       await call(kernel, { session: session.id, run, call: "i1", name: "echo", args: { text: 1 } }),
     ).toMatchObject({ kind: "failed", message: expect.stringContaining("Invalid arguments") });
+    expect(
+      await call(kernel, {
+        session: session.id,
+        run,
+        call: "t1",
+        name: "echo",
+        args: {},
+        argumentsError:
+          'The response ended before this tool call finished\n\nReceived arguments:\n{"te',
+      }),
+    ).toEqual({
+      kind: "failed",
+      message:
+        'Invalid arguments for echo: The response ended before this tool call finished\n\nReceived arguments:\n{"te',
+    });
     expect(
       await call(kernel, {
         session: session.id,
@@ -287,14 +157,20 @@ describe("tool calls", () => {
 
   it("rewrites the outcome through after_tool before it is recorded", async () => {
     const { kernel, host } = await setup({
-      tools: source([echo]),
-      afterTool: async (outcome) =>
-        outcome.kind === "ok"
-          ? { ...outcome, content: [{ kind: "text", text: "[redacted]" }] }
-          : outcome,
+      plugins: [
+        {
+          ...toolPlugin([echo]),
+          hooks: {
+            after_tool: (outcome) =>
+              outcome.kind === "ok"
+                ? { ...outcome, content: [{ kind: "text", text: "[redacted]" }] }
+                : outcome,
+          },
+        },
+      ],
     });
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
 
     const rewritten = {
@@ -338,8 +214,8 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ until: number }>;
 
-    const { kernel, host } = await setup({ tools: source([echo, parent]) });
-    const session = await host.sessions.create();
+    const { kernel, host } = await setup({ plugins: [toolPlugin([echo, parent])] });
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const at = Date.now() + 60_000;
     const ran = echoes.length;
@@ -355,11 +231,19 @@ describe("tool calls", () => {
     });
     expect(runs).toBe(2);
     expect(echoes.slice(ran)).toEqual(["a", "b"]);
-    expect((await readCall(kernel, session.id, "p1")).nested).toEqual({
-      0: { kind: "ok", content: [{ kind: "text", text: "a" }], output: null, parts: [] },
-      second: { kind: "ok", content: [{ kind: "text", text: "b" }], output: null, parts: [] },
+    expect((await readCall(kernel, session.id, "p1:0")).result).toEqual({
+      kind: "ok",
+      content: [{ kind: "text", text: "a" }],
+      output: null,
+      parts: [],
     });
-    expect((await readCall(kernel, session.id, "p1:second")).intent).toMatchObject({
+    expect((await readCall(kernel, session.id, "p1:second")).result).toEqual({
+      kind: "ok",
+      content: [{ kind: "text", text: "b" }],
+      output: null,
+      parts: [],
+    });
+    expect((await toolPart(session, "p1:second")).state).toMatchObject({
       name: "echo",
       args: { text: "b" },
     });
@@ -376,7 +260,10 @@ describe("tool calls", () => {
       class: () => ({ kind: "delegate", child: null, role: "create", title: null }),
       replay: "safe",
       execute: async (args, invocation) => {
-        const child = await invocation.sdk.sessions.create({ parent: invocation.session.id });
+        const { session: child } = await invocation.sdk.sessions.start({
+          parent: invocation.session.id,
+          content: "Hi.",
+        });
 
         const panel = await invocation.session.parts.create(text, {
           state: { markdown: "Working.", signature: null },
@@ -390,8 +277,8 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ until: number }>;
 
-    const { kernel, host } = await setup({ tools: source([spawn]) });
-    const session = await host.sessions.create();
+    const { kernel, host } = await setup({ plugins: [toolPlugin([spawn])] });
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const at = Date.now() + 60_000;
     const input = { session: session.id, run, call: "k1", name: "spawn", args: { until: at } };
@@ -415,211 +302,6 @@ describe("tool calls", () => {
 
     expect(children.items.map((info) => info.id)).toEqual([child]);
     expect((await session.view()).parts.map((view) => view.id)).toEqual([panel]);
-  });
-
-  it("parks a call through advance, reports its deadline, and resumes the run once it wakes", async () => {
-    const parker = {
-      name: "parker",
-      description: "Wait for a timer.",
-      parameters: standard(Type.Object({ until: Type.Number() })),
-      class: () => ({ kind: "custom", label: "Waiting" }),
-      replay: "safe",
-      execute: async (args, invocation) => ({
-        content: [
-          {
-            kind: "text",
-            text: (await invocation.wait({ kind: "timer", until: args.until })).kind,
-          },
-        ],
-      }),
-    } satisfies ToolDefinition<{ until: number }>;
-
-    const { kernel, host, script } = await setup({ tools: source([parker]) });
-    const session = await host.sessions.create();
-    const head = { session: session.id, head: main };
-    const at = Date.now() + 60_000;
-    const receipt = await session.send("Wait for it.");
-    const step = host.execution.advance(head);
-    const turn = await script.started(1);
-    const run = turn.input.run.id;
-
-    expect(
-      await call(kernel, {
-        session: session.id,
-        run,
-        call: "w1",
-        name: "parker",
-        args: { until: at },
-      }),
-    ).toEqual({ kind: "parked" });
-    turn.finish({ kind: "parked" });
-    await step;
-
-    expect((await session.view()).execution).toMatchObject({ kind: "waiting", run: { id: run } });
-    expect(await host.execution.advance(head)).toEqual({ kind: "waiting", until: at });
-    expect(await host.execution.repair({ limit: 10 })).toEqual({ runnable: [], next: null });
-    await kernel.waits.tick(at);
-    expect(await host.execution.repair({ limit: 10 })).toEqual({ runnable: [head], next: null });
-
-    const resumed = host.execution.advance(head);
-    const next = await script.started(2);
-
-    expect(next.input.run.id).toBe(run);
-    expect((await toolPart(session, "w1")).state).toMatchObject({
-      phase: "settled",
-      outcome: { kind: "ok", content: [{ kind: "text", text: "timer" }] },
-    });
-    next.finish();
-
-    expect(await resumed).toEqual({ kind: "idle" });
-    expect(await receipt.settled()).toMatchObject({ kind: "completed" });
-  });
-
-  it("wakes a parked call with stopped when its run stops, and ends the run stopped", async () => {
-    const seen: string[] = [];
-
-    const parker = {
-      name: "parker",
-      description: "Wait for a timer.",
-      parameters: standard(Type.Object({})),
-      class: () => ({ kind: "custom", label: "Waiting" }),
-      replay: "safe",
-      execute: async (_args, invocation) => {
-        const woke = await invocation.wait({ kind: "timer", until: Date.now() + 60_000 });
-        seen.push(woke.kind);
-
-        return { content: [{ kind: "text", text: woke.kind }] };
-      },
-    } satisfies ToolDefinition<object>;
-
-    const { kernel, host, script } = await setup({ tools: source([parker]) });
-    const session = await host.sessions.create();
-    const head = { session: session.id, head: main };
-    await session.send("Wait.");
-    const step = host.execution.advance(head);
-    const turn = await script.started(1);
-    const run = turn.input.run.id;
-
-    expect(
-      await call(kernel, { session: session.id, run, call: "w1", name: "parker", args: {} }),
-    ).toEqual({ kind: "parked" });
-    turn.finish({ kind: "parked" });
-    await step;
-
-    expect(await session.run(run).stop()).toEqual({ kind: "requested" });
-    expect(await host.execution.advance(head)).toEqual({ kind: "idle" });
-    expect(seen).toEqual(["stopped"]);
-    expect(await session.run(run).settled()).toEqual({ kind: "stopped" });
-    expect((await readCall(kernel, session.id, "w1")).result).toEqual({ kind: "stopped" });
-
-    const part = await toolPart(session, "w1");
-
-    expect(part.status).toMatchObject({ kind: "settled" });
-    expect(part.state).toMatchObject({ phase: "settled", outcome: { kind: "stopped" } });
-    expect(
-      (await kernel.store.refs.log(session.id, asSeq(0), 100)).filter(
-        (event) => event.kind === "commit" && event.body.kind === "part",
-      ),
-    ).toMatchObject([{ run, body: { part: "w1" } }]);
-  });
-
-  it("resumes a call parked on a modal question on one kernel once another kernel answers it, by the call the part names, the park shown in the view and the answer reaching a kernel with nothing parked (§42x, §42z, §42ac)", async () => {
-    const question = definePart({
-      kind: "test/question",
-      state: standard(Type.Object({})),
-      actions: { answer: { input: standard(Type.Object({ choice: Type.String() })) } },
-      fallback: (_state, { id }) => `Ask ${id}`,
-    });
-
-    const ask = {
-      name: "ask",
-      description: "Wait for the answer to a question.",
-      parameters: standard(Type.Object({ part: Type.String() })),
-      class: () => ({ kind: "custom", label: "Asking" }),
-      replay: "safe",
-      execute: async (args, invocation) => {
-        const woke = await invocation.wait({ kind: "part", part: asId(args.part) });
-
-        return {
-          content: [
-            {
-              kind: "text",
-              text:
-                woke.kind === "part" && woke.answer !== null
-                  ? JSON.stringify(woke.answer.input)
-                  : "unanswered",
-            },
-          ],
-        };
-      },
-    } satisfies ToolDefinition<{ part: string }>;
-
-    const store = await memoryStore().open();
-    const lists: string[] = [];
-
-    const spied: StoreConnection = {
-      ...store,
-      refs: {
-        ...store.refs,
-        list(prefix) {
-          lists.push(prefix);
-
-          return store.refs.list(prefix);
-        },
-      },
-    };
-
-    const first = await setup({ store, tools: source([ask]), poll: 10 });
-    const second = await setup({ store: spied });
-    const third = await setup({ store, poll: 10 });
-    const session = await first.host.sessions.create();
-    const run = await liveRun(first.kernel, session.id);
-    const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
-    const notified: string[] = [];
-    first.kernel.wakes.subscribe((woken, head) => notified.push(`${woken}/${head}`));
-    const input = { session: session.id, run, call: "ask", name: "ask", args: { part: part.id } };
-    const unpoll = pollStore(first.kernel);
-
-    expect(await call(first.kernel, input)).toEqual({ kind: "parked" });
-
-    const stored = await store.refs.get(partRef(session.id, part.id));
-
-    expect(
-      decodePartRecord(stored?.target ? await store.objects.get(stored.target) : null)?.status,
-    ).toEqual({ kind: "live", run: null, waiting: "ask" });
-    expect((await session.view()).parts.find((view) => view.id === part.id)?.status).toEqual({
-      kind: "live",
-      run: null,
-      waiting: "ask",
-    });
-
-    const asked = part.answer();
-    const elsewhere = third.host.session(session.id).part(part.id).answer();
-    const unpollThird = pollStore(third.kernel);
-    lists.length = 0;
-
-    expect(
-      await second.host.session(session.id).part(part.id).act("answer", { choice: "yes" }),
-    ).toEqual({ kind: "ok", output: undefined });
-    expect(lists.filter((prefix) => prefix.includes("/calls/"))).toEqual([]);
-    expect(await readCall(second.kernel, session.id, "ask")).toMatchObject({
-      waiting: null,
-      waits: [
-        { kind: "part", part: part.id, answer: { action: "answer", input: { choice: "yes" } } },
-      ],
-    });
-
-    await until(() => (notified.length > 0 ? true : undefined));
-
-    expect(notified).toEqual([`${session.id}/${main}`]);
-    expect(await asked).toEqual({ action: "answer", input: { choice: "yes" } });
-    expect(await elsewhere).toEqual({ action: "answer", input: { choice: "yes" } });
-    unpollThird();
-    expect(await call(first.kernel, input)).toMatchObject({
-      kind: "ok",
-      content: [{ kind: "text", text: '{"choice":"yes"}' }],
-    });
-    unpoll();
   });
 
   it("re-runs a safe call once and settles a never call interrupted after a crash", async () => {
@@ -648,10 +330,9 @@ describe("tool calls", () => {
       },
     } satisfies ToolDefinition<{ text: string }>;
 
-    const tools = source([safe, never]);
-    const first = await setup({ store, tools });
-    const session = await first.host.sessions.create();
-    await session.send("Go.");
+    const plugins = [toolPlugin([safe, never])];
+    const first = await setup({ store, plugins });
+    const { session } = await first.host.sessions.start({ content: "Go." });
     void first.host.execution.advance({ session: session.id, head: main });
     const run = (await first.script.started(1)).input.run.id;
 
@@ -661,7 +342,7 @@ describe("tool calls", () => {
     await until(() => (executions.safe === 1 && executions.never === 1 ? true : undefined));
 
     await expireLease(store, session.id, main);
-    const second = await setup({ store, tools });
+    const second = await setup({ store, plugins });
     const step = second.host.execution.advance({ session: session.id, head: main });
     const resumed = await second.script.started(1);
 
@@ -689,8 +370,8 @@ describe("tool calls", () => {
   it("settles stopped when the run's signal aborts or the part's stop action runs", async () => {
     const started: string[] = [];
     const slow = slowTool(started);
-    const { kernel, host } = await setup({ tools: source([slow]) });
-    const session = await host.sessions.create();
+    const { kernel, host } = await setup({ plugins: [toolPlugin([slow])] });
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const controller = new AbortController();
 
@@ -728,7 +409,7 @@ describe("tool calls", () => {
 
   it("keeps the stop-wired tool built-in whatever else registers its kind", async () => {
     const started: string[] = [];
-    const { kernel, host } = await setup({ tools: source([slowTool(started)]) });
+    const { kernel, host } = await setup({ plugins: [toolPlugin([slowTool(started)])] });
     const wired = kernel.partDefinitions.get(tool.kind);
 
     expect(wired?.owner).toBeNull();
@@ -740,8 +421,9 @@ describe("tool calls", () => {
 
     expect(kernel.partDefinitions.get(tool.kind)).toBe(wired);
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
+
     const running = call(kernel, {
       session: session.id,
       run,
@@ -758,278 +440,6 @@ describe("tool calls", () => {
     });
     expect(await running).toEqual({ kind: "stopped" });
     expect((await readCall(kernel, session.id, "t1")).result).toEqual({ kind: "stopped" });
-  });
-
-  it("lands a write's snapshot changes on its part and the session's changes", async () => {
-    const recorded = recording(await memoryStore().open());
-
-    const edit = {
-      ...echo,
-      name: "edit",
-      class: () => ({ kind: "edit", path: "a.ts" }),
-    } satisfies ToolDefinition<{ text: string }>;
-
-    const taken: string[] = [];
-
-    const { kernel, host } = await setup({
-      store: recorded.store,
-      tools: source([edit]),
-      snapshots: scripted(taken),
-    });
-
-    const session = await host.sessions.create();
-    const run = await liveRun(kernel, session.id);
-
-    await call(kernel, { session: session.id, run, call: "e1", name: "edit", args: { text: "x" } });
-
-    expect(taken).toEqual(["before", "after"]);
-    expect((await toolPart(session, "e1")).state).toMatchObject({
-      changes: { added: 3, removed: 1, paths: ["a.ts"] },
-    });
-    expect((await session.view()).changes).toEqual([
-      { path: "a.ts", status: "modified", added: 3, removed: 1 },
-    ]);
-    expect(recorded.sets.at(-1)).toEqual(["call:settled", "part:settled", "commit", "changes"]);
-
-    const call2: CallId = asId("e2");
-
-    await call(kernel, {
-      session: session.id,
-      run,
-      call: call2,
-      name: "edit",
-      args: { text: "y" },
-    });
-
-    expect(taken).toEqual(["before", "after", "after"]);
-    expect((await toolPart(session, "e2")).state).toMatchObject({
-      changes: { added: 0, removed: 0, paths: [] },
-    });
-    expect((await session.view()).changes).toHaveLength(1);
-    expect((await readRun(kernel, session.id, run)).record).toMatchObject({
-      snapshot: asId("s0"),
-      lastSnapshot: asId("s1"),
-    });
-
-    const retaken: string[] = [];
-
-    const restarted = await setup({
-      store: recorded.store,
-      tools: source([edit]),
-      snapshots: scripted(retaken),
-    });
-
-    await call(restarted.kernel, {
-      session: session.id,
-      run,
-      call: "e3",
-      name: "edit",
-      args: { text: "z" },
-    });
-
-    expect(retaken).toEqual(["after"]);
-    expect((await toolPart(restarted.host.session(session.id), "e3")).state).toMatchObject({
-      changes: { added: 0, removed: 0, paths: [] },
-    });
-  });
-
-  it("B-2 N4: another instance's changed file stays in the session's changes", async () => {
-    const store = await memoryStore().open();
-
-    const touching =
-      (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] =>
-      async () => ({
-        before: async () => asId("s0"),
-        after: async () => asId(`after-${path}`),
-        diff: async (_from, to) => ({
-          revision: to,
-          files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
-        }),
-        patches: async () => [],
-      });
-
-    const edit = {
-      ...echo,
-      name: "edit",
-      class: () => ({ kind: "edit", path: "a.ts" }),
-    } satisfies ToolDefinition<{ text: string }>;
-
-    const a = await setup({ store, tools: source([edit]), snapshots: touching("a.ts") });
-    const b = await setup({ store, tools: source([edit]), snapshots: touching("b.ts") });
-    const session = await a.host.sessions.create();
-    const run = await liveRun(a.kernel, session.id);
-    const args = { text: "x" };
-
-    await call(a.kernel, { session: session.id, run, call: "e1", name: "edit", args });
-    await call(b.kernel, { session: session.id, run, call: "e2", name: "edit", args });
-    await call(a.kernel, { session: session.id, run, call: "e3", name: "edit", args });
-
-    expect((await session.view()).changes.map((file) => file.path)).toEqual(["a.ts", "b.ts"]);
-  });
-
-  it("keeps both files when two runs' settlements merge the session's changes at once: the merge expects its record and retries", async () => {
-    const store = await memoryStore().open();
-    const both = Promise.withResolvers<void>();
-    let diffing = 0;
-
-    const touching =
-      (path: string): NonNullable<Parameters<typeof setup>[0]>["snapshots"] =>
-      async () => ({
-        before: async () => asId("s0"),
-        after: async () => asId(`after-${path}`),
-        diff: async (_from, to) => {
-          diffing += 1;
-
-          if (diffing === 2) both.resolve();
-          await both.promise;
-
-          return {
-            revision: to,
-            files: [{ path, status: "modified", stat: { kind: "text", added: 1, removed: 0 } }],
-          };
-        },
-        patches: async () => [],
-      });
-
-    const edit = {
-      ...echo,
-      name: "edit",
-      class: () => ({ kind: "edit", path: "a.ts" }),
-    } satisfies ToolDefinition<{ text: string }>;
-
-    const a = await setup({ store, tools: source([edit]), snapshots: touching("a.ts") });
-    const b = await setup({ store, tools: source([edit]), snapshots: touching("b.ts") });
-    const session = await a.host.sessions.create();
-    const side = asId<"head">("side");
-    await session.heads.create(side);
-    const first = await liveRun(a.kernel, session.id);
-
-    const second = await startRun(
-      b.kernel,
-      session.id,
-      side,
-      { kind: "continuation", from: "wake" },
-      configuration,
-    );
-
-    await Promise.all([
-      call(a.kernel, {
-        session: session.id,
-        run: first,
-        call: "e1",
-        name: "edit",
-        args: { text: "x" },
-      }),
-      executeCall(b.kernel, {
-        session: session.id,
-        runtime: b.kernel.pluginsFor(session.id),
-        head: side,
-        run: second.id,
-        call: asId("e2"),
-        name: "edit",
-        args: { text: "y" },
-        context: caller,
-        signal: new AbortController().signal,
-      }),
-    ]);
-
-    expect((await session.view()).changes.map((file) => file.path).toSorted()).toEqual([
-      "a.ts",
-      "b.ts",
-    ]);
-  });
-
-  it("stops a parked call through its part, and its re-run settles stopped", async () => {
-    const seen: string[] = [];
-
-    const parker = {
-      name: "parker",
-      description: "Wait for a timer.",
-      parameters: standard(Type.Object({})),
-      class: () => ({ kind: "custom", label: "Waiting" }),
-      replay: "safe",
-      execute: async (_args, invocation) => {
-        const woke = await invocation.wait({ kind: "timer", until: Date.now() + 60_000 });
-        seen.push(`${woke.kind} ${invocation.signal.aborted ? "aborted" : "live"}`);
-
-        return { content: [{ kind: "text", text: woke.kind }] };
-      },
-    } satisfies ToolDefinition<object>;
-
-    const { kernel, host } = await setup({ tools: source([parker]) });
-    const session = await host.sessions.create();
-    const run = await liveRun(kernel, session.id);
-    const notified: string[] = [];
-    kernel.wakes.subscribe((woken, head) => notified.push(`${woken}/${head}`));
-    const input = { session: session.id, run, call: "w1", name: "parker", args: {} };
-
-    expect(await call(kernel, input)).toEqual({ kind: "parked" });
-    expect(await session.part(asId("w1")).act("stop", {})).toEqual({
-      kind: "ok",
-      output: undefined,
-    });
-    expect(await readCall(kernel, session.id, "w1")).toMatchObject({
-      waiting: null,
-      waits: [{ kind: "stopped" }],
-      result: null,
-    });
-    expect(notified).toEqual([`${session.id}/${main}`]);
-    expect(await call(kernel, input)).toEqual({ kind: "stopped" });
-    expect(seen).toEqual(["stopped aborted"]);
-    expect((await toolPart(session, "w1")).state).toMatchObject({
-      phase: "settled",
-      outcome: { kind: "stopped" },
-    });
-  });
-
-  it("re-runs a stopping run's owed calls with its signal aborted after a restart", async () => {
-    const store = await memoryStore().open();
-    const signals: string[] = [];
-    const hang = new Promise<never>(() => undefined);
-
-    const flaky = {
-      ...echo,
-      name: "flaky",
-      execute: async (_args, invocation) => {
-        signals.push(invocation.signal.aborted ? "aborted" : "live");
-
-        return signals.length === 1 ? hang : { content: [{ kind: "text", text: "done" }] };
-      },
-    } satisfies ToolDefinition<{ text: string }>;
-
-    const tools = source([flaky]);
-    const first = await setup({ store, tools });
-    const session = await first.host.sessions.create();
-    await session.send("Go.");
-    void first.host.execution.advance({ session: session.id, head: main });
-    const run = (await first.script.started(1)).input.run.id;
-    void call(first.kernel, {
-      session: session.id,
-      run,
-      call: "f1",
-      name: "flaky",
-      args: { text: "x" },
-    });
-    await until(() => (signals.length === 1 ? true : undefined));
-    const fenced = await readRun(first.kernel, session.id, run);
-
-    await store.refs.set([
-      {
-        name: fenced.ref.name,
-        target: await store.objects.put(envelope("run", { ...fenced.record, stopping: true }, 0)),
-        expect: fenced.ref.revision,
-      },
-    ]);
-
-    await expireLease(store, session.id, main);
-    const second = await setup({ store, tools });
-
-    expect(await second.host.execution.advance({ session: session.id, head: main })).toEqual({
-      kind: "idle",
-    });
-    expect(signals).toEqual(["live", "aborted"]);
-    expect((await readCall(second.kernel, session.id, "f1")).result).toEqual({ kind: "stopped" });
-    expect(await second.host.session(session.id).run(run).settled()).toEqual({ kind: "stopped" });
   });
 
   it("opens a tool part only with its step record, so a crash between them leaves no part a re-run cannot find (bench durable-tool-replay)", async () => {
@@ -1052,8 +462,8 @@ describe("tool calls", () => {
       },
     };
 
-    const { kernel, host } = await setup({ store, tools: source([echo]) });
-    const session = await host.sessions.create();
+    const { kernel, host } = await setup({ store, plugins: [toolPlugin([echo])] });
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     crash = callRef(session.id, asId("w1"));
 

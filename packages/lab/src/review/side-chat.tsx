@@ -17,9 +17,9 @@ import type {
   ComposerMentionFiles,
   ComposerSuggestionCatalog,
 } from "@nyte-ai/app/conversation/composer-suggestions.tsx";
-import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
+import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
-import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
+import { composerStyles } from "@nyte-ai/app/conversation/composer.stylex.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
@@ -215,7 +215,6 @@ export function SideChat({
               suggestionCatalog={NO_SUGGESTIONS}
               mentionFiles={NO_FILES}
               inputRef={(handle) => {
-                // Opening the side chat, or "Ask about this section", asks for focus by bumping the counter.
                 if (handle === null || focused.current === local.focus) return;
 
                 focused.current = local.focus;

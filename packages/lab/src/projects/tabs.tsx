@@ -34,11 +34,11 @@ export interface TabItem {
   readonly preview?: string;
 }
 
-export type TabStyle = "pill" | "connected";
+type TabStyle = "pill" | "connected";
 
-export type TabWidth = "fit" | "fixed";
+type TabWidth = "fit" | "fixed";
 
-export type TabOverflow = "scroll" | "menu";
+type TabOverflow = "scroll" | "menu";
 
 export interface TabDesign {
   readonly style: TabStyle;
@@ -469,7 +469,9 @@ export function TabStrip({
                   mac={mac}
                   closable={tab.closable}
                   othersClosable={tabs.some((other) => other.id !== tab.id && other.closable)}
-                  rightClosable={tabs.slice(tabs.indexOf(tab) + 1).some((other) => other.closable)}
+                  rightClosable={tabs
+                    .slice(tabs.findIndex((other) => other === tab) + 1)
+                    .some((other) => other.closable)}
                   onClose={() => onClose(tab.id)}
                   onCloseOthers={() => onCloseOthers(tab.id)}
                   onCloseRight={() => onCloseRight(tab.id)}

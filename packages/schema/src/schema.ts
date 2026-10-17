@@ -5,10 +5,20 @@ import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
 import { HasCodec, ParseError } from "typebox/value";
+import type { Json } from "./json.ts";
 
 export type Schema<T> = StandardSchemaV1<unknown, T> & StandardJSONSchemaV1<unknown, T>;
 
 export type Infer<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
+
+type Frozen<T> = [Json] extends [T]
+  ? T
+  : T extends string | number | boolean | bigint | symbol | null | undefined | Uint8Array
+    ? T
+    : { readonly [K in keyof T]: Frozen<T[K]> };
+
+/** The value a TypeBox schema decodes to, read-only all the way down: every concept's TypeScript type is this of its schema. */
+export type Decoded<S extends TSchema> = Frozen<StaticDecode<S>>;
 
 function definitions(schema: TSchema): TProperties {
   if (!IsCyclic(schema)) return {};

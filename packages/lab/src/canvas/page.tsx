@@ -2,8 +2,8 @@ import { create, keyframes, props } from "@stylexjs/stylex";
 import { useState, type ReactElement, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { asId } from "@nyte-ai/schema";
-import { conversationTurns, isBusy } from "@nyte-ai/app/view-helpers.ts";
-import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
+import { conversationTurns } from "@nyte-ai/app/view-helpers.ts";
+import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import type {
   ComposerDocumentState,
   ComposerSubmission,
@@ -12,7 +12,7 @@ import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { canvasClient, compileDemo, openCanvasSession, useCanvasSession } from "./api";
+import { canvasClient, compileDemo, startCanvasSession, useCanvasSession } from "./api";
 import { demoSources, demoTurns, revealDemo } from "./demo";
 import { CanvasTurn } from "./turn";
 
@@ -124,7 +124,7 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
     selectionEnd: 0,
   });
 
-  const session = useMutation({ mutationFn: openCanvasSession });
+  const session = useMutation({ mutationFn: startCanvasSession });
 
   const sessionId =
     session.data === undefined ? undefined : asId<"session">(session.data.sessionId);
@@ -133,9 +133,14 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
 
   const send = useMutation({
     mutationFn: async (text: string) => {
-      const current = session.data ?? (await session.mutateAsync());
+      if (session.data === undefined) {
+        await session.mutateAsync(text);
+
+        return;
+      }
+
       const connection = await canvasClient();
-      await connection.session(asId<"session">(current.sessionId)).send(text);
+      await connection.session(asId<"session">(session.data.sessionId)).send(text);
     },
   });
 
@@ -148,7 +153,7 @@ function LiveConversation({ mode }: { readonly mode: ReactNode }): ReactElement 
   const running =
     send.isPending ||
     (live.view !== undefined &&
-      (isBusy(live.view.execution) ||
+      (live.view.execution.kind !== "idle" ||
         live.view.messages.some(
           (message) => message.kind === "user" && message.status.kind !== "landed",
         )));

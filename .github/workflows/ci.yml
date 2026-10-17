@@ -41,6 +41,7 @@ jobs:
       - run: pnpm --dir packages/tui verify:targets
       - run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: pnpm exec turbo test
+      - run: pnpm --dir packages/tui test:binary
 
   e2e-web:
     runs-on: blacksmith-8vcpu-ubuntu-2404
@@ -55,5 +56,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --dir packages/app exec playwright install --with-deps chromium
+      - run: pnpm --dir packages/canvas build
       - run: pnpm --dir packages/app build
-      - run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts --project=web e2e/web/workspace.spec.ts
+      - run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts e2e/web/workspace.spec.ts

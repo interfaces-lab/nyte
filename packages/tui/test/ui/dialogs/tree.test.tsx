@@ -56,7 +56,7 @@ test("the forest draws with role labels, the active path and the footer at width
     await using app = await renderDialog(TREE, { width });
     const frame = app.frame();
 
-    expect(frame).toContain("Session Tree");
+    expect(frame).toContain("Chat Tree");
     expect(frame).toContain("• user: hello");
     expect(rows(frame).find((row) => row.includes("❯"))).toContain("• assistant: hi there");
     expect(frame).toContain("user: try again");
@@ -114,7 +114,7 @@ test("accepting a row off the tip's path pushes the summary question into the sl
   expect(frame).toContain("❯ No summary");
   expect(frame).toContain("Summarize with custom prompt");
   expect(frame).toContain("esc back");
-  expect(frame).not.toContain("Session Tree");
+  expect(frame).not.toContain("Chat Tree");
   expect(rows(frame).findIndex((row) => row.includes("esc back"))).toBeLessThan(16);
 });
 

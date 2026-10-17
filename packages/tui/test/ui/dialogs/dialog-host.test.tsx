@@ -48,7 +48,7 @@ test("the host draws the top dialog of the stack", async () => {
 
   await app.show([TREE, LIST]);
   expect(app.frame()).toContain("Which one?");
-  expect(app.frame()).not.toContain("Session Tree");
+  expect(app.frame()).not.toContain("Chat Tree");
 
   await app.show([]);
   expect(app.frame().trim()).toBe("");

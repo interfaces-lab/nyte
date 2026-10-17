@@ -8,7 +8,7 @@ import type {
 } from "node:http";
 import https from "node:https";
 import { randomBytes } from "node:crypto";
-import { isRecord, parseRecord, parseStreamEvent } from "./wire.ts";
+import { matchesRecord, parseRecord, parseStreamEvent } from "./wire.ts";
 import type { AnthropicStreamEvent, NativeMessage } from "./wire.ts";
 
 export class AnthropicCapture {
@@ -251,7 +251,7 @@ export class TurnRelay {
     try {
       const payload = parseRecord(text);
 
-      return isRecord(payload.error) && typeof payload.error.message === "string"
+      return matchesRecord(payload.error) && typeof payload.error.message === "string"
         ? payload.error.message
         : text;
     } catch {

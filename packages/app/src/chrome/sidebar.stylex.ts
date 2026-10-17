@@ -1,8 +1,8 @@
-import { glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
+import { glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -58,7 +58,7 @@ export const sidebarStyles = create({
     "--_row-padding-inline": sidebar.rowPaddingInline,
     "--_shortcut-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
     },
     fontSize: type.fontBase,
@@ -100,7 +100,7 @@ export const sidebarStyles = create({
   sectionHeader: {
     "--_section-chevron-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-within": "1",
     },
     display: "flex",
@@ -162,12 +162,12 @@ export const sidebarStyles = create({
   workspaceRow: {
     "--_workspace-folder-display": {
       default: "inline-flex",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "none" },
+      ":hover": { [media.hover]: "none" },
       ":focus-within": "none",
     },
     "--_workspace-chevron-display": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "inline-flex" },
+      ":hover": { [media.hover]: "inline-flex" },
       ":focus-within": "inline-flex",
     },
     cursor: appearance.cursorInteractive,
@@ -181,7 +181,7 @@ export const sidebarStyles = create({
     "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
       ":focus-within": role.bgHover,
     },
     cursor: appearance.cursorInteractive,
@@ -244,28 +244,8 @@ export const sidebarStyles = create({
   },
   draftRow: { color: role.contentSecondary },
   /** The status glyph's box, so a badge can sit on its corner without moving the label. */
-  sessionBadgeHost: {
-    position: "relative",
-    display: "grid",
-    placeItems: "center",
-    width: "100%",
-    height: "100%",
-  },
-  /** Where a chat runs, when that is not this machine. The sidebar fill rings it off the glyph. */
-  sessionBadge: {
-    position: "absolute",
-    insetInlineEnd: `calc(${space.s1} * -1)`,
-    insetBlockEnd: -3,
-    display: "grid",
-    placeItems: "center",
-    width: 12,
-    height: 12,
-    borderRadius: radius.pill,
-    backgroundColor: role.sidebarMaterial,
-    color: role.contentSecondary,
-  },
   /**
-   * A chat whose machine can't be reached keeps its place at half weight. The
+   * A chat whose folder can't be reached keeps its place at half weight. The
    * content fades, not the row, so a selected row keeps a solid selection.
    */
   sessionUnreachable: { opacity: 0.5 },
@@ -361,12 +341,12 @@ export const sidebarStyles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentSecondary,
     "--_shelf-chevron-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
     },
   },
@@ -401,7 +381,7 @@ export const sidebarStyles = create({
   showMore: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     "--_row-padding-inline": `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     borderRadius: radius.control,
@@ -417,8 +397,10 @@ export const sidebarStyles = create({
     flexShrink: 0,
   },
   footerRow: { display: "flex", alignItems: "center", gap: space.s0_5, minWidth: 0 },
-  // The footer is the one row that is always on screen. It answers the pointer
-  // with its label and glyph alone, so a resting rail never carries a lit row.
+  /**
+   * The footer is the one row that is always on screen. It answers the pointer
+   * with its label and glyph alone, so a resting rail never carries a lit row.
+   */
   accountButton: {
     "--_row-fill": "transparent",
     width: "auto",
@@ -435,7 +417,7 @@ export const sidebarStyles = create({
   },
   accountLabel: { display: "flex", alignItems: "center", gap: space.s1_5 },
   accountName: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
-  /* Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
+  /** Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
   updateDot: {
     flexShrink: 0,
     width: 6,

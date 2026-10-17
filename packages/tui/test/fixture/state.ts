@@ -28,11 +28,13 @@ export const CATALOG: ModelCatalogView = {
           name: "Model",
           reasoning: true,
           thinking: ["off", "low", "medium", "high"],
+          defaultThinking: "low",
           fast: { provider: "test", id: "model-fast" },
           contextWindow: 100_000,
           compactAt: 80_000,
           maxOutput: 8_000,
           input: ["text", "image"],
+          capabilities: { steer: true },
           cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
         },
         {
@@ -40,11 +42,13 @@ export const CATALOG: ModelCatalogView = {
           name: "Model Fast",
           reasoning: false,
           thinking: ["off"],
+          defaultThinking: "off",
           fast: null,
           contextWindow: 100_000,
           compactAt: 80_000,
           maxOutput: 8_000,
           input: ["text"],
+          capabilities: { steer: true },
           cost: { input: 0.5, output: 1, cacheRead: 0, cacheWrite: 0 },
         },
       ],
@@ -52,7 +56,7 @@ export const CATALOG: ModelCatalogView = {
   ],
 };
 
-export function stateOf(
+export function buildState(
   session: FollowedSession | null,
   overrides?: { readonly cwd?: string; readonly catalog?: ModelCatalogView | null },
 ): State {
@@ -62,13 +66,14 @@ export function stateOf(
     cwd,
     settings: SETTINGS,
     terminal: { width: 100, height: 32, theme: "dark", selection: false, dragging: false },
+    chat: null,
   });
 
   return {
     facts: {
       ...base.facts,
-      phase: { kind: "ready" },
-      session,
+      host: "open",
+      chat: session,
       catalog: {
         generation: 1,
         catalog: overrides?.catalog === undefined ? CATALOG : overrides.catalog,

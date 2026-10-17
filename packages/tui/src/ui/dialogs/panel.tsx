@@ -196,7 +196,7 @@ export function QueryLine(props: {
             <Show when={active()}>
               <span style={{ attributes: TextAttributes.INVERSE }}> </span>
             </Show>
-            <span style={{ fg: kit.theme().muted }}>{props.placeholder}</span>
+            <span style={{ fg: kit.theme().dim }}>{props.placeholder}</span>
           </>
         }
       >

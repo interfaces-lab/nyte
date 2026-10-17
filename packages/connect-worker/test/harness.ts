@@ -25,7 +25,7 @@ import {
   createProof,
   generateMachineKey,
   keyThumbprint,
-  publicKeyOf,
+  toPublicJwk,
   randomId,
   sha256,
   signClaims,
@@ -41,7 +41,7 @@ import type { Env } from "../src/config.ts";
 import type { D1Database } from "../src/d1.ts";
 import type { LogFields } from "../src/log.ts";
 import { RELAY_HEADERS, RELAY_INTERNAL_ORIGIN, RELAY_OPERATIONS } from "../src/relay-stub.ts";
-import type { RelayNamespace } from "../src/relay-stub.ts";
+import type { RelayNamespace } from "../src/relay-binding.ts";
 import { FakeClerkApi } from "./clerk-fake.ts";
 
 export const ORIGIN = "https://connect.test.example";
@@ -101,7 +101,7 @@ export class FakeDesktop {
   }
 
   get publicKey(): PublicJwk {
-    return publicKeyOf(this.key);
+    return toPublicJwk(this.key);
   }
 
   async handle(text: string, keys: BrokerKeys, now: () => number): Promise<Response> {

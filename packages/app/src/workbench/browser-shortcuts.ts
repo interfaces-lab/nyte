@@ -12,7 +12,8 @@ export type BrowserShortcut =
   | "zoom-in"
   | "zoom-out"
   | "zoom-reset"
-  | "toggle-devtools";
+  | "toggle-devtools"
+  | "add-to-chat";
 
 interface ShortcutKey {
   readonly key: string;
@@ -40,6 +41,7 @@ const PRIMARY = new Map<string, BrowserShortcut>([
 ]);
 
 const PRIMARY_SHIFT = new Map<string, BrowserShortcut>([
+  ["KeyL", "add-to-chat"],
   ["KeyR", "hard-reload"],
   ["KeyG", "find-previous"],
   ["Equal", "zoom-in"],

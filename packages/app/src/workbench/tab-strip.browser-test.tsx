@@ -79,6 +79,7 @@ export async function run(): Promise<string> {
 
   terminalActions.openJob({ id: terminalId, sessionId: session, job });
   fileActions.open(viewKey, { path: "/workspace/browser-tab-strip/src/app.ts" });
+  await nextFrame();
   const active = workbenchController.getView(viewKey).active;
 
   const container = document.createElement("div");
@@ -92,7 +93,7 @@ export async function run(): Promise<string> {
           viewKey={viewKey}
           view={workbenchController.getView(viewKey)}
           scope={{ kind: "project" }}
-          capabilities={{ terminal: true, browser: true }}
+          capabilities={{ browser: true }}
           workspacePath="/workspace"
         />,
       ),

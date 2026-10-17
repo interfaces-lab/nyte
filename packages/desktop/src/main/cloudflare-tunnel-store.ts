@@ -9,9 +9,10 @@
  * written makes the store `failed` for the life of the process: nothing is
  * accepted and nothing is overwritten until the user fixes it and restarts.
  */
-import { randomBytes } from "node:crypto";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { open, readFile, rm } from "node:fs/promises";
+import { serial } from "@nyte-ai/schema/serial";
 import { dirname } from "node:path";
+import { writePrivateFile } from "@nyte-ai/connect/private-file";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
@@ -58,7 +59,7 @@ export type TunnelFile = Static<typeof tunnelType>;
 
 export type StoredDevice = Static<typeof deviceType>;
 
-export type TunnelRead =
+type TunnelRead =
   | { readonly kind: "ready"; readonly file: TunnelFile | undefined }
   | { readonly kind: "failed" };
 
@@ -80,14 +81,10 @@ async function syncDirectory(path: string): Promise<void> {
   }
 }
 
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
-}
-
 export class CloudflareTunnelStore {
   private readonly path: string;
   private current: Promise<TunnelRead> | undefined;
-  private writes: Promise<unknown> = Promise.resolve();
+  private readonly writes = serial();
 
   constructor(path: string) {
     this.path = path;
@@ -110,7 +107,7 @@ export class CloudflareTunnelStore {
       readonly result: T;
     },
   ): Promise<T> {
-    const run = this.writes.then(async () => {
+    return this.writes.run(async () => {
       const loaded = await this.read();
 
       if (loaded.kind === "failed") throw new TunnelStoreFailed();
@@ -129,10 +126,6 @@ export class CloudflareTunnelStore {
 
       return next.result;
     });
-
-    this.writes = run.catch(() => undefined);
-
-    return run;
   }
 
   private async load(): Promise<TunnelRead> {
@@ -141,7 +134,9 @@ export class CloudflareTunnelStore {
     try {
       text = await readFile(this.path, "utf8");
     } catch (cause) {
-      return isMissing(cause) ? { kind: "ready", file: undefined } : { kind: "failed" };
+      return cause instanceof Error && "code" in cause && cause.code === "ENOENT"
+        ? { kind: "ready", file: undefined }
+        : { kind: "failed" };
     }
 
     try {
@@ -157,35 +152,13 @@ export class CloudflareTunnelStore {
    * paired device silently gone.
    */
   private async persist(file: TunnelFile | undefined): Promise<void> {
-    const directory = dirname(this.path);
-
     if (file === undefined) {
       await rm(this.path, { force: true });
-      await syncDirectory(directory);
+      await syncDirectory(dirname(this.path));
 
       return;
     }
 
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    const temporary = `${this.path}.${randomBytes(8).toString("hex")}.tmp`;
-
-    try {
-      // `wx` creates the file, so the mode applies; rename keeps it.
-      const handle = await open(temporary, "wx", 0o600);
-
-      try {
-        await handle.writeFile(`${JSON.stringify(file, null, 2)}\n`);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-
-      await rename(temporary, this.path);
-    } catch (cause) {
-      await rm(temporary, { force: true }).catch(() => undefined);
-      throw cause;
-    }
-
-    await syncDirectory(directory);
+    await writePrivateFile({ path: this.path, text: `${JSON.stringify(file, null, 2)}\n` });
   }
 }

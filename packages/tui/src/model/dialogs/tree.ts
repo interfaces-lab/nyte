@@ -2,7 +2,7 @@ import type { CommitId, HeadName, TreeNode, TreeView } from "@nyte-ai/sdk";
 import type { DialogCommand, DialogId, DialogStep } from "./dialog.ts";
 import { matchesTerms } from "./list.ts";
 
-export type TreeFilter = "default" | "no-tools" | "users" | "all";
+type TreeFilter = "default" | "no-tools" | "users" | "all";
 
 export interface TreeDialog {
   readonly kind: "tree";
@@ -25,7 +25,7 @@ export interface TreeLoad {
   readonly tip: CommitId | null;
 }
 
-export type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary";
+type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary";
 
 export interface TreeRow {
   readonly oid: CommitId;
@@ -306,7 +306,7 @@ function select(dialog: TreeDialog, rows: readonly TreeRow[], index: number): Tr
   return row === undefined ? dialog : { ...dialog, selected: row.oid };
 }
 
-function isDescendantOfTip(load: TreeLoad, picked: CommitId): boolean {
+function descendsFromTip(load: TreeLoad, picked: CommitId): boolean {
   if (load.tip === null) return true;
   const parents = new Map(load.view.nodes.map((node) => [node.id, node.parent]));
   const seen = new Set<CommitId>();
@@ -331,6 +331,19 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
       push: null,
     };
 
+  if (row.node.kind === "user" && row.node.parent === null)
+    return {
+      dialog,
+      intents: [
+        {
+          kind: "refuse",
+          reason: "The first message starts the chat and can't move back. /new starts another",
+          tone: "info",
+        },
+      ],
+      push: null,
+    };
+
   if (row.node.kind === "user" && !dialog.composerEmpty)
     return {
       dialog,
@@ -340,7 +353,7 @@ function accept(dialog: TreeDialog, row: TreeRow | undefined): DialogStep<TreeDi
 
   const expect = load.view.revision ?? undefined;
 
-  if (isDescendantOfTip(load, row.oid))
+  if (descendsFromTip(load, row.oid))
     return {
       dialog: null,
       intents: [
@@ -396,7 +409,7 @@ function toggleFilter(dialog: TreeDialog, filter: TreeFilter): TreeDialog {
 }
 
 function cycleFilter(dialog: TreeDialog, step: 1 | -1): TreeDialog {
-  const at = FILTER_CYCLE.indexOf(dialog.filter);
+  const at = FILTER_CYCLE.findIndex((filter) => filter === dialog.filter);
 
   return {
     ...dialog,

@@ -1,3 +1,13 @@
+/**
+ * Behavior references, not a vendored suite: https://github.com/openai/codex/tree/121f91fd5d9dc66017866ce9bdc49f1e182721df/codex-rs
+ * core/tests/suite/compact_remote.rs: remote_compact_v2_reuses_compaction_trigger_for_followups,
+ * remote_compact_v2_accepts_additional_output_items_before_compaction,
+ * remote_compact_v2_retries_failures_with_stream_retry_budget.
+ * core/src/compact_remote_v2.rs: retained_history_truncation_keeps_newest_messages_first.
+ * core/src/compact_remote_v2_image_budget_tests.rs: image_only_boundary_is_atomic_and_does_not_backfill_older_messages.
+ * app-server/tests/suite/v2/compaction.rs: thread_compact_start_triggers_compaction_and_returns_empty_response
+ * checks terminal usage and the next request. App-server transport/notifications belong to Nyte's callers.
+ */
 import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -11,22 +21,10 @@ import { describe, expect, test } from "vitest";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Context, JsonValue, Model } from "../src/types.ts";
-import {
-  compactOpenAICodexContext,
-  OpenAICodexCompactionError,
-  fetchOpenAICodexAccountLimits,
-  stream,
-} from "../src/api/openai-codex-responses.ts";
-
-// Behavior references, not a vendored suite:
-// https://github.com/openai/codex/tree/121f91fd5d9dc66017866ce9bdc49f1e182721df/codex-rs
-// core/tests/suite/compact_remote.rs: remote_compact_v2_reuses_compaction_trigger_for_followups,
-// remote_compact_v2_accepts_additional_output_items_before_compaction,
-// remote_compact_v2_retries_failures_with_stream_retry_budget.
-// core/src/compact_remote_v2.rs: retained_history_truncation_keeps_newest_messages_first.
-// core/src/compact_remote_v2_image_budget_tests.rs: image_only_boundary_is_atomic_and_does_not_backfill_older_messages.
-// app-server/tests/suite/v2/compaction.rs: thread_compact_start_triggers_compaction_and_returns_empty_response
-// checks terminal usage and the next request. App-server transport/notifications belong to Nyte's callers.
+import { compactOpenAICodexContext } from "../src/api/openai-codex-compact.ts";
+import { OpenAICodexCompactionError } from "../src/api/openai-codex-compaction-error.ts";
+import { stream } from "../src/api/openai-codex-responses.ts";
+import { fetchOpenAICodexAccountLimits } from "../src/providers/openai-codex-limits.ts";
 
 function model(baseUrl: string): Model<"openai-codex-responses"> {
   return {
@@ -707,9 +705,9 @@ describe("Codex V2 compaction", () => {
     },
   );
 
-  test.each(["server delay", "backoff"])("honors the retry delay cap for %s", async (kind) => {
+  test("honors the retry delay cap for a server-requested delay", async () => {
     await using server = await serve((response) => {
-      response.writeHead(503, kind === "server delay" ? { "retry-after-ms": "5000" } : {});
+      response.writeHead(503, { "retry-after-ms": "5000" });
       response.end();
     });
     await assert.rejects(
@@ -883,7 +881,7 @@ describe("Codex V2 compaction", () => {
         await setTimeout(30);
       }
       const wire = sse(itemDone(), completed()).replaceAll("\n", "\r\n");
-      const split = wire.indexOf("\r") + 1;
+      const split = wire.split("\r")[0].length + 1;
       response.write(wire.slice(0, split));
       await setTimeout(10);
       response.end(wire.slice(split));

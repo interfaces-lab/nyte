@@ -29,7 +29,7 @@ export type Page =
 
 export type Place = PaneSelection | Page;
 
-export interface PaneHistory {
+interface PaneHistory {
   readonly back: readonly PaneSelection[];
   readonly forward: readonly PaneSelection[];
 }
@@ -92,18 +92,8 @@ const CLOSED_LIMIT = 25;
 
 const HISTORY_LIMIT = 50;
 
-export function isPage(place: Place): place is Page {
+export function showsPage(place: Place): place is Page {
   return place.kind === "customize" || place.kind === "environments";
-}
-
-export function samePlace(left: Place, right: Place): boolean {
-  if (isPage(left) || isPage(right)) {
-    return (
-      isPage(left) && isPage(right) && left.kind === right.kind && left.section === right.section
-    );
-  }
-
-  return sameSelection(left, right);
 }
 
 export function currentView(tab: Tab): View {
@@ -156,11 +146,13 @@ function panesView(layout: PaneLayout): PanesView {
   return { kind: "panes", layout, history: FRESH_HISTORIES };
 }
 
-export function newTab(id: string, place: Place): Tab {
+function newTab(id: string, place: Place): Tab {
   return {
     id,
     views: [
-      isPage(place) ? { kind: "page", page: place } : panesView(createSinglePane("primary", place)),
+      showsPage(place)
+        ? { kind: "page", page: place }
+        : panesView(createSinglePane("primary", place)),
     ],
     index: 0,
   };
@@ -243,7 +235,7 @@ function recordLayout(tab: Tab, view: PanesView, next: PaneLayout, action: PaneL
 function openHere(tab: Tab, place: Place): Tab {
   const view = currentView(tab);
 
-  if (isPage(place)) {
+  if (showsPage(place)) {
     if (view.kind === "page" && view.page.kind === place.kind) return tab;
 
     return pushView(tab, { kind: "page", page: place });
@@ -380,6 +372,7 @@ function reduceLayout(
   return withTab(state, recordLayout(tab, view, layout, action));
 }
 
+/** `activate-index` counts from the first tab: the ninth shortcut means the ninth tab, not the last. */
 export function reduce(
   state: WindowState,
   action: WindowAction,
@@ -469,7 +462,6 @@ export function reduce(
         ? { ...state, activeTabId: action.tabId }
         : state;
     case "activate-index": {
-      // The ninth shortcut means the ninth tab, not the last.
       const tab = state.tabs[action.index];
 
       return tab === undefined || tab.id === state.activeTabId

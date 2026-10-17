@@ -38,7 +38,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { menu, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
-import { isSettingsSection } from "../settings/index.ts";
+import { showsSettingsSection } from "../settings/index.ts";
 import {
   modelTriggerLabel,
   pickerGroups,
@@ -100,9 +100,13 @@ interface ModelPickerProps {
   fast: boolean;
   disabled?: boolean;
   loading?: boolean;
+  /** Whether the menu is open, for a parent that opens it from elsewhere; the picker keeps its own otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onChange: (change: ModelPickerChange) => void;
 }
 
+/** A model is an Autocomplete item inside a submenu, so its press must close the outer menu. */
 function ModelPickerView({
   catalog,
   current,
@@ -110,11 +114,14 @@ function ModelPickerView({
   fast,
   disabled = false,
   loading = false,
+  open: openProp,
+  onOpenChange,
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
-  // A model is an Autocomplete item inside a submenu, so its press must close the outer menu.
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = onOpenChange ?? setOwnOpen;
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -130,7 +137,7 @@ function ModelPickerView({
 
   const unknown = catalog?.providers.some((provider) => provider.credential === "unknown") ?? false;
 
-  const manage = isSettingsSection("providers")
+  const manage = showsSettingsSection("providers")
     ? {
         label: connected || unknown ? "Manage Providers…" : "Connect a Provider…",
         href: "/settings/providers",

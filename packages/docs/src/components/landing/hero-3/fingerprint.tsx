@@ -27,7 +27,7 @@ function random(seed: number): () => number {
   };
 }
 
-export function fingerprintField(seed: string): (x: number, y: number) => number {
+function fingerprintField(seed: string): (x: number, y: number) => number {
   const next = random(hash(seed));
   const ax = (next() - 0.5) * 0.7;
   const ay = (next() - 0.5) * 0.7;

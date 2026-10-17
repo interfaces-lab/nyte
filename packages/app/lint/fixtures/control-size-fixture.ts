@@ -1,7 +1,9 @@
 import { create } from "@stylexjs/stylex";
 
-// Every value here is deliberate. `control-size.test.ts` asserts the exact set
-// of lines the rules report.
+/**
+ * Every value here is deliberate. `control-size.test.ts` asserts the exact set
+ * of lines the rules report.
+ */
 export const styles = create({
   handSized: { height: 30 },
   handSizedGlyph: { width: 16, minHeight: 16 },

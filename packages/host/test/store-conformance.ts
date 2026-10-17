@@ -1,6 +1,6 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { DurableEvent, SessionId } from "@nyte-ai/schema";
-import { envelope, objectId } from "@nyte-ai/core";
+import { envelope, objectId } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 
@@ -188,7 +188,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
       assert(outcome.kind === "set");
 
-      expect(outcome.seq).toBe(0);
+      expect(outcome.logged).toEqual([]);
       expect(outcome.revisions).toHaveLength(2);
       expect(outcome.revisions[0]).not.toBe(outcome.revisions[1]);
       expect(await refs.get("sessions/s1/heads/main")).toEqual({
@@ -230,7 +230,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const [head, run] = first.revisions;
 
       const outcome = await refs.set([
-        { name: "sessions/s1/heads/main", target: after, expect: head, event: moved },
+        { name: "sessions/s1/heads/main", target: after, expect: head, events: [moved] },
         { name: "sessions/s1/runs/r1", target: null, expect: head },
       ]);
 
@@ -246,6 +246,24 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
         revision: run,
       });
       expect(await refs.tail(session)).toBe(0);
+    });
+
+    it("lands a set only while its fence refs exist, and answers fenced, writing nothing, once one is gone", async () => {
+      const { objects, refs } = await connect();
+      const target = await objects.put("value");
+      const live = "sessions/s1/live/r1";
+      await refs.set([{ name: live, target }]);
+      const part = { name: "sessions/s1/parts/p1", target, fence: live, events: [moved] };
+
+      expect((await refs.set([part])).kind).toBe("set");
+      await refs.set([{ name: live, target: null }]);
+
+      expect(await refs.set([{ ...part, name: "sessions/s1/parts/p2" }])).toEqual({
+        kind: "fenced",
+        name: live,
+      });
+      expect(await refs.get("sessions/s1/parts/p2")).toBeNull();
+      expect(await refs.tail(session)).toBe(1);
     });
 
     it("deletes a ref when the target is null", async () => {
@@ -312,18 +330,18 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const target = await objects.put({});
 
       const first = await refs.set([
-        { name: "sessions/s1/heads/main", target, event: created },
+        { name: "sessions/s1/heads/main", target, events: [created] },
         { name: "sessions/s1/inbox/main", target },
-        { name: "sessions/s2/heads/main", target, event: created },
-        { name: "sessions/s1/runs/r1", target, event: moved },
+        { name: "sessions/s2/heads/main", target, events: [created] },
+        { name: "sessions/s1/runs/r1", target, events: [moved] },
       ]);
 
       const second = await refs.set([
-        { name: "sessions/s1/heads/main", target: null, event: removed },
+        { name: "sessions/s1/heads/main", target: null, events: [removed] },
       ]);
 
-      expect(first).toMatchObject({ kind: "set", seq: 2 });
-      expect(second).toMatchObject({ kind: "set", seq: 3 });
+      expect(first).toMatchObject({ kind: "set", logged: [1, 1, 2] });
+      expect(second).toMatchObject({ kind: "set", logged: [3] });
       expect(await refs.log(session, asSeq(0), 10)).toMatchObject([
         { seq: 1, at: expect.any(Number), kind: "head", reason: "created" },
         { seq: 2, kind: "head", reason: "moved" },
@@ -337,17 +355,26 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       expect(await refs.log(session, asSeq(3), 10)).toEqual([]);
     });
 
-    it("answers a set without events with the tail of the first session it names", async () => {
-      const { objects, refs } = await connect();
-      const target = await objects.put({ tail: true });
-      await refs.set([{ name: "sessions/s1/heads/main", target, event: created }]);
+    it("keeps one fold checkpoint per session, a later seq replacing it, and sizes the log past a seq", async () => {
+      const { objects, refs, checkpoints } = await connect();
 
-      expect(
-        await refs.set([
-          { name: "kv/host/core/x", target },
-          { name: "sessions/s1/parts/p", target },
-        ]),
-      ).toMatchObject({ kind: "set", seq: 1 });
+      if (checkpoints === undefined) return;
+      const target = await objects.put({});
+      await refs.set([{ name: "sessions/s1/heads/main", target, events: [created, moved] }]);
+      await checkpoints.write(session, { seq: asSeq(2), body: "second" });
+      await checkpoints.write(session, { seq: asSeq(1), body: "first" });
+
+      expect(await checkpoints.read(session)).toEqual({ seq: 2, body: "second" });
+      expect(await checkpoints.read(other)).toBeNull();
+
+      await checkpoints.write(session, { seq: asSeq(2), body: "again" });
+
+      expect(await checkpoints.read(session)).toEqual({ seq: 2, body: "again" });
+      expect(await checkpoints.gap(session, asSeq(1))).toEqual({
+        events: 1,
+        bytes: new TextEncoder().encode(JSON.stringify(moved)).byteLength,
+      });
+      expect(await checkpoints.gap(session, asSeq(2))).toEqual({ events: 0, bytes: 0 });
     });
 
     it("throws for an event outside a session and writes nothing", async () => {
@@ -356,8 +383,8 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
       await expect(
         refs.set([
-          { name: "sessions/s1/heads/main", target, event: created },
-          { name: "kv/host/core/x", target, event: moved },
+          { name: "sessions/s1/heads/main", target, events: [created] },
+          { name: "kv/host/core/x", target, events: [moved] },
         ]),
       ).rejects.toMatchObject({ code: "internal" });
       expect(await refs.get("sessions/s1/heads/main")).toBeNull();
@@ -421,15 +448,15 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const [revision] = first.revisions;
 
       const outcome = await refs.set([
-        { name: "sessions/s1/heads/main", target: two, expect: revision, event: moved },
-        { name: "sessions/s1/heads/main", target: three, expect: revision, event: moved },
+        { name: "sessions/s1/heads/main", target: two, expect: revision, events: [moved] },
+        { name: "sessions/s1/heads/main", target: three, expect: revision, events: [moved] },
         { name: "sessions/s1/parts/p", target: one, expect: "absent" },
-        { name: "sessions/s1/parts/p", target: two, expect: "absent", event: created },
+        { name: "sessions/s1/parts/p", target: two, expect: "absent", events: [created] },
       ]);
 
       assert(outcome.kind === "set");
       expect(new Set(outcome.revisions).size).toBe(4);
-      expect(outcome.seq).toBe(3);
+      expect(outcome.logged).toEqual([1, 2, 3]);
       expect(await refs.get("sessions/s1/heads/main")).toEqual({
         name: "sessions/s1/heads/main",
         target: three,
@@ -489,7 +516,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
               name: "sessions/s1/heads/main",
               target: await objects.put(side),
               expect: revision,
-              event: moved,
+              events: [moved],
             },
           ]),
         ),

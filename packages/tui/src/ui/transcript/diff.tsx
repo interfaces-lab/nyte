@@ -15,7 +15,7 @@ import { displayWidth } from "../../lib/width.ts";
 
 const WORD_SPAN_LIMIT = 4_000;
 
-export function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlight[] {
+function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlight[] {
   if (pair.removed.length + pair.added.length > WORD_SPAN_LIMIT) return [];
   const rows = content.split("\n");
 
@@ -60,7 +60,7 @@ function markChangedWords(diff: DiffRenderable, pair: ChangedLinePair): void {
   code.onHighlight = (highlights, context) => [...highlights, ...wordSpans(context.content, pair)];
 }
 
-export function syncDiffGutters(diffs: readonly DiffRenderable[]): void {
+function syncDiffGutters(diffs: readonly DiffRenderable[]): void {
   const gutters = diffs.flatMap((diff) =>
     diff.getChildren().filter((child) => child instanceof LineNumberRenderable),
   );

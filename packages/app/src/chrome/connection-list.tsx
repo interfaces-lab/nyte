@@ -1,10 +1,10 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { avatar, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * The card of rows Settings uses for anything that connects: the GitHub
  * account and each model provider. A row ends in one control: a button for
  * what is not set up yet, or a status menu that holds the verbs.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { avatar, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";

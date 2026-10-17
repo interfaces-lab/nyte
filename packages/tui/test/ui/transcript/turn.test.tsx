@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { asId } from "@nyte-ai/schema";
 import type { App } from "../../../src/app/context.tsx";
-import { SPINNER_FRAMES } from "../../../src/lib/constants.ts";
+import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "../../../src/lib/constants.ts";
 import { Transcript } from "../../../src/ui/transcript/transcript.tsx";
-import { stateOf } from "../../fixture/state.ts";
-import { followed, viewOf } from "../../fixture/view.ts";
+import { buildState } from "../../fixture/state.ts";
+import { followed, buildView } from "../../fixture/view.ts";
 import { renderWithApp } from "./harness.tsx";
 import type { Task } from "../../../src/lib/tasks.ts";
 
@@ -41,19 +41,41 @@ function transcript(app: App) {
 
 describe("turn", () => {
   test("an action shows its label and never its prompt", async () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) => t.action("Fix lint", "Please run the linter and fix").ended("completed")),
     );
 
-    await using app = await renderWithApp(stateOf(followed(view)), transcript);
+    await using app = await renderWithApp(buildState(followed(view)), transcript);
     const frame = app.captureCharFrame();
 
     expect(frame).toContain("Fix lint");
     expect(frame).not.toContain("run the linter");
   });
 
+  test("a canvas shows its title and where to open it", async () => {
+    const view = buildView((v) =>
+      v.turn("t1", (t) =>
+        t
+          .user("chart it")
+          .part(
+            "canvas",
+            { runtime: 1, title: "Weekly signups", code: "", height: null, error: null },
+            { role: "answer" },
+          )
+          .ended("completed"),
+      ),
+    );
+
+    await using app = await renderWithApp(buildState(followed(view)), transcript);
+    const frame = app.captureCharFrame();
+
+    expect(frame).toContain("Weekly signups");
+    expect(frame).toContain("open this chat in Nyte desktop");
+    expect(frame).not.toContain("[canvas]");
+  });
+
   test("blocks keep view order and changing output mode expands the card", async () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) =>
         t
           .user("question")
@@ -67,7 +89,7 @@ describe("turn", () => {
       ),
     );
 
-    const state = stateOf(followed(view));
+    const state = buildState(followed(view));
     await using app = await renderWithApp(state, transcript);
     const turn = app.renderer.root.findDescendantById("turn:t1");
 
@@ -93,11 +115,11 @@ describe("turn", () => {
   });
 
   test("a live turn keeps the spinner row under its content, and it spins", async () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) => t.user("question").text("streaming", { live: true })).live(),
     );
 
-    await using app = await renderWithApp(stateOf(followed(view)), transcript);
+    await using app = await renderWithApp(buildState(followed(view)), transcript);
     const turn = app.renderer.root.findDescendantById("turn:t1");
 
     expect(turn?.getChildren().map((block) => block.id)).toEqual([
@@ -106,30 +128,30 @@ describe("turn", () => {
       "status:t1",
     ]);
     expect(app.captureCharFrame()).toContain(`${SPINNER_FRAMES[0]} Working`);
-    app.clock.advance();
+    app.clock.advance(SPINNER_INTERVAL_MS);
     await app.renderOnce();
     expect(app.captureCharFrame()).toContain(`${SPINNER_FRAMES[1]} Working`);
   });
 
   test("a retrying run shows its countdown, attempt and cause", async () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) => t.user("question")).retrying("rate limited", 9_000),
     );
 
-    await using app = await renderWithApp(stateOf(followed(view)), transcript);
+    await using app = await renderWithApp(buildState(followed(view)), transcript);
 
     expect(app.captureCharFrame()).toContain("Retrying in 9s (attempt 0) · rate limited.");
-    expect(app.clock.active()).toBeGreaterThan(0);
+    expect(app.clock.pendingTimerCount).toBeGreaterThan(0);
   });
 
   test("a report row click opens the task", async () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v.turn("t1", (t) =>
         t.report({ job: "job-1" }, "Job lint finished.\nclean").ended("completed"),
       ),
     );
 
-    const state = stateOf(followed(view));
+    const state = buildState(followed(view));
 
     await using app = await renderWithApp(
       {

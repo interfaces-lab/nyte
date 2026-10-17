@@ -48,9 +48,15 @@ export interface ToolCall {
   type: "toolCall";
   id: string;
   name: string;
-  arguments: Record<string, any>;
+  arguments: Record<string, unknown>;
   thoughtSignature?: string;
   namespace?: string;
+  /**
+   * Set when the call's finished arguments text was not a JSON object, for example because the
+   * response hit its output limit mid-call. `arguments` is then `{}`; this describes the problem
+   * and includes the text the model sent. Tool argument validation fails with it.
+   */
+  argumentsError?: string;
 }
 
 export interface Usage {
@@ -136,24 +142,7 @@ export interface AssistantMessage {
   timestamp: number;
 }
 
-export type FailureClass =
-  | "rate_limit"
-  | "auth"
-  | "quota"
-  | "context_window"
-  | "overloaded"
-  | "network"
-  | "aborted"
-  | "provider"
-  | "runner";
-
-export type Failure = {
-  readonly class: FailureClass;
-  readonly message: string;
-  readonly retryAfterMs?: number;
-};
-
-export interface ToolResultMessage<TDetails = any> {
+export interface ToolResultMessage<TDetails = unknown> {
   role: "toolResult";
   toolCallId: string;
   toolName: string;

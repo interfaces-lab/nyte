@@ -1,6 +1,6 @@
 import type { MentionFile } from "./message-references.ts";
 import { createFileRanking } from "../file-ranking.ts";
-import { isFolder } from "./message-references.ts";
+import { mentionsFolder } from "./message-references.ts";
 
 /** The context entry does not count toward the workspace result limit. */
 const MAX_FILE_SUGGESTIONS = 20;
@@ -36,7 +36,7 @@ function fileSuggestion(file: MentionFile): FileSuggestion {
     id: `file:${file.path}`,
     label: file.label,
     description: file.displayPath,
-    icon: isFolder(file) ? "folder" : "file",
+    icon: mentionsFolder(file) ? "folder" : "file",
     file,
   };
 }

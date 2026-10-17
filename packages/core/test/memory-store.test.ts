@@ -1,7 +1,13 @@
 import { asId, asSeq } from "@nyte-ai/schema";
-import type { DurableEvent, SessionId } from "@nyte-ai/schema";
+import type { DurableEvent, RefUpdate, SessionId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import { memoryStore, objectId } from "../src/index.ts";
+import { publishSet } from "../src/fold/watch.ts";
+import { dev } from "../src/index.ts";
+import { memoryStore, objectId, sessionRef } from "../src/store.ts";
+import { commit } from "../src/fold/commit.ts";
+import type { StoreConnection } from "../src/index.ts";
+import { attempt, STALE } from "../src/store/session.ts";
+import { main, setup, until } from "../src/harness.ts";
 
 const session: SessionId = asId("s1");
 
@@ -50,7 +56,7 @@ describe("memoryStore", () => {
 
     assert(outcome.kind === "set");
 
-    expect(outcome.seq).toBe(0);
+    expect(outcome.logged).toEqual([]);
     expect(outcome.revisions).toHaveLength(2);
     expect(outcome.revisions[0]).not.toBe(outcome.revisions[1]);
     expect(await refs.get("sessions/s1/heads/main")).toEqual({
@@ -92,7 +98,7 @@ describe("memoryStore", () => {
     const [head, run] = first.revisions;
 
     const outcome = await refs.set([
-      { name: "sessions/s1/heads/main", target: after, expect: head, event: moved },
+      { name: "sessions/s1/heads/main", target: after, expect: head, events: [moved] },
       { name: "sessions/s1/runs/r1", target: null, expect: head },
     ]);
 
@@ -148,18 +154,18 @@ describe("memoryStore", () => {
     const target = await objects.put({});
 
     const first = await refs.set([
-      { name: "sessions/s1/heads/main", target, event: created },
+      { name: "sessions/s1/heads/main", target, events: [created] },
       { name: "sessions/s1/inbox/main", target },
-      { name: "sessions/s2/heads/main", target, event: created },
-      { name: "sessions/s1/runs/r1", target, event: moved },
+      { name: "sessions/s2/heads/main", target, events: [created] },
+      { name: "sessions/s1/runs/r1", target, events: [moved] },
     ]);
 
     const second = await refs.set([
-      { name: "sessions/s1/heads/main", target: null, event: removed },
+      { name: "sessions/s1/heads/main", target: null, events: [removed] },
     ]);
 
-    expect(first).toMatchObject({ kind: "set", seq: 2 });
-    expect(second).toMatchObject({ kind: "set", seq: 3 });
+    expect(first).toMatchObject({ kind: "set", logged: [1, 1, 2] });
+    expect(second).toMatchObject({ kind: "set", logged: [3] });
     expect(await refs.log(session, asSeq(0), 10)).toMatchObject([
       { seq: 1, at: expect.any(Number), kind: "head", reason: "created" },
       { seq: 2, kind: "head", reason: "moved" },
@@ -202,5 +208,135 @@ describe("memoryStore", () => {
     expect(reader.size).toBe(5);
     expect(reader.mime).toBeNull();
     expect(chunks.map((chunk) => new TextDecoder().decode(chunk))).toEqual(["hello"]);
+  });
+});
+
+describe("attempt", () => {
+  it("retries a lost write until it lands, and fails stale once it keeps losing", async () => {
+    let lost = 2;
+
+    expect(await attempt("Landing", async () => (lost-- > 0 ? STALE : "landed"))).toBe("landed");
+
+    let tries = 0;
+
+    await expect(
+      attempt("Racing", async () => {
+        tries += 1;
+
+        return STALE;
+      }),
+    ).rejects.toMatchObject({
+      code: "stale",
+      message: "Racing lost to concurrent writes 8 times.",
+    });
+    expect(tries).toBe(8);
+  });
+});
+
+describe("commit", () => {
+  it("publishes a write's events from the updates in hand, reading none of them back", async () => {
+    const store = await memoryStore().open();
+    let reads = 0;
+
+    const counted: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        async log(session, after, limit) {
+          reads += 1;
+
+          return store.refs.log(session, after, limit);
+        },
+      },
+    };
+
+    const { kernel, host } = await setup({ store: counted });
+    const seen: number[] = [];
+    kernel.bus.subscribeAll((_session, event) => {
+      if (event.kind === "session") seen.push(event.seq);
+    });
+    const { session } = await host.sessions.start({ content: "Hi." });
+    reads = 0;
+    await session.update({ name: "Renamed" });
+
+    expect(seen).toHaveLength(2);
+    expect(reads).toBe(0);
+  });
+
+  it("publishes a landed write again when its first publish failed, so watchers still see it", async () => {
+    const store = await memoryStore().open();
+    let failing = false;
+
+    const flaky: StoreConnection = {
+      ...store,
+      refs: {
+        ...store.refs,
+        async get(name) {
+          if (failing && name.endsWith("/heads/main")) {
+            failing = false;
+
+            throw new Error("The head read failed.");
+          }
+
+          return store.refs.get(name);
+        },
+      },
+    };
+
+    const { kernel, host } = await setup({ store: flaky });
+    const { session: created } = await host.sessions.start({ content: "Hi." });
+    const seen: string[] = [];
+    kernel.bus.subscribe(created.id, (event) => seen.push(event.kind));
+    const lines: string[] = [];
+    const sink = dev.sink;
+    dev.on((line) => lines.push(line));
+    failing = true;
+
+    try {
+      await commit(kernel, [
+        {
+          name: `${sessionRef(created.id)}/marks/m`,
+          target: null,
+          events: [{ head: main, kind: "head", from: null, to: null, reason: "moved" }],
+        },
+      ]);
+
+      expect(lines.filter((line) => line.startsWith("DEV:store publish failed"))).toHaveLength(1);
+      expect(await until(() => (seen.includes("head") ? seen : undefined))).toContain("head");
+    } finally {
+      dev.sink = sink;
+    }
+  });
+
+  it("puts each logged event on the bus once and in seq order, reading a gap from the log", async () => {
+    const { kernel, host } = await setup();
+    const { session: created } = await host.sessions.start({ content: "Hi." });
+    const seqs: number[] = [];
+
+    kernel.bus.subscribe(created.id, (event) => {
+      if (event.kind === "head") seqs.push(event.seq);
+    });
+
+    const mark = (name: string): RefUpdate[] => [
+      {
+        name: `${sessionRef(created.id)}/marks/${name}`,
+        target: null,
+        events: [{ head: main, kind: "head", from: null, to: null, reason: "moved" }],
+      },
+    ];
+
+    const first = mark("a");
+    const second = mark("b");
+    const landedFirst = await kernel.store.refs.set(first);
+    const landedSecond = await kernel.store.refs.set(second);
+    assert(landedFirst.kind === "set");
+
+    await publishSet(kernel, second, landedSecond);
+    await publishSet(kernel, first, landedFirst);
+    await publishSet(kernel, second, landedSecond);
+
+    const [seq = 0] = landedFirst.logged;
+
+    expect(seqs).toEqual([seq, seq + 1]);
   });
 });

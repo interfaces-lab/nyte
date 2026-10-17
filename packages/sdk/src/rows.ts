@@ -1,3 +1,4 @@
+import { SdkError } from "@nyte-ai/schema";
 import type {
   ByteReader,
   Disposer,
@@ -6,7 +7,7 @@ import type {
   OutputFrame,
   RequestOptions,
 } from "@nyte-ai/schema";
-import { SdkError, closable, dev } from "@nyte-ai/core";
+import { closable, dev } from "@nyte-ai/core";
 import { decodeOutput, encodeInput } from "@nyte-ai/protocol";
 import type {
   ByteName,
@@ -16,14 +17,20 @@ import type {
   OperationInput,
   OperationName,
   OperationOutput,
-  SseFrame,
   Transport,
 } from "@nyte-ai/protocol";
 
-export type LinkState = HostView["link"];
+type LinkState = HostView["link"];
 
-type WaitName = {
-  [N in OperationName]: Declarations[N] extends { readonly wait: true } ? N : never;
+/** A wait query, or a replayed operation whose input names its own id, so a retry is the same request. */
+type RetryName = {
+  [N in OperationName]: Declarations[N] extends { readonly wait: true }
+    ? N
+    : Declarations[N] extends { readonly recovery: "replay" }
+      ? OperationInput<N> extends { readonly id: string }
+        ? N
+        : never
+      : never;
 }[OperationName];
 
 export interface Link {
@@ -42,7 +49,7 @@ export interface Rows {
     input: OperationInput<N>,
     options?: RequestOptions,
   ): Promise<OperationOutput<N>>;
-  wait<N extends WaitName>(
+  wait<N extends RetryName>(
     name: N,
     input: OperationInput<N>,
     options?: RequestOptions,
@@ -58,7 +65,12 @@ export interface Rows {
     options?: RequestOptions,
   ): Promise<ByteReader>;
   frames<N extends FrameName>(name: N, input: OperationInput<N>): AsyncIterable<OperationOutput<N>>;
-  watch<N extends FrameName>(name: N, input: OperationInput<N>): AsyncIterable<OperationOutput<N>>;
+  /** Frames that resume across link losses; `opened` is a stream of this watch already open, read before any is opened. */
+  watch<N extends FrameName>(
+    name: N,
+    input: OperationInput<N>,
+    opened?: AsyncIterator<Json>,
+  ): AsyncIterable<OperationOutput<N>>;
   output(input: OperationInput<"job.output">): AsyncIterable<OutputFrame>;
 }
 
@@ -127,11 +139,11 @@ export function createRows(transport: Transport, link: Link): Rows {
 
       return answer;
     } catch (error) {
-      if (isHostGone(transport, error)) link.close("host-gone");
+      if (hostGone(transport, error)) link.close("host-gone");
 
       link.signal.throwIfAborted();
 
-      if (isLinkLoss(error)) link.lost();
+      if (linkLost(error)) link.lost();
 
       if (error instanceof SdkError && error.code === "unauthenticated") link.close("revoked");
 
@@ -156,7 +168,7 @@ export function createRows(transport: Transport, link: Link): Rows {
         try {
           return await call(name, input, options);
         } catch (error) {
-          if (!isLinkLoss(error) || link.signal.aborted || options?.signal?.aborted === true)
+          if (!linkLost(error) || link.signal.aborted || options?.signal?.aborted === true)
             throw error;
           dev("sdk", "wait retrying", { name, attempts });
           await backoff(
@@ -190,10 +202,10 @@ export function createRows(transport: Transport, link: Link): Rows {
         (frame) => decoded(name, frame),
         link.signal,
       ),
-    watch: (name, input) =>
+    watch: (name, input, opened) =>
       through(
-        resumable(transport, link, name, encodeInput(name, input)),
-        (frame) => decoded(name, frame.data),
+        resumable(transport, link, name, encodeInput(name, input), opened),
+        (frame) => decoded(name, frame),
         link.signal,
       ),
     output: (input) =>
@@ -205,17 +217,18 @@ export function createRows(transport: Transport, link: Link): Rows {
   };
 }
 
+/** Returns a watch's frames across link losses: each loss reports the link and reopens the watch after a backoff, and its first frame restores the link; the host answers a reopened watch from its current state. */
 function resumable(
   transport: Transport,
   link: Link,
   name: OperationName,
   input: Json,
-): AsyncIterable<SseFrame> {
-  return closable<SseFrame>(() => {
+  opened: AsyncIterator<Json> | undefined,
+): AsyncIterable<Json> {
+  return closable<Json>(() => {
     const stop = new AbortController();
     const signal = AbortSignal.any([stop.signal, link.signal]);
-    let frames: AsyncIterator<SseFrame> | null = null;
-    let last: string | undefined;
+    let frames: AsyncIterator<Json> | null = opened ?? null;
     let attempts = 0;
 
     const release = (): void => {
@@ -228,14 +241,14 @@ function resumable(
       async pull() {
         for (;;) {
           if (signal.aborted) return DONE;
-          const current = frames ?? transport.watch(name, input, last)[Symbol.asyncIterator]();
+          const current = frames ?? transport.frames(name, input)[Symbol.asyncIterator]();
           frames = current;
-          let next: IteratorResult<SseFrame> = DONE;
+          let next: IteratorResult<Json> = DONE;
 
           try {
             next = await current.next();
           } catch (error) {
-            if (isHostGone(transport, error)) {
+            if (hostGone(transport, error)) {
               link.close("host-gone");
 
               return DONE;
@@ -247,31 +260,16 @@ function resumable(
               return DONE;
             }
 
-            if (!isLinkLoss(error)) throw error;
+            if (!linkLost(error)) throw error;
           }
 
           if (next.done !== true) {
-            const { id, data } = next.value;
-
-            const progressed =
-              name !== "head.watch" ||
-              (id !== null
-                ? Number(id) > Number(last ?? 0)
-                : data !== null &&
-                  typeof data === "object" &&
-                  "kind" in data &&
-                  data.kind !== "revision");
-
-            if (progressed) {
-              if (attempts > 0) {
-                dev("sdk", "watch resumed", { name, attempts, after: last ?? null });
-                link.restored();
-              }
-
-              attempts = 0;
+            if (attempts > 0) {
+              dev("sdk", "watch resumed", { name, attempts });
+              link.restored();
             }
 
-            if (id !== null && progressed) last = id;
+            attempts = 0;
 
             return next;
           }
@@ -280,7 +278,7 @@ function resumable(
 
           if (signal.aborted) return DONE;
           attempts += 1;
-          dev("sdk", "watch reconnecting", { name, attempts, after: last ?? null });
+          dev("sdk", "watch reconnecting", { name, attempts });
           link.lost();
           await backoff(link, retryDelay(attempts), signal);
         }
@@ -351,7 +349,7 @@ function decoded<N extends OperationName>(
   }
 }
 
-function isHostGone(transport: Transport, error: unknown): boolean {
+function hostGone(transport: Transport, error: unknown): boolean {
   const pinned = transport.host();
 
   return (
@@ -363,7 +361,7 @@ function isHostGone(transport: Transport, error: unknown): boolean {
   );
 }
 
-export function isLinkLoss(error: unknown): error is SdkError {
+function linkLost(error: unknown): error is SdkError {
   return error instanceof SdkError && error.code === "unavailable";
 }
 

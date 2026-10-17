@@ -2,14 +2,15 @@ import { asId } from "@nyte-ai/schema";
 import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
 import { describe, expect, test } from "bun:test";
 import type { Task } from "../../src/lib/tasks.ts";
-import { blockedBy, deriveScreen } from "../../src/model/screen.ts";
+import { deriveScreen } from "../../src/model/screen.ts";
+import { blockedBy } from "../../src/model/table-input.ts";
 import type { State } from "../../src/model/state.ts";
-import { followed, viewOf } from "../fixture/view.ts";
-import { blank, play, ready, S1, typed } from "./support.ts";
+import { followed, buildView } from "../fixture/view.ts";
+import { blank, CATALOG, model, play, ready, S1, typed } from "./support.ts";
 
-const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
-const working = viewOf((v) =>
+const working = buildView((v) =>
   v.turn("t1", (t) => t.user("hi").tool("bash", { running: true })).live(),
 );
 
@@ -26,11 +27,8 @@ function child(view: SessionView, id = "c1"): Task {
 }
 
 describe("blocked", () => {
-  test("one ordered rule: starting, switching, no session, directory, authentication, editor", () => {
-    expect(blockedBy(blank())).toEqual({ kind: "starting" });
-    expect(blockedBy(play(blank(), { kind: "phase", phase: { kind: "ready" } }).state)).toEqual({
-      kind: "no-session",
-    });
+  test("one ordered rule: switching, no session, directory, authentication, editor", () => {
+    expect(blockedBy(blank())).toEqual({ kind: "no-session" });
 
     const state = ready(idle);
 
@@ -52,25 +50,28 @@ describe("blocked", () => {
     ).toEqual({ kind: "authenticating", link: null });
   });
 
-  test("startup opens quietly until the first view arrives", () => {
-    expect(deriveScreen(blank(), null)).toMatchObject({ loading: null, opening: true });
+  test("startup opens quietly until the first view arrives; a switch says so in the composer", () => {
+    expect(deriveScreen(blank(), null)).toMatchObject({ opening: true });
 
     const session = followed(idle);
 
     const opened = play(
       blank(),
-      { kind: "phase", phase: { kind: "ready" } },
+      { kind: "host-opened" },
       { kind: "session-opened", session: S1, info: session.info, selection: session.selection },
     ).state;
 
-    expect(deriveScreen(opened, null)).toMatchObject({ loading: null, opening: true });
-    expect(deriveScreen(ready(idle), null)).toMatchObject({ loading: null, opening: false });
+    expect(deriveScreen(opened, null)).toMatchObject({ opening: true });
+    expect(deriveScreen(ready(idle), null)).toMatchObject({ opening: false });
     expect(
       deriveScreen(
         play(ready(idle), { kind: "switch-session", session: "new", announce: false }).state,
         null,
       ),
-    ).toMatchObject({ loading: "Loading session…", opening: false });
+    ).toMatchObject({
+      opening: false,
+      placeholder: "Opening the chat. Your draft is saved here.",
+    });
   });
 });
 
@@ -86,8 +87,22 @@ describe("placeholder", () => {
     expect(deriveScreen(queue, null).placeholder).toBe("Queue a follow-up");
   });
 
+  test("busy queues when the chat's model cannot take a message mid-turn", () => {
+    const agent = {
+      ...model("model"),
+      capabilities: { steer: false },
+    };
+    const catalog = {
+      ...CATALOG,
+      providers: CATALOG.providers.map((provider) => ({ ...provider, models: [agent] })),
+    };
+    const state = play(ready(working), { kind: "catalog", generation: 2, catalog }).state;
+
+    expect(deriveScreen(state, null).placeholder).toBe("Queue a follow-up");
+  });
+
   test("a child's question names its owner once its panel is put away", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("c", (t) => t.user("go"))
         .question(
@@ -123,7 +138,7 @@ describe("placeholder", () => {
   });
 
   test("the head's question comes before a child's", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("c", (t) => t.user("go"))
         .question(
@@ -132,7 +147,7 @@ describe("placeholder", () => {
         ),
     );
 
-    const own = viewOf((v) =>
+    const own = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -216,7 +231,7 @@ describe("hints", () => {
 
 describe("footer and status", () => {
   test("the footer shows the configurator's selection and counts later-run rows only while busy", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .live()
@@ -234,7 +249,7 @@ describe("footer and status", () => {
   });
 
   test("OSC 7501: a question blocks, a run works, a watched run that completed is done until a key", () => {
-    const asking = viewOf((v) =>
+    const asking = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi"))
         .question(
@@ -251,7 +266,7 @@ describe("footer and status", () => {
     });
     expect(deriveScreen(ready(working), null).program).toEqual({ state: "working" });
 
-    const done = viewOf((v) =>
+    const done = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi").tool("bash").ended("completed"))
         .idle({ run: "run-t1", end: "completed" }),
@@ -266,7 +281,7 @@ describe("footer and status", () => {
   });
 
   test("the tasks line counts unfinished tasks", () => {
-    const busyChild = viewOf((v) => v.turn("c", (t) => t.user("go")).live("run-c"));
+    const busyChild = buildView((v) => v.turn("c", (t) => t.user("go")).live("run-c"));
 
     expect(
       deriveScreen(
@@ -283,7 +298,9 @@ describe("footer and status", () => {
 
 describe("identity", () => {
   test("unchanged queue rows and hints keep their identity across frames", () => {
-    const view = viewOf((v) => v.pending("a", { schedule: { kind: "next-turn", reason: "idle" } }));
+    const view = buildView((v) =>
+      v.pending("a", { schedule: { kind: "next-turn", reason: "idle" } }),
+    );
     const state = ready(view);
     const first = deriveScreen(state, null);
     const second = deriveScreen(play(state, { kind: "tick", now: 5 }).state, first);

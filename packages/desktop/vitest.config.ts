@@ -1,6 +1,6 @@
 import { stylex } from "@nyte-ai/app/vite";
 import { defaultClientConditions } from "vite";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   // Compile renderer styles without starting StyleX's CSS hot-reload timer in Vitest.
@@ -8,5 +8,6 @@ export default defineConfig({
   resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
   test: {
     setupFiles: ["src/main/fixtures/isolated-home.ts"],
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

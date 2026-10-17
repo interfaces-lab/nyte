@@ -2,7 +2,7 @@ import { createCsrfMiddleware, createMiddleware, createStart } from "@tanstack/r
 import { canonicalRedirect } from "~/lib/hosts";
 import { retiredPathTarget } from "~/lib/redirects";
 
-/* Retired paths and design pages on the main host answer with one permanent redirect. */
+/** Retired paths and design pages on the main host answer with one permanent redirect. */
 const placement = createMiddleware().server(({ request, next }) => {
   const url = new URL(request.url);
   const retired = retiredPathTarget(url.pathname);

@@ -4,7 +4,7 @@ import "./tokens.stylex.ts";
 import "./global.css";
 import { props } from "@stylexjs/stylex";
 import { trayStyles } from "./tray.stylex.ts";
-import { composerStyles } from "../conversation/styles.stylex.ts";
+import { composerStyles } from "../conversation/composer.stylex.ts";
 
 /**
  * A tray has to read as a surface of its own. Its fill was the page's in dark

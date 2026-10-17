@@ -20,7 +20,7 @@ type Violation = { line: number; message: string };
 
 let violations: Array<Violation> = [];
 
-const lineOf = (needle: string): number => {
+const findLine = (needle: string): number => {
   const index = readFileSync(fixture, "utf8")
     .split("\n")
     .findIndex((line) => line.includes(needle));
@@ -31,7 +31,7 @@ const lineOf = (needle: string): number => {
 };
 
 const message = (needle: string): string =>
-  violations.find((entry) => entry.line === lineOf(needle))?.message ?? "";
+  violations.find((entry) => entry.line === findLine(needle))?.message ?? "";
 
 beforeAll(async () => {
   const config = join(configDirectory, "oxlintrc.json");
@@ -71,7 +71,7 @@ afterAll(() => {
 
 test("reports only properties outside each component's contract", () => {
   expect(new Set(violations.map((entry) => entry.line))).toEqual(
-    new Set([lineOf(">Padded<"), lineOf(">Typed<"), lineOf(">Paint<")]),
+    new Set([findLine(">Padded<"), findLine(">Typed<"), findLine(">Paint<")]),
   );
 });
 

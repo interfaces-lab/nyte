@@ -45,15 +45,16 @@ import type {
 } from "./controller";
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
-import { FilesPanel } from "./files-panel.tsx";
+import { Deferred, loadDeferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
-import { TerminalPanel } from "./terminal-panel";
-import { ChangesPanel } from "./changes-panel";
+import { useMountEffect } from "../use-mount-effect.ts";
 
-// Views visited since launch stay mounted so a dev server terminal or a
-// browser page in another folder survives switching away and back, and a
-// trip through Settings that unmounts the stage.
+/**
+ * Views visited since launch stay mounted so a dev server terminal or a
+ * browser page in another folder survives switching away and back, and a
+ * trip through Settings that unmounts the stage.
+ */
 let visitedViews: readonly WorkbenchViewKey[] = Object.freeze([]);
 
 const visitedListeners = new Set<() => void>();
@@ -144,6 +145,37 @@ function openWorkbenchTab({
   });
 
   if (kind === "terminal") void terminalActions.create({ id, workspacePath });
+}
+
+/**
+ * Once the first frame is up, loads the terminal's wasm and then the panels'
+ * chunk, each when the renderer idles, so a first panel opens without them.
+ * Safari has no idle callbacks and loads them on first open instead.
+ */
+function prefetchWorkbench(): () => void {
+  if (!("requestIdleCallback" in window)) return () => undefined;
+
+  let idle = 0;
+  let stopped = false;
+
+  const loadPanels = (): void => {
+    if (!stopped) idle = requestIdleCallback(() => void loadDeferred("workbench").catch(() => {}));
+  };
+
+  const frame = requestAnimationFrame(() => {
+    idle = requestIdleCallback(() => {
+      void loadDeferred("ghostty")
+        .then(({ loadGhostty }) => loadGhostty())
+        .catch(() => {})
+        .finally(loadPanels);
+    });
+  });
+
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(frame);
+    cancelIdleCallback(idle);
+  };
 }
 
 function FloatingWorkbenchPanel({
@@ -319,65 +351,83 @@ function PanelContent({
     case "file":
     case "files":
       return (
-        <FilesPanel
-          key={uiFontSize}
-          viewKey={viewKey}
-          visible={visible}
-          workspaceActive={workspaceActive}
-        />
+        <Deferred entry="workbench">
+          {({ FilesPanel }) => (
+            <FilesPanel
+              key={uiFontSize}
+              viewKey={viewKey}
+              visible={visible}
+              workspaceActive={workspaceActive}
+            />
+          )}
+        </Deferred>
       );
     case "changes":
       return (
-        <ChangesPanel
-          visible={visible}
-          sessionId={sessionId}
-          scope={tab.scope}
-          selectedPath={tab.selectedPath ?? undefined}
-          revealPathRevision={tab.pathRevealRevision}
-          scrollTop={tab.scrollTop}
-          fileTreeVisible={sidebarVisible}
-          onScopeChange={(scope) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: {
-                scope,
-                selectedPath: null,
-                pathRevealRevision: tab.pathRevealRevision,
-                scrollTop: 0,
-              },
-            })
-          }
-          onToggleFileTree={onToggleSidebar}
-          onSelectPath={(path) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: { ...tab, selectedPath: path ?? null },
-            })
-          }
-          onRevealPath={(path) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: {
-                ...tab,
-                selectedPath: path,
-                pathRevealRevision: tab.pathRevealRevision + 1,
-              },
-            })
-          }
-          onScrollTop={(scrollTop) =>
-            workbenchController.actions.scrollTab({
-              view: viewKey,
-              id: tab.id,
-              scrollTop: Math.max(0, scrollTop),
-            })
-          }
-        />
+        <Deferred entry="workbench">
+          {({ ChangesPanel }) => (
+            <ChangesPanel
+              visible={visible}
+              sessionId={sessionId}
+              scope={tab.scope}
+              selectedPath={tab.selectedPath ?? undefined}
+              revealPathRevision={tab.pathRevealRevision}
+              scrollTop={tab.scrollTop}
+              fileTreeVisible={sidebarVisible}
+              onScopeChange={(scope) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: {
+                    scope,
+                    selectedPath: null,
+                    pathRevealRevision: tab.pathRevealRevision,
+                    scrollTop: 0,
+                  },
+                })
+              }
+              onToggleFileTree={onToggleSidebar}
+              onSelectPath={(path) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: { ...tab, selectedPath: path ?? null },
+                })
+              }
+              onRevealPath={(path) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: {
+                    ...tab,
+                    selectedPath: path,
+                    pathRevealRevision: tab.pathRevealRevision + 1,
+                  },
+                })
+              }
+              onScrollTop={(scrollTop) =>
+                workbenchController.actions.scrollTab({
+                  view: viewKey,
+                  id: tab.id,
+                  scrollTop: Math.max(0, scrollTop),
+                })
+              }
+              onOpenLink={
+                nyte.host.browser === undefined
+                  ? undefined
+                  : (url) =>
+                      workbenchController.actions.openTab({
+                        view: viewKey,
+                        tab: { kind: "browser", url },
+                        activate: true,
+                      })
+              }
+            />
+          )}
+        </Deferred>
       );
     case "browser":
       return (
@@ -410,7 +460,13 @@ function PanelContent({
         />
       );
     case "terminal":
-      return <TerminalPanel tabId={tab.id} workspacePath={workspacePath} visible={visible} />;
+      return (
+        <Deferred entry="workbench">
+          {({ TerminalPanel }) => (
+            <TerminalPanel tabId={tab.id} workspacePath={workspacePath} visible={visible} />
+          )}
+        </Deferred>
+      );
     default: {
       const _exhaustive: never = tab;
 
@@ -686,6 +742,8 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
   const viewKey = workbenchViewKey(workspacePath);
   const snapshot = useWorkbenchSnapshot();
 
+  useMountEffect(prefetchWorkbench);
+
   const visited = useSyncExternalStore(
     subscribeVisited,
     () => visitedViews,
@@ -728,7 +786,7 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
             scope={current ? workbenchScope(viewWorkspacePath) : { kind: "pathless" }}
             sessionId={current ? sessionId : undefined}
             stageWidth={stageWidth}
-            workspaceName={host.data?.workspace?.name}
+            workspaceName={host.data.workspace?.name}
             capabilities={capabilities}
             workspacePath={viewWorkspacePath ?? null}
           />

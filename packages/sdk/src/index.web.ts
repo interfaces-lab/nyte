@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import type { Host, OpenOptions } from "@nyte-ai/core";
 import { connect } from "./connect.ts";
 

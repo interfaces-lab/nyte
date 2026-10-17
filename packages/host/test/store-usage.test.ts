@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, test } from "vitest";
-import { envelope } from "@nyte-ai/core";
+import { envelope } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import type { DurableEvent, Usage } from "@nyte-ai/schema";
 import { sqliteStore } from "../src/sqlite.ts";
@@ -72,6 +72,7 @@ test("reads charged requests once, with workspace and session metadata, not run 
           projectSources: [],
           addedBy: "local",
           createdAt: at,
+          isolation: null,
         },
         at,
       ),
@@ -131,7 +132,7 @@ test("reads charged requests once, with workspace and session metadata, not run 
     ];
 
     await connection.refs.set(
-      events.map((event) => ({ name: "sessions/session", target: session, event })),
+      events.map((event) => ({ name: "sessions/session", target: session, events: [event] })),
     );
     const report = readNyteUsage(home, { sinceDay: null, untilDay: localDay(Date.now()) });
     expect(report.sources).toEqual([

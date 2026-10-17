@@ -214,6 +214,11 @@ function signOutNotice(ending: SignOutEnding): AccountCopy | undefined {
     : undefined;
 }
 
+/**
+ * The owner's Macs from the broker, with connect and repair. The list is keyed by owner and dropped on
+ * any account change, and holds ids and names only, never a credential. A refusal that says the list
+ * was out of date (forbidden, not found, revoked) refetches it to show what the broker has now.
+ */
 function MacGroup({
   account,
   ownerId,
@@ -228,7 +233,6 @@ function MacGroup({
   onRenew: () => void;
 }) {
   const theme = useTheme();
-  // Keyed by owner and dropped on any account change. Ids and names only, never a credential.
   const environments = useQuery(
     {
       queryKey: ["account", ownerId, "environments"],
@@ -270,7 +274,6 @@ function MacGroup({
     if (ending.kind === "connected" || ending.kind === "cancelled") return;
     setProblem({ copy: connectEndingCopy(ending), environment });
 
-    // The list was out of date: show the one the broker has now.
     if (
       ending.kind === "broker" &&
       ending.failure.kind === "refused" &&

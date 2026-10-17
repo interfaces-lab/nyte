@@ -4,7 +4,7 @@ import { formatPatch, OMIT_HEADERS, parsePatch } from "diff";
 import type { StructuredPatch } from "diff";
 import { Value } from "typebox/value";
 
-export type TextPatch = Extract<PatchEntry, { readonly kind: "text" }>;
+type TextPatch = Extract<PatchEntry, { readonly kind: "text" }>;
 
 export interface ChangedLinePair {
   readonly removed: string;
@@ -19,7 +19,7 @@ interface DiffSection {
   readonly pair: ChangedLinePair | undefined;
 }
 
-export interface OutputDiffFile {
+interface OutputDiffFile {
   readonly sections: readonly DiffSection[];
   readonly path: string | undefined;
 }
@@ -129,27 +129,10 @@ export function textPatch(output: Json | null): TextPatch | undefined {
 }
 
 export function patchDiff(patch: TextPatch): OutputDiff {
-  const file: StructuredPatch = {
-    oldFileName: patch.path,
-    newFileName: patch.path,
-    oldHeader: undefined,
-    newHeader: undefined,
-    // Core numbers an empty side as unified headers do (`-0,0`); jsdiff stores it one higher and subtracts on format.
-    hunks: patch.hunks.map((hunk) => ({
-      oldStart: hunk.oldLines === 0 ? hunk.oldStart + 1 : hunk.oldStart,
-      oldLines: hunk.oldLines,
-      newStart: hunk.newLines === 0 ? hunk.newStart + 1 : hunk.newStart,
-      newLines: hunk.newLines,
-      lines: hunk.lines.flatMap((line) => {
-        const row = `${line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}${line.text}`;
-
-        return line.noNewline === true ? [row, "\\ No newline at end of file"] : [row];
-      }),
-    })),
-  };
+  const [file] = parsePatch(patch.patch);
 
   return {
-    files: [{ path: patch.path, sections: patchSections(file, "") }],
+    files: file === undefined ? [] : [{ path: patch.path, sections: patchSections(file, "") }],
     before: undefined,
     after: undefined,
   };

@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import process from "node:process";
+import { errorMessage } from "../lib/format.ts";
 import type { FailureReport } from "../model/state.ts";
 import type { CrashLog } from "./ports.ts";
 
@@ -16,8 +17,7 @@ export function openCrashLog(home: string): CrashLog {
         mkdirSync(dirname(path), { recursive: true });
         rotate(path);
         appendFileSync(path, entry(origin, error), { mode: 0o600 });
-      } catch {
-      }
+      } catch {}
     },
   };
 }
@@ -28,7 +28,7 @@ export function createReporter(
 ): (origin: FailureReport["origin"], error: unknown) => void {
   return (origin, error) => {
     log.write(origin, error);
-    dispatch({ origin, message: messageOf(error), logPath: log.path });
+    dispatch({ origin, message: errorMessage(error), logPath: log.path });
   };
 }
 
@@ -49,18 +49,15 @@ export function installProcessHooks(
 function entry(origin: string, error: unknown): string {
   const stack = error instanceof Error && error.stack !== undefined ? error.stack : String(error);
   const cause =
-    error instanceof Error && error.cause !== undefined ? `\ncause: ${messageOf(error.cause)}` : "";
+    error instanceof Error && error.cause !== undefined
+      ? `\ncause: ${errorMessage(error.cause)}`
+      : "";
 
-  return `${new Date().toISOString()} [${origin}] ${messageOf(error)}\n${stack}${cause}\n\n`;
+  return `${new Date().toISOString()} [${origin}] ${errorMessage(error)}\n${stack}${cause}\n\n`;
 }
 
 function rotate(path: string): void {
   try {
     if (statSync(path).size >= ROTATE_AT) renameSync(path, `${path}.1`);
-  } catch {
-  }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  } catch {}
 }

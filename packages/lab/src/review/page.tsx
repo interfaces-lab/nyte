@@ -35,7 +35,7 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
-import { button, glyph, radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, media, radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
@@ -51,9 +51,9 @@ import {
   focusedPlace,
   focusedReview,
   initialWindow,
-  placeOf,
+  readPlace,
   reduce,
-  targetOf,
+  readOpenTarget,
   type OpenTarget,
   type Place,
   type WindowAction,
@@ -62,7 +62,7 @@ import type { ReviewSummary } from "./wire";
 
 type Dispatch = (action: WindowAction) => void;
 
-function titleOf(place: Place, reviews: readonly ReviewSummary[]): string {
+function describePlace(place: Place, reviews: readonly ReviewSummary[]): string {
   if (place.kind === "new-chat") return "New chat";
 
   if (place.kind === "reviews") return "Review";
@@ -155,7 +155,7 @@ function Sidebar({
 }): ReactElement {
   const open = (event: MouseEvent, place: Place): void => {
     event.preventDefault();
-    dispatch({ kind: "open", place, target: targetOf(event) });
+    dispatch({ kind: "open", place, target: readOpenTarget(event) });
   };
 
   const onNewChat = focused?.kind === "new-chat";
@@ -215,8 +215,8 @@ function TabStrip({
     <div {...props(styles.strip)}>
       <ul aria-label="Tabs" {...props(styles.tabs)}>
         {state.tabs.map((tab) => {
-          const place = placeOf(tab);
-          const title = titleOf(place, reviews);
+          const place = readPlace(tab);
+          const title = describePlace(place, reviews);
           const active = tab.id === state.active;
 
           return (
@@ -478,7 +478,7 @@ const styles = create({
     borderRadius: button.radiusMd,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentSecondary,
   },
@@ -528,7 +528,7 @@ const styles = create({
     borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentSecondary,
     opacity: { default: 0, ":focus-visible": 1 },

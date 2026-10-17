@@ -1,3 +1,4 @@
+// oxlint-disable-next-line no-restricted-imports -- a recycled cell snaps its selection while a toggled one animates it in Reanimated
 import { memo, useEffect, useRef } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { LegendList } from "@legendapp/list/react-native";

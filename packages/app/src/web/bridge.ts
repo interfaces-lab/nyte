@@ -41,7 +41,7 @@ function browserPlatform(): NodeJS.Platform {
   return "linux";
 }
 
-export function webPageUrl(url: string): string | undefined {
+function webPageUrl(url: string): string | undefined {
   try {
     const parsed = new URL(url);
 
@@ -95,13 +95,15 @@ export function createWebBridge(): WebBridge {
 
   const bridge: NyteBridge = {
     clientSurface: "web",
+    platform: browserPlatform(),
+    machineName: undefined,
     get relay() {
       return relay;
     },
     host: {
       onMenuCommand: () => () => undefined,
       setThemePreference: () => undefined,
-      state: async () => ({ workspace: selected, platform: browserPlatform() }),
+      state: async () => ({ workspace: selected }),
       endpoint: async () => {
         if (endpoint === undefined) throw new Error(NOT_CONNECTED);
 
@@ -172,7 +174,9 @@ export function createWebBridge(): WebBridge {
         credentials: { kind: "token", token },
         ...(options?.expect === undefined ? {} : { expect: { hostId: options.expect } }),
       };
+
       let connecting = true;
+
       const opened = await connectHost(next, {
         fetch: (resource, init) =>
           fetch(resource, {
@@ -181,6 +185,7 @@ export function createWebBridge(): WebBridge {
             signal: connecting ? (options?.signal ?? init?.signal) : init?.signal,
           }),
       });
+
       connecting = false;
       await connection?.close();
       connection = opened;

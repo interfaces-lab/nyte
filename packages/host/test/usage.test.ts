@@ -106,12 +106,11 @@ test("reads all projects and nested agents, preserving TTL subsets and current c
 });
 
 test.each([false, true])(
-  "deduplicates copies and blocks without losing final output, reverse=%s",
+  "deduplicates copies and blocks by their tokens, whatever their timestamps, without losing final output, reverse=%s",
   async (reverse) => {
     const configDir = await fixture();
     const first = record("same", 1);
     const final = record("same", 40);
-    // Invalid timestamps cannot affect selection; token evidence determines the winner.
     first.timestamp = "not a date";
     const blocks = [first, final, { ...final, message: { ...final.message, content: [] } }];
 
@@ -418,14 +417,13 @@ test("streams across chunk boundaries, ignores incomplete tails, and rereads wit
   if (partial.kind !== "ready") return;
   assert.equal(partial.malformedRecords, 0);
   assert.equal(partial.summary.models[0]?.turns, 1);
-  // A complete JSON object counts even without a final newline.
   await appendFile(file, tail.slice(-3));
   const complete = await readClaudeCodeUsage({ models, configDir });
   assert.equal(complete.kind, "ready");
 
   if (complete.kind !== "ready") return;
   assert.equal(complete.malformedRecords, 0);
-  assert.equal(complete.summary.models[0]?.turns, 2);
+  assert.equal(complete.summary.models[0]?.turns, 2, "a complete object counts without a newline");
 });
 
 test("empty history is ready, absent projects are missing, non-directories fail", async () => {
@@ -589,8 +587,6 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
   assert.equal(cold.summary.models[0]?.turns, 2);
   assert.deepEqual([...cache.keys()].toSorted(), [first, second].toSorted());
 
-  // The same read from the cache alone: no file is opened, so an unreadable
-  // one is still counted from what it said before it was locked.
   await chmod(first, 0);
 
   try {
@@ -599,17 +595,16 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
 
     if (warm.kind !== "ready") return;
     assert.equal(warm.summary.models[0]?.turns, 2);
-    assert.equal(warm.unreadableFiles, 0);
+    assert.equal(warm.unreadableFiles, 0, "the cache answers for a file it can no longer open");
   } finally {
     await chmod(first, 0o600);
   }
 
-  // Cost is derived from the catalog on each read, never baked into the cache.
   const unpriced = await readClaudeCodeUsage({ models: { getModels: () => [] }, configDir, cache });
   assert.equal(unpriced.kind, "ready");
 
   if (unpriced.kind !== "ready") return;
-  assert.equal(unpriced.unpricedRecords, 2);
+  assert.equal(unpriced.unpricedRecords, 2, "each read prices from the catalog, not the cache");
   const repriced = await readClaudeCodeUsage({ models, configDir, cache });
   assert.equal(repriced.kind, "ready");
 

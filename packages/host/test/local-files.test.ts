@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asId } from "@nyte-ai/schema";
-import type { FileEvent, ScanFrame, SearchFrame } from "@nyte-ai/schema";
+import type { FileEvent, ScanFrame, SearchFrame, SearchInput } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { localFiles } from "../src/index.ts";
 import { sha256 } from "../src/hash.ts";
@@ -284,6 +284,62 @@ describe("localFiles", () => {
       });
     });
 
+  for (const engine of ["ripgrep", "scan"] as const)
+    it(`searches with case, word, regex, globs and drafts through ${engine}`, async () => {
+      const root = await folder();
+      await mkdir(join(root, "src"));
+      await writeFile(join(root, "src", "a.ts"), "alphabet\nAlpha one\n");
+      await writeFile(join(root, "src", "a.test.ts"), "alpha test\n");
+      await writeFile(join(root, "b.txt"), "alpha two\n");
+
+      const files = localFiles(
+        root,
+        engine === "scan" ? { ripgrep: join(root, "no-rg") } : undefined,
+      );
+
+      const found = async (input: Omit<SearchInput, "query">, query = "alpha") =>
+        (await collect(files.search({ query, ...input })))
+          .flatMap((frame) =>
+            frame.kind === "match"
+              ? [`${frame.path}:${frame.line}:${frame.column}:${frame.length}`]
+              : [],
+          )
+          .toSorted();
+
+      expect(await found({ caseSensitive: false })).toEqual([
+        "b.txt:1:1:5",
+        "src/a.test.ts:1:1:5",
+        "src/a.ts:1:1:5",
+        "src/a.ts:2:1:5",
+      ]);
+      expect(await found({ caseSensitive: true }, "Alpha")).toEqual(["src/a.ts:2:1:5"]);
+      expect(await found({ wholeWord: true, caseSensitive: true })).toEqual([
+        "b.txt:1:1:5",
+        "src/a.test.ts:1:1:5",
+      ]);
+      expect(await found({ regex: true }, "al?pha \\w+")).toEqual([
+        "b.txt:1:1:9",
+        "src/a.test.ts:1:1:10",
+        "src/a.ts:2:1:9",
+      ]);
+      expect(await found({ include: ["src/**"], exclude: ["*.test.*"] })).toEqual([
+        "src/a.ts:1:1:5",
+        "src/a.ts:2:1:5",
+      ]);
+      expect(
+        await found({
+          include: ["src/**"],
+          drafts: [
+            { path: join(root, "src", "a.ts"), contents: "no match\nsaid alpha\n" },
+            { path: "b.txt", contents: "alpha draft\n" },
+          ],
+        }),
+      ).toEqual(["src/a.test.ts:1:1:5", "src/a.ts:2:6:5"]);
+      await expect(collect(files.search({ query: "a(", regex: true }))).rejects.toMatchObject({
+        code: "invalid",
+      });
+    });
+
   it("formats with a detected formatter and answers unavailable without one", async () => {
     const root = await folder();
 
@@ -343,5 +399,25 @@ describe("localFiles", () => {
 
     controller.abort();
     expect(await iterator.next()).toEqual({ done: true, value: undefined });
+  }, 20_000);
+
+  it("watches only the given paths, a missing one from when its directories appear", async () => {
+    const root = await folder();
+    const controller = new AbortController();
+    const files = localFiles(root, { signal: controller.signal });
+    const iterator = files.watch({ paths: [".agents/skills"] })[Symbol.asyncIterator]();
+    const seen: FileEvent[] = [];
+    const pending = iterator.next().then((next) => seen.push(...(next.value ?? [])));
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await writeFile(join(root, "outside.txt"), "x");
+    await mkdir(join(root, ".agents", "skills", "fresh"), { recursive: true });
+    await writeFile(join(root, ".agents", "skills", "fresh", "SKILL.md"), "fresh");
+    await pending;
+
+    expect(seen.map((event) => [event.kind, event.path])).toEqual([
+      ["created", ".agents/skills/fresh/SKILL.md"],
+    ]);
+    controller.abort();
   }, 20_000);
 });

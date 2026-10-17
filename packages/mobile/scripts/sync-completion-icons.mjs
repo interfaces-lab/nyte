@@ -1,10 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { createElement } from "../../ui/node_modules/react/index.js";
-import { renderToStaticMarkup } from "../../ui/node_modules/react-dom/server.node.js";
-import { IconBuildingBlocks } from "../../ui/node_modules/central-icons/IconBuildingBlocks/index.mjs";
-import { IconChanges } from "../../ui/node_modules/central-icons/IconChanges/index.mjs";
-import { IconCmd } from "../../ui/node_modules/central-icons/IconCmd/index.mjs";
-import { IconFolder1 } from "../../ui/node_modules/central-icons/IconFolder1/index.mjs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { IconBuildingBlocks } from "central-icons/IconBuildingBlocks";
+import { IconChanges } from "central-icons/IconChanges";
+import { IconCmd } from "central-icons/IconCmd";
+import { IconFolder1 } from "central-icons/IconFolder1";
 
 const glyphs = {
   file: IconChanges,

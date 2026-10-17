@@ -1,5 +1,7 @@
 import { asId } from "@nyte-ai/schema";
+import { ManualClock } from "@opentui/core/testing";
 import type {
+  CommandInfo,
   CommandOutcome,
   HostView,
   ModelCatalogView,
@@ -9,10 +11,12 @@ import type {
   SessionView,
   SubmitDraft,
   UserContent,
+  WorkspaceCommandOutcome,
 } from "@nyte-ai/sdk";
 import { createHandle } from "../../src/effects/local-ports.ts";
 import type {
   FilesPort,
+  FirstFramePort,
   HostPort,
   PluginsPort,
   Ports,
@@ -24,6 +28,7 @@ import type {
 } from "../../src/effects/ports.ts";
 import type { Task } from "../../src/lib/tasks.ts";
 import type { DraftInsert } from "../../src/model/draft.ts";
+import type { Selection } from "../../src/model/state.ts";
 import { CATALOG, SETTINGS } from "./state.ts";
 import { CONFIGURATION } from "./view.ts";
 
@@ -56,6 +61,14 @@ export interface FakeHost extends HostPort {
   publishSessions(sessions: readonly SessionInfo[]): void;
   readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
+  readonly starts: Parameters<HostPort["start"]>[0][];
+  /** Each folder registration asked of the host, by path; `null` is the launch folder. */
+  readonly folders: (string | null)[];
+  /** The plugin commands every workspace offers a new chat. */
+  folderCommands: readonly CommandInfo[];
+  /** Each command run in a workspace without a chat. */
+  readonly folderRuns: { readonly name: string; readonly argument: string | null }[];
+  folderCommandResult: WorkspaceCommandOutcome | null;
 }
 
 function queue<T>(): AsyncIterable<T> & {
@@ -107,7 +120,7 @@ function queue<T>(): AsyncIterable<T> & {
   };
 }
 
-function infoOf(id: string): SessionInfo {
+function buildSessionInfo(id: string): SessionInfo {
   return {
     id: asId(id),
     name: null,
@@ -152,7 +165,8 @@ function fakeSession(id: string): FakeSession {
     pushTasks: (list) => tasks.push(list),
     watchTasks: () => tasks,
     watch: () => views,
-    info: async () => infoOf(id),
+    earlier: async () => 0,
+    info: async () => buildSessionInfo(id),
     workspace: async () => ({ id: asId("workspace"), cwd: "/tmp/fake-workspace" }),
     async send(content, options) {
       calls.send.push({ content, delivery: options.delivery });
@@ -182,6 +196,7 @@ function fakeSession(id: string): FakeSession {
 
       return session.answerResult;
     },
+    approve: async () => null,
     async move(position, options) {
       calls.move.push({ position, options });
 
@@ -234,13 +249,14 @@ function fakeSession(id: string): FakeSession {
 
 export function fakeHost(): FakeHost {
   const sessions = new Map<string, FakeSession>();
-  const catalogs = queue<Pick<HostView, "catalog">>();
+  const catalogs = queue<Pick<HostView, "catalog" | "settings">>();
 
   const directory = queue<readonly SessionInfo[]>();
   const defaults: ModelRef[] = [];
   const hostSettings: FakeHost["hostSettings"] = [];
+  const starts: FakeHost["starts"] = [];
+  const folders: FakeHost["folders"] = [];
   let catalog = CATALOG;
-  let created = 0;
 
   const addSession = (id: string): FakeSession => {
     const session = sessions.get(id) ?? fakeSession(id);
@@ -249,26 +265,50 @@ export function fakeHost(): FakeHost {
     return session;
   };
 
-  return {
+  const host: FakeHost = {
     sessions,
     defaults,
     hostSettings,
     addSession,
+    starts,
+    folders,
+    folderCommands: [],
+    folderRuns: [],
+    folderCommandResult: null,
     session: (id) => addSession(id),
-    async create() {
-      created += 1;
+    workspace: (id) => ({
+      id,
+      commands: async () => host.folderCommands,
+      async command(name, argument) {
+        host.folderRuns.push({ name, argument });
 
-      return addSession(`created-${String(created)}`).id;
+        return host.folderCommandResult ?? { kind: "ran", output: `ran ${name}` };
+      },
+      cwd: async () => "/tmp/fake-workspace",
+      upload: async () => asId("blob-1"),
+      mentions: async () => [],
+    }),
+    async openFolder(path) {
+      folders.push(path);
+
+      return asId("workspace");
+    },
+    async start(input) {
+      starts.push(input);
+
+      const { message } = await addSession(input.id).send(input.content, { delivery: "steer" });
+
+      return { kind: "started", message };
     },
     async *rootSessions() {
-      yield* [...sessions.keys()].map(infoOf);
+      yield* [...sessions.keys()].map(buildSessionInfo);
     },
     catalog: () => catalogs,
     sessionInfos: () => directory,
     publishSessions: (list) => directory.push(list),
     publishCatalog(next) {
       catalog = next;
-      catalogs.push({ catalog: next.generation });
+      catalogs.push({ catalog: next.generation, settings: [] });
     },
     listModels: async () => catalog,
     accounts: async () => [],
@@ -285,6 +325,7 @@ export function fakeHost(): FakeHost {
       throw new Error("Logout is not scripted in the fake host.");
     },
     hostPlugins: async () => [],
+    github: async () => null,
     mcp: async () => ({ servers: [], issues: [] }),
     mcpAction: async () => ({ kind: "missing" }),
     mcpLogin: async () => undefined,
@@ -306,6 +347,8 @@ export function fakeHost(): FakeHost {
       yield new Uint8Array();
     },
   };
+
+  return host;
 }
 
 export interface FakeTerminal extends TerminalPort {
@@ -346,7 +389,8 @@ export interface FakePorts extends Ports {
   readonly files: FakeFiles;
   readonly plugins: FakePlugins;
   readonly settings: SettingsPort;
-  readonly clock: { now(): number; advance(ms: number): void };
+  readonly firstFrame: FakeFirstFrame;
+  readonly clock: ManualClock;
   readonly log: {
     readonly path: string;
     readonly entries: { readonly origin: string; readonly error: unknown }[];
@@ -354,8 +398,14 @@ export interface FakePorts extends Ports {
   };
 }
 
+/** The first-frame record in memory: `saved` is what the next launch would read. */
+export interface FakeFirstFrame extends FirstFramePort {
+  saved: Selection | null;
+}
+
 export function fakePorts(host: FakeHost): FakePorts {
-  let now = 10_000;
+  const clock = new ManualClock();
+  clock.setTime(10_000);
   let settings = SETTINGS;
   const running = new Map<string, { resolve(end: ShellEnd): void; update(output: string): void }>();
 
@@ -385,7 +435,6 @@ export function fakePorts(host: FakeHost): FakePorts {
     open(target) {
       terminal.opened.push(target);
     },
-    painted: async () => undefined,
   };
 
   const shell: FakeShell = {
@@ -455,28 +504,33 @@ export function fakePorts(host: FakeHost): FakePorts {
     },
   };
 
+  const firstFrame: FakeFirstFrame = {
+    saved: null,
+    read: () => firstFrame.saved,
+    async write(selection) {
+      firstFrame.saved = selection;
+    },
+  };
+
   return {
     host,
     terminal,
+    firstFrame,
     composer: createHandle(),
     scroll: createHandle(),
     settings: {
-      read: async () => settings,
+      read: () => ({ settings, invalid: [] }),
       async write(_cwd, patch) {
         settings = { ...settings, ...patch };
 
         return settings;
       },
+      settled: async () => undefined,
     },
     plugins,
     shell,
     files,
-    clock: {
-      now: () => now,
-      advance(ms) {
-        now += ms;
-      },
-    },
+    clock,
     log,
   };
 }

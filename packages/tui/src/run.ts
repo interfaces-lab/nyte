@@ -30,9 +30,9 @@ export async function flagConfiguration(
   const configuration: ConfigurationPatch = effort === undefined ? {} : { thinking: effort };
 
   if (requested === undefined) return configuration;
-  const slash = requested.indexOf("/");
-  const provider = flags.provider ?? (slash === -1 ? undefined : requested.slice(0, slash));
-  const id = slash === -1 || flags.provider !== undefined ? requested : requested.slice(slash + 1);
+  const [named, ...rest] = requested.split("/");
+  const provider = flags.provider ?? (rest.length === 0 ? undefined : named);
+  const id = rest.length === 0 || flags.provider !== undefined ? requested : rest.join("/");
 
   if (provider !== undefined) return { ...configuration, model: { provider, id } };
 
@@ -71,22 +71,18 @@ export async function addFolder(connection: Connection, path: string): Promise<W
   return added.workspace;
 }
 
+/** The session a print run continues, or `null` when it starts a new chat. */
 export async function targetSession(
   connection: Connection,
   target: ResumeTarget,
-  workspace: WorkspaceId,
-): Promise<Session> {
-  const create = (): Promise<Session> => connection.sessions.create({ workspace });
-
+): Promise<Session | null> {
   switch (target.kind) {
     case "new":
-      return create();
+      return null;
     case "latest": {
-      for await (const info of rootSessions(connection))
-        if (info.heads.some((head) => head.tip.kind !== "start"))
-          return connection.session(info.id);
+      for await (const info of rootSessions(connection)) return connection.session(info.id);
 
-      return create();
+      return null;
     }
 
     case "session": {

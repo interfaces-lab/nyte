@@ -13,20 +13,20 @@ export type ChangeStatus = FileStatus;
  * Viewed state lives in the panel's store, so the caller passes the lookup in
  * and this module stays a pure function of its inputs.
  */
-export type ChangeViewedFilter =
+type ChangeViewedFilter =
   | { readonly mode: "all" }
   | {
       readonly mode: "viewed" | "not-viewed";
       readonly isViewed: (path: string) => boolean;
     };
 
-export interface ChangeFilterEntry {
+interface ChangeFilterEntry {
   readonly path: string;
   /** Absent for rows with no working-tree status, such as per-turn changes. */
   readonly status?: ChangeStatus;
 }
 
-export interface ChangeFilter {
+interface ChangeFilter {
   /** Blank or whitespace-only keeps every path. */
   readonly query?: string;
   /** Empty or absent keeps every status; entries without a status drop when set. */
@@ -34,21 +34,18 @@ export interface ChangeFilter {
   readonly viewed?: ChangeViewedFilter;
 }
 
-export function matchesChangePathQuery(path: string, query: string): boolean {
+function matchesChangePathQuery(path: string, query: string): boolean {
   const needle = query.trim().toLowerCase();
 
   if (needle === "") return true;
-  const haystack = path.toLowerCase();
-  let cursor = 0;
+  const characters = Array.from(needle);
+  let matched = 0;
 
-  for (const character of needle) {
-    const found = haystack.indexOf(character, cursor);
-
-    if (found === -1) return false;
-    cursor = found + 1;
+  for (const character of path.toLowerCase()) {
+    if (character === characters[matched]) matched += 1;
   }
 
-  return true;
+  return matched === characters.length;
 }
 
 /** Narrows a change list to the paths a search query and filter menu keep, in input order. */
@@ -81,7 +78,7 @@ export function filterChangePaths(
 }
 
 /** Master-checkbox state over a list of paths. An empty list reports `"none"`. */
-export type ChangeSelectionSummary = "none" | "some" | "all";
+type ChangeSelectionSummary = "none" | "some" | "all";
 
 export function changeSelectionSummary(
   paths: readonly string[],

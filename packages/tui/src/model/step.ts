@@ -1,9 +1,36 @@
 import type { Effect } from "./effect.ts";
 import { NO_PARTS } from "./draft.ts";
 import type { DraftSnapshot } from "./draft.ts";
-import type { Step } from "./reduce.ts";
+import type { Msg } from "./msg.ts";
+import { followedSession } from "./state.ts";
 import type { Draft, Facts, Local, Notice, State } from "./state.ts";
 import { CLOSED } from "./completion.ts";
+
+/** What one message does: the next state and the effects to run. */
+export interface Step {
+  readonly state: State;
+  readonly effects: readonly Effect[];
+}
+
+/** The message variant whose `kind` is `K`. */
+export type MsgOf<K extends Msg["kind"]> = Extract<Msg, { readonly kind: K }>;
+
+/** Applies one message to the state; a handler gets it to apply the messages its own leads to. */
+export type Reduce = (state: State, msg: Msg, now: number) => Step;
+
+/** Handles one message kind. */
+type Handler<K extends Msg["kind"]> = (
+  state: State,
+  msg: MsgOf<K>,
+  now: number,
+  reduce: Reduce,
+) => Step;
+
+/** One handler per message kind in `K`. */
+export type Handlers<K extends Msg["kind"]> = { readonly [P in K]: Handler<P> };
+
+/** A domain's share of the handler table, checked against each kind it names. */
+export type SomeHandlers = { readonly [P in Msg["kind"]]?: Handler<P> };
 
 export function stay(state: State): Step {
   return { state, effects: [] };
@@ -21,6 +48,35 @@ export function withNotice(state: State, text: string, tone: Notice["tone"], now
   return withLocal(state, { notice: { tone, text, at: now } });
 }
 
+export function refuse(
+  state: State,
+  reason: string,
+  now: number,
+  tone: Notice["tone"] = "warning",
+): Step {
+  return stay(withNotice(state, reason, tone, now));
+}
+
+/** Refuses what only a started session can do: a blank chat has none until its first send; an opening one has `opening` to say, or nothing. */
+export function refuseUnstarted(state: State, now: number, opening: string | null = null): Step {
+  if (state.facts.chat?.kind === "blank")
+    return refuse(state, "Send a message first.", now, "info");
+
+  return opening === null ? stay(state) : refuse(state, opening, now);
+}
+
+/** True while the followed session has a run that is not idle. */
+export function busy(state: State): boolean {
+  return (followedSession(state)?.view?.execution.kind ?? "idle") !== "idle";
+}
+
+/** Follows the transcript tail again. */
+export function following(state: State): State {
+  return withLocal(state, {
+    transcript: { ...state.local.transcript, following: true, window: { kind: "tail" } },
+  });
+}
+
 export function mint(state: State, prefix: string) {
   const sequence = state.local.sequence + 1;
 
@@ -33,7 +89,7 @@ export function andThen(step: Step, next: (state: State) => Step): Step {
   return { state: after.state, effects: [...step.effects, ...after.effects] };
 }
 
-function rowOf(text: string): Draft["row"] {
+function draftRow(text: string): Draft["row"] {
   return text.includes("\n") ? "last" : "only";
 }
 
@@ -42,7 +98,7 @@ export function setDraft(state: State, draft: DraftSnapshot): Step {
 
   return {
     state: withLocal(state, {
-      draft: { text, cursor: text.length, row: rowOf(text), parts: draft.parts },
+      draft: { text, cursor: text.length, row: draftRow(text), parts: draft.parts },
       completion: CLOSED,
       preview: null,
     }),
@@ -69,7 +125,7 @@ export function replaceRange(state: State, from: number, to: number, text: strin
 
   return {
     state: withLocal(state, {
-      draft: { ...draft, text: next, cursor: from + text.length, row: rowOf(next) },
+      draft: { ...draft, text: next, cursor: from + text.length, row: draftRow(next) },
     }),
     effects: [effect],
   };
@@ -82,7 +138,7 @@ export function insertText(state: State, text: string, at: "cursor" | "start"): 
 
   return {
     state: withLocal(state, {
-      draft: { ...draft, text: next, cursor: draft.cursor + text.length, row: rowOf(next) },
+      draft: { ...draft, text: next, cursor: draft.cursor + text.length, row: draftRow(next) },
     }),
     effects: [{ kind: "composer", op: { kind: "insert", text, at } }],
   };

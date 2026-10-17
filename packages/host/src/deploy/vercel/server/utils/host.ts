@@ -1,22 +1,27 @@
 import process from "node:process";
 import { createModels } from "@nyte-ai/ai/models";
-import { SdkError, composeHost } from "@nyte-ai/core";
-import type { Host, Kernel, Listener, OpenOptions } from "@nyte-ai/core";
-import { operations } from "@nyte-ai/protocol";
+import { SdkError } from "@nyte-ai/schema";
+import { composeHost } from "@nyte-ai/core/server";
+import type { Host, Listener, OpenOptions } from "@nyte-ai/core";
+import type { ServedHost } from "@nyte-ai/core/server";
 import { postgresStore } from "@nyte-ai/host";
 import { credentialStore } from "@nyte-ai/host/credentials";
 import { seedSigner } from "@nyte-ai/host/identity";
 import { listenFetch } from "@nyte-ai/host/listen-fetch";
 import { sandboxProvider } from "@nyte-ai/host/providers";
-import { start } from "workflow/api";
 import manifest from "../../../../../package.json" with { type: "json" };
-import { driveHead } from "../workflows/drive.ts";
 import { answerRepair } from "./repair.ts";
 
 type Served = {
-  readonly host: Omit<Host, "listen"> & { readonly kernel: Kernel };
+  readonly host: ServedHost;
   readonly listener: Listener;
 };
+
+/** Starts the workflow that drives a head; the host hands each wake to it. */
+type Dispatch = Extract<
+  NonNullable<OpenOptions["execution"]>,
+  { readonly kind: "dispatch" }
+>["dispatch"];
 
 const PAGE = 100;
 
@@ -26,8 +31,9 @@ const boot: Parameters<typeof sandboxProvider>[0]["boot"] = async () => {
 
 let building: Promise<Served> | null = null;
 
-export function vercelHost(): Promise<Served> {
-  const built = (building ??= build());
+/** This process's host, composed once, handing each wake to `dispatch`. */
+export function vercelHost(dispatch: Dispatch): Promise<Served> {
+  const built = (building ??= build(dispatch));
 
   built.catch(() => {
     if (building === built) building = null;
@@ -36,7 +42,7 @@ export function vercelHost(): Promise<Served> {
   return built;
 }
 
-async function build(): Promise<Served> {
+async function build(dispatch: Dispatch): Promise<Served> {
   const connectionString = process.env.DATABASE_URL;
 
   if (connectionString === undefined || connectionString === "")
@@ -51,16 +57,10 @@ async function build(): Promise<Served> {
     models: createModels({ credentials: credentialStore(store, secrets) }),
     plugins: [{ id: "sandbox", environment: sandboxProvider({ boot }) }],
     workspace: { kind: "sandbox", locator: { name: process.env.NYTE_SANDBOX ?? "nyte" } },
-    execution: {
-      kind: "dispatch",
-      async dispatch({ session, head }) {
-        await start(driveHead, [{ session, head }]);
-      },
-    },
+    execution: { kind: "dispatch", dispatch },
     poll: 1000,
     secrets,
     home: null,
-    operations: operations(),
     description,
   });
 

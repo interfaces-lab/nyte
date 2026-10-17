@@ -1,7 +1,6 @@
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { props } from "@stylexjs/stylex";
-// oxlint-disable-next-line no-restricted-imports -- the shortcut follows the open state
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Command } from "@nyte-ai/ui/command";
@@ -10,20 +9,14 @@ import { formatTimeAgo } from "../components/ui.tsx";
 import { StatusGlyph } from "./status-glyph.tsx";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { macPlatform } from "../platform.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 
-import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
+import { amongOptions, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionSearch, useWorkingSessionIds } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
-import {
-  clientActionKeys,
-  clientActions,
-  clientCapabilities,
-  resolveClientAction,
-} from "../client-actions.ts";
+import { clientActionKeys, clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
@@ -33,8 +26,6 @@ type PaletteTab = (typeof TABS)[number];
 interface SearchPaletteProps {
   readonly trigger: ReactElement;
   readonly open: boolean;
-  readonly platform: NodeJS.Platform | undefined;
-  readonly sessionQueriesAvailable: boolean;
   /** The sidebar's chat rows, in its order. Undefined while they load. */
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
@@ -91,8 +82,6 @@ function tabLabel(tab: PaletteTab): string {
 export function SearchPalette({
   trigger,
   open,
-  platform,
-  sessionQueriesAvailable,
   recentSessions,
   onOpenChange,
   onOpenSession,
@@ -105,15 +94,24 @@ export function SearchPalette({
   const workingSessions = useWorkingSessionIds();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
+  const [shownOpen, setShownOpen] = useState(open);
+
+  if (open !== shownOpen) {
+    setShownOpen(open);
+
+    if (open) setTab("all");
+    else setQuery("");
+  }
+
   const includesAgents = tab === "all" || tab === "agents";
   const searchingAgents = includesAgents && query.trim() !== "";
-  const sessionSearch = useSessionSearch(query, open && sessionQueriesAvailable && searchingAgents);
+  const sessionSearch = useSessionSearch(query, open && searchingAgents);
 
   const sessions = searchingAgents
     ? sessionsForNavigation(sessionSearch.data?.items ?? [])
     : (recentSessions ?? []);
 
-  const mac = macPlatform(platform);
+  const mac = nyte.platform === "darwin";
   const settingsSections = settingsSectionGroups().flat();
 
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
@@ -175,41 +173,17 @@ export function SearchPalette({
     ...(tab === "agents" ? [] : visibleActions.map((action) => action.key)),
   ];
 
-  const changeOpen = (nextOpen: boolean): void => {
-    if (nextOpen) setTab("all");
-    else setQuery("");
-    onOpenChange(nextOpen);
-  };
-
   const run = (action: () => void): void => {
     onOpenChange(false);
     action();
   };
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (
-        resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host))?.id !== "search"
-      )
-        return;
-      event.preventDefault();
-
-      if (open) setQuery("");
-      else setTab("all");
-      onOpenChange(!open);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mac, open, onOpenChange]);
 
   const chatsPending = searchingAgents
     ? sessionSearch.data === undefined
     : recentSessions === undefined;
 
   const emptyMessage = (): string => {
-    if (includesAgents && (!sessionQueriesAvailable || chatsPending)) return "Loading chats…";
+    if (includesAgents && chatsPending) return "Loading chats…";
 
     if (tab === "agents")
       return searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet";
@@ -257,7 +231,7 @@ export function SearchPalette({
   );
 
   return (
-    <Command.Root open={open} onOpenChange={changeOpen}>
+    <Command.Root open={open} onOpenChange={onOpenChange}>
       <Command.Trigger render={trigger} />
       <Command.Popup
         title="Search chats and actions"
@@ -275,7 +249,7 @@ export function SearchPalette({
           value={tab}
           xstyle={styles.tabsBar}
           onValueChange={(value) => {
-            if (isOption(value, TABS)) setTab(value);
+            if (amongOptions(value, TABS)) setTab(value);
           }}
         >
           <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>

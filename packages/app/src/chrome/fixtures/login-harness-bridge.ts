@@ -80,8 +80,8 @@ const hostView = (): HostView => ({
   catalog: catalog.generation,
   plugins: [],
   settings: [],
+  defaultWorkspace: null,
   authority: new Set(["participant", "owner"]),
-  operations: [],
 });
 
 const host = viewStream(hostView());

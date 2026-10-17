@@ -1,16 +1,17 @@
 import { readFileSync } from "node:fs";
 import { asId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
+import { createHost } from "../src/api/connection.ts";
 import {
-  createHost,
-  memoryStore,
+  dropScans,
   resourceIssues,
   resourcesPlugin,
   scanResources,
-} from "../src/index.ts";
+} from "../src/extend/resources.ts";
+import { memoryStore } from "../src/store.ts";
 import type { Plugin } from "../src/index.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
-import { env } from "./harness.ts";
+import { env, until } from "../src/harness.ts";
 
 function seeded() {
   const disk = createDisk();
@@ -50,8 +51,8 @@ describe("resources", () => {
       kind: "applied",
     });
 
-    const session = await host.sessions.create({ workspace });
-    const resources = await kernel.resources(session.id);
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const resources = await scanResources(kernel, session.id);
 
     expect(resources.user).not.toBeNull();
     expect(resources.project).not.toBeNull();
@@ -103,7 +104,7 @@ describe("resources", () => {
       { name: "fix", location: ".nyte/prompts/fix.md", scope: "project" },
       { name: "ship", location: ".nyte/prompts/ship.md", scope: "project" },
     ]);
-    expect(await kernel.resources(session.id)).toBe(resources);
+    expect(await scanResources(kernel, session.id)).toBe(resources);
   });
 
   it("rejects a scan while the session's environment does not attach, never answering no resources (D 13)", async () => {
@@ -111,8 +112,10 @@ describe("resources", () => {
       disk: seeded(),
       home: "/home/ada",
     });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     provider.failure = "Offline.";
-    const session = await host.sessions.create({ workspace });
+    dropScans(kernel, (key) => key === session.id);
+    await kernel.environments.detach(session.id);
 
     await expect(scanResources(kernel, session.id)).rejects.toThrow("Offline.");
   });
@@ -121,7 +124,7 @@ describe("resources", () => {
     const { kernel, host, disk, provider, workspace } = await world();
     disk.put("/work/project/.nyte/SYSTEM.md", "MUST REMAIN");
     const attach = provider.attach.bind(provider);
-    let failing = true;
+    let failing = false;
 
     provider.attach = async (target) => {
       const attached = await attach(target);
@@ -139,16 +142,49 @@ describe("resources", () => {
       };
     };
 
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    failing = true;
+    dropScans(kernel, (key) => key === session.id);
+    await kernel.environments.detach(session.id);
 
     await expect(scanResources(kernel, session.id)).rejects.toThrow("Transient read failure.");
     failing = false;
     expect((await scanResources(kernel, session.id)).prompt.system).toBe("MUST REMAIN");
   });
 
+  it("lists a SKILL.md added mid-session without a reload, and stops watching once the session's scan is dropped", async () => {
+    const disk = seeded();
+    const { kernel, host, workspace } = await world({
+      disk,
+      home: "/home/ada",
+      plugins: [resourcesPlugin],
+    });
+
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    await kernel.plugins.runtime(session.id).ready;
+    const names = (): readonly string[] =>
+      kernel.sessions.catalog(session.id).skills.map((skill) => skill.name);
+
+    expect(names()).not.toContain("fresh");
+    await until(() => (disk.watchers.size === 2 ? true : undefined));
+
+    disk.put(
+      "/work/project/.agents/skills/fresh/SKILL.md",
+      '---\nname: fresh\ndescription: "Added later."\n---\n',
+    );
+    await until(() => (names().includes("fresh") ? true : undefined));
+    disk.put("/home/ada/.nyte/skills/late/SKILL.md", "---\nname: late\n---\n");
+    await until(() => (names().includes("late") ? true : undefined));
+
+    disk.put("/work/project/src/app.ts", "unrelated\n");
+    expect(disk.watchers.size).toBe(2);
+    expect(await session.remove()).toEqual({ kind: "removed" });
+    expect(disk.watchers.size).toBe(0);
+  });
+
   it("keeps scans, the home's files and file batches on the kernel's state, in no module table (audit D4-D5 #6, D6 #2)", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
-    const session = await host.sessions.create({ workspace });
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
     const files = await host.workspace(workspace).files();
     assert(files.kind === "available");
     const receipt = await files.api.batch().put({ path: "a.md", contents: "a" }).apply();
@@ -158,7 +194,12 @@ describe("resources", () => {
     expect(kernel.workspaceState.home).not.toBeNull();
     expect(kernel.workspaceState.held.get(receipt.id)?.receipt).toBe(receipt);
 
-    for (const file of ["workspaces.ts", "resources.ts", "files.ts"])
+    for (const file of [
+      "env/workspaces.ts",
+      "extend/resources.ts",
+      "engine/batches.ts",
+      "env/environment.ts",
+    ])
       expect(readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8")).not.toMatch(
         /new WeakMap<Kernel/,
       );
@@ -181,8 +222,11 @@ describe("resources", () => {
     const { kernel, host } = await world({ plugins: [chatOnly] });
     const added = await host.workspaces.add({ kind: "chat-only", locator: null });
     assert(added.kind === "added");
-    const session = await host.sessions.create({ workspace: added.workspace });
-    await kernel.pluginsFor(session.id).ready;
+    const { session } = await host.sessions.start({
+      workspace: added.workspace,
+      content: "Hi.",
+    });
+    await kernel.plugins.runtime(session.id).ready;
 
     expect((await session.info()).activation).toEqual({ kind: "active" });
     expect(await scanResources(kernel, session.id)).toMatchObject({
@@ -195,8 +239,8 @@ describe("resources", () => {
 
   it("hides project skills, prompts and system files but keeps context files when projectResources is false", async () => {
     const { kernel, host, workspace } = await world({ disk: seeded(), home: "/home/ada" });
-    const session = await host.sessions.create({ workspace });
-    const before = await kernel.resources(session.id);
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const before = await scanResources(kernel, session.id);
 
     expect(before.project).not.toBeNull();
     expect(await host.workspace(workspace).update({ projectResources: false })).toEqual({
@@ -228,8 +272,8 @@ describe("resources", () => {
   it("reads ancestors through the workspace's own files, not the host's, and none from a sandbox confined to its root", async () => {
     const disk = seeded();
     const { kernel, host, workspace } = await world({ disk });
-    const session = await host.sessions.create({ workspace });
-    const resources = await kernel.resources(session.id);
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const resources = await scanResources(kernel, session.id);
 
     expect(resources.user).toBeNull();
     expect(resources.skills.map((skill) => skill.scope)).toEqual(["project"]);
@@ -248,8 +292,11 @@ describe("resources", () => {
       { projectResources: true },
     );
     assert(added.kind === "added");
-    const boxed = await remoteHost.sessions.create({ workspace: added.workspace });
-    const scanned = await remote.resources(boxed.id);
+    const { session: boxed } = await remoteHost.sessions.start({
+      workspace: added.workspace,
+      content: "Hi.",
+    });
+    const scanned = await scanResources(remote, boxed.id);
 
     expect(scanned.user).toBeNull();
     expect(scanned.contextFiles).toEqual([
@@ -261,33 +308,44 @@ describe("resources", () => {
     const { kernel, host, workspace } = await world({
       disk: seeded(),
       home: "/home/ada",
-      plugins: [resourcesPlugin],
+      plugins: [
+        resourcesPlugin,
+        {
+          id: "deploy-kit",
+          contribute: {
+            skills: [
+              { name: "deploy", description: "Ships a release.", location: "/kits/deploy.md" },
+            ],
+          },
+        },
+      ],
     });
 
-    const session = await host.sessions.create({ workspace });
-    const { registries } = kernel.pluginsFor(session.id);
+    const { session } = await host.sessions.start({ workspace, content: "Hi." });
+    const { registries } = kernel.plugins.runtime(session.id);
     const sections = registries.prompt.list();
     const context = sections.find((section) => section.id === "project-context");
     const skills = sections.find((section) => section.id === "skills");
 
     assert(context !== undefined && skills !== undefined);
     expect([context.order, skills.order]).toEqual([10, 90]);
-    expect(context.text.indexOf("# /home/ada/.nyte/AGENTS.md")).toBeLessThan(
-      context.text.indexOf("# /AGENTS.md"),
-    );
+    expect(context.text).toMatch(/# \/home\/ada\/\.nyte\/AGENTS\.md[\s\S]*# \/AGENTS\.md/u);
     expect(context.text).toContain("# /work/project/AGENTS.override.md\n\nProject override.");
     expect(skills.text).toContain(
       "- review: Reviews diffs. (/home/ada/.nyte/skills/review/SKILL.md)",
     );
     expect(skills.text).toContain("- shared: The project's. (.nyte/skills/shared/SKILL.md)");
+    expect(skills.text).toContain("- deploy: Ships a release. (/kits/deploy.md)");
 
     const contributed = registries.skills.list();
     const shared = contributed.find((skill) => skill.name === "shared");
     const review = contributed.find((skill) => skill.name === "review");
 
     assert(shared !== undefined && review !== undefined);
-    expect(await shared.load()).toContain('description: "The project\'s."');
-    expect(await review.load()).toContain("Use review.");
+    expect([shared.location, review.location]).toEqual([
+      ".nyte/skills/shared/SKILL.md",
+      "/home/ada/.nyte/skills/review/SKILL.md",
+    ]);
     expect(kernel.host.current().plugins.find((row) => row.id === "resources")?.issues).toEqual([
       expect.objectContaining({ path: ["skills", "shared"], severity: "warning" }),
     ]);

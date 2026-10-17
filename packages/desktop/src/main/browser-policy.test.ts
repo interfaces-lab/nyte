@@ -3,7 +3,7 @@ import { describe, test } from "vitest";
 import {
   crashRetryDelay,
   httpsUpgrade,
-  isLocalHost,
+  onLocalNetwork,
   permissionAllowed,
   plainRetry,
   rememberPressedKey,
@@ -23,14 +23,14 @@ describe("browser policy", () => {
   });
 
   test("keeps local and intranet hosts plain", () => {
-    assert.equal(isLocalHost("localhost"), true);
-    assert.equal(isLocalHost("app.localhost"), true);
-    assert.equal(isLocalHost("127.0.0.1"), true);
-    assert.equal(isLocalHost("192.168.1.4"), true);
-    assert.equal(isLocalHost("172.20.0.1"), true);
-    assert.equal(isLocalHost("172.40.0.1"), false);
-    assert.equal(isLocalHost("intranet"), true);
-    assert.equal(isLocalHost("example.com"), false);
+    assert.equal(onLocalNetwork("localhost"), true);
+    assert.equal(onLocalNetwork("app.localhost"), true);
+    assert.equal(onLocalNetwork("127.0.0.1"), true);
+    assert.equal(onLocalNetwork("192.168.1.4"), true);
+    assert.equal(onLocalNetwork("172.20.0.1"), true);
+    assert.equal(onLocalNetwork("172.40.0.1"), false);
+    assert.equal(onLocalNetwork("intranet"), true);
+    assert.equal(onLocalNetwork("example.com"), false);
   });
 
   test("upgrades plain main-frame addresses once per host", () => {

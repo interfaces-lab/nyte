@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import { createTransport } from "@nyte-ai/protocol";
 import { base64ToBase64Url, base64Url } from "./encoding.ts";
 import { DESKTOP_ROUTES, DEVICE_TOKEN_BYTES, ENROLLMENT_READINESS_SECONDS } from "./schemas.ts";

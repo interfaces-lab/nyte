@@ -10,7 +10,7 @@ import {
 } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { button, radius, space, target } from "./styles/schema.stylex.ts";
+import { button, media, radius, space, target } from "./styles/schema.stylex.ts";
 import {
   mergeStyleProps,
   type StateStyledProps,
@@ -44,7 +44,7 @@ const control = create({
     backgroundImage: {
       default: "none",
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.layerHover,
+        [media.hover]: role.layerHover,
       },
       ":active:not([data-disabled])": role.layerPressed,
     },
@@ -59,7 +59,7 @@ const control = create({
     color: {
       default: role.contentSecondary,
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.contentPrimary,
+        [media.hover]: role.contentPrimary,
       },
       ":active:not([data-disabled])": role.contentPrimary,
       "[data-pressed]:not([data-disabled])": role.contentPrimary,
@@ -197,7 +197,7 @@ const buttonVariants = create({
     backgroundColor: {
       default: role.buttonFill,
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.buttonFillHover,
+        [media.hover]: role.buttonFillHover,
       },
       ":active:not([data-disabled])": role.buttonFillPressed,
     },
@@ -219,7 +219,7 @@ const buttonVariants = create({
     lineHeight: "inherit",
     textDecoration: {
       default: "none",
-      ":hover:not([data-disabled])": { "@media (hover: hover) and (pointer: fine)": "underline" },
+      ":hover:not([data-disabled])": { [media.hover]: "underline" },
     },
   },
   inline: {
@@ -227,7 +227,7 @@ const buttonVariants = create({
     "--_btn-inline-hover": {
       default: "transparent",
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.bgInteractiveSecondaryTranslucent,
+        [media.hover]: role.bgInteractiveSecondaryTranslucent,
       },
     },
     zIndex: 0,

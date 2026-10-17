@@ -96,6 +96,15 @@ export const threadStyles = create({
     fontSize: type.fontBase,
   },
   error: { paddingInlineStart: space.s1, color: role.contentSecondary, fontSize: type.fontBase },
+  /** A line under a new chat's composer that carries an action at its end. */
+  startRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space.s2,
+    paddingInlineStart: space.s1,
+    color: role.contentSecondary,
+  },
   sash: {
     position: "relative",
     display: "grid",

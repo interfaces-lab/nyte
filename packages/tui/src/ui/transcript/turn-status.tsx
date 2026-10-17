@@ -1,6 +1,7 @@
 import type { JSX } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import { failureNotice } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import {
   ACTIVITY_RETRY_LABEL,
@@ -9,10 +10,11 @@ import {
   ACTIVITY_WORKED_LABEL,
   ACTIVITY_WORKING_LABEL,
   GLYPHS,
+  RECOVERY_STEPS,
 } from "../../lib/constants.ts";
-import { clockDuration, formatDuration, retryCause } from "../../lib/format.ts";
+import { formatDuration, formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
+import { retryCause } from "../../lib/format.ts";
 import type { CliTheme } from "../../lib/theme.ts";
-import { failureNotice } from "../../lib/tool-copy.ts";
 import type { TurnStatus } from "../../model/transcript.ts";
 import { Spinner } from "../chrome/spinner.tsx";
 
@@ -24,7 +26,7 @@ interface Line {
 
 const CLOCK_INTERVAL_MS = 1_000;
 
-function lineOf(status: TurnStatus, theme: CliTheme, now: number): Line {
+function statusLine(status: TurnStatus, theme: CliTheme, now: number): Line {
   switch (status.kind) {
     case "unanswered":
       return { text: "", color: theme.dim, spinner: null };
@@ -44,15 +46,18 @@ function lineOf(status: TurnStatus, theme: CliTheme, now: number): Line {
       };
     case "retrying":
       return {
-        text: `${ACTIVITY_RETRY_LABEL} in ${clockDuration(status.until - now)} (attempt ${String(status.attempt)}) · ${retryCause(status.reason)}`,
+        text: `${ACTIVITY_RETRY_LABEL} in ${formatWholeDuration(status.until - now)} (attempt ${String(status.attempt)}) · ${retryCause(status.reason)}`,
         color: theme.warning,
         spinner: theme.warning,
       };
     case "settled": {
       if (status.failure !== null) {
         const notice = failureNotice(status.failure);
+        const step = notice.recovery === undefined ? "" : ` ${RECOVERY_STEPS[notice.recovery]}`;
 
-        return { text: notice.text, color: theme[notice.tone], spinner: null };
+        return notice.tone === "danger"
+          ? { text: `${GLYPHS.cross} ${notice.text}${step}`, color: theme.error, spinner: null }
+          : { text: `! ${notice.text}`, color: theme.warning, spinner: null };
       }
 
       const duration =
@@ -86,7 +91,7 @@ export function TurnStatusRow(props: {
     });
   });
 
-  const line = createMemo(() => lineOf(props.status, kit.theme(), now()));
+  const line = createMemo(() => statusLine(props.status, kit.theme(), now()));
 
   return (
     <box

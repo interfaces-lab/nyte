@@ -1,31 +1,30 @@
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
-import { toolStatus } from "../view-helpers.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import { tidyPath, toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { editPatch } from "./edit-patch.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { button, glyph, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import { Deferred } from "../deferred.tsx";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { diffView } from "../theme/schema.stylex.ts";
-import { DiffView } from "./diff-view.tsx";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
-import { activityStyles } from "./styles.stylex.ts";
-import { tidyPath, toolNoun, toolVerbs } from "./tool-copy.ts";
+import { activityStyles } from "./activity.stylex.ts";
 import { ToolOutcome } from "./tool-line.tsx";
 
-export type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
+type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
 
-const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
 
 const CARD_PREVIEW_ROWS = 4;
 
@@ -49,7 +48,7 @@ const styles = create({
     "--_action": role.contentSecondary,
     "--_file": {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
     "--_chevron": "0",
   },
@@ -57,11 +56,11 @@ const styles = create({
     cursor: appearance.cursorInteractive,
     "--_action": {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
     "--_chevron": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-within": "1",
       "[data-panel-open]": "1",
     },
@@ -81,7 +80,7 @@ const styles = create({
     cursor: appearance.cursorInteractive,
     textDecorationLine: {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "underline" },
+      ":hover": { [media.hover]: "underline" },
     },
   },
   stats: {
@@ -114,7 +113,7 @@ const styles = create({
     backgroundColor: role.bgBase,
     "--_expand-opacity": {
       default: 0,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": 1 },
+      ":hover": { [media.hover]: 1 },
       ":focus-within": 1,
     },
   },
@@ -169,7 +168,7 @@ const styles = create({
     backgroundImage: `linear-gradient(to bottom, transparent 0%, ${role.bgBase} 100%)`,
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
     opacity: { default: "var(--_expand-opacity)", ":focus-visible": 1 },
     transitionProperty: "color, opacity",
@@ -300,7 +299,9 @@ export const EditCallView = memo(function EditCallView({
           data-tool-body
           {...props(styles.cardBody, expandable && !open && styles.cardBodyCollapsed)}
         >
-          <DiffView path={path} diff={diff} variant="card" />
+          <Deferred entry="code">
+            {({ DiffView }) => <DiffView path={path} diff={diff} variant="card" />}
+          </Deferred>
         </div>
         {expandable && (
           <Collapsible.Trigger
@@ -366,7 +367,9 @@ export const EditCallView = memo(function EditCallView({
       </Collapsible.Trigger>
       {diff !== undefined && (
         <Collapsible.Panel data-tool-body>
-          <DiffView path={path} diff={diff} variant="inline" />
+          <Deferred entry="code">
+            {({ DiffView }) => <DiffView path={path} diff={diff} variant="inline" />}
+          </Deferred>
         </Collapsible.Panel>
       )}
     </Collapsible.Root>

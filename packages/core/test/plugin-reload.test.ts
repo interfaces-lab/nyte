@@ -2,18 +2,15 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { Infer, ModelRequest } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import {
-  createHost,
-  createHostState,
-  createKernel,
-  envelope,
-  memoryStore,
-  workspaceRef,
-} from "../src/index.ts";
-import type { Plugin, Resources, ToolDefinition } from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { createHostState } from "../src/api/host.ts";
+import { createKernel } from "../src/compose.ts";
+import { toolSource } from "../src/extend/registry.ts";
+import { envelope, memoryStore, workspaceRef } from "../src/store.ts";
+import type { Plugin, ToolDefinition } from "../src/index.ts";
 import { world } from "./fake-env.ts";
 import { chatOnly, fakeModels, open } from "./fake-models.ts";
-import { configuration, env, main, script, setup, until, workspace } from "./harness.ts";
+import { configuration, env, main, script, setup, until, workspace } from "../src/harness.ts";
 
 const nothing = standard(Type.Object({}));
 
@@ -32,19 +29,7 @@ function tool(name: string, execute?: () => Promise<void>): ToolDefinition<Infer
   };
 }
 
-const empty: Resources = {
-  user: null,
-  project: null,
-  skills: [],
-  contextFiles: [],
-  prompt: { system: null, append: null, scope: null },
-  prompts: [],
-};
-
-async function controlled(input: {
-  attach(): Promise<typeof env>;
-  resources(): Promise<Resources>;
-}) {
+async function controlled(attach: () => Promise<typeof env>) {
   const store = await memoryStore().open();
 
   await store.refs.set([
@@ -61,6 +46,7 @@ async function controlled(input: {
             projectSources: [],
             addedBy: asId("local"),
             createdAt: 0,
+            isolation: null,
           },
           0,
         ),
@@ -72,12 +58,28 @@ async function controlled(input: {
     hostId: asId("h1"),
     store,
     description: { name: "studio", platform: "darwin", version: "0.1.0" },
-    host: createHostState({ catalog: asId("g1"), plugins: [], settings: [], operations: [] }),
-    defaultWorkspace: workspace,
+    host: createHostState({
+      catalog: asId("g1"),
+      plugins: [],
+      settings: [],
+      defaultWorkspace: workspace,
+    }),
     turn: script().driver,
     resolveConfiguration: async () => configuration,
-    env: () => input.attach(),
-    resources: () => input.resources(),
+    builtins: [
+      {
+        id: "local",
+        environment: {
+          kind: "local",
+          inspect: async () => ({
+            identity: env.identity,
+            availability: { kind: "available" },
+            projectSources: [],
+          }),
+          attach,
+        },
+      },
+    ],
   });
 
   return { kernel, host: createHost(kernel, { credential: { kind: "token", token: "x" } }) };
@@ -112,8 +114,8 @@ describe("plugin reload (D4)", () => {
     );
 
     await using host = await open(fake, { plugins: [v1] });
-    const session = await host.sessions.create();
-    const before = host.kernel.pluginsFor(session.id).ready;
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const before = host.kernel.plugins.runtime(session.id).ready;
 
     replace = async () => {
       const report = await host.plugins.replace([chatOnly, v2], { session: session.id });
@@ -125,7 +127,7 @@ describe("plugin reload (D4)", () => {
     };
 
     expect((await (await session.send("Go.")).settled()).kind).toBe("completed");
-    expect(host.kernel.pluginsFor(session.id).ready).not.toBe(before);
+    expect(host.kernel.plugins.runtime(session.id).ready).not.toBe(before);
     expect(seen).toHaveLength(1);
 
     const system = fake.requests[1].context.messages[0];
@@ -140,7 +142,7 @@ describe("plugin reload (D4)", () => {
 
     const { kernel, host } = await setup();
 
-    kernel.hostPlugins = [
+    kernel.plugins.host = [
       {
         id: "stamp",
         activate(api) {
@@ -156,9 +158,9 @@ describe("plugin reload (D4)", () => {
       },
     ];
 
-    const session = await host.sessions.create();
-    const old = kernel.pluginsFor(session.id);
-    const reloaded = kernel.reloadPlugins(session.id);
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const old = kernel.plugins.runtime(session.id);
+    const reloaded = kernel.plugins.reload(session.id);
 
     const outcome = await old.hooks.transform(
       "after_tool",
@@ -174,56 +176,58 @@ describe("plugin reload (D4)", () => {
 
   it("3.4 / E E4 (P3): a session replace on an instance that never activated the session reports what HostView shows", async () => {
     const first = await setup();
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const other = await setup({ store: first.kernel.store });
 
-    expect(other.kernel.runtimes().size).toBe(0);
+    expect(other.kernel.plugins.runtimes().size).toBe(0);
 
     const report = await other.host.plugins.replace([{ id: "extra" }], { session: session.id });
 
     expect(report.plugins).toEqual([{ kind: "activated", id: "extra", issues: [] }]);
-    await other.kernel.pluginsFor(session.id).ready;
+    await other.kernel.plugins.runtime(session.id).ready;
     expect(other.kernel.host.current().plugins).toEqual([
+      { id: "test-environment", source: "inline", path: null, issues: [] },
       { id: "extra", source: "inline", path: null, issues: [] },
     ]);
     expect(
-      other.kernel
-        .pluginsFor(session.id)
+      other.kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
-    ).toEqual(["extra"]);
+    ).toEqual(["test-environment", "extra"]);
   });
 
   it("3.5 / E E6 + D D13: an activation whose resources cannot be read rejects ready, fails the activation and drops the runtime; the next use activates again", async () => {
-    let failing = false;
+    const { kernel, host } = await controlled(async () => env);
 
-    const { kernel, host } = await controlled({
-      attach: async () => env,
-      async resources() {
-        if (failing) throw new Error("The scan failed.");
-
-        return empty;
-      },
+    kernel.plugins.host = [{ id: "kept" }];
+    const { session } = await host.sessions.start({ content: "Hi." });
+    await kernel.plugins.runtime(session.id).ready;
+    const unreadable = Promise.reject(new Error("The scan failed."));
+    unreadable.catch(() => undefined);
+    kernel.workspaceState.scans.set(session.id, {
+      workspace,
+      resources: unreadable,
+      stop: () => undefined,
     });
 
-    kernel.hostPlugins = [{ id: "kept" }];
-    const session = await host.sessions.create();
+    await expect(kernel.plugins.reload(session.id)).rejects.toThrow("The scan failed.");
+    expect(kernel.sessions.activation(session.id)).toEqual({
+      kind: "failed",
+      message: "The scan failed.",
+    });
+    await until(() => (kernel.plugins.runtimes().has(session.id) ? undefined : true));
 
-    failing = true;
-    await expect(kernel.reloadPlugins(session.id)).rejects.toThrow("The scan failed.");
-    expect(kernel.activation(session.id)).toEqual({ kind: "failed", message: "The scan failed." });
-    await until(() => (kernel.runtimes().has(session.id) ? undefined : true));
-
-    failing = false;
-    const again = kernel.pluginsFor(session.id);
+    kernel.workspaceState.scans.delete(session.id);
+    const again = kernel.plugins.runtime(session.id);
     await again.ready;
 
-    expect(again.plugins().map((plugin) => plugin.id)).toEqual(["kept"]);
+    expect(again.plugins().map((plugin) => plugin.id)).toEqual(["local", "kept"]);
   });
 
   it("E E5 (P5): a host-wide replace resolves when another instance removed a session this one holds a runtime for", async () => {
     const first = await setup();
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const other = await setup({ store: first.kernel.store });
 
     expect(await other.host.session(session.id).remove()).toEqual({ kind: "removed" });
@@ -231,24 +235,29 @@ describe("plugin reload (D4)", () => {
     const report = await first.host.plugins.replace([{ id: "next" }]);
 
     expect(report.plugins).toEqual([{ kind: "activated", id: "next", issues: [] }]);
-    expect(first.kernel.hostPlugins.map((plugin) => plugin.id)).toEqual(["next"]);
+    expect(first.kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["next"]);
   });
 
   it("E E7 (runtime side) + D D13: a failed attach rejects ready with its own error and shows failed; no plugin activates on a null env", async () => {
     const reads: unknown[] = [];
 
-    const { kernel, host } = await controlled({
-      attach: async () => {
-        throw new Error("The disk is gone.");
-      },
-      resources: async () => empty,
+    let failing = false;
+
+    const { kernel, host } = await controlled(async () => {
+      if (failing) throw new Error("The disk is gone.");
+
+      return env;
     });
 
-    kernel.hostPlugins = [{ id: "reader", activate: (api) => void reads.push(api.env) }];
+    kernel.plugins.host = [{ id: "reader", activate: (api) => void reads.push(api.env) }];
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
+    failing = true;
+    reads.splice(0);
+    await kernel.environments.detach(session.id);
+    await Promise.allSettled([kernel.plugins.reload(session.id)]);
 
-    await expect(kernel.pluginsFor(session.id).ready).rejects.toThrow("The disk is gone.");
+    await expect(kernel.plugins.runtime(session.id).ready).rejects.toThrow("The disk is gone.");
     expect((await session.info()).activation).toEqual({
       kind: "failed",
       message: "The disk is gone.",
@@ -261,9 +270,9 @@ describe("plugin reload (D4)", () => {
     const ids = Array.from({ length: 50 }, () => asId<"session">(crypto.randomUUID()));
 
     for (const id of ids)
-      await expect(kernel.pluginsFor(id).ready).rejects.toMatchObject({ code: "unknown" });
+      await expect(kernel.plugins.runtime(id).ready).rejects.toMatchObject({ code: "unknown" });
 
-    await until(() => (kernel.runtimes().size === 0 ? true : undefined));
+    await until(() => (kernel.plugins.runtimes().size === 0 ? true : undefined));
   });
 
   it("audit 1 (D-3-old-runtime-after-reload): a caller holding the old runtime after the reload settled still runs its handlers", async () => {
@@ -278,9 +287,12 @@ describe("plugin reload (D4)", () => {
       ],
     });
 
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
-    const old = fixture.kernel.pluginsFor(session.id);
-    await fixture.kernel.reloadPlugins(session.id);
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
+    const old = fixture.kernel.plugins.runtime(session.id);
+    await fixture.kernel.plugins.reload(session.id);
 
     const result = await old.hooks.transform(
       "after_tool",
@@ -314,8 +326,11 @@ describe("plugin reload (D4)", () => {
       ],
     });
 
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
-    const old = fixture.kernel.pluginsFor(session.id);
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
+    const old = fixture.kernel.plugins.runtime(session.id);
 
     const running = old.hooks.transform(
       "after_tool",
@@ -324,7 +339,7 @@ describe("plugin reload (D4)", () => {
     );
 
     await entered.promise;
-    await fixture.kernel.reloadPlugins(session.id);
+    await fixture.kernel.plugins.reload(session.id);
 
     expect(signal?.aborted).toBe(false);
     gate.resolve();
@@ -339,7 +354,10 @@ describe("plugin reload (D4)", () => {
   it("audit 2 (same-object-preflight): replacing with the running version twice keeps it running, kept-previous", async () => {
     const previous: Plugin<"core"> = { id: "same" };
     const fixture = await world({ plugins: [previous] });
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
 
     const report = await fixture.host.plugins.replace([previous, previous], {
       session: session.id,
@@ -350,8 +368,8 @@ describe("plugin reload (D4)", () => {
       "kept-previous",
     ]);
     expect(
-      fixture.kernel
-        .pluginsFor(session.id)
+      fixture.kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toContain("same");
@@ -374,7 +392,10 @@ describe("plugin reload (D4)", () => {
     };
 
     const fixture = await world({ plugins: [previous] });
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
     await until(() => (counts.length === 2 ? true : undefined));
 
     const report = await fixture.host.plugins.replace([{ id: "retained" }, { id: "retained" }], {
@@ -388,12 +409,11 @@ describe("plugin reload (D4)", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(counts).toEqual(["activate", "session_activated"]);
 
-    const runtime = fixture.kernel.pluginsFor(session.id);
+    const runtime = fixture.kernel.plugins.runtime(session.id);
 
     expect(runtime.plugins()).toContain(previous);
     expect(
-      fixture.kernel
-        .tools(runtime, null)
+      toolSource(runtime)
         .list()
         .map((info) => info.name),
     ).toContain("retained");
@@ -401,7 +421,10 @@ describe("plugin reload (D4)", () => {
 
   it("audit 4 (host-replace-failed-session): an existing session whose activation fails rejects the replacement's plugins with its failure", async () => {
     const fixture = await world();
-    const session = await fixture.host.sessions.create({ workspace: fixture.workspace });
+    const { session } = await fixture.host.sessions.start({
+      workspace: fixture.workspace,
+      content: "Hi.",
+    });
     await fixture.kernel.environments.detach(session.id);
     fixture.provider.failure = "Offline now.";
 

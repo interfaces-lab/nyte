@@ -35,6 +35,12 @@ export type ConnectionFormMode =
     }
   | { readonly kind: "edit"; readonly connection: Connection };
 
+/**
+ * Connect to a host by address and token, or edit a saved one. Without a camera there is no scan path,
+ * so the form is the only way in; the camera permission prompt belongs to the tap that opens the
+ * scanner. Only the form knows its own deadline, so it reports its own timeout as a silent host. A
+ * thrown error is a bug in this app, since connecting reports its endings as values.
+ */
 export function ConnectionForm({
   mode,
   onCancel,
@@ -54,7 +60,6 @@ export function ConnectionForm({
   const [scanning, setScanning] = useState(false);
   const device = useCameraDevice("back");
   const { hasPermission, canRequestPermission, requestPermission } = useCameraPermission();
-  // No camera means no scan path, so the form is the only way in.
   const canScan = device !== undefined;
   const [revealToken, setRevealToken] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -126,10 +131,8 @@ export function ConnectionForm({
 
       if (attempt.current !== controller) return;
 
-      // Only the form knows its own deadline, so it renames its own timeout.
       setStage(failure.kind === "cancelled" && timedOut ? { kind: "silent", address } : failure);
     } catch (cause) {
-      // Connecting reports endings as values, so a throw here is a bug in this app.
       if (attempt.current === controller)
         setStage({
           kind: "unexpected",
@@ -145,7 +148,6 @@ export function ConnectionForm({
     }
   }
 
-  /** The permission prompt belongs to the tap that opens the camera. */
   async function openScanner() {
     setStage({ kind: "idle" });
 
@@ -394,10 +396,9 @@ function Field({
   );
 }
 
+/** No line height: an iOS single-line field lays its own text out, and a fixed one wraps a long token instead of scrolling it. */
 function inputStyle(theme: Theme) {
   return {
-    // No line height: an iOS single-line field lays its own text out, and a
-    // fixed one wraps a long token instead of scrolling it.
     fontSize: typography.body.fontSize,
     fontWeight: typography.body.fontWeight,
     flex: 1,
@@ -418,9 +419,8 @@ const styles = css.create({
   },
   footnote: { margin: 0, textAlign: "center", paddingInline: spacing.sm },
   lead: { color: tokens.muted, margin: 0 },
+  /** The same card the grouped rows elsewhere draw: one surface, no border or shadow restating the edge. */
   form: {
-    // The same card the grouped rows elsewhere draw: one surface, no border or
-    // shadow stating the same edge again.
     backgroundColor: tokens.surface,
     borderRadius: radii.card,
     overflow: "hidden",
@@ -438,8 +438,7 @@ const styles = css.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    // A token is one long word: the row keeps its height and the field scrolls,
-    // rather than wrapping a second line out through the card's bottom edge.
+    // A token is one long word, so the row keeps its height and the field scrolls.
     minHeight: controls.touchTarget,
     overflow: "hidden",
   },

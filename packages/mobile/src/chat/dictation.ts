@@ -44,7 +44,7 @@ function dictationFailure(code: ExpoSpeechRecognitionErrorCode): string | undefi
   }
 }
 
-/** Speech recognition state shared by the composer and the compose sheet. */
+/** Speech recognition state shared by the composer and the compose sheet; the elapsed clock runs only while recording. */
 export function useDictation(onTranscript: (transcript: string) => void) {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -104,7 +104,6 @@ export function useDictation(onTranscript: (transcript: string) => void) {
       };
     }, []),
   );
-  // The clock runs only while the speech session does.
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(() => setElapsed((value) => value + 1), 1000);

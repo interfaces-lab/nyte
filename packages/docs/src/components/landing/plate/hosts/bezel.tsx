@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-/*
+/**
  * The glass rim every host sits in on the plate. It is open at the bottom:
  * the plate's edge cuts each frame, so a host fills its stage to the floor.
  */

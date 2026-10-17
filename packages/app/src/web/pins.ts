@@ -16,7 +16,7 @@ export type PinRoute =
       readonly environmentId: string;
     };
 
-function keyOf(route: PinRoute): string {
+function formatPinKey(route: PinRoute): string {
   const parts =
     route.kind === "address"
       ? [route.kind, route.url]
@@ -27,7 +27,7 @@ function keyOf(route: PinRoute): string {
 
 function readPin(storage: PinStorage, route: PinRoute): HostId | undefined {
   try {
-    const text = storage.getItem(keyOf(route));
+    const text = storage.getItem(formatPinKey(route));
     const value: unknown = text === null ? undefined : JSON.parse(text);
 
     return Value.Check(HostIdSchema, value) ? value : undefined;
@@ -50,7 +50,8 @@ export async function connectPinned(input: {
     ...(pinned === undefined ? {} : { expect: pinned }),
   });
 
-  if (pinned === undefined) input.storage.setItem(keyOf(input.route), JSON.stringify(hostId));
+  if (pinned === undefined)
+    input.storage.setItem(formatPinKey(input.route), JSON.stringify(hostId));
 
   return hostId;
 }

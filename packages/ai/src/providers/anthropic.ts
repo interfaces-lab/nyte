@@ -1,5 +1,6 @@
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
-import { fetchAnthropicAccountLimits } from "../api/deferred.ts";
+import { usesClaudeSubscription } from "../api/claude-code.ts";
+import { fetchAnthropicAccountLimits } from "./anthropic-limits.ts";
 import { lazyOAuth } from "../auth/helpers.ts";
 import { loadAnthropicOAuth } from "../auth/oauth/load.ts";
 import type { ApiKeyAuth, ProviderAuth } from "../auth/types.ts";
@@ -14,7 +15,8 @@ import {
   ANTHROPIC_SERVICE_ACCOUNT_ID_ENV,
   ANTHROPIC_WORKSPACE_ID_ENV,
 } from "../env-api-keys.ts";
-import { createProvider, type Provider } from "../models.ts";
+import type { Provider } from "../models-types.ts";
+import { createProvider } from "../provider.ts";
 import type { ProviderEnv } from "../types.ts";
 
 function anthropicApiKeyAuth(): ApiKeyAuth {
@@ -85,7 +87,7 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
 
 const verifyAnthropicAuth: NonNullable<ProviderAuth["verify"]> = async ({ auth, signal }) => {
-  if (auth.apiKey?.includes("sk-ant-oat")) {
+  if (auth.apiKey !== undefined && usesClaudeSubscription(auth.apiKey)) {
     return { ok: true, verified: false, detail: "OAuth credential" };
   }
 
@@ -124,7 +126,7 @@ export function anthropicProvider(): Provider<"anthropic-messages"> {
       )?.[1];
       const token = auth.apiKey ?? authorization?.replace(/^Bearer\s+/u, "");
 
-      if (!token?.includes("sk-ant-oat")) return undefined;
+      if (!token || !usesClaudeSubscription(token)) return undefined;
 
       return fetchAnthropicAccountLimits(
         {

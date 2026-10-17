@@ -1,7 +1,7 @@
 /**
- * The desktop's window tabs meet the rest of the app here: the route mirrors
- * the active tab's focused place, the host's current folder follows the
- * focused chat, and the strip reads its items from the session directory.
+ * The window tabs meet the rest of the app here: the route and the active
+ * tab's focused place agree, the host's current folder follows the focused
+ * chat, and the strip reads its items from the session directory.
  */
 import { useRouter } from "@tanstack/react-router";
 import { useMemo, useSyncExternalStore } from "react";
@@ -9,16 +9,20 @@ import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
+import { nyte } from "../nyte.ts";
 import {
+  keys,
+  queryClient,
   sessionFolderPath,
   useWorkingSessionIds,
   useWorkspaceSessionDirectory,
 } from "../queries.ts";
+import { directoryWatch } from "../sdk.tsx";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 
-import { activeTab, currentView, isPage, tabPlace, tabPlaces } from "./model.ts";
+import { activeTab, currentView, showsPage, tabPlace, tabPlaces } from "./model.ts";
 import type { Place, WindowState } from "./model.ts";
 import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
 import type { WindowTabItem } from "./window-tab-strip.tsx";
@@ -28,27 +32,45 @@ export function useWindowTabsState(): WindowState {
   return useSyncExternalStore(windowTabs.subscribe, windowTabs.getSnapshot, windowTabs.getSnapshot);
 }
 
-function sessionFolder(sessionId: SessionId): string | null | undefined {
-  return sessionFolderPath(sessionId);
+/**
+ * Asks the host to select the restored active tab's chat folder for this
+ * window. The first frame already shows the folder the last run recorded for
+ * that chat; the host's answer confirms it, or corrects it when the folder is
+ * gone or awaits trust. The host reads the chat's folder from its own store
+ * and announces nothing, so the workbench takes the folder without the reload
+ * a `workspace_opened` event runs. Absent on the web, which keeps no folder
+ * per window.
+ */
+async function restoreChatFolder(): Promise<void> {
+  const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+
+  if (place.kind !== "session" || nyte.host.restore === undefined) return;
+  queryClient.setQueryData(keys.host, await nyte.host.restore({ session: place.sessionId }));
 }
 
 /**
- * Keep the route on the active tab's focused place, record a page's section
- * as the route moves it, and make the focused chat's folder current.
+ * The active tab's focused place and the route agree. A tab change moves the
+ * route; a route reached on its own (a typed or restored URL, browser Back,
+ * Settings opening Environments, the startup chat) becomes the tab's place.
+ * The route's place on mount wins, so the web's URL opens what it names. The
+ * focused chat's folder becomes current, once the session directory and the
+ * workspaces it names have loaded (a chat restored at launch is focused before
+ * they land); switches run one at a time and only the latest, so a fast ⌃Tab
+ * ends on its last folder.
  */
 export function useWindowTabsSync(): void {
   const router = useRouter();
 
   useMountEffect(() => {
-    if (!windowTabs.enabled) return undefined;
     let followed = "";
-    // Switches run one at a time and only the latest, so a fast ⌃Tab ends on its last folder.
-    let switching = Promise.resolve();
+    let switching = restoreChatFolder().then(
+      () => undefined,
+      () => undefined,
+    );
     let wanted: string | null = null;
 
-    const sync = (): void => {
-      const state = windowTabs.getSnapshot();
-      const tab = activeTab(state);
+    const follow = (): void => {
+      const tab = activeTab(windowTabs.getSnapshot());
       const place = tabPlace(tab);
       const location = locationPlace(router);
 
@@ -56,12 +78,17 @@ export function useWindowTabsSync(): void {
       const focus = `${tab.id}:${place.kind === "session" ? place.sessionId : place.kind}`;
 
       if (focus === followed) return;
-      followed = focus;
 
-      if (place.kind !== "session") return;
-      const folder = sessionFolder(place.sessionId);
+      if (place.kind !== "session") {
+        followed = focus;
+
+        return;
+      }
+
+      const folder = sessionFolderPath(place.sessionId);
 
       if (folder === undefined) return;
+      followed = focus;
       wanted = folder;
       switching = switching
         .then(() => (wanted === folder ? activateWorkspace(folder) : undefined))
@@ -71,25 +98,38 @@ export function useWindowTabsSync(): void {
         );
     };
 
-    const unsubscribeRouter = router.subscribe("onResolved", () => {
+    const adopt = (): void => {
       const location = locationPlace(router);
 
-      if (location === undefined || !isPage(location)) return;
+      if (location === undefined) return;
       const view = currentView(activeTab(windowTabs.getSnapshot()));
 
-      // A page reached by URL alone, as Settings reaches Environments, becomes the tab's.
-      if (view.kind !== "page" || view.page.kind !== location.kind)
-        windowTabs.dispatch({ kind: "open", place: location, target: "here" });
-      else if (pageSection(view.page) !== pageSection(location))
-        windowTabs.dispatch({ kind: "page-section", section: pageSection(location) });
-    });
+      if (view.kind === "page" && showsPage(location) && view.page.kind === location.kind) {
+        if (pageSection(view.page) !== pageSection(location))
+          windowTabs.dispatch({ kind: "page-section", section: pageSection(location) });
 
-    sync();
-    const unsubscribeTabs = windowTabs.subscribe(sync);
+        return;
+      }
+
+      if (!samePlaceAt(tabPlace(activeTab(windowTabs.getSnapshot())), location))
+        windowTabs.dispatch({ kind: "open", place: location, target: "here" });
+    };
+
+    adopt();
+    follow();
+    const unsubscribeRouter = router.subscribe("onResolved", adopt);
+    const unsubscribeTabs = windowTabs.subscribe(follow);
+    const unsubscribeDirectory = directoryWatch("all").subscribe(follow);
+
+    const unsubscribeWorkspaces = queryClient.getQueryCache().subscribe((event) => {
+      if (event.query.queryKey[0] === keys.workspaces[0]) follow();
+    });
 
     return () => {
       unsubscribeRouter();
       unsubscribeTabs();
+      unsubscribeDirectory();
+      unsubscribeWorkspaces();
     };
   });
 }

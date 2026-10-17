@@ -55,6 +55,14 @@ function runtimeVersion(variant: AppVariant): ExpoConfig["runtimeVersion"] {
   return variant === "development" ? { policy: "appVersion" } : { policy: "fingerprint" };
 }
 
+/**
+ * The app.json plugins this config replaces per variant. Voltra's app group follows the variant's
+ * bundle identifier, because a shared group would let two variants read each other's Live Activity
+ * state. Its push support lets APNs update the Live Activity while the app is suspended; nothing sends
+ * those pushes yet (see the README).
+ */
+const VARIANT_PLUGINS = new Set<string | undefined>(["@use-voltra/ios-client", "expo-dev-client"]);
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const variantName = resolveVariant(process.env.APP_VARIANT);
   const variant = VARIANTS[variantName];
@@ -70,17 +78,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: { ...config.ios, bundleIdentifier },
     extra: withoutGeneratedExtensions(config.extra),
     plugins: [
-      // The Voltra entry in app.json is replaced so its app group follows the
-      // variant's bundle identifier; a shared group would let two variants
-      // read each other's Live Activity state.
-      ...basePlugins.filter((plugin) => !isVariantPlugin(plugin)),
+      ...basePlugins.filter(
+        (plugin) => !VARIANT_PLUGINS.has(Array.isArray(plugin) ? plugin[0] : plugin),
+      ),
       ["expo-dev-client", { addGeneratedScheme: variantName === "development" }],
       [
         "@use-voltra/ios-client",
         {
           groupIdentifier: `group.${bundleIdentifier}`,
-          // Lets APNs update the Live Activity while the app is suspended.
-          // Nothing sends those pushes yet; see the README.
           enablePushNotifications: true,
         },
       ],
@@ -108,10 +113,4 @@ function withoutGeneratedExtensions(extra: ExpoConfig["extra"]): ExpoConfig["ext
   const keptEas = Object.fromEntries(Object.entries(eas).filter(([key]) => key !== "build"));
 
   return { ...extra, eas: keptEas };
-}
-
-function isVariantPlugin(plugin: NonNullable<ExpoConfig["plugins"]>[number]): boolean {
-  const name = Array.isArray(plugin) ? plugin[0] : plugin;
-
-  return name === "@use-voltra/ios-client" || name === "expo-dev-client";
 }

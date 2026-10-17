@@ -14,7 +14,7 @@ import type {
 
 export type CanvasPost = ReturnType<typeof renderNotification>;
 
-export type CanvasFrameEffect =
+type CanvasFrameEffect =
   | { readonly kind: "post"; readonly message: CanvasPost }
   | { readonly kind: "rendered" }
   | { readonly kind: "height"; readonly height: number }

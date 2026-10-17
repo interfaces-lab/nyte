@@ -13,7 +13,7 @@ const hour = 60 * 60 * 1000;
 
 let cached: { at: number; release: MacRelease | null } | undefined;
 
-/* The latest published release and its Apple Silicon disk image, rechecked hourly. */
+/** The latest published release and its Apple Silicon disk image, rechecked hourly. */
 export const latestMacRelease = createServerFn().handler(async () => {
   if (cached && Date.now() - cached.at < hour) return cached.release;
   const release = await fetchMacRelease();

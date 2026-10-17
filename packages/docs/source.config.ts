@@ -16,7 +16,7 @@ function fillModel(node: MarkdownNode) {
 
 const remarkModel = () => fillModel;
 
-/*
+/**
  * The collection lives in `src/lib/docs.ts` via the `fumadocs-mdx/macro` API. This
  * file exists only for global MDX options, which the macro collections inherit.
  *
@@ -27,8 +27,10 @@ const remarkModel = () => fillModel;
 export default defineConfig({
   mdxOptions: {
     remarkPlugins: (plugins) => [remarkModel, remarkMdxMermaid, ...plugins],
-    // Dual-theme Shiki tokens (`--shiki-light` / `--shiki-dark`) plus the
-    // default notation transformers and language icons on titled blocks.
+    /**
+     * Dual-theme Shiki tokens (`--shiki-light` / `--shiki-dark`) plus the
+     * default notation transformers and language icons on titled blocks.
+     */
     rehypeCodeOptions: {
       ...rehypeCodeDefaultOptions,
       themes: {

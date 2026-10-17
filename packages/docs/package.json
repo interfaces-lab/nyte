@@ -35,8 +35,6 @@
     "use-sync-external-store": "1.7.0"
   },
   "devDependencies": {
-    "@shadcn/lint": "0.2.1",
-    "@stylexjs/unplugin": "0.19.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/mdx": "^2.0.14",
     "@types/node": "^26.6.5",

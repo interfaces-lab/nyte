@@ -1,0 +1,127 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Vendored upstream lint rules: oxlint.config.ts ignores the same tree.
+  "ignore": ["scripts/oxlint/anti-slop/**"],
+  "workspaces": {
+    ".": {
+      // A CLI run by hand: `node scripts/oxlint/report-violations.mjs`.
+      "entry": ["scripts/oxlint/report-violations.mjs"],
+      // knip reads `pnpm --dir <package> <script>` as a binary named after the script.
+      "ignoreBinaries": ["bench", "playwright"],
+    },
+    "packages/ai": {
+      // publish-models spawns the operator's logged-in Cloudflare CLI from PATH.
+      "ignoreBinaries": ["wrangler"],
+    },
+    "packages/app": {
+      // The root oxlint.config.ts loads these as jsPlugins; lint tests compile the fixtures by path.
+      "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}"],
+      // The test runs electron-vite with cwd packages/desktop, which lists it.
+      "ignoreBinaries": ["electron-vite"],
+    },
+    "packages/canvas": {
+      // check-shell is a manual Playwright check, library-exports a manual generator, and the app's
+      // shell test runs compile.mjs by path; kit.test.ts, check-shell and the preview tests compile
+      // every fixture and probe by readdir.
+      "entry": [
+        "scripts/check-shell.mjs",
+        "scripts/compile.mjs",
+        "scripts/library-exports.mjs",
+        "test/fixtures/*.tsx",
+        "test/fixtures/*/main.tsx",
+        "test/probes/*/main.tsx",
+      ],
+      "ignoreDependencies": [
+        // src/shell/fonts.css imports them, and knip does not read CSS.
+        "@fontsource-variable/inter",
+        "@fontsource-variable/jetbrains-mono",
+        // vite.libraries.config.ts builds each library a canvas may import by name from LIBRARY_EXPORTS.
+        "d3-array",
+        "d3-hierarchy",
+        "d3-scale",
+        "d3-shape",
+        "@types/d3-array",
+        "@types/d3-hierarchy",
+        "@types/d3-scale",
+        "@types/d3-shape",
+      ],
+    },
+    "packages/cli": {
+      // distribution.test.js verifies the tarball with the system shasum.
+      "ignoreBinaries": ["shasum"],
+    },
+    "packages/connect": {
+      // DeviceToken names the device token's role; its schema is Base64Url32.
+      "ignoreIssues": { "src/schemas.ts": ["duplicates"] },
+    },
+    "packages/connect-worker": {
+      // `cloudflare:workers` is a workerd built-in module, not a package.
+      "ignoreDependencies": ["cloudflare"],
+    },
+    "packages/desktop": {
+      "entry": [
+        // electron.vite.config.ts rolldown inputs beside index; knip's electron-vite plugin reads only index.
+        "src/main/{host-entry,usage-worker,codemode-worker,codemode-runtime}.ts",
+        "src/preload/{browser-page,canvas-preview}.ts",
+        // Injected by the serve-only nyte:serve-devtools plugin.
+        "src/renderer/src/devtools.tsx",
+        // Bundled by tests from their path.
+        "src/main/fixtures/*.{ts,tsx}",
+        // scripts/build.mjs passes it to electron-builder --config and spawns the bundle check.
+        "electron-builder.config.ts",
+        "scripts/check-startup-bundle.mjs",
+      ],
+      "ignoreDependencies": [
+        // Imported by bundled workspace code (plugin, host); electron-vite externalizes `dependencies`
+        // and electron-builder ships them, so the packaged main resolves them from here.
+        "@anthropic-ai/claude-agent-sdk",
+        "@lydell/node-pty",
+        "sucrase",
+      ],
+    },
+    "packages/docs": {
+      // A direct dependency so Vercel's SSR bundle links Base UI's CommonJS shim to the bundled React.
+      "ignoreDependencies": ["use-sync-external-store"],
+    },
+    "packages/host": {
+      "entry": [
+        // Store tools run with `node scripts/<name>.ts`.
+        "scripts/*.ts",
+        // Spawned by path as MCP servers and CLIs in bench scenarios.
+        "src/bench/scenarios/*.mjs",
+        // Nitro's file-system routes and the workflow directory in nitro.config.ts.
+        "src/deploy/vercel/server/{routes,workflows}/**/*.ts",
+      ],
+    },
+    "packages/lab": {
+      "entry": [
+        // The SDK shape contract AGENTS.md names; typechecked, imported by nothing.
+        "sdk-shape.ts",
+        // Injected by the serve-only lab:serve-devtools plugin.
+        "src/devtools.ts",
+        // server/canvas.ts bundles it as the canvas frame runtime.
+        "src/canvas/runtime.tsx",
+        // The remotion CLI entry in the video scripts.
+        "video/src/index.ts",
+      ],
+    },
+    "packages/mobile": {
+      // Expo config plugins named by path in app.json and app.config.ts.
+      "entry": ["plugins/*.cjs"],
+      // EAS CLI is installed globally, as Expo documents; knip reads `pnpm --dir ../canvas build` as a binary `build`.
+      "ignoreBinaries": ["eas", "build"],
+      // babel-preset-expo loads it when app.json sets experiments.reactCompiler.
+      "ignoreDependencies": ["babel-plugin-react-compiler"],
+    },
+    "packages/tui": {
+      // scripts/build-binary.ts compiles it as a separate worker entry.
+      "entry": ["src/codemode-worker.ts"],
+    },
+    "packages/ui": {
+      // StyleX requires each defineVars and createTheme in a .stylex.ts file to be a named export.
+      "entry": ["src/styles/*.stylex.ts"],
+      // tokens.mjs and stylex-capabilities.mjs resolve them through @stylexjs/unplugin, the build's own copy.
+      "ignoreDependencies": ["@babel/core", "@stylexjs/babel-plugin"],
+    },
+  },
+}

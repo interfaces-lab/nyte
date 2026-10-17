@@ -1,3 +1,4 @@
+import "../../test/window-bridge.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRef } from "react";
 import type { ComponentProps } from "react";
@@ -6,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { ComposerFrame } from "./composer.tsx";
+import { ComposerFrame } from "./composer-frame.tsx";
 import type { ComposerDocumentState } from "./composer-document.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 
@@ -140,8 +141,9 @@ export async function run(): Promise<string> {
         await paint();
         const editor = editorRef.current;
 
-        if (editor === null || editor.element === null) throw new Error("Editor unavailable");
-        const area = editor.element;
+        const area = editor?.readElement() ?? null;
+
+        if (editor === null || area === null) throw new Error("Editor unavailable");
         const selection = document.getSelection();
 
         if (selection === null) throw new Error("Selection unavailable");
@@ -160,11 +162,14 @@ export async function run(): Promise<string> {
           check(frameBounds.height === 40, "Compact padding preserves the pill height");
         }
 
-        const anchorOffset = text.includes("\n")
-          ? text.indexOf("\n") + 1
-          : Array.from({ length: text.length }, (_, index) => index).find(
-              (index) => glyphBox(area, index).top > firstBox.top + 2,
-            );
+        const [firstLine = "", ...laterLines] = text.split("\n");
+
+        const anchorOffset =
+          laterLines.length > 0
+            ? firstLine.length + 1
+            : Array.from({ length: text.length }, (_, index) => index).find(
+                (index) => glyphBox(area, index).top > firstBox.top + 2,
+              );
 
         const lastLineStart = Array.from({ length: text.length }, (_, index) => index).find(
           (index) => text[index] !== "\n" && glyphBox(area, index).top === lastBox.top,

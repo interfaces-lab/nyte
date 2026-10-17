@@ -1,8 +1,8 @@
 import fuzzysort from "fuzzysort";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
 import type { SlashCommand } from "../lib/slash.ts";
-import { completionTrigger } from "../lib/view-helpers.ts";
 import type { Draft } from "./state.ts";
 
 export type CompletionState =
@@ -44,12 +44,12 @@ export interface CompletionItem {
   readonly kind: "action" | "setting" | "skill" | "plugin" | "file" | "directory";
 }
 
-export interface CompletionSources {
+interface CompletionSources {
   readonly commands: readonly SlashCommand[];
   readonly files: readonly MentionFile[] | null;
 }
 
-export type CompletionEdit =
+type CompletionEdit =
   | { readonly kind: "replace"; readonly from: number; readonly to: number; readonly text: string }
   | {
       readonly kind: "execute";

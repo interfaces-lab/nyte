@@ -35,7 +35,7 @@ describe("parseConnection", () => {
     );
   });
 
-  it("accepts the Tailscale range over plain HTTP but not its neighbours", () => {
+  it("accepts the Tailscale range 100.64.0.0/10 over plain HTTP but not the public space either side", () => {
     const token = "abcdefghijklmnop";
     expect(parseConnection({ name: "m", url: "http://100.126.254.2:8787", token }).url).toBe(
       "http://100.126.254.2:8787",
@@ -46,7 +46,6 @@ describe("parseConnection", () => {
     expect(parseConnection({ name: "m", url: "http://100.127.255.254:1", token }).url).toBe(
       "http://100.127.255.254:1",
     );
-    // 100.64.0.0/10 stops at 100.127; the ranges either side are ordinary public space.
     expect(() => parseConnection({ name: "m", url: "http://100.63.255.255:1", token })).toThrow(
       /HTTPS/,
     );

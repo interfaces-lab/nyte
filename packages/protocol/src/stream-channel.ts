@@ -1,6 +1,5 @@
-import { SdkError } from "@nyte-ai/core";
+import { isJsonObject, SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
-import { isRecord } from "./json.ts";
 
 export const CHANNEL_PATH = ".nyte/streams";
 
@@ -16,7 +15,7 @@ export type StreamFrame =
   | { readonly kind: "error"; readonly stream: string; readonly error: string };
 
 export function readStreamFrame(value: Json): StreamFrame {
-  if (isRecord(value) && typeof value.stream === "string") {
+  if (isJsonObject(value) && typeof value.stream === "string") {
     if (value.kind === "chunk" && typeof value.data === "string")
       return { kind: "chunk", stream: value.stream, data: value.data };
 

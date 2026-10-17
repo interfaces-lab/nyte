@@ -18,7 +18,9 @@ async function sources(): Promise<readonly { readonly path: string; readonly tex
 
 test("no source imports core, protocol, host or the old client", async () => {
   const offenders = (await sources()).filter(({ text }) =>
-    /from "(?:@nyte-ai\/(?:core|protocol|host|client|server|telemetry)(?:\/[^"]*)?|@nyte-ai\/plugin\/core(?:\/[^"]*)?)"/u.test(text),
+    /from "(?:@nyte-ai\/(?:core|protocol|host|client|server|telemetry)(?:\/[^"]*)?|@nyte-ai\/plugin\/core(?:\/[^"]*)?)"/u.test(
+      text,
+    ),
   );
 
   assert.deepEqual(

@@ -1,33 +1,36 @@
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SQLInputValue, StatementSync } from "node:sqlite";
 import { asSeq } from "@nyte-ai/schema";
 import type { ObjectId, Ref, Revision, Seq, SessionId } from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
 import {
   admits,
+  fenceNames,
   assertStoreVersion,
   blobId,
   decodeObject,
   collectSessionEvents,
-  dev,
   migrateStore,
   objectId,
-  setSeq,
   sessionIndexRef,
   parseSessionRef,
-} from "@nyte-ai/core";
-import type { MigrationTarget, Store, StoreConnection } from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
+import type { Store, StoreConnection } from "@nyte-ai/core";
+import type { MigrationTarget, Relog } from "@nyte-ai/core/store";
 import {
   collect,
   decodeEvent,
+  loggedRow,
   memoryReader,
   mintRevision,
-  numberOf,
+  parseNumber,
   prefixEnd,
-  refOf,
-  storedRecordOf,
-  textOf,
+  parseRef,
+  parseStoredObject,
+  parseStoredRecord,
+  parseText,
 } from "./store-rows.ts";
 import { sqliteWorkers } from "./sqlite-workers.ts";
 import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
@@ -39,7 +42,7 @@ const BACKUPS_KEPT = 3;
 const PUT_BODY =
   "INSERT INTO objects (id, body) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL";
 
-/** Returns a `Store` over one `node:sqlite` `DatabaseSync`: a file at `path` (WAL mode, a busy timeout so a second process waits rather than fails) or an in-memory database. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore` (core's `objects`, `refs`, `log` and `store_meta` tables; each commit one `BEGIN IMMEDIATE`), a file store holding refs first copied to `backups/store-<time>-<pid>-<uuid>-v<from>-v<to>.db` beside it with the newest three such copies kept, and rejects with `SdkError("unavailable")` for a store a newer Nyte migrated; a `migrations` table an older Nyte left is kept and ignored. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once; an object and a blob that share an id share the row, each column filled once (§41f); `blob` reads the bytes back with their size and a null mime. `refs.set` is one `BEGIN IMMEDIATE` transaction with `RefStore.set`'s semantics, each revision a random UUID, that first rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store since it opened. `list(prefix)` reads the name range from `prefix` in name order (BINARY, by code point); `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0. File stores run `list` and `log` on a read-only worker and WAL checkpoints on a separate worker, checking at 1,000 frames and after 100 ms idle with a 10,000-frame writer backstop; unavailable workers warn and fall back to the main connection. Checkpoints use fullfsync on macOS, WAL reuse retains at most 32 MiB, and opening refreshes planner statistics. Writes binding more than 64 KiB use uncached statements. Every `open()` returns a connection over the one writer; `close()` waits for opening and worker shutdown before closing it, and an open during close waits to reopen. */
+/** Returns a `Store` over one `node:sqlite` `DatabaseSync`: a file at `path` (WAL mode, a busy timeout so a second process waits rather than fails) or an in-memory database. The first `open()` brings it to core's `STORE_VERSION` with `migrateStore` (core's `objects`, `refs`, `log` and `store_meta` tables; each commit one `BEGIN IMMEDIATE`), a file store whose migration rewrites records first saving those refs' rows (name, target, revision; objects are never deleted, so the rows restore them) to `backups/store-<time>-<pid>-<uuid>-v<from>-v<to>.json` beside it, keeping the newest three backups, and rejects with `SdkError("unavailable")` for a store a newer Nyte migrated; a `migrations` table an older Nyte left is kept and ignored. `put` ids the value with core's `objectId` and stores its JSON once; `putBlob` buffers the stream, ids it with `blobId` and stores the bytes once; an object and a blob that share an id share the row, each column filled once (§41f); `blob` reads the bytes back with their size and a null mime. `refs.set` is one `BEGIN IMMEDIATE` transaction with `RefStore.set`'s semantics, each revision a random UUID, that first rejects with `SdkError("unavailable")` when a newer Nyte has migrated the store since it opened. `list(prefix)` reads the name range from `prefix` in name order (BINARY, by code point); `log` returns the events after `after` in seq order up to `limit`, each validated as a `SessionEvent`; `tail` is the session's last seq, or 0; `commitMark` is the writer connection's `PRAGMA data_version`, which moves only for another connection's commit. `checkpoints` keeps one fold checkpoint per session in `fold_checkpoints`, a write at a lower seq leaving the kept one, and `gap` counts a session's events past a seq and sums their UTF-8 bytes. File stores run `list` and `log` on a read-only worker and WAL checkpoints on a separate worker, checking at 1,000 frames and after 100 ms idle with a 10,000-frame writer backstop; unavailable workers warn and fall back to the main connection. Checkpoints use fullfsync on macOS, WAL reuse retains at most 32 MiB, and opening refreshes planner statistics. Writes binding more than 64 KiB use uncached statements. Every `open()` returns a connection over the one writer; `close()` waits for opening and worker shutdown before closing it, and an open during close waits to reopen. */
 export function sqliteStore(input: { readonly path: string } | { readonly memory: true }): Store {
   let database: DatabaseSync | null = null;
   let opening: Promise<StoreConnection> | null = null;
@@ -112,11 +115,11 @@ function storedVersion(database: DatabaseSync): number {
   if (!hasTable(database, "store_meta")) return 0;
   const row = database.prepare("SELECT version FROM store_meta WHERE id = 1").get();
 
-  return row === undefined ? 0 : numberOf(row.version);
+  return row === undefined ? 0 : parseNumber(row.version);
 }
 
 function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTarget {
-  return {
+  const target: MigrationTarget = {
     dialect: "sqlite",
     async stamp() {
       return {
@@ -129,10 +132,26 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
     async records() {
       return database
         .prepare(
-          "SELECT refs.name, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
+          "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
         )
         .all()
-        .map(storedRecordOf);
+        .map(parseStoredRecord);
+    },
+    async *objects(kind) {
+      yield* database
+        .prepare("SELECT id, body FROM objects WHERE body IS NOT NULL AND instr(body, ?) > 0")
+        .all(`"kind":${JSON.stringify(kind)}`)
+        .map(parseStoredObject);
+    },
+    async *logs() {
+      if (!hasTable(database, "log")) return;
+      const read = database.prepare("SELECT seq, event FROM log WHERE session = ? ORDER BY seq");
+
+      for (const row of database.prepare("SELECT DISTINCT session FROM log").all()) {
+        const session = parseText(row.session);
+
+        if (session !== null) yield { session, events: read.all(session).map(loggedRow) };
+      }
     },
     async commit(change) {
       database.exec("BEGIN IMMEDIATE");
@@ -164,9 +183,32 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
           updateSessionIndex(database, moved.name, moved.id, mintRevision());
         }
 
+        const create = database.prepare(
+          "INSERT INTO refs (name, target, revision) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
+        );
+
+        for (const created of change.creates) {
+          const revision = mintRevision();
+
+          if (Number(create.run(created.name, created.target, revision).changes) > 0)
+            updateSessionIndex(database, created.name, created.target, revision);
+        }
+
+        const relog = database.prepare(
+          "UPDATE log SET event = ? WHERE session = ? AND seq = ? AND event = ?",
+        );
+
+        for (const row of change.relogs) {
+          if (Number(relog.run(row.event, row.session, row.seq, row.expect).changes) === 0) {
+            database.exec("ROLLBACK");
+
+            return "conflict";
+          }
+        }
+
         if (change.reindexSessions)
           for (const row of database.prepare("SELECT name, target, revision FROM refs").all()) {
-            const ref = refOf(row);
+            const ref = parseRef(row);
             updateSessionIndex(database, ref.name, ref.target, ref.revision);
           }
 
@@ -184,20 +226,46 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
         throw error;
       }
     },
-    ...(path === null ? {} : { backup: async (from, to) => backup(database, path, from, to) }),
+  };
+
+  if (path === null) return target;
+
+  return {
+    ...target,
+    backup: async (from, to, names, log) => backup(database, path, from, to, names, log),
   };
 }
 
-function backup(database: DatabaseSync, path: string, from: number, to: number): void {
+function backup(
+  database: DatabaseSync,
+  path: string,
+  from: number,
+  to: number,
+  names: readonly string[],
+  log: readonly Relog[],
+): void {
   const folder = join(dirname(path), "backups");
   mkdirSync(folder, { recursive: true, mode: 0o700 });
   const at = new Date().toISOString().replaceAll(":", "-");
-  database
-    .prepare("VACUUM INTO ?")
-    .run(join(folder, `store-${at}-${process.pid}-${crypto.randomUUID()}-v${from}-v${to}.db`));
+  const read = database.prepare("SELECT name, target, revision FROM refs WHERE name = ?");
+
+  const rows = names.flatMap((name) => {
+    const row = read.get(name);
+
+    return row === undefined ? [] : [parseRef(row)];
+  });
+
+  writeFileSync(
+    join(folder, `store-${at}-${process.pid}-${crypto.randomUUID()}-v${from}-v${to}.json`),
+    JSON.stringify({
+      refs: rows,
+      log: log.map((row) => ({ session: row.session, seq: row.seq, event: row.expect })),
+    }),
+    { mode: 0o600 },
+  );
 
   const copies = readdirSync(folder)
-    .filter((file) => /^store-.+-v\d+-v\d+\.db$/u.test(file))
+    .filter((file) => /^store-.+-v\d+-v\d+\.(?:db|json)$/u.test(file))
     .sort();
 
   for (const file of copies.slice(0, -BACKUPS_KEPT)) rmSync(join(folder, file), { force: true });
@@ -237,7 +305,20 @@ function connect(
   );
 
   const readTail = database.prepare("SELECT MAX(seq) AS tail FROM log WHERE session = ?");
+
+  const readCheckpoint = database.prepare(
+    "SELECT seq, body FROM fold_checkpoints WHERE session = ?",
+  );
+
+  const writeCheckpoint = database.prepare(
+    "INSERT INTO fold_checkpoints (session, seq, body) VALUES (?, ?, ?) ON CONFLICT (session) DO UPDATE SET seq = excluded.seq, body = excluded.body WHERE excluded.seq >= fold_checkpoints.seq",
+  );
+
+  const readGap = database.prepare(
+    "SELECT COUNT(*) AS events, COALESCE(SUM(LENGTH(CAST(event AS BLOB))), 0) AS bytes FROM log WHERE session = ? AND seq > ?",
+  );
   const readVersion = database.prepare("SELECT version FROM store_meta WHERE id = 1");
+  const readDataVersion = database.prepare("PRAGMA data_version");
 
   const read = async (statement: StatementSync, ...params: SQLInputValue[]) =>
     (await workers?.read(statement.sourceSQL, params)) ?? statement.all(...params);
@@ -245,16 +326,17 @@ function connect(
   const tail = (session: SessionId): Seq => {
     const row = readTail.get(session);
 
-    return asSeq(row?.tail === null || row?.tail === undefined ? 0 : numberOf(row.tail));
+    return asSeq(row?.tail === null || row?.tail === undefined ? 0 : parseNumber(row.tail));
   };
 
   const ref = (name: string): Ref | null => {
     const row = getRef.get(name);
 
-    return row === undefined ? null : refOf(row);
+    return row === undefined ? null : parseRef(row);
   };
 
   return {
+    commitMark: async () => parseNumber(readDataVersion.get()?.data_version),
     sessions: sqlSessionIndex(
       async (text, values) =>
         (await workers?.read(text, values)) ?? database.prepare(text).all(...values),
@@ -268,7 +350,7 @@ function connect(
         return id;
       },
       async get(id) {
-        const body = textOf(getBody.get(id)?.body);
+        const body = parseText(getBody.get(id)?.body);
 
         return body === null ? null : decodeObject(body);
       },
@@ -294,7 +376,7 @@ function connect(
         const rows =
           end === null ? await read(listFrom, prefix) : await read(listRange, prefix, end);
 
-        return rows.map(refOf);
+        return rows.map(parseRef);
       },
       async set(updates) {
         const logged = collectSessionEvents(updates);
@@ -304,11 +386,19 @@ function connect(
         const acquired = performance.now();
 
         try {
-          assertStoreVersion(numberOf(readVersion.get()?.version ?? 0));
+          assertStoreVersion(parseNumber(readVersion.get()?.version ?? 0));
           const before = new Map<string, Ref | undefined>();
 
           for (const update of updates)
             if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
+          const fenced = fenceNames(updates).find((name) => ref(name) === null);
+
+          if (fenced !== undefined) {
+            database.exec("ROLLBACK");
+
+            return { kind: "fenced", name: fenced };
+          }
+
           const stale = updates.find((update) => !admits(update, before.get(update.name)));
 
           if (stale !== undefined) {
@@ -351,11 +441,10 @@ function connect(
             return asSeq(seq);
           });
 
-          const seq = setSeq(updates, appended, tail);
           database.exec("COMMIT");
           workers?.check();
 
-          return { kind: "set", seq, revisions };
+          return { kind: "set", logged: appended, at, revisions };
         } catch (error) {
           if (database.isTransaction) database.exec("ROLLBACK");
 
@@ -370,10 +459,29 @@ function connect(
       },
       async log(session, after, limit) {
         return (await read(readLog, session, after, limit)).map((row) =>
-          decodeEvent(numberOf(row.seq), numberOf(row.at), textOf(row.event) ?? ""),
+          decodeEvent(parseNumber(row.seq), parseNumber(row.at), parseText(row.event) ?? ""),
         );
       },
       tail: async (session) => tail(session),
+    },
+    checkpoints: {
+      async read(session) {
+        const [row] = await read(readCheckpoint, session);
+        const body = parseText(row?.body);
+
+        return row === undefined || body === null
+          ? null
+          : { seq: asSeq(parseNumber(row.seq)), body };
+      },
+      async write(session, checkpoint) {
+        write(database, writeCheckpoint, session, checkpoint.seq, checkpoint.body);
+        workers?.check();
+      },
+      async gap(session, after) {
+        const [row] = await read(readGap, session, after);
+
+        return { events: parseNumber(row?.events ?? 0), bytes: parseNumber(row?.bytes ?? 0) };
+      },
     },
   };
 }
@@ -388,7 +496,7 @@ function updateSessionIndex(
   const body =
     target === null
       ? null
-      : textOf(database.prepare("SELECT body FROM objects WHERE id = ?").get(target)?.body);
+      : parseText(database.prepare("SELECT body FROM objects WHERE id = ?").get(target)?.body);
 
   for (const change of sessionIndexChanges(
     name,

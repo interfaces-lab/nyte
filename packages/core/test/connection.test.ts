@@ -1,28 +1,28 @@
-import { OPERATION_AUTHORITY, asId } from "@nyte-ai/schema";
+import { asId, OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type { Authority, PrincipalId } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
+import { createInvocation } from "../src/agent/tool-runner.ts";
+import { createHost } from "../src/api/connection.ts";
+import { CORE_CONTEXT, PARTICIPANT_AUTHORITY } from "../src/contract/host.ts";
 import {
-  ALL_AUTHORITY,
-  CORE_CONTEXT,
-  PARTICIPANT_AUTHORITY,
-  SdkError,
   authenticateToken,
-  createConnection,
-  createHost,
-  createInvocation,
+  createPrincipals,
   gated,
-  hostPrincipalsRef,
-  memoryStore,
   redeemPairing,
-} from "../src/index.ts";
-import type { Connection, Durable, Kernel, StoreConnection, Workspace } from "../src/index.ts";
+} from "../src/engine/principals.ts";
+import { ALL_AUTHORITY } from "../src/index.ts";
+import { hostPrincipalsRef, memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Connection, Durable, StoreConnection, Workspace } from "../src/index.ts";
 import { addWorkspace, createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 import type { FakeProvider } from "./fake-env.ts";
-import { main, setup, workspace } from "./harness.ts";
+import { main, setup, workspace } from "../src/harness.ts";
 
 async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<string, string>> {
   const git = await at.git();
   assert(git.kind === "available");
+  const github = await at.github();
+  assert(github.kind === "available");
   const login = () => sdk.models.login({ provider: "p", method: { kind: "key" } });
 
   const rows: Record<string, () => unknown> = {
@@ -55,6 +55,9 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
     "git.commit": () => git.api.commit({ message: "no", files: "staged" }),
     "git.branch": () => git.api.branch({ name: "no", checkout: false }),
     "git.push": () => git.api.push(),
+    "github.signIn": () => sdk.github.signIn(),
+    "github.signOut": () => sdk.github.signOut(),
+    "github.createPullRequest": () => github.api.createPullRequest({ title: "no" }),
     "plugins.replace": () => sdk.plugins.replace([]),
     "plugins.check": () => sdk.plugins.check([]),
     "principals.list": () => sdk.principals.list(),
@@ -78,7 +81,7 @@ async function elevatedRows(sdk: Connection, at: Workspace): Promise<Record<stri
 }
 
 function connectionAs(kernel: Kernel, authority: ReadonlySet<Authority>) {
-  return createConnection(kernel, {
+  return kernel.handles.connection({
     principal: asId("caller"),
     authority,
     credential: { kind: "token", token: "t" },
@@ -87,7 +90,7 @@ function connectionAs(kernel: Kernel, authority: ReadonlySet<Authority>) {
 }
 
 async function paired(kernel: Kernel): Promise<{ principal: PrincipalId; token: string }> {
-  const { code } = await kernel.principals.pair({ authority: new Set(["participant"]) });
+  const { code } = await createPrincipals(kernel).pair({ authority: new Set(["participant"]) });
   const redeemed = await redeemPairing(kernel, code);
   assert(redeemed !== null);
 
@@ -115,7 +118,7 @@ describe("connection gate (§52 rule 5)", () => {
     await expect(participant.principals.list()).rejects.toMatchObject({ code: "denied" });
 
     await expect(
-      createConnection(kernel, CORE_CONTEXT).plugins.replace([{ path: "/plugins/a.ts" }]),
+      kernel.handles.connection(CORE_CONTEXT).plugins.replace([{ path: "/plugins/a.ts" }]),
     ).rejects.toMatchObject({
       code: "denied",
       message: "plugins.replace needs maintenance authority.",
@@ -125,8 +128,8 @@ describe("connection gate (§52 rule 5)", () => {
 
   it("denies every row the schema table marks above participant, to a connection and to a tool's invocation, from that one table (D6 audit 1, §56)", async () => {
     const { kernel, host, workspace: at } = await world();
-    const session = await host.sessions.create({ workspace: at });
-    const elevated = Object.entries(OPERATION_AUTHORITY).flatMap(([name, row]) =>
+    const { session } = await host.sessions.start({ workspace: at, content: "Hi." });
+    const elevated = Object.entries(OPERATIONS).flatMap(([name, row]) =>
       row.authority === "participant" ? [] : [name],
     );
     const denied = Object.fromEntries(elevated.map((name) => [name, "denied"]));
@@ -135,18 +138,19 @@ describe("connection gate (§52 rule 5)", () => {
 
     const invocation = createInvocation(kernel, {
       session: session.id,
-      runtime: kernel.pluginsFor(session.id),
+      runtime: kernel.plugins.runtime(session.id),
       head: main,
       run: asId("r1"),
       call: asId("c1"),
       context: CORE_CONTEXT,
       signal: new AbortController().signal,
       workspace: at,
-      env: await kernel.env(session.id),
+      env: await kernel.environments.attach(session.id),
       durable: { wait: async () => ({ kind: "deadline" }), memo, now: () => 0 },
+      covered: false,
     });
 
-    expect(elevated).toHaveLength(34);
+    expect(elevated).toHaveLength(37);
     expect(await elevatedRows(participant, participant.workspace(at))).toEqual(denied);
     expect(await elevatedRows(invocation.sdk, invocation.workspace)).toEqual(denied);
   });
@@ -207,7 +211,7 @@ describe("connection gate (§52 rule 5)", () => {
 
   it("answers unavailable to a wire plugins.replace([]) on a host with no loader (ADV E E8)", async () => {
     const { kernel } = await setup();
-    const before = kernel.hostPlugins;
+    const before = kernel.plugins.host;
 
     await expect(connectionAs(kernel, ALL_AUTHORITY).plugins.replace([])).rejects.toMatchObject({
       code: "unavailable",
@@ -215,7 +219,7 @@ describe("connection gate (§52 rule 5)", () => {
     await expect(connectionAs(kernel, ALL_AUTHORITY).plugins.check([])).rejects.toMatchObject({
       code: "unavailable",
     });
-    expect(kernel.hostPlugins).toBe(before);
+    expect(kernel.plugins.host).toBe(before);
   });
 });
 
@@ -226,13 +230,15 @@ describe("principals", () => {
     const revision = async () => (await kernel.store.refs.get(hostPrincipalsRef()))?.revision;
 
     const burst = await Promise.allSettled([
-      ...Array.from({ length: 6 }, () => authenticateToken(kernel, device.token)),
-      kernel.principals.pair({ authority: new Set(["participant"]) }),
+      ...Array.from({ length: 6 }, () => authenticateToken(kernel.store, device.token)),
+      createPrincipals(kernel).pair({ authority: new Set(["participant"]) }),
     ]);
 
     expect(burst.map((outcome) => outcome.status)).toEqual(Array(7).fill("fulfilled"));
     const settled = await revision();
-    await Promise.all(Array.from({ length: 4 }, () => authenticateToken(kernel, device.token)));
+    await Promise.all(
+      Array.from({ length: 4 }, () => authenticateToken(kernel.store, device.token)),
+    );
     expect(await revision()).toBe(settled);
   });
 
@@ -260,12 +266,12 @@ describe("principals", () => {
 
     const { kernel } = await setup({ store });
     const device = await paired(kernel);
-    revoke = () => kernel.principals.revoke(device.principal);
+    revoke = () => createPrincipals(kernel).revoke(device.principal);
 
-    expect(await authenticateToken(kernel, device.token)).toMatchObject({
+    expect(await authenticateToken(kernel.store, device.token)).toMatchObject({
       principal: device.principal,
     });
-    expect(await kernel.principals.list()).toEqual([]);
+    expect(await createPrincipals(kernel).list()).toEqual([]);
 
     let closed = 0;
 
@@ -276,6 +282,6 @@ describe("principals", () => {
     ).toEqual({ kind: "revoked" });
     kernel.connections.revoke(device.principal);
     expect(closed).toBe(0);
-    expect(await authenticateToken(kernel, device.token)).toBeNull();
+    expect(await authenticateToken(kernel.store, device.token)).toBeNull();
   });
 });

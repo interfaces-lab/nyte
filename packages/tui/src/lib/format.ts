@@ -1,19 +1,20 @@
-import type { Thinking, UserContent } from "@nyte-ai/sdk";
+import type { ExcerptSource, Thinking, ToolClass, UserContent } from "@nyte-ai/sdk";
+import { formatDuration, toolTitle } from "@nyte-ai/plugin/client/presentation";
+import type { ToolTense } from "@nyte-ai/plugin/client/presentation";
 import type { RemoteFacts } from "../model/state.ts";
 import { GLYPHS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
 
-export function formatDuration(ms: number): string {
-  const seconds = ms / 1000;
+/** Lower-cases a phrase's first letter: the terminal speaks tool verbs in lower case. */
+export function lowerFirst(phrase: string): string {
+  return `${phrase.charAt(0).toLowerCase()}${phrase.slice(1)}`;
+}
 
-  if (seconds < 10) return `${seconds.toFixed(1)}s`;
+/** A tool's title in the terminal's voice: "reading src/app.ts", or "src/app.ts read" without a verb. */
+export function toolLine(toolClass: ToolClass, tense: ToolTense): string {
+  const title = toolTitle(toolClass, tense);
 
-  if (seconds < 60) return `${String(Math.floor(seconds))}s`;
-  const minutes = Math.floor(seconds / 60);
-
-  if (minutes < 60) return `${String(minutes)}m${String(Math.floor(seconds % 60))}s`;
-
-  return `${String(Math.floor(minutes / 60))}h${String(minutes % 60)}m`;
+  return tense === "none" ? title : lowerFirst(title);
 }
 
 export interface Timing {
@@ -22,7 +23,7 @@ export interface Timing {
 }
 
 export function formatTiming(timing: Timing, now: number): string {
-  return formatDuration(Math.max(0, (timing.endedAt ?? now) - timing.startedAt));
+  return formatDuration((timing.endedAt ?? now) - timing.startedAt);
 }
 
 export function resultSummary(text: string): string | undefined {
@@ -87,6 +88,39 @@ export function unchangedLinesLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
 }
 
+/** An excerpt by where it came from: `a.ts:4-6`, `Terminal pnpm test`, `Element main > a`. */
+export function excerptLabel(source: ExcerptSource, text: string): string {
+  switch (source.kind) {
+    case "diff": {
+      const name = source.path.split("/").at(-1) ?? source.path;
+
+      const lines =
+        source.start === source.end
+          ? String(source.start)
+          : `${String(source.start)}-${String(source.end)}`;
+
+      return `${name}:${lines}`;
+    }
+
+    case "terminal": {
+      const command = source.command?.trim().replace(/\s+/gu, " ");
+      const lines = text.split("\n").length;
+
+      return command === undefined || command === ""
+        ? `Terminal ${String(lines)} ${lines === 1 ? "line" : "lines"}`
+        : `Terminal ${command}`;
+    }
+
+    case "browser":
+      return `Element ${source.selector}`;
+    default: {
+      const _exhaustive: never = source;
+
+      return _exhaustive;
+    }
+  }
+}
+
 export function userText(content: UserContent): string {
   if (typeof content === "string") return content;
 
@@ -99,6 +133,10 @@ export function userText(content: UserContent): string {
           return part.mime.startsWith("image/") ? "[image]" : `[${part.name}]`;
         case "reference":
           return `@${part.path}`;
+        case "skill":
+          return `/${part.name}`;
+        case "excerpt":
+          return `[${excerptLabel(part.source, part.text)}]`;
         default: {
           const _exhaustive: never = part;
 
@@ -109,14 +147,10 @@ export function userText(content: UserContent): string {
     .join("");
 }
 
-export function oneLine(text: string): string {
-  return text.replaceAll("\r", "").replaceAll("\n", "⏎").trim();
-}
-
 const MAX_RETRY_CAUSE_CHARS = 80;
 
-export function retryCause(errorMessage: string): string {
-  const collapsed = errorMessage.replaceAll(/\s+/gu, " ").trim();
+export function retryCause(reason: string): string {
+  const collapsed = reason.replaceAll(/\s+/gu, " ").trim();
 
   if (collapsed === "") return "Request failed.";
 
@@ -158,26 +192,6 @@ function usageLevel(pct: number): UsageLevel {
   if (pct > 70) return "warning";
 
   return "ok";
-}
-export function clockDuration(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-
-  if (seconds < 60) return `${String(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const restSeconds = seconds % 60;
-
-  if (minutes < 60) {
-    return restSeconds === 0
-      ? `${String(minutes)}m`
-      : `${String(minutes)}m${String(restSeconds).padStart(2, "0")}s`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const restMinutes = minutes % 60;
-
-  return restMinutes === 0
-    ? `${String(hours)}h`
-    : `${String(hours)}h${String(restMinutes).padStart(2, "0")}m`;
 }
 
 export function shortId(id: string): string {
@@ -290,4 +304,9 @@ export function terminalTitle(name: string | undefined): string {
   const room = TERMINAL_TITLE_MAX_CHARS - TERMINAL_TITLE_BASE.length - " - ".length;
 
   return `${TERMINAL_TITLE_BASE} - ${truncateDisplay(clean, room, "…")}`;
+}
+
+/** The message of a thrown value, which need not be an `Error`. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

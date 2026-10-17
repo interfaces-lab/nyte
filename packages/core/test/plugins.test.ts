@@ -1,161 +1,15 @@
 import { asId, asSeq, standard } from "@nyte-ai/schema";
-import type {
-  Json,
-  PartId,
-  Schema,
-  SessionCatalogView,
-  SessionId,
-  ToolOutcome,
-} from "@nyte-ai/schema";
+import type { SessionCatalogView } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import {
-  ALL_AUTHORITY,
-  LOCAL,
-  SdkError,
-  callRef,
-  decodeCallRecord,
-  decodePartRecord,
-  definePart,
-  executeCall,
-  kvRef,
-  systemPromptPlugin,
-  text,
-} from "../src/index.ts";
-import type {
-  CallRecord,
-  Command,
-  ConnectionContext,
-  EnvironmentProvider,
-  Kernel,
-  Plugin,
-  PluginApi,
-  PluginStorage,
-  Setting,
-  SettingDefinition,
-  ToolDefinition,
-} from "../src/index.ts";
-import {
-  completed,
-  configuration,
-  env,
-  main,
-  setup,
-  startRun,
-  until,
-  workspace,
-} from "./harness.ts";
-
-const caller: ConnectionContext = {
-  principal: LOCAL,
-  authority: ALL_AUTHORITY,
-  credential: { kind: "token", token: "x" },
-  origin: null,
-};
-
-const ok: ToolOutcome = {
-  kind: "ok",
-  content: [{ kind: "text", text: "hi" }],
-  output: null,
-  parts: [],
-};
-
-const echo = {
-  name: "echo",
-  description: "Echo the text.\nIt says it back.",
-  parameters: standard(Type.Object({ text: Type.String() })),
-  class: () => ({ kind: "custom", label: "Echoing" }),
-  replay: "safe",
-  execute: async (args) => ({ content: [{ kind: "text", text: args.text }] }),
-} satisfies ToolDefinition<{ text: string }>;
-
-const opaque: Schema<unknown> = {
-  "~standard": {
-    version: 1,
-    vendor: "test",
-    validate: (value) => ({ value }),
-    jsonSchema: {
-      input: () => {
-        throw new Error("No JSON Schema.");
-      },
-      output: () => {
-        throw new Error("No JSON Schema.");
-      },
-    },
-  },
-};
-
-const volume: SettingDefinition<number> = {
-  id: "volume",
-  label: "Volume",
-  schema: standard(Type.Integer({ minimum: 0 })),
-  default: 3,
-  scope: "host",
-};
-
-const theme: SettingDefinition<string> = {
-  id: "theme",
-  label: "Theme",
-  schema: standard(Type.Union([Type.Literal("light"), Type.Literal("dark")])),
-  choices: [
-    { value: "light", label: "Light" },
-    { value: "dark", label: "Dark", badge: "new" },
-  ],
-  default: "light",
-  scope: "host",
-};
-
-const approve = definePart({
-  kind: "gate/approve",
-  state: standard(Type.Object({ tool: Type.String() })),
-  actions: {
-    allow: { input: standard(Type.Object({})) },
-    deny: { input: standard(Type.Object({})) },
-  },
-  fallback: (state, { id }) => `Allow ${state.tool}? (${id})`,
-});
-
-async function approvals(kernel: Kernel, session: SessionId): Promise<readonly PartId[]> {
-  const stored = await Promise.all(
-    (await kernel.store.refs.list(`sessions/${session}/parts/`)).map(async (ref) =>
-      decodePartRecord(ref.target === null ? null : await kernel.store.objects.get(ref.target)),
-    ),
-  );
-
-  return stored.flatMap((record) => (record?.partKind === approve.kind ? [record.id] : []));
-}
-
-function says(name: string, answer: string): Command {
-  return { name, title: name, description: `Says ${answer}.`, run: () => answer };
-}
-
-function provider(kind: string): EnvironmentProvider {
-  return {
-    kind,
-    inspect: async () => ({
-      identity: asId("identity"),
-      availability: { kind: "available" },
-      projectSources: [],
-    }),
-    attach: async () => env,
-  };
-}
-
-async function loaded(plugins: readonly Plugin<"core">[], options?: Parameters<typeof setup>[0]) {
-  const built = await setup(options);
-  built.kernel.hostPlugins = plugins;
-  const session = await built.host.sessions.create();
-
-  return { ...built, session, runtime: built.kernel.pluginsFor(session.id) };
-}
-
-async function readCall(kernel: Kernel, session: SessionId, id: string): Promise<CallRecord> {
-  const ref = await kernel.store.refs.get(callRef(session, asId<"call">(id)));
-  const record = decodeCallRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
-  assert(record !== null);
-
-  return record;
-}
+import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
+import { toolSource } from "../src/extend/registry.ts";
+import { LOCAL, text } from "../src/index.ts";
+import type { Plugin, PluginApi } from "../src/index.ts";
+import { main, setup } from "../src/harness.ts";
+import { memoryStore } from "../src/store.ts";
+import { world } from "./fake-env.ts";
+import { ok, echo, opaque, volume, says, provider, loaded } from "./plugin-support.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -221,8 +75,7 @@ describe("plugin runtime", () => {
     expect(deactivated?.aborted).toBe(true);
     expect(runtime.api("broken")).toBeUndefined();
     expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), null)
+      toolSource(kernel.plugins.runtime(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["echo"]);
@@ -235,6 +88,7 @@ describe("plugin runtime", () => {
       }),
     ).toEqual(ok);
     expect(kernel.host.current().plugins.map((row) => [row.id, row.issues.length])).toEqual([
+      ["test-environment", 0],
       ["tools", 0],
       ["twin", 2],
       ["sandbox", 1],
@@ -333,10 +187,10 @@ describe("plugin runtime", () => {
     expect(report.plugins).toEqual([{ kind: "activated", id: "greeter", issues: [] }]);
     expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
 
-    const later = await host.sessions.create();
+    const { session: later } = await host.sessions.start({ content: "Hi." });
 
     expect(await later.command("hello")).toEqual({ kind: "ran", output: "v2" });
-    expect(kernel.hostPlugins.map((plugin) => plugin.id)).toEqual(["greeter"]);
+    expect(kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["greeter"]);
   });
 
   it("checks without loading: outcomes and the collisions between plugins", async () => {
@@ -377,7 +231,7 @@ describe("plugin runtime", () => {
         source: { plugin: "c" },
       },
     ]);
-    expect(kernel.runtimes().size).toBe(0);
+    expect(kernel.plugins.runtimes().size).toBe(0);
     expect(kernel.host.current().plugins).toEqual([]);
   });
 
@@ -409,409 +263,7 @@ describe("plugin runtime", () => {
 
     expect(await session.remove()).toEqual({ kind: "removed" });
     expect(signal?.aborted).toBe(true);
-    expect(kernel.runtimes().has(session.id)).toBe(false);
-  });
-});
-
-describe("hooks", () => {
-  it("orders handlers by order then registration, chains transforms, observes, and short-circuits a decide on reject", async () => {
-    const calls: string[] = [];
-
-    const appended = (outcome: ToolOutcome, label: string): ToolOutcome =>
-      outcome.kind === "ok"
-        ? { ...outcome, content: [...outcome.content, { kind: "text", text: label }] }
-        : outcome;
-
-    const { kernel, session, runtime } = await loaded([
-      {
-        id: "first",
-        hooks: {
-          after_tool: { order: 10, run: (outcome) => appended(outcome, "first") },
-          before_tool: (call) => {
-            calls.push("first");
-
-            return { action: "modify", value: { ...call, args: { text: "changed" } } };
-          },
-          run_ended: (end) => {
-            calls.push(`ended:${end.kind}`);
-          },
-        },
-      },
-      {
-        id: "second",
-        hooks: {
-          after_tool: { order: -1, run: (outcome) => appended(outcome, "second") },
-          before_tool: {
-            order: 5,
-            run: (call) => {
-              calls.push(`second:${JSON.stringify(call.args)}`);
-
-              return { action: "reject", reason: "Not today." };
-            },
-          },
-        },
-      },
-      {
-        id: "third",
-        hooks: {
-          before_tool: {
-            order: 9,
-            run: () => {
-              calls.push("third");
-
-              return { action: "continue" };
-            },
-          },
-        },
-      },
-    ]);
-
-    const context = { session: session.id, head: main, run: null, principal: LOCAL };
-
-    expect(await runtime.hooks.transform("after_tool", ok, context)).toEqual({
-      ...ok,
-      content: [...ok.content, { kind: "text", text: "second" }, { kind: "text", text: "first" }],
-    });
-
-    const decided = await runtime.hooks.decide(
-      "before_tool",
-      {
-        call: asId("c1"),
-        name: "echo",
-        args: { text: "hi" },
-        class: { kind: "custom", label: "Echoing" },
-      },
-      context,
-      {
-        call: asId("hook:before_tool:c1"),
-        run: null,
-        head: null,
-        part: null,
-        signal: new AbortController().signal,
-      },
-    );
-
-    expect(decided).toEqual({ kind: "done", value: { action: "reject", reason: "Not today." } });
-    expect(calls).toEqual(["first", 'second:{"text":"changed"}']);
-    expect(await readCall(kernel, session.id, "hook:before_tool:c1")).toMatchObject({
-      kind: "hook",
-      intent: { name: "echo", args: { text: "hi" }, principal: LOCAL },
-      result: { action: "reject", reason: "Not today." },
-    });
-
-    await runtime.hooks.observe("run_ended", completed, context);
-
-    expect(calls.at(-1)).toBe("ended:completed");
-  });
-
-  it("parks a decide hook on a wait and replays the wait when the step runs again", async () => {
-    let runs = 0;
-    const due = Date.now() + 60_000;
-
-    const { kernel, session, runtime } = await loaded([
-      {
-        id: "gate",
-        hooks: {
-          before_tool: async (_call, context) => {
-            runs += 1;
-            const outcome = await context.wait({ kind: "timer", until: due });
-
-            return outcome.kind === "timer"
-              ? { action: "reject", reason: "Timed out." }
-              : { action: "continue" };
-          },
-        },
-      },
-    ]);
-
-    const step = {
-      call: asId<"call">("hook:before_tool:p1"),
-      run: null,
-      head: null,
-      part: null,
-      signal: new AbortController().signal,
-    };
-
-    const decide = () =>
-      runtime.hooks.decide(
-        "before_tool",
-        { call: asId("p1"), name: "echo", args: {}, class: { kind: "custom", label: "Echoing" } },
-        { session: session.id, head: main, run: null, principal: LOCAL },
-        step,
-      );
-
-    expect(await decide()).toEqual({ kind: "parked" });
-
-    await kernel.waits.tick(due);
-
-    expect(await decide()).toEqual({
-      kind: "done",
-      value: { action: "reject", reason: "Timed out." },
-    });
-    expect(await decide()).toEqual({
-      kind: "done",
-      value: { action: "reject", reason: "Timed out." },
-    });
-    expect(runs).toBe(2);
-  });
-
-  it("creates a consent modal once across a before_tool hook's park and re-run (§35i)", async () => {
-    const created: PartId[] = [];
-
-    const { kernel, session } = await loaded([
-      {
-        id: "consent",
-        contribute: { tools: [echo] },
-        hooks: {
-          before_tool: async (call, context) => {
-            const part = await context.api.session.parts.create(approve, {
-              state: { tool: call.name },
-              placement: { kind: "modal" },
-            });
-
-            created.push(part.id);
-            const outcome = await context.wait({ kind: "part", part: part.id });
-
-            return outcome.kind === "part" && outcome.answer?.action === "allow"
-              ? { action: "continue" }
-              : { action: "reject", reason: "The user declined." };
-          },
-        },
-      },
-    ]);
-
-    const run = (
-      await startRun(
-        kernel,
-        session.id,
-        main,
-        { kind: "continuation", from: "wake" },
-        configuration,
-      )
-    ).id;
-
-    const call = () =>
-      executeCall(kernel, {
-        session: session.id,
-        runtime: kernel.pluginsFor(session.id),
-        head: main,
-        run,
-        call: asId("g1"),
-        name: "echo",
-        args: { text: "hi" },
-        context: caller,
-        signal: new AbortController().signal,
-      });
-
-    expect(await call()).toEqual({ kind: "parked" });
-    const [part] = created;
-    assert(part !== undefined);
-
-    expect(await session.part(part).act("allow", {})).toEqual({ kind: "ok", output: undefined });
-    expect(await call()).toEqual(ok);
-    expect(created).toEqual([part, part]);
-    expect(await approvals(kernel, session.id)).toEqual([part]);
-    expect(
-      (await session.view()).parts
-        .filter((view) => view.partKind === approve.kind)
-        .map((view) => view.id),
-    ).toEqual([part]);
-    expect(await readCall(kernel, session.id, "hook:before_tool:g1")).toMatchObject({
-      acquisitions: { "acq:0": part },
-      result: { action: "continue" },
-    });
-  });
-
-  it("creates a consent modal once across a before_send hook's park and re-run, then admits the send (§35i)", async () => {
-    const created: PartId[] = [];
-
-    const { kernel, session } = await loaded([
-      {
-        id: "consent",
-        hooks: {
-          before_send: async (_submission, context) => {
-            const part = await context.api.session.parts.create(approve, {
-              state: { tool: "send" },
-              placement: { kind: "modal" },
-            });
-
-            created.push(part.id);
-            const outcome = await context.wait({ kind: "part", part: part.id });
-
-            return outcome.kind === "part" && outcome.answer?.action === "allow"
-              ? { action: "continue" }
-              : { action: "reject", reason: "The user declined." };
-          },
-        },
-      },
-    ]);
-
-    const sending = session.send("hello");
-    const part = await until(() => created[0]);
-
-    expect(await session.part(part).act("allow", {})).toEqual({ kind: "ok", output: undefined });
-
-    const receipt = await sending;
-
-    const admitted = (await kernel.store.refs.log(session.id, asSeq(0), 100)).find(
-      (event) =>
-        event.kind === "input" && event.change === "admitted" && event.message === asId(receipt.id),
-    );
-
-    expect(admitted).toMatchObject({ content: "hello" });
-    expect(created).toEqual([part, part]);
-    expect(await approvals(kernel, session.id)).toEqual([part]);
-    expect(
-      (await session.view()).parts
-        .filter((view) => view.partKind === approve.kind)
-        .map((view) => view.id),
-    ).toEqual([part]);
-    expect(await readCall(kernel, session.id, `hook:before_send:${receipt.id}`)).toMatchObject({
-      run: null,
-      head: null,
-      acquisitions: { "acq:0": part },
-      result: { action: "continue" },
-    });
-  });
-
-  it("aborts a handler past its budget: an observe is reported, a transform fails the operation", async () => {
-    let budget: AbortSignal | undefined;
-
-    const { kernel, session, runtime } = await loaded([
-      {
-        id: "slow",
-        hooks: {
-          run_ended: (_end, { signal }) => {
-            budget = signal;
-
-            return new Promise<void>(() => undefined);
-          },
-          after_tool: () => new Promise<ToolOutcome>(() => undefined),
-        },
-      },
-    ]);
-
-    const context = { session: session.id, head: main, run: null, principal: LOCAL };
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const observed = runtime.hooks.observe("run_ended", completed, context);
-    const transformed = runtime.hooks.transform("after_tool", ok, context);
-
-    const failed = expect(transformed).rejects.toMatchObject({
-      code: "internal",
-      message: "Plugin slow's after_tool handler failed: exceeded its 5 s budget",
-    });
-
-    await vi.advanceTimersByTimeAsync(5_000);
-    await observed;
-    await failed;
-
-    expect(budget?.aborted).toBe(true);
-    expect(kernel.host.current().plugins.find((row) => row.id === "slow")?.issues).toEqual([
-      {
-        severity: "error",
-        path: ["hooks", "run_ended"],
-        message: "Plugin slow's run_ended handler failed: exceeded its 5 s budget",
-        source: { plugin: "slow" },
-      },
-    ]);
-  });
-
-  it("rejects a tool call through a plugin's before_tool hook in executeCall, and runs the arguments another rewrites", async () => {
-    const { kernel, session } = await loaded([
-      {
-        id: "gate",
-        contribute: { tools: [echo] },
-        hooks: {
-          before_tool: (call) => {
-            if (JSON.stringify(call.args) === JSON.stringify({ text: "forbidden" }))
-              return { action: "reject", reason: "Not that." };
-
-            return call.args === null
-              ? { action: "modify", value: { ...call, args: { text: "filled" } } }
-              : { action: "continue" };
-          },
-        },
-      },
-    ]);
-
-    const run = (
-      await startRun(
-        kernel,
-        session.id,
-        main,
-        { kind: "continuation", from: "wake" },
-        configuration,
-      )
-    ).id;
-
-    const call = (id: string, args: Json) =>
-      executeCall(kernel, {
-        session: session.id,
-        runtime: kernel.pluginsFor(session.id),
-        head: main,
-        run,
-        call: asId(id),
-        name: "echo",
-        args,
-        context: caller,
-        signal: new AbortController().signal,
-      });
-
-    expect(await call("r1", { text: "forbidden" })).toEqual({
-      kind: "rejected",
-      reason: "Not that.",
-    });
-    expect(await readCall(kernel, session.id, "hook:before_tool:r1")).toMatchObject({
-      kind: "hook",
-      run,
-      head: main,
-      result: { action: "reject", reason: "Not that." },
-    });
-    expect(await call("r2", null)).toEqual({
-      kind: "ok",
-      content: [{ kind: "text", text: "filled" }],
-      output: null,
-      parts: [],
-    });
-  });
-
-  it("rejects or rewrites a send through a plugin's before_send hook", async () => {
-    const { kernel, session } = await loaded([
-      {
-        id: "guard",
-        hooks: {
-          before_send: (submission) => {
-            const { content } = submission;
-
-            if (typeof content !== "string") return { action: "continue" };
-
-            return content.includes("secret")
-              ? { action: "reject", reason: "No secrets." }
-              : { action: "modify", value: { ...submission, content: `${content}!` } };
-          },
-        },
-      },
-    ]);
-
-    await expect(session.send("my secret")).rejects.toMatchObject({
-      code: "invalid",
-      message: "No secrets.",
-    });
-
-    const receipt = await session.send("hello");
-
-    const admitted = (await kernel.store.refs.log(session.id, asSeq(0), 100)).find(
-      (event) =>
-        event.kind === "input" && event.change === "admitted" && event.message === asId(receipt.id),
-    );
-
-    expect(admitted).toMatchObject({ content: "hello!" });
-    expect(await readCall(kernel, session.id, `hook:before_send:${receipt.id}`)).toMatchObject({
-      kind: "hook",
-      run: null,
-      head: null,
-      result: { action: "modify", value: { content: "hello!" } },
-    });
+    expect(kernel.plugins.runtimes().has(session.id)).toBe(false);
   });
 });
 
@@ -836,6 +288,7 @@ describe("plugin api", () => {
     assert(!view.done);
 
     expect(view.value.plugins).toEqual([
+      { id: "test-environment", source: "inline", path: null, issues: [] },
       { id: "system-prompt", source: "builtin", path: null, issues: [] },
       {
         id: "mcp",
@@ -856,7 +309,20 @@ describe("plugin api", () => {
 
   it("derives against siblings materialised earlier in the pass, and drops a failing derive's edits", async () => {
     const { kernel, runtime } = await loaded([
-      systemPromptPlugin,
+      {
+        id: "lister",
+        activate(api) {
+          api.contribute.prompt.add((draft, siblings) => {
+            draft.set("tools", {
+              id: "tools",
+              text: siblings.tools
+                .list()
+                .map((tool) => `${tool.name}: ${tool.exposure ?? "model"}`)
+                .join("\n"),
+            });
+          });
+        },
+      },
       {
         id: "mcp",
         contribute: { tools: [echo] },
@@ -875,11 +341,7 @@ describe("plugin api", () => {
 
     expect(runtime.registries.tools.list().map((tool) => tool.name)).toEqual(["echo", "search"]);
     expect(runtime.registries.prompt.list().find((section) => section.id === "tools")?.text).toBe(
-      [
-        "Tools in this session:",
-        "- echo: Echo the text.",
-        "Deferred until activated: search.",
-      ].join("\n"),
+      "echo: model\nsearch: deferred",
     );
     expect(kernel.host.current().plugins.find((row) => row.id === "mcp")?.issues).toEqual([
       {
@@ -917,14 +379,13 @@ describe("plugin api", () => {
 
     expect(passes).toBe(before + 1);
     expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), null)
+      toolSource(kernel.plugins.runtime(session.id))
         .list()
         .map((tool) => tool.name),
     ).toEqual(["a", "b"]);
   });
 
-  it("publishes the catalog as a seq-0 event a warm fold takes and a cold fold seeds, and bumps the generation", async () => {
+  it("publishes the catalog as a seq-0 event a warm fold takes and a cold fold seeds, and keeps the generation", async () => {
     const { kernel, host } = await setup();
     const generation = kernel.host.current().catalog;
     const events: SessionCatalogView[] = [];
@@ -933,21 +394,19 @@ describe("plugin api", () => {
       if (event.kind === "catalog") events.push(event.catalog);
     });
 
-    kernel.hostPlugins = [
+    kernel.plugins.host = [
       {
         id: "greeter",
         contribute: {
           commands: [{ ...says("hello", "hi"), category: "Fun" }],
           agents: [{ id: "reviewer", description: "Reviews.", mode: "subagent" }],
-          skills: [
-            { name: "lint", description: "Lints.", location: "/skills/lint", load: async () => "" },
-          ],
+          skills: [{ name: "lint", description: "Lints.", location: "/skills/lint" }],
           tools: [{ ...echo, namespace: "demo", exposure: "deferred" }],
         },
       },
     ];
 
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const catalog: SessionCatalogView = {
       commands: [
@@ -987,7 +446,7 @@ describe("plugin api", () => {
 
     expect(events).toEqual([catalog]);
     expect((await session.view()).catalog).toEqual(catalog);
-    expect(kernel.host.current().catalog).not.toBe(generation);
+    expect(kernel.host.current().catalog).toBe(generation);
 
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
@@ -997,39 +456,23 @@ describe("plugin api", () => {
     hold.release();
   });
 
-  it("activates a deferred tool for one run until the run ends", async () => {
-    const { kernel, host, session, script } = await loaded([
-      { id: "lazy", contribute: { tools: [{ ...echo, exposure: "deferred" }] } },
+  it("keeps the generation when a restarted host opens a chat's watch", async () => {
+    const store = await memoryStore().open();
+    const plugins = [{ id: "greeter", contribute: { commands: [says("hello", "hi")] } }];
+    const first = await setup({ store, plugins });
+    const { session } = await first.host.sessions.start({ content: "Hi." });
+    const second = await setup({ store, plugins });
+    const generation = second.kernel.host.current().catalog;
+    const views = second.host.session(session.id).watch()[Symbol.asyncIterator]();
+
+    await views.next();
+    await second.kernel.plugins.runtime(session.id).ready;
+
+    expect(second.kernel.sessions.catalog(session.id).commands).toEqual([
+      expect.objectContaining({ name: "greeter/hello" }),
     ]);
-
-    await session.send("go");
-    const step = host.execution.advance({ session: session.id, head: main });
-    const turn = await script.started(1);
-    const run = turn.input.run.id;
-    await kernel.tools(kernel.pluginsFor(session.id), run).activate(["echo"]);
-
-    expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), run)
-        .list()
-        .map((tool) => tool.exposure),
-    ).toEqual(["model"]);
-    expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), null)
-        .list()
-        .map((tool) => tool.exposure),
-    ).toEqual(["deferred"]);
-
-    turn.finish();
-    await step;
-
-    expect(
-      kernel
-        .tools(kernel.pluginsFor(session.id), run)
-        .list()
-        .map((tool) => tool.exposure),
-    ).toEqual(["deferred"]);
+    expect(second.kernel.host.current().catalog).toBe(generation);
+    await views.return?.();
   });
 });
 
@@ -1083,7 +526,10 @@ describe("commands", () => {
     assert(sent.kind === "sent");
 
     const admitted = (await kernel.store.refs.log(session.id, asSeq(0), 100)).find(
-      (event) => event.kind === "input" && event.change === "admitted",
+      (event) =>
+        event.kind === "input" &&
+        event.change === "admitted" &&
+        event.message === asId<"message">(sent.receipt),
     );
 
     expect(admitted).toMatchObject({
@@ -1092,282 +538,66 @@ describe("commands", () => {
       source: { kind: "action", label: "Ask", command: "cmds/ask" },
     });
   });
-});
 
-describe("settings", () => {
-  it("applies a host setting before any session, refuses an invalid value and an unknown id", async () => {
-    const { kernel, host } = await setup();
-    kernel.hostPlugins = [{ id: "looks", contribute: { settings: [theme] } }];
+  it("lists and runs a new chat's commands before any chat, the folder's own only while it is trusted", async () => {
+    const imported: string[][] = [];
 
-    expect(await host.settings.apply("theme", "dark")).toEqual({ kind: "applied" });
-    expect(await host.settings.apply("theme", "blue")).toMatchObject({
-      kind: "invalid",
-      issues: expect.arrayContaining([expect.objectContaining({ severity: "error" })]),
-    });
-    expect(await host.settings.apply("nope", 1)).toEqual({ kind: "unknown" });
-    expect(kernel.host.current().settings).toEqual([
-      {
-        id: "theme",
-        owner: "looks",
-        scope: "host",
-        label: "Theme",
-        schema: expect.objectContaining({ anyOf: expect.any(Array) }),
-        choices: [
-          { value: "light", label: "Light" },
-          { value: "dark", label: "Dark", badge: "new" },
-        ],
-        value: "dark",
-        from: "host",
+    const folder: Plugin<"core"> = {
+      id: "folder",
+      activate(api) {
+        api.contribute.commands.add({
+          name: "probe",
+          title: "Probe",
+          description: "Answers from the folder.",
+          run: () => "answered",
+        });
+        api.contribute.commands.add({
+          name: "ask",
+          title: "Ask",
+          description: "Starts a chat.",
+          run: () => ({ prompt: "Review this." }),
+        });
       },
-    ]);
-
-    const session = await host.sessions.create();
-
-    expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "theme", value: "dark", from: "host" }),
-    ]);
-  });
-
-  it("yields a setting's value, then each change, until its plugin deactivates", async () => {
-    let handle: Setting<unknown> | undefined;
-
-    const { host, session } = await loaded([
-      {
-        id: "mixer",
-        activate(api) {
-          handle = api.contribute.settings.add(volume);
-        },
-      },
-    ]);
-
-    assert(handle !== undefined);
-    const values = handle.watch()[Symbol.asyncIterator]();
-
-    expect(await values.next()).toEqual({ done: false, value: 3 });
-    expect(await host.settings.apply("volume", 7)).toEqual({ kind: "applied" });
-    expect(await values.next()).toEqual({ done: false, value: 7 });
-    await handle.set(9);
-    expect(await values.next()).toEqual({ done: false, value: 9 });
-    expect(await handle.get()).toBe(9);
-    await expect(handle.set(-1)).rejects.toBeInstanceOf(SdkError);
-    expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "volume", value: 9, from: "host" }),
-    ]);
-
-    await host.plugins.replace([], { session: session.id });
-
-    expect(await values.next()).toEqual({ done: true, value: undefined });
-  });
-
-  it("reads a statically declared setting through settings.value and watch, and sees a settings.apply change (§48b)", async () => {
-    let api: PluginApi<"core"> | undefined;
-
-    const { host } = await loaded([
-      {
-        id: "mixer",
-        contribute: { settings: [volume] },
-        activate(given) {
-          api = given;
-        },
-      },
-    ]);
-
-    assert(api !== undefined);
-    const values = api.contribute.settings.watch("volume")[Symbol.asyncIterator]();
-
-    expect(await api.contribute.settings.value("volume")).toBe(3);
-    expect(await values.next()).toEqual({ done: false, value: 3 });
-    expect(await host.settings.apply("volume", 5)).toEqual({ kind: "applied" });
-    expect(await values.next()).toEqual({ done: false, value: 5 });
-    expect(await api.contribute.settings.value("volume")).toBe(5);
-    await expect(api.contribute.settings.value("theme")).rejects.toMatchObject({ code: "unknown" });
-    await values.return?.();
-  });
-
-  it("sets a session-scope value from activate without waiting on that activation", async () => {
-    const { host, session } = await loaded(
-      [
-        {
-          id: "mixer",
-          contribute: {
-            commands: [{ name: "ping", title: "Ping", description: "", run: () => "pong" }],
-          },
-          async activate(api) {
-            await api.contribute.settings.add({ ...volume, scope: "session" }).set(4);
-          },
-        },
-      ],
-      {
-        resolveConfiguration: async ({ selected, patch }) => ({
-          ...configuration,
-          settings: { ...selected?.settings, ...patch?.settings },
-        }),
-      },
-    );
-
-    expect(await session.command("ping")).toEqual({ kind: "ran", output: "pong" });
-    expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "volume", value: 4, from: "session" }),
-    ]);
-    expect((await host.sessions.create()).id).not.toBe(session.id);
-  });
-
-  it("announces a client's configure of a session-scope setting to watchers and the catalog", async () => {
-    let handle: Setting<unknown> | undefined;
-
-    const { session } = await loaded(
-      [
-        {
-          id: "mixer",
-          activate(api) {
-            handle = api.contribute.settings.add({ ...volume, scope: "session" });
-          },
-        },
-      ],
-      {
-        resolveConfiguration: async ({ selected, patch }) => ({
-          ...configuration,
-          settings: { ...selected?.settings, ...patch?.settings },
-        }),
-      },
-    );
-
-    assert(handle !== undefined);
-    const values = handle.watch()[Symbol.asyncIterator]();
-
-    expect(await values.next()).toEqual({ done: false, value: 3 });
-    expect(await session.configure({ settings: { volume: 6 } })).toMatchObject({
-      kind: "configured",
-    });
-    expect(await values.next()).toEqual({ done: false, value: 6 });
-    expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "volume", value: 6, from: "session" }),
-    ]);
-    await values.return?.();
-  });
-
-  it("reads a session-scope value from the session's configuration", async () => {
-    let handle: Setting<unknown> | undefined;
-
-    const { session } = await loaded(
-      [
-        {
-          id: "mixer",
-          activate(api) {
-            handle = api.contribute.settings.add({ ...volume, scope: "session" });
-          },
-        },
-      ],
-      {
-        resolveConfiguration: async ({ selected, patch }) => ({
-          ...configuration,
-          settings: { ...selected?.settings, ...patch?.settings },
-        }),
-      },
-    );
-
-    assert(handle !== undefined);
-    await handle.set(5);
-
-    expect(await handle.get()).toBe(5);
-    expect((await session.view()).catalog.settings).toEqual([
-      expect.objectContaining({ id: "volume", value: 5, from: "session" }),
-    ]);
-  });
-});
-
-describe("plugin storage", () => {
-  it("rejects slash-delimited ids and keys while permitting distinct plugin names", async () => {
-    let storage: PluginStorage | undefined;
-
-    const { kernel, host } = await loaded([
-      { id: "a", activate: (api) => void (storage = api.storage) },
-    ]);
-
-    const report = await host.plugins.check([{ id: "a/b" }, { id: "settingsx" }, { id: "ok" }]);
-
-    expect(report.plugins.map((outcome) => [outcome.kind, outcome.id])).toEqual([
-      ["rejected", "a/b"],
-      ["activated", "settingsx"],
-      ["activated", "ok"],
-    ]);
-
-    assert(storage !== undefined);
-    await expect(storage.set("b/c", 1)).rejects.toMatchObject({ code: "invalid" });
-    await expect(storage.at("host").get("b/c")).rejects.toMatchObject({ code: "invalid" });
-    await expect(storage.secrets.set("b/c", "x")).rejects.toMatchObject({ code: "invalid" });
-    expect(await kernel.store.refs.list("kv/")).toEqual([]);
-  });
-
-  it("keeps keys per scope: session by default, host and workspace through at()", async () => {
-    const storages: PluginStorage[] = [];
-
-    const keeper: Plugin<"core"> = {
-      id: "keeper",
-      activate: (api) => void storages.push(api.storage),
     };
 
-    const { kernel, host, session } = await loaded([keeper]);
-    const [storage] = storages;
-    assert(storage !== undefined);
-
-    await storage.set("seen", 1);
-    await storage.at("host").set("seen", 2);
-    await storage.at("workspace").set("seen", { count: 3 });
-
-    expect(await storage.get("seen")).toBe(1);
-    expect(await storage.at("host").get("seen")).toBe(2);
-    expect(await storage.at("workspace").get("seen")).toEqual({ count: 3 });
-    expect(await storage.keys()).toEqual(["seen"]);
-
-    for (const name of [
-      kvRef(`session:${session.id}`, "keeper", "seen"),
-      kvRef("host", "keeper", "seen"),
-      kvRef(`workspace:${workspace}`, "keeper", "seen"),
-    ])
-      expect(await kernel.store.refs.get(name)).not.toBeNull();
-
-    await host.sessions.create();
-    const other = storages[1];
-    assert(other !== undefined);
-
-    expect(await other.get("seen")).toBeUndefined();
-    expect(await other.at("host").get("seen")).toBe(2);
-    expect(await other.at("workspace").get("seen")).toEqual({ count: 3 });
-
-    await storage.delete("seen");
-
-    expect(await storage.get("seen")).toBeUndefined();
-    expect(await storage.keys()).toEqual([]);
-  });
-
-  it("round-trips a secret encrypted at rest, and answers unavailable without a key", async () => {
-    let secrets: PluginStorage["secrets"] | undefined;
-
-    const vault: Plugin<"core"> = {
-      id: "vault",
-      activate: (api) => void (secrets = api.storage.secrets),
+    const chatOnly: Plugin<"core"> = {
+      id: "chat-only",
+      async activate(api) {
+        await api.session.info();
+        api.contribute.commands.add({
+          name: "never",
+          title: "Never",
+          description: "Needs a chat.",
+          run: () => "never",
+        });
+      },
     };
 
-    const { kernel } = await loaded([vault], {
-      secrets: { key: async () => new Uint8Array(32).fill(7) },
+    const { host, workspace } = await world({
+      plugins: [{ id: "host", contribute: { commands: [says("hello", "hi")] } }, chatOnly],
+      loadPlugins: async (paths) => {
+        imported.push([...paths]);
+
+        return [folder];
+      },
     });
+    const at = host.workspace(workspace);
 
-    assert(secrets !== undefined);
-    await secrets.set("token", "sk-123");
-    const ref = await kernel.store.refs.get(kvRef("secret", "vault", "token"));
-    assert(ref !== null && ref.target !== null);
+    expect((await at.commands()).map((command) => command.name)).toEqual([
+      "host/hello",
+      "folder/probe",
+      "folder/ask",
+    ]);
+    expect(imported).toEqual([["/work/project/.nyte/plugins/x.ts"]]);
+    expect(await at.command("probe")).toEqual({ kind: "ran", output: "answered" });
+    expect(await at.command("folder/ask")).toEqual({ kind: "prompt", content: "Review this." });
+    expect(await at.command("never")).toEqual({ kind: "unknown" });
+    expect((await host.sessions.list()).items).toEqual([]);
 
-    expect(await secrets.get("token")).toBe("sk-123");
-    expect(JSON.stringify(await kernel.store.objects.get(ref.target))).not.toContain("sk-123");
-
-    await secrets.delete("token");
-
-    expect(await secrets.get("token")).toBeUndefined();
-
-    await loaded([vault]);
-
-    await expect(secrets.set("token", "sk-123")).rejects.toMatchObject({ code: "unavailable" });
-    expect(await secrets.get("token")).toBeUndefined();
+    expect(await at.update({ projectResources: false })).toEqual({ kind: "updated" });
+    expect((await at.commands()).map((command) => command.name)).toEqual(["host/hello"]);
+    await expect(host.workspace(asId("missing")).commands()).rejects.toMatchObject({
+      code: "unknown",
+    });
   });
 });

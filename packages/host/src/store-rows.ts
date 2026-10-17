@@ -1,7 +1,7 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { ByteReader, Ref, Revision, SessionEvent } from "@nyte-ai/schema";
-import { SdkError, loggedEvent } from "@nyte-ai/core";
-import type { StoredRecord } from "@nyte-ai/core";
+import { loggedEvent } from "@nyte-ai/core/store";
+import type { LoggedRow, StoredObject, StoredRecord } from "@nyte-ai/core/store";
 
 export function prefixEnd(prefix: string): string | null {
   const points = Array.from(prefix);
@@ -22,7 +22,7 @@ export function decodeEvent(seq: number, at: number, text: string): SessionEvent
   return loggedEvent(seq, at, JSON.parse(text));
 }
 
-export function numberOf(value: unknown): number {
+export function parseNumber(value: unknown): number {
   if (typeof value === "number") return value;
 
   if (typeof value === "bigint" || typeof value === "string") return Number(value);
@@ -30,7 +30,7 @@ export function numberOf(value: unknown): number {
   throw new SdkError("internal", "A stored number is malformed.");
 }
 
-export function textOf(value: unknown): string | null {
+export function parseText(value: unknown): string | null {
   if (value === null || value === undefined) return null;
 
   if (typeof value === "string") return value;
@@ -38,10 +38,10 @@ export function textOf(value: unknown): string | null {
   throw new SdkError("internal", "A stored text column is malformed.");
 }
 
-export function refOf(row: Readonly<Record<string, unknown>>): Ref {
-  const name = textOf(row.name);
-  const revision = textOf(row.revision);
-  const target = textOf(row.target);
+export function parseRef(row: Readonly<Record<string, unknown>>): Ref {
+  const name = parseText(row.name);
+  const revision = parseText(row.revision);
+  const target = parseText(row.target);
 
   if (name === null || revision === null)
     throw new SdkError("internal", "A stored ref is malformed.");
@@ -53,15 +53,33 @@ export function refOf(row: Readonly<Record<string, unknown>>): Ref {
   };
 }
 
-export function storedRecordOf(row: Readonly<Record<string, unknown>>): StoredRecord {
-  const name = textOf(row.name);
-  const revision = textOf(row.revision);
-  const body = textOf(row.body);
+export function parseStoredRecord(row: Readonly<Record<string, unknown>>): StoredRecord {
+  const name = parseText(row.name);
+  const target = parseText(row.target);
+  const revision = parseText(row.revision);
+  const body = parseText(row.body);
 
-  if (name === null || revision === null || body === null)
+  if (name === null || target === null || revision === null || body === null)
     throw new SdkError("internal", "A stored ref is malformed.");
 
-  return { name, revision, body };
+  return { name, target: asId<"object">(target), revision, body };
+}
+
+export function parseStoredObject(row: Readonly<Record<string, unknown>>): StoredObject {
+  const id = parseText(row.id);
+  const body = parseText(row.body);
+
+  if (id === null || body === null) throw new SdkError("internal", "A stored object is malformed.");
+
+  return { id: asId<"object">(id), body };
+}
+
+export function loggedRow(row: Readonly<Record<string, unknown>>): LoggedRow {
+  const event = parseText(row.event);
+
+  if (event === null) throw new SdkError("internal", "A logged event is malformed.");
+
+  return { seq: parseNumber(row.seq), event };
 }
 
 export async function collect(bytes: AsyncIterable<Uint8Array>): Promise<Uint8Array> {

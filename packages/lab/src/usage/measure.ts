@@ -1,7 +1,7 @@
 import { clearCache, measureNaturalWidth, prepareWithSegments } from "@chenglou/pretext";
 import { useEffect, useState } from "react";
 
-export const DATA_SIZE = 11;
+const DATA_SIZE = 11;
 
 export function dataFont(family: string, weight = 400): string {
   return `${String(weight)} ${String(DATA_SIZE)}px ${family}`;

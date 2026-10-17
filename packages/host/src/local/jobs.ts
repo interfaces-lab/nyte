@@ -3,10 +3,17 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
-import { SdkError, closable, dev } from "@nyte-ai/core";
-import type { ExecutionEnv, Job } from "@nyte-ai/core";
+import {
+  processEnvironment,
+  closable,
+  dev,
+  readTraceparent,
+  startSpan,
+  tracing,
+} from "@nyte-ai/core";
+import type { EndSpan, ExecutionEnv, Job } from "@nyte-ai/core";
 
 type PtyModule = {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
@@ -22,6 +29,11 @@ type Driver = {
 
 const OUTPUT_LIMIT = 1024 * 1024;
 
+/** How far the slowest reader may fall behind a pty before it pauses, and how close it must come again before the pty resumes. */
+const PAUSE_BYTES = 256 * 1024;
+
+const RESUME_BYTES = 64 * 1024;
+
 const STOP_GRACE_MS = 2_000;
 
 const CLOSE_GRACE_MS = 2_000;
@@ -34,15 +46,15 @@ const ESC = "\u001b";
 
 const BEL = "\u0007";
 
-const PROMPT_MARKER = `${ESC}]133;`;
+const PROMPT_MARKER = new RegExp(`${ESC}\\]133;([ABCD])`, "g");
 
 let loaded: PtyModule | null | undefined;
 
-/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell`, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped (the process never stalls), and `exit { code }` last. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` answers whether a pty's shell sits at a prompt: by its OSC 133 prompt markers once it sent one, else when it has printed nothing for 300 ms and the cursor's line holds text after the last newline, as a prompt does (false for a pipe); `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s, and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
+/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` answers whether a pty's shell sits at a prompt: by its OSC 133 prompt markers once it sent one, else when it has printed nothing for 300 ms and the cursor's line holds text after the last newline, as a prompt does (false for a pipe); `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s, and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
 export function localExec(
   root: string,
   options?: {
-    readonly shell?: string;
+    readonly shell?: () => string | null;
     readonly signal?: AbortSignal;
     readonly loadPty?: () => unknown;
   },
@@ -65,8 +77,11 @@ export function localExec(
     if (typeof command !== "string" && command.length === 0 && input?.pty === undefined)
       throw new SdkError("invalid", "An empty command runs only in a pty, as the login shell.");
     const cwd = input?.cwd === undefined ? root : resolve(root, input.cwd);
+    await processEnvironment();
     const env = { ...process.env, ...input?.env };
-    const log = createOutputLog(OUTPUT_LIMIT);
+    const trace = readTraceparent(input?.env?.TRACEPARENT);
+    const spawned = startSpan("pty.spawn", trace, { pty: input?.pty !== undefined });
+    const log = tracedOutput(createOutputLog(OUTPUT_LIMIT), trace);
     let settle: (end: JobEnd) => void = () => undefined;
 
     const ended = new Promise<JobEnd>((done) => {
@@ -86,13 +101,15 @@ export function localExec(
 
     const driver =
       input?.pty === undefined
-        ? await pipe(command, { cwd, env }, log, finish)
+        ? await pipe(command, { cwd, env, protocol: input?.stdio === "protocol" }, log, finish)
         : await terminal(
             command,
-            { cwd, env, size: input.pty, shell: options?.shell, load },
+            { cwd, env, size: input.pty, shell: options?.shell?.() ?? undefined, load },
             log,
             finish,
           );
+
+    spawned();
 
     dev("jobs", "start", {
       program: typeof command === "string" ? command.split(/\s/, 1)[0] : (command[0] ?? null),
@@ -163,7 +180,7 @@ export function localExec(
 
 async function pipe(
   command: string | readonly string[],
-  options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },
+  options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv; readonly protocol: boolean },
   log: OutputLog,
   finish: (code: number | null) => void,
 ): Promise<Driver> {
@@ -191,7 +208,21 @@ async function pipe(
   });
 
   child.stdout?.on("data", (chunk: Buffer) => log.push(chunk));
-  child.stderr?.on("data", (chunk: Buffer) => log.push(chunk));
+  child.stderr?.on("data", (chunk: Buffer) =>
+    log.push(chunk, options.protocol ? "stderr" : undefined),
+  );
+
+  if (options.protocol)
+    log.throttle({
+      pause: () => {
+        child.stdout?.pause();
+        child.stderr?.pause();
+      },
+      resume: () => {
+        child.stdout?.resume();
+        child.stderr?.resume();
+      },
+    });
   child.stdin?.on("error", () => undefined);
   child.on("close", (code) => finish(code));
   child.on("exit", (code) => {
@@ -222,6 +253,13 @@ async function pipe(
       }
     },
   };
+}
+
+/** The environment a pty starts with: the process's, as a terminal emulator announces itself, without the variables that would make a child Node or Electron run as the host does. */
+function terminalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const { ELECTRON_RUN_AS_NODE: _electron, NODE_OPTIONS: _node, ...rest } = env;
+
+  return { ...rest, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Nyte" };
 }
 
 async function terminal(
@@ -268,7 +306,7 @@ async function terminal(
       cols: options.size.columns,
       rows: options.size.rows,
       cwd: options.cwd,
-      env: { ...options.env, TERM: "xterm-256color" },
+      env: terminalEnv(options.env),
     });
   } catch (error) {
     throw new SdkError(
@@ -295,6 +333,7 @@ async function terminal(
     if (returned >= 0) line = line.slice(returned + 1);
   });
   term.onExit(({ exitCode, signal }) => finish(signal ? null : exitCode));
+  log.throttle({ pause: () => term.pause(), resume: () => term.resume() });
 
   return {
     pty: true,
@@ -320,15 +359,7 @@ async function terminal(
 }
 
 function lastMarker(text: string): string | null {
-  let found: string | null = null;
-
-  for (let at = text.indexOf(PROMPT_MARKER); at >= 0; at = text.indexOf(PROMPT_MARKER, at + 1)) {
-    const letter = text[at + PROMPT_MARKER.length] ?? "";
-
-    if ("ABCD".includes(letter) && letter !== "") found = letter;
-  }
-
-  return found;
+  return Array.from(text.matchAll(PROMPT_MARKER), (match) => match[1]).at(-1) ?? null;
 }
 
 function withoutEscapes(text: string): string {
@@ -371,13 +402,15 @@ function ptyFrom(load: () => unknown): PtyModule | null {
   try {
     const required = load();
 
-    return isPtyModule(required) ? required : null;
+    return fitsPtyModule(required) ? required : null;
   } catch {
     return null;
   }
 }
 
-function isPtyModule(value: unknown): value is PtyModule {
+/** Whether a required module exports `spawn`, as `@lydell/node-pty` does. */
+// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- a guard: inlined, the check narrows `spawn` to Function, not to the module's typed signature
+function fitsPtyModule(value: unknown): value is PtyModule {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -404,20 +437,63 @@ function waitEnd(ended: Promise<JobEnd>, request: RequestOptions | undefined): P
 }
 
 type OutputLog = {
-  push(bytes: Uint8Array): void;
+  push(bytes: Uint8Array, stream?: "stderr"): void;
   end(code: number | null): void;
   reader(): { next(): Promise<IteratorResult<OutputFrame>>; close(): void };
+  /** Pauses the source while the slowest reader is `PAUSE_BYTES` behind, until it is back within `RESUME_BYTES`. */
+  throttle(source: { pause(): void; resume(): void }): void;
 };
 
+/** `log`, timing its output as the `pty.output` span of `trace` from the first byte to the exit while tracing is on. */
+function tracedOutput(log: OutputLog, trace: string | null): OutputLog {
+  if (!tracing.enabled) return log;
+  let ended: EndSpan | null = null;
+  let bytes = 0;
+
+  return {
+    ...log,
+    push(chunk, stream) {
+      ended ??= startSpan("pty.output", trace);
+      bytes += chunk.byteLength;
+      log.push(chunk, stream);
+    },
+    end(code) {
+      ended?.({ bytes, code });
+      log.end(code);
+    },
+  };
+}
+
+/** A process's output kept for its readers: the last `limit` bytes, a reader that falls further behind skipping to a gap. */
 function createOutputLog(limit: number): OutputLog {
   const state: {
-    readonly chunks: Uint8Array[];
+    readonly chunks: Extract<OutputFrame, { readonly kind: "bytes" }>[];
     first: number;
     size: number;
+    pushed: number;
     exit: { readonly code: number | null } | null;
-  } = { chunks: [], first: 0, size: 0, exit: null };
+  } = { chunks: [], first: 0, size: 0, pushed: 0, exit: null };
 
   const waiters = new Set<() => void>();
+  const positions = new Set<{ read: number }>();
+  let source: { pause(): void; resume(): void } | null = null;
+  let paused = false;
+
+  const behind = (): number =>
+    Math.max(0, ...[...positions].map((position) => state.pushed - position.read));
+
+  const pace = (): void => {
+    if (source === null) return;
+    const lag = behind();
+
+    if (!paused && lag > PAUSE_BYTES) {
+      paused = true;
+      source.pause();
+    } else if (paused && lag < RESUME_BYTES) {
+      paused = false;
+      source.resume();
+    }
+  };
 
   const wake = (): void => {
     const pending = [...waiters];
@@ -427,15 +503,24 @@ function createOutputLog(limit: number): OutputLog {
   };
 
   return {
-    push(bytes) {
-      state.chunks.push(bytes);
+    throttle(next) {
+      source = next;
+    },
+    push(bytes, stream) {
+      state.chunks.push(
+        stream === undefined
+          ? { kind: "bytes", data: bytes }
+          : { kind: "bytes", data: bytes, stream },
+      );
       state.size += bytes.byteLength;
+      state.pushed += bytes.byteLength;
 
       while (state.size > limit && state.chunks.length > 1) {
-        state.size -= state.chunks.shift()?.byteLength ?? 0;
+        state.size -= state.chunks.shift()?.data.byteLength ?? 0;
         state.first += 1;
       }
 
+      pace();
       wake();
     },
     end(code) {
@@ -446,6 +531,8 @@ function createOutputLog(limit: number): OutputLog {
       let cursor = 0;
       let done = false;
       let waiting: (() => void) | null = null;
+      const position = { read: 0 };
+      positions.add(position);
 
       return {
         async next() {
@@ -454,16 +541,19 @@ function createOutputLog(limit: number): OutputLog {
 
             if (cursor < state.first) {
               cursor = state.first;
+              position.read = state.pushed - state.size;
 
               return { done: false, value: { kind: "gap" } };
             }
 
-            const data = state.chunks[cursor - state.first];
+            const chunk = state.chunks[cursor - state.first];
 
-            if (data !== undefined) {
+            if (chunk !== undefined) {
               cursor += 1;
+              position.read += chunk.data.byteLength;
+              pace();
 
-              return { done: false, value: { kind: "bytes", data } };
+              return { done: false, value: chunk };
             }
 
             if (state.exit !== null) {
@@ -481,6 +571,8 @@ function createOutputLog(limit: number): OutputLog {
         },
         close() {
           done = true;
+          positions.delete(position);
+          pace();
           const resolve = waiting;
           waiting = null;
 

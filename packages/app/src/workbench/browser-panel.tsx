@@ -1,26 +1,34 @@
 import { button, row, space } from "@nyte-ai/ui/styles/schema.stylex";
-import { create, props } from "@stylexjs/stylex";
+import { create, keyframes, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, ReactElement, ReactNode, RefObject } from "react";
-import type { BrowserBoundsMessage, BrowserBridge, BrowserNavigationAction } from "../bridge.ts";
+import type {
+  BrowserBoundsMessage,
+  BrowserBridge,
+  BrowserElementPick,
+  BrowserNavigationAction,
+} from "../bridge.ts";
+import { addToChat } from "../conversation/add-to-chat.ts";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
-import { overlayCovers, subscribeOverlayRects } from "../components/overlay-occlusion.ts";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
+import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { WorkbenchRail } from "./workbench-rail.tsx";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte";
-import { macPlatform } from "../platform.ts";
+import { openExternal } from "../open-external.ts";
 import { keys } from "../queries.ts";
 import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
 import type { AddressFieldHandle } from "./browser-address-field.tsx";
 import { useBrowserHistory } from "./browser-history.ts";
+import { keyOwner } from "../shell/focus-owner.ts";
+import { overlayCovers, subscribeOverlayRects } from "./browser-occlusion.ts";
 import {
   applyBrowserEvent,
   claimBrowserSurface,
@@ -39,6 +47,11 @@ import type { BrowserShortcut } from "./browser-shortcuts.ts";
 import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
 import { ShieldMenu } from "./browser-shield.tsx";
 
+const pageLoading = keyframes({
+  from: { transform: "translateX(-100%)" },
+  to: { transform: "translateX(340%)" },
+});
+
 const styles = create({
   panel: {
     display: "flex",
@@ -48,7 +61,25 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  toolbar: { gap: space.s2 },
+  toolbar: { position: "relative", gap: space.s2 },
+  /** A thin line over the toolbar's bottom edge while a page loads; the page's native view stays put. */
+  progress: {
+    position: "absolute",
+    insetInline: 0,
+    insetBlockEnd: 0,
+    height: space.s0_5,
+    overflow: "clip",
+    pointerEvents: "none",
+  },
+  progressBar: {
+    width: { default: "30%", "@media (prefers-reduced-motion: reduce)": "100%" },
+    height: "100%",
+    backgroundColor: role.bgInteractiveStrong,
+    animationName: { default: pageLoading, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationDuration: "1.2s",
+    animationTimingFunction: motion.easeOut,
+    animationIterationCount: "infinite",
+  },
   bookmarks: {
     display: "flex",
     alignItems: "center",
@@ -142,8 +173,10 @@ const styles = create({
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },
-  // Sits under the native view at all times, so hiding the page reveals a
-  // still frame that is already painted rather than an empty panel.
+  /**
+   * Sits under the native view at all times, so hiding the page reveals a
+   * still frame that is already painted rather than an empty panel.
+   */
   frozenFrame: {
     position: "absolute",
     inset: 0,
@@ -190,23 +223,30 @@ function releaseSurface(surface: string): void {
     .catch(() => undefined);
 }
 
-function sameBounds(a: BrowserBoundsMessage, b: BrowserBoundsMessage): boolean {
-  return (
-    a.visible === b.visible &&
-    a.bounds.x === b.bounds.x &&
-    a.bounds.y === b.bounds.y &&
-    a.bounds.width === b.bounds.width &&
-    a.bounds.height === b.bounds.height
-  );
+/** Where the page sits and whether it takes the keys as it shows. */
+interface SurfacePlacement {
+  /** An overlay hides the page, so its last frame stands in for it. */
+  readonly covered: boolean;
+  /** The page takes the keys once a placement shows it, unless something else owns them by then. */
+  readonly focus: () => void;
+  /** The panel's own controls took the keys, so a pending page focus is dropped. */
+  readonly cancelFocus: () => void;
 }
 
-function useSurfaceBounds(
+/**
+ * The page composites above the renderer, so it steps aside while a menu or a
+ * dialog overlaps it. The overlay store already batches to a frame, so an
+ * overlay change applies at once rather than a frame after the popup painted.
+ */
+function useSurfacePlacement(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
   visible: boolean,
-): boolean {
+): SurfacePlacement {
   const [covered, setCovered] = useState(false);
   const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
+  const pageFocus = useRef(false);
+  const placeRef = useRef<() => void>(() => undefined);
   useLayoutEffect(() => {
     const element = slot.current;
 
@@ -217,8 +257,6 @@ function useSurfaceBounds(
       frame = undefined;
       const rect = element.getBoundingClientRect();
 
-      // The page composites above the renderer, so it has to step aside while a
-      // menu or a dialog overlaps it.
       const overlapped = overlayCovers({
         left: rect.left,
         top: rect.top,
@@ -227,20 +265,39 @@ function useSurfaceBounds(
       });
 
       setCovered(overlapped);
+      const shown = visible && !overlapped && rect.width > 0 && rect.height > 0;
+      const focus = shown && pageFocus.current && keyOwner() === undefined;
+
+      if (shown) pageFocus.current = false;
 
       const message: BrowserBoundsMessage = {
         surface,
         bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-        visible: visible && !overlapped && rect.width > 0 && rect.height > 0,
+        visible: shown,
+        focus,
       };
 
-      if (lastRef.current !== undefined && sameBounds(lastRef.current, message)) return;
+      const last = lastRef.current;
+
+      const unchanged =
+        last !== undefined &&
+        last.visible === message.visible &&
+        last.bounds.x === message.bounds.x &&
+        last.bounds.y === message.bounds.y &&
+        last.bounds.width === message.bounds.width &&
+        last.bounds.height === message.bounds.height;
+
+      if (unchanged && !focus) return;
       lastRef.current = message;
       browserBridge().setBounds(message);
     };
 
     const schedule = (): void => {
       frame ??= requestAnimationFrame(measure);
+    };
+
+    const scrolled = (event: Event): void => {
+      if (event.target instanceof Node && event.target.contains(element)) schedule();
     };
 
     const observer = new ResizeObserver(schedule);
@@ -250,45 +307,54 @@ function useSurfaceBounds(
     }
 
     window.addEventListener("resize", schedule);
-    document.addEventListener("scroll", schedule, { capture: true, passive: true });
-    // The overlay store already batches to a frame, so this applies at once
-    // rather than a frame after the popup painted.
+    document.addEventListener("scroll", scrolled, { capture: true, passive: true });
     const unsubscribe = subscribeOverlayRects(measure);
+    placeRef.current = schedule;
     measure();
 
     return () => {
+      placeRef.current = () => undefined;
       observer.disconnect();
       unsubscribe();
       window.removeEventListener("resize", schedule);
-      document.removeEventListener("scroll", schedule, { capture: true });
+      document.removeEventListener("scroll", scrolled, { capture: true });
 
       if (frame !== undefined) cancelAnimationFrame(frame);
       const last = lastRef.current;
 
       if (last !== undefined && last.visible) {
-        lastRef.current = { ...last, visible: false };
+        lastRef.current = { ...last, visible: false, focus: false };
         browserBridge().setBounds(lastRef.current);
       }
     };
   }, [slot, surface, visible]);
 
-  return covered;
+  return {
+    covered,
+    focus: () => {
+      pageFocus.current = true;
+      placeRef.current();
+    },
+    cancelFocus: () => {
+      pageFocus.current = false;
+    },
+  };
 }
 
 /**
  * The page's last pixels, painted in the slot the native view sits over and
  * refreshed whenever an overlay forces the page to hide, so an open menu leaves
  * a still frame behind it instead of an empty panel. A frame belongs to the url
- * it was taken from; after a navigation the old one is not shown again.
+ * it was taken from; after a navigation the old one is not shown again. A page
+ * re-covered later needs a fresh capture, and a frame is page-sized pixels, so
+ * none is kept once nothing shows it.
  */
 function usePageFrame(surface: string, url: string, covered: boolean): string | undefined {
   const frame = useQuery({
     queryKey: keys.browserFrame(surface, url),
     queryFn: () => browserBridge().captureFrame({ surface }),
     enabled: covered && url !== "",
-    // A page re-covered later needs a fresh capture.
     staleTime: 0,
-    // A frame is page-sized pixels; nothing shows one from a url the panel left.
     gcTime: 0,
   });
 
@@ -314,6 +380,27 @@ function blockedPermissionsLabel(permissions: readonly string[]): string {
   return `Blocked by Nyte: ${names.join(", ")}`;
 }
 
+const PNG_DATA_URL = "data:image/png;base64,";
+
+/** A picked element goes to the chat as its HTML under its selector, with its crop as a picture. */
+function addElementToChat(picked: BrowserElementPick): void {
+  const image =
+    picked.image?.startsWith(PNG_DATA_URL) === true
+      ? new File([Uint8Array.fromBase64(picked.image.slice(PNG_DATA_URL.length))], "element.png", {
+          type: "image/png",
+        })
+      : undefined;
+
+  addToChat({
+    reference: {
+      kind: "excerpt",
+      source: { kind: "browser", url: picked.url, selector: picked.selector },
+      text: picked.html,
+    },
+    image,
+  });
+}
+
 interface BrowserPanelProps {
   readonly surface: string;
   readonly visible: boolean;
@@ -326,6 +413,14 @@ interface BrowserPanelProps {
   readonly workspacePath: string | null;
 }
 
+/**
+ * The surface hold lasts as long as the panel shows this surface for this
+ * owner. Navigation never ends it; only leaving does, and that is the one
+ * close. The first open retains the view holder in main. Later runs ask for a
+ * page only when the tab url moved away from what the page shows: an address
+ * the user entered, a bookmark, a history entry. A url that arrived from the
+ * page itself (a link, back, forward, a redirect) is already where it points.
+ */
 export function BrowserPanel({
   surface,
   visible,
@@ -345,19 +440,18 @@ export function BrowserPanel({
   const history = useBrowserHistory(workspacePath);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
+  const [picking, setPicking] = useState(false);
   const stateUrl = state?.url;
   const blank = parseWebUrl(url) === undefined;
   const currentUrl = stateUrl ?? (blank ? "" : url);
   const hasPage = state !== undefined && state.url !== "";
   const showSurface = visible && hasPage && state.error === undefined;
 
-  const covered = useSurfaceBounds(slotRef, surface, showSurface);
-  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", covered);
+  const page = useSurfacePlacement(slotRef, surface, showSurface);
+  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", page.covered);
 
   const holdRef = useRef<SurfaceHold | undefined>(undefined);
 
-  // The hold lasts as long as the panel shows this surface for this owner.
-  // Navigation never ends it; only leaving does, and that is the one close.
   useEffect(() => {
     const hold: SurfaceHold = { opened: false, url: undefined, released: false };
     holdRef.current = hold;
@@ -369,10 +463,6 @@ export function BrowserPanel({
     };
   }, [surface, workspacePath]);
 
-  // The first open retains the view holder in main. Later runs ask for a page
-  // only when the tab url moved away from what the page shows: an address the
-  // user entered, a bookmark, a history entry. A url that arrived from the page
-  // itself (a link, back, forward, a redirect) is already where it points.
   useEffect(() => {
     const hold = holdRef.current;
 
@@ -441,12 +531,21 @@ export function BrowserPanel({
       .catch(() => undefined);
   };
 
-  const focusControls = (): void => browserBridge().setFocus({ surface, focused: true });
+  const focusControls = (): void => {
+    page.cancelFocus();
+    browserBridge().setFocus({ surface, focused: true });
+  };
 
-  const focusPage = (): void => {
+  const pickElement = (): void => {
+    setFailure(undefined);
+    setPicking(true);
     void browserBridge()
-      .focusPage({ surface })
-      .catch(() => undefined);
+      .pickElement({ surface })
+      .then((picked) => {
+        if (picked !== undefined) addElementToChat(picked);
+      })
+      .catch((cause: unknown) => setFailure(errorMessage(cause)))
+      .finally(() => setPicking(false));
   };
 
   const runShortcut = (shortcut: BrowserShortcut): boolean => {
@@ -488,6 +587,11 @@ export function BrowserPanel({
         return true;
       case "history":
         onToggleHistory();
+
+        return true;
+      case "add-to-chat":
+        if (!hasPage) return false;
+        pickElement();
 
         return true;
       default: {
@@ -563,7 +667,7 @@ export function BrowserPanel({
 
         const shortcut = resolveBrowserShortcut(
           event,
-          macPlatform(undefined),
+          nyte.platform === "darwin",
           event.target === event.currentTarget ? "page" : "panel",
         );
 
@@ -610,7 +714,7 @@ export function BrowserPanel({
           bookmarks={bookmarks.items}
           onOpen={go}
           onForget={forget}
-          onDismiss={focusPage}
+          onDismiss={page.focus}
         >
           {secure === "https" && draft === undefined && (
             <span {...props(styles.addressIcon)} title="Secure connection">
@@ -628,6 +732,16 @@ export function BrowserPanel({
             </span>
           )}
         </AddressField>
+        {hasPage && (
+          <Toggle
+            iconOnly
+            icon="code-brackets"
+            aria-label="Add Element to Chat"
+            aria-keyshortcuts={nyte.platform === "darwin" ? "Meta+Shift+L" : "Control+Shift+L"}
+            pressed={picking}
+            onPressedChange={pickElement}
+          />
+        )}
         {hasPage && <ShieldMenu state={state} onChanged={() => navigate("reload")} />}
         {hasPage ? (
           <ButtonLink
@@ -639,7 +753,7 @@ export function BrowserPanel({
             aria-label="Open in system browser"
             onClick={(event) => {
               event.preventDefault();
-              void nyte.host.openExternal({ url: currentUrl }).catch(() => undefined);
+              openExternal(currentUrl);
             }}
           />
         ) : (
@@ -662,6 +776,11 @@ export function BrowserPanel({
           </span>
         )}
         {toolbarActions}
+        {loading && (
+          <div role="progressbar" aria-label="Loading page" {...props(styles.progress)}>
+            <div {...props(styles.progressBar)} />
+          </div>
+        )}
       </div>
       {failure !== undefined && (
         <div role="alert" {...props(styles.notice)}>
@@ -711,7 +830,7 @@ export function BrowserPanel({
           ))}
         </div>
       )}
-      {finding && hasPage && <FindBar ref={findRef} surface={surface} onClose={focusPage} />}
+      {finding && hasPage && <FindBar ref={findRef} surface={surface} onClose={page.focus} />}
       <DownloadsBar surface={surface} downloads={downloads} />
       {login !== undefined && (
         <LoginDialog key={login.host} surface={surface} host={login.host} realm={login.realm} />
@@ -721,10 +840,10 @@ export function BrowserPanel({
           {pageFrame !== undefined && (
             <img src={pageFrame} alt="" aria-hidden="true" {...props(styles.frozenFrame)} />
           )}
-          {covered && pageFrame !== undefined && <div {...props(styles.frozenVeil)} />}
+          {page.covered && pageFrame !== undefined && <div {...props(styles.frozenVeil)} />}
           {!hasPage && failure === undefined && (
             <div {...props(styles.message)}>
-              <span {...props(styles.messageTitle)}>Nothing open</span>
+              <span {...props(styles.messageTitle)}>Type an address or a search</span>
             </div>
           )}
           {state?.error !== undefined && state.error.untrustedHost === undefined && (

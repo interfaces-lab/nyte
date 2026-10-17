@@ -6,9 +6,9 @@ import type {
 } from "@earendil-works/pi-codemode";
 import { renderToolSample } from "@earendil-works/pi-codemode/declarations";
 import { CODEMODE_SOURCE_GRAMMAR, parseCodemodeSource } from "@earendil-works/pi-codemode/source";
-import { SdkError, dev, isJsonObject } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core";
 import type { ToolDefinition, ToolInvocation } from "@nyte-ai/core";
-import { isJson, standard } from "@nyte-ai/schema";
+import { isJson, isJsonObject, SdkError, standard } from "@nyte-ai/schema";
 import type { Json, ToolContent, ToolInfo, ToolOutcome } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Plugin, PluginApi } from "@nyte-ai/plugin/core";
@@ -18,6 +18,8 @@ const DESCRIPTION = `Run JavaScript that calls other tools. The input is raw Jav
 - Optional first line: \`// @options: {"timeout_ms": 60000}\`
 - \`text(value)\`, \`console.log(...)\` and \`return\` add output; \`store(key, value)\` and \`load(key)\` keep JSON values across codemode calls in this session.
 - \`ALL_TOOLS\`, \`searchTools(query, { limit?, namespace? })\` and \`describeTool(name)\` find tools and their declarations.`;
+
+const SUMMARY_CHARS = 160;
 
 const parameters = standard(
   Type.Object({ code: Type.String({ description: "Raw JavaScript source." }) }),
@@ -40,8 +42,35 @@ export function codemodePlugin(
     id: "codemode",
     activate(api) {
       api.contribute.tools.add(codemode(api, runtime));
+      api.contribute.prompt.add((draft, siblings) => {
+        const reachable = siblings.tools
+          .list()
+          .flatMap((tool) =>
+            tool.exposure === "code" || tool.exposure === "deferred"
+              ? [`- ${tool.name}: ${summarize(tool.description)}`]
+              : [],
+          )
+          .toSorted();
+
+        if (reachable.length === 0) return;
+
+        draft.set("codemode", {
+          id: "codemode",
+          order: 96,
+          text: [
+            "Tools you reach only from a codemode script, as `await tools.<name>(args)`; `describeTool(name)` inside a script returns a tool's arguments:",
+            ...reachable,
+          ].join("\n"),
+        });
+      });
     },
   };
+}
+
+function summarize(description: string): string {
+  const [line = ""] = description.trim().split("\n");
+
+  return line.length > SUMMARY_CHARS ? `${line.slice(0, SUMMARY_CHARS)}…` : line;
 }
 
 function codemode(
@@ -54,6 +83,8 @@ function codemode(
     parameters,
     grammar: { kind: "lark", source: CODEMODE_SOURCE_GRAMMAR },
     class: () => ({ kind: "custom", label: "Running a script" }),
+    effects: "none",
+    approval: "never",
     replay: "never",
     async execute(args, invocation) {
       const { code, options } = parseCodemodeSource(args.code);

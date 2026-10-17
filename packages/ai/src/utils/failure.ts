@@ -31,7 +31,8 @@
  * - DashScope/Qwen: "Range of input length should be [1, X]"
  * - Ollama: "prompt too long; exceeded max context length by X tokens"
  */
-import type { Api, AssistantMessage, Failure, FailureClass, Model } from "@nyte-ai/schema/model";
+import type { Failure, FailureClass } from "@nyte-ai/schema";
+import type { Api, AssistantMessage, Model } from "@nyte-ai/schema/model";
 
 const CONTEXT_WINDOW_PATTERNS = [
   /prompt (?:is )?too long/i,
@@ -80,10 +81,20 @@ const QUOTA_PATTERN = pattern([
   "Monthly usage limit reached",
   "available balance",
   "insufficient[_ -]?quota",
+  "out[_ ]of[_ ]credits",
   "out of budget",
   "quota exceeded",
   "billing",
 ]);
+
+/**
+ * Whether provider error text reports spent quota or credit, which waiting does not lift. It
+ * outranks a 429 status: providers answer exhausted credit with 429, e.g. Anthropic's
+ * `extra_usage_out_of_credits`.
+ */
+export function reportsQuotaExhaustion(text: string): boolean {
+  return QUOTA_PATTERN.test(text);
+}
 
 const AUTH_PATTERN = pattern([
   "\\b401\\b",
@@ -181,7 +192,7 @@ function structuredClass(message: AssistantMessage): FailureClass | undefined {
   return undefined;
 }
 
-function classOf(text: string, provider: string): FailureClass {
+function classifyText(text: string, provider: string): FailureClass {
   if (
     !NOT_CONTEXT_WINDOW_PATTERN.test(text) &&
     (CONTEXT_WINDOW_PATTERNS.some((p) => p.test(text)) ||
@@ -190,7 +201,7 @@ function classOf(text: string, provider: string): FailureClass {
     return "context_window";
   }
 
-  if (QUOTA_PATTERN.test(text)) return "quota";
+  if (reportsQuotaExhaustion(text)) return "quota";
 
   if (RATE_LIMIT_PATTERN.test(text)) return "rate_limit";
 
@@ -259,7 +270,9 @@ export function classifyAssistantFailure(
 
   const text = message.errorMessage ?? "Unknown error";
   const failure: Failure = {
-    class: structuredClass(message) ?? classOf(text, message.provider),
+    class: reportsQuotaExhaustion(text)
+      ? "quota"
+      : (structuredClass(message) ?? classifyText(text, message.provider)),
     message: text,
   };
   const delay = retryAfterMs(message);
@@ -268,7 +281,7 @@ export function classifyAssistantFailure(
 }
 
 /** Whether another attempt can change the answer: load, limits that lift, and transport. */
-export function isRetryableFailureClass(failureClass: FailureClass): boolean {
+export function retryCanHelp(failureClass: FailureClass): boolean {
   switch (failureClass) {
     case "rate_limit":
     case "overloaded":

@@ -10,8 +10,8 @@ import type {
   ToolClass,
   UserContent,
 } from "@nyte-ai/sdk";
-import { toolStatus } from "../view-helpers.ts";
-import type { ToolMessage } from "../view-helpers.ts";
+import { toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
@@ -21,36 +21,32 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Row } from "@nyte-ai/ui/row";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   useCatalog,
   useChildSessions,
   useSession,
+  useSessionActivity,
   useSessionChoice,
-  useSessionView,
   useWorkspaces,
 } from "../queries.ts";
 import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 import { modelDisplayName, providerIcon, THINKING_LABELS } from "./model-picker-state.ts";
-import { activityStyles, proseStyles, subagentCallStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
+import { proseStyles } from "./prose.stylex.ts";
+import { subagentCallStyles } from "./subagent-call.stylex.ts";
 import {
   useCalledChild,
   useChildSession,
   useOpenSubagentTray,
   useSubagentChildren,
 } from "./subagent-sessions.ts";
-import {
-  callStatus,
-  DELEGATE_NOUNS,
-  DELEGATE_VERBS,
-  sessionStatus,
-  subagentActivity,
-} from "./subagent-status.ts";
+import { callStatus, sessionStatus } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
-export type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
+type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 const lineStyles = create({
   detailsRow: { display: "flex", alignItems: "center", gap: space.s1 },
@@ -69,13 +65,13 @@ const lineStyles = create({
     textDecorationLine: "underline",
     textDecorationColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "currentColor" },
+      ":hover": { [media.hover]: "currentColor" },
       ":focus-visible": "currentColor",
     },
     transitionProperty: "text-decoration-color",
     transitionDuration: {
       default: motion.durationFast,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "0s" },
+      ":hover": { [media.hover]: "0s" },
       ":focus-visible": "0s",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
@@ -136,7 +132,7 @@ function SubagentStatusLine({
   readonly watched: SessionId | undefined;
   readonly cwd: string | undefined;
 }): ReactElement {
-  const activity = subagentActivity(useSessionView(watched), cwd);
+  const activity = useSessionActivity(watched, cwd);
   const running = status.indicator === "running";
 
   return (
@@ -363,7 +359,7 @@ export function SubagentLineView({
   const tray = useOpenSubagentTray();
   const openTray = session === undefined ? undefined : tray;
   const label = child ?? toolClass.title ?? "agent";
-  const verb = status.tense === "none" ? undefined : DELEGATE_VERBS[toolClass.role][status.tense];
+  const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
   const expandable = output.trim() !== "";
 
   const agent = (
@@ -410,9 +406,7 @@ export function SubagentLineView({
           </Row.Primary>
         )}
       </span>
-      {verb === undefined && (
-        <span {...props(toolLineStyles.action)}>{DELEGATE_NOUNS[toolClass.role]}</span>
-      )}
+      {verb === undefined && <span {...props(toolLineStyles.action)}>{toolNoun(toolClass)}</span>}
       <ToolOutcome status={status} />
       {expandable && (
         <Collapsible.Trigger
@@ -549,8 +543,17 @@ function CitationModel({ session }: { readonly session: SessionInfo }): ReactEle
   );
 }
 
-function CitationFolder({ session }: { readonly session: SessionInfo }): string {
-  return useWorkspaces().data?.find((candidate) => candidate.id === session.workspace)?.name ?? "";
+/** The folder a subagent works in, or the branch of the worktree it works in. */
+function CitationFolder({ session }: { readonly session: SessionInfo }): ReactElement {
+  const workspace = useWorkspaces().data?.find((candidate) => candidate.id === session.workspace);
+  const branch = workspace?.worktree?.branch;
+
+  return (
+    <span title={workspace?.path} {...props(citationStyles.detail)}>
+      <Icon name={branch === undefined ? "folder" : "git-branch"} size={12} />
+      <span {...props(citationStyles.detailText)}>{branch ?? workspace?.name ?? ""}</span>
+    </span>
+  );
 }
 
 export function SubagentCitation({
@@ -595,12 +598,7 @@ export function SubagentCitation({
       <PreviewCardContent side="bottom" align="start" xstyle={citationStyles.popup}>
         <div {...props(text.sm, citationStyles.card)}>
           <span {...props(citationStyles.title)}>{title ?? name}</span>
-          <span {...props(citationStyles.detail)}>
-            <Icon name="folder" size={12} />
-            <span {...props(citationStyles.detailText)}>
-              <CitationFolder session={child} />
-            </span>
-          </span>
+          <CitationFolder session={child} />
           <CitationModel session={child} />
         </div>
       </PreviewCardContent>

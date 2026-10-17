@@ -9,8 +9,9 @@ import { keyThumbprint, verifyProof } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
 import type { Context } from "./context.ts";
 import { Refusal } from "./http.ts";
-import { consumeProof, findEnvironment } from "./store.ts";
-import type { Environment } from "./store.ts";
+import { findEnvironment } from "./store/environments.ts";
+import { consumeProof } from "./store/replays.ts";
+import type { Environment } from "./store/rows.ts";
 
 function proofToken(request: Request): string {
   const token = request.headers.get(PROOF_HEADER);

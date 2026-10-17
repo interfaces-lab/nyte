@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { DeviceCode } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
 import { connection } from "../sdk.tsx";
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -19,7 +20,7 @@ interface LoginAttemptView {
   readonly cancelling: boolean;
 }
 
-export type LoginOutcome = { readonly kind: "connected" } | { readonly kind: "cancelled" };
+type LoginOutcome = { readonly kind: "connected" } | { readonly kind: "cancelled" };
 
 interface Running {
   readonly view: LoginAttemptView;
@@ -61,6 +62,7 @@ export async function startLogin(
     method: method.kind === "browser" ? { kind: "oauth" } : { kind: "key" },
     browser: LOOPBACK.has(endpoint.hostname) ? "host" : "elsewhere",
   });
+
   const steps = login.steps()[Symbol.asyncIterator]();
   const cancelled = Promise.withResolvers<"cancelled">();
 
@@ -91,7 +93,10 @@ export async function startLogin(
         case "open":
           if (step.code === undefined) {
             patch(provider, attempt, { browser: { url: step.url, acceptsCode: false } });
-            void nyte.host.openExternal({ url: step.url }).catch(() => undefined);
+            openExternal(
+              step.url,
+              "Couldn't open the sign-in page. Use Open Sign-In Page instead.",
+            );
           } else {
             patch(provider, attempt, {
               deviceCode: { userCode: step.code, verificationUri: step.url },

@@ -35,7 +35,7 @@ function segmentColor(theme: CliTheme, segment: PowerlineSegment): string {
   }
 }
 
-export function powerlineChunks(
+function powerlineChunks(
   powerline: Partial<PowerlineState>,
   width: number,
   theme: CliTheme,

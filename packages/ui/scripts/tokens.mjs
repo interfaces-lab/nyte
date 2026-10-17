@@ -30,9 +30,9 @@ function declarations(body) {
     else if (character === ")") depth -= 1;
     else if (index === body.length || (character === ";" && depth === 0)) {
       const declaration = body.slice(start, index);
-      const colon = declaration.indexOf(":");
+      const [name = "", ...value] = declaration.split(":");
 
-      if (colon > 0) out[declaration.slice(0, colon).trim()] = declaration.slice(colon + 1).trim();
+      if (name !== "" && value.length > 0) out[name.trim()] = value.join(":").trim();
       start = index + 1;
     }
   }

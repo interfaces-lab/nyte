@@ -1,4 +1,5 @@
 import { AccountScope, accountAppearance } from "@nyte-ai/app/account/appearance.tsx";
+import { publishDeferred } from "@nyte-ai/app/deferred.tsx";
 import { ClerkLoading, ClerkProvider, SignIn, useClerk } from "@clerk/electron/react";
 import { useEffect } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -13,7 +14,7 @@ const bridge = window.nyteAccount;
 const redirectUrl = new URL(window.location.pathname, window.location.href).href;
 
 /** The account's sign-in address and nothing more: no name, username, or photo. */
-function labelOf(user: User): string {
+function formatAccountLabel(user: User): string {
   return (
     user.primaryEmailAddress?.emailAddress ?? user.primaryPhoneNumber?.phoneNumber ?? "Nyte account"
   );
@@ -64,7 +65,7 @@ function connect(clerk: Clerk, show: (command: AccountCommand | undefined) => vo
 
     report(
       session !== undefined && user != null
-        ? { kind: "signed_in", label: labelOf(user) }
+        ? { kind: "signed_in", label: formatAccountLabel(user) }
         : { kind: "signed_out" },
     );
 
@@ -84,8 +85,9 @@ function connect(clerk: Clerk, show: (command: AccountCommand | undefined) => vo
       return;
     }
 
-    // Signed out or a session task still open: the page shows Clerk until it is done.
-    if (session === undefined) return;
+    const clerkStillShown = session === undefined;
+
+    if (clerkStillShown) return;
 
     if (session.actor != null) {
       answer({ id, kind: "failed", reason: "impersonated" });
@@ -173,4 +175,4 @@ function Form({ fallback }: { readonly fallback: ReactNode }): ReactElement {
 
 export const accountRuntime = { Provider, Form };
 
-window.nyteAccountRuntime = accountRuntime;
+publishDeferred("account", accountRuntime);

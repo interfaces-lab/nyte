@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   decodeCallRecord,
-  decodeChangesRecord,
   decodeCommitRecord,
   decodeHostIdentity,
   decodeInboxRecord,
@@ -16,11 +15,11 @@ import {
   decodeSeenRecord,
   decodeSessionRecord,
   decodeWorkspaceRecord,
-  isJsonObject,
   loggedEvent,
-} from "@nyte-ai/core";
-import type { RecordKind } from "@nyte-ai/core";
-import { SessionEventType, compile, withJson } from "@nyte-ai/schema";
+  STORE_VERSION,
+} from "@nyte-ai/core/store";
+import type { RecordKind } from "@nyte-ai/core/store";
+import { compile, isJsonObject, SessionEventType, withJson } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 
 type Decode = (object: Json | null) => object | null;
@@ -30,7 +29,6 @@ const decoders = new Map<Json, { readonly kind: string; readonly decode: Decode 
     session: decodeSessionRecord,
     commit: decodeCommitRecord,
     inbox: decodeInboxRecord,
-    changes: decodeChangesRecord,
     run: decodeRunRecord,
     part: decodePartRecord,
     receipt: decodeReceiptRecord,
@@ -174,9 +172,20 @@ for (const row of database
   .iterate())
   checkObject(String(row.id), String(row.body), `commit ${String(row.id)}`, null);
 
+const stamp = database
+  .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'store_meta'")
+  .get()
+  ? Number(database.prepare("SELECT version FROM store_meta WHERE id = 1").get()?.version ?? 0)
+  : 0;
+
 database.close();
 
 console.log(`Checked ${events} log events and ${checkedObjects.size} records in ${path}.`);
+
+if (stamp < STORE_VERSION)
+  console.log(
+    `\nThe store is at version ${stamp}; this checkout migrates it to ${STORE_VERSION} when it opens, and rows read here are unmigrated. \`node scripts/migrate-proof.ts ${path}\` checks the migration on a copy.`,
+  );
 
 for (const [group, failure] of failures) {
   const spread = failure.sessions.size > 0 ? ` in ${failure.sessions.size} sessions` : "";

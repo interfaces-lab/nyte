@@ -90,7 +90,8 @@ import process from "node:process";
 import { asId } from "@nyte-ai/schema";
 import { operations } from "@nyte-ai/protocol";
 import { uuidv7 } from "@nyte-ai/ai";
-import { memoryStore, type Store } from "@nyte-ai/core";
+import type { Store } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { Plugin } from "@nyte-ai/plugin/core";
 import { sqliteStore } from "@nyte-ai/host";
 import { fakeModels } from "@nyte-ai/host/bench";
@@ -107,7 +108,7 @@ const smokePlugin = { id: "smoke" } satisfies Plugin;
 function open(store: Store) {
   return sdk.open({
     store,
-    models: fakeModels().models,
+    models: fakeModels({ fallback: { content: [{ type: "text", text: "Hello." }] } }).models,
     plugins: [{ id: "chat-only", environment: chatOnlyProvider() }, smokePlugin],
     workspace: { kind: "chat-only", locator: null },
     home: join(directory, "home"),
@@ -128,7 +129,8 @@ async function smoke(store: Store, label: string) {
           sdk.connect({ url: "http://sdk.invalid", credentials: { kind: "token", token: "not-the-host-token" }, fetch: transport }),
           (error: unknown) => error instanceof SdkError && error.code === "unauthenticated",
         );
-        const session = await connection.sessions.create({ name: label });
+        const { session, receipt } = await connection.sessions.start({ name: label, content: "Hi." });
+        await receipt.settled();
         await session.update({ name: "packed " + label, pinned: true });
         const row = (await connection.sessions.list()).items.find((item) => item.id === session.id);
         assert.ok(row);
@@ -309,7 +311,7 @@ try {
       );
 
       for (const { condition, target } of targets) {
-        assert.ok(/^\.\/dist\/src\//.test(target), `Uncompiled export ${entry.name}: ${target}`);
+        assert.ok(target.startsWith("./dist/src/"), `Uncompiled export ${entry.name}: ${target}`);
         assert.ok(
           condition === "types" ? target.endsWith(".d.ts") : target.endsWith(".js"),
           `Invalid ${condition} export ${target}`,
@@ -466,14 +468,13 @@ console.log("PASS OAuth lazy loads without login or network");
 
     if (result.error) throw result.error;
     const errors = result.stdout.split("\n").filter((line) => /: error TS\d+:/.test(line));
-    const isForeign = (line) => {
-      const file = line.slice(0, line.indexOf("("));
+    const { foreign = [], ours = [] } = Object.groupBy(errors, (line) => {
+      const file = line.split("(", 1)[0];
 
-      return file.includes("node_modules/") && !file.includes("/node_modules/@nyte-ai/");
-    };
-
-    const foreign = errors.filter(isForeign);
-    const ours = errors.filter((line) => !isForeign(line));
+      return file.includes("node_modules/") && !file.includes("/node_modules/@nyte-ai/")
+        ? "foreign"
+        : "ours";
+    });
 
     for (const line of foreign) console.warn(`Third-party declaration error, not ours: ${line}`);
     assert.equal(ours.length, 0, `Consumer or @nyte-ai type errors:\n${ours.join("\n")}`);

@@ -1,18 +1,15 @@
 import { asId } from "@nyte-ai/schema";
-import type { Json, ToolOutcome } from "@nyte-ai/schema";
+import type { Json, SessionId, ToolOutcome } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
-import {
-  ALL_AUTHORITY,
-  EMPTY_SNAPSHOT,
-  LOCAL,
-  decodeReceiptRecord,
-  environmentPlugin,
-  executeCall,
-  receiptRef,
-} from "../src/index.ts";
-import type { ConnectionContext, FilesApi, Kernel } from "../src/index.ts";
+import { executeCall } from "../src/agent/tool-runner.ts";
+import { environmentPlugin } from "../src/builtins/environment.ts";
+import { EMPTY_SNAPSHOT } from "../src/engine/batches.ts";
+import { ALL_AUTHORITY, LOCAL } from "../src/index.ts";
+import { decodeReceiptRecord, receiptRef } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ConnectionContext, FilesApi } from "../src/index.ts";
 import { collect, world } from "./fake-env.ts";
-import { configuration, main, startRun, until } from "./harness.ts";
+import { configuration, main, startRun, until } from "../src/harness.ts";
 
 const caller: ConnectionContext = {
   principal: LOCAL,
@@ -21,19 +18,22 @@ const caller: ConnectionContext = {
   origin: null,
 };
 
-async function* streamOf(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
+async function* streamBytes(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
   yield bytes;
 }
 
 async function sessionFiles(options?: Parameters<typeof world>[0]) {
   const built = await world(options);
-  const session = await built.host.sessions.create({ workspace: built.workspace });
-  const files: FilesApi = (await built.kernel.env(session.id)).files;
+  const { session } = await built.host.sessions.start({
+    workspace: built.workspace,
+    content: "Hi.",
+  });
+  const files: FilesApi = (await built.kernel.environments.attach(session.id)).files;
 
   return { ...built, session, files };
 }
 
-async function tools(kernel: Kernel, session: Parameters<Kernel["env"]>[0]) {
+async function tools(kernel: Kernel, session: SessionId) {
   const run = await startRun(
     kernel,
     session,
@@ -49,7 +49,7 @@ async function tools(kernel: Kernel, session: Parameters<Kernel["env"]>[0]) {
 
     const outcome = await executeCall(kernel, {
       session,
-      runtime: kernel.pluginsFor(session),
+      runtime: kernel.plugins.runtime(session),
       head: main,
       run: run.id,
       call: asId(`call-${calls}`),
@@ -65,7 +65,7 @@ async function tools(kernel: Kernel, session: Parameters<Kernel["env"]>[0]) {
   };
 }
 
-function textOf(outcome: ToolOutcome): string {
+function readText(outcome: ToolOutcome): string {
   assert(outcome.kind === "ok");
 
   return outcome.content.flatMap((item) => (item.kind === "text" ? [item.text] : [])).join("\n");
@@ -167,7 +167,7 @@ describe("file batches", () => {
     assert(capability.kind === "available");
     const files = capability.api;
     const bytes = new Uint8Array([0, 1, 2, 250]);
-    const blob = await files.upload(streamOf(bytes));
+    const blob = await files.upload(streamBytes(bytes));
     const reader = await host.blob(blob);
 
     expect(await collect(reader.chunks())).toEqual([bytes]);
@@ -198,13 +198,13 @@ describe("environment tools", () => {
     const image = new Uint8Array([137, 80, 78, 71]);
     disk.put("/work/project/logo.png", image);
 
-    expect(textOf(await call("read", { path: "src/a.ts" }))).toBe(
+    expect(readText(await call("read", { path: "src/a.ts" }))).toBe(
       "     1\talpha\n     2\tbeta\n     3\tgamma",
     );
-    expect(textOf(await call("read", { path: "src/a.ts", offset: 2, limit: 1 }))).toBe(
+    expect(readText(await call("read", { path: "src/a.ts", offset: 2, limit: 1 }))).toBe(
       "     2\tbeta\n… 1 more lines; continue with offset 3.",
     );
-    expect(textOf(await call("read", { path: "nope.ts" }))).toBe("nope.ts does not exist.");
+    expect(readText(await call("read", { path: "nope.ts" }))).toBe("nope.ts does not exist.");
 
     const binary = await call("read", { path: "logo.png" });
 
@@ -221,7 +221,7 @@ describe("environment tools", () => {
     const call = await tools(kernel, session.id);
 
     expect(
-      textOf(await call("write", { path: "deep/new.ts", content: "let a = 1;\nlet b = 1;\n" })),
+      readText(await call("write", { path: "deep/new.ts", content: "let a = 1;\nlet b = 1;\n" })),
     ).toBe("Wrote 22 bytes to deep/new.ts.");
     expect(disk.text("/work/project/deep/new.ts")).toBe("let a = 1;\nlet b = 1;\n");
 
@@ -243,7 +243,7 @@ describe("environment tools", () => {
       { oldText: "let b = 1;", newText: "let b = 3;" },
     ];
 
-    expect(textOf(await call("edit", { path: "deep/new.ts", edits }))).toBe(
+    expect(readText(await call("edit", { path: "deep/new.ts", edits }))).toBe(
       "Edited deep/new.ts: 2 replacements.",
     );
     expect(disk.text("/work/project/deep/new.ts")).toBe("let a = 2;\nlet b = 3;\n");
@@ -264,9 +264,9 @@ describe("environment tools", () => {
     disk.put("/work/project/src/lib/b.ts", "b\n");
     disk.put("/work/project/README.md", "r\n");
 
-    expect(textOf(await call("list", {}))).toBe("README.md\nsrc/");
-    expect(textOf(await call("list", { path: "src" }))).toBe("a.ts\nlib/");
-    expect(textOf(await call("list", { path: "src", limit: 1 }))).toBe(
+    expect(readText(await call("list", {}))).toBe("README.md\nsrc/");
+    expect(readText(await call("list", { path: "src" }))).toBe("a.ts\nlib/");
+    expect(readText(await call("list", { path: "src", limit: 1 }))).toBe(
       "a.ts\n… 1 more entries not shown.",
     );
 
@@ -282,10 +282,10 @@ describe("environment tools", () => {
       process.exit(0);
     };
 
-    expect(textOf(await call("bash", { command: "echo hi", description: "Greets" }))).toBe(
+    expect(readText(await call("bash", { command: "echo hi", description: "Greets" }))).toBe(
       "hi\n[exit code 0]",
     );
-    expect(textOf(await call("bash", { command: "false" }))).toBe("no\n[exit code 1]");
+    expect(readText(await call("bash", { command: "false" }))).toBe("no\n[exit code 1]");
   });
 
   it("publishes a running shell call's output tail as its part's progress", async () => {
@@ -303,14 +303,14 @@ describe("environment tools", () => {
       process.exit(0);
     };
 
-    expect(textOf(await call("bash", { command: "count" }))).toBe("one\ntwo\n[exit code 0]");
+    expect(readText(await call("bash", { command: "count" }))).toBe("one\ntwo\n[exit code 0]");
     expect(progress).toEqual(["one", "one\ntwo"]);
   });
 
   it("names the workspace root in the cwd prompt section", async () => {
     const { kernel, session } = await sessionFiles({ plugins: [environmentPlugin] });
 
-    expect(kernel.pluginsFor(session.id).registries.prompt.list()).toEqual(
+    expect(kernel.plugins.runtime(session.id).registries.prompt.list()).toEqual(
       expect.arrayContaining([
         {
           id: "cwd",

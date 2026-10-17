@@ -12,10 +12,11 @@ import { LegendList } from "@legendapp/list/react-native";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import type { SessionId, ToolClass, ToolOutcome } from "@nyte-ai/sdk";
-import { toolStatus, type ToolTense, type ToolTone } from "../view-helpers.ts";
+import { toolStatus, toolTitle } from "@nyte-ai/plugin/client/presentation";
+import type { ToolTense, ToolTone } from "@nyte-ai/plugin/client/presentation";
 import { controls, radii, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import { GlassButton } from "../ui/glass-button.tsx";
-import { delegateTitle } from "./delegate-names.ts";
+import { delegateName } from "./delegate-names.ts";
 import { Markdown } from "./markdown.tsx";
 import type { ActivityPart, ChatRow } from "./transcript-rows.ts";
 
@@ -34,39 +35,17 @@ export function useActivitySheet(rows: readonly ChatRow[]) {
   return { open, parts: selected?.parts ?? [], openActivity, close: () => setOpen(false) };
 }
 
-type Verbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
-
-function titled(verbs: Verbs, tense: ToolTense, subject: string): string {
-  return tense === "none" ? subject : `${verbs[tense]} ${subject}`;
-}
-
-function toolTitle(
+function activityTitle(
   toolClass: ToolClass,
   tense: ToolTense,
   names: ReadonlyMap<SessionId, string>,
 ): string {
-  switch (toolClass.kind) {
-    case "read":
-      return titled({ running: "Reading", past: "Read" }, tense, toolClass.path);
-    case "list":
-      return titled({ running: "Listing", past: "Listed" }, tense, toolClass.path);
-    case "shell":
-      return (
-        toolClass.description ??
-        titled({ running: "Running", past: "Ran" }, tense, toolClass.command)
-      );
-    case "edit":
-      return titled({ running: "Editing", past: "Edited" }, tense, toolClass.path);
-    case "delegate":
-      return delegateTitle(toolClass, tense, names);
-    case "custom":
-      return titled({ running: "Running", past: "Ran" }, tense, toolClass.label);
-    default: {
-      const exhaustive: never = toolClass;
+  if (toolClass.kind === "shell" && toolClass.description !== undefined)
+    return toolClass.description;
 
-      return exhaustive;
-    }
-  }
+  return toolClass.kind === "delegate"
+    ? toolTitle(toolClass, tense, delegateName(toolClass, names))
+    : toolTitle(toolClass, tense);
 }
 
 function activityState(part: ActivityPart, names: ReadonlyMap<SessionId, string>) {
@@ -76,8 +55,8 @@ function activityState(part: ActivityPart, names: ReadonlyMap<SessionId, string>
       tone: part.streaming ? ("running" as const) : ("success" as const),
     };
 
-  const status = toolStatus(part.state, part.status);
-  const title = toolTitle(part.state.class, status.tense, names);
+  const status = toolStatus(part);
+  const title = activityTitle(part.state.class, status.tense, names);
 
   return {
     title: status.word === undefined ? title : `${title} · ${status.word}`,
@@ -222,7 +201,7 @@ function Output({ text }: { text: string }) {
   );
 }
 
-function outputOf(outcome: ToolOutcome): string | undefined {
+function readOutput(outcome: ToolOutcome): string | undefined {
   switch (outcome.kind) {
     case "ok":
       return outcome.content
@@ -255,7 +234,7 @@ const ActivityDetail = memo(function ActivityDetail({
   const state = activityState(part, delegateNames);
   const tool = part.kind === "tool" ? part.state : undefined;
   const progress = tool?.phase === "running" ? tool.progress?.text : undefined;
-  const output = tool?.phase === "settled" ? outputOf(tool.outcome) : undefined;
+  const output = tool?.phase === "settled" ? readOutput(tool.outcome) : undefined;
 
   const file =
     tool?.phase === "settled" && tool.changes !== null && tool.class.kind === "edit"

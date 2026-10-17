@@ -23,7 +23,7 @@ const ConnectionSchema = Type.Object(
  * rather than a private network; reaching one means this device is already
  * inside an authenticated tailnet.
  */
-function isPrivateHost(hostname: string): boolean {
+function allowsPlainHttp(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) return true;
 
   if (hostname.endsWith(".ts.net")) return true;
@@ -41,10 +41,6 @@ function isPrivateHost(hostname: string): boolean {
   return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
 }
 
-function isLoopbackHost(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "[::1]" || /^127(\.\d{1,3}){3}$/u.test(hostname);
-}
-
 export function parseConnection(value: Connection): Connection {
   const token = value.token.trim();
 
@@ -57,11 +53,16 @@ export function parseConnection(value: Connection): Connection {
     throw new Error("Enter the full address, including http:// or https://.");
   }
 
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isPrivateHost(url.hostname))) {
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && allowsPlainHttp(url.hostname))) {
     throw new Error("Use HTTPS, or HTTP with your Mac's local or Tailscale address.");
   }
 
-  if (url.protocol === "http:" && location.protocol === "https:" && !isLoopbackHost(url.hostname)) {
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]" ||
+    /^127(\.\d{1,3}){3}$/u.test(url.hostname);
+
+  if (url.protocol === "http:" && location.protocol === "https:" && !loopback) {
     throw new Error(
       "This page is served over HTTPS, so it needs an HTTPS address, such as one from Tailscale HTTPS.",
     );

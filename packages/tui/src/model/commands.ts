@@ -9,9 +9,10 @@ import type { BuiltinSlashName, SlashCommand } from "../lib/slash.ts";
 import type { Intent } from "./msg.ts";
 import { applyChoice, busyRefusal, matchChoice, settingRows } from "./settings.ts";
 import type { SettingRow } from "./settings.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
-export interface CommandEntry {
+interface CommandEntry {
   readonly name: string;
   readonly aliases: readonly string[];
   readonly description: string;
@@ -93,6 +94,10 @@ function builtin(name: BuiltinSlashName, argument: string): Intent | null {
         kind: "open",
         dialog: { kind: "text", content: "plugins" },
       });
+    case "pr":
+      return argument === "" || argument === "status"
+        ? { kind: "open", dialog: { kind: "text", content: "pull-request" } }
+        : refuse("/pr takes status or no argument");
     case "trust":
       return noArgument(name, argument, { kind: "review-trust" });
     case "mcp":
@@ -135,14 +140,21 @@ function setting(state: State, row: SettingRow, argument: string): Intent {
   return applyChoice(state, row, choice);
 }
 
-export function skillsOf(state: State): ReadonlyMap<string, SkillInfo> {
+export function indexSkills(state: State): ReadonlyMap<string, SkillInfo> {
   return new Map(
-    (state.facts.session?.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
+    (followedSession(state)?.view?.catalog.skills ?? []).map((skill) => [skill.name, skill]),
   );
 }
 
+/** The followed chat's plugin commands, or those a blank chat's folder would offer it. */
 export function pluginCommands(state: State): readonly CommandInfo[] {
-  return state.facts.session?.view?.catalog.commands ?? [];
+  const { chat, folderCommands } = state.facts;
+
+  if (chat?.kind === "session") return chat.view?.catalog.commands ?? [];
+
+  return chat?.folder.kind === "folder" && folderCommands?.workspace === chat.folder.id
+    ? folderCommands.commands
+    : [];
 }
 
 export function slashNamespace(state: State): readonly SlashCommand[] {
@@ -151,7 +163,7 @@ export function slashNamespace(state: State): readonly SlashCommand[] {
       pluginCommands(state).map((command) => [command.name, { description: command.description }]),
     ),
     settingRows(state).map((row) => ({ id: row.id, label: row.label })),
-    skillsOf(state),
+    indexSkills(state),
   );
 }
 
@@ -220,7 +232,7 @@ export function runnableCommand(
 
   if (entry === null || entry.prompt) return null;
 
-  if (entry.name !== "cd" && hasInlineSkills(text, skillsOf(state))) return null;
+  if (entry.name !== "cd" && hasInlineSkills(text, indexSkills(state))) return null;
 
   return { entry, argument: parsed.command.argument };
 }

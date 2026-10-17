@@ -1,23 +1,13 @@
-import { asId, standard } from "@nyte-ai/schema";
-import type { HostView, Json } from "@nyte-ai/schema";
+import { asId, SdkError, standard } from "@nyte-ai/schema";
+import type { Json } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it } from "vitest";
-import {
-  SdkError,
-  composeHost,
-  decodePartRecord,
-  definePart,
-  partRef,
-  hostIdentity,
-  hostIdentityRef,
-  isPart,
-  memoryStore,
-  runRef,
-  text,
-} from "../src/index.ts";
+import { hostIdentity } from "../src/compose.ts";
+import { definePart, isPart, text } from "../src/index.ts";
+import { decodePartRecord, partRef, hostIdentityRef, memoryStore, runRef } from "../src/store.ts";
 import type { Plugin, PluginApi, ToolDefinition } from "../src/index.ts";
-import { chatOnly, fakeModels, open } from "./fake-models.ts";
-import { label, until } from "./harness.ts";
+import { chatOnly, composed, fakeModels, open } from "./fake-models.ts";
+import { label, until } from "../src/harness.ts";
 
 const echo: ToolDefinition<{ readonly text: string }> = {
   name: "echo",
@@ -61,8 +51,11 @@ describe("composeHost", () => {
         const outcome = await invocation.wait({ kind: "part", part: part.id });
         const input = outcome.kind === "part" ? outcome.answer?.input : null;
         const choice =
-          typeof input === "object" && input !== null && "choice" in input
-            ? String(input.choice)
+          typeof input === "object" &&
+          input !== null &&
+          "choice" in input &&
+          typeof input.choice === "string"
+            ? input.choice
             : "none";
 
         return { content: [{ kind: "text", text: choice }] };
@@ -77,8 +70,7 @@ describe("composeHost", () => {
     );
 
     await using warm = await open(fake, { store, plugins: [plugin] });
-    const session = await warm.sessions.create();
-    const receipt = await session.send("Ask.");
+    const { session, receipt } = await warm.sessions.start({ content: "Ask." });
     const asked = await until(async () =>
       (await session.view()).parts.find((part) => part.partKind === ask.kind),
     );
@@ -127,7 +119,7 @@ describe("composeHost", () => {
 
   it("resolves a fresh session's effective configuration at creation, with nothing selected (§48c)", async () => {
     await using host = await open(fakeModels());
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     expect((await session.view()).configuration).toEqual({
       selected: null,
@@ -146,8 +138,7 @@ describe("composeHost", () => {
       usage: { input: 12, output: 3 },
     });
     await using host = await open(fake);
-    const session = await host.sessions.create();
-    const receipt = await session.send("Hi.");
+    const { session, receipt } = await host.sessions.start({ content: "Hi." });
     const end = await receipt.settled();
 
     assert(end.kind === "completed");
@@ -189,21 +180,20 @@ describe("composeHost", () => {
 
   it("loads the built-ins first, in decision 13's order, then the host's plugins", async () => {
     await using host = await open(fakeModels(), { plugins: [{ id: "extra" }] });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     expect(
-      host.kernel
-        .pluginsFor(session.id)
+      host.kernel.plugins
+        .runtime(session.id)
         .plugins()
         .map((plugin) => plugin.id),
     ).toEqual(["system-prompt", "environment", "resources", "delegation", "chat-only", "extra"]);
-    expect(host.kernel.activation(session.id)).toEqual({ kind: "active" });
+    expect(host.kernel.sessions.activation(session.id)).toEqual({ kind: "active" });
   });
 
-  it("serves the host view: plugins, settings and operations", async () => {
-    const operations: HostView["operations"] = [];
-    await using host = await open(fakeModels(), { operations });
-    await host.sessions.create();
+  it("serves the host view: plugins and settings", async () => {
+    await using host = await open(fakeModels());
+    await host.sessions.start({ content: "Hi." });
     const iterator = host.watch()[Symbol.asyncIterator]();
     const first = await iterator.next();
     await iterator.return?.();
@@ -212,7 +202,6 @@ describe("composeHost", () => {
     const view = first.value;
 
     expect(view.id).toBe(host.hostId);
-    expect(view.operations).toBe(operations);
     expect(view.settings.map((setting) => setting.id)).toContain("skills.paths");
     expect(view.plugins.map((plugin) => [plugin.id, plugin.source])).toEqual(
       expect.arrayContaining([
@@ -252,7 +241,7 @@ describe("composeHost", () => {
     assert(first.done !== true);
     expect(first.value.plugins).toEqual(seeded);
 
-    await host.sessions.create();
+    await host.sessions.start({ content: "Hi." });
     assert(api !== undefined);
     api.report({ severity: "warning", path: ["server"], message: "Server went away." });
 
@@ -276,15 +265,15 @@ describe("composeHost", () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Done." }] });
     const host = await open(fake, { store });
-    const session = await host.sessions.create();
-    await (await session.send("Go.")).settled();
+    const { session, receipt: started } = await host.sessions.start({ content: "Go." });
+    await started.settled();
     const connection = await store.open();
 
     expect(await connection.refs.list(`sessions/${session.id}/leases/`)).toHaveLength(1);
     await host.close();
 
     expect(await connection.refs.list(`sessions/${session.id}/leases/`)).toHaveLength(0);
-    expect(host.kernel.runtimes().size).toBe(0);
+    expect(host.kernel.plugins.runtimes().size).toBe(0);
     await host.close();
   });
 
@@ -301,8 +290,7 @@ describe("composeHost", () => {
     );
 
     const host = await open(first, { store, plugins: [echoing] });
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
 
     const run = await until(async () => {
       const execution = (await session.view()).execution;
@@ -345,7 +333,7 @@ describe("composeHost", () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Half an answer" }], hold: true });
     const host = await open(fake, { store });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const logged: string[] = [];
 
     host.kernel.bus.subscribe(session.id, (event) => {
@@ -376,13 +364,12 @@ describe("composeHost", () => {
       code: "invalid",
     });
 
-    const refused = composeHost({
+    const refused = composed({
       store: memoryStore(),
       models: fake.models,
       plugins: [chatOnly],
       workspace: { kind: "elsewhere", locator: null },
       home: null,
-      operations: [],
       description: { name: "test", platform: "darwin", version: "0.1.0" },
     });
 
@@ -423,13 +410,12 @@ describe("composeHost", () => {
     };
 
     const seeded = (settings: Record<string, Json>) =>
-      composeHost({
+      composed({
         store,
         models: fakeModels().models,
         plugins: [chatOnly, looks],
         workspace: { kind: "chat-only", locator: null },
         home: null,
-        operations: [],
         description: { name: "test", platform: "darwin", version: "0.1.0" },
         seed: { settings, path: "/home/.nyte/settings.json" },
       });
@@ -469,13 +455,12 @@ describe("composeHost", () => {
     const good: Plugin<"core"> = { id: "good" };
 
     const compose = (sources: Map<Plugin<"core">, { source: "user"; path: string }>) =>
-      composeHost({
+      composed({
         store: memoryStore(),
         models: fakeModels().models,
         plugins: [chatOnly, bad, good],
         workspace: { kind: "chat-only", locator: null },
         home: null,
-        operations: [],
         description: { name: "test", platform: "darwin", version: "0.1.0" },
         pluginSources: sources,
       });
@@ -488,7 +473,7 @@ describe("composeHost", () => {
     );
     const rows = host.kernel.host.current().plugins;
 
-    expect(host.kernel.hostPlugins.map((plugin) => plugin.id)).toEqual(["chat-only", "good"]);
+    expect(host.kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["chat-only", "good"]);
     expect(rows.find((row) => row.id === "good")).toMatchObject({
       source: "user",
       path: "/home/.nyte/plugins/good.ts",
@@ -500,7 +485,7 @@ describe("composeHost", () => {
       issues: [expect.objectContaining({ severity: "error", path: ["id"] })],
     });
 
-    await host.sessions.create();
+    await host.sessions.start({ content: "Hi." });
 
     expect(
       host.kernel.host.current().plugins.some((row) => row.id === "/home/.nyte/plugins/bad.ts"),
@@ -511,13 +496,12 @@ describe("composeHost", () => {
   it("checks plugin objects and files alike in-process, each file through loadPlugins in order (§47l)", async () => {
     const loaded: string[] = [];
 
-    await using host = await composeHost({
+    await using host = await composed({
       store: memoryStore(),
       models: fakeModels().models,
       plugins: [chatOnly],
       workspace: { kind: "chat-only", locator: null },
       home: null,
-      operations: [],
       description: { name: "test", platform: "darwin", version: "0.1.0" },
       loadPlugins: async (paths) => {
         loaded.push(...paths);
@@ -544,12 +528,12 @@ describe("composeHost", () => {
   it("registers the workspace once and makes it the default", async () => {
     const store = memoryStore();
     const first = await open(fakeModels(), { store });
-    const workspace = first.kernel.defaultWorkspace;
+    const workspace = first.kernel.host.current().defaultWorkspace;
     await first.close();
     await using second = await open(fakeModels(), { store });
 
     expect(workspace).not.toBeNull();
-    expect(second.kernel.defaultWorkspace).toBe(workspace);
+    expect(second.kernel.host.current().defaultWorkspace).toBe(workspace);
     expect(await second.workspaces.list()).toMatchObject([
       { id: workspace, addedBy: "local", projectResources: null },
     ]);

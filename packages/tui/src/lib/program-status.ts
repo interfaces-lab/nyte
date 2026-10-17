@@ -1,7 +1,7 @@
 import type { Execution, RunId } from "@nyte-ai/sdk";
 import { singleLine } from "./format.ts";
 
-export interface Activity {
+interface Activity {
   readonly busy: boolean;
   readonly execution: Execution | undefined;
   readonly question: string | undefined;
@@ -20,7 +20,7 @@ const MSG_MAX_BYTES = 2048;
 
 export const CLEARED = `${OSC}state=clear${ST}`;
 
-export function statusOf(activity: Activity, live: RunId | undefined): ProgramStatus {
+export function readProgramStatus(activity: Activity, live: RunId | undefined): ProgramStatus {
   const { question, busy, execution } = activity;
 
   if (question !== undefined) return { state: "blocked", kind: "question", msg: question };

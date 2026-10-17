@@ -4,7 +4,8 @@
 import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { verifyWithRequest } from "../auth/verify.ts";
-import { createProvider, type Provider } from "../models.ts";
+import type { Provider } from "../models-types.ts";
+import { createProvider } from "../provider.ts";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 

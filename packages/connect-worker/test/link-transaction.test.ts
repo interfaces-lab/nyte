@@ -11,7 +11,7 @@ import {
 import { keyThumbprint } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { claimEnvironment } from "../src/store.ts";
+import { claimEnvironment } from "../src/store/environments.ts";
 import { createHarness, read } from "./harness.ts";
 import type { FakeDesktop, Harness } from "./harness.ts";
 

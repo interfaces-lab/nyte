@@ -2,7 +2,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { Marker, MarkerContent } from "@nyte-ai/ui/marker";
 import { props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
-import { markerStyles } from "./styles.stylex.ts";
+import { markerStyles } from "./activity.stylex.ts";
 
 export function StatusMarker({
   variant = "default",

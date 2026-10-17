@@ -12,6 +12,20 @@ import { build, defaultClientConditions } from "vite";
 
 const execute = promisify(execFile);
 
+declare global {
+  interface Window {
+    /** Writes the test window as `<name>.png` into `captures`, then dispatches `renderer-captured`. */
+    readonly rendererCapture: (name: string) => void;
+  }
+}
+
+/**
+ * Electron's Chromium, as the app build targets. Older targets make
+ * lightningcss polyfill the tokens' light-dark() with variables only its own
+ * color-scheme rules define.
+ */
+const ELECTRON_CHROMIUM = 152 << 16;
+
 export async function testRenderer(
   entry: URL,
   setup = "",
@@ -20,11 +34,14 @@ export async function testRenderer(
     forcePseudoClasses = [],
     forcePseudoSelector = "button",
     studio = false,
+    captures,
   }: {
     pointer?: "fine" | "coarse";
     forcePseudoClasses?: readonly string[];
     forcePseudoSelector?: string;
     studio?: boolean;
+    /** A directory where `window.rendererCapture(name)` writes the window as `<name>.png`, then dispatches `renderer-captured`. */
+    captures?: string;
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
@@ -41,10 +58,7 @@ export async function testRenderer(
       plugins: [
         stylex.rollup({
           devMode: "css-only",
-          // Electron's Chromium, as the app build targets. Older targets make
-          // lightningcss polyfill the tokens' light-dark() with variables only
-          // its own color-scheme rules define.
-          lightningcssOptions: { targets: { chrome: 152 << 16 } },
+          lightningcssOptions: { targets: { chrome: ELECTRON_CHROMIUM } },
         }),
       ],
       build: {
@@ -113,6 +127,13 @@ app.whenReady().then(async () => {
       }
     }
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererMouseClick" });
+    await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererCapture" });
+    window.webContents.debugger.on("message", async (_event, method, params) => {
+      if (method !== "Runtime.bindingCalled" || params.name !== "rendererCapture") return;
+      const image = await window.webContents.capturePage();
+      writeFileSync(${JSON.stringify(join(captures ?? directory, "/"))} + params.payload + ".png", image.toPNG());
+      await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-captured"))');
+    });
     window.webContents.debugger.on("message", async (_event, method, params) => {
       if (method !== "Runtime.bindingCalled" || params.name !== "rendererMouseClick") return;
       const { x, y, shift } = JSON.parse(params.payload);

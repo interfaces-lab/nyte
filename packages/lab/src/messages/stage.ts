@@ -1,12 +1,9 @@
 import type { SessionView } from "@nyte-ai/sdk";
-import {
-  displayTranscriptParts,
-  isTextMessage,
-} from "@nyte-ai/app/conversation/transcript-presentation.ts";
+import { displayTranscriptParts } from "@nyte-ai/app/conversation/transcript-presentation.ts";
 import { transcriptRows } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
-import { isBusy, isToolMessage } from "@nyte-ai/app/view-helpers.ts";
-import type { Scene } from "./specimens";
+import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
+import type { Scene } from "./build";
 
 export interface Stage {
   readonly rows: readonly TranscriptRow[];
@@ -17,7 +14,7 @@ export interface Stage {
 
 export function stage(scene: Scene): Stage {
   const landing = scene.landing ?? [];
-  const running = scene.execution !== undefined && isBusy(scene.execution);
+  const running = scene.execution !== undefined && scene.execution.kind !== "idle";
   const working = running || landing.length > 0;
   const lastTurn = scene.turns.at(-1);
 
@@ -29,6 +26,7 @@ export function stage(scene: Scene): Stage {
     failed: scene.failed === true,
     turns: scene.turns,
     landing,
+    held: scene.execution?.kind === "idle" && scene.execution.lastRun?.end.kind !== "completed",
     retrying: scene.execution?.kind === "retrying" ? scene.execution.reason : undefined,
     working,
     running,
@@ -36,7 +34,7 @@ export function stage(scene: Scene): Stage {
 
   const changes = scene.turns.flatMap((turn) =>
     turn.messages.flatMap((message): SessionView["changes"] => {
-      if (!isToolMessage(message) || message.state.phase !== "settled") return [];
+      if (!showsTool(message) || message.state.phase !== "settled") return [];
       const { changes: changed, name } = message.state;
 
       if (changed === null) return [];
@@ -86,15 +84,17 @@ export function trail({ rows, working }: Stage): readonly string[] {
 
                   if (message.kind === "user") return "  user";
 
-                  return `  ${message.partKind}${isToolMessage(message) ? `:${message.state.class.kind}` : ""}${message.status.kind === "live" ? " · live" : ""}`;
+                  return `  ${message.partKind}${showsTool(message) ? `:${message.state.class.kind}` : ""}${message.status.kind === "live" ? " · live" : ""}`;
                 }
 
+                case "agents":
+                  return `  agents ×${String(item.messages.length)}`;
                 case "response":
-                  return `  response ×${String(item.messages.length)}${item.messages.some((message) => isTextMessage(message) && message.status.kind === "live") ? " · live" : ""}`;
+                  return `  response ×${String(item.messages.length)}${item.messages.some((message) => showsText(message) && message.status.kind === "live") ? " · live" : ""}`;
                 case "step": {
                   const kinds = item.messages
                     .map((message) =>
-                      isToolMessage(message) ? message.state.class.kind : message.partKind,
+                      showsTool(message) ? message.state.class.kind : message.partKind,
                     )
                     .join(", ");
 
@@ -103,7 +103,7 @@ export function trail({ rows, working }: Stage): readonly string[] {
                   const lone =
                     item.messages.length === 1 &&
                     first !== undefined &&
-                    isToolMessage(first) &&
+                    showsTool(first) &&
                     !(active && index === display.length - 1);
 
                   return lone ? `  step → line [${kinds}]` : `  step [${kinds}]`;

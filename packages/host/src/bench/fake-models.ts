@@ -8,7 +8,6 @@ import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels, Provider } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId } from "@nyte-ai/schema";
-import type { HostView } from "@nyte-ai/schema";
 import type {
   Api,
   AssistantMessage,
@@ -16,10 +15,14 @@ import type {
   StopReason,
   TextContent,
   ThinkingContent,
+  ToolCall,
   TranscriptContext,
 } from "@nyte-ai/schema/model";
-import { composeHost, memoryStore } from "@nyte-ai/core";
-import type { ComposeOptions, ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
+import type { ExecutionEnv, Plugin, Store } from "@nyte-ai/core";
+import type { ComposeOptions } from "@nyte-ai/core/server";
+import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 
 /** One content block a scripted reply streams. */
 export type Block =
@@ -35,7 +38,82 @@ export type Block =
       readonly id: string;
       readonly name: string;
       readonly arguments: Record<string, unknown>;
+      /** Streams the arguments' JSON in this many `toolcall_delta`s, as a provider streams a long argument; default none, `toolcall_start` then `toolcall_end`. */
+      readonly deltas?: number;
     };
+
+/** Time as the fake provider spends it: real timers for benches, a manual clock for unit tests. */
+export interface Clock {
+  now(): number;
+  /** Resolves after `ms`, or as soon as `signal` aborts. */
+  sleep(ms: number, signal?: AbortSignal): Promise<void>;
+}
+
+/** The wall clock and `setTimeout`. */
+export const realClock: Clock = {
+  now: () => Date.now(),
+  sleep: (ms, signal) =>
+    new Promise((resolve) => {
+      if (ms <= 0 || signal?.aborted === true) {
+        resolve();
+
+        return;
+      }
+
+      const timer = setTimeout(resolve, ms);
+
+      signal?.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
+    }),
+};
+
+/** A clock that moves only through `advance`, which resolves every sleep due by then in due order. */
+export interface ManualClock extends Clock {
+  advance(ms: number): Promise<void>;
+}
+
+/** Returns a `ManualClock` starting at `start` epoch milliseconds. */
+export function manualClock(start = 0): ManualClock {
+  let now = start;
+  const sleeping: { readonly due: number; readonly wake: () => void }[] = [];
+
+  return {
+    now: () => now,
+    sleep: (ms, signal) =>
+      new Promise((resolve) => {
+        if (ms <= 0 || signal?.aborted === true) {
+          resolve();
+
+          return;
+        }
+
+        sleeping.push({ due: now + ms, wake: resolve });
+        signal?.addEventListener("abort", () => resolve(), { once: true });
+      }),
+    async advance(ms) {
+      const until = now + ms;
+
+      for (;;) {
+        sleeping.sort((a, b) => a.due - b.due);
+        const next = sleeping[0];
+
+        if (next === undefined || next.due > until) break;
+        sleeping.shift();
+        now = next.due;
+        next.wake();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+
+      now = until;
+    },
+  };
+}
 
 /** One scripted provider answer: what it streams, what it reports, and how it ends. */
 export interface Reply {
@@ -64,6 +142,8 @@ export interface Reply {
   readonly tokens?: number;
   /** Called after each text delta with the count of text deltas this response has streamed so far; the stream waits for what it returns before the next event. */
   readonly tap?: (streamed: number) => Promise<void> | void;
+  /** Waits on the fake's clock: `firstMs` before the first event (time to first token), `deltaMs` after each delta of any block. */
+  readonly timing?: { readonly firstMs?: number; readonly deltaMs?: number };
 }
 
 /** One request the fake provider received. */
@@ -103,7 +183,27 @@ export function testModel(id: string, overrides?: Partial<Model<Api>>): Model<Ap
   };
 }
 
-/** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. A request with no reply queued answers `fallback` (a function sees the request), else the provider error "No reply was scripted for this request.". */
+/** The text of a request's last user message, its text parts joined; empty when it has none. */
+export function lastUserText(request: Request): string {
+  const message = request.context.messages.findLast((candidate) => candidate.role === "user");
+
+  if (message?.role !== "user") return "";
+
+  return typeof message.content === "string"
+    ? message.content
+    : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+}
+
+/** The title a chat-title request gets: the chat's first line without its `User: ` label; null for any other request. */
+export function titleReply(request: Request): string | null {
+  const first = request.context.messages[0];
+
+  if (first?.role !== "system" || first.content !== TITLE_PROMPT) return null;
+
+  return (lastUserText(request).split("\n")[0] ?? "").replace(/^User: /u, "");
+}
+
+/** Returns a `Models` holding one scripted provider `test` (unless `id` names another; added to `into` when given) with `models` (default one model `model`), api-key and oauth logins, and, unless `verify` is false, a verify request answering `verdict`. A request with no reply queued answers `fallback` (a function sees the request; `script(...).answer` is one), else the provider error "No reply was scripted for this request.". Replies wait and stamp time on `clock`. */
 export function fakeModels(input?: {
   readonly id?: string;
   readonly name?: string;
@@ -111,6 +211,8 @@ export function fakeModels(input?: {
   readonly into?: MutableModels;
   readonly verify?: boolean;
   readonly fallback?: Reply | ((request: Request) => Reply);
+  /** What `timing` waits on and timestamps read; default `realClock`. */
+  readonly clock?: Clock;
 }): FakeModels {
   const id = input?.id ?? "test";
   const catalog = input?.models ?? [testModel("model", { provider: id })];
@@ -184,7 +286,7 @@ export function fakeModels(input?: {
 
     const reply: Reply = typeof next === "function" ? next(request) : next;
 
-    return streamOf(model, reply, options);
+    return streamReply(model, reply, options, input?.clock ?? realClock);
   };
 
   const provider: Provider = {
@@ -253,9 +355,9 @@ export async function open(
   options?: {
     readonly plugins?: readonly Plugin<"core">[];
     readonly store?: Store;
-    readonly operations?: HostView["operations"];
     readonly execution?: ComposeOptions["execution"];
     readonly loadPlugins?: ComposeOptions["loadPlugins"];
+    readonly poll?: number;
   },
 ): ReturnType<typeof composeHost> {
   return composeHost({
@@ -265,16 +367,17 @@ export async function open(
     workspace: { kind: "chat-only", locator: null },
     execution: options?.execution,
     loadPlugins: options?.loadPlugins,
+    poll: options?.poll,
     home: null,
-    operations: options?.operations ?? [],
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 }
 
-function streamOf(
+function streamReply(
   model: Model<Api>,
   reply: Reply,
   options: SimpleStreamOptions | undefined,
+  clock: Clock,
 ): AssistantMessageEventStream {
   const stream = new AssistantMessageEventStream();
   const signal = options?.signal;
@@ -301,7 +404,7 @@ function streamOf(
     },
     stopReason: "stop",
     ...(reply.rawStopReason === undefined ? {} : { rawStopReason: reply.rawStopReason }),
-    timestamp: Date.now(),
+    timestamp: clock.now(),
   };
 
   const aborted = (): boolean => {
@@ -326,14 +429,19 @@ function streamOf(
       signal.addEventListener("abort", () => resolve(), { once: true });
     });
 
+  const paced = (): Promise<void> => clock.sleep(reply.timing?.deltaMs ?? 0, signal);
+
   void (async () => {
     let streamed = 0;
     await Promise.resolve();
+    await clock.sleep(reply.timing?.firstMs ?? 0, signal);
+
+    if (aborted()) return;
     stream.push({ type: "start", partial: message });
 
     if (reply.limits !== undefined)
       await options?.onAccountLimits?.(
-        { providerId: model.provider, windows: reply.limits, observedAt: Date.now() },
+        { providerId: model.provider, windows: reply.limits, observedAt: clock.now() },
         model,
       );
 
@@ -341,13 +449,29 @@ function streamOf(
       if (aborted()) return;
 
       if (block.type === "toolCall") {
-        message.content.push({
+        const call: ToolCall = {
           type: "toolCall",
           id: block.id,
           name: block.name,
-          arguments: block.arguments,
-        });
+          arguments: block.deltas === undefined ? block.arguments : {},
+        };
+
+        message.content.push(call);
         stream.push({ type: "toolcall_start", contentIndex: index, partial: message });
+
+        const deltas =
+          block.deltas === undefined
+            ? []
+            : splitText(JSON.stringify(block.arguments), block.deltas);
+
+        for (const delta of deltas) {
+          stream.push({ type: "toolcall_delta", contentIndex: index, delta, partial: message });
+          await paced();
+
+          if (aborted()) return;
+        }
+
+        call.arguments = block.arguments;
         stream.push({
           type: "toolcall_end",
           contentIndex: index,
@@ -373,13 +497,14 @@ function streamOf(
         const deltas =
           reply.tokens === undefined
             ? [body.slice(0, half), body.slice(half)]
-            : piecesOf(body, reply.tokens);
+            : splitText(body, reply.tokens);
 
         for (const delta of deltas) {
           content.text += delta;
           stream.push({ type: "text_delta", contentIndex: index, delta, partial: message });
           streamed += 1;
           await reply.tap?.(streamed);
+          await paced();
 
           if (reply.hold === true) await held();
 
@@ -402,6 +527,7 @@ function streamOf(
       for (const delta of [body.slice(0, half), body.slice(half)]) {
         content.thinking += delta;
         stream.push({ type: "thinking_delta", contentIndex: index, delta, partial: message });
+        await paced();
       }
 
       if (block.signature !== undefined) content.thinkingSignature = block.signature;
@@ -434,7 +560,7 @@ function streamOf(
   return stream;
 }
 
-function piecesOf(text: string, count: number): readonly string[] {
+function splitText(text: string, count: number): readonly string[] {
   const pieces = Math.max(1, count);
 
   return Array.from({ length: pieces }, (_, index) =>

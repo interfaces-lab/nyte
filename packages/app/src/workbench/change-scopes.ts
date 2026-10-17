@@ -1,6 +1,7 @@
 import type { GitScope, GitStatus, RunId } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
-import { isToolMessage, worktreeFiles } from "../view-helpers.ts";
+import { showsTool } from "@nyte-ai/plugin/client/presentation";
+import { worktreeFiles } from "../view-helpers.ts";
 import type { ConversationTurn, WorktreeFile } from "../view-helpers.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
@@ -48,7 +49,7 @@ export function turnChangeOptions(turns: readonly ConversationTurn[]): readonly 
       const files = new Set<string>();
 
       for (const message of turn.messages) {
-        if (isToolMessage(message) && message.state.phase === "settled")
+        if (showsTool(message) && message.state.phase === "settled")
           for (const path of message.state.changes?.paths ?? []) files.add(path);
       }
 

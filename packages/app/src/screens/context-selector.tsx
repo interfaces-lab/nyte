@@ -15,11 +15,9 @@ import {
   resolveClientAction,
 } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
-import { useHostState } from "../queries.ts";
 import { contextStyles } from "./context-selector.stylex.ts";
 
-export function ContextHint({
+function ContextHint({
   label,
   value,
   keys = [],
@@ -54,8 +52,7 @@ export function ContextSelector({
   readonly active: boolean;
   readonly children: ReactNode;
 }) {
-  const host = useHostState();
-  const mac = macPlatform(host.data?.platform);
+  const mac = nyte.platform === "darwin";
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 

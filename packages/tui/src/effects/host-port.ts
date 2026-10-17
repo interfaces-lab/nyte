@@ -1,28 +1,72 @@
 import { homedir } from "node:os";
-import { asId } from "@nyte-ai/schema";
-import type { Connection, MessageId, Session, SessionId } from "@nyte-ai/sdk";
+import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
+import { asId, SdkError } from "@nyte-ai/schema";
+import { followTrace, pagedViews, traced, tracePaints } from "@nyte-ai/sdk/client";
+import type { Connection, MessageId, PagedViews, Session, WorkspaceId } from "@nyte-ai/sdk";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import type { Task } from "../lib/tasks.ts";
+import { follow } from "../lib/view-helpers.ts";
 import { addFolder, rootSessions, tuiPlugins } from "../run.ts";
 import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
-import { mountClientPlugins } from "../services/plugins.ts";
-import type { ClientPlugins } from "../services/plugins.ts";
 import { TaskIndex } from "../services/task-index.ts";
-import type { HostPort, PluginsPort, SessionPort } from "./ports.ts";
+import type { HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
 
-export function hostPort(host: Connection, folder: string | null): HostPort {
+/**
+ * The app's port to `host`, opening `folder` for new chats when it is not null. A submit is
+ * traced as `composer.submit` under its receipt id, a new chat's first one under the chat's id,
+ * which names its receipt, and while tracing is on each message a
+ * view brings is a `client.paint` span that ends when `painted` (the renderer's next frame)
+ * resolves.
+ */
+export function hostPort(
+  host: Connection,
+  folder: string | null,
+  painted: () => Promise<void> = () => Promise.resolve(),
+): HostPort {
   return {
-    session: (id) => sessionPort(host, host.session(id)),
-    async create(input) {
-      const workspace =
-        input.workspace ?? (folder === null ? null : await addFolder(host, folder));
-      const session = await host.sessions.create({
-        ...(workspace === null ? {} : { workspace }),
-        ...(input.selection === null
-          ? {}
-          : { configuration: { model: input.selection.model, thinking: input.selection.effort } }),
-      });
+    session: (id) => sessionPort(host, host.session(id), painted),
+    workspace: (id) => workspacePort(host, id),
+    async openFolder(path) {
+      const opened = path ?? folder;
 
-      return session.id;
+      if (opened !== null) return addFolder(host, opened);
+
+      for await (const view of host.watch()) {
+        if (view.defaultWorkspace !== null) return view.defaultWorkspace;
+        break;
+      }
+
+      throw new Error("Open nyte in a folder: the host has no default workspace.");
+    },
+    async start(input) {
+      followTrace(input.id, input.id);
+
+      try {
+        const { receipt } = await traced("composer.submit", input.id, { session: input.id }, () =>
+          host.sessions.start({
+            id: input.id,
+            workspace: input.workspace,
+            configuration: { model: input.selection.model, thinking: input.selection.effort },
+            content: input.content,
+          }),
+        );
+
+        return { kind: "started", message: receipt.message };
+      } catch (error) {
+        const exists = await host
+          .session(input.id)
+          .info()
+          .then(
+            () => true,
+            () => false,
+          );
+
+        if (!exists) throw error;
+
+        return error instanceof SdkError && error.code === "invalid"
+          ? { kind: "taken" }
+          : { kind: "started", message: asId<"message">(input.id) };
+      }
     },
     rootSessions: () => rootSessions(host),
     catalog: () => host.watch(),
@@ -57,6 +101,14 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
       for await (const view of host.watch()) return view.plugins;
 
       return [];
+    },
+    async github(workspace) {
+      const capability = await host.workspace(workspace).github();
+
+      if (capability.kind !== "available") return null;
+      const [account, state] = await Promise.all([host.github.account(), capability.api.state()]);
+
+      return { account, folder: state };
     },
     async trustInfo(workspace) {
       const info = await host.workspace(workspace).info();
@@ -130,6 +182,7 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
 
                   const opened = new TaskIndex(info, {
                     connection: host,
+                    jobs: host.workspace(info.workspace).jobs.watch(),
                     onChange() {
                       latest = opened.tasks;
                       wake();
@@ -182,53 +235,115 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
   };
 }
 
-function sessionPort(host: Connection, session: Session): SessionPort {
-  const receiptOf = (message: MessageId) => session.receipt(asId(message));
+function workspacePort(host: Connection, id: WorkspaceId): WorkspacePort {
+  return {
+    id,
+    commands: () => host.workspace(id).commands(),
+    command: (name, argument) =>
+      host.workspace(id).command(name, argument === null ? undefined : argument),
+    async cwd() {
+      const workspace = await host.workspace(id).info();
+
+      return workspace.target.kind === "local" && "path" in workspace.target
+        ? workspace.target.path
+        : null;
+    },
+    async upload(bytes) {
+      const files = await host.workspace(id).files();
+
+      if (files.kind !== "available") throw new Error(`Can't attach images here: ${files.reason}`);
+
+      return files.api.upload(
+        (async function* () {
+          yield bytes;
+        })(),
+      );
+    },
+    async mentions(signal) {
+      const files = await host.workspace(id).files();
+
+      if (files.kind !== "available") return [];
+      const found: string[] = [];
+
+      for await (const frame of files.api.scan({ ignored: "exclude" })) {
+        if (signal.aborted) return found;
+
+        if (frame.kind !== "entries") continue;
+
+        for (const entry of frame.entries) {
+          if (entry.kind === "symlink") continue;
+          found.push(entry.kind === "directory" ? `${entry.path}/` : entry.path);
+        }
+      }
+
+      return found;
+    },
+  };
+}
+
+function sessionPort(
+  host: Connection,
+  session: Session,
+  painted: () => Promise<void>,
+): SessionPort {
+  const readReceipt = (message: MessageId) => session.receipt(asId(message));
+
+  const readWorkspace = async (): Promise<WorkspacePort> =>
+    workspacePort(host, (await session.info()).workspace);
+
+  let views: PagedViews | null = null;
 
   return {
     id: session.id,
-    watch: () => session.watch(),
+    watch() {
+      views = pagedViews(session);
+
+      return tracePaints(views, session.id, painted);
+    },
+    earlier: (limit) => views?.earlier(limit) ?? Promise.resolve(0),
     info: () => session.info(),
     async workspace() {
-      const info = await session.info();
-      const workspace = await host.workspace(info.workspace).info();
+      const workspace = await readWorkspace();
 
-      return {
-        id: info.workspace,
-        cwd:
-          workspace.target.kind === "local" && "path" in workspace.target
-            ? workspace.target.path
-            : null,
-      };
+      return { id: workspace.id, cwd: await workspace.cwd() };
     },
     async send(content, options) {
-      const receipt = await session.send(content, options);
+      const id = options.id ?? asId<"receipt">(crypto.randomUUID());
+      followTrace(session.id, id);
+
+      const receipt = await traced("composer.submit", id, { session: session.id }, () =>
+        session.send(content, { ...options, id }),
+      );
 
       return { message: receipt.message };
     },
     async withdraw(message) {
-      const receipt = receiptOf(message);
+      const receipt = readReceipt(message);
       const before = await receipt.status();
 
       if (before.kind === "missing") return "gone";
 
-      if (before.kind === "settled") return isWithdrawn(before.outcome) ? "gone" : "landed-first";
+      if (before.kind === "settled")
+        return reportsWithdrawn(before.outcome) ? "gone" : "landed-first";
       const stopped = await receipt.stop();
 
       if (stopped.kind === "missing") return "gone";
 
       if (stopped.kind === "settled")
-        return isWithdrawn(stopped.outcome) ? "withdrawn" : "landed-first";
+        return reportsWithdrawn(stopped.outcome) ? "withdrawn" : "landed-first";
       const after = await receipt.status();
 
-      return after.kind === "settled" && isWithdrawn(after.outcome) ? "withdrawn" : "landed-first";
+      return after.kind === "settled" && reportsWithdrawn(after.outcome)
+        ? "withdrawn"
+        : "landed-first";
     },
     async revise(message, content, options) {
-      const status = await receiptOf(message).status();
+      const status = await readReceipt(message).status();
 
       if (status.kind === "missing") return "gone";
 
-      if (status.kind === "settled") return isWithdrawn(status.outcome) ? "gone" : "landed-first";
+      if (status.kind === "settled")
+        return reportsWithdrawn(status.outcome) ? "gone" : "landed-first";
       await session.send(content, { ...options, replace: message });
 
       return "revised";
@@ -242,6 +357,28 @@ function sessionPort(host: Connection, session: Session): SessionPort {
       const outcome = await session.part(part).act("answer", { answers });
 
       return outcome.kind === "ok";
+    },
+    async approve(part, decision) {
+      const outcome = await session.part(part).act(decision, {});
+
+      switch (outcome.kind) {
+        case "ok":
+          return null;
+        case "rejected":
+          return outcome.reason;
+        case "failed":
+          return outcome.message;
+        case "closed":
+          return "This request is no longer waiting.";
+        case "no-owner":
+        case "unknown-action":
+          return "This host can't answer tool approvals.";
+        default: {
+          const exhaustive: never = outcome;
+
+          return exhaustive;
+        }
+      }
     },
     async move(position, options) {
       const receipt = await session.move(position, options);
@@ -304,36 +441,8 @@ function sessionPort(host: Connection, session: Session): SessionPort {
 
       return outcome.kind;
     },
-    async upload(bytes) {
-      const files = await host.workspace((await session.info()).workspace).files();
-
-      if (files.kind !== "available") throw new Error(`Can't attach images here: ${files.reason}`);
-
-      return files.api.upload(
-        (async function* () {
-          yield bytes;
-        })(),
-      );
-    },
-    async mentions(signal) {
-      const files = await host.workspace((await session.info()).workspace).files();
-
-      if (files.kind !== "available") return [];
-      const found: string[] = [];
-
-      for await (const frame of files.api.scan({ ignored: "exclude" })) {
-        if (signal.aborted) return found;
-
-        if (frame.kind !== "entries") continue;
-
-        for (const entry of frame.entries) {
-          if (entry.kind === "symlink") continue;
-          found.push(entry.kind === "directory" ? `${entry.path}/` : entry.path);
-        }
-      }
-
-      return found;
-    },
+    upload: async (bytes) => (await readWorkspace()).upload(bytes),
+    mentions: async (signal) => (await readWorkspace()).mentions(signal),
   };
 }
 
@@ -343,21 +452,40 @@ export async function pluginsPort(
     readonly notify: (title: string, body: string, sound: boolean) => void;
     readonly report: (plugin: string, message: string) => void;
   },
-): Promise<PluginsPort & Pick<ClientPlugins, "draw" | "dispose">> {
+): Promise<
+  PluginsPort & {
+    readonly draw: (message: PartMessage) => unknown;
+    readonly dispose: () => Promise<void>;
+  }
+> {
   let current: Session | null = null;
 
   const plugins = await mountClientPlugins({
     connection: host,
     plugins: tuiPlugins(),
+    client: { name: "tui", frameworks: ["tui"] },
     session: () => current,
     notify: (input) => options.notify(input.title ?? "Nyte", input.message, input.sound === true),
     report: options.report,
   });
 
+  const stopDirectory = follow(
+    host.sessions.watch({ parents: { kind: "all" } }),
+    (sessions) => plugins.sessionsChanged(sessions),
+    (cause) =>
+      options.report("notifications", cause instanceof Error ? cause.message : String(cause)),
+  );
+
   return {
-    draw: (message) => plugins.draw(message),
+    draw: (message) =>
+      current === null
+        ? undefined
+        : plugins.draw(current, message, { kind: "transcript", role: message.role }),
     ids: plugins.ids,
-    dispose: () => plugins.dispose(),
+    dispose: async () => {
+      stopDirectory();
+      await plugins.dispose();
+    },
     async switched(previous, next) {
       const opened = host.session(next);
       current = opened;
@@ -385,7 +513,7 @@ export async function pluginsPort(
   };
 }
 
-function isWithdrawn(outcome: unknown): boolean {
+function reportsWithdrawn(outcome: unknown): boolean {
   return (
     typeof outcome === "object" &&
     outcome !== null &&

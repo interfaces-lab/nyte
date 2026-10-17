@@ -2,7 +2,7 @@
  * The contract between the interface and whatever hosts it: where the host's
  * listener is (the interface connects to it with `@nyte-ai/sdk`), and a host
  * namespace for what lives beside the sdk (workspace selection, files on this
- * machine, terminals, browser surfaces, usage history, GitHub). The desktop
+ * machine, terminals, browser surfaces, usage history). The desktop
  * carries it over Electron IPC; the web app supplies its own.
  */
 import type { CredentialSource, SessionId, Usage, WorkspaceId } from "@nyte-ai/sdk";
@@ -60,7 +60,7 @@ export interface UsageTotals {
 }
 
 /** What a usage entry was spent on: a model, tools, or compaction. */
-export type UsageSubject =
+type UsageSubject =
   | { readonly kind: "model"; readonly provider: string; readonly model: string }
   | { readonly kind: "tool" }
   | { readonly kind: "compaction" };
@@ -105,7 +105,7 @@ export interface UsageReport {
 }
 
 /** One model's turns and usage in another tool's history. */
-export interface ModelUsage {
+interface ModelUsage {
   readonly provider: string;
   readonly model: string;
   readonly turns: number;
@@ -113,7 +113,7 @@ export interface ModelUsage {
 }
 
 /** Another tool's history summed by model, compaction and tools. */
-export interface UsageSummary {
+interface UsageSummary {
   readonly models: readonly ModelUsage[];
   readonly compaction: Usage;
   readonly tools: Usage;
@@ -149,80 +149,11 @@ export interface DeviceCode {
   readonly instructions?: string;
 }
 
-/** The GitHub repository the selected folder's remote names. */
-export interface GitHubRepository {
-  readonly owner: string;
-  readonly name: string;
-  readonly remoteName: string;
-  /** The canonical public URL. Remote credentials and raw remote URLs never cross. */
-  readonly url: string;
-}
-
-/** The account `gh` is signed in as. */
-export interface GitHubAccount {
-  readonly login: string;
-  readonly name?: string;
-  readonly avatarUrl?: string;
-}
-
-/** A pull request for the checked-out branch. */
-export interface GitHubPullRequest {
-  readonly number: number;
-  readonly title: string;
-  readonly url: string;
-  readonly state: "OPEN" | "CLOSED" | "MERGED";
-  readonly draft: boolean;
-  readonly headRefName: string;
-  readonly baseRefName: string;
-}
-
-/** Whether the checked-out branch has a pull request. */
-export type GitHubPullRequestContext =
-  | { readonly kind: "none" }
-  | { readonly kind: "ready"; readonly pullRequest: GitHubPullRequest }
-  | { readonly kind: "error"; readonly message: string };
-
-/** What opening a pull request takes. */
-export interface GitHubPullRequestInput {
-  readonly title: string;
-  readonly body?: string;
-  readonly draft?: boolean;
-}
-
-/** Every state `gh` can leave a pull request request in; `exists` carries the one already open. */
-export type GitHubPullRequestOutcome =
-  | { readonly kind: "created"; readonly url: string }
-  | { readonly kind: "exists"; readonly pullRequest: GitHubPullRequest }
-  | { readonly kind: "cli_missing" }
-  | { readonly kind: "signed_out" }
-  | { readonly kind: "no_remote" }
-  | { readonly kind: "failed"; readonly message: string };
-
-/** The serving machine's GitHub CLI login and the repository of the selected folder. */
-export type GitHubProviderState =
-  | { readonly kind: "cli_missing"; readonly repository?: GitHubRepository }
-  | { readonly kind: "signed_out"; readonly repository?: GitHubRepository }
-  | {
-      readonly kind: "signing_in";
-      readonly repository?: GitHubRepository;
-      readonly deviceCode: DeviceCode;
-    }
-  | {
-      readonly kind: "ready";
-      readonly repository?: GitHubRepository;
-      readonly account: GitHubAccount;
-      readonly pullRequest: GitHubPullRequestContext;
-    }
-  | {
-      readonly kind: "error";
-      readonly repository?: GitHubRepository;
-      readonly message: string;
-    };
-
 export type ThemePreference = "system" | "light" | "dark";
 
 export type ClientSurface = "desktop" | "web";
 
+/** The window commands the menu bar sends; the renderer runs each as its shortcut would. */
 export type AppMenuAction =
   | typeof clientActions.newChat.id
   | typeof clientActions.newTab.id
@@ -231,7 +162,16 @@ export type AppMenuAction =
   | typeof clientActions.openFolder.id
   | typeof clientActions.newTerminal.id
   | typeof clientActions.newBrowser.id
-  | typeof clientActions.settings.id;
+  | typeof clientActions.settings.id
+  | typeof clientActions.search.id
+  | typeof clientActions.sidebar.id
+  | typeof clientActions.workbench.id
+  | typeof clientActions.terminal.id
+  | typeof clientActions.splitRight.id
+  | typeof clientActions.splitDown.id
+  | typeof clientActions.back.id
+  | typeof clientActions.forward.id
+  | typeof clientActions.focusPane.id;
 
 export interface AppInfo {
   readonly name: string;
@@ -245,10 +185,6 @@ export interface AppInfo {
 export type AppMenuCommand =
   | { readonly kind: "action"; readonly action: AppMenuAction }
   | { readonly kind: "about"; readonly info: AppInfo };
-
-// ---------------------------------------------------------------------------
-// host types
-// ---------------------------------------------------------------------------
 
 /** The server the desktop reaches, without its token; the renderer never reads that back. */
 export type ServerState =
@@ -388,13 +324,9 @@ export type RemoteAccessState =
 import type { ConnectView } from "@nyte-ai/connect";
 
 export type {
-  ConnectAccount,
   ConnectDevice,
-  ConnectLease,
   ConnectLinkFailure,
-  ConnectLinking,
   ConnectNotice,
-  ConnectRelay,
   ConnectUnavailable,
   ConnectView,
 } from "@nyte-ai/connect";
@@ -431,9 +363,6 @@ export interface SelectedWorkspace {
 export interface HostState {
   /** Absent selects the id-only Home target, not the operating-system home folder. */
   readonly workspace: SelectedWorkspace | undefined;
-  readonly platform: NodeJS.Platform;
-  /** This computer's name. The web app's host has none to give. */
-  readonly machineName?: string;
   /**
    * The host's verified identity and the principal it named this client.
    * Present on registry hosts, where the selected folder and anything queued
@@ -468,10 +397,6 @@ export type OpenWorkspaceOutcome =
   | { kind: "needs_trust"; path: string; consent?: TrustConsent }
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
-
-// ---------------------------------------------------------------------------
-// browser surfaces
-// ---------------------------------------------------------------------------
 
 /** One embedded page. The surface id is the workbench view key. */
 export interface BrowserSurfaceState {
@@ -593,18 +518,14 @@ export interface BrowserBoundsMessage {
   readonly surface: string;
   readonly bounds: BrowserBounds;
   readonly visible: boolean;
+  /** The page takes keyboard focus as this message shows it. */
+  readonly focus: boolean;
 }
 
 /** Keyboard focus entered or left a panel's own controls: the address bar, the toolbar, find. */
 export interface BrowserFocusMessage {
   readonly surface: string;
   readonly focused: boolean;
-}
-
-export interface TerminalInfo {
-  readonly id: string;
-  readonly title: string;
-  readonly cwd: string;
 }
 
 /** A found release downloads at once; the renderer only ever hears about the download. */
@@ -619,13 +540,10 @@ export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
   /** settings.json changed: from any window, the terminal UI, or a hand edit. */
   | { kind: "settings_changed"; settings: HostSettings }
-  | { kind: "terminal_data"; id: string; data: string }
-  | { kind: "terminal_exit"; id: string; exitCode: number }
   | { kind: "workspace_opened"; workspace: SelectedWorkspace }
   /** A host mutation (file save, terminal) was refused. Sessions report trust through their activation. */
   | { kind: "workspace_trust_required"; path: string }
   | { kind: "workspace_closed" }
-  | { kind: "github_changed" }
   /** The server was connected or disconnected; re-read its state. */
   | { kind: "server_changed" }
   /** Remote access started, stopped, or moved folders; re-read its state. */
@@ -652,24 +570,12 @@ export type HostEvent =
       url: string;
     };
 
-export interface TerminalBridge {
-  create(input: { id: string; workspacePath: string | null }): Promise<TerminalInfo>;
-  write(input: { id: string; data: string }): Promise<void>;
-  resize(input: { id: string; cols: number; rows: number }): Promise<void>;
-  acknowledge(input: { id: string; length: number }): Promise<void>;
-  /** True only when the host can see the shell prompt idle, so closing needs no confirmation. */
-  idle(input: { id: string }): Promise<boolean>;
-  close(input: { id: string }): Promise<void>;
-}
-
-export interface GitHubBridge {
-  state(): Promise<GitHubProviderState>;
-  /** The renderer can call this only from a user gesture. `gh` owns the credentials. */
-  signIn(): Promise<GitHubProviderState>;
-  /** Ends a sign-in still waiting for its code; otherwise removes the CLI login. */
-  signOut(): Promise<GitHubProviderState>;
-  /** Open a pull request for the current branch through `gh`. Needs workspace trust. */
-  createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
+/** An element picked on a page: a selector that finds it, its outer HTML cut short, and a PNG data URL of its box. */
+export interface BrowserElementPick {
+  readonly url: string;
+  readonly selector: string;
+  readonly html: string;
+  readonly image: string | undefined;
 }
 
 export interface BrowserBridge {
@@ -699,6 +605,11 @@ export interface BrowserBridge {
    * view. The panel paints it while an overlay forces the page to hide.
    */
   captureFrame(input: { surface: string }): Promise<string | undefined>;
+  /**
+   * Lets the user point at an element on the page, and answers with it once
+   * picked: a click or Enter picks, Escape or a second call cancels with none.
+   */
+  pickElement(input: { surface: string }): Promise<BrowserElementPick | undefined>;
   /** Highlights matches and moves to the next or previous one. Empty text clears. */
   find(input: {
     surface: string;
@@ -714,8 +625,6 @@ export interface BrowserBridge {
   /** A cookie jar's history, newest first; `browser_history_changed` carries every change after. */
   history(input: { owner: string | null }): Promise<readonly BrowserHistoryEntry[]>;
   forgetHistory(input: { owner: string | null; url: string }): Promise<void>;
-  /** Hands keyboard focus to the page, as dismissing the address bar or find does. */
-  focusPage(input: { surface: string }): Promise<void>;
   setBounds(message: BrowserBoundsMessage): void;
   /** Main moves native focus off the page when the panel's controls take it, and menu commands follow it. */
   setFocus(message: BrowserFocusMessage): void;
@@ -736,6 +645,14 @@ export interface HostBridge {
   /** Keep Electron's native material and controls in the renderer's appearance mode. */
   setThemePreference(preference: ThemePreference): void;
   state(): Promise<HostState>;
+  /**
+   * The host state for a window reopening on chat `session`: when the window
+   * has no folder yet, the chat's folder is selected first, without the
+   * announcement a folder opening makes. A folder that is gone, or one
+   * whose project files still await a trust decision, is left for the window
+   * to open. Absent where the host keeps no folder per window: the web app.
+   */
+  readonly restore?: (input: { readonly session: string }) => Promise<HostState>;
   /**
    * Where the host's listener is and the credential to reach it with. The
    * interface connects with `sdk.connect` and holds that one connection.
@@ -773,8 +690,6 @@ export interface HostBridge {
     /** What the Check for Updates menu item does in this state. */
     check(): Promise<void>;
   };
-  /** Absent where no environment answers for `gh`. */
-  readonly github?: GitHubBridge;
   server: {
     state(): Promise<ServerState>;
     /** Proves the server answers with this token before remembering either. */
@@ -818,14 +733,17 @@ export interface HostBridge {
     x: number;
     y: number;
   }) => Promise<number | undefined>;
-  readonly terminal?: TerminalBridge;
   readonly browser?: BrowserBridge;
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 
-/** What `window.nyte` is: the shell's surface and the host namespace. Sessions, files and git are the connection's. */
+/** What `window.nyte` is: the shell's surface and the host namespace. Sessions, files, git and GitHub are the connection's. */
 export interface NyteBridge {
   readonly clientSurface: ClientSurface;
+  /** The operating system the interface runs on, known before any host answers. */
+  readonly platform: NodeJS.Platform;
+  /** This computer's name. The web app has none to give. */
+  readonly machineName: string | undefined;
   /** Where the inline canvas runtime shell loads from. Absent, `/canvas/index.html` on this origin. */
   readonly canvasShell?: string;
   /** The web app reaches a desktop through the Nyte account relay. That desktop's provider and GitHub sign-ins stay on it. */

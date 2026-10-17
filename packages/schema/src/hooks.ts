@@ -1,24 +1,66 @@
-import type { Configuration, ConfigurationPatch } from "./configuration.ts";
-import type { CallId, MessageId, SessionId } from "./ids.ts";
-import type { Delivery, MessageSource, UserContent } from "./messages.ts";
+import { Type } from "typebox";
+import { ConfigurationPatchType, ConfigurationType } from "./configuration.ts";
+import { idSchema } from "./ids.ts";
+import { JsonType, withJson } from "./json.ts";
+import { DeliveryType, MessageSourceType, UserContentType } from "./messages.ts";
 import type { Message as ModelMessage } from "./model/message.ts";
-import type { ModelRef, Thinking, Usage } from "./models.ts";
-import type { Json } from "./primitives.ts";
+import { ModelRefType, ThinkingType } from "./models.ts";
+import type { ModelRef, Usage } from "./models.ts";
+import type { Json } from "./json.ts";
+import { standard } from "./schema.ts";
+import type { Decoded, Schema } from "./schema.ts";
 import type { ToolInfo } from "./sessions.ts";
-import type { ToolClass } from "./tools.ts";
+import { ToolClassType } from "./tools.ts";
+import { nullable } from "./wire/nullable.ts";
 
-export type Submission = {
-  readonly content: UserContent;
-  readonly source: MessageSource;
-  readonly delivery: Delivery;
-  readonly configuration: Configuration | ConfigurationPatch | null;
-  readonly replace: MessageId | null;
-};
+export const SubmissionType = Type.Object({
+  content: UserContentType,
+  source: MessageSourceType,
+  delivery: DeliveryType,
+  configuration: nullable(Type.Union([ConfigurationType, ConfigurationPatchType])),
+  replace: nullable(idSchema<"message">()),
+});
 
-export type ModelContext = {
-  readonly system: string;
-  readonly messages: readonly ModelMessage[];
-};
+export type Submission = Decoded<typeof SubmissionType>;
+
+export const ModelRequestType = Type.Object({
+  model: ModelRefType,
+  thinking: ThinkingType,
+  step: Type.Enum(["assistant", "compaction", "summary"]),
+  attempt: Type.Number(),
+  options: Type.Object({
+    sampling: Type.Record(Type.String(), JsonType),
+    headers: Type.Record(Type.String(), Type.String()),
+  }),
+});
+
+export type ModelRequest = Decoded<typeof ModelRequestType>;
+
+export const ToolCallType = Type.Object({
+  call: idSchema<"call">(),
+  name: Type.String(),
+  args: JsonType,
+  class: ToolClassType,
+});
+
+export type ToolCall = Decoded<typeof ToolCallType>;
+
+export const SubmitDraftType = Type.Object({
+  content: UserContentType,
+  delivery: DeliveryType,
+  session: nullable(idSchema<"session">()),
+});
+
+/** A client's draft before it is sent; `session` is null for a draft that starts a chat. */
+export type SubmitDraft = Decoded<typeof SubmitDraftType>;
+
+export const SubmissionSchema: Schema<Submission> = standard(withJson(SubmissionType));
+
+export const ModelRequestSchema: Schema<ModelRequest> = standard(withJson(ModelRequestType));
+
+export const ToolCallSchema: Schema<ToolCall> = standard(withJson(ToolCallType));
+
+export const SubmitDraftSchema: Schema<SubmitDraft> = standard(SubmitDraftType);
 
 export type Transcript = {
   readonly messages: readonly ModelMessage[];
@@ -43,30 +85,6 @@ export type CompactionPlan = {
         readonly usage: Usage | null;
       }
     | null;
-};
-
-export type ModelRequest = {
-  readonly model: ModelRef;
-  readonly thinking: Thinking;
-  readonly step: "assistant" | "compaction" | "summary";
-  readonly attempt: number;
-  readonly options: {
-    readonly sampling: Readonly<Record<string, Json>>;
-    readonly headers: Readonly<Record<string, string>>;
-  };
-};
-
-export type ToolCall = {
-  readonly call: CallId;
-  readonly name: string;
-  readonly args: Json;
-  readonly class: ToolClass;
-};
-
-export type SubmitDraft = {
-  readonly content: UserContent;
-  readonly delivery: Delivery;
-  readonly session: SessionId;
 };
 
 export type Decision<Value> =

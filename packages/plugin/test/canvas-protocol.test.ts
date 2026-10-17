@@ -36,12 +36,12 @@ describe("the shell's messages", () => {
       jsonrpc: "2.0",
       id: 1,
       method: "ui/initialize",
-      params: { appInfo: { name: "nyte-canvas", version: "1" } },
+      params: { appInfo: { name: "nyte-canvas", version: String(CANVAS_RUNTIME) } },
     });
     expect(readShellMessage(wire(initializeRequest(1, CANVAS_RUNTIME)))).toEqual({
       kind: "initialize",
       id: 1,
-      runtime: 1,
+      runtime: CANVAS_RUNTIME,
     });
     expect(readShellMessage(wire(initializedNotification()))).toEqual({ kind: "initialized" });
     expect(wire(sizeChangedNotification(312))).toEqual({
@@ -63,6 +63,11 @@ describe("the shell's messages", () => {
       kind: "open-link",
       id: "link-1",
       url: "https://nyte.sh/",
+    });
+    expect(readShellMessage(wire(openLinkRequest("link-2", "ci.ts:42")))).toEqual({
+      kind: "open-link",
+      id: "link-2",
+      url: "ci.ts:42",
     });
     expect(wire(errorNotification({ phase: "render", message: "boom", stack: "at View" }))).toEqual(
       {

@@ -20,15 +20,11 @@ export function startKey(scope: string): string {
   return JSON.stringify([scope, "start"]);
 }
 
-export function isReady(row: WorkspaceInfo): boolean {
-  return row.availability.kind === "available";
-}
-
 export function selectedFolder(
   rows: readonly WorkspaceInfo[],
   chosenId: string | undefined,
 ): WorkspaceInfo | undefined {
-  const ready = rows.filter(isReady);
+  const ready = rows.filter((row) => row.availability.kind === "available");
   const chosen = ready.find((row) => row.id === chosenId);
 
   if (chosen !== undefined) return chosen;
@@ -149,7 +145,7 @@ export function subscribeAsking(listener: () => void): () => void {
   };
 }
 
-export function isAsking(scope: string, requestId: string): boolean {
+export function readAsking(scope: string, requestId: string): boolean {
   return asking.has(flightKey(scope, requestId));
 }
 
@@ -162,15 +158,12 @@ async function start(client: Connection, input: StartInput): Promise<StartReceip
   const sessionId = asId<"session">(input.requestId);
 
   try {
-    const session = await client.sessions.create({
+    await client.sessions.start({
       id: sessionId,
       workspace: workspace.id,
       name: input.name,
       configuration: { model: input.model, thinking: input.thinking },
-    });
-
-    await session.send(await uploadDraft(client.workspace(workspace.id), input.content), {
-      id: asId<"receipt">(input.requestId),
+      content: await uploadDraft(client.workspace(workspace.id), input.content),
     });
   } catch (cause) {
     if (!(cause instanceof SdkError) || (cause.code !== "unknown" && cause.code !== "invalid"))

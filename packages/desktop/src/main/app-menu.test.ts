@@ -87,6 +87,7 @@ test("off macOS the primary W closes a tab and closing the window takes Shift", 
     },
     newWindow: () => {},
     view: () => {},
+    developer: true,
   });
 
   const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
@@ -95,10 +96,10 @@ test("off macOS the primary W closes a tab and closing the window takes Shift", 
   const all = items(template);
   const primaryW = all.filter((item) => item.accelerator === "CommandOrControl+W");
   expect(primaryW).toHaveLength(1);
-  const click = primaryW[0]?.click;
+  const click: ((...args: never[]) => void) | undefined = primaryW[0]?.click;
 
   if (click === undefined) throw new Error("The primary W item has no click handler");
-  Reflect.apply(click, undefined, []);
+  click();
   expect(dispatched).toEqual([{ kind: "action", action: "close-tab" }]);
   expect(all.filter((item) => item.role === "close").map((item) => item.accelerator)).toEqual([
     "Shift+CommandOrControl+W",
@@ -168,6 +169,7 @@ test("held keys repeat only zoom", () => {
     dispatch: () => {},
     newWindow: () => {},
     view: () => {},
+    developer: true,
   });
 
   const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
@@ -245,6 +247,7 @@ test("a forwarded key finds its item in a menu shaped like Electron's at runtime
     readonly enabled: boolean;
     readonly visible: boolean;
     readonly accelerator: string | null;
+    readonly registerAccelerator?: boolean;
     readonly submenu: { readonly items: readonly FakeItem[] } | null;
   }
 
@@ -270,6 +273,7 @@ test("a forwarded key finds its item in a menu shaped like Electron's at runtime
       branch("View", [
         leaf("Reload", "CommandOrControl+R"),
         leaf("Zoom In", "CommandOrControl+Plus", false),
+        { ...leaf("Split Right", "CommandOrControl+D"), registerAccelerator: false },
       ]),
     ],
   };
@@ -288,4 +292,5 @@ test("a forwarded key finds its item in a menu shaped like Electron's at runtime
   expect(menuItemForKey(menu, command("q", "KeyQ"), true)?.label).toBe("Quit Nyte");
   expect(menuItemForKey(menu, command("+", "Equal"), true)).toBeUndefined();
   expect(menuItemForKey(menu, command("k", "KeyK"), true)).toBeUndefined();
+  expect(menuItemForKey(menu, command("d", "KeyD"), true)).toBeUndefined();
 });

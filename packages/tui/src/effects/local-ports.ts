@@ -11,9 +11,7 @@ import { editInExternalEditor, resolveExternalEditor } from "../services/externa
 import { startLocalShell } from "../services/local-shell.ts";
 import type { ShellProcess } from "../services/local-shell.ts";
 import { FileSettingsStore } from "../services/settings.ts";
-import type { Clock, FilesPort, Handle, SettingsPort, ShellEnd, ShellPort } from "./ports.ts";
-
-const PASTE_COLLAPSE_LINES = 8;
+import type { FilesPort, Handle, SettingsPort, ShellEnd, ShellPort } from "./ports.ts";
 
 const MAX_ATTACHMENT_BYTES = 256_000;
 
@@ -33,8 +31,6 @@ export function createHandle<T>(): Handle<T> {
     current: () => current,
   };
 }
-
-export const systemClock: Clock = { now: () => Date.now() };
 
 export function shellPort(): ShellPort {
   const processes = new Map<string, ShellProcess>();
@@ -111,12 +107,13 @@ export function settingsPort(): SettingsPort {
     async write(cwd, patch) {
       await store.updateGlobal(patch);
 
-      return store.read(cwd);
+      return store.read(cwd).settings;
     },
+    settled: () => store.settled(),
   };
 }
 
-export async function resolvePaste(
+async function resolvePaste(
   text: string,
   bytes: Uint8Array | null,
   cwd: string,
@@ -144,9 +141,7 @@ export async function resolvePaste(
       : { kind: "part", part: image };
   }
 
-  return normalized.split("\n").length > PASTE_COLLAPSE_LINES
-    ? { kind: "part", part: { kind: "paste", text: normalized } }
-    : { kind: "text", text: normalized };
+  return { kind: "text", text: normalized };
 }
 
 function imagePart(bytes: Uint8Array): Extract<DraftPart, { readonly kind: "image" }> | null {

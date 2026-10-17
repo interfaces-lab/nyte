@@ -424,8 +424,7 @@ describe("OpenAI Codex OAuth", () => {
     assert.equal(consoleError.mock.calls.length, 0);
   });
 
-  test("falls back to the pasted redirect URL when the fixed callback port is taken", async () => {
-    // Port 1455 is registered with OpenAI; the Codex CLI may hold it. Occupy it unless it already is.
+  test("falls back to the pasted redirect URL when the fixed callback port, registered with OpenAI and maybe held by the Codex CLI, is taken", async () => {
     const blocker = createServer();
     await new Promise<void>((resolve) => {
       blocker.once("error", () => resolve());

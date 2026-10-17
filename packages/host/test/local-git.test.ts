@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { asId } from "@nyte-ai/schema";
-import type { GitStatus, PatchSet } from "@nyte-ai/schema";
+import { asId, readHunks } from "@nyte-ai/schema";
+import type { GitStatus, Hunk, PatchEntry, PatchSet } from "@nyte-ai/schema";
 import type { ExecutionEnv, GitApi } from "@nyte-ai/core";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { localExec, localFiles, localGit } from "../src/index.ts";
@@ -34,7 +34,7 @@ function sh(cwd: string, ...args: string[]): string {
   });
 }
 
-function envOf(cwd: string): ExecutionEnv {
+function localEnv(cwd: string): ExecutionEnv {
   return {
     identity: asId("test"),
     cwd,
@@ -55,7 +55,7 @@ async function repository(): Promise<{ readonly root: string; readonly git: GitA
   sh(root, "add", "-A");
   sh(root, "commit", "-q", "-m", "first");
 
-  return { root, git: localGit(envOf(root)) };
+  return { root, git: localGit(localEnv(root)) };
 }
 
 async function repo(git: GitApi): Promise<Extract<GitStatus, { kind: "repository" }>> {
@@ -63,6 +63,12 @@ async function repo(git: GitApi): Promise<Extract<GitStatus, { kind: "repository
   assert(status.kind === "repository");
 
   return status;
+}
+
+function textHunks(entry: PatchEntry | undefined): readonly Hunk[] {
+  assert(entry?.kind === "text");
+
+  return readHunks(entry.patch);
 }
 
 async function first<T>(source: AsyncIterable<T>): Promise<T> {
@@ -74,7 +80,7 @@ async function first<T>(source: AsyncIterable<T>): Promise<T> {
 describe.skipIf(!hasGit)("localGit", () => {
   it("answers none outside a repository and an unborn status in a new one", async () => {
     const outside = await folder();
-    const git = localGit(envOf(outside));
+    const git = localGit(localEnv(outside));
 
     expect(await git.status()).toEqual({ kind: "none" });
     await expect(git.changes({ kind: "worktree" })).rejects.toMatchObject({ code: "unavailable" });
@@ -164,7 +170,7 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect(changes.revision).toBe((await repo(git)).revision);
   });
 
-  it("parses patches into hunks on the host, batching past 32 paths and leaving out unreported paths", async () => {
+  it("answers each path's section of the unified diff, batching past 32 paths and leaving out unreported paths", async () => {
     const { root, git } = await repository();
     await mkdir(join(root, "many"));
 
@@ -216,22 +222,25 @@ describe.skipIf(!hasGit)("localGit", () => {
       kind: "text",
       added: 2,
       removed: 2,
-      hunks: [
-        {
-          oldStart: 1,
-          oldLines: 3,
-          newStart: 1,
-          newLines: 3,
-          header: null,
-          lines: [
-            { kind: "context", text: "one" },
-            { kind: "remove", text: "two" },
-            { kind: "remove", text: "three" },
-            { kind: "add", text: "TWO" },
-            { kind: "add", text: "three", noNewline: true },
-          ],
-        },
-      ],
+    });
+    expect(textHunks(set.entries.get("a.txt"))).toMatchObject([
+      {
+        oldStart: 1,
+        oldLines: 3,
+        newStart: 1,
+        newLines: 3,
+        header: null,
+        lines: [
+          { kind: "context", text: "one" },
+          { kind: "remove", text: "two" },
+          { kind: "remove", text: "three" },
+          { kind: "add", text: "TWO" },
+          { kind: "add", text: "three", noNewline: true },
+        ],
+      },
+    ]);
+    expect(set.entries.get("a.txt")).toMatchObject({
+      patch: expect.stringMatching(/^diff --git a\/a\.txt b\/a\.txt\n/),
     });
     expect(set.entries.get("pic.bin")).toMatchObject({ kind: "binary" });
     expect(set.entries.get("big.txt")).toMatchObject({ kind: "too-large", limit: 1024 * 1024 });
@@ -239,8 +248,10 @@ describe.skipIf(!hasGit)("localGit", () => {
       status: "untracked",
       kind: "text",
       added: 2,
-      hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 2 }],
     });
+    expect(textHunks(set.entries.get("fresh.txt"))).toMatchObject([
+      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2 },
+    ]);
     expect(set.entries.get("space.txt")).toMatchObject({ kind: "text" });
 
     const quiet = await first(
@@ -282,19 +293,19 @@ describe.skipIf(!hasGit)("localGit", () => {
       kind: "text",
       added: 1,
       removed: 0,
-      hunks: [
-        {
-          oldStart: 1,
-          newStart: 1,
-          lines: [
-            { kind: "context", text: "one" },
-            { kind: "context", text: "two" },
-            { kind: "context", text: "three" },
-            { kind: "add", text: "four" },
-          ],
-        },
-      ],
     });
+    expect(textHunks(set.entries.get("renamed.txt"))).toMatchObject([
+      {
+        oldStart: 1,
+        newStart: 1,
+        lines: [
+          { kind: "context", text: "one" },
+          { kind: "context", text: "two" },
+          { kind: "context", text: "three" },
+          { kind: "add", text: "four" },
+        ],
+      },
+    ]);
     expect(await git.contents("renamed.txt", { kind: "staged" })).toEqual({
       path: "renamed.txt",
       old: { kind: "text", text: "one\ntwo\nthree\n" },
@@ -459,6 +470,45 @@ describe.skipIf(!hasGit)("localGit", () => {
     await changes.return?.();
   }, 15_000);
 
+  it("re-reads the status only for changes git can see, and looks the repository up once", async () => {
+    const { root } = await repository();
+    await writeFile(join(root, ".gitignore"), "out/\n");
+    sh(root, "add", "-A");
+    sh(root, "commit", "-q", "-m", "ignore");
+    await mkdir(join(root, "out"));
+    const log = join(await folder(), "git.log");
+    const wrapper = join(await folder(), "git");
+    await writeFile(wrapper, `#!/bin/sh\necho "$*" >> '${log}'\nexec git "$@"\n`);
+    await chmod(wrapper, 0o755);
+    const git = localGit(localEnv(root), { git: wrapper });
+    const runs = async (): Promise<readonly string[]> =>
+      (await readFile(log, "utf8").catch(() => "")).split("\n").filter((line) => line !== "");
+    const statuses = git.watch()[Symbol.asyncIterator]();
+    const initial = await statuses.next();
+    assert(initial.done !== true && initial.value.kind === "repository");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const settled = (await runs()).length;
+
+    await writeFile(join(root, "out", "built.js"), "x");
+    sh(root, "update-ref", "refs/nyte/kept", "HEAD");
+    sh(root, "hash-object", "-w", "--stdin");
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect((await runs()).length).toBe(settled);
+
+    await writeFile(join(root, "a.txt"), "moved\n");
+    const moved = await statuses.next();
+    assert(moved.done !== true && moved.value.kind === "repository");
+    expect(moved.value.unstaged.map((file) => file.path)).toEqual(["a.txt"]);
+    sh(root, "commit", "-q", "-am", "moved");
+    const committed = await statuses.next();
+    assert(committed.done !== true && committed.value.kind === "repository");
+    expect(committed.value.unstaged).toEqual([]);
+    expect(
+      (await runs()).filter((line) => line.includes("rev-parse --show-toplevel")),
+    ).toHaveLength(1);
+    await statuses.return?.();
+  }, 15_000);
+
   it("answers every path relative to a workspace below the repository root, prefixing it on the way in (§41j)", async () => {
     const { root } = await repository();
     await mkdir(join(root, "pkg"));
@@ -468,7 +518,7 @@ describe.skipIf(!hasGit)("localGit", () => {
     await writeFile(join(root, "pkg", "a.ts"), "two\n");
     await writeFile(join(root, "pkg", "new.ts"), "fresh\n");
     await writeFile(join(root, "a.txt"), "outside the workspace\n");
-    const git = localGit(envOf(join(root, "pkg")));
+    const git = localGit(localEnv(join(root, "pkg")));
     const status = await repo(git);
 
     expect(status.root).toBe(root);
@@ -485,15 +535,15 @@ describe.skipIf(!hasGit)("localGit", () => {
     expect(set.entries.get("a.ts")).toMatchObject({
       path: "a.ts",
       kind: "text",
-      hunks: [
-        {
-          lines: [
-            { kind: "remove", text: "one" },
-            { kind: "add", text: "two" },
-          ],
-        },
-      ],
     });
+    expect(textHunks(set.entries.get("a.ts"))).toMatchObject([
+      {
+        lines: [
+          { kind: "remove", text: "one" },
+          { kind: "add", text: "two" },
+        ],
+      },
+    ]);
     expect(set.entries.get("new.ts")).toMatchObject({ path: "new.ts", kind: "text", added: 1 });
     expect(await git.contents("a.ts", { kind: "worktree" })).toEqual({
       path: "a.ts",

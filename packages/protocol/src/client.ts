@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type {
   ByteReader,
   FileVersion,
@@ -7,12 +7,9 @@ import type {
   OutputFrame,
   RequestOptions,
 } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
 import type { OperationName } from "./declarations.ts";
-import { declarations } from "./declarations.ts";
 import { parseJson } from "./json.ts";
 import { HOST_HEADER, decodeError, parseOutputFrames, parseSse, withInputHeader } from "./wire.ts";
-import type { SseFrame } from "./wire.ts";
 import { createStreamClient } from "./stream-client.ts";
 
 /** Describes where a transport sends requests, the headers each carries (credentials, read again per request), and the `fetch` it uses. */
@@ -25,13 +22,12 @@ export type TransportOptions = {
 /** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
 export type ResponseReader = ByteReader & { readonly version?: FileVersion };
 
-/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `frames` (a stream row's event-stream JSON frames), `output` (`job.output`'s framed octets as byte, `gap` and `exit` frames), `bytes` (an octet answer as a reader), `watch` (events with their ids, resuming after `lastEventId`; reconnecting is the caller's), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the first response that carried one, error answers included, §43j; a later response naming another host throws `stale` with that host's id, its answer unread); only a `TypeError` from `fetch` is `unavailable`, any other exception reaching the caller as thrown (§47m); `return()` on a `frames`, `output` or `watch` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
+/** Returns the low-level client, one primitive per wire shape: `invoke` (JSON in and out), `frames` (a stream row's event-stream JSON frames), `output` (`job.output`'s framed octets as byte, `gap` and `exit` frames), `bytes` (an octet answer as a reader), `upload` (bytes as the body, the input in `X-Nyte-Input`; its signal aborts the request), `credential` (the `X-Nyte-Credential` a pairing exchange returned, §40j) and `host` (the `X-Nyte-Host` of the first response that carried one, error answers included, §43j; a later response naming another host throws `stale` with that host's id, its answer unread); only a `TypeError` from `fetch` is `unavailable`, any other exception reaching the caller as thrown (§47m); `return()` on a `frames` or `output` iterator aborts its request and resolves at once (§40x); every error answer is rethrown as the `SdkError` it encodes. */
 export type Transport = {
   invoke(name: OperationName, input: Json, options?: RequestOptions): Promise<Json>;
   frames(name: OperationName, input: Json): AsyncIterable<Json>;
   output(input: Json): AsyncIterable<OutputFrame>;
   bytes(name: OperationName, input: Json, options?: RequestOptions): Promise<ResponseReader>;
-  watch(name: OperationName, input: Json, lastEventId?: string): AsyncIterable<SseFrame>;
   upload(
     name: OperationName,
     input: Json,
@@ -93,7 +89,7 @@ export function createTransport(options: TransportOptions): Transport {
 
   return {
     async invoke(name, input, request) {
-      if ("wait" in declarations[name]) {
+      if ("wait" in OPERATIONS[name]) {
         const controller = new AbortController();
         const signal = request?.signal ?? controller.signal;
         try {
@@ -108,7 +104,7 @@ export function createTransport(options: TransportOptions): Transport {
     },
     frames(name, input) {
       return cancellable(async function* (signal) {
-        for await (const frame of parseSse(await stream(name, input, signal))) yield frame.data;
+        yield* parseSse(await stream(name, input, signal));
       });
     },
     output(input) {
@@ -144,12 +140,6 @@ export function createTransport(options: TransportOptions): Transport {
         close,
         [Symbol.asyncDispose]: close,
       };
-    },
-    watch(name, input, lastEventId) {
-      return cancellable(async function* (signal) {
-        const headers = lastEventId === undefined ? undefined : { "Last-Event-ID": lastEventId };
-        yield* parseSse(await stream(name, input, signal, headers));
-      });
     },
     async upload(name, input, body, request) {
       const response = await post(name, {

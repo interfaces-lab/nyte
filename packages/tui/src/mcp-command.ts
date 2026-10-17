@@ -204,9 +204,11 @@ function report(
 async function settled(mcp: McpApi, signal: AbortSignal): Promise<McpView> {
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(LIST_WAIT_MS)]);
   const views = mcp.watch()[Symbol.asyncIterator]();
+
   const stopped = new Promise<"stopped">((resolve) =>
     deadline.addEventListener("abort", () => resolve("stopped"), { once: true }),
   );
+
   let latest: McpView | null = null;
 
   try {
@@ -244,11 +246,7 @@ function listLines(view: McpView): readonly string[] {
     ...alignedRows(rows, color),
     ...view.servers.flatMap((server) =>
       server.state.kind === "failed"
-        ? [
-            "",
-            server.state.message,
-            ...(server.state.stderr === null ? [] : [server.state.stderr]),
-          ]
+        ? ["", server.state.message, ...(server.state.stderr === null ? [] : [server.state.stderr])]
         : server.state.kind === "needs-sign-in"
           ? ["", `${server.name}: run \`nyte mcp login ${server.name}\` to sign in.`]
           : [],
@@ -284,11 +282,11 @@ function parseNamed(
 }
 
 function pair(text: string, flag: string): readonly [string, string] {
-  const at = text.indexOf("=");
+  const [key = "", ...value] = text.split("=");
 
-  if (at <= 0) throw new Error(`${flag} takes KEY=VALUE, not ${text}.`);
+  if (key === "" || value.length === 0) throw new Error(`${flag} takes KEY=VALUE, not ${text}.`);
 
-  return [text.slice(0, at), text.slice(at + 1)];
+  return [key, value.join("=")];
 }
 
 function parseAdd(args: readonly string[]): {
@@ -296,7 +294,7 @@ function parseAdd(args: readonly string[]): {
   readonly config: McpServerConfig;
   readonly scope: McpScope;
 } {
-  const split = args.indexOf("--");
+  const split = args.findIndex((arg) => arg === "--");
   const flags = split < 0 ? args : args.slice(0, split);
   const command = split < 0 ? [] : args.slice(split + 1);
   let positional: string | undefined;

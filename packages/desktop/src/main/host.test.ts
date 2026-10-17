@@ -43,8 +43,11 @@ test("the renderer reaches the host over the local listener and a chat runs ther
   const connection = await connectLocal(made);
   made.fake.reply({ content: [{ type: "text", text: "hello from the host" }] });
 
-  const session = await connection.sessions.create({ name: "greeting" });
-  const receipt = await session.send("Say hello");
+  const { session, receipt } = await connection.sessions.start({
+    name: "greeting",
+    content: "Say hello",
+  });
+
   await receipt.settled();
   const view = await session.view();
 
@@ -76,8 +79,7 @@ test("keep awake holds while a head is live and lets go when its run ends", asyn
   const finish = Promise.withResolvers<void>();
   made.fake.reply({ content: [{ type: "text", text: "working" }], until: finish.promise });
 
-  const session = await connection.sessions.create();
-  const receipt = await session.send("Work");
+  const { receipt } = await connection.sessions.start({ content: "Work" });
   await vi.waitFor(() => assert.deepEqual(awake, [true]));
 
   finish.resolve();
@@ -123,25 +125,25 @@ test("connecting a server proves the token, pins the host that answered and reme
   assert.equal(JSON.parse(saved).hostId, remote.expect?.hostId);
 
   await server.close();
-  assert.equal((await made.host.call(1, "host.server.state", undefined)).kind, "unavailable");
+  await vi.waitFor(async () =>
+    assert.equal((await made.host.call(1, "host.server.state", undefined)).kind, "unavailable"),
+  );
+  assert.ok(made.events.filter((event) => event.kind === "server_changed").length >= 2);
   await made.host.call(1, "host.server.disconnect", undefined);
   assert.deepEqual(await made.host.call(1, "host.server.state", undefined), { kind: "none" });
 });
 
-test("picking a folder registers it and selects it for that window only; cancelling changes nothing", async () => {
-  const picked: (string | undefined)[] = [undefined];
+test("opening a folder registers it and selects it for that window only; a failed open changes nothing", async () => {
   const received: { readonly event: HostEvent; readonly window: number | undefined }[] = [];
+
   const made = await desktop({
-    pickFolder: async () => picked.shift(),
     emitHostEvent: (event, window) => received.push({ event, window }),
   });
+
   const folder = join(made.home, "project");
   await mkdir(folder);
 
-  assert.deepEqual(await made.host.call(1, "host.pickWorkspace", undefined), { kind: "cancelled" });
-  assert.deepEqual(received, []);
-  picked.push(folder);
-  const opened = await made.host.call(1, "host.pickWorkspace", undefined);
+  const opened = await made.host.call(1, "host.openWorkspace", { path: folder });
 
   if (opened.kind !== "opened") throw new Error("The folder did not open");
   assert.deepEqual(opened.workspace, { id: opened.workspace.id, path: folder, name: "project" });
@@ -178,6 +180,31 @@ test("picking a folder registers it and selects it for that window only; cancell
   ]);
 });
 
+test("a window reopening on a chat answers its state with the chat's folder selected, and announces nothing", async () => {
+  const received: HostEvent[] = [];
+  const made = await desktop({ emitHostEvent: (event) => received.push(event) });
+  const folder = join(made.home, "project");
+  await mkdir(folder);
+  const opened = await made.host.call(1, "host.openWorkspace", { path: folder });
+
+  if (opened.kind !== "opened") throw new Error("The folder did not open");
+  const host = await made.host.host();
+  await host.workspace(opened.workspace.id).update({ projectResources: true });
+  const { session: chat } = await host.sessions.start({
+    workspace: opened.workspace.id,
+    content: "Hi.",
+  });
+  received.length = 0;
+
+  assert.deepEqual((await made.host.call(2, "host.restore", { session: chat.id })).workspace, {
+    id: opened.workspace.id,
+    path: folder,
+    name: "project",
+  });
+  assert.equal((await made.host.call(3, "host.restore", { session: "gone" })).workspace, undefined);
+  assert.deepEqual(received, []);
+});
+
 test("a key login over the loopback listener connects the provider, and the reopened home keeps it without reading the key", async () => {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-login-")));
   const store = sqliteStore({ path: join(home, "credentials.db") });
@@ -210,17 +237,26 @@ test("a key login over the loopback listener connects the provider, and the reop
     const connection = await sdk.connect(await first.host.call(1, "host.endpoint", undefined));
     await vi.waitFor(async () => assert.equal(await credential(connection), "missing"));
 
-    const login = connection.models.login({ provider: "test", method: { kind: "key" } });
+    const login = connection.models.login({
+      provider: "test",
+      method: { kind: "key" },
+      label: "Work",
+    });
+
     const steps: string[] = [];
 
     for await (const step of login.steps()) {
       steps.push(step.kind);
 
-      if (step.kind === "paste") await login.answer(step.secret ? "sk-test" : "Work");
+      if (step.kind === "paste") await login.answer("sk-test");
     }
 
-    assert.deepEqual(steps, ["paste", "paste", "done"]);
+    assert.deepEqual(steps, ["paste", "done"]);
     await vi.waitFor(async () => assert.equal(await credential(connection), "configured"));
+    assert.deepEqual(
+      (await connection.models.accounts("test")).map((account) => account.label),
+      ["Work"],
+    );
     await connection.close();
     await first.close();
     const written = reads;

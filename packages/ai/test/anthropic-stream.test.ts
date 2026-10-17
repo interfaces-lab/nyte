@@ -108,7 +108,7 @@ test("interleaved tool calls retain initial arguments and never persist parser s
         frame({
           type: "content_block_delta",
           index: 2,
-          delta: { type: "input_json_delta", partial_json: '{"path":"a"' },
+          delta: { type: "input_json_delta", partial_json: '{"path":"a"}' },
         }),
         frame({
           type: "content_block_delta",

@@ -3,6 +3,7 @@ import { stringifyKeyStroke } from "@opentui/keymap";
 import type { KeyStrokeInput } from "@opentui/keymap";
 import { defaultBindingParser } from "@opentui/keymap/addons";
 import type { Thinking } from "@nyte-ai/sdk";
+import type { Recovery } from "@nyte-ai/plugin/client/presentation";
 
 export const THINKING_LEVELS = [
   "off",
@@ -137,14 +138,10 @@ export function keyStrokes(command: ChatCommand): readonly KeyStrokeInput[] {
   });
 }
 
-const KEYCAP_NAMES: Readonly<Record<"escape" | "return", string>> = {
-  escape: "esc",
-  return: "enter",
-};
-
-function isKeycapName(name: string): name is keyof typeof KEYCAP_NAMES {
-  return Object.hasOwn(KEYCAP_NAMES, name);
-}
+const KEYCAP_NAMES: ReadonlyMap<string, string> = new Map([
+  ["escape", "esc"],
+  ["return", "enter"],
+]);
 
 export function keycap(command: ChatCommand, style?: "symbol"): string {
   const [primary = ""] = CHAT_KEYBINDS[command].split(",");
@@ -155,7 +152,7 @@ export function keycap(command: ChatCommand, style?: "symbol"): string {
       (name) => ({ up: "↑", down: "↓", left: "←", right: "→", return: "↵" })[name] ?? name,
     );
 
-  return primary.replace(/[^+]+$/u, (name) => (isKeycapName(name) ? KEYCAP_NAMES[name] : name));
+  return primary.replace(/[^+]+$/u, (name) => KEYCAP_NAMES.get(name) ?? name);
 }
 
 export const COMPOSER_PLACEHOLDER = "Plan, search, build anything";
@@ -171,10 +168,6 @@ export const ACTIVITY_THINKING_LABEL = " Thinking…";
 export const ACTIVITY_THOUGHT_LABEL = " Thought";
 
 export const ACTIVITY_WORKED_LABEL = "Worked";
-
-export const ACTIVITY_STOPPED_LABEL = "! Stopped";
-
-export const ACTIVITY_FAILED_LABEL = " Failed";
 
 export const ACTIVITY_WAITING_LABEL = " Waiting for your answer";
 
@@ -201,10 +194,7 @@ const MODERN_TERMINALS = new Set([
   "zed",
 ]);
 
-function isLegacyWindowsConsole(
-  env: NodeJS.ProcessEnv = process.env,
-  platform: string = process.platform,
-): boolean {
+function detectLegacyWindowsConsole(env: NodeJS.ProcessEnv, platform: string): boolean {
   const forced = env["NYTE_FORCE_LEGACY_CONSOLE"];
 
   if (forced === "1" || forced === "true") return true;
@@ -219,12 +209,14 @@ function isLegacyWindowsConsole(
   return !MODERN_TERMINALS.has(brand);
 }
 
+const LEGACY_CONSOLE = detectLegacyWindowsConsole(process.env, process.platform);
+
 export const GLYPHS = {
-  prompt: isLegacyWindowsConsole() ? ">" : "❯",
-  steer: isLegacyWindowsConsole() ? "^" : "↑",
-  queue: isLegacyWindowsConsole() ? "v" : "↓",
-  sending: isLegacyWindowsConsole() ? "~" : "…",
-  report: isLegacyWindowsConsole() ? "<" : "↳",
+  prompt: LEGACY_CONSOLE ? ">" : "❯",
+  steer: LEGACY_CONSOLE ? "^" : "↑",
+  queue: LEGACY_CONSOLE ? "v" : "↓",
+  sending: LEGACY_CONSOLE ? "~" : "…",
+  report: LEGACY_CONSOLE ? "<" : "↳",
   bullet: "●",
   check: "✓",
   cross: "✗",
@@ -248,3 +240,10 @@ export function pendingHint(hidden: number): string {
 
   return hidden > 0 ? `+${String(hidden)} more · ${open}` : open;
 }
+
+/** The terminal's way to take each recovery step a failure notice names. */
+export const RECOVERY_STEPS: Readonly<Record<Recovery, string>> = {
+  compact: "Run /compact to summarize it.",
+  "sign-in": "Run /login to sign in again.",
+  "switch-model": `Press ${keycap("chat.model.next")} for another model.`,
+};

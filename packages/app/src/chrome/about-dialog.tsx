@@ -7,7 +7,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 const styles = create({
@@ -33,7 +33,7 @@ const styles = create({
     color: role.contentInteractiveSecondary,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     cursor: appearance.cursorInteractive,
   },

@@ -35,6 +35,9 @@
     "@nyte-ai/web#typecheck": {
       "dependsOn": ["^typecheck", "^build"]
     },
+    "@nyte-ai/tui#typecheck": {
+      "dependsOn": ["^typecheck", "@nyte-ai/canvas#build"]
+    },
     "//#lint": {},
     "//#lint:fix": {
       "cache": false

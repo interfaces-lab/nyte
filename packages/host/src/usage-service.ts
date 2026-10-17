@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import type { Models } from "@nyte-ai/ai";
+import { serial } from "@nyte-ai/schema/serial";
 import type { Api, Model } from "@nyte-ai/schema/model";
 import { readNyteUsage } from "./store-usage.ts";
 import { createUsageScanCaches, readLocalUsage } from "./usage.ts";
@@ -27,7 +28,7 @@ export class UsageScanner implements UsageScanReader {
   private readonly home: string;
   private readonly caches = createUsageScanCaches();
   private readonly models: ReturnType<typeof createModels>;
-  private serial: Promise<unknown> = Promise.resolve();
+  private readonly scans = serial();
 
   constructor(home: string) {
     this.home = home;
@@ -39,7 +40,7 @@ export class UsageScanner implements UsageScanReader {
   }
 
   scan(request: UsageScanRequest): Promise<UsageScan> {
-    const result = this.serial.then(async () => {
+    return this.scans.run(async () => {
       if (request.catalog === undefined)
         await this.models.refresh({
           providers: ["anthropic", "openai-codex"],
@@ -64,13 +65,9 @@ export class UsageScanner implements UsageScanReader {
         nyteError: report.sources.find((source) => source.status === "failed")?.message ?? null,
       };
     });
-
-    this.serial = result.catch(() => undefined);
-
-    return result;
   }
 
-  async close(): Promise<void> {
-    await this.serial;
+  close(): Promise<void> {
+    return this.scans.settled();
   }
 }

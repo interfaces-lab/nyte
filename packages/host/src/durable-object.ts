@@ -1,29 +1,31 @@
-import { asSeq } from "@nyte-ai/schema";
+import { asSeq, SdkError } from "@nyte-ai/schema";
 import type { ObjectId, Ref, Revision, Seq, SessionId, SetOutcome } from "@nyte-ai/schema";
 import {
-  SdkError,
   admits,
+  fenceNames,
   assertStoreVersion,
   blobId,
   decodeObject,
   collectSessionEvents,
   migrateStore,
   objectId,
-  setSeq,
   sessionIndexRef,
   parseSessionRef,
-} from "@nyte-ai/core";
-import type { CommitOutcome, MigrationTarget, Store, StoreConnection } from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
+import type { Store, StoreConnection } from "@nyte-ai/core";
+import type { CommitOutcome, MigrationTarget } from "@nyte-ai/core/store";
 import {
   collect,
   decodeEvent,
+  loggedRow,
   memoryReader,
   mintRevision,
-  numberOf,
+  parseNumber,
   prefixEnd,
-  refOf,
-  storedRecordOf,
-  textOf,
+  parseRef,
+  parseStoredObject,
+  parseStoredRecord,
+  parseText,
 } from "./store-rows.ts";
 import { sessionIndexChanges, sqlSessionIndex } from "./session-index.ts";
 
@@ -71,7 +73,7 @@ function storedVersion(storage: DurableObjectSql): number {
     .exec("SELECT version FROM store_meta WHERE id = 1")
     .toArray()[0]?.version;
 
-  return version === undefined ? 0 : numberOf(version);
+  return version === undefined ? 0 : parseNumber(version);
 }
 
 function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
@@ -91,8 +93,30 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
     },
     async records() {
       return rows(
-        "SELECT refs.name, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
-      ).map(storedRecordOf);
+        "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
+      ).map(parseStoredRecord);
+    },
+    async *objects(kind) {
+      yield* rows(
+        "SELECT id, body FROM objects WHERE body IS NOT NULL AND instr(body, ?) > 0",
+        `"kind":${JSON.stringify(kind)}`,
+      ).map(parseStoredObject);
+    },
+    async *logs() {
+      if (rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log'").length === 0)
+        return;
+
+      for (const row of rows("SELECT DISTINCT session FROM log")) {
+        const session = parseText(row.session);
+
+        if (session !== null)
+          yield {
+            session,
+            events: rows("SELECT seq, event FROM log WHERE session = ? ORDER BY seq", session).map(
+              loggedRow,
+            ),
+          };
+      }
     },
     async commit(change) {
       return storage.transactionSync((): CommitOutcome => {
@@ -104,7 +128,17 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
               .length === 0,
         );
 
-        if (conflicted) return "conflict";
+        const relogged = change.relogs.every(
+          (relog) =>
+            rows(
+              "SELECT 1 FROM log WHERE session = ? AND seq = ? AND event = ?",
+              relog.session,
+              relog.seq,
+              relog.expect,
+            ).length > 0,
+        );
+
+        if (conflicted || !relogged) return "conflict";
 
         for (const statement of change.sql) rows(statement);
 
@@ -123,9 +157,31 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
           updateSessionIndex(storage, moved.name, moved.id, mintRevision());
         }
 
+        for (const created of change.creates) {
+          const revision = mintRevision();
+
+          if (
+            rows(
+              "INSERT INTO refs (name, target, revision) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING RETURNING name",
+              created.name,
+              created.target,
+              revision,
+            ).length > 0
+          )
+            updateSessionIndex(storage, created.name, created.target, revision);
+        }
+
+        for (const relog of change.relogs)
+          rows(
+            "UPDATE log SET event = ? WHERE session = ? AND seq = ?",
+            relog.event,
+            relog.session,
+            relog.seq,
+          );
+
         if (change.reindexSessions)
           for (const row of rows("SELECT name, target, revision FROM refs")) {
-            const ref = refOf(row);
+            const ref = parseRef(row);
             updateSessionIndex(storage, ref.name, ref.target, ref.revision);
           }
 
@@ -147,13 +203,13 @@ function connect(storage: DurableObjectSql): StoreConnection {
   const tail = (session: SessionId): Seq => {
     const value = rows("SELECT MAX(seq) AS tail FROM log WHERE session = ?", session)[0]?.tail;
 
-    return asSeq(value === null || value === undefined ? 0 : numberOf(value));
+    return asSeq(value === null || value === undefined ? 0 : parseNumber(value));
   };
 
   const ref = (name: string): Ref | null => {
     const row = rows("SELECT name, target, revision FROM refs WHERE name = ?", name)[0];
 
-    return row === undefined ? null : refOf(row);
+    return row === undefined ? null : parseRef(row);
   };
 
   return {
@@ -172,7 +228,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
         return id;
       },
       async get(id) {
-        const body = textOf(rows("SELECT body FROM objects WHERE id = ?", id)[0]?.body);
+        const body = parseText(rows("SELECT body FROM objects WHERE id = ?", id)[0]?.body);
 
         return body === null ? null : decodeObject(body);
       },
@@ -208,7 +264,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
                 end,
               );
 
-        return found.map(refOf);
+        return found.map(parseRef);
       },
       async set(updates) {
         const logged = collectSessionEvents(updates).map(({ session, event }) => {
@@ -224,6 +280,9 @@ function connect(storage: DurableObjectSql): StoreConnection {
 
           for (const update of updates)
             if (!before.has(update.name)) before.set(update.name, ref(update.name) ?? undefined);
+          const fenced = fenceNames(updates).find((name) => ref(name) === null);
+
+          if (fenced !== undefined) return { kind: "fenced", name: fenced };
           const stale = updates.find((update) => !admits(update, before.get(update.name)));
 
           if (stale !== undefined)
@@ -273,7 +332,7 @@ function connect(storage: DurableObjectSql): StoreConnection {
             return asSeq(seq);
           });
 
-          return { kind: "set", seq: setSeq(updates, appended, tail), revisions };
+          return { kind: "set", logged: appended, at, revisions };
         });
       },
       async log(session, after, limit) {
@@ -282,7 +341,9 @@ function connect(storage: DurableObjectSql): StoreConnection {
           session,
           after,
           limit,
-        ).map((row) => decodeEvent(numberOf(row.seq), numberOf(row.at), textOf(row.event) ?? ""));
+        ).map((row) =>
+          decodeEvent(parseNumber(row.seq), parseNumber(row.at), parseText(row.event) ?? ""),
+        );
       },
       tail: async (session) => tail(session),
     },
@@ -299,7 +360,7 @@ function updateSessionIndex(
   const body =
     target === null
       ? null
-      : textOf(
+      : parseText(
           storage.sql.exec("SELECT body FROM objects WHERE id = ?", target).toArray()[0]?.body,
         );
 

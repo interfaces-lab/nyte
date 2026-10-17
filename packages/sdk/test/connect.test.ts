@@ -1,14 +1,14 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { HostView } from "@nyte-ai/schema";
-import { SdkError, TOKEN, composeHost, memoryStore } from "@nyte-ai/core";
+import { TOKEN, composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection } from "@nyte-ai/core";
 import { listenFetch } from "@nyte-ai/host";
 import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
-import { operations } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";
-import { BASE, TOKEN_SECRET, operationOf, served } from "./served.ts";
+import { BASE, TOKEN_SECRET, readOperation, served } from "./served.ts";
 import type { Served } from "./served.ts";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -207,7 +207,7 @@ describe("connect", () => {
     const names: string[] = [];
 
     host.intercept((request, next) => {
-      names.push(operationOf(request));
+      names.push(readOperation(request));
 
       return next(request);
     });
@@ -239,7 +239,7 @@ describe("connect", () => {
       }),
     );
 
-    const session = await connection.sessions.create();
+    const { session } = await connection.sessions.start({ content: "Hi." });
     const views = connection.watch()[Symbol.asyncIterator]();
     await views.next();
     one.intercept((request) => two.listener.fetch(request));
@@ -253,26 +253,22 @@ describe("connect", () => {
     expect(await two.host.sessions.list()).toMatchObject({ items: [] });
   });
 
-  it("ends a stream opened before a revoke on another instance within the 60 s window, the link revoked (ADV C N2, probe N1)", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
+  it("ends a stream opened before a revoke on another instance once this one's store poll reads it, the link revoked (ADV C N2, probe N1)", async () => {
     const store = memoryStore();
 
-    const compose = () =>
+    const compose = (poll?: number) =>
       composeHost({
         store,
         models: fakeModels().models,
         plugins: [chatOnly],
         workspace: { kind: "chat-only", locator: null },
         home: null,
-        operations: operations(),
         description: { name: "test", platform: "darwin", version: "0.1.0" },
+        poll,
       });
 
     const a = await compose();
-    const b = await compose();
+    const b = await compose(10);
     cleanups.push(
       () => a.close(),
       () => b.close(),
@@ -285,7 +281,7 @@ describe("connect", () => {
     });
 
     cleanups.push(() => listener.close());
-    const session = await b.sessions.create();
+    const { session } = await b.sessions.start({ content: "Hi." });
     const { code } = await a.principals.pair({ authority: new Set(["participant"]) });
 
     const device = kept(
@@ -307,8 +303,6 @@ describe("connect", () => {
 
       return "ended";
     })();
-
-    await vi.advanceTimersByTimeAsync(60_000);
 
     expect(await ended).toBe("ended");
     expect(await lastLink(hostViews)).toEqual({ kind: "closed", reason: "revoked" });

@@ -3,7 +3,12 @@ import type { SDKUserMessage, SessionStoreEntry } from "@anthropic-ai/claude-age
 import type { ImageContent, Message, TextContent, ToolCall, UserMessage } from "@nyte-ai/ai";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { BACKGROUND_TOOL, CLAUDE_CODE_PROVIDER, MIRROR_TOOL } from "./translate.ts";
+import {
+  BACKGROUND_TOOL,
+  CLAUDE_CODE_PROVIDER,
+  MIRROR_TOOL,
+  NYTE_TOOL_PREFIX,
+} from "./translate.ts";
 
 type MessageParam = SDKUserMessage["message"];
 
@@ -148,6 +153,19 @@ function toParams(messages: readonly Message[], model: string): MessageParam[] {
           claude.set(block.id, call.id);
 
           return [{ type: "tool_use", id: call.id, name: call.name, input: call.input }];
+        }
+
+        if (message.provider === CLAUDE_CODE_PROVIDER) {
+          claude.set(block.id, block.id);
+
+          return [
+            {
+              type: "tool_use",
+              id: block.id,
+              name: `${NYTE_TOOL_PREFIX}${block.name}`,
+              input: block.arguments,
+            },
+          ];
         }
 
         foreign.set(block.id, block.name);

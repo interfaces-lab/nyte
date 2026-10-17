@@ -1,9 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useLayoutEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import {
   ActivityIndicator,
-  Keyboard,
-  Pressable,
   StyleSheet,
   TextInput,
   View,
@@ -12,136 +10,55 @@ import {
 } from "react-native";
 import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from "react-native";
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
-  withSpring,
   withTiming,
-  Easing,
 } from "react-native-reanimated";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import { scheduleOnRN } from "react-native-worklets";
-import { Host } from "@expo/ui";
-import { Button, HStack, Image, Menu, Picker, Text } from "@expo/ui/swift-ui";
-import {
-  accessibilityLabel,
-  buttonStyle,
-  contentShape,
-  font,
-  foregroundStyle,
-  frame,
-  disabled,
-  lineLimit,
-  labelsHidden,
-  pickerStyle,
-  shapes,
-  tag,
-} from "@expo/ui/swift-ui/modifiers";
-import { SymbolView } from "expo-symbols";
-import { randomUUID } from "expo-crypto";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { controls, media, useTheme, radii, spacing, textStyles, tokens } from "../theme.ts";
+import type { Delivery } from "@nyte-ai/sdk";
+import { controls, spacing, textStyles, useTheme } from "../theme.ts";
 import { useHost } from "../connection/host-context.tsx";
-import type {
-  Configuration,
-  Delivery,
-  Head,
-  HeadName,
-  ModelInfo,
-  ModelRef,
-  SessionCatalogView,
-  SessionId,
-  WorkspaceId,
-} from "@nyte-ai/sdk";
-import { describeHostError } from "../connection/connection.ts";
-import {
-  MAX_ATTACHMENTS,
-  type DraftContent,
-  type DraftPart,
-  type StagedImage,
-} from "../media/attachments.ts";
-import {
-  chooseSharedPhotos,
-  readRecentPhotos,
-  requestPhotoAccess,
-  stageRecentPhoto,
-  type PhotoAccess,
-  type RecentPhoto,
-} from "../media/recent-photos.ts";
-import { clearAnnotation, resolveAttachment } from "../media/annotations.ts";
+import { MAX_ATTACHMENTS } from "../media/attachments.ts";
 import { ComposerAttachment } from "./composer-attachment.tsx";
-import { useAttachmentFlight } from "./attachment-flight.ts";
 import { AttachmentsMenu } from "./attachments-menu.tsx";
 import { SuggestionMenu } from "./suggestion-menu.tsx";
-import { acceptSuggestion, parseCommandLine, useCompletions } from "./completions.ts";
-import type { CommandLine, Suggestion } from "./completions.ts";
-import { useModelCatalog } from "./remote-models.ts";
+import { acceptSuggestion, useCompletions } from "./completions.ts";
+import type { Suggestion } from "./completions.ts";
 import { ModelPickerSheet } from "./model-selector.tsx";
-import { ContextRow } from "./context-row.tsx";
-import {
-  readPendingStart,
-  recordStart,
-  removeStart,
-  startText,
-  type PendingStart,
-} from "./workspace-start.ts";
-import {
-  PendingStartStrip,
-  usePendingStart,
-  useRegistryFolders,
-  useStartSender,
-  workspaceStorage,
-} from "./workspace-start.tsx";
+import { PendingStartStrip, usePendingStart, useRegistryFolders } from "./workspace-start.tsx";
 import { formatElapsed, useDictation, waveHeight } from "./dictation.ts";
 import { AnimatedGlass } from "./composer-glass.tsx";
-import { COMPOSER, SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
-import { useChatDraft, useChatScope } from "./drafts.ts";
-import {
-  supportedThinkingLevel,
-  THINKING_LABELS,
-  thinkingLevelsFor,
-  type ThinkingLevel,
-} from "./thinking.ts";
-
-const PHOTO_PAGE = 24;
-
-const MODEL_FONT = { textStyle: "subheadline", weight: "semibold" } as const;
+import { COMPOSER, ICON_ROW_INSET } from "./composer-geometry.ts";
+import { useChatDraft } from "./drafts.ts";
+import type { ComposerTarget } from "./composer-target.ts";
+import { ComposerControls } from "./composer-controls.tsx";
+import { ComposerActions } from "./composer-actions.tsx";
+import { useComposerModel } from "./use-composer-model.ts";
+import { useComposerAttachments } from "./use-composer-attachments.ts";
+import { useComposerSubmit } from "./use-composer-submit.ts";
 
 const INPUT_LINE_HEIGHT = 24;
 
 const INPUT_MAX_LINES = 6;
 
-type NewTarget = { kind: "new" };
-
-type SessionTarget = {
-  kind: "session";
-  sessionId: SessionId;
-  head: string;
-  heads: readonly HeadName[];
-  config: Configuration | null;
-  workspace: WorkspaceId | undefined;
-  catalog: SessionCatalogView;
-  sending: boolean;
-  running: boolean;
-  stopping: boolean;
-  error: string | undefined;
-  onSend: (content: DraftContent, delivery?: Delivery) => Promise<boolean>;
-  onStop: () => void;
-  onChooseHead: (head: HeadName) => void;
-};
-
+/**
+ * The message composer docked above the keyboard, for a new conversation or a session follow-up. It owns
+ * the draft, caret, and focus; the model, attachments, and submission each live in their own hook, and
+ * the controls above the card and the action row inside it are their own components.
+ */
 export const Composer = memo(function Composer({
   target,
   placeholder,
-  prefill,
   gutters,
   workspaceEpoch = 0,
   onBusyChange,
 }: {
-  target: NewTarget | SessionTarget;
+  target: ComposerTarget;
   placeholder: string;
-  prefill?: { text: string; nonce: number };
   gutters: { left: number; right: number };
   workspaceEpoch?: number;
   onBusyChange?: (busy: boolean) => void;
@@ -150,32 +67,17 @@ export const Composer = memo(function Composer({
   const dark = useColorScheme() === "dark";
   const { client } = useHost();
   const folders = useRegistryFolders();
-  const startSender = useStartSender();
   const pendingStart = usePendingStart();
-  const scope = useChatScope();
-  const activeSessionId = target.kind === "session" ? target.sessionId : undefined;
-  const [draft, setDraft] = useChatDraft(activeSessionId);
-  const [caret, setCaret] = useState(prefill?.text.length ?? draft.length);
+  const [draft, setDraft] = useChatDraft(target.kind === "session" ? target.sessionId : undefined);
+  const [caret, setCaret] = useState(draft.length);
   const [focused, setFocused] = useState(false);
-  const [images, setImages] = useState<StagedImage[]>([]);
-  const [attachVisible, setAttachVisible] = useState(false);
-  const [access, setAccess] = useState<PhotoAccess>();
-  const [staging, setStaging] = useState(false);
   const [starting, setStarting] = useState(false);
   const [localError, setLocalError] = useState<string>();
-  const [notice, setNotice] = useState<string>();
-  const [model, setModel] = useState<ModelInfo>();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [selectingModel, setSelectingModel] = useState(false);
-  const [thinking, setThinking] = useState<ThinkingLevel>();
-
   const [delivery, setDelivery] = useState<Delivery>("steer");
-
-  const { catalog } = useModelCatalog(client);
   const insets = useSafeAreaInsets();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const inputLineHeight = INPUT_LINE_HEIGHT * fontScale;
-  const inputMaxHeight = inputLineHeight * INPUT_MAX_LINES;
   const fieldRef = useRef<TextInput>(null);
   const selectionOnCommit = useRef<{ draft: string; caret: number } | undefined>(undefined);
 
@@ -187,13 +89,9 @@ export const Composer = memo(function Composer({
       fieldRef.current?.setSelection(selection.caret, selection.caret);
   }, [draft]);
   const keyboard = useReanimatedKeyboardAnimation();
-  const attachProgress = useSharedValue(0);
-  const attachExtend = useSharedValue(0);
   const attachmentsHeight = useSharedValue(0);
   const cardHeight = useSharedValue(0);
   const topControlsHeight = useSharedValue(0);
-
-  const submissionActive = useRef(false);
 
   const { completion, commands } = useCompletions(
     client,
@@ -213,46 +111,9 @@ export const Composer = memo(function Composer({
     setDraft(base === "" || transcript === "" ? base + transcript : `${base} ${transcript}`);
   });
 
-  const seenPrefill = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (prefill === undefined || prefill.nonce === seenPrefill.current) return;
-    seenPrefill.current = prefill.nonce;
-    setDraft(prefill.text);
-    setCaret(prefill.text.length);
-  }, [prefill, setDraft]);
-
+  const model = useComposerModel(client, target, setLocalError);
   const sending = target.kind === "session" ? target.sending : starting;
-  const running = target.kind === "session" ? target.running : false;
-  const stopping = target.kind === "session" ? target.stopping : false;
-
-  const error =
-    localError ?? dictation.error ?? (target.kind === "session" ? target.error : undefined);
-
-  const hasContent = draft.trim() !== "" || images.length > 0;
-  const sessionModel = target.kind === "session" ? target.config?.model : undefined;
-  const sessionThinking = target.kind === "session" ? target.config?.thinking : undefined;
-
-  const catalogModel = matchCatalogModel(
-    catalog.kind === "ready" ? catalog.models : [],
-    sessionModel,
-  );
-
-  const chosenModel =
-    model ?? catalogModel ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
-
-  const thinkingStops = thinkingLevelsFor(chosenModel);
-  const chosenThinking = supportedThinkingLevel(chosenModel, thinking ?? sessionThinking);
-  const canThink = thinkingStops.length > 1;
-
-  const busy = sending || staging || selectingModel;
-  const attachDisabled = busy || images.length >= MAX_ATTACHMENTS;
-
-  const expanded = focused || modelPickerOpen || dictation.recording;
-
-  const menuObstructionHeight = useDerivedValue(
-    () => cardHeight.get() + topControlsHeight.get() + spacing.xs,
-  );
+  const running = target.kind === "session" && target.running;
 
   const cardDock = useDerivedValue(() => {
     const lifted = -keyboard.height.get();
@@ -261,244 +122,41 @@ export const Composer = memo(function Composer({
     return lifted + pad + spacing.xs + COMPOSER.height / 2 - ICON_ROW_INSET;
   });
 
-  const flight = useAttachmentFlight({
-    close: () => setAttachVisible(false),
-    cardDock,
-    cardHeight,
-    windowHeight,
-    cardLeft: gutters.left,
+  const attachments = useComposerAttachments({
+    blocked: sending || model.selecting,
+    suggesting: completion !== undefined,
+    geometry: { cardDock, cardHeight, windowHeight, cardLeft: gutters.left },
+    reportError: setLocalError,
+    onStaging: target.kind === "new" ? onBusyChange : undefined,
   });
 
+  const { images, flight } = attachments;
+  const busy = sending || model.selecting || attachments.staging;
+  const hasContent = draft.trim() !== "" || images.length > 0;
+
+  const { notice, submit, editStart } = useComposerSubmit({
+    client,
+    target,
+    folders,
+    draft,
+    setDraft,
+    attachments,
+    commands,
+    delivery,
+    start: model.start,
+    setStarting,
+    onBusyChange,
+    reportError: setLocalError,
+  });
+
+  const error =
+    localError ?? dictation.error ?? (target.kind === "session" ? target.error : undefined);
+
+  const menuObstructionHeight = useDerivedValue(
+    () => cardHeight.get() + topControlsHeight.get() + spacing.xs,
+  );
+
   const plusLeft = useDerivedValue(() => gutters.left + 2);
-
-  const catalogModelKey =
-    catalogModel === undefined ? undefined : `${catalogModel.ref.provider}:${catalogModel.ref.id}`;
-
-  const [seenModelKey, setSeenModelKey] = useState(catalogModelKey);
-
-  if (seenModelKey !== catalogModelKey) {
-    setSeenModelKey(catalogModelKey);
-
-    if (catalogModel !== undefined) setModel(catalogModel);
-  }
-
-  const [seenThinking, setSeenThinking] = useState(sessionThinking);
-
-  if (seenThinking !== sessionThinking) {
-    setSeenThinking(sessionThinking);
-
-    if (sessionThinking !== undefined) setThinking(sessionThinking);
-  }
-
-  const completionOpen = completion !== undefined;
-  useEffect(() => {
-    if (!completionOpen) return;
-    attachExtend.set(withSpring(0, SPRING.open));
-    attachProgress.set(
-      withSpring(0, SPRING.open, (finished) => {
-        "worklet";
-
-        if (finished) {
-          attachExtend.set(0);
-          scheduleOnRN(setAttachVisible, false);
-        }
-      }),
-    );
-  }, [completionOpen, attachExtend, attachProgress]);
-
-  function buildContent(): DraftPart[] {
-    const text = draft.trim();
-
-    const notes = images
-      .map((image) => resolveAttachment(image).note)
-      .filter((note) => note !== undefined);
-
-    return [
-      ...(text === "" ? [] : [{ kind: "text" as const, text }]),
-      ...images.map((image) => resolveAttachment(image).image.image),
-      ...notes.map((note) => ({ kind: "text" as const, text: note })),
-    ];
-  }
-
-  const clearSubmitted = (submitted: string, submittedImages: readonly StagedImage[]) => {
-    setLocalError(undefined);
-    setDraft((current) => (current === submitted ? "" : current));
-    setImages((current) => current.filter((image) => !submittedImages.includes(image)));
-
-    for (const image of submittedImages) clearAnnotation(image.id);
-  };
-
-  const deliver = async (input: {
-    sessionId: SessionId;
-    content: DraftContent;
-    line: CommandLine | undefined;
-    send: (content: DraftContent) => Promise<boolean>;
-  }): Promise<boolean> => {
-    if (input.line === undefined) return input.send(input.content);
-
-    const outcome = await client
-      .session(input.sessionId)
-      .command(input.line.name, input.line.argument === "" ? undefined : input.line.argument);
-
-    switch (outcome.kind) {
-      case "ran":
-        setNotice(outcome.output ?? undefined);
-
-        return true;
-      case "sent":
-        return true;
-      case "unknown":
-        return input.send(input.content);
-      case "invalid":
-        setLocalError(outcome.issues[0]?.message ?? "The host refused that command's input.");
-
-        return false;
-      case "failed":
-        setLocalError(outcome.message);
-
-        return false;
-      default: {
-        const exhaustive: never = outcome;
-
-        return exhaustive;
-      }
-    }
-  };
-
-  const headOf = (session: SessionTarget): Head => {
-    const handle = client.session(session.sessionId);
-    const name = session.heads.find((head) => head === session.head);
-
-    return name === undefined ? handle : handle.head(name);
-  };
-
-  const configureSession = async (
-    head: Head,
-    next: {
-      model?: ModelInfo;
-      thinking?: ThinkingLevel;
-    },
-  ): Promise<boolean> => {
-    try {
-      const outcome = await head.configure({ model: next.model?.ref, thinking: next.thinking });
-
-      switch (outcome.kind) {
-        case "configured":
-          return true;
-        case "unknown-model":
-          setLocalError("The host doesn't offer that model.");
-
-          return false;
-        case "unknown-agent":
-          setLocalError("The host doesn't offer that agent.");
-
-          return false;
-        case "invalid":
-          setLocalError(outcome.issues[0]?.message ?? "The host refused that choice.");
-
-          return false;
-        default: {
-          const exhaustive: never = outcome;
-
-          return exhaustive;
-        }
-      }
-    } catch (cause: unknown) {
-      setLocalError(describeHostError(cause));
-
-      return false;
-    }
-  };
-
-  const submit = async () => {
-    if (submissionActive.current || busy || !hasContent || dictation.recording) return;
-    submissionActive.current = true;
-    const submitted = draft;
-    const submittedImages = images;
-    const content = buildContent();
-    const line = images.length === 0 ? parseCommandLine(draft, commands) : undefined;
-    setNotice(undefined);
-    setLocalError(undefined);
-
-    try {
-      if (target.kind === "session") {
-        const send = (message: DraftContent) =>
-          target.onSend(message, running ? delivery : undefined);
-
-        if (await deliver({ sessionId: target.sessionId, content, line, send }))
-          clearSubmitted(submitted, submittedImages);
-
-        return;
-      }
-
-      setStarting(true);
-      onBusyChange?.(true);
-      const folder = folders.kind === "ready" ? folders.selected : undefined;
-
-      if (folder === undefined) {
-        setLocalError(
-          folders.kind === "ready" ? "Choose a folder first." : "Folders are still loading.",
-        );
-
-        return;
-      }
-
-      if (readPendingStart(workspaceStorage, scope) !== undefined) {
-        setLocalError("Finish the waiting message first.");
-
-        return;
-      }
-
-      const typed = submitted.trim().split("\n")[0]?.slice(0, 48) ?? "";
-
-      const recorded = recordStart(workspaceStorage, scope, {
-        requestId: randomUUID(),
-        workspace: folder.id,
-        name: typed === "" ? "New conversation" : typed,
-        content,
-        model: model?.ref,
-        thinking,
-      });
-
-      if (recorded.kind === "waiting") {
-        setLocalError("Finish the waiting message first.");
-
-        return;
-      }
-
-      clearSubmitted(submitted, submittedImages);
-      void startSender.send(recorded.pending.input, true).then((failure) => {
-        if (failure !== undefined) setLocalError(failure);
-      });
-    } catch (cause: unknown) {
-      setLocalError(describeHostError(cause));
-    } finally {
-      submissionActive.current = false;
-      setStarting(false);
-
-      if (target.kind === "new") onBusyChange?.(false);
-    }
-  };
-
-  const editStart = (pending: PendingStart) => {
-    const restored = pending.input.content.flatMap((part): StagedImage[] =>
-      part.kind === "image"
-        ? [{ id: randomUUID(), uri: `data:${part.mime};base64,${part.data}`, image: part }]
-        : [],
-    );
-
-    if (images.length + restored.length > MAX_ATTACHMENTS) {
-      setLocalError("Remove a photo first.");
-
-      return;
-    }
-
-    const text = startText(pending.input);
-    setDraft((current) => (current.trim() === "" ? text : `${text}\n\n${current}`));
-    setImages((current) => [...restored, ...current]);
-    removeStart(workspaceStorage, scope, pending.input.requestId);
-    setLocalError(undefined);
-  };
 
   const accept = (suggestion: Suggestion) => {
     if (completion === undefined) return;
@@ -508,126 +166,21 @@ export const Composer = memo(function Composer({
     setCaret(next.caret);
   };
 
-  const loadPhotos = () => {
-    return readRecentPhotos(PHOTO_PAGE)
-      .then(setAccess)
-      .catch(() => setAccess({ kind: "denied" }));
-  };
-
-  const closeAttach = () => {
-    attachExtend.set(withSpring(0, SPRING.open));
-    attachProgress.set(
-      withSpring(0, SPRING.open, (finished) => {
-        "worklet";
-
-        if (finished) {
-          attachExtend.set(0);
-          scheduleOnRN(setAttachVisible, false);
-        }
-      }),
-    );
-  };
-
-  const openAttach = () => {
-    if (attachDisabled) return;
-
-    flight.reset();
-    attachExtend.set(0);
-    attachProgress.set(0);
-    setAttachVisible(true);
-    setLocalError(undefined);
-  };
-
-  const preparePhotos = async (photos: readonly RecentPhoto[]): Promise<readonly StagedImage[]> => {
-    if (busy || images.length >= MAX_ATTACHMENTS) return [];
-    setStaging(true);
-
-    if (target.kind === "new") onBusyChange?.(true);
-    setLocalError(undefined);
-
-    try {
-      return await Promise.all(
-        photos.slice(0, MAX_ATTACHMENTS - images.length).map(stageRecentPhoto),
-      );
-    } catch (cause) {
-      setLocalError(cause instanceof Error ? cause.message : "Couldn't attach photo.");
-      throw cause;
-    } finally {
-      setStaging(false);
-
-      if (target.kind === "new") onBusyChange?.(false);
-    }
-  };
-
-  const chooseHead = (head: string) => {
-    if (target.kind !== "session") return;
-    const name = target.heads.find((candidate) => candidate === head);
-
-    if (name !== undefined) target.onChooseHead(name);
-  };
-
-  const chooseModel = async (choice: ModelInfo): Promise<boolean> => {
-    if (busy) return false;
-
-    setModel(choice);
-
-    if (target.kind !== "session") return true;
-
-    setSelectingModel(true);
-
-    const applied = await configureSession(headOf(target), {
-      model: choice,
-      thinking: supportedThinkingLevel(choice, chosenThinking),
-    });
-
-    setSelectingModel(false);
-
-    if (!applied) {
-      setModel(catalogModel);
-      setThinking(sessionThinking);
-    }
-
-    return applied;
-  };
-
-  const chooseThinking = (choice: ThinkingLevel) => {
-    setThinking(choice);
-
-    if (target.kind !== "session") return;
-    void configureSession(headOf(target), { thinking: choice }).then((applied) => {
-      if (!applied) setThinking(sessionThinking);
-    });
-  };
-
-  const startDictation = async () => {
-    dictationBase.current = draft.trimEnd();
-    await dictation.start();
-  };
-
   const keyboardInset = useAnimatedStyle(() => ({
     paddingBottom: insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.get(),
   }));
 
   const attachmentStripStyle = useAnimatedStyle(() => ({ height: attachmentsHeight.get() }));
 
-  const triggerStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(attachVisible ? 0 : 1),
-    transform: [
-      { scale: withTiming(attachVisible ? 1.6 : 1) },
-      { translateX: withTiming(attachVisible ? 12 : 0) },
-      { translateY: withTiming(attachVisible ? -12 : 0) },
-    ],
-  }));
-
   return (
     <Animated.View style={keyboardInset}>
       <html.div style={[styles.composer, styles.insets(gutters.left, gutters.right)]}>
-        {staging ? (
+        {attachments.staging ? (
           <html.div style={styles.attachmentStatus} aria-live="polite">
             <ActivityIndicator color={theme.muted} />
             <html.span style={textStyles.caption}>Preparing photo…</html.span>
           </html.div>
-        ) : images.length >= MAX_ATTACHMENTS ? (
+        ) : attachments.remaining <= 0 ? (
           <html.p style={textStyles.caption}>
             {`Up to ${String(MAX_ATTACHMENTS)} photos per message.`}
           </html.p>
@@ -656,173 +209,20 @@ export const Composer = memo(function Composer({
             cardDock={cardDock}
           />
         )}
-        <View
-          style={field.topControls}
-          onLayout={(event) => topControlsHeight.set(event.nativeEvent.layout.height)}
-        >
-          {expanded && target.kind === "session" && target.heads.length > 1 ? (
-            <html.div style={styles.context}>
-              <ContextRow head={target.head} heads={target.heads} onChooseHead={chooseHead} />
-            </html.div>
-          ) : null}
-          {running ? (
-            <html.div style={[styles.deliveryRow, delivery === "queue" && styles.queuedDelivery]}>
-              <Host
-                style={field.deliveryHost}
-                matchContents={{ vertical: true }}
-                ignoreSafeArea="all"
-              >
-                <Menu
-                  label={
-                    <HStack spacing={spacing.xs}>
-                      <Image
-                        systemName={delivery === "queue" ? "clock" : "arrow.turn.up.right"}
-                        size={14}
-                        modifiers={[foregroundStyle(theme.accent)]}
-                      />
-                      <Text
-                        modifiers={[font(MODEL_FONT), foregroundStyle(theme.accent), lineLimit(1)]}
-                      >
-                        {delivery === "queue" ? "After this response" : "Steer response"}
-                      </Text>
-                      <Image
-                        systemName="chevron.down"
-                        size={10}
-                        modifiers={[foregroundStyle(theme.accent)]}
-                      />
-                    </HStack>
-                  }
-                  modifiers={[
-                    buttonStyle("plain"),
-                    frame({ minHeight: controls.touchTarget }),
-                    disabled(busy),
-                  ]}
-                >
-                  <Button
-                    label="Steer current response"
-                    systemImage={delivery === "steer" ? "checkmark" : undefined}
-                    onPress={() => setDelivery("steer")}
-                  />
-                  <Button
-                    label="Queue after response"
-                    systemImage={delivery === "queue" ? "checkmark" : undefined}
-                    onPress={() => setDelivery("queue")}
-                  />
-                </Menu>
-              </Host>
-              <html.button
-                aria-label="Stop response"
-                aria-busy={stopping}
-                disabled={stopping}
-                onClick={() => {
-                  if (target.kind === "session") target.onStop();
-                }}
-                style={styles.stop}
-              >
-                {stopping ? (
-                  <ActivityIndicator color={theme.muted} size="small" />
-                ) : (
-                  <SymbolView name="stop.fill" size={16} tintColor={theme.foreground} />
-                )}
-              </html.button>
-            </html.div>
-          ) : null}
-          {!dictation.recording ? (
-            <View style={field.options}>
-              <Host style={field.modelHost} matchContents={{ vertical: true }} ignoreSafeArea="all">
-                <Button
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setLocalError(undefined);
-                    setModelPickerOpen(true);
-                  }}
-                  modifiers={[
-                    buttonStyle("plain"),
-                    disabled(busy),
-                    accessibilityLabel(`Choose model, ${chosenModel?.name ?? "Model"}`),
-                  ]}
-                >
-                  <HStack
-                    spacing={spacing.xs}
-                    modifiers={[
-                      frame({
-                        minHeight: controls.touchTarget,
-                        maxWidth: Infinity,
-                        alignment: "leading",
-                      }),
-                      contentShape(shapes.rectangle()),
-                    ]}
-                  >
-                    <Text
-                      modifiers={[
-                        font(MODEL_FONT),
-                        foregroundStyle(theme.foreground),
-                        lineLimit(1),
-                      ]}
-                    >
-                      {chosenModel?.name ?? "Choose model"}
-                    </Text>
-                    <Image
-                      systemName="chevron.down"
-                      size={12}
-                      modifiers={[foregroundStyle(theme.foreground)]}
-                    />
-                  </HStack>
-                </Button>
-              </Host>
-              {canThink ? (
-                <Host style={field.thinkingHost} matchContents ignoreSafeArea="all">
-                  <Menu
-                    label={
-                      <HStack
-                        spacing={spacing.xs}
-                        modifiers={[
-                          frame({
-                            minWidth: controls.touchTarget,
-                            minHeight: controls.touchTarget,
-                          }),
-                          contentShape(shapes.rectangle()),
-                        ]}
-                      >
-                        <Text
-                          modifiers={[
-                            font({ textStyle: "subheadline" }),
-                            foregroundStyle(theme.muted),
-                          ]}
-                        >
-                          {THINKING_LABELS[chosenThinking]}
-                        </Text>
-                        <Image
-                          systemName="chevron.down"
-                          size={12}
-                          modifiers={[foregroundStyle(theme.muted)]}
-                        />
-                      </HStack>
-                    }
-                    modifiers={[
-                      buttonStyle("plain"),
-                      disabled(busy),
-                      accessibilityLabel(`Thinking level, ${THINKING_LABELS[chosenThinking]}`),
-                    ]}
-                  >
-                    <Picker
-                      label="Thinking level"
-                      selection={chosenThinking}
-                      onSelectionChange={chooseThinking}
-                      modifiers={[pickerStyle("inline"), labelsHidden()]}
-                    >
-                      {thinkingStops.map((level) => (
-                        <Text key={level} modifiers={[tag(level)]}>
-                          {THINKING_LABELS[level]}
-                        </Text>
-                      ))}
-                    </Picker>
-                  </Menu>
-                </Host>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
+        <ComposerControls
+          target={target}
+          expanded={focused || modelPickerOpen || dictation.recording}
+          recording={dictation.recording}
+          busy={busy}
+          delivery={delivery}
+          onDelivery={setDelivery}
+          model={model}
+          onOpenModelPicker={() => {
+            setLocalError(undefined);
+            setModelPickerOpen(true);
+          }}
+          onHeight={(height) => topControlsHeight.set(height)}
+        />
         <View onLayout={(event) => cardHeight.set(event.nativeEvent.layout.height)}>
           <AnimatedGlass isInteractive style={field.card}>
             <Animated.View style={[{ overflow: "hidden" }, attachmentStripStyle]}>
@@ -835,18 +235,7 @@ export const Composer = memo(function Composer({
                       : next,
                   );
                 }}
-                style={
-                  images.length === 0
-                    ? undefined
-                    : {
-                        flexDirection: "row",
-                        flexWrap: "wrap",
-                        gap: 10,
-                        paddingHorizontal: 14,
-                        paddingTop: 14,
-                        paddingBottom: 12,
-                      }
-                }
+                style={images.length === 0 ? undefined : field.attachments}
               >
                 {images.map((image, index) => (
                   <ComposerAttachment
@@ -860,10 +249,7 @@ export const Composer = memo(function Composer({
                         `/annotate?imageId=${encodeURIComponent(image.id)}&uri=${encodeURIComponent(image.uri)}`,
                       )
                     }
-                    onRemove={() => {
-                      clearAnnotation(image.id);
-                      setImages((current) => current.filter((item) => item.id !== image.id));
-                    }}
+                    onRemove={() => attachments.remove(image.id)}
                   />
                 ))}
               </View>
@@ -894,7 +280,7 @@ export const Composer = memo(function Composer({
                   field.input,
                   {
                     minHeight: inputLineHeight,
-                    maxHeight: inputMaxHeight,
+                    maxHeight: inputLineHeight * INPUT_MAX_LINES,
                     color: dictation.recording ? theme.accent : theme.foreground,
                   },
                 ]}
@@ -923,74 +309,30 @@ export const Composer = memo(function Composer({
                 accessibilityLabel={placeholder}
               />
             </View>
-            <View pointerEvents="box-none" style={field.actions}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Add attachment"
-                accessibilityState={{ disabled: attachDisabled, expanded: attachVisible }}
-                disabled={attachDisabled}
-                onPress={attachVisible ? closeAttach : openAttach}
-                style={[field.plusHit, attachDisabled && field.disabled]}
-              >
-                <Animated.View style={triggerStyle}>
-                  <SymbolView
-                    name="plus"
-                    size={controls.icon}
-                    tintColor={theme.foreground}
-                    weight="regular"
-                    style={{ transform: [{ translateY: 2 }] }}
-                  />
-                </Animated.View>
-              </Pressable>
-              <View style={field.spacer} pointerEvents="none" />
-              {dictation.recording ? (
-                <html.button
-                  aria-label="Stop dictation"
-                  onClick={dictation.stop}
-                  style={styles.primary}
-                >
-                  <SymbolView name="stop.circle.fill" size={28} tintColor={theme.accent} />
-                </html.button>
-              ) : hasContent ? (
-                <html.button
-                  aria-label={
-                    running && delivery === "queue"
-                      ? "Queue message"
-                      : running
-                        ? "Steer response"
-                        : "Send message"
-                  }
-                  aria-busy={sending}
-                  disabled={busy}
-                  onClick={() => void submit()}
-                  style={styles.primary}
-                >
-                  <html.div style={styles.send}>
-                    {sending ? (
-                      <ActivityIndicator color={theme.onPrimary} size="small" />
-                    ) : (
-                      <SymbolView
-                        name="arrow.up"
-                        size={19}
-                        tintColor={theme.onPrimary}
-                        weight="semibold"
-                      />
-                    )}
-                  </html.div>
-                </html.button>
-              ) : (
-                <html.button
-                  aria-label="Dictate"
-                  disabled={busy}
-                  onClick={() => void startDictation()}
-                  style={styles.primary}
-                >
-                  <html.div style={styles.microphone}>
-                    <SymbolView name="mic.fill" size={16} tintColor={theme.muted} />
-                  </html.div>
-                </html.button>
-              )}
-            </View>
+            <ComposerActions
+              attachOpen={attachments.visible}
+              attachDisabled={attachments.disabled}
+              onToggleAttach={attachments.visible ? attachments.close : attachments.open}
+              recording={dictation.recording}
+              onStopDictation={dictation.stop}
+              onDictate={() => {
+                dictationBase.current = draft.trimEnd();
+                void dictation.start();
+              }}
+              hasContent={hasContent}
+              sendLabel={
+                running && delivery === "queue"
+                  ? "Queue message"
+                  : running
+                    ? "Steer response"
+                    : "Send message"
+              }
+              sending={sending}
+              busy={busy}
+              onSend={() => {
+                if (!busy) submit();
+              }}
+            />
           </AnimatedGlass>
         </View>
       </html.div>
@@ -998,52 +340,36 @@ export const Composer = memo(function Composer({
         client={client}
         open={modelPickerOpen}
         onClose={() => setModelPickerOpen(false)}
-        selectedModel={chosenModel?.ref}
-        selectingModel={selectingModel}
+        selectedModel={model.chosenModel?.ref}
+        selectingModel={model.selecting}
         modelError={localError}
-        onSelect={chooseModel}
+        onSelect={async (choice) => (busy ? false : model.chooseModel(choice))}
       />
-      {attachVisible ? (
+      {attachments.visible ? (
         <AttachmentsMenu
-          progress={attachProgress}
-          extendProgress={attachExtend}
+          progress={attachments.progress}
+          extendProgress={attachments.extend}
           cardDock={cardDock}
           plusLeft={plusLeft}
-          access={access}
-          disabled={attachDisabled}
-          onClose={closeAttach}
+          access={attachments.access}
+          disabled={attachments.disabled}
+          onClose={attachments.close}
           flight={flight}
-          remaining={MAX_ATTACHMENTS - images.length}
-          onPreparePhotos={preparePhotos}
-          onCommitPhotos={(prepared) =>
-            setImages((current) => [...current, ...prepared].slice(0, MAX_ATTACHMENTS))
-          }
-          onRequestPhotos={async () => {
-            setAccess(await requestPhotoAccess(PHOTO_PAGE));
-          }}
-          onReadPhotos={loadPhotos}
-          onManageAccess={async () => {
-            await chooseSharedPhotos();
-            await loadPhotos();
-          }}
+          remaining={attachments.remaining}
+          onPreparePhotos={attachments.prepare}
+          onCommitPhotos={attachments.add}
+          onRequestPhotos={attachments.requestPhotos}
+          onReadPhotos={attachments.loadPhotos}
+          onManageAccess={attachments.manageAccess}
           onCapture={(image) => {
-            setImages((current) => [...current, image].slice(0, MAX_ATTACHMENTS));
-            closeAttach();
+            attachments.add([image]);
+            attachments.close();
           }}
         />
       ) : null}
     </Animated.View>
   );
 });
-
-function matchCatalogModel(
-  models: readonly ModelInfo[],
-  ref: ModelRef | undefined,
-): ModelInfo | undefined {
-  if (ref === undefined) return undefined;
-
-  return models.find((item) => item.ref.id === ref.id && item.ref.provider === ref.provider);
-}
 
 const field = StyleSheet.create({
   card: {
@@ -1052,11 +378,13 @@ const field = StyleSheet.create({
     minWidth: 0,
     overflow: "hidden",
   },
-  plusHit: {
-    width: controls.touchTarget,
-    height: controls.touchTarget,
-    alignItems: "center",
-    justifyContent: "center",
+  attachments: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 12,
   },
   inputArea: {
     minHeight: COMPOSER.height,
@@ -1073,28 +401,6 @@ const field = StyleSheet.create({
     textAlignVertical: "top",
     alignSelf: "stretch",
   },
-  topControls: { gap: spacing.xs },
-  options: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
-  thinkingHost: {
-    minHeight: controls.touchTarget,
-    paddingHorizontal: spacing.sm,
-  },
-  actions: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: 2,
-    paddingBottom: 2,
-    minHeight: controls.touchTarget + 2,
-  },
-  spacer: { flex: 1 },
-  modelHost: { flex: 1, minHeight: controls.touchTarget, minWidth: 0 },
-  deliveryHost: { flex: 1, minHeight: controls.touchTarget, minWidth: 0 },
-  disabled: { opacity: controls.disabledOpacity },
   waveform: {
     flex: 1,
     flexDirection: "row",
@@ -1114,70 +420,6 @@ const styles = css.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.xs,
   },
-  context: { paddingInline: spacing.md },
-  primary: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    flexShrink: 0,
-    width: controls.touchTarget,
-    height: controls.touchTarget,
-    borderWidth: 0,
-    padding: 0,
-    opacity: {
-      default: 1,
-      ":active": controls.pressedOpacity,
-      ":disabled": controls.disabledOpacity,
-    },
-  },
-  send: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 34,
-    height: 34,
-    borderRadius: radii.pill,
-    backgroundColor: tokens.primary,
-  },
-  microphone: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: controls.metaTarget,
-    height: controls.metaTarget,
-    borderRadius: radii.pill,
-    backgroundColor: tokens.fill,
-  },
-  deliveryRow: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    marginInline: spacing.sm,
-    marginTop: spacing.sm,
-    paddingLeft: spacing.sm,
-    borderBottomWidth: controls.hairline,
-    borderBottomColor: tokens.border,
-  },
-  queuedDelivery: {
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: tokens.accent,
-    borderRadius: radii.control,
-  },
-  stop: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    width: controls.touchTarget,
-    height: controls.touchTarget,
-    borderWidth: 0,
-    padding: 0,
-    opacity: {
-      default: 1,
-      ":active": controls.pressedOpacity,
-      ":disabled": controls.disabledOpacity,
-    },
-  },
   recording: {
     display: "flex",
     flexDirection: "row",
@@ -1187,33 +429,6 @@ const styles = css.create({
     paddingBottom: spacing.sm,
   },
   recorderTime: { fontVariantNumeric: "tabular-nums" },
-  attachment: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  attachmentButton: {
-    borderWidth: 0,
-    padding: 0,
-    width: media.attachmentSize,
-    height: media.attachmentSize,
-  },
-  attachmentImage: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-    borderRadius: radii.control,
-  },
-  removePhoto: {
-    opacity: { default: 1, ":active": controls.disabledOpacity },
-    width: controls.touchTarget,
-    height: controls.touchTarget,
-    borderWidth: 0,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  },
   attachmentStatus: {
     display: "flex",
     flexDirection: "row",

@@ -3,13 +3,13 @@ import { describe, expect, test } from "bun:test";
 import type { Msg } from "../../../src/model/msg.ts";
 import { reduce } from "../../../src/model/reduce.ts";
 import { QueueRows } from "../../../src/ui/composer/queue.tsx";
-import { viewOf } from "../../fixture/view.ts";
+import { buildView } from "../../fixture/view.ts";
 import { NOW, ready } from "../../model/support.ts";
 import { mount } from "../chrome/support.tsx";
 
 const SIZE = { width: 100, height: 40 } as const;
 
-function rowOf(frame: string, text: string): string {
+function findRow(frame: string, text: string): string {
   return frame.split("\n").find((line) => line.includes(text)) ?? "";
 }
 
@@ -17,7 +17,7 @@ function lineIndex(frame: string, text: string): number {
   return frame.split("\n").findIndex((line) => line.includes(text));
 }
 
-const everySchedule = viewOf((v) =>
+const everySchedule = buildView((v) =>
   v
     .turn("t1", (t) => t.user("hi").tool("bash", { running: true }), { run: "r1" })
     .pending("join me", { schedule: { kind: "joined", run: "r1" } })
@@ -36,7 +36,7 @@ const everySchedule = viewOf((v) =>
     .live(),
 );
 
-const three = viewOf((v) =>
+const three = buildView((v) =>
   v
     .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
     .pending("first", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "q1" })
@@ -51,21 +51,21 @@ describe("labels", () => {
     await using app = await mount(ready(everySchedule), () => <QueueRows />, SIZE);
     const frame = app.captureCharFrame();
 
-    expect(rowOf(frame, "join me")).toContain("steer · next response");
-    expect(rowOf(frame, "asked for later")).toContain("queued");
-    expect(rowOf(frame, "when idle")).toContain("next");
-    expect(rowOf(frame, "after the run")).toContain("after this run");
-    expect(rowOf(frame, "on the new model")).toContain("next turn · new model");
-    expect(rowOf(frame, "ride along")).toContain("attached");
-    expect(rowOf(frame, "nobody runs this")).toContain("waiting for a host");
-    expect(rowOf(frame, "on its way")).toContain("sending…");
-    expect(rowOf(frame, "trying again")).toContain("retrying · offline");
-    expect(rowOf(frame, "trying again")).toContain("ctrl+q pending");
+    expect(findRow(frame, "join me")).toContain("steer · next response");
+    expect(findRow(frame, "asked for later")).toContain("queued");
+    expect(findRow(frame, "when idle")).toContain("next");
+    expect(findRow(frame, "after the run")).toContain("after this run");
+    expect(findRow(frame, "on the new model")).toContain("next turn · new model");
+    expect(findRow(frame, "ride along")).toContain("attached");
+    expect(findRow(frame, "nobody runs this")).toContain("waiting for a host");
+    expect(findRow(frame, "on its way")).toContain("sending…");
+    expect(findRow(frame, "trying again")).toContain("retrying · offline");
+    expect(findRow(frame, "trying again")).toContain("ctrl+q pending");
     expect(frame).not.toContain("all done");
   });
 
   test("a narrow row sheds its hint, then its label, to keep twelve columns of text", async () => {
-    const one = viewOf((v) =>
+    const one = buildView((v) =>
       v
         .turn("t1", (t) => t.user("hi").text("ok").ended("completed"))
         .pending("a message worth reading", {
@@ -76,17 +76,17 @@ describe("labels", () => {
 
     await using wide = await mount(ready(one), () => <QueueRows />, { width: 60, height: 20 });
 
-    expect(rowOf(wide.captureCharFrame(), "a message")).toContain("queued · ctrl+q pending");
+    expect(findRow(wide.captureCharFrame(), "a message")).toContain("queued · ctrl+q pending");
 
     await using medium = await mount(ready(one), () => <QueueRows />, { width: 32, height: 20 });
-    const row = rowOf(medium.captureCharFrame(), "a mess");
+    const row = findRow(medium.captureCharFrame(), "a mess");
 
     expect(row).toContain("queued");
     expect(row).not.toContain("ctrl+q");
 
     await using narrow = await mount(ready(one), () => <QueueRows />, { width: 22, height: 20 });
 
-    const stub = rowOf(narrow.captureCharFrame(), "a mess");
+    const stub = findRow(narrow.captureCharFrame(), "a mess");
 
     expect(stub).toContain("↓ a mess");
     expect(stub).not.toContain("queued");

@@ -424,6 +424,7 @@ export function attachConsoleCapture(contents: WebContents, runtime: SurfaceRunt
   });
 }
 
+/** Attach the debugger unless DevTools or another client holds it; `isAttached` then decides whether commands can be sent. */
 function ensureDebugger(contents: WebContents, runtime: SurfaceRuntime): void {
   if (runtime.debuggerAttached) return;
 
@@ -431,9 +432,7 @@ function ensureDebugger(contents: WebContents, runtime: SurfaceRuntime): void {
 
   try {
     contents.debugger.attach("1.3");
-  } catch {
-    // DevTools or another client holds it; isAttached below decides whether we can send.
-  }
+  } catch {}
 
   runtime.debuggerAttached = contents.debugger.isAttached();
 }
@@ -622,6 +621,7 @@ export async function performClick(
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
 }
 
+/** Type into `ref`: focus it, then click its centre, because insertText goes to whatever the page has focused and only a click moves focus reliably. */
 export async function performType(
   contents: WebContents,
   runtime: SurfaceRuntime,
@@ -655,7 +655,6 @@ export async function performType(
     return { kind: "failed", failure: { kind: "detached", ref } };
   }
 
-  // insertText goes to whatever the page has focused, and only a click moves focus reliably.
   const cx = check.rect.x + check.rect.width / 2;
   const cy = check.rect.y + check.rect.height / 2;
   await cdpClick(contents, cx, cy, "left", 1);

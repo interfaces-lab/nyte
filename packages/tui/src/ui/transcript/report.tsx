@@ -1,9 +1,9 @@
 import type { JSX } from "@opentui/solid";
 import { createMemo, Show } from "solid-js";
+import type { ReportMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
 import { reportHeld, reportRow } from "../../lib/tasks.ts";
-import type { ReportMessage } from "../../lib/view-helpers.ts";
 import { useTranscript } from "./scope.tsx";
 
 export function ReportBlock(props: { readonly message: ReportMessage }): JSX.Element {

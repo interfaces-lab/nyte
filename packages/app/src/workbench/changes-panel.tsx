@@ -1,4 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
+import { useMutation } from "@tanstack/react-query";
 import {
   useCallback,
   useLayoutEffect,
@@ -14,7 +15,6 @@ import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { macPlatform } from "../platform.ts";
 import {
   readGitPatches,
   readRunPatches,
@@ -54,6 +54,7 @@ import { changesViewed, patchDigest } from "./changes-viewed.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 import { EMPTY_PATCH, patchStackSection } from "./stacked-diff.ts";
+import { nyte } from "../nyte.ts";
 
 interface VcsChangeRow {
   readonly source: "working" | "commit";
@@ -192,7 +193,7 @@ function emptyScopeText(scope: WorkbenchChangesScope): string {
 }
 
 /** The file a confirmation is about, and whether reverting it means the trash. */
-export interface RevertTarget {
+interface RevertTarget {
   readonly path: string;
   readonly untracked: boolean;
 }
@@ -202,7 +203,7 @@ export interface RevertTarget {
  * untracked file has no committed state to return to, so it is trashed instead
  * and the copy says so rather than claiming the change is unrecoverable.
  */
-export function revertConfirmation(target: RevertTarget) {
+function revertConfirmation(target: RevertTarget) {
   if (target.untracked) {
     return {
       title: "Move to Trash",
@@ -248,6 +249,8 @@ interface ChangesPanelProps {
    * its own when this is unset; a host that supplies it owns the confirmation.
    */
   readonly onRevertPath?: (path: string) => void;
+  /** Opens a pull request or check page; the system browser when absent. */
+  readonly onOpenLink?: (url: string) => void;
 }
 
 interface ChangesPanelViewProps extends ChangesPanelProps {
@@ -257,6 +260,26 @@ interface ChangesPanelViewProps extends ChangesPanelProps {
   readonly workspace: WorkspaceId | undefined;
 }
 
+/**
+ * The Changes tab for one scope.
+ *
+ * - Closing the revert confirmation returns focus to the affordance that opened it.
+ * - Collapse state belongs to the panel so the toolbar can command it, but it
+ *   describes one scope's files: switching scope starts over rather than
+ *   collapsing same-named files in the scope that replaced them.
+ * - A stored turn the transcript no longer holds collapses to the working tree.
+ * - View options follow the repository; a turn shares the layout chosen for the
+ *   tree it belongs to. Review marks do not: the same path carries a different
+ *   patch in each scope, and a mark from one must not read as stale in another.
+ * - A turn's own files are loaded, so its emptiness is a fact that a stale
+ *   background failure cannot change.
+ * - Only a working tree has both sides of a file to widen a gap with, and a
+ *   state to revert to. A turn's patch and a commit's are records of an edit,
+ *   and the files have moved on. Pierre re-renders every visible file when
+ *   expandability changes, so it does not follow the revision.
+ * - A reverted file no longer has the patch its review mark was filed under,
+ *   so the mark clears.
+ */
 function ChangesPanelView({
   visible = true,
   scope,
@@ -270,6 +293,7 @@ function ChangesPanelView({
   onRevealPath,
   onScrollTop,
   onRevertPath,
+  onOpenLink,
   turns,
   turnsError,
   liveRun,
@@ -279,16 +303,12 @@ function ChangesPanelView({
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
-  // The affordance that opened the confirmation, so closing it returns focus there.
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | undefined>(undefined);
   const [reverting, setReverting] = useState(false);
   const [revertError, setRevertError] = useState<string | undefined>(undefined);
   const [appliedReveal, setAppliedReveal] = useState({ scope: "", revision: 0 });
 
-  // Collapse state belongs to the panel so the toolbar can command it, but it
-  // describes one scope's files: switching scope starts over rather than
-  // collapsing same-named files in the scope that replaced them.
   const [collapsedSections, setCollapsedSections] = useState<{
     readonly scope: string;
     readonly paths: readonly string[];
@@ -299,7 +319,6 @@ function ChangesPanelView({
       ? turnOptions.find((option) => option.scope.turnId === scope.turnId)
       : undefined;
 
-  // A stored turn the transcript no longer holds collapses to the working tree.
   const activeScope: WorkbenchChangesScope =
     scope.kind === "turn" && selectedTurn === undefined ? UNCOMMITTED_SCOPE : scope;
 
@@ -314,9 +333,6 @@ function ChangesPanelView({
     changesViewed.getSnapshot,
   );
 
-  // Options follow the repository; a turn shares the layout chosen for the tree
-  // it belongs to. Review marks do not: the same path carries a different patch
-  // in each scope, and a mark from one must not read as stale in another.
   const optionsScopeId = root ?? "workspace";
   const options = useChangesViewOptions(optionsScopeId);
 
@@ -412,7 +428,12 @@ function ChangesPanelView({
   const preparedPaths = useMemo((): readonly string[] => {
     if (!visible) return [];
     const collapsed = new Set(collapsedPaths);
-    const active = Math.max(stackOrder.indexOf(activePath ?? ""), 0);
+
+    const active = Math.max(
+      stackOrder.findIndex((path) => path === activePath),
+      0,
+    );
+
     const nearest: string[] = [];
 
     for (let distance = 0; nearest.length < stackOrder.length; distance += 1) {
@@ -439,15 +460,17 @@ function ChangesPanelView({
           activeScopeValue,
           ignoreWhitespace ? "ignore-whitespace" : "",
         ].join("\u0000");
-  const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${ignoreWhitespace ? "w" : ""}`;
+
+  const whitespace = ignoreWhitespace ? "w" : "";
+  const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${whitespace}`;
 
   const patchSource = useMemo((): PatchSource | undefined => {
     if (selectedTurnId !== undefined) {
       if (workspace === undefined || selectedRun === undefined) return undefined;
 
       return {
-        key: `turn\u0000${selectedTurnId}\u0000${String(recordedVersion(recordedRows))}`,
-        lineage: `turn\u0000${selectedTurnId}`,
+        key: `turn\u0000${selectedTurnId}\u0000${whitespace}\u0000${String(recordedVersion(recordedRows))}`,
+        lineage: `turn\u0000${selectedTurnId}\u0000${whitespace}`,
         paths: stackOrder,
         read: (paths) => readRunPatches(workspace, selectedRun, paths, ignoreWhitespace),
       };
@@ -473,9 +496,11 @@ function ChangesPanelView({
     stackOrder,
     activeScope,
     ignoreWhitespace,
+    whitespace,
   ]);
 
   const [patches] = useState(createPatchLoader);
+  const refresh = useMutation({ mutationFn: refreshVcs });
 
   const patchSnapshot = useSyncExternalStore(
     patches.subscribe,
@@ -544,6 +569,7 @@ function ChangesPanelView({
   }, [rows, patchFor]);
 
   const transcriptError = queryError(turnsError);
+
   const vcsFailure =
     snapshot.data?.kind === "none"
       ? { text: "Couldn't read changes. Check that this folder is a Git repository." }
@@ -563,8 +589,6 @@ function ChangesPanelView({
       ? (transcriptFailure ?? vcsFailure)
       : (manifestFailure ?? vcsFailure ?? transcriptFailure);
 
-  // The turn's own files are loaded, so its emptiness is a fact that a stale
-  // background failure cannot change.
   const emptyState: { readonly text: string; readonly detail?: string } =
     selectedTurn !== undefined
       ? { text: "This turn made no file changes" }
@@ -657,10 +681,6 @@ function ChangesPanelView({
     [setViewed],
   );
 
-  // Only a working tree has both sides of a file to widen a gap with. A turn's
-  // patch and a commit's are records of an edit, and the files have moved on.
-  // Pierre re-renders every visible file when this changes, so it must not
-  // follow the revision.
   const expandable = repository !== undefined && workingScope;
 
   const loadDiffFiles = useMemo(
@@ -706,8 +726,6 @@ function ChangesPanelView({
     requestAnimationFrame(() => focusFileFilter(filterInput.current));
   };
 
-  // Only a working tree has a state to go back to: a turn's patch and a
-  // commit's are records, and the file has moved on since.
   const askToRevert = useCallback(
     (path: string): void => {
       const row = rowByPath.get(path);
@@ -741,7 +759,7 @@ function ChangesPanelView({
       });
 
       if (result.kind === "stale") {
-        refreshVcs();
+        void refreshVcs();
         setRevertError("Changes changed. Review them and try again.");
 
         return;
@@ -759,9 +777,8 @@ function ChangesPanelView({
         return;
       }
 
-      // The file no longer has the patch its review mark was filed under.
       changesViewed.clearViewed(viewedScopeId, target.path);
-      refreshVcs();
+      void refreshVcs();
       setRevertTarget(undefined);
     } catch (error) {
       setRevertError(error instanceof Error ? error.message : "Couldn’t revert this file.");
@@ -795,7 +812,7 @@ function ChangesPanelView({
       {...props(styles.panel)}
       aria-label="Workspace changes"
       onKeyDown={(event) => {
-        const action = changesShortcutAction(event.nativeEvent, macPlatform(undefined));
+        const action = changesShortcutAction(event.nativeEvent, nyte.platform === "darwin");
 
         if (action === undefined) return;
         event.preventDefault();
@@ -807,7 +824,7 @@ function ChangesPanelView({
         }
 
         if (action === "refresh") {
-          refreshVcs();
+          refresh.mutate();
 
           return;
         }
@@ -837,10 +854,12 @@ function ChangesPanelView({
           changesViewOptions.setOptions(optionsScopeId, changes);
         }}
         onToggleFileTree={onToggleFileTree}
-        onRefresh={refreshVcs}
+        onRefresh={() => refresh.mutate()}
+        refreshing={refresh.isPending}
         onFilterFiles={filterFiles}
         allFilesCollapsed={allCollapsed}
         onToggleCollapseAll={toggleCollapseAll}
+        onOpenLink={onOpenLink}
       />
       {rows.length === 0 ? (
         <div
@@ -919,10 +938,12 @@ function SessionChangesPanel(
 ): ReactElement {
   const view = useSessionView(props.sessionId);
   const session = useSession(props.sessionId);
+
   const turns = useMemo(
     () => (view === undefined ? EMPTY_TURNS : conversationTurns(view).turns),
     [view],
   );
+
   const execution = view?.execution;
 
   return (

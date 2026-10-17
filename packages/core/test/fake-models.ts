@@ -8,7 +8,6 @@ import { createModels } from "@nyte-ai/ai/models";
 import type { MutableModels, Provider } from "@nyte-ai/ai/models";
 import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import { asId } from "@nyte-ai/schema";
-import type { HostView } from "@nyte-ai/schema";
 import type {
   Api,
   AssistantMessage,
@@ -18,9 +17,12 @@ import type {
   ThinkingContent,
   TranscriptContext,
 } from "@nyte-ai/schema/model";
-import { composeHost, memoryStore } from "../src/index.ts";
-import type { ComposeOptions, Plugin, Store } from "../src/index.ts";
-import { env } from "./harness.ts";
+import { composeServer } from "../src/compose.ts";
+import { memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { Plugin, Store } from "../src/index.ts";
+import type { ComposeOptions, ServedHost } from "../src/server.ts";
+import { env } from "../src/harness.ts";
 
 export type Block =
   | { readonly type: "text"; readonly text: string; readonly signature?: string }
@@ -170,7 +172,7 @@ export function fakeModels(input?: {
           ? next(request)
           : next;
 
-    return streamOf(model, reply, options);
+    return streamReply(model, reply, options);
   };
 
   const provider: Provider = {
@@ -210,28 +212,36 @@ export const chatOnly: Plugin<"core"> = {
   },
 };
 
+/** A composed host with the kernel under it, for tests that read kernel state. */
+export type Composed = ServedHost & { readonly kernel: Kernel };
+
+/** Composes a host as `composeHost` does, with its kernel beside it. */
+export async function composed(options: ComposeOptions): Promise<Composed> {
+  const { host, kernel } = await composeServer(options);
+
+  return { ...host, kernel };
+}
+
 export async function open(
   fake: FakeModels,
   options?: {
     readonly plugins?: readonly Plugin<"core">[];
     readonly store?: Store;
-    readonly operations?: HostView["operations"];
     readonly execution?: ComposeOptions["execution"];
   },
-): ReturnType<typeof composeHost> {
-  return composeHost({
+): Promise<Composed> {
+  return composed({
     store: options?.store ?? memoryStore(),
     models: fake.models,
     plugins: [chatOnly, ...(options?.plugins ?? [])],
     workspace: { kind: "chat-only", locator: null },
     execution: options?.execution,
     home: null,
-    operations: options?.operations ?? [],
     description: { name: "test", platform: "darwin", version: "0.1.0" },
   });
 }
 
-function streamOf(
+function streamReply(
   model: Model<Api>,
   reply: Reply,
   options: SimpleStreamOptions | undefined,

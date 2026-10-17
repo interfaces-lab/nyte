@@ -29,9 +29,8 @@ export const ANTHROPIC_ENV_KEYS = [
   ANTHROPIC_API_KEY_ENV,
 ] as const;
 
+/** ANTHROPIC_AUTH_TOKEN participates in env discovery and status, but getEnvApiKey() skips it because requests must pass it as Authorization: Bearer. */
 function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
-  // ANTHROPIC_AUTH_TOKEN participates in env discovery/status, but
-  // getEnvApiKey() skips it because requests must pass it as Authorization: Bearer.
   if (provider === "anthropic") {
     return ANTHROPIC_ENV_KEYS;
   }

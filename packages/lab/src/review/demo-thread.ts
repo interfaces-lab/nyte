@@ -4,9 +4,10 @@
  * tried without a model call. The turn is built whole when the message is
  * sent; playing it reveals one part at a time.
  */
-import { isToolMessage, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { lineDiff } from "@nyte-ai/core";
-import { asId } from "@nyte-ai/schema";
+import { asId, writePatch } from "@nyte-ai/schema";
 import type { Json, Message, PatchEntry, ToolClass, TurnInfo } from "@nyte-ai/sdk";
 
 /** Who answers: a fork of the guide, which only reads, or Nyte, which edits the branch. */
@@ -28,7 +29,7 @@ function cut(
   last: "running" | "stopped",
 ): ConversationTurn {
   const messages = turn.messages.slice(0, shown).map((message, index): Message => {
-    if (index !== shown - 1 || !isToolMessage(message)) return message;
+    if (index !== shown - 1 || !showsTool(message)) return message;
     const { call, name, args } = message.state;
     const base = { call, name, args, class: message.state.class };
 
@@ -108,6 +109,7 @@ function script(recipient: Recipient, text: string, paths: readonly string[]): r
     ];
   const oldText = `  ${word}`;
   const newText = `  // ${text.split("\n")[0]?.slice(0, 60) ?? ""}\n  ${word}\n`;
+  const diffed = lineDiff(oldText, newText);
 
   return [
     {
@@ -125,7 +127,9 @@ function script(recipient: Recipient, text: string, paths: readonly string[]): r
         status: "modified",
         digest: first,
         kind: "text",
-        ...lineDiff(oldText, newText),
+        added: diffed.added,
+        removed: diffed.removed,
+        patch: writePatch(first, "modified", diffed.hunks),
       },
     },
     {

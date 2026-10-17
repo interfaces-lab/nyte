@@ -1,9 +1,9 @@
 import { branchSummary, compaction, isPart } from "@nyte-ai/plugin/client";
 import type { JSX } from "@opentui/solid";
 import { createMemo, Match, Show, Switch } from "solid-js";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { omittedLabel, previewLines } from "../../lib/format.ts";
-import type { PartMessage } from "../../lib/view-helpers.ts";
 import { Markdown } from "./markdown.tsx";
 
 type MarkerProps =
@@ -12,7 +12,7 @@ type MarkerProps =
 
 const SUMMARY_LINES = 40;
 
-export function markerProps(message: PartMessage): MarkerProps {
+function markerProps(message: PartMessage): MarkerProps {
   if (isPart(message, compaction))
     return message.status.kind === "live"
       ? { variant: "default", content: "compacting context…" }

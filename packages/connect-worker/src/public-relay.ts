@@ -14,7 +14,7 @@ import type { Context } from "./context.ts";
 import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
 import { connectRequest, forwardRequest, resetRelay } from "./relay-stub.ts";
-import { findRelayDevice } from "./store.ts";
+import { findRelayDevice } from "./store/environments.ts";
 
 const BEARER = /^Bearer (\S+)$/u;
 

@@ -25,7 +25,6 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { WorkspaceFileTree } from "./file-tree.tsx";
 import { setTreeDrag } from "../conversation/composer-file-drop.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { preferences, useSetting, type Preference } from "../preferences/index.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
@@ -110,6 +109,19 @@ function FilePreferenceItem({
   );
 }
 
+/**
+ * The workspace file tree.
+ *
+ * - The tree keeps its creation-time composition callbacks, so they read late
+ *   values through refs.
+ * - A row's menu button and its right-click share one native menu. The tree
+ *   keeps its own open state, so it closes before the native menu takes over
+ *   the pointer, and without a native menu the tree keeps neither trigger.
+ *   Directories are not in the file list, so their location comes from the root.
+ * - Rows drag out as composer mentions; nothing moves inside the tree.
+ * - The file list may arrive after a reveal, so the reveal retries until the
+ *   entry exists.
+ */
 export function FilesPanel({
   viewKey,
   visible,
@@ -146,7 +158,6 @@ export function FilesPanel({
   const menuRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
-  // The tree keeps its creation-time composition callbacks; read late values through refs.
   const hostState = useRef(host.data);
   useLayoutEffect(() => {
     hostState.current = host.data;
@@ -172,10 +183,6 @@ export function FilesPanel({
   const contextMenu = nyte.host.contextMenu;
   const revealPath = nyte.host.revealPath;
 
-  /**
-   * Serves the row's menu button and its right-click. The tree keeps its own
-   * open state, so close it before the native menu takes over the pointer.
-   */
   const openRowMenu = (
     menu: NonNullable<HostBridge["contextMenu"]>,
     item: ContextMenuItem,
@@ -184,8 +191,7 @@ export function FilesPanel({
     context.close({ restoreFocus: false });
     const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
     const root = hostState.current?.workspace?.path;
-    // Directories are not in the file list, so their location comes from the root.
-    const separator = hostState.current?.platform === "win32" ? "\\" : "/";
+    const separator = nyte.platform === "win32" ? "\\" : "/";
     const relative = item.path.replace(/\/$/, "");
 
     const absolutePath =
@@ -203,7 +209,7 @@ export function FilesPanel({
         absolutePath !== undefined &&
           revealPath !== undefined && {
             kind: "item",
-            label: revealLabel(hostState.current?.platform),
+            label: revealLabel(nyte.platform),
             run: () => void revealPath({ path: absolutePath }),
           },
         { kind: "separator" },
@@ -231,7 +237,6 @@ export function FilesPanel({
     flattenEmptyDirectories: true,
     initialExpansion: 1,
     search: false,
-    // Rows drag out as composer mentions; nothing moves inside the tree.
     dragAndDrop: {
       canDrag: (paths) => {
         const dragged = new Set(paths);
@@ -243,14 +248,12 @@ export function FilesPanel({
       canDrop: () => false,
     },
     composition: {
-      // Without a native menu the tree keeps neither a menu button nor the right-click.
       contextMenu:
         contextMenu === undefined
           ? undefined
           : {
               triggerMode: "both",
               buttonVisibility: "always",
-              // The native menu replaces the tree's own surface for both triggers.
               render: () => null,
               onOpen: (item, context) => openRowMenu(contextMenu, item, context),
             },
@@ -293,7 +296,6 @@ export function FilesPanel({
   );
 
   const revealed = useRef(0);
-  // The file list may arrive after the reveal; retry until the entry exists.
   useLayoutEffect(() => {
     model.resetPaths(paths);
 
@@ -385,7 +387,7 @@ export function FilesPanel({
           <MenuContent align="end" xstyle={styles.menu}>
             <MenuItem
               layout="plain"
-              meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
+              meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
               disabled={!unsaved}
               onClick={() => {
                 if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
@@ -429,7 +431,7 @@ export function FilesPanel({
                   if (activeFile !== undefined) void revealPath({ path: activeFile.path });
                 }}
               >
-                {revealLabel(host.data?.platform)}
+                {revealLabel(nyte.platform)}
               </MenuItem>
             )}
             <MenuSeparator inset />
@@ -514,7 +516,7 @@ export function FilesPanel({
             >
               <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
                 <div {...props(styles.explorerHeader)}>
-                  {host.data?.workspace?.name ?? "Workspace"}
+                  {host.data.workspace?.name ?? "Workspace"}
                 </div>
                 {files.isError && (
                   <div role="alert" {...props(styles.empty)}>

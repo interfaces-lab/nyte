@@ -2,6 +2,7 @@ import { nativeImage } from "electron";
 import type { App, BaseWindow, MenuItemConstructorOptions, WebContents } from "electron";
 import type {
   AppInfo,
+  AppMenuAction,
   AppMenuCommand,
   BrowserKey,
   BrowserNavigationAction,
@@ -14,6 +15,12 @@ export type ViewCommand = Extract<
   "reload" | "hard-reload" | "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
 >;
 
+/**
+ * The menu bar. A window command whose key the renderer owns shows its
+ * shortcut and runs on click, but leaves the key to the page, which knows when
+ * an editor, a terminal or a browser page wants it instead. ⌘W closes a tab,
+ * so closing the window takes Shift.
+ */
 export function applicationMenuTemplate(options: {
   platform: NodeJS.Platform;
   name: string;
@@ -21,52 +28,40 @@ export function applicationMenuTemplate(options: {
   dispatch: (command: AppMenuCommand) => void;
   newWindow: () => void;
   view: (command: ViewCommand, window: BaseWindow | undefined) => void;
+  /** Development builds add Reload, Force Reload and the window's developer tools to View. */
+  developer: boolean;
 }): MenuItemConstructorOptions[] {
   const about = {
     label: `About ${options.name}`,
     click: () => options.dispatch({ kind: "about", info: options.appInfo() }),
   };
 
-  const settings = {
-    label: "Settings…",
-    accelerator: clientActionAccelerator(clientActions.settings),
-    click: () => options.dispatch({ kind: "action", action: clientActions.settings.id }),
+  const action = (
+    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
+  ): MenuItemConstructorOptions => {
+    const accelerator = clientActionAccelerator(definition);
+
+    return {
+      label: definition.label,
+      accelerator: accelerator === "" ? undefined : accelerator,
+      click: () => options.dispatch({ kind: "action", action: definition.id }),
+    };
   };
 
-  const action = (
-    definition:
-      | typeof clientActions.newTab
-      | typeof clientActions.reopenTab
-      | typeof clientActions.closeTab,
-  ): MenuItemConstructorOptions => ({
-    label: definition.label,
-    accelerator: clientActionAccelerator(definition),
-    click: () => options.dispatch({ kind: "action", action: definition.id }),
-  });
+  const settings = action(clientActions.settings);
+
+  const command = (
+    definition: Extract<(typeof clientActions)[keyof typeof clientActions], { id: AppMenuAction }>,
+  ): MenuItemConstructorOptions => ({ ...action(definition), registerAccelerator: false });
 
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
-    {
-      label: "New Chat",
-      accelerator: clientActionAccelerator(clientActions.newChat),
-      click: () => options.dispatch({ kind: "action", action: clientActions.newChat.id }),
-    },
+    action(clientActions.newChat),
     action(clientActions.newTab),
-    {
-      label: "Open Folder…",
-      accelerator: clientActionAccelerator(clientActions.openFolder),
-      click: () => options.dispatch({ kind: "action", action: clientActions.openFolder.id }),
-    },
+    action(clientActions.openFolder),
     { type: "separator" },
-    {
-      label: "New Terminal",
-      accelerator: clientActionAccelerator(clientActions.newTerminal),
-      click: () => options.dispatch({ kind: "action", action: clientActions.newTerminal.id }),
-    },
-    {
-      label: "New Browser",
-      click: () => options.dispatch({ kind: "action", action: clientActions.newBrowser.id }),
-    },
+    action(clientActions.newTerminal),
+    action(clientActions.newBrowser),
   ] satisfies MenuItemConstructorOptions[];
 
   const update = { id: "check-for-updates", label: "Check for Updates…" };
@@ -130,14 +125,26 @@ export function applicationMenuTemplate(options: {
     {
       label: "View",
       submenu: [
-        view("Reload", "CommandOrControl+R", "reload"),
-        view("Force Reload", "Shift+CommandOrControl+R", "hard-reload"),
-        view(
-          "Toggle Developer Tools",
-          options.platform === "darwin" ? "Alt+Command+I" : "Control+Shift+I",
-          "toggle-devtools",
-        ),
+        command(clientActions.sidebar),
+        command(clientActions.workbench),
+        command(clientActions.terminal),
         { type: "separator" },
+        command(clientActions.splitRight),
+        command(clientActions.splitDown),
+        command(clientActions.focusPane),
+        { type: "separator" },
+        ...(options.developer
+          ? [
+              view("Reload", "CommandOrControl+R", "reload"),
+              view("Force Reload", "Shift+CommandOrControl+R", "hard-reload"),
+              view(
+                "Toggle Developer Tools",
+                options.platform === "darwin" ? "Alt+Command+I" : "Control+Shift+I",
+                "toggle-devtools",
+              ),
+              { type: "separator" } satisfies MenuItemConstructorOptions,
+            ]
+          : []),
         view("Actual Size", "CommandOrControl+0", "zoom-reset"),
         view("Zoom In", "CommandOrControl+Plus", "zoom-in"),
         view("Zoom Out", "CommandOrControl+-", "zoom-out"),
@@ -145,7 +152,15 @@ export function applicationMenuTemplate(options: {
         { role: "togglefullscreen" },
       ],
     },
-    // ⌘W closes a tab, so closing the window takes Shift.
+    {
+      label: "Go",
+      submenu: [
+        command(clientActions.back),
+        command(clientActions.forward),
+        { type: "separator" },
+        command(clientActions.search),
+      ],
+    },
     options.platform === "darwin"
       ? { role: "windowMenu" }
       : {
@@ -239,6 +254,8 @@ interface KeyMenuItem<Item> {
   readonly enabled: boolean;
   readonly visible: boolean;
   readonly accelerator: string | null | undefined;
+  /** False for a shortcut the menu only shows; the page keeps that key. */
+  readonly registerAccelerator?: boolean;
   readonly submenu?: KeyMenu<Item> | null;
 }
 
@@ -248,7 +265,7 @@ export function menuItemForKey<Item extends KeyMenuItem<Item>>(
   mac: boolean,
 ): Item | undefined {
   for (const item of menu.items) {
-    if (!item.enabled || !item.visible) continue;
+    if (!item.enabled || !item.visible || item.registerAccelerator === false) continue;
     const nested = item.submenu ? menuItemForKey(item.submenu, key, mac) : undefined;
 
     if (nested !== undefined) return nested;

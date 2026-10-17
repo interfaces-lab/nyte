@@ -3,7 +3,7 @@ import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef } from "react";
 
-/*
+/**
  * Pierre's prerendered diff in a shadow root. A full page load parses the
  * declarative template; after a client navigation React only sets innerHTML,
  * which leaves the template inert, so the root is attached here instead.

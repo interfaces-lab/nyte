@@ -1,206 +1,27 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
+import { tree } from "../src/api/head.ts";
+import { landing } from "../src/engine/admission.ts";
+import { emptyFold, fold } from "../src/fold/fold.ts";
+import { project } from "../src/fold/project.ts";
+import { pollStore } from "../src/fold/watch.ts";
+import { LOCAL } from "../src/index.ts";
 import {
-  LOCAL,
-  emptyFold,
-  fold,
-  project,
   decodeCommitRecord,
-  decodePartRecord,
   decodeRunRecord,
   envelope,
   headRef,
-  landing,
   memoryStore,
-  partRef,
-  pollStore,
-  publishPatch,
-  sessionEvents,
-  sessionRef,
-  tree,
-} from "../src/index.ts";
-import type { Kernel, StoreConnection } from "../src/index.ts";
-import { commit, put, readTip } from "../src/session-state.ts";
-import { configuration, livePart, main, setup, usage } from "./harness.ts";
-
-async function history(store: StoreConnection) {
-  const { kernel, host } = await setup({ store });
-  const session = await host.sessions.create();
-  const after = await store.refs.tail(session.id);
-  const ref = await store.refs.get(sessionRef(session.id));
-
-  if (ref?.target === null || ref === null) throw new Error("The session was not created.");
-
-  await store.refs.set(
-    Array.from({ length: 600 }, (_, index) => ({
-      name: ref.name,
-      target: ref.target,
-      event: {
-        head: main,
-        kind: "request" as const,
-        step: "assistant" as const,
-        usage,
-        context: { tokens: index + 1, window: 1000, lastRequest: null },
-      },
-    })),
-  );
-
-  return { kernel, host, session, after };
-}
-
-describe("session event demand", () => {
-  it("coalesces queued deltas, resumes large text from current state, and discards replaced text", async () => {
-    const { kernel, host } = await setup();
-    const session = await host.sessions.create();
-    const run = asId<"run">("live-run");
-    const part = asId<"part">("live-part");
-    await livePart(kernel, session.id, run, part, "A");
-    const events = sessionEvents(kernel, session.id, asSeq(0))[Symbol.asyncIterator]();
-
-    for (;;) {
-      const next = await events.next();
-
-      if (next.done) throw new Error("The stream ended before its live text.");
-
-      if (next.value.event.kind !== "patch") continue;
-      expect(next.value.event).toEqual({ kind: "patch", part, markdown: "A" });
-      break;
-    }
-
-    publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
-    publishPatch(kernel, session.id, run, { kind: "patch", part, append: "C" });
-    expect((await events.next()).value?.event).toEqual({ kind: "patch", part, append: "BC" });
-
-    for (let index = 0; index < 100; index += 1)
-      publishPatch(kernel, session.id, run, { kind: "patch", part, append: "x".repeat(200) });
-
-    expect((await events.next()).value?.event).toEqual({
-      kind: "patch",
-      part,
-      markdown: `ABC${"x".repeat(20_000)}`,
-    });
-    publishPatch(kernel, session.id, run, { kind: "patch", part, append: "D" });
-    expect((await events.next()).value?.event).toEqual({ kind: "patch", part, append: "D" });
-    publishPatch(kernel, session.id, run, { kind: "patch", part, append: "Discard this." });
-    const ref = await kernel.store.refs.get(partRef(session.id, part));
-
-    const record =
-      ref?.target === null || ref === null
-        ? null
-        : decodePartRecord(await kernel.store.objects.get(ref.target));
-
-    if (record === null || ref === null) throw new Error("The live part was not stored.");
-    const state = { markdown: "Replaced", signature: null };
-
-    await commit(kernel, [
-      {
-        name: ref.name,
-        target: await put(kernel, "part", { ...record, state, version: 2 }),
-        event: { head: main, kind: "part", part, change: "updated", state, version: 2 },
-      },
-    ]);
-
-    publishPatch(kernel, session.id, run, { kind: "patch", part, append: "." });
-    expect((await events.next()).value?.event).toMatchObject({ kind: "part", change: "updated" });
-    expect((await events.next()).value?.event).toEqual({ kind: "patch", part, append: "." });
-    expect((await session.view()).messages.at(-1)).toMatchObject({
-      kind: "part",
-      state: { markdown: "Replaced." },
-    });
-    await events.return?.();
-    await host.close();
-  });
-
-  it("reads bounded history on demand and delivers a concurrent commit once in order", async () => {
-    const base = await memoryStore().open();
-    let read = 0;
-
-    const store: StoreConnection = {
-      ...base,
-      refs: {
-        ...base.refs,
-        async log(session, after, limit) {
-          const events = await base.refs.log(session, after, limit);
-          read += events.length;
-
-          return events;
-        },
-      },
-    };
-
-    const { kernel, host, session, after } = await history(store);
-    const events = sessionEvents(kernel, session.id, after)[Symbol.asyncIterator]();
-    read = 0;
-    const first = await events.next();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(first.value?.event).toMatchObject({ kind: "request", context: { tokens: 1 } });
-    expect(read).toBeLessThan(600);
-
-    await session.update({ name: "During replay" });
-    const tokens: number[] = [1];
-    const names: (string | null)[] = [];
-
-    for (;;) {
-      const next = await events.next();
-
-      if (next.done) throw new Error("The stream ended during replay.");
-      const event = next.value.event;
-
-      if (event.kind === "request") tokens.push(event.context.tokens);
-
-      if (event.kind === "session") names.push(event.info.name);
-
-      if (event.kind === "catalog") break;
-    }
-
-    expect(tokens).toEqual(Array.from({ length: 600 }, (_, index) => index + 1));
-    expect(names).toEqual(["During replay"]);
-    await events.return?.();
-    await host.close();
-  });
-
-  it("cancels an in-flight history read without reading or delivering the remaining pages", async () => {
-    const base = await memoryStore().open();
-    const entered = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    let blocking = false;
-    let reads = 0;
-
-    const store: StoreConnection = {
-      ...base,
-      refs: {
-        ...base.refs,
-        async log(session, after, limit) {
-          if (blocking) {
-            reads += 1;
-            entered.resolve();
-            await release.promise;
-          }
-
-          return base.refs.log(session, after, limit);
-        },
-      },
-    };
-
-    const { kernel, host, session, after } = await history(store);
-    const events = sessionEvents(kernel, session.id, after)[Symbol.asyncIterator]();
-    blocking = true;
-    const pending = events.next();
-    await entered.promise;
-    expect(await events.return?.()).toEqual({ done: true, value: undefined });
-    release.resolve();
-    expect(await pending).toEqual({ done: true, value: undefined });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(reads).toBe(1);
-    expect(await events.next()).toEqual({ done: true, value: undefined });
-    await host.close();
-  });
-});
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { StoreConnection } from "../src/index.ts";
+import { commit } from "../src/fold/commit.ts";
+import { put, readTip } from "../src/store/session.ts";
+import { configuration, main, setup, usage } from "../src/harness.ts";
 
 async function land(kernel: Kernel, session: SessionId, text: string): Promise<void> {
-  const tip = await readTip(kernel, session, main);
+  const tip = await readTip(kernel.store, session, main);
   const body = {
     kind: "user",
     message: asId<"message">(crypto.randomUUID()),
@@ -211,14 +32,14 @@ async function land(kernel: Kernel, session: SessionId, text: string): Promise<v
   } as const;
 
   const record = { parent: tip.id, at: Date.now(), run: null, body };
-  const id = asId<"commit">(await put(kernel, "commit", record, record.at));
+  const id = asId<"commit">(await put(kernel.store, "commit", record, record.at));
 
   await commit(kernel, [
     {
       name: headRef(session, main),
       target: asId<"object">(id),
       expect: tip.ref?.revision ?? "absent",
-      event: { head: main, kind: "commit", id, parent: record.parent, run: null, body },
+      events: [{ head: main, kind: "commit", id, parent: record.parent, run: null, body }],
     },
   ]);
 }
@@ -228,11 +49,10 @@ describe("the store is the truth", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, poll: 10, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
+    const { session } = await a.host.sessions.start({ content: "From A." });
     const watched = a.host.session(session.id).head(main).watch()[Symbol.asyncIterator]();
     await watched.next();
 
-    await a.host.session(session.id).send("From A.");
     const first = a.host.execution.advance({ session: session.id, head: main });
     (await a.script.started(1)).finish();
     await first;
@@ -260,7 +80,7 @@ describe("the store is the truth", () => {
     const store = await memoryStore().open();
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await b.host.sessions.create();
+    const { session } = await b.host.sessions.start({ content: "Hi." });
     const hold = b.kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
 
@@ -269,25 +89,27 @@ describe("the store is the truth", () => {
     await landing(b.kernel, session.id, main, [original.message], null);
     hold.release();
 
-    const tip = await readTip(b.kernel, session.id, main);
+    const tip = await readTip(b.kernel.store, session.id, main);
 
     expect(tip.commit?.body).toMatchObject({ kind: "user", content: "Steer v2." });
   });
 
   it("shows the empty revision once a move to the start deletes the head ref (ADV F F3)", async () => {
     const { kernel, host, script } = await setup();
-    const session = await host.sessions.create();
-    await session.send("Base.");
+    const { session } = await host.sessions.start({ content: "Base." });
     const step = host.execution.advance({ session: session.id, head: main });
     (await script.started(1)).finish();
     await step;
+    const side = asId<"head">("side");
+    await session.heads.create(side, { from: (await session.tree()).tip });
+    const head = session.head(side);
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
 
-    expect((await session.view()).revision).not.toBe("");
-    expect((await (await session.move({ kind: "start" })).settled()).kind).toBe("moved");
-    expect(await kernel.store.refs.get(headRef(session.id, main))).toBeNull();
-    expect((await session.view()).revision).toBe("");
+    expect((await head.view()).revision).not.toBe("");
+    expect((await (await head.move({ kind: "start" })).settled()).kind).toBe("moved");
+    expect(await kernel.store.refs.get(headRef(session.id, side))).toBeNull();
+    expect((await head.view()).revision).toBe("");
     hold.release();
   });
 
@@ -315,8 +137,8 @@ describe("the store is the truth", () => {
 
     const a = await setup({ store, execution: { kind: "admit-only" } });
     const b = await setup({ store: shared, execution: { kind: "admit-only" } });
-    const session = await a.host.sessions.create();
-    await land(a.kernel, session.id, "Old tip.");
+    const { session, receipt } = await b.host.sessions.start({ content: "Old tip." });
+    await landing(b.kernel, session.id, main, [receipt.message], null);
     const old = await shared.refs.get(headRef(session.id, main));
     between = () => land(b.kernel, session.id, "New tip.");
     armed = true;
@@ -343,7 +165,13 @@ describe("the store is the truth", () => {
         async set(updates) {
           const outcome = await shared.refs.set(updates);
 
-          if (armed && updates.some((update) => update.event?.kind === "commit")) gate = true;
+          if (
+            armed &&
+            updates
+              .flatMap((update) => update.events ?? [])
+              .some((event) => event.kind === "commit")
+          )
+            gate = true;
 
           return outcome;
         },
@@ -356,8 +184,8 @@ describe("the store is the truth", () => {
     };
 
     const { kernel, host } = await setup({ store, execution: { kind: "admit-only" } });
-    const session = await host.sessions.create();
-    await land(kernel, session.id, "Old.");
+    const { session, receipt } = await host.sessions.start({ content: "Old." });
+    await landing(kernel, session.id, main, [receipt.message], null);
     const watched = session.watch()[Symbol.asyncIterator]();
     await watched.next();
     armed = true;
@@ -378,7 +206,9 @@ describe("the store is the truth", () => {
       shown.done !== true &&
         (
           await (
-            await session.move({ kind: "start" }, { expect: shown.value.revision ?? undefined })
+            await session.move(shown.value.heads[0]?.tip ?? { kind: "start" }, {
+              expect: shown.value.revision ?? undefined,
+            })
           ).settled()
         ).kind,
     ).toBe("moved");
@@ -403,7 +233,6 @@ describe("the store is the truth", () => {
       lastSnapshot: null,
       usage: null,
       requests: 0,
-      waitedBy: [],
       parked: [],
     };
 

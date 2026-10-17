@@ -186,11 +186,14 @@ export function signIn(input: {
   let pasted: PromiseWithResolvers<string> | null = null;
   const controller = new AbortController();
 
-  const deliver = (step: LoginStep): void => {
-    queued.push(step);
-
+  const wakeAll = (): void => {
     for (const wake of wakers) wake();
     wakers.clear();
+  };
+
+  const deliver = (step: LoginStep): void => {
+    queued.push(step);
+    wakeAll();
   };
 
   void (async () => {
@@ -246,9 +249,7 @@ export function signIn(input: {
           },
           close() {
             controller.abort();
-
-            for (const wake of wakers) wake();
-            wakers.clear();
+            wakeAll();
           },
         };
       }),

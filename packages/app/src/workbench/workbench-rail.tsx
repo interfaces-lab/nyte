@@ -50,8 +50,7 @@ function setWidth(next: number): void {
 
   try {
     storage()?.setItem(STORAGE_KEY, String(next));
-  } catch {
-  }
+  } catch {}
 
   for (const listener of listeners) listener();
 }

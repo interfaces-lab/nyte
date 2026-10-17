@@ -2,7 +2,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { Static } from "typebox";
 
-export const recordSchema = Type.Record(Type.String(), Type.Unknown());
+const recordSchema = Type.Record(Type.String(), Type.Unknown());
 
 const usageSchema = Type.Object({
   input_tokens: Type.Number(),
@@ -33,7 +33,7 @@ const contentSchema = Type.Union([
   }),
 ]);
 
-const messageSchema = Type.Intersect([
+export const messageSchema = Type.Intersect([
   recordSchema,
   Type.Object({
     id: Type.Optional(Type.String()),
@@ -144,26 +144,22 @@ export type NativeFrame = {
   shouldQuery?: false;
 };
 
-export function isRecord(value: unknown): value is JsonRecord {
+export function matchesRecord(value: unknown): value is JsonRecord {
   return Value.Check(recordSchema, value);
 }
 
 export function parseRecord(text: string): JsonRecord {
   const value: unknown = JSON.parse(text);
 
-  if (!isRecord(value)) throw new Error("Expected a JSON object");
+  if (!matchesRecord(value)) throw new Error("Expected a JSON object");
 
   return value;
-}
-
-export function isNativeMessage(value: unknown): value is NativeMessage {
-  return Value.Check(messageSchema, value);
 }
 
 export function parseStreamEvent(text: string): AnthropicStreamEvent | undefined {
   const value: unknown = JSON.parse(text);
 
-  if (isRecord(value) && value.type === "ping") return undefined;
+  if (matchesRecord(value) && value.type === "ping") return undefined;
 
   if (!Value.Check(streamEventSchema, value)) throw new Error("Invalid Anthropic stream event");
 

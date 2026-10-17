@@ -7,6 +7,7 @@ import {
   button,
   glyph,
   layer,
+  media,
   radius,
   space,
   target,
@@ -152,7 +153,7 @@ const styles = create({
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
     backgroundImage: {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.layerHover },
+      ":hover": { [media.hover]: role.layerHover },
     },
     color: role.contentPrimary,
     fontFamily: type.fontSans,
@@ -185,11 +186,11 @@ const styles = create({
     borderRadius: button.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: {
       default: role.contentInteractiveSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentInteractivePrimary },
+      ":hover": { [media.hover]: role.contentInteractivePrimary },
     },
     cursor: appearance.cursorInteractive,
     scale: { default: 1, ":active": 0.96 },
@@ -202,15 +203,13 @@ const styles = create({
   },
 });
 
-const STATUS_ICON = {
-  success: { intent: intent.success, name: "checkmark" },
-  error: { intent: intent.danger, name: "warning" },
-  warning: { intent: intent.warning, name: "warning" },
-} as const;
-
-function isStatus(type: string | undefined): type is keyof typeof STATUS_ICON {
-  return type !== undefined && type in STATUS_ICON;
-}
+const STATUS_ICON = new Map(
+  Object.entries({
+    success: { intent: intent.success, name: "checkmark" },
+    error: { intent: intent.danger, name: "warning" },
+    warning: { intent: intent.warning, name: "warning" },
+  } as const),
+);
 
 function copyText(title: ReactNode, description: ReactNode): string | undefined {
   if (typeof title !== "string") return undefined;
@@ -223,7 +222,7 @@ function ToastList(): ReactElement[] {
 
   return toasts.map((item) => {
     const copy = copyText(item.title, item.description);
-    const status = isStatus(item.type) ? STATUS_ICON[item.type] : undefined;
+    const status = item.type === undefined ? undefined : STATUS_ICON.get(item.type);
 
     return (
       <Toast.Root key={item.id} toast={item} data-slot="toast" {...props(styles.root)}>

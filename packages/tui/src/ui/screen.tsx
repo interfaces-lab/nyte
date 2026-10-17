@@ -42,27 +42,20 @@ export function Screen(): JSX.Element {
       width="100%"
       height="100%"
       flexDirection="column"
-      backgroundColor={app.kit.theme().background}
+      backgroundColor={app.kit.theme().backdrop}
     >
-      <Show when={dimensions().height >= 5 ? screen().loading : null}>
-        {(loading: Accessor<string>) => (
-          <text
-            id="session-loading"
-            fg={app.kit.theme().dim}
-            height={1}
-            flexShrink={0}
-            marginLeft={3}
-          >
-            {loading()}
-          </text>
-        )}
-      </Show>
       <Show when={where() === "screen"}>
         <box id="screen" flexGrow={1} minHeight={0} flexDirection="column">
           <DialogHost />
         </box>
       </Show>
-      <box id="conversation" flexGrow={1} minHeight={0} visible={where() !== "screen" && !tiny()}>
+      <box
+        id="conversation"
+        flexGrow={1}
+        flexBasis={0}
+        minHeight={0}
+        visible={where() !== "screen" && !tiny()}
+      >
         <Transcript
           model={() => screen().transcript}
           tasks={() => screen().tasks}
@@ -70,6 +63,7 @@ export function Screen(): JSX.Element {
           attach={(port) => app.kit.attach.scroll(port)}
           onScrolled={(atBottom) => app.dispatch({ kind: "scrolled", atBottom })}
           onRevealEarlier={() => app.dispatch({ kind: "reveal-earlier" })}
+          onRevealLater={() => app.dispatch({ kind: "reveal-later" })}
           onPaste={(event) => {
             app.dispatch({ kind: "focus-composer" });
             app.dispatch({ kind: "paste", source: pasteMessage(event) });
@@ -85,7 +79,7 @@ export function Screen(): JSX.Element {
         flexShrink={0}
         flexDirection="column"
         visible={where() !== "screen"}
-        backgroundColor={app.kit.theme().background}
+        backgroundColor={app.kit.theme().backdrop}
       >
         <Show when={!tiny() && screen().dialog === null}>
           <QueueRows />

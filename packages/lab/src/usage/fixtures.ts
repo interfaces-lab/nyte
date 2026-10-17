@@ -1,4 +1,3 @@
-
 const HOUR = 3_600_000;
 
 const DAY = 24 * HOUR;
@@ -28,7 +27,7 @@ export const TOKEN_LABELS = {
 
 type PerKind = Readonly<Record<TokenKind, number>>;
 
-export interface Model {
+interface Model {
   readonly id: string;
   readonly provider: string;
   readonly share: number;
@@ -37,7 +36,7 @@ export interface Model {
   readonly perTurn: number;
 }
 
-export const MODELS: readonly Model[] = [
+const MODELS: readonly Model[] = [
   {
     id: "claude-opus-4-6",
     provider: "Anthropic",
@@ -112,13 +111,13 @@ export const MODELS: readonly Model[] = [
   },
 ];
 
-export interface Group {
+interface Group {
   readonly id: string;
   readonly detail: string;
   readonly share: number;
 }
 
-export const SOURCES: readonly Group[] = [
+const SOURCES: readonly Group[] = [
   { id: "Claude Code", detail: "~/.claude", share: 0.41 },
   { id: "Nyte", detail: "local", share: 0.27 },
   { id: "Codex", detail: "~/.codex", share: 0.22 },
@@ -126,7 +125,7 @@ export const SOURCES: readonly Group[] = [
   { id: "Gemini CLI", detail: "~/.gemini", share: 0.03 },
 ];
 
-export const PROJECTS: readonly Group[] = [
+const PROJECTS: readonly Group[] = [
   { id: "nyte", detail: "~/Developer/nyte", share: 0.52 },
   { id: "uji-desktop", detail: "~/Developer/uji-desktop", share: 0.21 },
   { id: "paper-plugins", detail: "~/Developer/paper-plugins", share: 0.11 },
@@ -142,7 +141,7 @@ export interface Tally {
   readonly turns: number;
 }
 
-export const EMPTY: Tally = {
+const EMPTY: Tally = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   saved: 0,
@@ -158,7 +157,7 @@ function perKind(read: (kind: TokenKind) => number): PerKind {
   };
 }
 
-export function add(a: Tally, b: Tally): Tally {
+function add(a: Tally, b: Tally): Tally {
   return {
     cost: perKind((kind) => a.cost[kind] + b.cost[kind]),
     tokens: perKind((kind) => a.tokens[kind] + b.tokens[kind]),
@@ -167,7 +166,7 @@ export function add(a: Tally, b: Tally): Tally {
   };
 }
 
-export function scale(tally: Tally, by: number): Tally {
+function scale(tally: Tally, by: number): Tally {
   return {
     cost: perKind((kind) => tally.cost[kind] * by),
     tokens: perKind((kind) => tally.tokens[kind] * by),
@@ -176,7 +175,7 @@ export function scale(tally: Tally, by: number): Tally {
   };
 }
 
-export const sumOf = (values: PerKind): number =>
+export const sumKinds = (values: PerKind): number =>
   values.input + values.output + values.cacheRead + values.cacheWrite;
 
 function priced(model: Model, cost: number, seed: number): Tally {
@@ -184,8 +183,8 @@ function priced(model: Model, cost: number, seed: number): Tally {
     (kind) => model.mix[kind] * (kind === "cacheRead" ? 1 + 0.08 * noise(seed) : 1),
   );
 
-  const mix = perKind((kind) => drift[kind] / sumOf(drift));
-  const blended = sumOf(perKind((kind) => mix[kind] * model.rate[kind]));
+  const mix = perKind((kind) => drift[kind] / sumKinds(drift));
+  const blended = sumKinds(perKind((kind) => mix[kind] * model.rate[kind]));
   const tokens = perKind((kind) => (cost / blended) * mix[kind] * 1e6);
 
   return {

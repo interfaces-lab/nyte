@@ -10,6 +10,7 @@ import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
 import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
+import { themeSource } from "./launch-state.ts";
 import { Uuid } from "@nyte-ai/connect";
 import type { CallInput, CallPath, CallRequest } from "../shared/ipc.ts";
 import type { BrowserBoundsMessage, BrowserFocusMessage, BrowserKey } from "@nyte-ai/app/bridge.ts";
@@ -68,9 +69,14 @@ const checkedUsageWindow: typeof usageWindow = {
   },
 };
 
-export const CALL_INPUT_SCHEMAS = {
+/** Each operation's input parser, keyed by its path. */
+type CallInputParsers = { readonly [P in CallPath]: Parser<CallInput<P>> };
+
+/** Each operation's input schema; the IPC boundary decodes a request's input with its path's parser. */
+export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.endpoint": compile(noInput),
   "host.state": compile(noInput),
+  "host.restore": compile(strict({ session: nonEmpty })),
   "host.fonts": compile(noInput),
   "host.usage": checkedUsageWindow,
   "host.openWorkspace": compile(strict({ path: nonEmpty })),
@@ -192,6 +198,7 @@ export const CALL_INPUT_SCHEMAS = {
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
   "host.browser.captureFrame": compile(strict({ surface: nonEmpty })),
+  "host.browser.pickElement": compile(strict({ surface: nonEmpty })),
   "host.browser.find": compile(
     strict({
       surface: nonEmpty,
@@ -216,24 +223,7 @@ export const CALL_INPUT_SCHEMAS = {
   "host.browser.forgetHistory": compile(
     strict({ owner: Type.Union([nonEmpty, Type.Null()]), url: Type.String({ maxLength: 8192 }) }),
   ),
-  "host.browser.focusPage": compile(strict({ surface: nonEmpty })),
-  "host.terminal.create": compile(
-    strict({ id: nonEmpty, workspacePath: Type.Union([nonEmpty, Type.Null()]) }),
-  ),
-  "host.terminal.write": compile(strict({ id: nonEmpty, data: Type.String({ maxLength: 65536 }) })),
-  "host.terminal.resize": compile(
-    strict({
-      id: nonEmpty,
-      cols: Type.Integer({ minimum: 2, maximum: 1000 }),
-      rows: Type.Integer({ minimum: 1, maximum: 1000 }),
-    }),
-  ),
-  "host.terminal.acknowledge": compile(
-    strict({ id: nonEmpty, length: Type.Integer({ minimum: 0, maximum: 1048576 }) }),
-  ),
-  "host.terminal.idle": compile(strict({ id: nonEmpty })),
-  "host.terminal.close": compile(strict({ id: nonEmpty })),
-} satisfies { readonly [P in CallPath]: Parser<CallInput<P>> };
+};
 
 const callRequest = compile(
   strict({
@@ -249,6 +239,7 @@ const browserBounds = compile(
     surface: nonEmpty,
     bounds: strict({ x: Type.Number(), y: Type.Number(), width: size, height: size }),
     visible: Type.Boolean(),
+    focus: Type.Boolean(),
   }),
 );
 
@@ -275,9 +266,16 @@ const browserKey = compile(
   }),
 );
 
+/** The request envelope: a known operation path. Its input is decoded by `decodeCallInput`. */
 export function decodeCallRequest(input: CallRequest): CallRequest {
-  // DesktopHost's selected operation parser validates `input` exactly once.
   return checked(callRequest, input);
+}
+
+export function decodeCallInput<P extends CallPath>(
+  path: P,
+  input: CallRequest["input"],
+): CallInput<P> {
+  return CALL_INPUT_SCHEMAS[path].Parse(input);
 }
 
 export function decodeBrowserBounds(input: BrowserBoundsMessage): BrowserBoundsMessage {
@@ -292,6 +290,4 @@ export function decodeBrowserKey(input: BrowserKey): BrowserKey {
   return checked(browserKey, input);
 }
 
-export const themePreference = Compile(
-  Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
-);
+export const themePreference = Compile(themeSource);

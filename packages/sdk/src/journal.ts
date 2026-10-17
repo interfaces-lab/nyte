@@ -1,16 +1,23 @@
-import { asId } from "@nyte-ai/schema";
-import type { Disposer, HeadName, JournalEntry, Message, SessionId } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
+import { asId, SdkError } from "@nyte-ai/schema";
+import type {
+  Disposer,
+  HeadName,
+  JournalEntry,
+  Message,
+  SessionId,
+  SessionView,
+} from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
 import type { RequestJournal } from "@nyte-ai/core";
 import type { OperationOutput } from "@nyte-ai/protocol";
 import type { Rows } from "./rows.ts";
-import { backoff, retryDelay, isLinkLoss } from "./rows.ts";
+import { backoff, retryDelay } from "./rows.ts";
 
 export interface JournalLoop {
   send(entry: JournalEntry): Promise<Sent>;
   replay(entries: readonly JournalEntry[]): void;
   unsent(session: SessionId, head: HeadName): readonly Message[];
-  landed(contains: (message: Message["id"]) => boolean): void;
+  landed(session: SessionId, head: HeadName, view: SessionView): void;
   subscribe(listener: () => void): Disposer;
 }
 
@@ -21,6 +28,7 @@ type Held = {
   attempts: number;
   retrying: { readonly at: number; readonly reason: string } | null;
   answered: Message["id"] | null;
+  answeredAfter: number | null;
 };
 
 export function createSendJournal(): RequestJournal {
@@ -40,6 +48,7 @@ export function createSendJournal(): RequestJournal {
 export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
   const held = new Map<string, Held>();
   const tails = new Map<string, Promise<void>>();
+  const shown = new Map<string, number>();
   const listeners = new Set<() => void>();
 
   const changed = (): void => {
@@ -60,7 +69,10 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
       } catch (error) {
         const closing = rows.link.signal.aborted;
 
-        if (closing || !retried(error)) {
+        if (
+          closing ||
+          !(error instanceof SdkError && (error.code === "unavailable" || error.code === "stale"))
+        ) {
           if (!closing) await journal.remove(id);
           held.delete(id);
           changed();
@@ -85,7 +97,7 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
     const all = [...held.values()];
 
     const later = all
-      .slice(all.indexOf(current) + 1)
+      .slice(all.findIndex((row) => row === current) + 1)
       .filter(
         ({ entry }) =>
           entry.session === current.entry.session &&
@@ -100,12 +112,20 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
   };
 
   const hold = (entry: JournalEntry): Promise<Sent> => {
-    const current: Held = { entry, attempts: 0, retrying: null, answered: null };
+    const current: Held = {
+      entry,
+      attempts: 0,
+      retrying: null,
+      answered: null,
+      answeredAfter: null,
+    };
+
     const key = JSON.stringify([entry.session, entry.head]);
 
     const sent = (tails.get(key) ?? Promise.resolve()).then(async () => {
       const answer = await post(current);
       current.answered = answer.message;
+      current.answeredAfter = shown.get(key) ?? null;
       await retarget(current, answer.message);
       dev("sdk", "send answered", { receipt: entry.id, attempts: current.attempts + 1 });
       changed();
@@ -159,9 +179,21 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
 
       return [...shown].map(([id, current]) => unsentMessage(id, current));
     },
-    landed(contains) {
+    landed(session, head, view) {
+      const key = JSON.stringify([session, head]);
+      const ids = new Set(view.messages.map((message) => message.id));
+      shown.set(key, Math.max(shown.get(key) ?? 0, view.seq));
+
       for (const [receipt, current] of held) {
-        if (current.answered === null || !contains(current.answered)) continue;
+        const { answered, answeredAfter, entry } = current;
+
+        if (
+          answered === null ||
+          entry.session !== session ||
+          entry.head !== head ||
+          (!ids.has(answered) && answeredAfter !== null && view.seq <= answeredAfter)
+        )
+          continue;
         held.delete(receipt);
         journal
           .remove(current.entry.id)
@@ -177,10 +209,6 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
       };
     },
   };
-}
-
-function retried(error: unknown): error is SdkError {
-  return isLinkLoss(error) || (error instanceof SdkError && error.code === "stale");
 }
 
 function unsentMessage(id: Message["id"], { entry, attempts, retrying }: Held): Message {

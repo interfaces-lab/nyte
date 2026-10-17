@@ -1,8 +1,8 @@
-import type { HighlightCancel, HighlightRequest } from "./syntax-highlighter.worker.ts";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
-// Fenced code paints as escaped plain text immediately. Known grammars upgrade
-// in a bundled worker, keeping grammars and syntax work off the UI thread.
+/**
+ * Fenced code paints as escaped plain text immediately, then upgrades to the
+ * highlighting the diffs use: grammars and syntax work stay in their Pierre
+ * worker pool, off the UI thread.
+ */
 import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useQuery } from "@tanstack/react-query";
@@ -10,55 +10,10 @@ import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
+import { loadDeferred } from "../deferred.tsx";
 import { keys } from "../query-keys.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { codeBlockStyles } from "./styles.stylex.ts";
-
-const HIGHLIGHTABLE = new Set([
-  "bash",
-  "sh",
-  "shell",
-  "zsh",
-  "c",
-  "cpp",
-  "c++",
-  "cxx",
-  "csharp",
-  "cs",
-  "css",
-  "diff",
-  "docker",
-  "dockerfile",
-  "go",
-  "html",
-  "htm",
-  "java",
-  "javascript",
-  "js",
-  "json",
-  "jsonc",
-  "jsx",
-  "markdown",
-  "md",
-  "mdx",
-  "php",
-  "powershell",
-  "ps1",
-  "python",
-  "py",
-  "ruby",
-  "rb",
-  "rust",
-  "rs",
-  "sql",
-  "toml",
-  "tsx",
-  "typescript",
-  "ts",
-  "xml",
-  "yaml",
-  "yml",
-]);
+import { codeBlockStyles } from "./prose.stylex.ts";
 
 interface HighlightedCode {
   readonly code: string;
@@ -74,113 +29,9 @@ const PLAIN_HIGHLIGHT = { kind: "plain" } as const;
 
 const HIGHLIGHT_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 
-// Long enough to span ordinary reading pauses, short enough that grammars do
-// not sit resident through an idle session.
-const HIGHLIGHT_WORKER_IDLE_MS = 30 * 60 * 1000;
-
 const highlightCache = new Map<string, HighlightedCode>();
 
-const pendingHighlights = new Map<number, (html: string | undefined) => void>();
-
-const highlightReply = Type.Object({
-  id: Type.Number(),
-  html: Type.Union([Type.String(), Type.Null()]),
-});
-
 let highlightCacheBytes = 0;
-
-let worker: Worker | undefined;
-
-let idleRelease: ReturnType<typeof setTimeout> | undefined;
-
-let nextHighlightId = 0;
-
-function clearIdleRelease(): void {
-  if (idleRelease === undefined) return;
-  clearTimeout(idleRelease);
-  idleRelease = undefined;
-}
-
-function scheduleIdleRelease(): void {
-  clearIdleRelease();
-
-  if (worker === undefined || pendingHighlights.size > 0) return;
-  idleRelease = setTimeout(() => {
-    idleRelease = undefined;
-
-    if (worker === undefined || pendingHighlights.size > 0) return;
-    worker.terminate();
-    worker = undefined;
-  }, HIGHLIGHT_WORKER_IDLE_MS);
-}
-
-function finishHighlight(id: number, html: string | undefined): void {
-  const notify = pendingHighlights.get(id);
-  pendingHighlights.delete(id);
-  notify?.(html);
-  scheduleIdleRelease();
-}
-
-function cancelHighlight(id: number): void {
-  if (!pendingHighlights.delete(id)) return;
-
-  try {
-    worker?.postMessage({ id, cancel: true } satisfies HighlightCancel);
-  } catch {
-    // The worker keeps the stale request; its reply finds no listener.
-  }
-
-  scheduleIdleRelease();
-}
-
-function failWorker(failed: Worker): void {
-  if (worker !== failed) return;
-  failed.terminate();
-  worker = undefined;
-  clearIdleRelease();
-  const pending = [...pendingHighlights.values()];
-  pendingHighlights.clear();
-
-  for (const settle of pending) settle(undefined);
-}
-
-function enqueueHighlight(
-  code: string,
-  language: string,
-  receive: (html: string | undefined) => void,
-): number {
-  clearIdleRelease();
-
-  if (worker === undefined) {
-    const created = new Worker(new URL("./syntax-highlighter.worker.ts", import.meta.url), {
-      type: "module",
-    });
-
-    worker = created;
-    created.onmessage = (event: MessageEvent<unknown>) => {
-      try {
-        const { id, html } = Value.Parse(highlightReply, event.data);
-        finishHighlight(id, html ?? undefined);
-      } catch {
-        failWorker(created);
-      }
-    };
-
-    created.onerror = () => failWorker(created);
-    created.onmessageerror = () => failWorker(created);
-  }
-
-  const id = ++nextHighlightId;
-  pendingHighlights.set(id, receive);
-
-  try {
-    worker.postMessage({ id, code, language } satisfies HighlightRequest);
-  } catch {
-    failWorker(worker);
-  }
-
-  return id;
-}
 
 function highlightKey(code: string, language: string): string {
   let hash = 2_166_136_261;
@@ -234,49 +85,23 @@ function rememberHighlight(value: HighlightedCode): void {
   }
 }
 
-// The reply also fills the module cache, so a remounted row paints from
-// `cachedHighlight` instead of asking the worker again. Leaving early pulls
-// the request out of both queues; nothing waits on a result nobody will show.
-export function requestHighlight(
-  code: string,
-  language: string,
-  signal: AbortSignal,
-): Promise<HighlightResult> {
-  if (signal.aborted) return Promise.resolve(PLAIN_HIGHLIGHT);
+/**
+ * The result also fills the module cache, so a remounted row paints from
+ * `cachedHighlight` instead of asking the pool again.
+ */
+async function requestHighlight(code: string, language: string): Promise<HighlightResult> {
+  const html = await loadDeferred("code").then(
+    (runtime) => runtime.highlightCode(code, language, highlightKey(code, language)),
+    () => undefined,
+  );
 
-  return new Promise((resolve) => {
-    let settled = false;
-    const request = { id: 0, abort: (): void => {} };
+  if (html === undefined) return PLAIN_HIGHLIGHT;
 
-    const settle = (html: string | undefined): void => {
-      if (settled) return;
-      settled = true;
-      signal.removeEventListener("abort", request.abort);
+  const value = { code, language, html };
 
-      if (html === undefined) {
-        resolve(PLAIN_HIGHLIGHT);
+  rememberHighlight(value);
 
-        return;
-      }
-
-      const value = { code, language, html };
-      rememberHighlight(value);
-      resolve({ kind: "highlighted", value });
-    };
-
-    request.abort = (): void => {
-      cancelHighlight(request.id);
-      settle(undefined);
-    };
-
-    signal.addEventListener("abort", request.abort, { once: true });
-
-    try {
-      request.id = enqueueHighlight(code, language, settle);
-    } catch {
-      settle(undefined);
-    }
-  });
+  return { kind: "highlighted", value };
 }
 
 export function CodeBlock({ code, lang }: { code: string; lang: string }): ReactElement {
@@ -289,8 +114,8 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
 
   const { data } = useQuery({
     queryKey: keys.highlight(language, code),
-    queryFn: ({ signal }) => requestHighlight(code, language, signal),
-    enabled: nearViewport && HIGHLIGHTABLE.has(language) && cached === undefined,
+    queryFn: () => requestHighlight(code, language),
+    enabled: nearViewport && language !== "" && cached === undefined,
     staleTime: Infinity,
     gcTime: 0,
   });
@@ -343,17 +168,13 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
         </Tooltip>
       </span>
       <div data-nyte-scrollport {...props(codeBlockStyles.scroll)}>
-        {html === undefined ? (
-          <pre {...props(text.code, codeBlockStyles.pre)}>
+        <pre data-nyte-code {...props(text.code, codeBlockStyles.pre)}>
+          {html === undefined ? (
             <code>{code}</code>
-          </pre>
-        ) : (
-          <div
-            {...props(text.code, codeBlockStyles.pre)}
-            // Shiki output over escaped code; see module note.
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )}
+          ) : (
+            <code dangerouslySetInnerHTML={{ __html: html }} />
+          )}
+        </pre>
       </div>
     </figure>
   );

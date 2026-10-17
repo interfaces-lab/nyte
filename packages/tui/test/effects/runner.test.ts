@@ -1,16 +1,16 @@
 import { asId } from "@nyte-ai/schema";
 import type { Configuration, SessionView, Thinking } from "@nyte-ai/sdk";
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { BootOptions } from "../../src/effects/boot.ts";
 import { createRunner } from "../../src/effects/runner.ts";
 import type { Runner } from "../../src/effects/runner.ts";
 import type { Msg } from "../../src/model/msg.ts";
+import { followedSession } from "../../src/model/state.ts";
 import type { FollowedSession, State, Submission } from "../../src/model/state.ts";
 import { until } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
 import type { FakePorts } from "../fixture/ports.ts";
-import { SETTINGS, stateOf } from "../fixture/state.ts";
-import { CONFIGURATION, followed, viewOf } from "../fixture/view.ts";
+import { CATALOG, SETTINGS, buildState } from "../fixture/state.ts";
+import { CONFIGURATION, followed, buildView } from "../fixture/view.ts";
 
 const skipVersionCheck = process.env["NYTE_SKIP_VERSION_CHECK"];
 
@@ -26,12 +26,13 @@ afterAll(() => {
 interface Harness {
   readonly runner: Runner;
   readonly ports: FakePorts;
+  readonly controller: AbortController;
   readonly dispatched: Msg[];
   set(state: State): void;
   received<K extends Msg["kind"]>(kind: K): Promise<Extract<Msg, { readonly kind: K }>>;
 }
 
-function harness(initial: State): Harness {
+function harness(initial: State, opened: Promise<void> = Promise.resolve()): Harness {
   const host = fakeHost();
   const ports = fakePorts(host);
   const dispatched: Msg[] = [];
@@ -45,6 +46,7 @@ function harness(initial: State): Harness {
     },
     read: () => state,
     signal: controller.signal,
+    opened,
   });
 
   const received = <K extends Msg["kind"]>(kind: K): Promise<Extract<Msg, { readonly kind: K }>> =>
@@ -55,6 +57,7 @@ function harness(initial: State): Harness {
   return {
     runner,
     ports,
+    controller,
     dispatched,
     set: (next) => {
       state = next;
@@ -63,28 +66,28 @@ function harness(initial: State): Harness {
   };
 }
 
-const PENDING: SessionView = viewOf((v) =>
+const PENDING: SessionView = buildView((v) =>
   v
     .turn("t1", (t) => t.user("go").text("working", { live: true }))
     .pending("later", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "m2" })
     .live(),
 );
 
-const LANDED: SessionView = viewOf((v) =>
+const LANDED: SessionView = buildView((v) =>
   v
     .turn("t1", (t) => t.user("go").user("later", { id: "m2" }).text("done").ended("completed"))
     .idle(),
 );
 
 test("withdraw reaches the session port only while the latest state shows the row pending", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "withdraw", session: asId("s1"), message: asId("m2") });
   await app.runner.settled();
   expect(session.calls.withdraw).toEqual(["m2"]);
   expect(app.dispatched).toEqual([{ kind: "withdrawn", message: asId("m2"), result: "withdrawn" }]);
 
-  app.set(stateOf(followed(LANDED)));
+  app.set(buildState(followed(LANDED)));
   app.runner.run({ kind: "withdraw", session: asId("s1"), message: asId("m2") });
   await app.runner.settled();
   expect(session.calls.withdraw).toEqual(["m2"]);
@@ -102,7 +105,7 @@ test("withdraw reaches the session port only while the latest state shows the ro
 });
 
 test("a plugin command the plugin does not know goes back as a message with its delivery", async () => {
-  const app = harness(stateOf(followed(LANDED)));
+  const app = harness(buildState(followed(LANDED)));
   const session = app.ports.host.addSession("s1");
   session.commandResult = { kind: "unknown" };
 
@@ -128,7 +131,7 @@ test("a plugin command the plugin does not know goes back as a message with its 
 });
 
 test("the adapter's honest answer passes through: a stop that settled as a run end is landed-first", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   session.withdrawResult = "landed-first";
   app.runner.run({ kind: "withdraw", session: asId("s1"), message: asId("m2") });
@@ -139,7 +142,7 @@ test("the adapter's honest answer passes through: a stop that settled as a run e
 });
 
 test("revise re-checks the row the same way and never edits a landed message", async () => {
-  const app = harness(stateOf(followed(LANDED)));
+  const app = harness(buildState(followed(LANDED)));
   const session = app.ports.host.addSession("s1");
 
   app.runner.run({
@@ -157,7 +160,7 @@ test("revise re-checks the row the same way and never edits a landed message", a
     { kind: "revised", message: asId("m2"), result: "landed-first" },
   ]);
 
-  app.set(stateOf(followed(PENDING)));
+  app.set(buildState(followed(PENDING)));
 
   app.runner.run({
     kind: "revise",
@@ -177,6 +180,11 @@ test("revise re-checks the row the same way and never edits a landed message", a
   });
 });
 
+const NOTES = [
+  { kind: "text", text: "hello " },
+  { kind: "reference", path: "/tmp/notes.md" },
+] as const;
+
 const SUBMISSION: Submission = {
   id: "sub-1",
   session: asId("s1"),
@@ -190,7 +198,7 @@ const SUBMISSION: Submission = {
 };
 
 test("a plugin reject answers send-refused with the snapshot and sends nothing", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   app.ports.plugins.decision = { kind: "reject", reason: "Not now." };
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
@@ -207,14 +215,13 @@ test("a plugin reject answers send-refused with the snapshot and sends nothing",
 
   expect(session.calls.send).toEqual([]);
   expect(app.ports.plugins.submitted).toEqual([
-    { content: "hello @file:///tmp/notes.md", delivery: "steer", session: asId("s1") },
+    { content: NOTES, delivery: "steer", session: asId("s1") },
   ]);
 });
 
-test("a plugin that throws is a refusal with its message, and file bodies inline when readable", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+test("a plugin that throws is a refusal with its message", async () => {
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
-  app.ports.files.texts.set("/tmp/notes.md", "line one");
   app.ports.plugins.decision = { kind: "throw", message: "hook exploded" };
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
@@ -222,23 +229,19 @@ test("a plugin that throws is a refusal with its message, and file bodies inline
   await app.runner.settled();
 
   expect(app.dispatched.at(-1)).toMatchObject({ kind: "send-refused", reason: "hook exploded" });
-  expect(app.ports.plugins.submitted[0]?.content).toBe(
-    'hello <file src="file:///tmp/notes.md">\nline one\n</file>',
-  );
+  expect(app.ports.plugins.submitted[0]?.content).toEqual(NOTES);
   expect(session.calls.send).toEqual([]);
   expect(app.ports.log.entries).toEqual([]);
 });
 
 test("an accepted send reaches the session with its delivery and answers sent", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
   app.runner.run({ kind: "send", submission: SUBMISSION, delivery: "queue" });
   await app.runner.settled();
-  expect(session.calls.send).toEqual([
-    { content: "hello @file:///tmp/notes.md", delivery: "queue" },
-  ]);
+  expect(session.calls.send).toEqual([{ content: NOTES, delivery: "queue" }]);
   expect(app.dispatched.at(-1)).toEqual({
     kind: "sent",
     submission: "sub-1",
@@ -247,19 +250,17 @@ test("an accepted send reaches the session with its delivery and answers sent", 
 });
 
 test("a saved edit sends with replace while its message is pending, and is refused once it landed", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
   const edit: Submission = { ...SUBMISSION, id: "sub-2", replace: asId("m2") };
   app.runner.run({ kind: "send", submission: edit, delivery: "queue" });
   await app.runner.settled();
-  expect(session.calls.send).toEqual([
-    { content: "hello @file:///tmp/notes.md", delivery: "queue" },
-  ]);
+  expect(session.calls.send).toEqual([{ content: NOTES, delivery: "queue" }]);
   expect(app.dispatched.at(-1)).toMatchObject({ kind: "sent", submission: "sub-2" });
 
-  app.set(stateOf(followed(LANDED)));
+  app.set(buildState(followed(LANDED)));
   app.runner.run({ kind: "send", submission: { ...edit, id: "sub-3" }, delivery: "queue" });
   await app.runner.settled();
   expect(session.calls.send).toHaveLength(1);
@@ -267,7 +268,7 @@ test("a saved edit sends with replace while its message is pending, and is refus
 });
 
 test("answer success and IO failure preserve the request identity", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   session.answerResult = new Error("offline");
   app.runner.run({
@@ -309,7 +310,7 @@ test("answer success and IO failure preserve the request identity", async () => 
 });
 
 test("a handler that throws writes the crash log and answers effect-failed; later effects still run", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   app.ports.files.pasteResult = new Error("disk on fire");
 
   app.runner.run({
@@ -332,7 +333,7 @@ test("a handler that throws writes the crash log and answers effect-failed; late
 });
 
 test("follow opens the session, forwards views, and a watch that ends becomes watch-ended without hanging", async () => {
-  const app = harness(stateOf(null));
+  const app = harness(buildState(null));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
@@ -351,13 +352,13 @@ test("follow opens the session, forwards views, and a watch that ends becomes wa
 });
 
 test("with nothing selected, the shown selection follows the view's effective configuration", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
   const resolved = { ...CONFIGURATION, thinking: "minimal" } satisfies Configuration;
   const resolving = { ...PENDING, configuration: { selected: null, effective: resolved } };
-  app.set(stateOf(followed(resolving)));
+  app.set(buildState(followed(resolving)));
   session.push(resolving);
   const selection = await app.received("selection");
 
@@ -369,7 +370,7 @@ test("with nothing selected, the shown selection follows the view's effective co
 });
 
 test("a watch that throws is logged and reported once, even when it ends before any view", async () => {
-  const app = harness(stateOf(null));
+  const app = harness(buildState(null));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
@@ -384,7 +385,7 @@ test("a watch that throws is logged and reported once, even when it ends before 
 });
 
 test("following another session stops the previous watch; its late views are dropped", async () => {
-  const app = harness(stateOf(null));
+  const app = harness(buildState(null));
   const first = app.ports.host.addSession("s1");
   const second = app.ports.host.addSession("s2");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
@@ -401,7 +402,7 @@ test("following another session stops the previous watch; its late views are dro
 });
 
 test("configure goes through the configurator: the session port receives the patch and the selection fact leads", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   const session = app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
@@ -427,13 +428,13 @@ test("configure goes through the configurator: the session port receives the pat
 });
 
 function remembering(level: Thinking, session: FollowedSession | null = null): State {
-  const state = stateOf(session);
+  const state = buildState(session);
 
   return { ...state, facts: { ...state.facts, settings: { ...SETTINGS, thinkingLevel: level } } };
 }
 
 test("an acknowledged thinking level is saved as the default; a model-only choice saves none", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   app.ports.host.addSession("s1");
   app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
   await app.runner.settled();
@@ -448,56 +449,240 @@ test("an acknowledged thinking level is saved as the default; a model-only choic
 
   const saved = await app.received("settings");
   expect(saved.settings.thinkingLevel).toBe("high");
-  expect(await app.ports.settings.read("/tmp")).toMatchObject({ thinkingLevel: "high" });
+  expect(app.ports.settings.read("/tmp").settings).toMatchObject({ thinkingLevel: "high" });
   expect(app.dispatched.filter((msg) => msg.kind === "settings")).toHaveLength(1);
 });
 
-test("a session the TUI creates starts at the remembered level, clamped to its model", async () => {
-  const app = harness(remembering("xhigh"));
+test("/new opens a blank chat at the remembered level, clamped to its model, and creates no session", async () => {
+  const app = harness(remembering("xhigh", followed(LANDED)));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   await app.runner.settled();
 
-  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([{ effort: "high" }]);
-  expect(app.dispatched[0]).toMatchObject({ kind: "session-opened", session: asId("created-1") });
+  expect(app.dispatched[0]).toMatchObject({
+    kind: "blank-opened",
+    chat: {
+      kind: "blank",
+      folder: { kind: "folder", id: asId("workspace") },
+      selection: { effort: "high" },
+    },
+  });
+  expect(app.ports.host.starts).toEqual([]);
 });
 
-test("without a remembered level a created session keeps the level core gave it", async () => {
-  const app = harness(stateOf(null));
+test("without a remembered level a blank chat takes the level core would give its model", async () => {
+  const app = harness(buildState(followed(LANDED)));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   await app.runner.settled();
 
-  expect(app.ports.host.sessions.get("created-1")?.calls.configure).toEqual([]);
+  expect(app.dispatched[0]).toMatchObject({
+    kind: "blank-opened",
+    chat: { selection: { model: { id: "model" }, effort: "low" } },
+  });
 });
 
 test("at boot --effort wins over the remembered level, and a resumed session keeps its own", async () => {
-  const boots: readonly {
-    readonly target: BootOptions["target"];
-    readonly effort: Thinking | null;
-    readonly session: string;
-    readonly configure: readonly { readonly effort: Thinking }[];
-  }[] = [
-    { target: { kind: "new" }, effort: null, session: "created-1", configure: [{ effort: "low" }] },
-    { target: { kind: "new" }, effort: "high", session: "created-1", configure: [] },
-    { target: { kind: "session", id: asId("s1") }, effort: null, session: "s1", configure: [] },
+  const blanks: readonly { readonly effort: Thinking | null; readonly shown: Thinking }[] = [
+    { effort: null, shown: "low" },
+    { effort: "high", shown: "high" },
   ];
 
-  for (const boot of boots) {
+  for (const blank of blanks) {
     const app = harness(remembering("low"));
     app.runner.boot({
       home: "/tmp",
       cwd: "/tmp",
-      target: boot.target,
+      target: { kind: "new" },
       model: null,
-      effort: boot.effort,
+      effort: blank.effort,
     });
     await app.runner.settled();
-    expect(await app.received("session-opened")).toMatchObject({ session: asId(boot.session) });
-    expect(app.ports.host.sessions.get(boot.session)?.calls.configure).toEqual([...boot.configure]);
+    expect(await app.received("blank-opened")).toMatchObject({
+      chat: { selection: { effort: blank.shown } },
+    });
+    expect(app.ports.host.starts).toEqual([]);
   }
+
+  const app = harness(remembering("high"));
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "session", id: asId("s1") },
+    model: null,
+    effort: null,
+  });
+  await app.runner.settled();
+  expect(await app.received("session-opened")).toMatchObject({ session: asId("s1") });
+  expect(app.ports.host.sessions.get("s1")?.calls.configure).toEqual([]);
+});
+
+test("the first send from a blank chat starts it with that message, then follows it; a refused start keeps it blank", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b1"),
+    folder: { kind: "folder", id: asId<"workspace">("workspace") },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-b1",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+  const sending: State = {
+    facts: { ...base.facts, chat: blank },
+    local: { ...base.local, submissions: [first] },
+  };
+
+  const app = harness(sending);
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await app.runner.settled();
+
+  expect(app.ports.host.starts).toEqual([
+    { id: blank.id, workspace: blank.folder.id, selection: blank.selection, content: "hello" },
+  ]);
+  expect(app.ports.plugins.submitted).toEqual([
+    { content: "hello", delivery: "steer", session: null },
+  ]);
+  expect(app.dispatched.map((msg) => msg.kind)).toContain("sent");
+  expect(await app.received("session-opened")).toMatchObject({ session: blank.id });
+
+  const refused = harness(sending);
+
+  refused.ports.plugins.decision = { kind: "reject", reason: "Not today." };
+  refused.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await refused.runner.settled();
+
+  expect(refused.ports.host.starts).toEqual([]);
+  expect(await refused.received("send-refused")).toMatchObject({ reason: "Not today." });
+  expect(refused.dispatched.map((msg) => msg.kind)).not.toContain("session-opened");
+});
+
+test("a first message on a signed-out provider's model goes back with the fix, and nothing starts", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b-signed-out"),
+    folder: { kind: "folder", id: asId<"workspace">("workspace") },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-signed-out",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+
+  const app = harness({
+    facts: {
+      ...base.facts,
+      chat: blank,
+      catalog: {
+        generation: 1,
+        catalog: {
+          ...CATALOG,
+          providers: CATALOG.providers.map((provider) => ({ ...provider, credential: "missing" })),
+        },
+      },
+    },
+    local: { ...base.local, submissions: [first] },
+  });
+
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await app.runner.settled();
+
+  expect(app.ports.host.starts).toEqual([]);
+  expect(await app.received("send-refused")).toMatchObject({
+    reason: "model isn't available. ctrl+p picks another.",
+  });
+});
+
+test("a first message sent while boot settles the launch folder registers that folder once", async () => {
+  const blank = {
+    kind: "blank",
+    id: asId<"session">("b-launch"),
+    folder: { kind: "launch-folder" },
+    selection: { model: CONFIGURATION.model, effort: "low", fast: false },
+  } as const;
+
+  const first: Submission = {
+    id: "sub-launch",
+    session: blank.id,
+    replace: null,
+    snapshot: { text: "hello", parts: new Map() },
+  };
+
+  const base = buildState(null);
+
+  const app = harness({
+    facts: { ...base.facts, chat: blank },
+    local: { ...base.local, submissions: [first] },
+  });
+
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  app.runner.run({ kind: "send", submission: first, delivery: "steer" });
+  await until(() => (app.ports.host.starts.length === 1 ? true : undefined));
+
+  expect(app.ports.host.folders).toEqual([null]);
+  app.controller.abort();
+  await app.runner.dispose();
+});
+
+test("/reload reads settings after pending writes land, and names a settings file it left out", async () => {
+  const order: string[] = [];
+  const dispatched: Msg[] = [];
+  const ports = fakePorts(fakeHost());
+
+  const runner = createRunner({
+    ports: {
+      ...ports,
+      settings: {
+        ...ports.settings,
+        settled: async () => {
+          order.push("settled");
+        },
+        read: () => {
+          order.push("read");
+
+          return {
+            settings: SETTINGS,
+            invalid: [{ path: "/home/settings.json", reason: "invalid JSON" }],
+          };
+        },
+      },
+    },
+    dispatch: (msg) => {
+      dispatched.push(msg);
+    },
+    read: () => buildState(followed(LANDED)),
+    signal: new AbortController().signal,
+    opened: Promise.resolve(),
+  });
+
+  runner.run({ kind: "reload" });
+  await runner.settled();
+
+  expect(order).toEqual(["settled", "read"]);
+  expect(dispatched.find((msg) => msg.kind === "op-finished")).toMatchObject({
+    notice: {
+      tone: "warning",
+      text: "Reloaded this workspace's resources · 0 skills\nIgnored /home/settings.json: invalid JSON",
+    },
+  });
 });
 
 test("a local shell reports its job as facts from start to end and can be stopped", async () => {
-  const app = harness(stateOf(followed(PENDING)));
+  const app = harness(buildState(followed(PENDING)));
   app.runner.run({
     kind: "shell-start",
     id: "sh1",
@@ -537,14 +722,49 @@ test("a local shell reports its job as facts from start to end and can be stoppe
   });
 });
 
+test("before the host opens, local effects run at once and host effects wait, then start in order", async () => {
+  const opening = Promise.withResolvers<void>();
+  const app = harness(buildState(followed(LANDED)), opening.promise);
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  app.runner.run({ kind: "copy", text: "now" });
+  app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
+  await Bun.sleep(5);
+
+  expect(app.ports.terminal.copies).toEqual(["now"]);
+  expect(app.dispatched).toEqual([]);
+
+  opening.resolve();
+  await app.runner.settled();
+  expect(app.dispatched.map((msg) => msg.kind).slice(0, 2)).toEqual([
+    "blank-opened",
+    "session-opened",
+  ]);
+});
+
+test("a runner stopped before the host opens drops its waiting host effects and settles", async () => {
+  const app = harness(buildState(followed(LANDED)), new Promise(() => undefined));
+  app.runner.run({ kind: "follow", target: "new", announce: false });
+  app.runner.boot({
+    home: "/tmp",
+    cwd: "/tmp",
+    target: { kind: "new" },
+    model: null,
+    effort: null,
+  });
+  app.controller.abort();
+  await app.runner.dispose();
+
+  expect(app.dispatched).toEqual([]);
+});
+
 test("exit resolves the runner's exited promise with the code", async () => {
-  const app = harness(stateOf(null));
+  const app = harness(buildState(null));
   app.runner.run({ kind: "exit", code: 3 });
   expect(await app.runner.exited).toEqual({ code: 3 });
 });
 
 test("a sign-in keeps its line when the catalog refresh after it fails, and says how to retry", async () => {
-  const app = harness(stateOf(followed(LANDED)));
+  const app = harness(buildState(followed(LANDED)));
   app.ports.host.login = async () => ({ provider: "test", name: "Test" });
 
   app.ports.host.refreshModels = async () => {
@@ -563,7 +783,7 @@ test("a sign-in keeps its line when the catalog refresh after it fails, and says
 });
 
 test("a sign-out that leaves the model in place confirms in the ok tone; a failure says error:", async () => {
-  const app = harness(stateOf(followed(LANDED)));
+  const app = harness(buildState(followed(LANDED)));
   app.ports.host.logout = async () => ({ provider: "other", name: "Other" });
   app.runner.run({ kind: "logout", provider: "other" });
 
@@ -571,7 +791,7 @@ test("a sign-out that leaves the model in place confirms in the ok tone; a failu
     notice: { tone: "ok", text: "Signed out of Other." },
   });
 
-  const failing = harness(stateOf(followed(LANDED)));
+  const failing = harness(buildState(followed(LANDED)));
 
   failing.ports.host.logout = async () => {
     throw new Error("keychain locked");
@@ -585,9 +805,9 @@ test("a sign-out that leaves the model in place confirms in the ok tone; a failu
 });
 
 test("a rename of the followed chat in the session directory reaches its info, so the title follows", async () => {
-  const state = stateOf(followed(LANDED));
+  const state = buildState(followed(LANDED));
   const app = harness(state);
-  const info = state.facts.session?.info;
+  const info = followedSession(state)?.info;
 
   app.runner.boot({
     home: "/tmp",

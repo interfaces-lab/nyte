@@ -25,7 +25,7 @@ interface ProviderCache {
 }
 
 /** A request's account observations cannot outlive the credential selection it started with. */
-export interface AccountLimitsScope {
+interface AccountLimitsScope {
   observe(accountId: string | undefined, limits: AccountLimits): void;
   fetch(
     accountId: string | undefined,

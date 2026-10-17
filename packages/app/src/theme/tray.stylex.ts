@@ -15,8 +15,10 @@ export const trayStyles = create({
     overflow: "clip",
     borderRadius: tray.radius,
     backgroundColor: role.bgElevated,
-    // The shadow alone disappears on a dark page; the outline's hairline is
-    // what draws the tray's edge, as it does for tooltips and toasts.
+    /**
+     * The shadow alone disappears on a dark page; the outline's hairline is
+     * what draws the tray's edge, as it does for tooltips and toasts.
+     */
     boxShadow: shadow.shadowMdOutline,
     color: role.contentSecondary,
     fontSize: type.fontBase,

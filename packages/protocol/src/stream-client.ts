@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/core";
+import { SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import {
   CANCEL_PATH,
@@ -16,6 +16,7 @@ type Post = (
   init: RequestInit & { readonly headers: Readonly<Record<string, string>> },
 ) => Promise<Response>;
 
+/** Multiplex streams over one channel opened through `post`; the channel closes when its last stream is released. */
 export function createStreamClient(post: Post) {
   type Stream = {
     readonly buffer: ReturnType<typeof streamBuffer>;
@@ -35,20 +36,23 @@ export function createStreamClient(post: Post) {
     headers: { "Content-Type": "application/json" },
   });
 
-  const release = (current: Channel, id: string): void => {
+  const forget = (current: Channel, id: string): boolean => {
     const stream = current.streams.get(id);
 
-    if (stream === undefined) return;
+    if (stream === undefined) return false;
     current.streams.delete(id);
     stream.dispose();
 
-    if (current.streams.size === 0) {
-      current.controller.abort();
+    if (current.streams.size > 0) return true;
+    current.controller.abort();
 
-      if (channel === current) channel = undefined;
+    if (channel === current) channel = undefined;
 
-      return;
-    }
+    return false;
+  };
+
+  const release = (current: Channel, id: string): void => {
+    if (!forget(current, id)) return;
 
     void current.ready
       .then((channelId) =>
@@ -76,7 +80,7 @@ export function createStreamClient(post: Post) {
         ready.resolve(id);
 
         for await (const envelope of parseSse(networkBody(response.body))) {
-          const frame = readStreamFrame(envelope.data);
+          const frame = readStreamFrame(envelope);
           const stream = current.streams.get(frame.stream);
 
           if (stream === undefined) continue;
@@ -84,10 +88,10 @@ export function createStreamClient(post: Post) {
 
           if (frame.kind === "end") {
             buffer.end();
-            release(current, frame.stream);
+            forget(current, frame.stream);
           } else if (frame.kind === "error") {
             buffer.fail(decodeError(parseJson(frame.error)));
-            release(current, frame.stream);
+            forget(current, frame.stream);
           } else {
             let chunk: Uint8Array;
 
@@ -134,7 +138,6 @@ export function createStreamClient(post: Post) {
     name: string,
     input: Json,
     signal: AbortSignal,
-    headers: Readonly<Record<string, string>> = {},
   ): Promise<ReadableStream<Uint8Array>> => {
     signal.throwIfAborted();
     const current = open();
@@ -162,7 +165,6 @@ export function createStreamClient(post: Post) {
           ...json(input),
           headers: {
             "Content-Type": "application/json",
-            ...headers,
             [CHANNEL_HEADER]: channelId,
             [STREAM_HEADER]: id,
           },

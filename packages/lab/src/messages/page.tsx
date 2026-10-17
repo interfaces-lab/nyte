@@ -13,12 +13,11 @@ import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts
 import { TurnView, UserMessageView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { BranchModelPicker } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
-import { keys, queryClient } from "@nyte-ai/app/queries.ts";
 import { TranscriptSkeleton } from "@nyte-ai/app/screens/transcript-skeleton.tsx";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { labModel, modelCatalog } from "../shell/fixtures";
-import { CWD, SECTIONS, SUBAGENTS, UNSTARTED } from "./specimens";
-import type { Specimen } from "./specimens";
+import { CWD, SUBAGENTS, type Specimen } from "./build";
+import { SECTIONS } from "./specimens";
 import { stage, trail } from "./stage";
 import type { Stage } from "./stage";
 import { Wiring } from "./wiring";
@@ -47,8 +46,6 @@ const BRANCH_MODEL: BranchModelPicker = {
   thinkingLevel: "high",
   fast: false,
 };
-
-queryClient.setQueryData(keys.session(UNSTARTED), null);
 
 const editUser = async (): Promise<void> => {};
 

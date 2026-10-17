@@ -3,7 +3,8 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
-import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
+import { stepGroupStyles } from "./step-group.stylex.ts";
 import { Prose } from "./prose.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
 

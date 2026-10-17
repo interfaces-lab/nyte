@@ -1,11 +1,23 @@
 import { homedir } from "node:os";
 import { resolve } from "node:path";
-import type { MessageId, SessionId } from "@nyte-ai/sdk";
+import type { CommandOutcome, WorkspaceCommandOutcome, WorkspaceId } from "@nyte-ai/sdk";
 import type { Effect } from "../model/effect.ts";
-import type { Notice, State } from "../model/state.ts";
-import { messageOf } from "./runner.ts";
-import type { HandlerContext } from "./runner.ts";
-import { fallback, patchOf, refreshWorkspace, selectionOf } from "./session.ts";
+import { followedSession, rowStatus } from "../model/state.ts";
+import type { Notice, Selection } from "../model/state.ts";
+import { errorMessage } from "../lib/format.ts";
+import { ignoredSettingsText } from "../services/settings.ts";
+import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
+import {
+  blankWorkspace,
+  fallback,
+  buildConfigPatch,
+  openBlank,
+  readSelection,
+  refreshWorkspace,
+  rememberThinking,
+  toSelection,
+} from "./session.ts";
+import { startWithPrompt } from "./submit.ts";
 
 type Of<K extends Effect["kind"]> = Extract<Effect, { readonly kind: K }>;
 
@@ -71,10 +83,23 @@ export async function answer(effect: Of<"answer">, context: HandlerContext): Pro
     context.dispatch({
       kind: "answered",
       request,
-      result: { kind: "failed", message: messageOf(cause) },
+      result: { kind: "failed", message: errorMessage(cause) },
       typed: effect.typed,
     });
   }
+}
+
+export async function approve(effect: Of<"approve">, context: HandlerContext): Promise<void> {
+  const outcome = await context.ports.host
+    .session(effect.session)
+    .approve(effect.part, effect.decision)
+    .catch((cause: unknown) => {
+      context.ports.log.write("effect", cause);
+
+      return errorMessage(cause);
+    });
+
+  context.dispatch({ kind: "approved", part: effect.part, failure: outcome });
 }
 
 export async function move(effect: Of<"move">, context: HandlerContext): Promise<void> {
@@ -88,16 +113,52 @@ export async function move(effect: Of<"move">, context: HandlerContext): Promise
 export async function configure(effect: Of<"configure">, context: HandlerContext): Promise<void> {
   const { read, scope } = context;
   const followed = scope.followed;
+  const { chat } = read().facts;
+
+  if (chat?.kind === "blank" && chat.id === effect.session) {
+    await configureBlank(effect, chat.selection, context);
+
+    return;
+  }
 
   if (followed === null || followed.id !== effect.session) return;
   const state = read();
-  const current = selectionOf(state, effect.session) ?? fallback(state);
-  const patch = patchOf(effect.selection, current, state.facts.catalog.catalog);
+  const current = readSelection(state, effect.session) ?? fallback(state);
+  const patch = buildConfigPatch(effect.selection, current, state.facts.catalog.catalog);
 
   if (patch.model === undefined && patch.thinkingLevel === undefined) return;
   const result = await followed.configurator.request(patch);
 
   if (result.kind === "failed") throw new Error(result.message);
+}
+
+/** Settles a blank chat's model and thinking level and remembers them as the next chat's defaults; the first send starts the chat with them. */
+async function configureBlank(
+  effect: Of<"configure">,
+  current: Selection,
+  context: HandlerContext,
+): Promise<void> {
+  const { dispatch, ports, read } = context;
+  const catalog = read().facts.catalog.catalog;
+  const patch = buildConfigPatch(effect.selection, current, catalog);
+  const model = patch.model ?? current.model;
+  const effort = patch.thinkingLevel ?? current.effort;
+
+  const selection = toSelection({ model, thinkingLevel: effort }, catalog);
+  dispatch({ kind: "selection", session: effect.session, selection });
+  await ports.firstFrame.write(selection).catch((error: unknown) => {
+    ports.log.write("effect", error);
+  });
+
+  if (patch.model !== undefined)
+    await ports.host.setDefaultModel(patch.model).catch((error: unknown) => {
+      ports.log.write("effect", error);
+    });
+
+  if (patch.thinkingLevel !== undefined)
+    await rememberThinking(patch.thinkingLevel, context).catch((error: unknown) => {
+      ports.log.write("effect", error);
+    });
 }
 
 export async function checkTrust(
@@ -122,6 +183,25 @@ export async function checkTrust(
 
 export async function setTrust(effect: Of<"set-trust">, context: HandlerContext): Promise<void> {
   await context.ports.host.trust(effect.workspace, effect.value);
+  const { chat } = context.read().facts;
+
+  if (
+    chat?.kind === "blank" &&
+    chat.folder.kind === "folder" &&
+    chat.folder.id === effect.workspace
+  )
+    await loadFolderCommands(effect.workspace, context);
+}
+
+/** Reads the plugin commands a new chat in `workspace` would offer, for the blank chat there. */
+export async function loadFolderCommands(
+  workspace: WorkspaceId,
+  context: HandlerContext,
+): Promise<void> {
+  const { dispatch, ports, scope } = context;
+  const generation = (scope.folderCommandsGeneration += 1);
+  const commands = await ports.host.workspace(workspace).commands();
+  dispatch({ kind: "folder-commands", generation, workspace, commands });
 }
 
 export async function applySetting(
@@ -139,13 +219,36 @@ export async function applySetting(
     throw new Error(`Could not set ${effect.label}`);
 }
 
+/** Runs a plugin command in the followed chat, or in a blank chat's folder, where a command answering with a prompt starts the chat with it. */
 export async function runCommand(
   effect: Of<"run-command">,
   context: HandlerContext,
 ): Promise<void> {
-  const { dispatch, ports } = context;
-  const outcome = await ports.host.session(effect.session).command(effect.name, effect.argument);
+  const { ports, read } = context;
+  const { chat } = read().facts;
 
+  if (chat?.kind !== "blank" || chat.id !== effect.session) {
+    settleCommand(
+      await ports.host.session(effect.session).command(effect.name, effect.argument),
+      effect,
+      context,
+    );
+
+    return;
+  }
+
+  const workspace = await blankWorkspace(chat, context);
+  const outcome = await ports.host.workspace(workspace).command(effect.name, effect.argument);
+
+  if (outcome.kind === "prompt") await startWithPrompt(chat, workspace, outcome.content, context);
+  else settleCommand(outcome, effect, context);
+}
+
+function settleCommand(
+  outcome: Exclude<CommandOutcome | WorkspaceCommandOutcome, { readonly kind: "prompt" }>,
+  effect: Of<"run-command">,
+  { dispatch }: HandlerContext,
+): void {
   switch (outcome.kind) {
     case "ran":
       if (outcome.output !== null) dispatch({ kind: "inform", tone: "info", text: outcome.output });
@@ -197,24 +300,36 @@ export async function changeDirectory(
   };
 
   if (path === cwd) {
-    finish(noticeOf(context, "info", `Already in ${path}`));
+    finish(stampNotice(context, "info", `Already in ${path}`));
 
     return;
   }
 
   try {
+    const { chat } = read().facts;
+
+    if (chat?.kind === "blank" && chat.id === effect.session) {
+      await openBlank(
+        { ...chat, folder: { kind: "folder", id: await ports.host.openFolder(path) } },
+        context,
+      );
+      finish(stampNotice(context, "ok", `Working directory: ${path}`));
+
+      return;
+    }
+
     const port = ports.host.session(effect.session);
     const outcome = await port.changeDirectory(path);
 
     if (outcome.kind === "refused") {
-      finish(noticeOf(context, "error", `error: ${outcome.reason}`));
+      finish(stampNotice(context, "error", `error: ${outcome.reason}`));
 
       return;
     }
 
     dispatch({ kind: "session-info", session: effect.session, info: await port.info() });
     await refreshWorkspace(context, outcome.cwd, { mentions: port, signal: context.signal });
-    finish(noticeOf(context, "ok", `Working directory: ${outcome.cwd}`));
+    finish(stampNotice(context, "ok", `Working directory: ${outcome.cwd}`));
   } catch (error) {
     finish(errorNotice(context, error));
   }
@@ -222,14 +337,14 @@ export async function changeDirectory(
 
 export async function refreshWorkspaceFacts(
   effect: Of<"refresh-workspace">,
-  context: HandlerContext,
+  context: LocalHandlerContext,
 ): Promise<void> {
   await refreshWorkspace(context, effect.cwd);
 }
 
 export async function reload(effect: Of<"reload">, context: HandlerContext): Promise<void> {
   const { dispatch, ports, read } = context;
-  const session = read().facts.session;
+  const session = followedSession(read());
 
   if (session === null) {
     dispatch({ kind: "op-finished", op: "reload", notice: null });
@@ -242,19 +357,20 @@ export async function reload(effect: Of<"reload">, context: HandlerContext): Pro
 
     if (outcome === "missing") throw new Error("This chat's workspace is no longer registered.");
     const cwd = read().facts.workspace.cwd;
-    const settings = await ports.settings.read(cwd);
+    await ports.settings.settled();
+    const { settings, invalid } = ports.settings.read(cwd);
     dispatch({ kind: "settings", settings });
     await refreshWorkspace(context, cwd);
-    const skills = read().facts.session?.view?.catalog.skills.length ?? 0;
+    const skills = followedSession(read())?.view?.catalog.skills.length ?? 0;
+    const reloaded = `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`;
 
     dispatch({
       kind: "op-finished",
       op: "reload",
-      notice: noticeOf(
-        context,
-        "ok",
-        `Reloaded this workspace's resources · ${String(skills)} ${skills === 1 ? "skill" : "skills"}`,
-      ),
+      notice:
+        invalid.length === 0
+          ? stampNotice(context, "ok", reloaded)
+          : stampNotice(context, "warning", `${reloaded}\n${ignoredSettingsText(invalid)}`),
     });
   } catch (error) {
     dispatch({ kind: "op-finished", op: "reload", notice: null });
@@ -271,7 +387,7 @@ export async function compact(effect: Of<"compact">, context: HandlerContext): P
     context.dispatch({ kind: "inform", tone: "info", text: "Nothing to compact" });
 }
 
-export function resolveDirectory(argument: string, cwd: string): string {
+function resolveDirectory(argument: string, cwd: string): string {
   if (argument === "~") return homedir();
 
   if (argument.startsWith("~/")) return resolve(homedir(), argument.slice(2));
@@ -279,28 +395,10 @@ export function resolveDirectory(argument: string, cwd: string): string {
   return resolve(cwd, argument);
 }
 
-export function noticeOf(context: HandlerContext, tone: Notice["tone"], text: string): Notice {
+export function stampNotice(context: HandlerContext, tone: Notice["tone"], text: string): Notice {
   return { tone, text, at: context.ports.clock.now() };
 }
 
 export function errorNotice(context: HandlerContext, error: unknown): Notice {
-  return noticeOf(context, "error", `error: ${messageOf(error)}`);
-}
-
-export function rowStatus(
-  state: State,
-  session: SessionId,
-  message: MessageId,
-): "pending" | "landed" | "unsent" | "absent" {
-  const followed = state.facts.session;
-
-  if (followed === null || followed.id !== session || followed.view === null) return "absent";
-
-  const row = followed.view.messages.find(
-    (candidate) => candidate.kind === "user" && candidate.id === message,
-  );
-
-  if (row === undefined || row.kind !== "user") return "absent";
-
-  return row.status.kind;
+  return stampNotice(context, "error", `error: ${errorMessage(error)}`);
 }

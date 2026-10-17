@@ -14,8 +14,7 @@ import {
   askStart,
   canEdit,
   canRetry,
-  isAsking,
-  isReady,
+  readAsking,
   parsePendingStart,
   refusalMessage,
   removeStart,
@@ -61,7 +60,7 @@ export function useRegistryFolders(): RegistryFolders {
 
   return {
     kind: "ready",
-    ready: query.data.filter(isReady),
+    ready: query.data.filter((row) => row.availability.kind === "available"),
     selected: selectedFolder(query.data, chosenId),
     choose: setChosenId,
     refresh: () => void query.refetch(),
@@ -131,7 +130,7 @@ export function PendingStartStrip({
   const [error, setError] = useState<string>();
   const { requestId } = pending.input;
   const receipt = pending.receipt;
-  const asking = useSyncExternalStore(subscribeAsking, () => isAsking(scope, requestId));
+  const asking = useSyncExternalStore(subscribeAsking, () => readAsking(scope, requestId));
 
   const retry = (waiting: boolean) => {
     setError(undefined);

@@ -1,107 +1,176 @@
-import type { ValidationIssue } from "./errors.ts";
-import type { CallId, HeadName, ReceiptId, RunId, SessionId, WorkspaceId } from "./ids.ts";
-import type { Position } from "./messages.ts";
-import type { ModelRef } from "./models.ts";
-import type { Json, JsonSchema } from "./primitives.ts";
-import type { Execution } from "./runs.ts";
-import type { Activation } from "./workspaces.ts";
+import { Type } from "typebox";
+import { ValidationIssueType } from "./errors.ts";
+import { idSchema } from "./ids.ts";
+import { JsonObjectType, JsonType, withJson } from "./json.ts";
+import { PositionType, UserContentType } from "./messages.ts";
+import { ModelRefType } from "./models.ts";
+import { ExecutionType } from "./runs.ts";
+import { standard } from "./schema.ts";
+import type { Decoded, Schema } from "./schema.ts";
+import { nullable } from "./wire/nullable.ts";
+import { ActivationType } from "./workspaces.ts";
 
-export type SessionInfo = {
-  readonly id: SessionId;
-  readonly name: string | null;
-  readonly parent: SessionId | null;
-  readonly call: CallId | null;
-  readonly workspace: WorkspaceId;
-  readonly pinned: boolean;
-  readonly archived: boolean;
-  readonly activation: Activation;
-  readonly heads: readonly HeadInfo[];
-  readonly createdAt: number;
-  readonly lastActivityAt: number;
-};
+export const HeadInfoType = Type.Object({
+  name: idSchema<"head">(),
+  tip: PositionType,
+  stack: nullable(
+    Type.Object({ parent: idSchema<"head">(), base: PositionType, stale: Type.Boolean() }),
+  ),
+  execution: ExecutionType,
+  unread: Type.Boolean(),
+});
 
-export type HeadInfo = {
-  readonly name: HeadName;
-  readonly tip: Position;
-  readonly stack: {
-    readonly parent: HeadName;
-    readonly base: Position;
-    readonly stale: boolean;
-  } | null;
-  readonly execution: Execution;
-  readonly unread: boolean;
-};
+export type HeadInfo = Decoded<typeof HeadInfoType>;
 
-export type SessionCatalogView = {
-  readonly commands: readonly CommandInfo[];
-  readonly settings: readonly SettingInfo[];
-  readonly skills: readonly SkillInfo[];
-  readonly agents: readonly AgentInfo[];
-  readonly tools: readonly ToolInfo[];
-};
+export const SessionInfoType = Type.Object({
+  id: idSchema<"session">(),
+  name: nullable(Type.String()),
+  parent: nullable(idSchema<"session">()),
+  call: nullable(idSchema<"call">()),
+  workspace: idSchema<"workspace">(),
+  pinned: Type.Boolean(),
+  archived: Type.Boolean(),
+  activation: ActivationType,
+  heads: Type.Array(HeadInfoType),
+  createdAt: Type.Number(),
+  lastActivityAt: Type.Number(),
+});
 
-export type CommandInfo = {
-  readonly name: string;
-  readonly owner: string;
-  readonly side: "core" | "client";
-  readonly title: string;
-  readonly description: string;
-  readonly arguments: JsonSchema | null;
-  readonly category?: string;
-  readonly keywords?: readonly string[];
-};
+export type SessionInfo = Decoded<typeof SessionInfoType>;
 
-export type SettingInfo = {
-  readonly id: string;
-  readonly owner: string;
-  readonly scope: "host" | "session";
-  readonly label: string;
-  readonly schema: JsonSchema;
-  readonly choices:
-    | readonly { readonly value: Json; readonly label: string; readonly badge?: string }[]
-    | null;
-  readonly value: Json;
-  readonly from: "default" | "host" | "session";
-};
+export const CommandInfoType = Type.Object({
+  name: Type.String(),
+  owner: Type.String(),
+  side: Type.Enum(["core", "client"]),
+  title: Type.String(),
+  description: Type.String(),
+  arguments: nullable(JsonObjectType),
+  category: Type.Optional(Type.String()),
+  keywords: Type.Optional(Type.Array(Type.String())),
+});
 
-export type SkillInfo = {
-  readonly name: string;
-  readonly owner: string;
-  readonly description: string;
-  readonly location: string;
-};
+export type CommandInfo = Decoded<typeof CommandInfoType>;
 
-export type AgentInfo = {
-  readonly id: string;
-  readonly owner: string;
-  readonly description: string | null;
-  readonly model: ModelRef | null;
-  readonly mode: "primary" | "subagent" | "all";
-};
+export const SettingInfoType = Type.Object({
+  id: Type.String(),
+  owner: Type.String(),
+  scope: Type.Enum(["host", "session"]),
+  label: Type.String(),
+  schema: JsonObjectType,
+  choices: nullable(
+    Type.Array(
+      Type.Object({ value: JsonType, label: Type.String(), badge: Type.Optional(Type.String()) }),
+    ),
+  ),
+  value: JsonType,
+  from: Type.Enum(["default", "host", "session"]),
+});
 
-export type ToolInfo = {
-  readonly name: string;
-  readonly owner: string;
-  readonly namespace: string | null;
-  readonly description: string;
-  readonly parameters: JsonSchema;
-  readonly output: JsonSchema | null;
-  readonly exposure: "model" | "deferred" | "code" | "hidden";
-};
+export type SettingInfo = Decoded<typeof SettingInfoType>;
 
-export type CommandOutcome =
-  | { readonly kind: "ran"; readonly output: string | null }
-  | { readonly kind: "sent"; readonly receipt: ReceiptId }
-  | { readonly kind: "invalid"; readonly issues: readonly ValidationIssue[] }
-  | { readonly kind: "unknown" }
-  | { readonly kind: "failed"; readonly message: string };
+export const SkillInfoType = Type.Object({
+  name: Type.String(),
+  owner: Type.String(),
+  description: Type.String(),
+  location: Type.String(),
+});
 
-export type UpdateOutcome =
-  | { readonly kind: "updated" }
-  | { readonly kind: "busy"; readonly runs: readonly RunId[] }
-  | { readonly kind: "unknown-workspace" };
+export type SkillInfo = Decoded<typeof SkillInfoType>;
 
-export type RemoveSessionOutcome =
-  | { readonly kind: "removed" }
-  | { readonly kind: "busy"; readonly runs: readonly RunId[] }
-  | { readonly kind: "has-children"; readonly children: readonly SessionId[] };
+export const AgentInfoType = Type.Object({
+  id: Type.String(),
+  owner: Type.String(),
+  description: nullable(Type.String()),
+  model: nullable(ModelRefType),
+  mode: Type.Enum(["primary", "subagent", "all"]),
+});
+
+export type AgentInfo = Decoded<typeof AgentInfoType>;
+
+export const ToolInfoType = Type.Object({
+  name: Type.String(),
+  owner: Type.String(),
+  namespace: nullable(Type.String()),
+  description: Type.String(),
+  parameters: JsonObjectType,
+  output: nullable(JsonObjectType),
+  exposure: Type.Enum(["model", "deferred", "code", "hidden"]),
+});
+
+export type ToolInfo = Decoded<typeof ToolInfoType>;
+
+export const SessionCatalogViewType = Type.Object({
+  commands: Type.Array(CommandInfoType),
+  settings: Type.Array(SettingInfoType),
+  skills: Type.Array(SkillInfoType),
+  agents: Type.Array(AgentInfoType),
+  tools: Type.Array(ToolInfoType),
+});
+
+export type SessionCatalogView = Decoded<typeof SessionCatalogViewType>;
+
+export const CommandOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("ran"), output: nullable(Type.String()) }),
+  Type.Object({ kind: Type.Literal("sent"), receipt: idSchema<"receipt">() }),
+  Type.Object({ kind: Type.Literal("invalid"), issues: Type.Array(ValidationIssueType) }),
+  Type.Object({ kind: Type.Literal("unknown") }),
+  Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
+]);
+
+export type CommandOutcome = Decoded<typeof CommandOutcomeType>;
+
+/** What a command run outside any chat did: `prompt` is the first message of the chat it asks to start. */
+export const WorkspaceCommandOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("ran"), output: nullable(Type.String()) }),
+  Type.Object({ kind: Type.Literal("prompt"), content: UserContentType }),
+  Type.Object({ kind: Type.Literal("invalid"), issues: Type.Array(ValidationIssueType) }),
+  Type.Object({ kind: Type.Literal("unknown") }),
+  Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
+]);
+
+export type WorkspaceCommandOutcome = Decoded<typeof WorkspaceCommandOutcomeType>;
+
+export const UpdateOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("updated") }),
+  Type.Object({ kind: Type.Literal("busy"), runs: Type.Array(idSchema<"run">()) }),
+  Type.Object({ kind: Type.Literal("unknown-workspace") }),
+]);
+
+export type UpdateOutcome = Decoded<typeof UpdateOutcomeType>;
+
+export const RemoveSessionOutcomeType = Type.Union([
+  Type.Object({ kind: Type.Literal("removed") }),
+  Type.Object({ kind: Type.Literal("busy"), runs: Type.Array(idSchema<"run">()) }),
+  Type.Object({ kind: Type.Literal("has-children"), children: Type.Array(idSchema<"session">()) }),
+]);
+
+export type RemoveSessionOutcome = Decoded<typeof RemoveSessionOutcomeType>;
+
+export const HeadInfoSchema: Schema<HeadInfo> = standard(withJson(HeadInfoType));
+
+export const SessionInfoSchema: Schema<SessionInfo> = standard(withJson(SessionInfoType));
+
+export const CommandInfoSchema: Schema<CommandInfo> = standard(withJson(CommandInfoType));
+
+export const SettingInfoSchema: Schema<SettingInfo> = standard(withJson(SettingInfoType));
+
+export const SkillInfoSchema: Schema<SkillInfo> = standard(SkillInfoType);
+
+export const AgentInfoSchema: Schema<AgentInfo> = standard(AgentInfoType);
+
+export const ToolInfoSchema: Schema<ToolInfo> = standard(withJson(ToolInfoType));
+
+export const SessionCatalogViewSchema: Schema<SessionCatalogView> = standard(
+  withJson(SessionCatalogViewType),
+);
+
+export const CommandOutcomeSchema: Schema<CommandOutcome> = standard(CommandOutcomeType);
+
+export const WorkspaceCommandOutcomeSchema: Schema<WorkspaceCommandOutcome> = standard(
+  WorkspaceCommandOutcomeType,
+);
+
+export const UpdateOutcomeSchema: Schema<UpdateOutcome> = standard(UpdateOutcomeType);
+
+export const RemoveSessionOutcomeSchema: Schema<RemoveSessionOutcome> =
+  standard(RemoveSessionOutcomeType);

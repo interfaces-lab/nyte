@@ -8,16 +8,14 @@ import { anthropicOAuth } from "../src/auth/oauth/anthropic.ts";
 import {
   loadAnthropicOAuth,
   loadOpenAICodexOAuth,
-  registerBundledOAuthFlowLoaders,
+  registerOAuthFlow,
 } from "../src/auth/oauth/load.ts";
 import { openaiCodexOAuth } from "../src/auth/oauth/openai-codex.ts";
 import { registerBunOAuthFlows } from "../src/bun-oauth.ts";
 
 test("registerBunOAuthFlows registers the statically embedded flows", async () => {
-  registerBundledOAuthFlowLoaders({
-    anthropic: () => openaiCodexOAuth,
-    openaiCodex: () => anthropicOAuth,
-  });
+  registerOAuthFlow("anthropic", openaiCodexOAuth);
+  registerOAuthFlow("openaiCodex", anthropicOAuth);
   assert.equal(await loadAnthropicOAuth(), openaiCodexOAuth);
   assert.equal(await loadOpenAICodexOAuth(), anthropicOAuth);
 

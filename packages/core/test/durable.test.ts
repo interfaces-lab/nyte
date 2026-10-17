@@ -11,27 +11,18 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import { Type } from "typebox";
-import { assert, describe, expect, it } from "vitest";
-import {
-  callRef,
-  createKernel,
-  decodeCallRecord,
-  decodeRunRecord,
-  definePart,
-  endRun,
-  loadWaits,
-  memoryStore,
-  runRef,
-  runStep,
-} from "../src/index.ts";
-import type {
-  ActionContext,
-  ActionOutput,
-  CallRecord,
-  Durable,
-  Kernel,
-  StepOutcome,
-} from "../src/index.ts";
+import { assert, describe, expect, it, vi } from "vitest";
+import { holdLease } from "../src/engine/lease.ts";
+import { createKernel } from "../src/compose.ts";
+import { runAction, runStep } from "../src/engine/durable.ts";
+import { endRun } from "../src/engine/runs.ts";
+import { earliestWake, loadWaits } from "../src/engine/waits.ts";
+import { readCalls } from "../src/store/session.ts";
+import { definePart } from "../src/index.ts";
+import { callRef, decodeCallRecord, decodeRunRecord, memoryStore, runRef } from "../src/store.ts";
+import type { Kernel, StepOutcome } from "../src/contract/kernel.ts";
+import type { ActionContext, ActionOutput, Durable } from "../src/index.ts";
+import type { CallRecord } from "../src/store.ts";
 import { kernelOver, world } from "./fake-env.ts";
 import {
   completed,
@@ -42,7 +33,18 @@ import {
   setup,
   startRun,
   until,
-} from "./harness.ts";
+} from "../src/harness.ts";
+
+/** The earliest time a wait on the main head is due, read from its parked calls. */
+async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
+  const calls = await readCalls(kernel.store, session);
+
+  return earliestWake(
+    kernel.store,
+    session,
+    calls.flatMap((record) => (record.head === main ? [record.id] : [])),
+  );
+}
 
 const timedState = standard(Type.Object({}));
 
@@ -155,7 +157,7 @@ async function liveRun(kernel: Kernel, session: SessionId): Promise<RunId> {
 describe("durable steps", () => {
   it("records a memo and clock readings once and replays them on a re-run", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const call: CallId = asId("c1");
     const computed: number[] = [];
     const readings: (readonly number[])[] = [];
@@ -199,8 +201,8 @@ describe("durable steps", () => {
 
   it("parks on a wait, then a wake records the outcome and the re-run reads it", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
-    const child = await host.sessions.create({ parent: session.id });
+    const { session } = await host.sessions.start({ content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: session.id, content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const call: CallId = asId("c1");
     const target: WaitTarget = { kind: "run", session: child.id, run: asId("r-child") };
@@ -221,7 +223,7 @@ describe("durable steps", () => {
     expect(await readCall(kernel, session.id, call)).toMatchObject({ waiting: target, waits: [] });
     expect(await runWaiting(kernel, session.id, run)).toEqual(target);
     expect((await session.view()).execution).toMatchObject({ kind: "waiting", on: target });
-    expect(await kernel.waits.runEnded(child.id, asId("r-child"), completed, [])).toBe(true);
+    expect(await kernel.waits.runEnded(child.id, asId("r-child"), completed)).toBe(true);
 
     const outcome: WaitOutcome = {
       kind: "run",
@@ -245,7 +247,7 @@ describe("durable steps", () => {
 
   it("completes `all` once every target settles and `any` on the first", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const at = Date.now() + 60_000;
     const done: WaitTarget = { kind: "run", session: session.id, run: asId("r1") };
     const both: CallId = asId("both");
@@ -267,7 +269,7 @@ describe("durable steps", () => {
       waits: [],
       partial: [{ kind: "timer" }, null],
     });
-    expect(await kernel.waits.runEnded(session.id, asId("r1"), completed, [])).toBe(true);
+    expect(await kernel.waits.runEnded(session.id, asId("r1"), completed)).toBe(true);
 
     const ended: WaitOutcome = {
       kind: "run",
@@ -285,7 +287,7 @@ describe("durable steps", () => {
 
   it("fires a deadline through tick and reports it as the head's next deadline", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const deadline = Date.now() + 60_000;
     const call: CallId = asId("c1");
 
@@ -295,17 +297,17 @@ describe("durable steps", () => {
       body: waiting({ kind: "run", session: session.id, run: asId("r1"), deadline }),
     });
 
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(deadline);
+    expect(await nextWake(kernel, session.id)).toBe(deadline);
     await kernel.waits.tick(deadline - 1);
     expect((await readCall(kernel, session.id, call)).waits).toEqual([]);
     await kernel.waits.tick(deadline);
     expect((await readCall(kernel, session.id, call)).waits).toEqual([{ kind: "deadline" }]);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBeNull();
+    expect(await nextWake(kernel, session.id)).toBeNull();
   });
 
   it("wakes an untilInput wait when the user sends to its head, and for no other input", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const call: CallId = asId("c1");
 
     await step(kernel, {
@@ -334,7 +336,7 @@ describe("durable steps", () => {
 
   it("wakes the waits of a stopped run with stopped, after its fence", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const call: CallId = asId("c1");
 
@@ -350,12 +352,14 @@ describe("durable steps", () => {
 
     const log = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
 
-    expect(log.indexOf("run:stopping")).toBeGreaterThan(log.indexOf("run:waiting"));
+    expect(log.findIndex((entry) => entry === "run:stopping")).toBeGreaterThan(
+      log.findIndex((entry) => entry === "run:waiting"),
+    );
   });
 
   it("settles a never step with a pending wait as interrupted on its re-run", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const call: CallId = asId("c1");
     const settled: string[] = [];
     let runs = 0;
@@ -380,10 +384,10 @@ describe("durable steps", () => {
     });
   });
 
-  it("rebuilds parked waits from the store on a new kernel", async () => {
+  it("wakes a wait parked by another kernel from the store's wait index", async () => {
     const store = await memoryStore().open();
     const first = await setup({ store });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const at = Date.now() + 60_000;
     const call: CallId = asId("c1");
 
@@ -400,11 +404,7 @@ describe("durable steps", () => {
       host: first.kernel.host,
     });
 
-    await second.waits.tick(at);
-    expect((await readCall(second, session.id, call)).waits).toEqual([]);
-    await loadWaits(second);
-
-    expect(second.waits.nextDeadline(session.id, main)).toBe(at);
+    expect(await nextWake(second, session.id)).toBe(at);
     await second.waits.tick(at);
     expect((await readCall(second, session.id, call)).waits).toEqual([{ kind: "timer" }]);
   });
@@ -413,7 +413,7 @@ describe("durable steps", () => {
     const { kernel, host } = await setup();
     const at = Date.now() + 60_000;
     kernel.partDefinitions.register(timed, "plugin");
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const part = await session.parts.create(timed, { state: {}, placement: { kind: "panel" } });
     const acting = part.act("hold", { until: at });
 
@@ -435,7 +435,7 @@ describe("durable steps", () => {
 
   it("parks an execution that parked even when a wake already cleared its wait (§33g)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const call: CallId = asId("c1");
     const due = Date.now() - 1;
 
@@ -463,7 +463,7 @@ describe("durable steps", () => {
 
   it("records each partial `all` outcome and shows the next unsettled target (§33d)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const part: PartId = asId("p1");
     await livePart(kernel, session.id, run, part, "Waiting.");
@@ -480,7 +480,7 @@ describe("durable steps", () => {
     });
 
     expect(await runWaiting(kernel, session.id, run)).toEqual(first);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(first.until);
+    expect(await nextWake(kernel, session.id)).toBe(first.until);
     await kernel.waits.tick(first.until);
     expect(await readCall(kernel, session.id, call)).toMatchObject({
       waiting: { kind: "all" },
@@ -488,7 +488,7 @@ describe("durable steps", () => {
       waits: [],
     });
     expect(await runWaiting(kernel, session.id, run)).toEqual(second);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(second.until);
+    expect(await nextWake(kernel, session.id)).toBe(second.until);
 
     const view = await session.view();
 
@@ -509,8 +509,8 @@ describe("durable steps", () => {
 
   it("attaches no child report when a partial `all` consumed the child's end", async () => {
     const { kernel, host } = await setup();
-    const parent = await host.sessions.create();
-    const child = await host.sessions.create({ parent: parent.id });
+    const { session: parent } = await host.sessions.start({ content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: parent.id, content: "Hi." });
     const run = await liveRun(kernel, parent.id);
     const ended = await liveRun(kernel, child.id);
     const later: WaitTarget = { kind: "timer", until: Date.now() + 60_000 };
@@ -532,7 +532,7 @@ describe("durable steps", () => {
       partial: [{ kind: "run", session: child.id, run: ended, end: completed }, null],
       waits: [],
     });
-    expect((await parent.view()).messages).toEqual([]);
+    expect((await parent.view()).messages.map((message) => message.id)).toEqual([parent.id]);
 
     const other: CallId = asId("c2");
 
@@ -545,7 +545,7 @@ describe("durable steps", () => {
       }),
     });
 
-    expect(await kernel.waits.runEnded(child.id, asId("r2"), completed, [])).toBe(true);
+    expect(await kernel.waits.runEnded(child.id, asId("r2"), completed)).toBe(true);
     expect(await readCall(kernel, parent.id, other)).toMatchObject({
       waiting: { kind: "all" },
       waits: [],
@@ -554,7 +554,7 @@ describe("durable steps", () => {
 
   it("moves the run from waiting to live executing once a wake completes its step", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const run = await liveRun(kernel, session.id);
     const at = Date.now() + 60_000;
 
@@ -580,7 +580,7 @@ describe("durable steps", () => {
 
   it("wakes at once a wait whose target already settled, whatever its kind; a modal answered before the park settles the step without parking (§48i)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const question = definePart({
       kind: "test/ask",
@@ -602,7 +602,7 @@ describe("durable steps", () => {
     });
 
     await answered.act("answer", { choice: "yes" });
-    const child = await host.sessions.create({ parent: session.id });
+    const { session: child } = await host.sessions.start({ parent: session.id, content: "Hi." });
     const ended = await liveRun(kernel, child.id);
     await endRun(kernel, child.id, ended, completed);
 
@@ -645,7 +645,7 @@ describe("durable steps", () => {
   it("keeps partial `all` outcomes across a restart", async () => {
     const store = await memoryStore().open();
     const first = await setup({ store });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const at = Date.now() + 60_000;
     const call: CallId = asId("c1");
 
@@ -661,7 +661,7 @@ describe("durable steps", () => {
       }),
     });
 
-    await first.kernel.waits.partClosed(session.id, asId("p1"), null);
+    await first.kernel.waits.partClosed(session.id, asId("p1"));
 
     const second = createKernel({
       hostId: first.kernel.hostId,
@@ -683,7 +683,7 @@ describe("durable steps", () => {
 
   it("returns the result its record holds from the settle that wrote it, on the first run as on a replay (B F7)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const run = () =>
       runStep<string>(kernel, {
@@ -707,11 +707,11 @@ describe("durable steps", () => {
 
   it("settles an action whose handler throws as failed, rejecting with the error and replaying it without running again", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     let ran = 0;
 
     const act = () =>
-      kernel.durable.run({
+      runAction(kernel, {
         session: session.id,
         part: asId("p1"),
         action: "boom",
@@ -735,11 +735,11 @@ describe("durable steps", () => {
 
   it("rejects an action's output that is not JSON at settlement and on replay, recording nothing; undefined replays as undefined (D3b, audit 2 item 2)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     let ran = 0;
 
     const act = (call: string, big: boolean) =>
-      kernel.durable.run({
+      runAction(kernel, {
         session: session.id,
         part: asId("p1"),
         action: "count",
@@ -796,8 +796,8 @@ describe("durable steps", () => {
 
   it("records a cold child end on an all() whose job another instance holds, which completes once the job ends there (audit D2 item 1, mixed wait)", async () => {
     const { kernel, host, provider, workspace } = await world();
-    const parent = await host.sessions.create({ workspace });
-    const child = await host.sessions.create({ parent: parent.id });
+    const { session: parent } = await host.sessions.start({ workspace, content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: parent.id, content: "Hi." });
 
     const job = await host
       .workspace((await parent.info()).workspace)
@@ -854,7 +854,7 @@ describe("durable steps", () => {
     const store = await memoryStore().open();
     const first = await setup({ store });
     const second = await setup({ store });
-    const session = await first.host.sessions.create();
+    const { session } = await first.host.sessions.start({ content: "Hi." });
     const run = await liveRun(first.kernel, session.id);
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
     const far: WaitTarget = { kind: "timer", until: Date.now() + 60_000 };
@@ -878,5 +878,49 @@ describe("durable steps", () => {
       waiting: far,
       parked: ["a"],
     });
+  });
+});
+
+describe("holdLease", () => {
+  it("aborts its work once a renewal is refused, or none lands before the claim lapses, even while one hangs", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const answers = [true, false];
+      const refused = holdLease("refused", async () => answers.shift() ?? false, {
+        every: 10,
+        lapse: 100,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      expect(refused.signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(refused.signal.aborted).toBe(true);
+
+      const failing = holdLease(
+        "failing",
+        async () => {
+          throw new Error("The store is down.");
+        },
+        { every: 10, lapse: 35 },
+      );
+
+      await vi.advanceTimersByTimeAsync(30);
+      expect(failing.signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(failing.signal.aborted).toBe(true);
+
+      const hanging = holdLease("hanging", () => new Promise<boolean>(() => {}), {
+        every: 10,
+        lapse: 35,
+      });
+
+      await vi.advanceTimersByTimeAsync(30);
+      expect(hanging.signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(hanging.signal.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

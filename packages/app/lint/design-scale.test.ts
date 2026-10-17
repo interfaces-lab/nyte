@@ -28,7 +28,19 @@ type Violation = { file: string; line: number; rule: string; message: string };
 
 let violations: Array<Violation> = [];
 
-const lineOf = (needle: string): number => {
+/** Only the plugin runs: an unrelated warning in the fixture must not read as a design-scale violation. */
+const pluginOnlyConfig = {
+  categories: {},
+  jsPlugins: [join(here, "design-scale.js")],
+  rules: {
+    "nyte-design/spacing-scale": "error",
+    "nyte-design/size-grid": "error",
+    "nyte-design/no-raw-font-weight": "error",
+    "nyte-design/no-light-dark-outside-tokens": "error",
+  },
+};
+
+const findLine = (needle: string): number => {
   const index = readFileSync(fixture, "utf8")
     .split("\n")
     .findIndex((line) => line.includes(needle));
@@ -40,27 +52,13 @@ const lineOf = (needle: string): number => {
 
 const rulesOn = (needle: string): Array<string> =>
   violations
-    .filter((entry) => entry.line === lineOf(needle))
+    .filter((entry) => entry.line === findLine(needle))
     .map((entry) => entry.rule)
     .sort();
 
 beforeAll(async () => {
   const config = join(configDirectory, "oxlintrc.json");
-  writeFileSync(
-    config,
-    JSON.stringify({
-      // Only the plugin runs: an unrelated warning in the fixture must not read
-      // as a design-scale violation.
-      categories: {},
-      jsPlugins: [join(here, "design-scale.js")],
-      rules: {
-        "nyte-design/spacing-scale": "error",
-        "nyte-design/size-grid": "error",
-        "nyte-design/no-raw-font-weight": "error",
-        "nyte-design/no-light-dark-outside-tokens": "error",
-      },
-    }),
-  );
+  writeFileSync(config, JSON.stringify(pluginOnlyConfig));
 
   const result = await run("node", [
     join(repoRoot, "node_modules/oxlint/bin/oxlint"),
@@ -97,28 +95,28 @@ afterAll(() => {
 });
 
 const message = (needle: string): string =>
-  violations.find((entry) => entry.line === lineOf(needle))?.message ?? "";
+  violations.find((entry) => entry.line === findLine(needle))?.message ?? "";
 
 test("reports every raw spacing length, off-grid size, raw weight, and light-dark()", () => {
   expect(new Set(violations.map((entry) => entry.line))).toEqual(
     new Set([
-      lineOf("onScale:"),
-      lineOf("negativeOnScale:"),
-      lineOf("offScale:"),
-      lineOf("aboveScale:"),
-      lineOf("negative:"),
-      lineOf("condition:"),
-      lineOf("pseudo:"),
-      lineOf("shorthandString:"),
-      lineOf("mixedShorthand:"),
-      lineOf("offGridSize:"),
-      lineOf("rawWeight:"),
-      lineOf("stringWeight:"),
-      lineOf("offTokenWeight:"),
-      lineOf("lightDark:"),
-      lineOf("lightDarkTemplate:"),
-      lineOf("bare: {"),
-      lineOf("return { paddingInline: 3"),
+      findLine("onScale:"),
+      findLine("negativeOnScale:"),
+      findLine("offScale:"),
+      findLine("aboveScale:"),
+      findLine("negative:"),
+      findLine("condition:"),
+      findLine("pseudo:"),
+      findLine("shorthandString:"),
+      findLine("mixedShorthand:"),
+      findLine("offGridSize:"),
+      findLine("rawWeight:"),
+      findLine("stringWeight:"),
+      findLine("offTokenWeight:"),
+      findLine("lightDark:"),
+      findLine("lightDarkTemplate:"),
+      findLine("bare: {"),
+      findLine("return { paddingInline: 3"),
     ]),
   );
 });

@@ -10,7 +10,7 @@ export type RouteAnswer =
   | { readonly kind: "empty" }
   | { readonly kind: "refused"; readonly status: RefusalStatus; readonly code: ErrorCode };
 
-export interface ConnectRoutes {
+interface ConnectRoutes {
   /** `127.0.0.1:<port>` once the listener is bound; until then every request is refused. */
   readonly host: () => string | undefined;
   /** Verify a broker enrollment, record the device, and answer with a signed receipt. */
@@ -64,11 +64,7 @@ export interface AuthorizingRequest {
 export function bearerToken(request: AuthorizingRequest): string | undefined {
   const header = request.headers.get("authorization");
 
-  if (header === null) return undefined;
-  const space = header.indexOf(" ");
-
-  if (space === -1 || header.slice(0, space).toLowerCase() !== "bearer") return undefined;
-  const token = header.slice(space + 1).trim();
+  const token = /^bearer (.*)$/isu.exec(header ?? "")?.[1].trim();
 
   return token === "" ? undefined : token;
 }

@@ -1,44 +1,8 @@
-import { Validator } from "@cfworker/json-schema";
-import { asId, asSeq } from "@nyte-ai/schema";
-import type { Infer, Json, PatchSetWire, SessionEvent } from "@nyte-ai/schema";
-import { SdkError } from "@nyte-ai/core";
+import { asId, asSeq, SdkError } from "@nyte-ai/schema";
+import type { Json, PatchSetWire, ViewFrame } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
-import {
-  declarations,
-  decodeInput,
-  decodeOutput,
-  encodeInput,
-  encodeOutput,
-  operations,
-} from "../src/index.ts";
-import type { Declarations, OperationInput, OperationName, OperationOutput } from "../src/index.ts";
-
-type Frozen<T> = [Json] extends [T]
-  ? T
-  : T extends string | number | boolean | null | undefined
-    ? T
-    : T extends Uint8Array
-      ? Uint8Array
-      : T extends readonly (infer E)[]
-        ? readonly Frozen<E>[]
-        : { readonly [K in keyof T]: Frozen<T[K]> };
-
-type Agree<A, B> = [Frozen<A>] extends [Frozen<B>]
-  ? [Frozen<B>] extends [Frozen<A>]
-    ? true
-    : false
-  : false;
-
-type Disagreeing = {
-  [N in OperationName]: [
-    Agree<Infer<Declarations[N]["input"]>, OperationInput<N>>,
-    Agree<Infer<Declarations[N]["output"]>, OperationOutput<N>>,
-  ] extends [true, true]
-    ? never
-    : N;
-}[OperationName];
-
-const twoWay: [Disagreeing] extends [never] ? true : Disagreeing = true;
+import { decodeInput, decodeOutput, encodeInput, encodeOutput } from "../src/index.ts";
+import type { OperationInput, OperationOutput } from "../src/index.ts";
 
 const session = asId<"session">("s1");
 const head = asId<"head">("main");
@@ -56,10 +20,6 @@ function invalid(run: () => unknown): SdkError {
 }
 
 describe("codec", () => {
-  it("types every row's input and output as its schema does, both ways (§40r)", () => {
-    expect(twoWay).toBe(true);
-  });
-
   it("round-trips a sample of rows' inputs and outputs", () => {
     const send: OperationInput<"head.send"> = {
       session,
@@ -67,27 +27,24 @@ describe("codec", () => {
       content: [{ kind: "text", text: "Hi." }],
       options: { delivery: "queue", id: asId("r1") },
     };
-    const watch: OperationInput<"head.watch"> = { session, head, after: asSeq(4) };
+    const watch: OperationInput<"head.watch"> = { session, head, options: { tail: 4 } };
     const patches: PatchSetWire = {
       revision: asId("g1"),
       entries: {
         "a.ts": { path: "a.ts", status: "added", digest: "d", kind: "binary", fresh: true },
       },
     };
-    const event: SessionEvent = {
+    const frame: ViewFrame = {
+      kind: "delta",
       seq: asSeq(3),
-      at: 1,
-      head,
-      kind: "run",
-      run: asId("r1"),
-      change: "phase",
-      phase: "responding",
+      revision: null,
+      appends: [{ at: 0, append: "x", version: 2 }],
     };
 
     expect(decodeInput("head.send", encodeInput("head.send", send))).toEqual(send);
     expect(decodeInput("head.watch", encodeInput("head.watch", watch))).toEqual(watch);
     expect(decodeOutput("git.patches", encodeOutput("git.patches", patches))).toEqual(patches);
-    expect(decodeOutput("head.watch", encodeOutput("head.watch", event))).toEqual(event);
+    expect(decodeOutput("head.watch", encodeOutput("head.watch", frame))).toEqual(frame);
     expect(
       decodeOutput(
         "receipt.status",
@@ -166,6 +123,7 @@ describe("codec", () => {
       addedBy: asId<"principal">("local"),
       sessions: 0,
       writers: [],
+      isolation: null,
     };
 
     expect(encodeOutput("part.update", outcome)).toEqual({ kind: "updated", version: 2 });
@@ -223,31 +181,5 @@ describe("codec", () => {
       { path: "d.ts", version: null, kind: "removed" },
     ]);
     expect(() => decodeOutput("files.watch", [{ path: "a.ts" }])).toThrow(SdkError);
-  });
-
-  it("serves the table as loadable JSON Schemas", () => {
-    const rows = operations();
-
-    expect(rows.map((row) => row.name)).toEqual(Object.keys(declarations));
-    expect(rows.find((row) => row.name === "git.stage")).toMatchObject({
-      kind: "command",
-      authority: "owner",
-    });
-
-    for (const row of rows) {
-      const input = new Validator(structuredClone(row.input), "2020-12");
-      const output = new Validator(structuredClone(row.output), "2020-12");
-
-      expect(input.validate(1).valid, row.name).toBe(false);
-      expect(typeof output.validate(null).valid).toBe("boolean");
-    }
-
-    const send = new Validator(
-      structuredClone(rows.find((row) => row.name === "head.send")?.input ?? {}),
-      "2020-12",
-    );
-
-    expect(send.validate({ session, head, content: "Hi." }).valid).toBe(true);
-    expect(send.validate({ session, head }).valid).toBe(false);
   });
 });

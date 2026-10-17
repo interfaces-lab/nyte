@@ -6,8 +6,9 @@ import type {
   ScrollAcceleration,
   ScrollBoxRenderable,
 } from "@opentui/core";
+import { useRenderer } from "@opentui/solid";
 import type { JSX } from "@opentui/solid";
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, keycap, TRANSCRIPT_BOTTOM_PADDING } from "../../lib/constants.ts";
@@ -15,15 +16,17 @@ import type { Task } from "../../lib/tasks.ts";
 import type { ScrollPort } from "../../model/native.ts";
 import type { Row, TranscriptModel } from "../../model/transcript.ts";
 import { Column } from "./block.tsx";
+import { Keyed, sameItems } from "./keyed.tsx";
 import { RowView } from "./row.tsx";
 import { TranscriptScopeProvider } from "./scope.tsx";
 
-export interface TranscriptProps {
+interface TranscriptProps {
   readonly model: Accessor<TranscriptModel>;
   readonly tasks?: Accessor<readonly Task[]>;
   readonly attach: (port: ScrollPort) => () => void;
   readonly onScrolled: (atBottom: boolean) => void;
   readonly onRevealEarlier: () => void;
+  readonly onRevealLater?: () => void;
   readonly onLatest?: () => void;
   readonly onPaste?: (event: PasteEvent) => void;
   readonly accelerated?: Accessor<boolean>;
@@ -33,46 +36,40 @@ const FIXED_SCROLL_STEP: ScrollAcceleration = { tick: () => 3, reset: () => unde
 
 const NO_TASKS: readonly Task[] = [];
 
+const NO_ROWS: readonly Row[] = [];
+
 const SCROLL_EDGE_THRESHOLD = 1;
+
+const SETTLE_FRAMES = 3;
 
 export function Transcript(props: TranscriptProps): JSX.Element {
   const app = useApp();
   const { kit } = app;
+  const renderer = useRenderer();
   const anchors = new Map<string, BoxRenderable>();
   const [hovered, setHovered] = createSignal(false);
   let box: ScrollBoxRenderable | undefined;
   let reported: boolean | null = null;
-  let held: number | null = null;
-  let cache = new Map<string, Row>();
+  let held: { readonly node: BoxRenderable; readonly offset: number } | null = null;
   const tasks = createMemo(() => props.tasks?.() ?? NO_TASKS);
 
   const acceleration = createMemo((): ScrollAcceleration =>
     props.accelerated?.() === true ? new MacOSScrollAccel() : FIXED_SCROLL_STEP,
   );
 
-  const rows = createMemo(() => {
-    const model = props.model();
-    const next = new Map<string, Row>();
+  const rows = createMemo(
+    () => {
+      const model = props.model();
 
-    const mounted = model.rows.slice(model.window.start).map((row) => {
-      const kept = cache.get(row.key) ?? row;
-      next.set(row.key, kept);
-
-      return kept;
-    });
-
-    cache = next;
-
-    return mounted;
-  });
-
-  const atBottom = (): boolean =>
-    box !== undefined &&
-    box.scrollTop >= box.scrollHeight - box.viewport.height - SCROLL_EDGE_THRESHOLD;
+      return model.rows.slice(model.window.start, model.window.end);
+    },
+    NO_ROWS,
+    { equals: sameItems },
+  );
 
   const report = (): void => {
     if (box === undefined || box.isDestroyed) return;
-    const value = atBottom();
+    const value = box.scrollTop >= box.scrollHeight - box.viewport.height - SCROLL_EDGE_THRESHOLD;
 
     if (value === reported) return;
     reported = value;
@@ -98,23 +95,45 @@ export function Transcript(props: TranscriptProps): JSX.Element {
     later();
   };
 
-  const reveal = (): void => {
-    if (box === undefined || props.model().window.hidden === 0) return;
+  const reveal = (direction: -1 | 1): void => {
+    if (box === undefined) return;
+    const { rows: all, window } = props.model();
 
-    if (box.scrollTop > box.viewport.height) return;
-    props.onRevealEarlier();
+    if (direction === -1 && window.start > 0 && box.scrollTop <= box.viewport.height)
+      props.onRevealEarlier();
+
+    if (
+      direction === 1 &&
+      window.end < all.length &&
+      box.scrollTop + 2 * box.viewport.height >= box.scrollHeight
+    )
+      props.onRevealLater?.();
+  };
+
+  const settle = (): void => {
+    if (box !== undefined && held !== null && !held.node.isDestroyed)
+      box.scrollTo(Math.max(0, layoutTop(held.node) - held.offset));
+  };
+
+  const release = (frames: number): void => {
+    renderer.requestAnimationFrame(() => {
+      settle();
+
+      if (frames > 1) {
+        release(frames - 1);
+
+        return;
+      }
+
+      held = null;
+
+      if (box !== undefined) box.stickyScroll = true;
+      report();
+    });
   };
 
   const contentResized = (): void => {
-    if (box === undefined) return;
-
-    if (held !== null) {
-      const delta = box.scrollHeight - held;
-      held = null;
-      box.scrollBy(delta);
-      box.stickyScroll = true;
-    }
-
+    settle();
     report();
   };
 
@@ -122,6 +141,7 @@ export function Transcript(props: TranscriptProps): JSX.Element {
     page(direction) {
       if (box === undefined) return;
       box.scrollBy(direction * Math.max(1, Math.floor(box.viewport.height / 2)));
+      reveal(direction);
       later();
     },
     by(lines) {
@@ -142,14 +162,27 @@ export function Transcript(props: TranscriptProps): JSX.Element {
     },
     keepViewport() {
       if (box === undefined) return;
-      held = box.scrollHeight;
+      const top = box.scrollTop;
+
+      const node = rows()
+        .map((row) => anchors.get(row.key))
+        .find(
+          (candidate) => candidate !== undefined && layoutTop(candidate) + candidate.height > top,
+        );
+
+      if (node === undefined) return;
+
+      const pending = held === null;
+      held = { node, offset: layoutTop(node) - top };
       box.stickyScroll = false;
+
+      if (pending) release(SETTLE_FRAMES);
     },
     turn(direction) {
       if (box === undefined) return;
       const top = box.scrollTop;
 
-      const tops = props.model().rows.flatMap((row) => {
+      const tops = rows().flatMap((row) => {
         const node = row.kind === "turn" ? anchors.get(row.key) : undefined;
 
         return node === undefined ? [] : [layoutTop(node)];
@@ -199,7 +232,9 @@ export function Transcript(props: TranscriptProps): JSX.Element {
           }}
           onMouse={later}
           onMouseScroll={(event) => {
-            if (event.scroll?.direction === "up") reveal();
+            if (event.scroll?.direction === "up") reveal(-1);
+
+            if (event.scroll?.direction === "down") reveal(1);
             later();
           }}
           verticalScrollbarOptions={{
@@ -210,22 +245,30 @@ export function Transcript(props: TranscriptProps): JSX.Element {
           }}
         >
           <Column>
-            <Show when={props.model().window.hidden > 0}>
+            <Show when={props.model().window.start > 0}>
               <text fg={kit.theme().dim} selectable={false} wrapMode="none">
-                {`${GLYPHS.steer} ${String(props.model().window.hidden)} earlier · scroll up`}
+                {`${GLYPHS.steer} ${String(props.model().window.start)} earlier · scroll up`}
               </text>
             </Show>
-            <For each={rows()}>
+            <Keyed each={rows()} by={(row) => row.key}>
               {(row) => (
                 <RowView
                   row={row}
                   anchor={(node) => {
-                    anchors.set(row.key, node);
-                    onCleanup(() => anchors.delete(row.key));
+                    const { key } = row();
+                    anchors.set(key, node);
+                    onCleanup(() => anchors.delete(key));
                   }}
                 />
               )}
-            </For>
+            </Keyed>
+            <Show when={props.model().rows.length - props.model().window.end}>
+              {(count: Accessor<number>) => (
+                <text fg={kit.theme().dim} selectable={false} wrapMode="none">
+                  {`${String(count())} later · scroll down`}
+                </text>
+              )}
+            </Show>
           </Column>
         </scrollbox>
         <Show when={!props.model().following}>

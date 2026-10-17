@@ -65,7 +65,7 @@ export interface GitHubCopilotOAuthOptions {
 }
 
 /** Credential storage is an external boundary, including provider-specific metadata. */
-export function isGitHubCopilotCredential(
+export function matchesCopilotCredential(
   value: unknown,
 ): value is Static<typeof CopilotCredential> {
   return Value.Check(CopilotCredential, value);
@@ -259,7 +259,10 @@ async function pollForGitHubToken(input: {
   }
 }
 
-/** A GitHub grant and a Copilot session have different shapes, so they cannot be interchanged. */
+/**
+ * A GitHub grant and a Copilot session have different shapes, so they cannot be interchanged.
+ * `expires` is the token's actual expiry: shared auth resolution already refreshes five minutes before it.
+ */
 async function loadCopilotCredential(input: {
   fetch: FetchFunction | undefined;
   github: Static<typeof GitHubToken>;
@@ -318,7 +321,6 @@ async function loadCopilotCredential(input: {
       type: "oauth",
       refresh: input.github.access_token,
       access: token.token,
-      // Shared auth resolution already refreshes five minutes before this actual expiry.
       expires: token.expires_at * 1000,
       availableModelIds: catalog.availableModelIds,
     } satisfies Static<typeof CopilotCredential>,
@@ -390,7 +392,7 @@ export function githubCopilotOAuth(
       return result.credential;
     },
     refresh: async (previous, signal) => {
-      if (!isGitHubCopilotCredential(previous)) throw new Error(CREDENTIAL_ERROR);
+      if (!matchesCopilotCredential(previous)) throw new Error(CREDENTIAL_ERROR);
 
       const result = await loadCopilotCredential({
         fetch: options.fetch,
@@ -402,7 +404,7 @@ export function githubCopilotOAuth(
       return result.credential;
     },
     async toAuth(credential) {
-      if (!isGitHubCopilotCredential(credential)) throw new Error(CREDENTIAL_ERROR);
+      if (!matchesCopilotCredential(credential)) throw new Error(CREDENTIAL_ERROR);
 
       return {
         apiKey: credential.access,

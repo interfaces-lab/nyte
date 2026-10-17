@@ -1,8 +1,10 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, foldJobChange } from "@nyte-ai/schema";
 import type {
   BlobId,
   JobId,
   JobKey,
+  JobsChange,
+  JobView,
   OutputFrame,
   PageId,
   PatchSet,
@@ -15,6 +17,7 @@ import type {
   FileBatch,
   FilesApi,
   GitApi,
+  GitHubApi,
   Job,
   Jobs,
   Page,
@@ -22,7 +25,7 @@ import type {
 } from "@nyte-ai/core";
 import type { OperationInput } from "@nyte-ai/protocol";
 import { resolveCapability } from "./capability.ts";
-import { loginHandle } from "./client.ts";
+import { loginHandle } from "./login.ts";
 import { batchOutcome, receiptHandle } from "./receipts.ts";
 import type { Rows } from "./rows.ts";
 
@@ -39,6 +42,8 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
     id: workspace,
     info: () => rows.call("workspace.info", { workspace }),
     watch: () => rows.watch("workspace.watch", { workspace }),
+    commands: () => rows.call("workspace.commands", { workspace }),
+    command: (name, args) => rows.call("workspace.command", { workspace, name, args }),
     mcp: {
       watch: () => rows.watch("mcp.watch", { workspace }),
       reconnect: (server) => rows.call("mcp.reconnect", { workspace, server }),
@@ -68,6 +73,10 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
       resolveCapability(await rows.call("workspace.git", { workspace }), () =>
         gitApi(rows, workspace),
       ),
+    github: async () =>
+      resolveCapability(await rows.call("workspace.github", { workspace }), () =>
+        githubApi(rows, workspace),
+      ),
     browser: async () =>
       resolveCapability(await rows.call("workspace.browser", { workspace }), () =>
         browserApi(rows, workspace),
@@ -83,24 +92,20 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
     put: (input) => plan([...pending, { kind: "put", ...input }]),
     remove: (input) => plan([...pending, { kind: "remove", ...input }]),
     async apply() {
-      const entries: BatchEntry[] = [];
+      const entries = await Promise.all(
+        pending.map(async (entry): Promise<BatchEntry> => {
+          if (entry.kind === "remove") return entry;
+          const { contents, ...rest } = entry;
 
-      for (const entry of pending) {
-        if (entry.kind === "remove") {
-          entries.push(entry);
-          continue;
-        }
-
-        const { contents, ...rest } = entry;
-
-        entries.push({
-          ...rest,
-          contents:
-            typeof contents === "string" || !(contents instanceof Uint8Array)
-              ? contents
-              : { blob: await upload(once(contents)) },
-        });
-      }
+          return {
+            ...rest,
+            contents:
+              typeof contents === "string" || !(contents instanceof Uint8Array)
+                ? contents
+                : { blob: await upload(once(contents)) },
+          };
+        }),
+      );
 
       const { receipt } = await rows.call("files.batch", {
         workspace,
@@ -130,6 +135,13 @@ function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
     search: (input) => rows.frames("files.search", { workspace, ...input }),
     watch: (input) => rows.watch("files.watch", { workspace, ...input }),
     upload,
+  };
+}
+
+function githubApi(rows: Rows, workspace: WorkspaceId): GitHubApi {
+  return {
+    state: () => rows.call("github.state", { workspace }),
+    createPullRequest: (input) => rows.call("github.createPullRequest", { workspace, input }),
   };
 }
 
@@ -213,8 +225,18 @@ function jobsApi(rows: Rows, workspace: WorkspaceId): Jobs {
         : recovered;
     },
     list: () => rows.call("jobs.list", { workspace }),
-    watch: () => rows.watch("jobs.watch", { workspace }),
+    watch: () => foldJobs(rows.watch("jobs.watch", { workspace })),
   };
+}
+
+async function* foldJobs(changes: AsyncIterable<JobsChange>): AsyncIterable<readonly JobView[]> {
+  let jobs: readonly JobView[] = [];
+
+  for await (const change of changes) {
+    jobs = foldJobChange(jobs, change);
+
+    yield jobs;
+  }
 }
 
 function jobHandle(rows: Rows, workspace: WorkspaceId, job: JobId, key: JobKey | null): Job {

@@ -1,10 +1,12 @@
 import { readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
+import { SdkError } from "@nyte-ai/schema";
 import type { ValidationIssue } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
-import type { Kernel, Plugin } from "@nyte-ai/core";
-import { codeOf } from "../local/tree.ts";
+import { dev } from "@nyte-ai/core";
+import type { Plugin } from "@nyte-ai/core";
+import type { ComposeOptions } from "@nyte-ai/core/server";
+import { readErrorCode } from "../local/tree.ts";
 
 const EXTENSIONS = [".ts", ".mts", ".js", ".mjs"];
 
@@ -23,8 +25,8 @@ export async function loadPluginDirectory(dir: string): Promise<{
   return importEach(await pluginFilesIn(dir));
 }
 
-/** Returns the kernel's `loadPlugins` (`composeHost({ loadPlugins })`), which `plugins.replace` and `plugins.check` load their files through (§40b, §47m): each path, resolved to its real path, must lie inside one of `dirs` (else `SdkError("denied")`) and is imported as `loadPluginFiles` imports a file; the plugins come back in path order. */
-export function pluginLoader(dirs: readonly string[]): Kernel["loadPlugins"] {
+/** Returns the host's `loadPlugins` (`composeHost({ loadPlugins })`), which `plugins.replace` and `plugins.check` load their files through (§40b, §47m): each path, resolved to its real path, must lie inside one of `dirs` (else `SdkError("denied")`) and is imported as `loadPluginFiles` imports a file; the plugins come back in path order. */
+export function pluginLoader(dirs: readonly string[]): NonNullable<ComposeOptions["loadPlugins"]> {
   return async (paths) => {
     const roots = (await Promise.all(dirs.map((dir) => realpath(dir).catch(() => null)))).filter(
       (root) => root !== null,
@@ -92,7 +94,7 @@ async function importEach(files: readonly string[]): Promise<{
 
 async function pluginFilesIn(dir: string): Promise<readonly string[]> {
   const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
-    if (codeOf(error) === "ENOENT" || codeOf(error) === "ENOTDIR") return [];
+    if (readErrorCode(error) === "ENOENT" || readErrorCode(error) === "ENOTDIR") return [];
 
     throw error;
   });
@@ -135,7 +137,7 @@ async function importPlugin(
         ? imported.default
         : undefined;
 
-    return isCorePlugin(exported)
+    return fitsCorePlugin(exported)
       ? { plugin: exported }
       : { reason: "Its default export is not a core plugin (an object with a string id)." };
   } catch (error) {
@@ -143,7 +145,7 @@ async function importPlugin(
   }
 }
 
-function isCorePlugin(value: unknown): value is Plugin<"core"> {
+function fitsCorePlugin(value: unknown): value is Plugin<"core"> {
   if (
     typeof value !== "object" ||
     value === null ||

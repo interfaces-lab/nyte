@@ -27,9 +27,10 @@ const HOST_INFO = {
   version: Constants.expoConfig?.version ?? "0.0.0",
 } as const;
 
-// Every navigation reaches onShouldStartLoadWithRequest, which keeps only the
-// shell's own document; a narrower whitelist would hand anything else to the
-// system opener instead.
+/**
+ * Every navigation reaches onShouldStartLoadWithRequest, which keeps only the shell's own document; a
+ * narrower whitelist would hand anything else to the system opener instead.
+ */
 const EVERY_ORIGIN = ["*"];
 
 const STOPPED = "This canvas stopped responding.";

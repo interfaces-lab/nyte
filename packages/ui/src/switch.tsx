@@ -4,7 +4,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useId, type ComponentProps, type ReactElement } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
-import { radius, row, space, switchControl, target } from "./styles/schema.stylex.ts";
+import { media, radius, row, space, switchControl, target } from "./styles/schema.stylex.ts";
 import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import type { Restyle } from "./styles/contracts.ts";
@@ -60,12 +60,12 @@ const styles = create({
     backgroundColor: {
       default: role.bgControl,
       ":hover:not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.bgControlHover,
+        [media.hover]: role.bgControlHover,
       },
       ":active:not([data-disabled])": role.bgControlPressed,
       "[data-checked]": role.bgControlSelected,
       ":hover:is([data-checked]):not([data-disabled])": {
-        "@media (hover: hover) and (pointer: fine)": role.bgControlSelectedHover,
+        [media.hover]: role.bgControlSelectedHover,
       },
       ":active:is([data-checked]):not([data-disabled])": role.bgControlSelectedPressed,
     },

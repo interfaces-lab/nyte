@@ -1,11 +1,16 @@
 import type { ToolClass } from "@nyte-ai/sdk";
-import { isToolMessage, toolStatus } from "../view-helpers.ts";
-import { formatRunDuration, isThinkingMessage } from "./transcript-presentation.ts";
-import { DELEGATE_VERBS } from "./subagent-status.ts";
+import {
+  formatWholeDuration,
+  showsThinking,
+  showsTool,
+  toolStatus,
+  toolTitle,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
 import { reasoningHeading } from "./reasoning-heading.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 
-export interface StepGroupPresentationInput {
+interface StepGroupPresentationInput {
   readonly messages: readonly StepMessage[];
   readonly durationMs: number;
   readonly added: number;
@@ -13,7 +18,7 @@ export interface StepGroupPresentationInput {
   readonly running: boolean;
 }
 
-export type DurableStepGroupPresentation =
+type DurableStepGroupPresentation =
   | {
       readonly active: false;
       readonly summary: {
@@ -44,9 +49,9 @@ function activityLabel(running: readonly ToolClass[]): string | undefined {
     case "edit":
       return "Editing";
     case "delegate":
-      return DELEGATE_VERBS[newest.role].running;
+      return toolVerbs(newest).running;
     case "custom":
-      return `Running ${newest.label}`;
+      return toolTitle(newest, "running");
     default: {
       const _exhaustive: never = newest;
 
@@ -63,7 +68,11 @@ function count(n: number, noun: string, plural = `${noun}s`): string {
   return `${String(n)} ${n === 1 ? noun : plural}`;
 }
 
-/** One changed or read file is named; more are counted. Only a call that succeeded did its thing. */
+/**
+ * One changed or read file is named; more are counted. Only a call that
+ * succeeded did its thing, so a step that lost a call claims no verb: each
+ * tally says what became of it.
+ */
 function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   const changed = new Set<string>();
   const read = new Set<string>();
@@ -74,7 +83,7 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   let stopped = 0;
 
   for (const message of messages) {
-    if (!isToolMessage(message)) continue;
+    if (!showsTool(message)) continue;
     const { tone } = toolStatus(message);
     const toolClass = message.state.class;
 
@@ -120,11 +129,14 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
   if (did + failed + stopped === 0) {
     const { title } = reasoningHeading(
       messages
-        .map((message) => (isThinkingMessage(message) ? message.state.markdown : ""))
+        .map((message) => (showsThinking(message) ? message.state.markdown : ""))
         .join("\n\n"),
     );
 
-    return { verb: title ?? "Thought", detail: formatRunDuration(durationMs) };
+    return {
+      verb: title ?? "Thought",
+      detail: durationMs < 500 ? undefined : formatWholeDuration(durationMs),
+    };
   }
 
   const trouble: (readonly [what: string, n: number])[] = [];
@@ -142,7 +154,6 @@ function settledSummary(messages: readonly StepMessage[], durationMs: number) {
     };
   }
 
-  // A step that lost a call claims no verb: each tally says what became of it.
   if (trouble.length > 0) {
     const landed = [
       changed.size > 0 ? `${count(changed.size, "file")} edited` : undefined,
@@ -210,7 +221,7 @@ export function durableStepGroupPresentation({
   const runningClasses: ToolClass[] = [];
 
   for (const message of messages) {
-    if (!isToolMessage(message)) continue;
+    if (!showsTool(message)) continue;
 
     if (toolStatus(message).tense === "running") runningClasses.push(message.state.class);
   }
@@ -237,7 +248,7 @@ export function liveStepGroupPresentation({
 
   const verb =
     activityLabel(durable.runningClasses) ??
-    (newest !== undefined && isThinkingMessage(newest) && newest.status.kind === "live"
+    (newest !== undefined && showsThinking(newest) && newest.status.kind === "live"
       ? "Thinking"
       : "Working");
 

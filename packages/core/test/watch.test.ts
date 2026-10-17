@@ -10,26 +10,24 @@ import type {
   SessionId,
 } from "@nyte-ai/schema";
 import { assert, describe, expect, it, vi } from "vitest";
+import { createHostState, watchHost } from "../src/api/host.ts";
+import { sessionInfo, watchSessions } from "../src/api/session.ts";
+import { createKernel } from "../src/compose.ts";
+import { project } from "../src/fold/project.ts";
+import { watchHead } from "../src/fold/view.ts";
+import { publishSet } from "../src/fold/watch.ts";
+import { coalesce } from "../src/index.ts";
 import {
-  coalesce,
-  createHostState,
-  createKernel,
   decodeSeenRecord,
   envelope,
   headRef,
   inboxRef,
   memoryStore,
-  project,
-  publishSet,
   seenRef,
-  sessionEvents,
-  sessionInfo,
   sessionRef,
-  watchHead,
-  watchHost,
-  watchSessions,
-} from "../src/index.ts";
-import type { CommitRecord, Kernel, SessionRecord } from "../src/index.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { CommitRecord, SessionRecord } from "../src/store.ts";
 
 const first: SessionId = asId("s1");
 
@@ -50,12 +48,17 @@ const configuration = {
   settingsVersion: "1",
 } as const;
 
-async function kernelOf(): Promise<Kernel> {
+async function createMemoryKernel(): Promise<Kernel> {
   return createKernel({
     hostId: asId("h1"),
     store: await memoryStore().open(),
     description: { name: "studio", platform: "darwin", version: "0.1.0" },
-    host: createHostState({ catalog: asId("g1"), plugins: [], settings: [], operations: [] }),
+    host: createHostState({
+      catalog: asId("g1"),
+      plugins: [],
+      settings: [],
+      defaultWorkspace: null,
+    }),
   });
 }
 
@@ -64,14 +67,14 @@ async function write(
   entries: readonly {
     readonly name: string;
     readonly object: Json;
-    readonly event?: DurableEvent;
+    readonly events?: readonly DurableEvent[];
   }[],
 ): Promise<void> {
   const updates: readonly RefUpdate[] = await Promise.all(
     entries.map(async (entry) => ({
       name: entry.name,
       target: await kernel.store.objects.put(entry.object),
-      event: entry.event,
+      events: entry.events,
     })),
   );
 
@@ -102,24 +105,26 @@ async function createSession(
     {
       name: sessionRef(id),
       object: envelope("session", record, lastActivityAt),
-      event: {
-        head: null,
-        kind: "session",
-        info: {
-          ...record,
-          call: null,
-          activation: kernel.activation(id),
-          heads: [
-            {
-              name: main,
-              tip: { kind: "start" },
-              stack: null,
-              execution: { kind: "idle", lastRun: null },
-              unread: false,
-            },
-          ],
+      events: [
+        {
+          head: null,
+          kind: "session",
+          info: {
+            ...record,
+            call: null,
+            activation: kernel.sessions.activation(id),
+            heads: [
+              {
+                name: main,
+                tip: { kind: "start" },
+                stack: null,
+                execution: { kind: "idle", lastRun: null },
+                unread: false,
+              },
+            ],
+          },
         },
-      },
+      ],
     },
   ]);
 }
@@ -129,19 +134,21 @@ async function admit(kernel: Kernel, session: SessionId, message: string): Promi
     {
       name: inboxRef(session, main),
       object: envelope("inbox", { messages: [message], pendingInput: [message] }, 0),
-      event: {
-        head: main,
-        kind: "input",
-        message: asId(message),
-        change: "admitted",
-        content: message,
-        source: { kind: "user" },
-        delivery: "steer",
-        schedule: { kind: "next-turn", reason: "idle" },
-        covered: true,
-        configuration,
-        replaced: null,
-      },
+      events: [
+        {
+          head: main,
+          kind: "input",
+          message: asId(message),
+          change: "admitted",
+          content: message,
+          source: { kind: "user" },
+          delivery: "steer",
+          schedule: { kind: "next-turn", reason: "idle" },
+          covered: true,
+          configuration,
+          replaced: null,
+        },
+      ],
     },
   ]);
 }
@@ -172,19 +179,21 @@ async function land(
     {
       name: inboxRef(session, main),
       object: envelope("inbox", { messages: [], pendingInput: [] }, 0),
-      event: {
-        head: main,
-        kind: "input",
-        message: asId(message),
-        change: "landed",
-        commit: id,
-        run: null,
-      },
+      events: [
+        {
+          head: main,
+          kind: "input",
+          message: asId(message),
+          change: "landed",
+          commit: id,
+          run: null,
+        },
+      ],
     },
     {
       name: headRef(session, main),
       object: envelope("commit", record, 0),
-      event: { head: main, kind: "commit", id, parent, run: null, body: record.body },
+      events: [{ head: main, kind: "commit", id, parent, run: null, body: record.body }],
     },
   ]);
 
@@ -225,7 +234,7 @@ describe("watch", () => {
   });
 
   it("advances the principal's seen mark to each tip it yields", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "triage", 1);
     const c1 = await land(kernel, first, "m1", null);
 
@@ -251,7 +260,7 @@ describe("watch", () => {
   });
 
   it("shares one fold between watchers of the same session and principal", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "triage", 1);
     await admit(kernel, first, "m1");
 
@@ -303,7 +312,7 @@ describe("watch", () => {
       reused.release();
       vi.advanceTimersByTime(30_000);
 
-      expect(kernel.follows.has(first)).toBe(false);
+      expect(kernel.folds.folding(first)).toBe(false);
     } finally {
       vi.useRealTimers();
     }
@@ -323,7 +332,7 @@ describe("watch", () => {
   });
 
   it("releases the fold within a tick when a watcher returns while a pull is pending", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "triage", 1);
     await admit(kernel, first, "m1");
     let released = 0;
@@ -331,6 +340,7 @@ describe("watch", () => {
     const spied: Kernel = {
       ...kernel,
       folds: {
+        ...kernel.folds,
         acquire(session, principal) {
           const hold = kernel.folds.acquire(session, principal);
 
@@ -367,7 +377,7 @@ describe("watch", () => {
   });
 
   it("re-yields the directory when a session publishes", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     await createSession(kernel, first, "first", 1);
     const directory = watchSessions(kernel, ada)[Symbol.asyncIterator]();
     const before = await directory.next();
@@ -384,7 +394,7 @@ describe("watch", () => {
   });
 
   it("yields the host view again when the host state updates", async () => {
-    const kernel = await kernelOf();
+    const kernel = await createMemoryKernel();
     const authority: ReadonlySet<Authority> = new Set(["participant", "owner"]);
     const host = watchHost(kernel, { principal: ada, authority })[Symbol.asyncIterator]();
     const before = await host.next();
@@ -399,8 +409,8 @@ describe("watch", () => {
       catalog: "g1",
       plugins: [],
       settings: [],
+      defaultWorkspace: null,
       authority,
-      operations: [],
     });
 
     kernel.host.update({ catalog: asId("g2") });
@@ -409,41 +419,5 @@ describe("watch", () => {
 
     expect(after.value.catalog).toBe("g2");
     await host.return?.();
-  });
-
-  it("resumes a session's events after a seq: the log after it, the seeds, then live", async () => {
-    const kernel = await kernelOf();
-    await createSession(kernel, first, "One", 1);
-    const commit = await land(kernel, first, "m1", null);
-    const resume = await kernel.store.refs.tail(first);
-    await land(kernel, first, "m2", commit);
-    kernel.setActivation(first, { kind: "active" });
-    const iterator = sessionEvents(kernel, first, resume)[Symbol.asyncIterator]();
-    const kinds: string[] = [];
-
-    for (;;) {
-      const next = await iterator.next();
-
-      assert(next.done !== true);
-      const event = next.value.event;
-      kinds.push(event.kind === "patch" ? "patch" : `${event.kind}:${event.seq}`);
-
-      if (event.kind === "catalog") break;
-    }
-
-    await admit(kernel, first, "m3");
-    const next = await iterator.next();
-    await iterator.return?.();
-    const live = next.done === true ? next : { done: false, value: next.value.event };
-
-    expect(kinds).toEqual([
-      `input:${resume + 1}`,
-      `input:${resume + 2}`,
-      `commit:${resume + 3}`,
-      "activation:0",
-      "catalog:0",
-    ]);
-    assert(live.done !== true && live.value.kind === "input");
-    expect(live.value.seq).toBe(resume + 4);
   });
 });

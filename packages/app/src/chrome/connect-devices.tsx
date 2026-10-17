@@ -1,28 +1,11 @@
-import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
+/** The Nyte account's linked devices; revoking one asks first, since it also ends that sign-in. */
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
-import { role } from "@nyte-ai/ui/styles/vars.stylex";
-import { text } from "@nyte-ai/ui/styles/text.stylex";
-import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import type { ConnectBridge, ConnectDevice } from "../bridge.ts";
-import { settings } from "../theme/schema.stylex.ts";
-import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { useConnectAction } from "./connect-view.ts";
 import type { LinkedView } from "./connect-view.ts";
-import { ConnectionRow } from "./connection-list.tsx";
-
-const styles = create({
-  header: {
-    padding: settings.rowPadding,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
-    color: role.contentPrimary,
-  },
-});
+import { DeviceRows } from "./device-rows.tsx";
 
 function deviceDetail(device: ConnectDevice, view: LinkedView): string {
   const added = `Added ${new Date(device.createdAt).toLocaleDateString(undefined, {
@@ -40,7 +23,7 @@ export function ConnectDevices({
 }: {
   readonly view: LinkedView;
   readonly connect: ConnectBridge;
-}): ReactElement | null {
+}): ReactElement {
   const [target, setTarget] = useState<ConnectDevice>();
   const [confirming, setConfirming] = useState(false);
 
@@ -49,37 +32,22 @@ export function ConnectDevices({
     "Couldn’t revoke the device",
   );
 
-  const { devices } = view;
-
-  if (devices.length === 0) return null;
-
   return (
-    <section aria-label="Devices" {...props(settingsPatterns.group)}>
-      <div {...props(text.base, styles.header)}>
-        {devices.length === 1 ? "1 device" : `${String(devices.length)} devices`}
-      </div>
-      {devices.map((device) => (
-        <ConnectionRow
-          key={device.id}
-          glyph={<Icon name={/browser/i.test(device.name) ? "globe" : "phone"} size={16} />}
-          title={device.name}
-          detail={deviceDetail(device, view)}
-          control={
-            <Button
-              variant="ghost"
-              loading={revoke.isPending && revoke.variables === device.id}
-              disabled={revoke.isPending}
-              onClick={() => {
-                setTarget(device);
-                setConfirming(true);
-              }}
-            >
-              Revoke…
-              <span {...props(srOnly)}>{` ${device.name}`}</span>
-            </Button>
-          }
-        />
-      ))}
+    <>
+      <DeviceRows
+        label="Devices"
+        devices={view.devices.map((device) => ({
+          id: device.id,
+          name: device.name,
+          detail: deviceDetail(device, view),
+        }))}
+        action="Revoke…"
+        pending={revoke.isPending ? revoke.variables : undefined}
+        onAction={(deviceId) => {
+          setTarget(view.devices.find((device) => device.id === deviceId));
+          setConfirming(true);
+        }}
+      />
       {target !== undefined && (
         <ConfirmDialog
           open={confirming}
@@ -92,6 +60,6 @@ export function ConnectDevices({
           onConfirm={() => revoke.mutate(target.id, { onSuccess: () => setConfirming(false) })}
         />
       )}
-    </section>
+    </>
   );
 }

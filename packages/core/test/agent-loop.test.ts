@@ -4,7 +4,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ModelInfo, ToolOutcome, Usage } from "@nyte-ai/schema";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentLoop } from "../src/agent-loop.ts";
+import { agentLoop } from "../src/agent/agent-loop.ts";
 import type {
   LoopConfig,
   LoopEnd,
@@ -12,8 +12,8 @@ import type {
   LoopInput,
   LoopRequest,
   LoopResponse,
-} from "../src/agent-loop.ts";
-import { dev } from "../src/dev-log.ts";
+} from "../src/agent/agent-loop.ts";
+import { dev } from "../src/util/dev-log.ts";
 import { testModel } from "./fake-models.ts";
 
 type Reply = {
@@ -34,11 +34,13 @@ const INFO: ModelInfo = {
   name: MODEL.name,
   reasoning: false,
   thinking: ["off"],
+  defaultThinking: "off",
   fast: null,
   contextWindow: MODEL.contextWindow,
   compactAt: MODEL.contextWindow,
   maxOutput: 1_000,
   input: ["text"],
+  capabilities: { steer: true },
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 };
 
@@ -66,7 +68,7 @@ function said(text: string): AssistantMessage["content"][number] {
   return { type: "text", text };
 }
 
-function messageOf(content: AssistantMessage["content"]): AssistantMessage {
+function buildMessage(content: AssistantMessage["content"]): AssistantMessage {
   return {
     role: "assistant",
     content,
@@ -86,11 +88,11 @@ function messageOf(content: AssistantMessage["content"]): AssistantMessage {
   };
 }
 
-function streamOf(reply: Reply | undefined): AssistantMessageEventStream {
+function streamReply(reply: Reply | undefined): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
   const content = reply?.content ?? [];
   const calls = content.some((block) => block.type === "toolCall");
-  const partial = messageOf(content);
+  const partial = buildMessage(content);
 
   stream.push({ type: "start", partial });
 
@@ -125,7 +127,7 @@ function streamOf(reply: Reply | undefined): AssistantMessageEventStream {
 
 function abortable(signal: AbortSignal): AssistantMessageEventStream {
   const stream = createAssistantMessageEventStream();
-  const partial = messageOf([said("Hal")]);
+  const partial = buildMessage([said("Hal")]);
   stream.push({ type: "start", partial });
   stream.push({ type: "text_start", contentIndex: 0, partial });
   stream.push({ type: "text_delta", contentIndex: 0, delta: "Hal", partial });
@@ -180,7 +182,7 @@ function scripted(
         usage: () => ({ ...NONE, output: 1, total: 1 }),
       };
     },
-    stream: async () => respondWith(streamOf(queue.shift())),
+    stream: async () => respondWith(streamReply(queue.shift())),
     tools: {
       async execute(toolCall) {
         seen.executed.push(toolCall.name);
@@ -188,7 +190,7 @@ function scripted(
         return OK;
       },
     },
-    finishTurn: async () => undefined,
+    settleResponse: async () => undefined,
     boundary: async () => [],
     ...patch,
   };
@@ -346,7 +348,7 @@ describe("agentLoop", () => {
 
     const { config, seen } = scripted([], {
       stream: async (_prepared, signal) => respondWith(abortable(signal)),
-      finishTurn: async () => {
+      settleResponse: async () => {
         throw new Error("No response finished.");
       },
     });
@@ -368,11 +370,11 @@ describe("agentLoop", () => {
     expect(seen.requests).toHaveLength(1);
   });
 
-  it("ends stopped after an abort during finishTurn: at the next call, or at the next request", async () => {
+  it("ends stopped after an abort during settleResponse: at the next call, or at the next request", async () => {
     const calling = new AbortController();
 
     const called = scripted([{ content: [call("a", "read")] }], {
-      finishTurn: async () => {
+      settleResponse: async () => {
         calling.abort();
       },
     });
@@ -386,7 +388,7 @@ describe("agentLoop", () => {
     const asking = new AbortController();
 
     const continued = scripted([{ content: [said("One.")] }], {
-      finishTurn: async () => {
+      settleResponse: async () => {
         asking.abort();
       },
       boundary: async () => landed("steer"),
@@ -427,6 +429,43 @@ describe("agentLoop", () => {
     }
   });
 
+  it("waits out the provider's retry-after, and fails at once when it asks for longer than the policy waits", async () => {
+    const limited = "429 Too Many Requests: server requested 0.2s retry delay";
+
+    const within = scripted([{ error: limited }, { content: [said("Whole.")] }], {
+      retry: { enabled: true, maxRetries: 2, baseDelayMs: 1, maxAgentDelayMs: 1_000 },
+    });
+
+    const started = Date.now();
+    const { events, end } = await collect(within.config);
+    const retry = events.find((event) => event.type === "turn_retry");
+
+    expect(retry).toMatchObject({ failure: { class: "rate_limit", retryAfterMs: 200 } });
+    expect(retry?.type === "turn_retry" ? retry.until - started : 0).toBeGreaterThanOrEqual(200);
+    expect(end.reason).toBe("done");
+
+    const beyond = scripted([{ error: limited }, { content: [said("Whole.")] }]);
+
+    expect((await collect(beyond.config)).end).toMatchObject({
+      reason: "failed",
+      failure: { class: "rate_limit", retryAfterMs: 200 },
+    });
+    expect(beyond.seen.requests).toHaveLength(1);
+  });
+
+  it("fails exhausted credit at once, though the provider answers it with 429", async () => {
+    const { config, seen } = scripted([
+      { error: '429 {"type":"error","error":{"type":"extra_usage_out_of_credits"}}' },
+      { content: [said("Whole.")] },
+    ]);
+
+    expect((await collect(config)).end).toMatchObject({
+      reason: "failed",
+      failure: { class: "quota" },
+    });
+    expect(seen.requests).toHaveLength(1);
+  });
+
   it("hands a context overflow to the next prepareRequest, then retries once it is prepared; a second overflow fails", async () => {
     const overflow = "prompt is too long: 213462 tokens > 200000 maximum";
 
@@ -465,7 +504,7 @@ describe("agentLoop", () => {
   it("fails a stream that ends without done or error as a provider failure, never stopped (D7, A F15)", async () => {
     const { config, seen } = scripted([], {
       async stream() {
-        const events = streamOf({ content: [said("Half")] });
+        const events = streamReply({ content: [said("Half")] });
         const unfinished = createAssistantMessageEventStream();
 
         for await (const event of events) {

@@ -21,3 +21,6 @@ export function pairingLink(token: string): string {
 }
 
 export const ARCHIVED_SESSION_COUNT = 22;
+
+/** The line the server seeds into the workspace's README.md. */
+export const README_LINE = "The workspace reached the browser.";

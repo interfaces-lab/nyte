@@ -12,14 +12,15 @@ import {
   taskTiming,
   unfinishedTask,
 } from "../lib/tasks.ts";
-import { commandRegistry, skillsOf } from "./commands.ts";
+import { commandRegistry, indexSkills } from "./commands.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import type { Choice, ListDialog, ListPurpose } from "./dialogs/list.ts";
 import { visibleChoices } from "./dialogs/list.ts";
 import { chatCommands, COMMAND_TITLES, interactionsFor } from "./interactions.ts";
 import { placeLabel, queueRows } from "./queue.ts";
-import { tableInputFor } from "./screen.ts";
+import { tableInputFor } from "./table-input.ts";
 import { settingRows, settingValue } from "./settings.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 function choice(
@@ -44,7 +45,7 @@ const KEY_NAMES = new Map([
   ["kpenter", "enter"],
 ]);
 
-export function bindingKeycaps(command: ChatCommand): string {
+function bindingKeycaps(command: ChatCommand): string {
   const caps = CHAT_KEYBINDS[command]
     .split(",")
     .map((binding) => binding.replace(/[^+]+$/u, (name) => KEY_NAMES.get(name) ?? name));
@@ -119,11 +120,11 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
         ),
       ];
     case "skills":
-      return [...skillsOf(state).values()]
+      return [...indexSkills(state).values()]
         .toSorted((left, right) => left.name.localeCompare(right.name))
         .map((skill) => choice(skill.name, skill.name, skill.description));
     case "queue":
-      return queueRows(state.facts.session, state.local.editing).map((row, index) =>
+      return queueRows(followedSession(state), state.local.editing).map((row, index) =>
         choice(row.id, row.text, `${String(index + 1)} · ${placeLabel(row.place)}`),
       );
     case "settings":
@@ -172,6 +173,7 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
       ];
     }
     case "question":
+    case "approval":
     case "accounts":
     case "resume":
     case "summary":
@@ -188,6 +190,8 @@ export function listTitle(state: State, purpose: ListPurpose): string {
   switch (purpose.kind) {
     case "question":
       return "Question";
+    case "approval":
+      return purpose.heading;
     case "resume":
       return "Resume chat";
     case "palette":
@@ -243,9 +247,9 @@ export function initialHighlight(
     case "setting":
       return index(settingRows(state).find((row) => row.id === purpose.key)?.current);
     case "resume":
-      return index(state.facts.session?.id);
+      return index(state.facts.chat?.id);
     case "provider":
-      return index(state.facts.session?.selection.model.provider);
+      return index(state.facts.chat?.selection.model.provider);
     case "trust":
       return index(purpose.decision === false ? "decline" : "trust");
     default:
@@ -254,10 +258,9 @@ export function initialHighlight(
 }
 
 export function resumeChoices(state: State, sessions: readonly SessionInfo[]): readonly Choice[] {
-  const current = state.facts.session?.id ?? null;
+  const current = state.facts.chat?.id ?? null;
 
   return sessions
-    .filter((session) => session.heads.some((head) => head.tip.kind !== "start"))
     .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)
     .map((session) =>
       choice(
@@ -268,7 +271,7 @@ export function resumeChoices(state: State, sessions: readonly SessionInfo[]): r
     );
 }
 
-export function liveList(state: State, dialog: ListDialog): ListDialog {
+function liveList(state: State, dialog: ListDialog): ListDialog {
   const items = liveChoices(state, dialog.purpose);
 
   if (items === null) return dialog;

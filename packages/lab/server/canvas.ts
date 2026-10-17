@@ -6,6 +6,11 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 
 let runtime: Promise<string> | undefined;
 
+/**
+ * The canvas runtime as one minified IIFE, built once per server. JSX compiles
+ * for production explicitly: the dev server's NODE_ENV would otherwise compile
+ * it to jsxDEV, which production React lacks.
+ */
 export function buildRuntime(): Promise<string> {
   runtime ??= (async () => {
     const result = await build({
@@ -13,7 +18,6 @@ export function buildRuntime(): Promise<string> {
       root,
       logLevel: "silent",
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
-      // The dev server's NODE_ENV would otherwise compile JSX to jsxDEV, which production React lacks.
       oxc: { jsx: { runtime: "automatic", development: false } },
       build: {
         write: false,

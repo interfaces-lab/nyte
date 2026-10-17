@@ -9,15 +9,12 @@ type ActionChord =
 type ClientStage = "workspace" | "customize" | "environments" | "settings";
 
 export interface ClientCapabilities {
-  readonly terminal: boolean;
   readonly browser: boolean;
 }
 
-export function clientCapabilities(host: {
-  readonly terminal?: unknown;
-  readonly browser?: unknown;
-}): ClientCapabilities {
-  return { terminal: host.terminal !== undefined, browser: host.browser !== undefined };
+/** What the client can show beyond what every host backs: a browser only where the desktop gives it a native view. */
+export function clientCapabilities(host: { readonly browser?: unknown }): ClientCapabilities {
+  return { browser: host.browser !== undefined };
 }
 
 interface ActionDetails {
@@ -42,7 +39,7 @@ type ActionDefinition = ActionDetails &
 export const clientActions = {
   newChat: {
     id: "new-chat",
-    label: "New chat",
+    label: "New Chat",
     key: "n",
     chord: "primary",
     scope: "window",
@@ -85,7 +82,7 @@ export const clientActions = {
   },
   openFolder: {
     id: "open-folder",
-    label: "Open folder…",
+    label: "Open Folder…",
     key: "o",
     chord: "primary",
     scope: "window",
@@ -97,13 +94,13 @@ export const clientActions = {
   },
   openHome: {
     id: "open-home",
-    label: "Open home",
+    label: "Open Home",
     scope: "window",
     palette: { keywords: "workspace projectless activate", icon: "folder", group: "actions" },
   },
   generalSettings: {
     id: "general-settings",
-    label: "General settings",
+    label: "General Settings",
     scope: "window",
     palette: { keywords: "preferences configuration", icon: "settings", group: "settings" },
   },
@@ -142,16 +139,16 @@ export const clientActions = {
   search: { id: "search", label: "Search", key: "k", chord: "primary", scope: "window" },
   settings: {
     id: "settings",
-    label: "Settings",
+    label: "Settings…",
     key: ",",
     chord: "primary",
     scope: "outside-settings",
   },
-  back: { id: "back", label: "Go back", key: "[", chord: "primary", scope: "window" },
-  forward: { id: "forward", label: "Go forward", key: "]", chord: "primary", scope: "window" },
+  back: { id: "back", label: "Go Back", key: "[", chord: "primary", scope: "window" },
+  forward: { id: "forward", label: "Go Forward", key: "]", chord: "primary", scope: "window" },
   sidebar: {
     id: "sidebar",
-    label: "Toggle sidebar",
+    label: "Toggle Sidebar",
     key: "b",
     chord: "primary",
     scope: "outside-settings",
@@ -172,36 +169,34 @@ export const clientActions = {
   },
   workbench: {
     id: "workbench",
-    label: "Toggle workbench",
+    label: "Toggle Workbench",
     key: "b",
     chord: "primary-alt",
     scope: "workspace",
   },
   terminal: {
     id: "terminal",
-    label: "Toggle terminal",
+    label: "Toggle Terminal",
     key: "`",
     chord: "control",
     scope: "workspace",
-    capability: "terminal",
   },
   newTerminal: {
     id: "new-terminal",
-    label: "New terminal",
+    label: "New Terminal",
     key: "`",
     chord: "control-shift",
     scope: "workspace",
-    capability: "terminal",
   },
   newBrowser: {
     id: "new-browser",
-    label: "New browser",
+    label: "New Browser",
     scope: "workspace",
     capability: "browser",
   },
   focusPane: {
     id: "focus-pane",
-    label: "Focus next pane",
+    label: "Focus Next Pane",
     key: "f6",
     chord: "none",
     scope: "workspace",
@@ -236,6 +231,11 @@ type ActionKeyEvent = Pick<
   | "isComposing"
 >;
 
+/**
+ * Ghostty prevents the default for the Backquote chord it hands back to the
+ * shell; other consumed events stay with the editor or terminal that handled
+ * them. The workbench chord has always accepted Shift as well.
+ */
 export function resolveClientAction(
   event: ActionKeyEvent,
   mac: boolean,
@@ -249,8 +249,6 @@ export function resolveClientAction(
     if (!("chord" in action) || !clientActionAvailable(action, stage, capabilities)) return false;
     const terminal = action.chord === "control" || action.chord === "control-shift";
 
-    // Ghostty prevents the default for the Backquote chord it hands back to the shell.
-    // Other consumed events must remain with the editor or terminal that handled them.
     if (event.defaultPrevented && !terminal) return false;
 
     if (terminal ? event.code !== "Backquote" : key !== action.key) return false;
@@ -268,14 +266,13 @@ export function resolveClientAction(
 
     if (!(mac ? event.metaKey : event.ctrlKey)) return false;
 
-    // The workbench chord has always accepted Shift as well.
     if (action.chord === "primary-alt") return event.altKey;
 
     return !event.altKey && event.shiftKey === (action.chord === "primary-shift");
   });
 }
 
-export type TabShortcut =
+type TabShortcut =
   | { readonly kind: "activate-index"; readonly index: number }
   | { readonly kind: "cycle-tab"; readonly step: 1 | -1 };
 

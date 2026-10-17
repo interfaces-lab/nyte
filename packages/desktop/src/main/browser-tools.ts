@@ -41,7 +41,7 @@ function failureOutcome(
   }
 }
 
-function snapshotOf(state: BrowserPageState): PageSnapshot {
+function toPageSnapshot(state: BrowserPageState): PageSnapshot {
   return {
     revision: asId(String(state.snapshot)),
     nodes: state.nodes.map((node) => ({
@@ -74,7 +74,7 @@ function sessionBrowser(agent: BrowserAgent, session: SessionId, owner: BrowserO
     if (result.kind === "failed") return failureOutcome(result.failure, state);
     state = result.state;
 
-    return { kind: "applied", snapshot: snapshotOf(result.state) };
+    return { kind: "applied", snapshot: toPageSnapshot(result.state) };
   };
 
   const expect = (ref: string) => state?.nodes.find((node) => node.ref === ref)?.name ?? "";
@@ -110,7 +110,7 @@ function sessionBrowser(agent: BrowserAgent, session: SessionId, owner: BrowserO
         throw new SdkError("unavailable", `The page cannot be read: ${result.failure.kind}.`);
       state = result.state;
 
-      return snapshotOf(result.state);
+      return toPageSnapshot(result.state);
     },
     navigate: async (url) => settle(await agent.open({ session, owner, url })),
     back: () => script("history.back()"),
@@ -157,11 +157,13 @@ function sessionBrowser(agent: BrowserAgent, session: SessionId, owner: BrowserO
       );
     },
     console: async (input) =>
-      agent.console({ session, limit: input?.limit ?? 50, clear: input?.clear }).map((entry) => ({
-        level: entry.level === "warning" ? "warn" : entry.level === "debug" ? "log" : entry.level,
-        text: entry.message,
-        at: entry.at,
-      })),
+      (await agent.console({ session, limit: input?.limit ?? 50, clear: input?.clear })).map(
+        (entry) => ({
+          level: entry.level === "warning" ? "warn" : entry.level === "debug" ? "log" : entry.level,
+          text: entry.message,
+          at: entry.at,
+        }),
+      ),
     async capture() {
       const bytes = await agent.capture({ session });
 

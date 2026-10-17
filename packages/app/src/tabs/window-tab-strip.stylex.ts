@@ -1,4 +1,4 @@
-import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, media, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
@@ -28,7 +28,7 @@ export const stripStyles = create({
   tab: {
     "--_close-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-within": "1",
     },
     position: "relative",
@@ -40,11 +40,11 @@ export const stripStyles = create({
     borderRadius: button.radiusMd,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
   },
   tabClosable: { paddingInlineEnd: space.s1 },
@@ -52,7 +52,7 @@ export const stripStyles = create({
   tabActive: {
     backgroundColor: {
       default: role.bgBase,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgBase },
+      ":hover": { [media.hover]: role.bgBase },
     },
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentPrimary,

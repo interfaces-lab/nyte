@@ -5,6 +5,7 @@ import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SessionId } from "@nyte-ai/sdk";
+import { executionMark, formatWholeDuration } from "@nyte-ai/plugin/client/presentation";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -13,11 +14,11 @@ import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { statusLabels, formatActivity, markTone } from "../chat/sessions.ts";
-import { formatDuration, latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
+import { latestChangedTurn, turnAnswer } from "../chat/turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
 import { Markdown } from "../chat/markdown.tsx";
-import { executionMark, openQuestion } from "../view-helpers.ts";
+import { openQuestion } from "../view-helpers.ts";
 import {
   controls,
   list,
@@ -29,18 +30,19 @@ import {
   typography,
 } from "../theme.ts";
 
-function folderOf(path: string): string {
+function dirname(path: string): string {
   const slash = path.lastIndexOf("/");
 
   return slash <= 0 ? "" : path.slice(0, slash);
 }
 
-function basenameOf(path: string): string {
+function basename(path: string): string {
   const slash = path.lastIndexOf("/");
 
   return slash < 0 ? path : path.slice(slash + 1);
 }
 
+/** A finished run's review. One readiness value drives the headline, its symbol, its tint, and the detail line, so the four never describe different states. */
 export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const theme = useTheme();
   const { client } = useHost();
@@ -77,14 +79,12 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const ended = execution?.kind === "idle" ? execution.lastRun?.end.kind : undefined;
   const outcome = ended === "stopped" ? "aborted" : ended;
 
-  // One decision drives the headline, its symbol, its tint, and the detail line,
-  // so the four can never describe different states.
   const readiness: { headline: string; symbol: SFSymbol; tint: string; detail: string } = running
     ? {
         headline: "Agent is working",
         symbol: "clock",
         tint: theme.muted,
-        detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatDuration(now - run.startedAt)}`}`,
+        detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatWholeDuration(now - run.startedAt)}`}`,
       }
     : waiting !== undefined
       ? {
@@ -121,7 +121,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
                 detail:
                   changedTurn === undefined || changedTurn.endedAt === null
                     ? "Finished"
-                    : `Finished in ${formatDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
+                    : `Finished in ${formatWholeDuration(changedTurn.endedAt - changedTurn.startedAt)}`,
               };
 
   async function merge() {
@@ -223,9 +223,9 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
                   <IconTile name="doc.text" />
                   <html.div style={styles.fileText}>
                     <html.span style={[textStyles.secondary, styles.fileName]}>
-                      {basenameOf(file.path)}
+                      {basename(file.path)}
                     </html.span>
-                    <html.span style={textStyles.caption}>{folderOf(file.path)}</html.span>
+                    <html.span style={textStyles.caption}>{dirname(file.path)}</html.span>
                   </html.div>
                   <html.span style={[textStyles.caption, styles.totals]}>
                     <html.span style={styles.added}>{`+${String(file.added)} `}</html.span>

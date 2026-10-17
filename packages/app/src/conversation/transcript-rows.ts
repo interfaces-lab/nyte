@@ -4,11 +4,12 @@
  * those elements carried so React state (edits, folds) survives the move.
  */
 import type { SessionView } from "@nyte-ai/sdk";
+import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
-import { conversationTurns, isBusy, isToolMessage } from "../view-helpers.ts";
-import type { ConversationTurn, UserMessage } from "../view-helpers.ts";
-import { isTextMessage } from "./transcript-presentation.ts";
+import { conversationTurns, sameItems } from "../view-helpers.ts";
+import type { ConversationTurn } from "../view-helpers.ts";
 
 export type { ConversationTurn } from "../view-helpers.ts";
 
@@ -44,12 +45,89 @@ export type TranscriptRow =
       readonly working: boolean;
     };
 
+type TurnRow = Extract<TranscriptRow, { readonly kind: "turn" }>;
+
+type LandingRow = Extract<TranscriptRow, { readonly kind: "landing" }>;
+
+const SKELETON_ROW: TranscriptRow = {
+  kind: "skeleton",
+  messageId: "row:skeleton",
+  scrollAnchor: false,
+};
+
+const ERROR_ROW: TranscriptRow = { kind: "error", messageId: "row:error", scrollAnchor: false };
+
+const LIVE_ROWS = {
+  working: { kind: "live", messageId: "row:live", scrollAnchor: false, working: true },
+  idle: { kind: "live", messageId: "row:live", scrollAnchor: false, working: false },
+} as const satisfies Record<string, TranscriptRow>;
+
+const NO_TURNS: readonly ConversationTurn[] = [];
+
+const NO_USERS: readonly UserMessage[] = [];
+
+const turnRows = new WeakMap<ConversationTurn, TurnRow>();
+
+const landingRows = new WeakMap<UserMessage, LandingRow>();
+
 function turnMessageId(turn: ConversationTurn): string {
   return turn.info.prompt === null ? `turn:${turn.info.id}` : `landing:${turn.info.prompt}`;
 }
 
+/** The row a turn heads; the one built last time when nothing it shows has changed. */
+function turnRow(
+  turn: ConversationTurn,
+  continuations: readonly ConversationTurn[],
+  trailing: boolean,
+): TurnRow {
+  const known = turnRows.get(turn);
+
+  if (
+    known !== undefined &&
+    known.trailing === trailing &&
+    sameItems(known.continuations, continuations)
+  )
+    return known;
+
+  const row: TurnRow = {
+    kind: "turn",
+    messageId: turnMessageId(turn),
+    scrollAnchor: turn.info.prompt !== null,
+    turn,
+    continuations: continuations.length === 0 ? NO_TURNS : continuations,
+    trailing,
+  };
+
+  turnRows.set(turn, row);
+
+  return row;
+}
+
+function landingRow(message: UserMessage, pending: boolean, held: boolean): LandingRow {
+  const known = landingRows.get(message);
+
+  if (known !== undefined && known.pending === pending && known.held === held) return known;
+
+  const row: LandingRow = {
+    kind: "landing",
+    messageId: `landing:${message.id}`,
+    scrollAnchor: true,
+    message,
+    pending,
+    held,
+  };
+
+  landingRows.set(message, row);
+
+  return row;
+}
+
+function present(messages: readonly UserMessage[]): readonly UserMessage[] {
+  return messages.length === 0 ? NO_USERS : messages;
+}
+
 export function conversationMessages(view: SessionView | undefined) {
-  const running = view !== undefined && isBusy(view.execution);
+  const running = view !== undefined && view.execution.kind !== "idle";
   const loose = view === undefined ? [] : conversationTurns(view).loose;
   const users = loose.filter((message): message is UserMessage => message.kind === "user");
 
@@ -77,22 +155,31 @@ export function conversationMessages(view: SessionView | undefined) {
   return {
     running,
     held: view?.execution.kind === "idle" && view.execution.lastRun?.end.kind !== "completed",
-    submitted: landing,
-    queued: users.filter(
-      (message) =>
-        running &&
-        message.status.kind === "pending" &&
-        message.status.schedule.kind !== "joined" &&
-        message.source.kind !== "child" &&
-        message.source.kind !== "job",
+    submitted: present(landing),
+    queued: present(
+      users.filter(
+        (message) =>
+          running &&
+          message.status.kind === "pending" &&
+          message.status.schedule.kind !== "joined" &&
+          message.source.kind !== "child" &&
+          message.source.kind !== "job",
+      ),
     ),
-    unsent: users.filter(
-      (message) =>
-        message.status.kind === "unsent" && (message.status.retrying !== null || running),
+    unsent: present(
+      users.filter(
+        (message) =>
+          message.status.kind === "unsent" && (message.status.retrying !== null || running),
+      ),
     ),
   };
 }
 
+/**
+ * The rows for one view. Rows whose content did not change since the last
+ * call are the same objects, so memoized row views skip them while a reply
+ * streams into the last one.
+ */
 export function transcriptRows({
   loading,
   failed,
@@ -115,50 +202,30 @@ export function transcriptRows({
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
 
-  if (loading && turns.length === 0 && landing.length === 0) {
-    rows.push({ kind: "skeleton", messageId: "row:skeleton", scrollAnchor: false });
-  }
+  if (loading && turns.length === 0 && landing.length === 0) rows.push(SKELETON_ROW);
 
-  if (failed) rows.push({ kind: "error", messageId: "row:error", scrollAnchor: false });
+  if (failed) rows.push(ERROR_ROW);
+
+  const groups: { readonly turn: ConversationTurn; readonly continuations: ConversationTurn[] }[] =
+    [];
 
   for (const turn of turns) {
-    const previous = rows.at(-1);
+    const group = groups.at(-1);
 
-    if (previous?.kind === "turn" && turn.info.prompt === null) {
-      rows[rows.length - 1] = { ...previous, continuations: [...previous.continuations, turn] };
-      continue;
-    }
-
-    rows.push({
-      kind: "turn",
-      messageId: turnMessageId(turn),
-      scrollAnchor: turn.info.prompt !== null,
-      turn,
-      continuations: [],
-      trailing: false,
-    });
+    if (group !== undefined && turn.info.prompt === null) group.continuations.push(turn);
+    else groups.push({ turn, continuations: [] });
   }
 
-  const last = rows.at(-1);
+  for (const [index, group] of groups.entries())
+    rows.push(turnRow(group.turn, group.continuations, index === groups.length - 1));
 
-  if (last?.kind === "turn") rows[rows.length - 1] = { ...last, trailing: true };
-
-  for (const message of landing) {
-    rows.push({
-      kind: "landing",
-      messageId: `landing:${message.id}`,
-      scrollAnchor: true,
-      message,
-      pending: running,
-      held,
-    });
-  }
+  for (const message of landing) rows.push(landingRow(message, running, held));
 
   if (retrying !== undefined) {
     rows.push({ kind: "retry", messageId: "row:retry", scrollAnchor: false, message: retrying });
   }
 
-  rows.push({ kind: "live", messageId: "row:live", scrollAnchor: false, working });
+  rows.push(working ? LIVE_ROWS.working : LIVE_ROWS.idle);
 
   return rows;
 }
@@ -240,35 +307,63 @@ function rowEstimate(
   }
 }
 
-function estimateTurnSize(turn: ConversationTurn, density: ToolCallDensity, scale: number): number {
-  let size = 0;
+/** What a turn's estimate counts, independent of density and font size. */
+interface TurnMeasure {
+  readonly users: number;
+  readonly prose: number;
+  readonly step: boolean;
+  readonly files: number;
+}
+
+const turnMeasures = new WeakMap<ConversationTurn, TurnMeasure>();
+
+/**
+ * Counts a turn's prompts, prose, work and changed files once per turn object:
+ * the virtualizer asks for every unmeasured row's estimate each time a row
+ * measures, and recognising a message's part validates its state.
+ */
+function measureTurn(turn: ConversationTurn): TurnMeasure {
+  const known = turnMeasures.get(turn);
+
+  if (known !== undefined) return known;
+  let users = 0;
   let prose = 0;
   let step = false;
   const files = new Set<string>();
 
   for (const message of turn.messages) {
     if (message.kind === "user") {
-      size += USER_ROW_ESTIMATE;
+      users += 1;
       continue;
     }
 
-    if (isTextMessage(message)) {
+    if (showsText(message)) {
       prose += message.state.markdown.length;
       continue;
     }
 
     if (message.role === "step") step = true;
 
-    if (isToolMessage(message) && message.state.phase === "settled")
+    if (showsTool(message) && message.state.phase === "settled")
       for (const path of message.state.changes?.paths ?? []) files.add(path);
   }
 
+  const measured = { users, prose, step, files: files.size };
+  turnMeasures.set(turn, measured);
+
+  return measured;
+}
+
+function estimateTurnSize(turn: ConversationTurn, density: ToolCallDensity, scale: number): number {
+  const { users, prose, step, files } = measureTurn(turn);
+  let size = USER_ROW_ESTIMATE * users;
+
   if (step) size += STEP_GROUP_ESTIMATE[density];
 
-  if (files.size > 0) {
+  if (files > 0) {
     size +=
       CHANGES_CARD_BASE_ESTIMATE +
-      CHANGES_CARD_ROW_ESTIMATE * Math.min(files.size, CHANGES_VISIBLE_FILES);
+      CHANGES_CARD_ROW_ESTIMATE * Math.min(files, CHANGES_VISIBLE_FILES);
   }
 
   if (prose > 0) {

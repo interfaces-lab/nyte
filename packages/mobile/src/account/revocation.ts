@@ -3,8 +3,6 @@ import type { Release } from "@nyte-ai/connect/enrollment";
 
 export { releaseOnHost, RELEASE_TIMEOUT_MS } from "@nyte-ai/connect/enrollment";
 
-export type { Release } from "@nyte-ai/connect/enrollment";
-
 import type { BrokerClient } from "@nyte-ai/connect";
 import type { ManagedConnection, SavedConnection } from "../connection/connection.ts";
 

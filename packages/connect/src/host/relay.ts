@@ -65,11 +65,7 @@ interface Channel {
   responseEnded: boolean;
 }
 
-function isRelayStatus(status: number): boolean {
-  return (status >= 200 && status <= 299) || (status >= 400 && status <= 599);
-}
-
-function headersOf(response: IncomingMessage): Headers {
+function copyHeaders(response: IncomingMessage): Headers {
   const headers = new Headers();
 
   for (const [name, value] of Object.entries(response.headers))
@@ -134,7 +130,6 @@ export class RelayConnection {
     this.detach(1000);
     this.setStatus({ kind: "stopped" });
   }
-
 
   private async connect(): Promise<void> {
     const dialing = ++this.dialing;
@@ -302,7 +297,6 @@ export class RelayConnection {
     socket.send(RELAY_PING);
   }
 
-
   private open(frame: Extract<RelayFrame, { t: "open" }>): void {
     const local = request({
       host: "127.0.0.1",
@@ -390,7 +384,9 @@ export class RelayConnection {
   private respond(channel: Channel, response: IncomingMessage): void {
     const status = response.statusCode ?? 0;
 
-    if (this.channels.get(channel.id) !== channel || !isRelayStatus(status)) {
+    const relayable = (status >= 200 && status <= 299) || (status >= 400 && status <= 599);
+
+    if (this.channels.get(channel.id) !== channel || !relayable) {
       this.reset(channel);
 
       return;
@@ -405,7 +401,7 @@ export class RelayConnection {
       t: "head",
       ch: channel.id,
       status,
-      headers: relayResponseHeaders(headersOf(response)),
+      headers: relayResponseHeaders(copyHeaders(response)),
     });
 
     if (hasNullBody(status)) {

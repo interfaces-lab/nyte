@@ -1,11 +1,10 @@
 import { lstat, readFile, stat } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
-import { asId } from "@nyte-ai/schema";
+import { join } from "node:path";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   BlameView,
   ChangeSet,
   Cursor,
-  Disposer,
   FileChange,
   FileStatus,
   GitCommitView,
@@ -18,7 +17,7 @@ import type {
   PatchEntry,
   PatchSet,
 } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
+import { dev } from "@nyte-ai/core";
 import type { ExecutionEnv, GitApi } from "@nyte-ai/core";
 import { sha256 } from "../hash.ts";
 import { run } from "./command.ts";
@@ -30,24 +29,18 @@ import {
   parseNameStatus,
   parseNumstat,
   readPatches,
-  revisionOf,
   textEntry,
 } from "./patch.ts";
 import type { Changed } from "./patch.ts";
+import { createWatcher } from "./git-watch.ts";
+import type { Repository } from "./git-watch.ts";
 import { decodeText } from "./text.ts";
-import { watchTree } from "./tree.ts";
-
-type Repository = { readonly root: string; readonly gitDir: string; readonly prefix: string };
 
 type Repo = Extract<GitStatus, { readonly kind: "repository" }>;
 
 const PATCH_BATCH = 32;
 
 const LOG_DEFAULT = 50;
-
-const WATCH_DELAY_MS = 250;
-
-const POLL_MS = 2_000;
 
 const ENV: Readonly<Record<string, string>> = {
   GIT_OPTIONAL_LOCKS: "0",
@@ -67,7 +60,7 @@ const DIFF = [
   "-M",
 ];
 
-/** Returns git over the CLI (`git`, default `git` on the PATH) for the repository holding `env.cwd`; every path it takes and answers is relative to the workspace (`env.cwd`), as `FilesApi`'s and the snapshots' are (§41j): the commands run at the repository root, and where the workspace is a subdirectory of the repository its prefix is added to every path going into git (`stage`, `unstage`, `discard` and `commit` files, `patches`, `contents` and `blame` paths) and stripped from every path coming out (`status`, `changes`, `patches`), the listings limited to it by pathspec (a rename source outside it reads `../…`); `root` stays the repository root, and `log`, `refs`, `branch`, `push` and `commit` of `staged` or `all` are repository-wide. `status` reads `git status --porcelain=v2 --branch -z --untracked-files=all` (`none` outside a repository, `head` null when unborn) with the staged and unstaged line stats (`git diff --numstat`), its `revision` the SHA-256 of those outputs with HEAD and each dirty worktree file's size and modification time, so an edit to an already-modified file moves it; `watch` yields the status whenever that revision moves, re-reading on fs events under the worktree and the git directory (a recursive `fs.watch`, coalesced over 250 ms) and on a 2 s poll as the floor. `changes(scope)` reads statuses with `git diff --name-status -z -M` and line stats with `--numstat` (`--ignore-all-space` under `ignoreWhitespace`, for the stats and patches only, so a whitespace-only change stays listed; `worktree` HEAD to the worktree, `staged` HEAD to the index, `unstaged` the index to the worktree, `commit` its parent (or the empty tree) to it, `branch` the merge base with HEAD to HEAD; HEAD of an unborn repository is the empty tree), untracked files joining `worktree` and `unstaged` with status `untracked` and their line count as added; its `revision` the status revision; `watchChanges` re-reads it as that revision moves. `patches` reads `git diff -U3` for the requested paths the scope reports (paths it does not report are left out), at most 32 per command, and parses the unified text into `Hunk`s on the host, one `PatchEntry` per path (`binary`; `empty` when the scope reports the path but the diff shows no text, as under `ignoreWhitespace`; `too-large` past 1 MiB; `failed` alone when one path's read fails), `digest` the SHA-256 of the path's section; an untracked file is diffed against nothing on the host, `failed` when it is gone or cannot be read. It yields one full `PatchSet` per revision as it moves. `contents` reads both sides (`git cat-file blob <rev>:<path>`, the index, the worktree file, or absent; a rename's old side at its old path; text, `truncated { head }` past 1 MiB, or binary). `log` pages `git log` with the cursor holding the next skip (default 50 a page); `refs` reads `git symbolic-ref`, `git for-each-ref refs/heads` and `git remote`; `blame` reads `git blame --porcelain` of the worktree file. Every write answers `busy { runs: [] }` while `index.lock` exists for the writes that take it (all but `push` and `branch` without checkout; the run-based busy is core's), then compares `expect` with the current status revision (`stale { revision }`): `stage` (`git add -A`), `unstage` (`git restore --staged`, `git rm --cached` when unborn), `discard` (`git restore --worktree`, untracked paths removed with `git clean -f`), `commit` (`staged`, `all` as `-a`, or the listed paths added and committed alone), `branch` (`git switch -c` when `checkout`, else `git branch`), `push` (`--porcelain`, `--set-upstream origin <branch>` when asked; a detached HEAD cannot set one); each answers `applied { revision }`, `unchanged` (`stage`, `unstage`, `discard` and `commit` when the revision did not move or git had nothing to commit, `push` when every ref was already up to date; `branch` always applies), or `rejected { reason }` with git's message. Reads outside a repository throw `SdkError("unavailable")`. */
+/** Returns git over the CLI (`git`, default `git` on the PATH) for the repository holding `env.cwd`; every path it takes and answers is relative to the workspace (`env.cwd`), as `FilesApi`'s and the snapshots' are (§41j): the commands run at the repository root, and where the workspace is a subdirectory of the repository its prefix is added to every path going into git (`stage`, `unstage`, `discard` and `commit` files, `patches`, `contents` and `blame` paths) and stripped from every path coming out (`status`, `changes`, `patches`), the listings limited to it by pathspec (a rename source outside it reads `../…`); `root` stays the repository root, and `log`, `refs`, `branch`, `push` and `commit` of `staged` or `all` are repository-wide. `status` reads `git status --porcelain=v2 --branch -z --untracked-files=all` (`none` outside a repository, `head` null when unborn) with the staged and unstaged line stats (`git diff --numstat`), its `revision` the SHA-256 of those outputs with HEAD and each dirty worktree file's size and modification time, so an edit to an already-modified file moves it; `watch` yields the status whenever that revision moves, re-reading only on fs events that can move it (`createWatcher`: worktree paths git does not ignore and the git directory's HEAD, index and refs, coalesced over 250 ms; a 2 s poll only where `fs.watch` is unavailable). The repository (`git rev-parse`) is looked up once and kept while its git directory holds a HEAD. `changes(scope)` reads statuses with `git diff --name-status -z -M` and line stats with `--numstat` (`--ignore-all-space` under `ignoreWhitespace`, for the stats and patches only, so a whitespace-only change stays listed; `worktree` HEAD to the worktree, `staged` HEAD to the index, `unstaged` the index to the worktree, `commit` its parent (or the empty tree) to it, `branch` the merge base with HEAD to HEAD; HEAD of an unborn repository is the empty tree), untracked files joining `worktree` and `unstaged` with status `untracked` and their line count as added; its `revision` the status revision; `watchChanges` re-reads it as that revision moves. `patches` reads `git diff -U3` for the requested paths the scope reports (paths it does not report are left out), at most 32 per command, one `PatchEntry` per path, a text one carrying the path's section of the unified text as its `patch` (`binary`; `empty` when the scope reports the path but the diff shows no text, as under `ignoreWhitespace`; `too-large` past 1 MiB; `failed` alone when one path's read fails), `digest` the SHA-256 of the path's section; an untracked file is diffed against nothing on the host (its digest that of its patch), `failed` when it is gone or cannot be read. It yields one full `PatchSet` per revision as it moves. `contents` reads both sides (`git cat-file blob <rev>:<path>`, the index, the worktree file, or absent; a rename's old side at its old path; text, `truncated { head }` past 1 MiB, or binary). `log` pages `git log` with the cursor holding the next skip (default 50 a page); `refs` reads `git symbolic-ref`, `git for-each-ref refs/heads` and `git remote`; `blame` reads `git blame --porcelain` of the worktree file. Every write answers `busy { runs: [] }` while `index.lock` exists for the writes that take it (all but `push` and `branch` without checkout; the run-based busy is core's), then compares `expect` with the current status revision (`stale { revision }`): `stage` (`git add -A`), `unstage` (`git restore --staged`, `git rm --cached` when unborn), `discard` (`git restore --worktree`, untracked paths removed with `git clean -f`), `commit` (`staged`, `all` as `-a`, or the listed paths added and committed alone), `branch` (`git switch -c` when `checkout`, else `git branch`), `push` (`--porcelain`, `--set-upstream origin <branch>` when asked; a detached HEAD cannot set one); each answers `applied { revision }`, `unchanged` (`stage`, `unstage`, `discard` and `commit` when the revision did not move or git had nothing to commit, `push` when every ref was already up to date; `branch` always applies), or `rejected { reason }` with git's message. Reads outside a repository throw `SdkError("unavailable")`. */
 export function localGit(env: ExecutionEnv, options?: { readonly git?: string }): GitApi {
   const binary = options?.git ?? "git";
   let emptyTree: Promise<string> | null = null;
@@ -91,18 +84,40 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     });
   };
 
-  const repository = async (): Promise<Repository | null> => {
+  let located: Promise<Repository | null> | null = null;
+
+  const lookUp = async (): Promise<Repository | null> => {
     const ran = await git(env.cwd, [
       "rev-parse",
       "--show-toplevel",
       "--absolute-git-dir",
       "--show-prefix",
+      "--path-format=absolute",
+      "--git-common-dir",
     ]);
 
     if (ran.code !== 0) return null;
-    const [root, gitDir, prefix = ""] = ran.stdout.toString("utf8").split("\n");
+    const [root, gitDir, prefix = "", commonDir] = ran.stdout.toString("utf8").split("\n");
 
-    return root === undefined || gitDir === undefined ? null : { root, gitDir, prefix };
+    return root === undefined || gitDir === undefined
+      ? null
+      : { root, gitDir, commonDir: commonDir || gitDir, prefix };
+  };
+
+  const repository = async (): Promise<Repository | null> => {
+    const pending = located;
+    const known = pending === null ? null : await pending;
+
+    if (known !== null && located === pending && (await exists(join(known.gitDir, "HEAD"))))
+      return known;
+
+    if (located === pending || located === null) located = lookUp();
+
+    return located;
+  };
+
+  const forget = (): void => {
+    located = null;
   };
 
   const required = async (): Promise<Repository> => {
@@ -113,7 +128,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     return found;
   };
 
-  const statusOf = async (repo: Repository): Promise<Repo> => {
+  const readRepository = async (repo: Repository): Promise<Repo> => {
     const [porcelain, staged, unstaged] = await Promise.all([
       git(repo.root, [
         "status",
@@ -138,7 +153,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   const status = async (): Promise<GitStatus> => {
     const repo = await repository();
 
-    return repo === null ? { kind: "none" } : statusOf(repo);
+    return repo === null ? { kind: "none" } : readRepository(repo);
   };
 
   const empty = (root: string): Promise<string> => {
@@ -155,7 +170,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     return ran.code === 0 ? ran.stdout.toString("utf8").trim() : null;
   };
 
-  const rangeOf = async (
+  const resolveRange = async (
     root: string,
     scope: GitScope,
   ): Promise<{ readonly args: readonly string[]; readonly untracked: boolean }> => {
@@ -193,12 +208,12 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   const whitespace = (ignore: boolean | undefined): readonly string[] =>
     ignore === true ? ["--ignore-all-space"] : [];
 
-  const changedOf = async (
+  const listChanged = async (
     repo: Repository,
     scope: GitScope,
     current: Repo,
   ): Promise<readonly Changed[]> => {
-    const range = await rangeOf(repo.root, scope);
+    const range = await resolveRange(repo.root, scope);
 
     const ran = await git(repo.root, [
       "diff",
@@ -212,7 +227,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     if (ran.code !== 0) throw new SdkError("unavailable", ran.stderr.trim());
 
     const tracked = parseNameStatus(ran.stdout.toString("utf8")).map((file) =>
-      withPaths(file, (path) => outOf(repo, path)),
+      withPaths(file, (path) => relativeToPrefix(repo, path)),
     );
 
     return range.untracked
@@ -226,10 +241,10 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     current: Repo,
     ignoreWhitespace: boolean | undefined,
   ): Promise<ChangeSet> => {
-    const range = await rangeOf(repo.root, scope);
+    const range = await resolveRange(repo.root, scope);
 
     const [changed, numstat] = await Promise.all([
-      changedOf(repo, scope, current),
+      listChanged(repo, scope, current),
       git(repo.root, [
         "diff",
         "--numstat",
@@ -266,7 +281,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     const { root } = repo;
 
     const changed = new Map(
-      (await changedOf(repo, scope, current)).map((file) => [file.path, file]),
+      (await listChanged(repo, scope, current)).map((file) => [file.path, file]),
     );
 
     const wanted = [...new Set(paths)].flatMap((path) => {
@@ -275,7 +290,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       return file === undefined ? [] : [file];
     });
 
-    const range = await rangeOf(root, scope);
+    const range = await resolveRange(root, scope);
     const entries = new Map<string, PatchEntry & { readonly fresh: boolean }>();
 
     const read = async (files: readonly Changed[], limit: number): Promise<Ran> =>
@@ -314,7 +329,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       for (const entry of await readPatches(tracked, read, (file) =>
         sha256(`${file.path}\u0000`),
       )) {
-        const path = outOf(repo, entry.path);
+        const path = relativeToPrefix(repo, entry.path);
         entries.set(path, { ...entry, path, fresh: true });
       }
     }
@@ -327,7 +342,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
     if (ran.code !== 0 && !ran.truncated) return { kind: "absent" };
 
-    return sideOf(ran.stdout, ran.truncated);
+    return decodeSide(ran.stdout, ran.truncated);
   };
 
   const worktree = async (root: string, path: string): Promise<GitFileSide> => {
@@ -339,7 +354,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
     if (bytes === null) return { kind: "absent" };
 
-    return sideOf(bytes.subarray(0, PATCH_LIMIT), bytes.byteLength > PATCH_LIMIT);
+    return decodeSide(bytes.subarray(0, PATCH_LIMIT), bytes.byteLength > PATCH_LIMIT);
   };
 
   const write = async (
@@ -355,7 +370,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
     if (takesIndex && (await exists(join(repo.gitDir, "index.lock"))))
       return { kind: "busy", runs: [] };
-    const before = await statusOf(repo);
+    const before = await readRepository(repo);
 
     if (expect !== undefined && expect !== before.revision)
       return { kind: "stale", revision: before.revision };
@@ -378,14 +393,14 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       };
     }
 
-    const after = await statusOf(repo);
+    const after = await readRepository(repo);
 
     return moves === "revision" && after.revision === before.revision
       ? { kind: "unchanged" }
       : { kind: "applied", revision: after.revision };
   };
 
-  const watcher = createWatcher(env.cwd, status, repository);
+  const watcher = createWatcher(env.cwd, status, repository, forget);
 
   const follow = <T>(read: (current: GitStatus) => Promise<T>): AsyncIterable<T> =>
     feed<T>((sink) => {
@@ -446,7 +461,7 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
     async changes(scope, diff) {
       const repo = await required();
 
-      return changesAt(repo, scope, await statusOf(repo), diff?.ignoreWhitespace);
+      return changesAt(repo, scope, await readRepository(repo), diff?.ignoreWhitespace);
     },
     watchChanges: (scope, diff) =>
       follow(inRepo((repo, current) => changesAt(repo, scope, current, diff?.ignoreWhitespace))),
@@ -456,12 +471,12 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
       ),
     async contents(path, scope) {
       const repo = await required();
-      const current = await statusOf(repo);
+      const current = await readRepository(repo);
       const root = repo.root;
 
       const from = into(
         repo,
-        (await changedOf(repo, scope, current)).find((file) => file.path === path)?.from ?? path,
+        (await listChanged(repo, scope, current)).find((file) => file.path === path)?.from ?? path,
       );
 
       const at = into(repo, path);
@@ -668,76 +683,6 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
   };
 }
 
-function createWatcher(
-  cwd: string,
-  read: () => Promise<GitStatus>,
-  repository: () => Promise<Repository | null>,
-): { subscribe(listener: (status: GitStatus) => void, fail: (error: unknown) => void): Disposer } {
-  const listeners = new Set<(status: GitStatus) => void>();
-  let stop: Disposer | null = null;
-  let checking = false;
-  let again = false;
-
-  const check = async (): Promise<void> => {
-    if (checking) {
-      again = true;
-
-      return;
-    }
-
-    checking = true;
-
-    do {
-      again = false;
-      const current = await read().catch(() => null);
-
-      if (current !== null) for (const listener of listeners) listener(current);
-    } while (again && listeners.size > 0);
-
-    checking = false;
-  };
-
-  const start = (): Disposer => {
-    const timer = setInterval(() => void check(), POLL_MS);
-    const disposers: Disposer[] = [() => clearInterval(timer)];
-    let stopped = false;
-
-    disposers.push(watchTree(cwd, { delay: WATCH_DELAY_MS, poll: null }, () => void check()));
-    void repository().then((repo) => {
-      if (stopped || repo === null) return;
-      const inside = relative(cwd, repo.gitDir);
-
-      if (inside.startsWith("..") || isAbsolute(inside))
-        disposers.push(
-          watchTree(repo.gitDir, { delay: WATCH_DELAY_MS, poll: null }, () => void check()),
-        );
-    });
-
-    return () => {
-      stopped = true;
-
-      for (const dispose of disposers) dispose();
-    };
-  };
-
-  return {
-    subscribe(listener, fail) {
-      listeners.add(listener);
-      stop ??= start();
-      void read().then(listener, fail);
-
-      return () => {
-        listeners.delete(listener);
-
-        if (listeners.size === 0) {
-          stop?.();
-          stop = null;
-        }
-      };
-    },
-  };
-}
-
 async function readStatus(
   repo: Repository,
   porcelain: string,
@@ -829,13 +774,13 @@ async function readStatus(
     head: head === null ? null : asId<"git-commit">(head),
     branch,
     upstream: upstream === null ? null : { name: upstream, ahead, behind },
-    revision: revisionOf(
+    revision: asId<"git-revision">(
       sha256([porcelain, head ?? "", numstat.staged, numstat.unstaged, ...stamps].join("\u0000")),
     ),
-    staged: staged.map((file) => withPaths(file, (path) => outOf(repo, path))),
-    unstaged: unstaged.map((file) => withPaths(file, (path) => outOf(repo, path))),
-    untracked: untracked.map((path) => outOf(repo, path)),
-    conflicts: conflicts.map((path) => outOf(repo, path)),
+    staged: staged.map((file) => withPaths(file, (path) => relativeToPrefix(repo, path))),
+    unstaged: unstaged.map((file) => withPaths(file, (path) => relativeToPrefix(repo, path))),
+    untracked: untracked.map((path) => relativeToPrefix(repo, path)),
+    conflicts: conflicts.map((path) => relativeToPrefix(repo, path)),
   };
 }
 
@@ -843,7 +788,7 @@ function into(repo: Repository, path: string): string {
   return `${repo.prefix}${path}`;
 }
 
-function outOf(repo: Repository, path: string): string {
+function relativeToPrefix(repo: Repository, path: string): string {
   return path.startsWith(repo.prefix)
     ? path.slice(repo.prefix.length)
     : `${"../".repeat(repo.prefix.split("/").length - 1)}${path}`;
@@ -866,18 +811,10 @@ function splitFields(
   token: string,
   count: number,
 ): { readonly fields: readonly string[]; readonly rest: string } {
-  const fields: string[] = [];
-  let at = 0;
+  const parts = token.split(" ");
+  const fields = parts.slice(0, Math.min(count, parts.length - 1));
 
-  for (let field = 0; field < count; field += 1) {
-    const space = token.indexOf(" ", at);
-
-    if (space < 0) break;
-    fields.push(token.slice(at, space));
-    at = space + 1;
-  }
-
-  return { fields, rest: token.slice(at) };
+  return { fields, rest: parts.slice(fields.length).join(" ") };
 }
 
 function parseBlame(path: string, output: string): BlameView {
@@ -950,10 +887,10 @@ async function untrackedEntry(target: string, path: string): Promise<PatchEntry>
 
   return text === null
     ? { path, status: "untracked", digest, kind: "binary" }
-    : { ...textEntry(path, "untracked", null, text), digest };
+    : textEntry(path, "untracked", null, text);
 }
 
-function sideOf(bytes: Uint8Array, truncated: boolean): GitFileSide {
+function decodeSide(bytes: Uint8Array, truncated: boolean): GitFileSide {
   if (bytes.includes(0)) return { kind: "binary" };
 
   if (truncated) return { kind: "truncated", head: new TextDecoder().decode(bytes) };

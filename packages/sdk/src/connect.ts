@@ -1,6 +1,6 @@
-import { IdentityChallengeSchema, isJson } from "@nyte-ai/schema";
-import type { CredentialSource, HostId, HostViewWire } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
+import { IdentityChallengeSchema, isJson, SdkError } from "@nyte-ai/schema";
+import type { CredentialSource, HostId, HostViewWire, Json } from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
 import type { ConnectOptions, Connection } from "@nyte-ai/core";
 import { createTransport, decodeError, decodeOutput } from "@nyte-ai/protocol";
 import type { Transport } from "@nyte-ai/protocol";
@@ -25,7 +25,25 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
   });
 
   if (options.expect !== undefined) await verifyIdentity(options.url, send, options.expect.hostId);
-  const first = await firstView(transport);
+  const { view: first, frames } = await firstView(transport);
+
+  try {
+    return await openClient(options, transport, first, frames, key, kept);
+  } catch (error) {
+    await frames.return?.();
+    throw error;
+  }
+}
+
+async function openClient(
+  options: ConnectOptions,
+  transport: Transport,
+  first: HostViewWire,
+  frames: AsyncIterator<Json>,
+  key: string | null,
+  kept: string | undefined,
+): Promise<Connection> {
+  const { credentials } = options;
   const answered = transport.host() ?? first.id;
 
   if (options.expect !== undefined && (answered !== options.expect.hostId || first.id !== answered))
@@ -52,6 +70,7 @@ export async function connect(options: ConnectOptions): Promise<Connection> {
     credential,
     journal,
     journaled,
+    hostFrames: frames,
   });
 }
 
@@ -80,8 +99,15 @@ function deviceToken(transport: Transport, kept: string | undefined): string {
   return token;
 }
 
-async function firstView(transport: Transport): Promise<HostViewWire> {
-  const frames = transport.watch("connection.watch", {})[Symbol.asyncIterator]();
+/**
+ * Reads the host's first view from a `connection.watch` it leaves open, its
+ * frames replayed from that first one, so the client's host watch continues
+ * this stream instead of opening a second.
+ */
+async function firstView(
+  transport: Transport,
+): Promise<{ readonly view: HostViewWire; readonly frames: AsyncIterator<Json> }> {
+  const frames = transport.frames("connection.watch", {})[Symbol.asyncIterator]();
 
   try {
     const next = await frames.next();
@@ -89,10 +115,32 @@ async function firstView(transport: Transport): Promise<HostViewWire> {
     if (next.done === true)
       throw new SdkError("unavailable", "The host closed the connection before it answered.");
 
-    return decodeOutput("connection.watch", next.value.data);
-  } finally {
+    return {
+      view: decodeOutput("connection.watch", next.value),
+      frames: replayFirst(next.value, frames),
+    };
+  } catch (error) {
     await frames.return?.();
+    throw error;
   }
+}
+
+function replayFirst(first: Json, rest: AsyncIterator<Json>): AsyncIterator<Json> {
+  let replayed = false;
+
+  return {
+    async next() {
+      if (replayed) return rest.next();
+      replayed = true;
+
+      return { done: false, value: first };
+    },
+    async return() {
+      await rest.return?.();
+
+      return { done: true, value: undefined };
+    },
+  };
 }
 
 async function verifyIdentity(url: string, send: typeof fetch, expected: HostId): Promise<void> {

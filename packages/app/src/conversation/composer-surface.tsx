@@ -21,12 +21,11 @@ import {
   composerReference,
   composerReferencesPlugin,
 } from "./composer-document.ts";
-import { messageDraftText } from "./message-references.ts";
 import type { MentionFile } from "./message-references.ts";
 import { openConversationLink } from "./external-link.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import type { ReferenceOpener } from "./reference-opener.tsx";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 const URL_PATTERN =
   /((https?:\/\/(www\.)?)|(www\.))[-\p{L}\p{N}@:%._+~#=]{1,256}\.[\p{L}\p{N}]{1,6}(?:[-\p{L}\p{N}()@:%_+.~#?&//=]*[\p{L}\p{N}()@_~#?&//=])?/gu;
@@ -173,6 +172,7 @@ function ReferenceChip({
   );
 }
 
+/** Tiptap names every editor a textbox; a read-only message is text, and its row stays clickable. */
 export function useComposerSurface({
   text,
   files,
@@ -224,7 +224,6 @@ export function useComposerSurface({
           ...surface,
           editable: false,
           editorProps: {
-            // Tiptap names every editor a textbox; a message is text, and its row stays clickable.
             attributes: {
               role: "",
               class: props(composerStyles.readOnly).className ?? "",
@@ -249,9 +248,7 @@ function ReadOnlyMessage({ draft }: { readonly draft: string }) {
 }
 
 export function ComposerReadOnly({ text }: { readonly text: string }) {
-  const draft = messageDraftText(text)
-    .replaceAll(/\n{3,}/gu, "\n\n")
-    .replace(/^\n+|\n+$/gu, "");
+  const draft = text.replaceAll(/\n{3,}/gu, "\n\n").replace(/^\n+|\n+$/gu, "");
 
   return <ReadOnlyMessage key={draft} draft={draft} />;
 }

@@ -1,10 +1,11 @@
-import type { ByteReader, ExecutionCoverage, Owned } from "@nyte-ai/schema";
-import { memoryStore } from "@nyte-ai/core";
+import type { ExecutionCoverage, Owned } from "@nyte-ai/schema";
+import { memoryStore } from "@nyte-ai/core/store";
 import type { Listener, Store } from "@nyte-ai/core";
-import { decodeError, errorStatus, operations } from "@nyte-ai/protocol";
+import { decodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { listenFetch } from "../src/listen-fetch.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
+import { endless } from "./endless.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 
@@ -24,29 +25,9 @@ function post(listener: Listener, name: string, authorization: string): Promise<
   );
 }
 
-function endless(): ByteReader & { closes(): number } {
-  let closes = 0;
-  const closed = Promise.withResolvers<void>();
-
-  return {
-    size: null,
-    mime: null,
-    async *chunks() {
-      yield Uint8Array.of(7);
-      await closed.promise;
-    },
-    close: async () => {
-      closes += 1;
-      closed.resolve();
-    },
-    closes: () => closes,
-    [Symbol.asyncDispose]: async () => undefined,
-  };
-}
-
 describe("listenFetch", () => {
   it("serves the protocol with no socket, the token compared through Web Crypto", async () => {
-    const host = await open(fakeModels(), { operations: operations() });
+    const host = await open(fakeModels());
     cleanups.push(() => host.close());
 
     const listener = await listenFetch(host, {
@@ -78,7 +59,6 @@ describe("listenFetch", () => {
     const covered: ExecutionCoverage[] = [];
 
     const host = await open(fakeModels(), {
-      operations: operations(),
       execution: {
         kind: "dispatch",
         dispatch: async ({ session }) => {
@@ -105,15 +85,14 @@ describe("listenFetch", () => {
     );
 
     cleanups.push(() => listener.close());
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
 
     expect(covered).toEqual([]);
     expect(dispatched).toEqual([session.id]);
   });
 
   it("fails job.output for a job this instance does not hold before any stream opens (§42aa)", async () => {
-    const host = await open(fakeModels(), { operations: operations() });
+    const host = await open(fakeModels());
     cleanups.push(() => host.close());
 
     const listener = await listenFetch(host, {
@@ -127,7 +106,10 @@ describe("listenFetch", () => {
       new Request("http://host.test/job.output", {
         method: "POST",
         headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: host.kernel.defaultWorkspace, job: "no-such-job" }),
+        body: JSON.stringify({
+          workspace: (await host.workspaces.list())[0]?.id,
+          job: "no-such-job",
+        }),
       }),
     );
 
@@ -151,7 +133,7 @@ describe("listenFetch", () => {
       },
     };
 
-    const host = await open(fakeModels(), { store, operations: operations() });
+    const host = await open(fakeModels(), { store });
     cleanups.push(() => host.close());
 
     const listener = await listenFetch(host, {

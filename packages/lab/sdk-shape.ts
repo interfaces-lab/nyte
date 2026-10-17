@@ -12,9 +12,10 @@
  * Run `pnpm --dir packages/lab typecheck` to check this reference along with
  * the lab browser, host and video code.
  */
-import { definePart, isPart, memoryStore, text, tool } from "@nyte-ai/core";
+import { definePart, isPart, text, tool } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
 import { asId, asSeq, standard } from "@nyte-ai/schema";
-import { createSendJournal, sdk, SdkError } from "@nyte-ai/sdk";
+import { createSendJournal, pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
 import type {
   Connection,
   ConnectOptions,
@@ -43,7 +44,6 @@ import type {
 } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 
-
 /**
  * A plugin accepts Standard Schema validators. TypeBox crosses that boundary
  * through `standard`, and schema inference supplies the tool's arguments.
@@ -51,7 +51,6 @@ import { Type } from "typebox";
 export const labelSchema = standard(Type.Object({ label: Type.String({ minLength: 1 }) }));
 
 export type Label = NonNullable<(typeof labelSchema)["~standard"]["types"]>["output"];
-
 
 /**
  * Node composes a host with `sdk.open`. The host supplies local execution,
@@ -106,21 +105,26 @@ export async function readProviderUsage(connection: Connection, provider: string
   return connection.models.usage();
 }
 
-
 /**
+ * A chat starts with its first message: `sessions.start` creates the session
+ * and admits that message in one commit, so no session exists without one.
+ * Until then the chat is the client's draft, stored and synced nowhere.
+ * `id` keys the draft and makes the start idempotent: the same id and input
+ * return the same start, and other input under a taken id is refused as
+ * invalid: that chat already exists. The receipt and the first message share
+ * that id.
+ * Start resolves once the session's before_send hooks decided the message;
+ * a refusal removes the session and throws.
+ *
  * A Session extends the main Head and adds management, heads, runs,
  * receipts and parts. Directory rows use `id`; handles use `id` and
- * `sessionId`. A head name is branded at the boundary.
- *
- * Configure takes a ConfigurationPatch. A send can pin its own exact
+ * `sessionId`. A head name is branded at the boundary. Configure takes a
+ * ConfigurationPatch, and a start or send can pin its own exact
  * Configuration. `thinking` names effort, and `agent` selects a declared
- * agent. No parallel messages, runs or heads namespaces exist on Connection.
+ * agent. Sessions, heads, runs and messages hang off one Connection tree.
  */
-export async function startSession(connection: Connection, name: string): Promise<Session> {
-  const session = await connection.sessions.create({ name });
-  await session.send("Explain the current change.", { delivery: "queue" });
-
-  return session;
+export async function startSession(connection: Connection, name: string) {
+  return connection.sessions.start({ name, content: "Explain the current change." });
 }
 
 /**
@@ -141,6 +145,8 @@ export async function retrySend(session: Session, savedId: string) {
 /**
  * Editing replaces a MessageId with the new input. A landed edit can stop
  * the active run, move history and retain or summarize the abandoned path.
+ * It is the one way to rewrite a chat's first message: main never moves
+ * before that message on its own, since the chat would be empty.
  * `expect` comes from a current view. When its revision is null, read again
  * before editing so the mutation keeps its concurrency check.
  */
@@ -177,10 +183,12 @@ export async function forkHead(session: Session, source: Head, name: string) {
 }
 
 /**
- * The view owns conversation order, turns, execution, configuration,
- * background work, changes and the catalog. Idle carries lastRun; a live
- * execution carries run and phase. Read history before a MessageId when a
- * bounded tail needs older messages. Tree nodes expose the commit DAG.
+ * The view owns conversation order, the turns of its messages, the head's
+ * summed usage, execution, configuration, background work, changes and the
+ * catalog. Idle carries lastRun; a live execution carries run and phase. Read
+ * history before a MessageId when a bounded tail needs older messages and
+ * their turns, or watch through `pagedViews`, whose `earlier` pages them into
+ * the views. Tree nodes expose the commit DAG.
  */
 export async function readConversation(head: Head) {
   const view = await head.view({ tail: 100 });
@@ -196,6 +204,16 @@ export async function readConversation(head: Head) {
   return { view, answers, tools };
 }
 
+export async function readOlderMessages(head: Head) {
+  const views = pagedViews(head, { tail: 50 });
+
+  for await (const view of views) {
+    if ((await views.earlier(50)) === 0) return view.messages;
+  }
+
+  return [];
+}
+
 /** Runs and reacquired receipts bind without I/O, just like sessions. */
 export function reacquire(session: Session, runId: string, receiptId: string) {
   return {
@@ -203,7 +221,6 @@ export function reacquire(session: Session, runId: string, receiptId: string) {
     receipt: session.receipt(asId<"receipt">(receiptId)),
   };
 }
-
 
 /**
  * A part definition owns a state schema, action schemas and a fallback.
@@ -238,7 +255,6 @@ export async function showNote(session: Session): Promise<Part<typeof note>> {
 
   return part;
 }
-
 
 /**
  * Workspaces register targets and return a WorkspaceId. Inspect reveals
@@ -287,6 +303,24 @@ export async function readGit(workspace: Workspace) {
 }
 
 /**
+ * GitHub goes through the serving machine's `gh`: the host serves its one
+ * login as `connection.github`, and a workspace's `github` the repository its
+ * remotes name and the checked-out branch's pull request with its check
+ * rollup. Missing `gh`, a signed-out CLI and a folder without a GitHub remote
+ * are states and outcomes, not failures.
+ */
+export async function openPullRequest(workspace: Workspace) {
+  const capability = await workspace.github();
+
+  if (capability.kind !== "available") return capability;
+  const state = await capability.api.state();
+
+  if (state.pullRequest.kind !== "none") return state;
+
+  return capability.api.createPullRequest({ title: "Fix tab close", body: "Why it changed." });
+}
+
+/**
  * Jobs start through workspace.jobs or an invocation environment. A Job
  * exposes input, output frames, resize, idle, settled and stop. Job directory
  * rows come from workspace.jobs.list/watch. Output frames keep
@@ -315,7 +349,6 @@ export async function readBrowser(workspace: Workspace) {
   }
 }
 
-
 /**
  * Core scans resources once per workspace generation. Plugins receive
  * inputs with user/project files, skills, context files and prompt sources.
@@ -328,27 +361,32 @@ export function readResources(api: PluginApi<"core">): Resources {
 
 /**
  * An EnvironmentProvider owns inspect and attach for one target kind. Its
- * ExecutionEnv owns cwd, files, exec and close. Optional git, snapshots and
- * browser capabilities remain absent when unsupported. wrapEnv can add a
- * capability for a desktop without changing a tool's contract.
+ * ExecutionEnv owns cwd, files, exec and close. Optional git, snapshots,
+ * worktrees and browser capabilities remain absent when unsupported.
+ * Worktrees back `sessions.start({ isolation: "worktree" })`: the chat gets a
+ * workspace of its own on a new branch, removed with the chat. wrapEnv can add
+ * a capability for a desktop without changing a tool's contract.
  */
 export type Environment = {
   readonly provider: EnvironmentProvider;
   readonly attached: ExecutionEnv;
 };
 
-
 /**
  * Tools declare Standard Schema parameters, an optional output schema, a
- * class and replay policy. Results use kind text/file, typed output and
- * optional part ids. A tool invocation receives the real session,
- * connection, workspace and environment, plus progress and tool access.
+ * class, workspace effects, whether a permissions policy may hold a call
+ * (`approval`) and replay policy. Results use kind text/file,
+ * typed output and optional part ids. A tool invocation receives the real
+ * session, connection, workspace and environment, plus progress and tool
+ * access.
  */
 export const labelTool: ToolDefinition<Label> = {
   name: "reference_label",
   description: "Return a label.",
   parameters: labelSchema,
   class: () => ({ kind: "custom", label: "Label" }),
+  effects: "none",
+  approval: "never",
   replay: "safe",
   async execute(input) {
     return { content: [{ kind: "text", text: input.label }] };
@@ -364,7 +402,6 @@ export async function durableLabel(invocation: ToolInvocation): Promise<Json> {
   return invocation.memo("label", () => ({ at: invocation.now(), label: "Review" }));
 }
 
-
 /**
  * A Plugin is a plain object checked with satisfies, with static contribute
  * arrays, hooks and optional activate. Registries add static or derived
@@ -374,6 +411,10 @@ export async function durableLabel(invocation: ToolInvocation): Promise<Json> {
  * A command's caller is the principal whose authority its api uses. Agents
  * select model, prompt and allowed tool names. Settings declare schemas and
  * scope; a plugin reads its values through its own settings registry.
+ *
+ * `approve` decides a call another agent runtime runs outside the loop; a
+ * runtime plugin asks every active approver through `api.approve`, and the
+ * first denial stands.
  */
 export const referencePlugin = {
   id: "lab-reference",
@@ -398,6 +439,8 @@ export const referencePlugin = {
       },
     ],
   },
+  approve: async (call) =>
+    call.class.kind === "shell" ? { kind: "deny", reason: "No commands." } : { kind: "allow" },
   hooks: {
     before_tool: () => ({ action: "continue" }),
   },
@@ -407,14 +450,15 @@ export const referencePlugin = {
  * Client plugins declare renderers for a part kind and framework, palette
  * commands, settings and keybindings. api.session is the one on screen,
  * or null. App lifecycle hooks and before_submit belong to the client side;
- * core hooks and environment access cannot be used by a client plugin.
+ * before_submit sees `session: null` for a draft that starts a chat, and
+ * session_opened fires once a started chat is open. Core hooks and
+ * environment access cannot be used by a client plugin.
  */
 export const noteRenderer: Renderer<typeof note, string> = {
   kind: note,
   framework: "text",
   render: ({ state }) => state.label,
 };
-
 
 /**
  * schema owns records and validators. core owns handles, composition,
@@ -428,7 +472,6 @@ export const noteRenderer: Renderer<typeof note, string> = {
  * its side-specific Plugin type from @nyte-ai/plugin/core or /client.
  */
 export type SdkRoot = typeof sdk;
-
 
 /**
  * A Store opens one StoreConnection with content-addressed objects, blobs
@@ -463,12 +506,12 @@ export async function inspectSession(
   return events;
 }
 
-
 /**
- * Durable events carry seq and at. The same fold builds host and SDK views.
+ * Durable events carry seq and at. The host's fold builds every view; a
+ * client of another process applies the changes the host sends after the
+ * first whole view, and a reconnect starts again from the current view.
  * Part-created/updated/settled and answered events own part state; run
- * events own execution. A patch is transient text or progress, so resumed
- * streams seed their current state before yielding new patches.
+ * events own execution. A patch is transient text or progress.
  *
  * SdkError is the one acquisition, defect and transport error. Domain
  * outcomes remain values. Catch at the application boundary and keep the

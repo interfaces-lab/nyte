@@ -2,10 +2,10 @@ import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
 import { placeLabel, queuedCount, queueRows } from "../../src/model/queue.ts";
 import type { ScheduleSpec } from "../fixture/view.ts";
-import { followed, viewOf } from "../fixture/view.ts";
+import { followed, buildView } from "../fixture/view.ts";
 
 function label(schedule: ScheduleSpec, covered = true): string | null {
-  const view = viewOf((v) =>
+  const view = buildView((v) =>
     v
       .turn("t1", (t) => t.user("go"))
       .live()
@@ -19,7 +19,7 @@ function label(schedule: ScheduleSpec, covered = true): string | null {
 
 describe("labels follow the schedule, never the delivery", () => {
   test("a steer scheduled for the next turn is labelled by its schedule", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .live("r1")
         .pending("use tabs", { schedule: { kind: "next-turn", reason: "configuration" } }),
@@ -46,7 +46,7 @@ describe("labels follow the schedule, never the delivery", () => {
   });
 
   test("an unsent message is sending, or retrying with its reason", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .unsent("a")
         .unsent("b", { retrying: { at: 9_000, reason: "offline" } })
@@ -62,7 +62,7 @@ describe("labels follow the schedule, never the delivery", () => {
 
 describe("rows", () => {
   test("reports are never the user's rows", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go").ended("completed"))
         .pending("mine", { schedule: { kind: "next-turn", reason: "idle" } })
@@ -74,7 +74,7 @@ describe("rows", () => {
   });
 
   test("an action shows its label and is not editable", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .pending(
           "a long prebuilt prompt",
@@ -90,7 +90,7 @@ describe("rows", () => {
   });
 
   test("rows keep inbox order and mark the one being edited", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .pending("one", { schedule: { kind: "next-turn", reason: "run-ended" } }, { id: "m1" })
         .pending("two", { schedule: { kind: "joined", run: "run-1" } }, { id: "m2" })
@@ -110,7 +110,7 @@ describe("rows", () => {
   });
 
   test("the footer counts rows waiting for a later run, not the ones joining this run", () => {
-    const view = viewOf((v) =>
+    const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
         .live()
@@ -122,10 +122,10 @@ describe("rows", () => {
     expect(queuedCount(queueRows(followed(view), null))).toBe(1);
   });
 
-  test("a file block in a queued message shows as its marker", () => {
-    const view = viewOf((v) =>
+  test("a file mention in a queued message shows as its marker", () => {
+    const view = buildView((v) =>
       v
-        .pending('look <file src="file:///w/a.ts">\nbody\n</file>', {
+        .pending("look @file:///w/a.ts", {
           schedule: { kind: "next-turn", reason: "idle" },
         })
         .live("run-1"),

@@ -1,3 +1,8 @@
+/**
+ * Specimens for the design site's foundation pages. Each one renders the live
+ * token through StyleX and prints the value from the source that declares it.
+ */
+
 import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -7,11 +12,6 @@ import { create, props, when } from "@stylexjs/stylex";
 import type { ReactNode } from "react";
 import { atDefaultSize, declaredToken, type DeclaredToken } from "~/lib/design-tokens";
 import { motionRow } from "./markers.stylex";
-
-/*
- * Specimens for the design site's foundation pages. Each one renders the live
- * token through StyleX and prints the value from the source that declares it.
- */
 
 type RoleName = keyof typeof platformColors.light;
 

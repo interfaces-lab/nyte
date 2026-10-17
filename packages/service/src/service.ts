@@ -4,18 +4,27 @@ import process from "node:process";
 import { ConnectRuntime, hostShare, machineName } from "@nyte-ai/connect/host";
 import type { ConnectShare, HostConnectConfig } from "@nyte-ai/connect/host";
 import type { Host, Listener } from "@nyte-ai/sdk";
+import { Value } from "typebox/value";
+import { serviceBuild } from "./build.ts";
+import { IDLE_GRACE_MS, Lifetime, REAL_TIMERS, terminate } from "./lifetime.ts";
+import type { LifetimeOptions } from "./lifetime.ts";
 import { portConflict, probePort, SERVICE_HOSTNAME } from "./port.ts";
 import { acquireLock, removeRegistration, writeRegistration } from "./registration.ts";
 import type { Registration } from "./registration.ts";
-import { SERVICE_ROUTES } from "./routes.ts";
+import { AttachmentSchema, SERVICE_ROUTES } from "./routes.ts";
 import type { ServiceEvent } from "./routes.ts";
+import { unitInstalled } from "./supervisor.ts";
 
 export interface StartServiceOptions {
   readonly open: () => Promise<Host>;
   readonly home: string;
   readonly port: number;
   readonly version: string;
+  /** The id of the code the service runs, which goes into its build; see `serviceBuild`. */
+  readonly code?: string;
   readonly connect: HostConnectConfig | undefined;
+  /** When the service stops on its own; by default `IDLE_GRACE_MS`, real timers, and `terminate`. */
+  readonly lifetime?: Partial<LifetimeOptions>;
 }
 
 export interface RunningService {
@@ -62,6 +71,13 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
   });
 
   const sharing = new Sharing(connect, hostShare(host));
+
+  const lifetime = new Lifetime(
+    { grace: IDLE_GRACE_MS, timers: REAL_TIMERS, idle: terminate, ...options.lifetime },
+    () => working(host),
+    async () => (await unitInstalled(home)) || (await connect.view()).kind === "linked",
+  );
+
   let listener: Listener | undefined;
 
   try {
@@ -79,7 +95,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
           if (presented === null || !timingSafeEqual(sha256(presented), digest))
             return Response.json({ message: "Unauthorized" }, { status: 401 });
 
-          return route(request, pathname, connect, sharing);
+          return route(request, pathname, connect, sharing, lifetime);
         },
       })
       .catch(async (cause: unknown) => {
@@ -94,7 +110,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       url: listener.address,
       token,
       pid: process.pid,
-      version: options.version,
+      version: await serviceBuild(options.version, options.code),
       hostId: host.hostId,
     };
 
@@ -107,6 +123,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       close() {
         closing ??= (async () => {
           await removeRegistration(home, registration.pid);
+          lifetime.close();
           sharing.close();
           await connect.close();
           await opened.close();
@@ -119,6 +136,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
     };
   } catch (cause) {
     await listener?.close();
+    lifetime.close();
     sharing.close();
     await connect.close();
     await host.close();
@@ -133,7 +151,36 @@ async function route(
   pathname: string,
   connect: ConnectRuntime,
   sharing: Sharing,
+  lifetime: Lifetime,
 ): Promise<Response> {
+  if (request.method === "GET" && pathname === SERVICE_ROUTES.attach) {
+    const query = new URL(request.url).searchParams;
+
+    const attachment = {
+      pid: Number(query.get("pid")),
+      startedAt: Number(query.get("startedAt")),
+      build: query.get("build"),
+    };
+
+    return Value.Check(AttachmentSchema, attachment)
+      ? lifetime.attach(attachment, request.signal)
+      : Response.json(
+          { message: "An attachment names its pid, start and build." },
+          { status: 400 },
+        );
+  }
+
+  if (request.method === "GET" && pathname === SERVICE_ROUTES.clients)
+    return Response.json(await lifetime.clients());
+
+  if (request.method === "POST" && pathname === SERVICE_ROUTES.retire) {
+    const busy = await lifetime.retire(Number(new URL(request.url).searchParams.get("pid")));
+
+    return busy === undefined
+      ? new Response(null, { status: 202 })
+      : Response.json(busy, { status: 409 });
+  }
+
   if (request.method === "GET" && pathname === SERVICE_ROUTES.connect)
     return Response.json(await connect.view());
 
@@ -147,7 +194,7 @@ async function route(
     try {
       await connect.unlink();
     } catch (cause) {
-      return Response.json({ message: messageOf(cause) }, { status: 409 });
+      return Response.json({ message: describeError(cause) }, { status: 409 });
     }
 
     return Response.json(await connect.view());
@@ -252,7 +299,7 @@ class Sharing {
       if (this.#holders === 0 || this.#closed) return;
       await this.#connect.serve(this.#share);
     } catch (cause) {
-      this.#emit({ kind: "error", message: messageOf(cause) });
+      this.#emit({ kind: "error", message: describeError(cause) });
     }
   }
 
@@ -261,16 +308,40 @@ class Sharing {
       await this.#connect.cancel();
       await this.#connect.stop();
     } catch (cause) {
-      this.#emit({ kind: "error", message: messageOf(cause) });
+      this.#emit({ kind: "error", message: describeError(cause) });
     }
   }
+}
 
+/** Whether the host has work an idle stop would interrupt: a job (pty or not) still running, or a run driving or retrying in any session. A run waiting on an answer is durable and resumes in the next service. */
+async function working(host: Host): Promise<boolean> {
+  for (const workspace of await host.workspaces.list()) {
+    const jobs = await host.workspace(workspace.id).jobs.list();
+
+    if (jobs.some((job) => job.state.kind === "running")) return true;
+  }
+
+  const parents = { kind: "all" } as const;
+  let page = await host.sessions.list({ parents });
+
+  for (;;) {
+    const driving = page.items.some((session) =>
+      session.heads.some(
+        (head) => head.execution.kind === "live" || head.execution.kind === "retrying",
+      ),
+    );
+
+    if (driving) return true;
+
+    if (page.next === null) return false;
+    page = await host.sessions.list({ parents, cursor: page.next });
+  }
 }
 
 function sha256(text: string): Buffer {
   return createHash("sha256").update(text).digest();
 }
 
-function messageOf(error: unknown): string {
+function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

@@ -1,3 +1,3 @@
-import { dev } from "../src/dev-log.ts";
+import { dev } from "../src/util/dev-log.ts";
 
 if (process.env.NYTE_DEV === undefined) dev.off();

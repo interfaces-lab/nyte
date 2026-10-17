@@ -1,7 +1,7 @@
 import type { NativeOutputEvent } from "./wire.ts";
 import { envFlagEnabled } from "./env.ts";
 
-export const ALLOW_USAGE_CREDITS_ENV = "NYTE_CLAUDE_CODE_ALLOW_USAGE_CREDITS";
+const ALLOW_USAGE_CREDITS_ENV = "NYTE_CLAUDE_CODE_ALLOW_USAGE_CREDITS";
 
 export type RateLimitInfo = NonNullable<
   Extract<NativeOutputEvent, { type: "rate_limit_event" }>["rate_limit_info"]

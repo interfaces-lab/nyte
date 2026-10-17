@@ -1,5 +1,5 @@
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 /** Settings › Models geometry beyond the shared settings patterns. */
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { settings } from "../theme/schema.stylex.ts";
@@ -78,8 +78,10 @@ export const modelsSettingsStyles = create({
     borderColor: role.borderSecondaryTranslucent,
     backgroundColor: role.bgBase,
   },
-  // The code is the one thing to read here: mono, wide-tracked, and selected
-  // whole so a click cannot grab half of it.
+  /**
+   * The code is the one thing to read here: mono, wide-tracked, and selected
+   * whole so a click cannot grab half of it.
+   */
   deviceCode: {
     flexShrink: 0,
     color: role.contentPrimary,
@@ -98,7 +100,7 @@ export const modelsSettingsStyles = create({
     color: role.contentPrimary,
     textDecorationLine: {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "underline" },
+      ":hover": { [media.hover]: "underline" },
     },
     textUnderlineOffset: 3,
   },

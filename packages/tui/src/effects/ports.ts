@@ -1,7 +1,10 @@
 import type {
   BlobId,
+  CommandInfo,
   CommandOutcome,
   ConfigureOutcome,
+  GitHubAccountState,
+  GitHubState,
   HostView,
   Json,
   McpChange,
@@ -25,9 +28,12 @@ import type {
   Thinking,
   TreeView,
   UserContent,
+  WorkspaceCommandOutcome,
   WorkspaceId,
 } from "@nyte-ai/sdk";
+import type { ApprovalDecision } from "@nyte-ai/plugin/approvals/schema";
 import type { QuestionAnswers } from "@nyte-ai/plugin/question/schema";
+import type { Clock } from "@opentui/core";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { MentionFile } from "../model/completion.ts";
@@ -36,8 +42,7 @@ import type { ComposerPort, ScrollPort } from "../model/native.ts";
 import type { Selection } from "../model/state.ts";
 import type { McpAction } from "../model/effect.ts";
 import type { LoginDriver } from "../services/auth.ts";
-
-export type { ComposerPort, ScrollPort };
+import type { SettingsRead } from "../services/settings.ts";
 
 export interface Ports {
   readonly host: HostPort;
@@ -45,6 +50,7 @@ export interface Ports {
   readonly composer: Handle<ComposerPort>;
   readonly scroll: Handle<ScrollPort>;
   readonly settings: SettingsPort;
+  readonly firstFrame: FirstFramePort;
   readonly plugins: PluginsPort;
   readonly shell: ShellPort;
   readonly files: FilesPort;
@@ -54,12 +60,20 @@ export interface Ports {
 
 export interface HostPort {
   session(id: SessionId): SessionPort;
-  create(input: {
-    readonly workspace: WorkspaceId | null;
-    readonly selection: Selection | null;
-  }): Promise<SessionId>;
+  workspace(id: WorkspaceId): WorkspacePort;
+  /** Registers `path`, or the folder the TUI opened in when `null`, as a workspace; with neither, resolves the host's default workspace. */
+  openFolder(path: string | null): Promise<WorkspaceId>;
+  /** Starts chat `id` with its first message; the same id and input start it once. A start that failed once it landed resolves as started; `taken` means an earlier start made chat `id` with other input. */
+  start(input: {
+    readonly id: SessionId;
+    readonly workspace: WorkspaceId;
+    readonly selection: Selection;
+    readonly content: UserContent;
+  }): Promise<
+    { readonly kind: "started"; readonly message: MessageId } | { readonly kind: "taken" }
+  >;
   rootSessions(): AsyncIterable<SessionInfo>;
-  catalog(): AsyncIterable<Pick<HostView, "catalog">>;
+  catalog(): AsyncIterable<Pick<HostView, "catalog" | "settings">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
   listModels(): Promise<ModelCatalogView>;
   accounts(provider: string | null): Promise<readonly ModelAccount[]>;
@@ -76,6 +90,10 @@ export interface HostPort {
     driver: LoginDriver,
   ): Promise<{ readonly provider: string; readonly name: string }>;
   hostPlugins(): Promise<HostView["plugins"]>;
+  /** The machine's `gh` login and the workspace on GitHub through the host, or `null` where the host serves no GitHub. */
+  github(
+    workspace: WorkspaceId,
+  ): Promise<{ readonly account: GitHubAccountState; readonly folder: GitHubState } | null>;
   mcp(workspace: WorkspaceId): Promise<McpView>;
   mcpAction(workspace: WorkspaceId, server: string, action: McpAction): Promise<McpChange>;
   mcpLogin(workspace: WorkspaceId, server: string, driver: LoginDriver): Promise<void>;
@@ -93,9 +111,23 @@ export interface HostPort {
   blob(id: string): AsyncIterable<Uint8Array>;
 }
 
+export interface WorkspacePort {
+  readonly id: WorkspaceId;
+  /** The plugin commands a new chat here would offer. */
+  commands(): Promise<readonly CommandInfo[]>;
+  /** Runs one of {@link WorkspacePort.commands} without a chat; a `prompt` outcome is the first message of the chat it starts. */
+  command(name: string, argument: string | null): Promise<WorkspaceCommandOutcome>;
+  /** The folder on this machine, or `null` when the workspace is elsewhere. */
+  cwd(): Promise<string | null>;
+  upload(bytes: Uint8Array): Promise<BlobId>;
+  mentions(signal: AbortSignal): Promise<readonly string[]>;
+}
+
 export interface SessionPort {
   readonly id: SessionId;
   watch(): AsyncIterable<SessionView>;
+  /** Pages up to `limit` older messages into the latest watch's views; resolves how many came, 0 at the session's first message. */
+  earlier(limit: number): Promise<number>;
   info(): Promise<SessionInfo>;
   workspace(): Promise<{ readonly id: WorkspaceId; readonly cwd: string | null }>;
   send(content: UserContent, options: SendOptions): Promise<{ readonly message: MessageId }>;
@@ -107,6 +139,8 @@ export interface SessionPort {
   ): Promise<"revised" | "landed-first" | "gone">;
   stopRun(run: RunId): Promise<"stopped" | "missing">;
   answer(part: PartId, answers: QuestionAnswers): Promise<boolean>;
+  /** Answers an approval; resolves null once it is taken, else why it was not. */
+  approve(part: PartId, decision: ApprovalDecision): Promise<string | null>;
   move(position: Position, options: MoveOptions): Promise<MoveOutcome>;
   tree(): Promise<TreeView>;
   compact(instructions: string | null): Promise<"started" | "busy" | "nothing">;
@@ -149,12 +183,21 @@ export interface TerminalPort {
   >;
   suspended<T>(work: () => Promise<T>): Promise<T>;
   open(target: string): void;
-  painted(): Promise<void>;
 }
 
 export interface SettingsPort {
-  read(cwd: string): Promise<ResolvedSettings>;
+  /** Reads synchronously, so the first frame draws with the user's settings; a file that fails to parse is left out and listed. */
+  read(cwd: string): SettingsRead;
   write(cwd: string, patch: SettingsPatch): Promise<ResolvedSettings>;
+  /** Resolves once every write asked for so far has landed, so a read after it sees them. */
+  settled(): Promise<void>;
+}
+
+/** What the first frame draws before the host answers: the model a new chat starts on. */
+export interface FirstFramePort {
+  /** Reads synchronously; `null` when no launch recorded one yet, or the record doesn't parse. */
+  read(): Selection | null;
+  write(selection: Selection): Promise<void>;
 }
 
 export interface PluginsPort {
@@ -190,10 +233,6 @@ export interface FilesPort {
   resolveMention(query: string, cwd: string): Promise<MentionFile | null>;
   readText(path: string): Promise<string | null>;
   editor(text: string, command: string | null): Promise<string | null>;
-}
-
-export interface Clock {
-  now(): number;
 }
 
 export interface CrashLog {

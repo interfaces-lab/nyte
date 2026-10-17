@@ -8,12 +8,7 @@ import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { revealLabel } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
-import {
-  useApplyPluginSetting,
-  useHostState,
-  usePluginSettingsProjection,
-  useSessionView,
-} from "../queries.ts";
+import { useApplyPluginSetting, usePluginSettingsProjection, useSessionView } from "../queries.ts";
 import { hostWatch, useWatch } from "../sdk.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
@@ -92,10 +87,6 @@ function loadFailure(plugin: PluginInfo): string | undefined {
   return errors.length === 0 ? undefined : errors.map((issue) => issue.message).join("\n");
 }
 
-function isToggle(setting: SettingInfo): boolean {
-  return typeof setting.value === "boolean";
-}
-
 function choiceKey(value: Json): string {
   return JSON.stringify(value);
 }
@@ -106,7 +97,10 @@ function present(plugin: PluginInfo, settings: readonly SettingInfo[]): PluginVi
   if (builtin === undefined && plugin.source === "builtin" && loadFailure(plugin) === undefined)
     return undefined;
 
-  const toggles = settings.filter((setting) => setting.owner === plugin.id && isToggle(setting));
+  const toggles = settings.filter(
+    (setting) => setting.owner === plugin.id && typeof setting.value === "boolean",
+  );
+
   const off = toggles.length > 0 && toggles.every((setting) => setting.value === false);
 
   return { name: plugin.id, icon: "box-3d", ...builtin, info: plugin, off };
@@ -191,7 +185,6 @@ function Overview({
   readonly inventory: CustomizeInventory;
   readonly onOpen: (plugin: PluginView) => void;
 }): ReactElement {
-  const host = useHostState();
   const reveal = nyte.host.revealPath;
   const openPluginsFolder = nyte.host.openPluginsFolder;
   const plugins = inventory.plugins.flatMap((plugin) => present(plugin, inventory.settings) ?? []);
@@ -259,7 +252,7 @@ function Overview({
                     <Button
                       iconOnly
                       icon="folder-open"
-                      aria-label={revealLabel(host.data?.platform)}
+                      aria-label={revealLabel(nyte.platform)}
                       onClick={() => void reveal({ path: parentPath(skill.location) })}
                     />
                   )
@@ -282,7 +275,7 @@ function PluginSetting({
   readonly disabled: boolean;
   readonly onApply: (value: Json) => void;
 }): ReactElement {
-  if (isToggle(setting))
+  if (typeof setting.value === "boolean")
     return (
       <SettingsSwitchRow
         title={setting.label}
@@ -337,7 +330,6 @@ function Detail({
   readonly onBack: () => void;
 }): ReactElement {
   const apply = useApplyPluginSetting(sessionId);
-  const host = useHostState();
   const reveal = nyte.host.revealPath;
   const { info } = plugin;
   const settings = inventory.settings.filter((setting) => setting.owner === info.id);
@@ -388,7 +380,7 @@ function Detail({
             <SettingsRow title="Location" description={path} controlWidth="wide">
               {reveal !== undefined && (
                 <Button variant="outline" icon="folder-open" onClick={() => void reveal({ path })}>
-                  {revealLabel(host.data?.platform)}
+                  {revealLabel(nyte.platform)}
                 </Button>
               )}
             </SettingsRow>
@@ -459,7 +451,7 @@ export function CustomizeSurface({
   const navigate = useNavigate();
   const projectSettings = usePluginSettingsProjection(sessionId);
 
-  const hostView = useWatch(hostWatch("host"));
+  const hostView = useWatch(hostWatch("host")).value;
   const view = useSessionView(sessionId);
 
   const inventory = {

@@ -1,5 +1,6 @@
-import process from "node:process";
 import type { SessionId } from "@nyte-ai/sdk";
+import { exitStatus, exitWithin, onEnding } from "./lifecycle.ts";
+import type { Ending } from "./lifecycle.ts";
 import { reportPrintOutcome } from "./print.ts";
 import type { PrintOutcome, PrintOutput } from "./print.ts";
 
@@ -10,7 +11,7 @@ interface PrintFailure {
   readonly cause: unknown;
 }
 
-/** Owns startup signals and emits the terminal record only after cleanup settles. */
+/** Owns startup signals and emits the terminal record only after cleanup settles. A signal bounds the rest of the command to the shutdown deadline. */
 export class PrintInvocation {
   readonly controller = new AbortController();
   sessionId: SessionId | undefined;
@@ -18,7 +19,8 @@ export class PrintInvocation {
   private readonly recordedFailures: PrintFailure[] = [];
   private readonly output: PrintOutput;
   private readonly json: boolean;
-  private received: "SIGINT" | "SIGTERM" | undefined;
+  private received: Ending | undefined;
+  private readonly stopEnding: () => void;
   private finishing: Promise<number | undefined> | undefined;
 
   /** Local diagnostics only. Unknown causes are never serialized into CLI output. */
@@ -29,14 +31,11 @@ export class PrintInvocation {
   constructor(options: { readonly json: boolean; readonly output: PrintOutput }) {
     this.json = options.json;
     this.output = options.output;
-    process.on("SIGINT", this.interrupt);
-    process.on("SIGTERM", this.terminate);
+    this.stopEnding = onEnding((ending) => this.cancel(ending));
   }
 
-  private readonly interrupt = (): void => this.cancel("SIGINT");
-  private readonly terminate = (): void => this.cancel("SIGTERM");
-
-  private cancel(signal: "SIGINT" | "SIGTERM"): void {
+  private cancel(signal: Ending): void {
+    exitWithin(exitStatus(signal));
     this.received ??= signal;
     this.controller.abort(new Error(`Received ${signal}`));
   }
@@ -47,8 +46,7 @@ export class PrintInvocation {
 
   /** The TUI installs and owns its own signal handlers. */
   handoff(): void {
-    process.off("SIGINT", this.interrupt);
-    process.off("SIGTERM", this.terminate);
+    this.stopEnding();
   }
 
   finish(outcome?: PrintOutcome): Promise<number | undefined> {
@@ -57,6 +55,7 @@ export class PrintInvocation {
     return this.finishing;
   }
 
+  /** Runs every cleanup, then settles the terminal record. A diagnostic sink that throws is recorded, never in the way of cleanup or the record; a signal received meanwhile turns the record `cancelled` but never hides a cleanup failure. */
   private async complete(outcome: PrintOutcome | undefined): Promise<number | undefined> {
     let terminal =
       this.received === undefined
@@ -76,7 +75,6 @@ export class PrintInvocation {
     if (this.recordedFailures.length > 0) {
       terminal = { kind: "failed", code: "cleanup_failed", message: "Resource cleanup failed." };
 
-      // A broken diagnostic sink must not prevent cleanup or the machine terminal record.
       try {
         this.output.error("Resource cleanup failed.");
       } catch (cause) {
@@ -84,7 +82,6 @@ export class PrintInvocation {
       }
     }
 
-    // A signal can arrive while cleanup is pending, but cannot hide cleanup failure.
     if (this.received !== undefined && terminal?.kind !== "failed") {
       terminal = { kind: "cancelled", signal: this.received };
     }

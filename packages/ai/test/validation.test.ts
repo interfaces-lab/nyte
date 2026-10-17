@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "vitest";
+import { describe, test, vi } from "vitest";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Tool, ToolCall } from "@nyte-ai/schema/model";
@@ -21,7 +21,7 @@ function createToolCallWithPlainSchema(
         value: schema,
       },
       required: ["value"],
-    } as Tool["parameters"],
+    },
   };
 
   const toolCall: ToolCall = {
@@ -36,7 +36,6 @@ function createToolCallWithPlainSchema(
 
 describe("validateToolArguments", () => {
   test("still validates when Function constructor is unavailable", () => {
-    const originalFunction = globalThis.Function;
     const tool: Tool = {
       name: "echo",
       description: "Echo tool",
@@ -48,17 +47,17 @@ describe("validateToolArguments", () => {
       type: "toolCall",
       id: "tool-1",
       name: "echo",
-      arguments: { count: "42" as unknown as number },
+      arguments: { count: "42" },
     };
 
-    globalThis.Function = (() => {
+    vi.stubGlobal("Function", () => {
       throw new EvalError("Code generation from strings disallowed for this context");
-    }) as unknown as FunctionConstructor;
+    });
 
     try {
       assert.deepEqual(validateToolArguments(tool, toolCall), { count: 42 });
     } finally {
-      globalThis.Function = originalFunction;
+      vi.unstubAllGlobals();
     }
   });
 
@@ -68,26 +67,26 @@ describe("validateToolArguments", () => {
       input: unknown;
       expected: unknown;
     }> = [
-      { schema: { type: "number" } as Tool["parameters"], input: "42", expected: 42 },
-      { schema: { type: "number" } as Tool["parameters"], input: true, expected: 1 },
-      { schema: { type: "number" } as Tool["parameters"], input: null, expected: 0 },
-      { schema: { type: "integer" } as Tool["parameters"], input: "42", expected: 42 },
-      { schema: { type: "boolean" } as Tool["parameters"], input: "true", expected: true },
-      { schema: { type: "boolean" } as Tool["parameters"], input: "false", expected: false },
-      { schema: { type: "boolean" } as Tool["parameters"], input: 1, expected: true },
-      { schema: { type: "boolean" } as Tool["parameters"], input: 0, expected: false },
-      { schema: { type: "string" } as Tool["parameters"], input: null, expected: "" },
-      { schema: { type: "string" } as Tool["parameters"], input: true, expected: "true" },
-      { schema: { type: "null" } as Tool["parameters"], input: "", expected: null },
-      { schema: { type: "null" } as Tool["parameters"], input: 0, expected: null },
-      { schema: { type: "null" } as Tool["parameters"], input: false, expected: null },
+      { schema: { type: "number" }, input: "42", expected: 42 },
+      { schema: { type: "number" }, input: true, expected: 1 },
+      { schema: { type: "number" }, input: null, expected: 0 },
+      { schema: { type: "integer" }, input: "42", expected: 42 },
+      { schema: { type: "boolean" }, input: "true", expected: true },
+      { schema: { type: "boolean" }, input: "false", expected: false },
+      { schema: { type: "boolean" }, input: 1, expected: true },
+      { schema: { type: "boolean" }, input: 0, expected: false },
+      { schema: { type: "string" }, input: null, expected: "" },
+      { schema: { type: "string" }, input: true, expected: "true" },
+      { schema: { type: "null" }, input: "", expected: null },
+      { schema: { type: "null" }, input: 0, expected: null },
+      { schema: { type: "null" }, input: false, expected: null },
       {
-        schema: { type: ["number", "string"] } as Tool["parameters"],
+        schema: { type: ["number", "string"] },
         input: "1",
         expected: "1",
       },
       {
-        schema: { type: ["boolean", "number"] } as Tool["parameters"],
+        schema: { type: ["boolean", "number"] },
         input: "1",
         expected: 1,
       },
@@ -132,7 +131,7 @@ describe("validateToolArguments", () => {
         type: "object",
         properties: { value: { $ref: "#/$defs/value" } },
         $defs: { value: { anyOf: [{ type: "number" }, { type: "null" }] } },
-      } as Tool["parameters"],
+      },
     };
     const toolCall: ToolCall = {
       type: "toolCall",
@@ -146,7 +145,7 @@ describe("validateToolArguments", () => {
 
   test("preserves a value that already matches a oneOf nullable union arm", () => {
     const { tool, toolCall } = createToolCallWithPlainSchema(
-      { oneOf: [{ type: "number" }, { type: "null" }] } as Tool["parameters"],
+      { oneOf: [{ type: "number" }, { type: "null" }] },
       null,
     );
 
@@ -155,24 +154,22 @@ describe("validateToolArguments", () => {
 
   test("still coerces nullable unions when the original value does not match any arm", () => {
     const { tool, toolCall } = createToolCallWithPlainSchema(
-      { anyOf: [{ type: "number" }, { type: "null" }] } as Tool["parameters"],
+      { anyOf: [{ type: "number" }, { type: "null" }] },
       "42",
     );
 
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: 42 });
   });
 
-  test("accepts null for nullable array schemas with items", () => {
+  test("accepts null for nullable array schemas with items in the generated validator, which the CSP fallback above bypasses", () => {
     const { tool, toolCall } = createToolCallWithPlainSchema(
-      { type: ["array", "null"], items: { type: "string" } } as Tool["parameters"],
+      { type: ["array", "null"], items: { type: "string" } },
       null,
     );
-    // The CSP test above selects TypeBox's process-wide interpreted fallback, so exercise the generated validator explicitly.
     // oxlint-disable-next-line no-implied-eval -- exercises TypeBox's generated validator
-    const generatedCheck = new Function(Compile(tool.parameters).Code())() as (
-      value: unknown,
-    ) => boolean;
+    const generatedCheck: unknown = new Function(Compile(tool.parameters).Code())();
 
+    assert.ok(generatedCheck instanceof Function);
     assert.equal(generatedCheck(toolCall.arguments), true);
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: null });
   });
@@ -182,9 +179,9 @@ describe("validateToolArguments", () => {
       schema: Tool["parameters"];
       input: unknown;
     }> = [
-      { schema: { type: "boolean" } as Tool["parameters"], input: "1" },
-      { schema: { type: "null" } as Tool["parameters"], input: "null" },
-      { schema: { type: "integer" } as Tool["parameters"], input: "42.1" },
+      { schema: { type: "boolean" }, input: "1" },
+      { schema: { type: "null" }, input: "null" },
+      { schema: { type: "integer" }, input: "42.1" },
     ];
 
     for (const testCase of failingCases) {

@@ -6,7 +6,7 @@ import {
   decodeSessionRecord,
   decodeWorkspaceRecord,
   parseSessionRef,
-} from "@nyte-ai/core";
+} from "@nyte-ai/core/store";
 import type { ModelRef, SessionId, Usage } from "@nyte-ai/schema";
 import type {
   UsageEntry,
@@ -18,7 +18,7 @@ import type {
   UsageWindow,
 } from "./usage-types.ts";
 import { cacheSavings, usageTokens } from "./usage-summary.ts";
-import { decodeEvent, numberOf, textOf } from "./store-rows.ts";
+import { decodeEvent, parseNumber, parseText } from "./store-rows.ts";
 
 export interface UsageRecord {
   readonly at: number;
@@ -61,17 +61,6 @@ function add(totals: UsageTotals, usage: Usage): UsageTotals {
     cost: totals.cost + usage.cost.total,
     cacheSavings: totals.cacheSavings + cacheSavings(usage),
   };
-}
-
-function reported(usage: Usage): boolean {
-  return (
-    usage.total > 0 ||
-    usage.input > 0 ||
-    usage.output > 0 ||
-    usage.cacheRead > 0 ||
-    usage.cacheWrite > 0 ||
-    usage.cost.total > 0
-  );
 }
 
 export const USAGE_EVENTS =
@@ -139,7 +128,17 @@ export function projectUsageReport(
       let spentInWindow = false;
 
       for (const spend of session.records) {
-        if (!reported(spend.usage)) continue;
+        const { usage } = spend;
+        const amounts = [
+          usage.total,
+          usage.input,
+          usage.output,
+          usage.cacheRead,
+          usage.cacheWrite,
+          usage.cost.total,
+        ];
+
+        if (!amounts.some((amount) => amount > 0)) continue;
         const day = localDay(spend.at);
 
         if (earliestDay === undefined || day < earliestDay) earliestDay = day;
@@ -229,8 +228,8 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
       .all();
 
     for (const row of refs) {
-      const name = textOf(row.name);
-      const body = textOf(row.body);
+      const name = parseText(row.name);
+      const body = parseText(row.body);
 
       if (name === null || body === null || !name.startsWith("workspaces/")) continue;
       const workspace = decodeWorkspaceRecord(decodeObject(body));
@@ -239,14 +238,14 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
         workspaces.set(
           workspace.id,
           workspace.target.kind === "local" && "path" in workspace.target
-            ? textOf(workspace.target.path)
+            ? parseText(workspace.target.path)
             : null,
         );
     }
 
     for (const row of refs) {
-      const name = textOf(row.name);
-      const body = textOf(row.body);
+      const name = parseText(row.name);
+      const body = parseText(row.body);
 
       if (name === null || body === null || name.split("/").length !== 2) continue;
       const id = parseSessionRef(name);
@@ -266,10 +265,14 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
     const models = new Map<SessionId, Map<string | null, ModelRef>>();
 
     for (const row of database.prepare(USAGE_EVENTS).iterate()) {
-      const session = parseSessionRef(`sessions/${textOf(row.session) ?? ""}`);
+      const session = parseSessionRef(`sessions/${parseText(row.session) ?? ""}`);
 
       if (session === null) throw new Error("Cannot read usage session.");
-      const event = decodeEvent(numberOf(row.seq), numberOf(row.at), textOf(row.event) ?? "");
+      const event = decodeEvent(
+        parseNumber(row.seq),
+        parseNumber(row.at),
+        parseText(row.event) ?? "",
+      );
       let heads = models.get(session);
 
       if (heads === undefined) {

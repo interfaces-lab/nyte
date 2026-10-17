@@ -1,7 +1,8 @@
 /**
  * The reviews someone created in the lab: a title, the base and head refs to
- * compare, every head the review has seen, the task and the worktree Nyte
- * codes in when it has one, and which heads you approved. Kept as one JSON
+ * compare, every head the review has seen, the core head holding each guide,
+ * the task and the worktree Nyte codes in when it has one, and which heads you
+ * approved. Kept as one JSON
  * file beside the core store. Guides, answers and Nyte's work live in core;
  * this file only remembers what to compare and where.
  */
@@ -23,8 +24,6 @@ export type Author = Static<typeof AuthorSchema>;
 
 const ApprovalSchema = Type.Object({ head: Type.String(), at: Type.Number() });
 
-export type Approval = Static<typeof ApprovalSchema>;
-
 const RecordSchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
@@ -38,100 +37,132 @@ const RecordSchema = Type.Object({
   author: Type.Optional(AuthorSchema),
   /** Oldest first; an approval counts only while the head it names is current. */
   approvals: Type.Optional(Type.Array(ApprovalSchema)),
+  /** The core head holding each revision's brief, by revision head; a revision without one has no brief yet. A file from before this map reads as each revision's `briefName`, the only name a brief had then. */
+  briefHeads: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 
 export type ReviewRecord = Static<typeof RecordSchema>;
 
 const FileSchema = Type.Object({ reviews: Type.Array(RecordSchema) });
 
-export function openRegistry(path: string) {
-  mkdirSync(dirname(path), { recursive: true });
+/** The core head a revision's first brief is cut on, unless it started the review's session on `main`. */
+export const briefName = (head: string): string => `brief-${head.slice(0, 12)}`;
 
-  const read = (): ReviewRecord[] => {
-    try {
-      const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+/** The reviews file, read once on open and rewritten whole, atomically, on every change. */
+export class Registry {
+  readonly #path: string;
+  #reviews: ReviewRecord[];
 
-      return Value.Check(FileSchema, parsed) ? parsed.reviews : [];
-    } catch {
-      return [];
-    }
-  };
+  constructor(path: string) {
+    mkdirSync(dirname(path), { recursive: true });
+    this.#path = path;
+    this.#reviews = readReviews(path);
+  }
 
-  let reviews = read();
+  #save(): void {
+    const temporary = `${this.#path}.${process.pid}.tmp`;
 
-  const save = (): void => {
-    const temporary = `${path}.${process.pid}.tmp`;
+    writeFileSync(temporary, `${JSON.stringify({ reviews: this.#reviews }, null, 2)}\n`);
+    renameSync(temporary, this.#path);
+  }
 
-    writeFileSync(temporary, `${JSON.stringify({ reviews }, null, 2)}\n`);
-    renameSync(temporary, path);
-  };
+  list(): readonly ReviewRecord[] {
+    return this.#reviews;
+  }
 
-  return {
-    list: (): readonly ReviewRecord[] => reviews,
-    get: (id: string): ReviewRecord | undefined => reviews.find((review) => review.id === id),
-    create(input: {
-      readonly id: string;
-      readonly title: string;
-      readonly baseRef: string;
-      readonly headRef: string;
-      readonly revision: Revision;
-      readonly task?: string;
-      readonly author?: Author;
-    }): ReviewRecord {
-      const record: ReviewRecord = {
-        id: input.id,
-        title: input.title,
-        baseRef: input.baseRef,
-        headRef: input.headRef,
-        createdAt: Date.now(),
-        revisions: [input.revision],
-      };
+  get(id: string): ReviewRecord | undefined {
+    return this.#reviews.find((review) => review.id === id);
+  }
 
-      if (input.task !== undefined) record.task = input.task;
+  create(input: {
+    readonly id: string;
+    readonly title: string;
+    readonly baseRef: string;
+    readonly headRef: string;
+    readonly revision: Revision;
+    readonly task?: string;
+    readonly author?: Author;
+  }): ReviewRecord {
+    const record: ReviewRecord = {
+      id: input.id,
+      title: input.title,
+      baseRef: input.baseRef,
+      headRef: input.headRef,
+      createdAt: Date.now(),
+      revisions: [input.revision],
+      briefHeads: {},
+    };
 
-      if (input.author !== undefined) record.author = input.author;
+    if (input.task !== undefined) record.task = input.task;
 
-      reviews = [record, ...reviews];
-      save();
+    if (input.author !== undefined) record.author = input.author;
 
-      return record;
-    },
-    update(id: string, change: (record: ReviewRecord) => ReviewRecord): ReviewRecord | undefined {
-      const record = reviews.find((review) => review.id === id);
+    this.#reviews = [record, ...this.#reviews];
+    this.#save();
 
-      if (record === undefined) return undefined;
+    return record;
+  }
 
-      const next = change(record);
+  update(id: string, change: (record: ReviewRecord) => ReviewRecord): ReviewRecord | undefined {
+    const record = this.get(id);
 
-      reviews = reviews.map((review) => (review.id === id ? next : review));
-      save();
+    if (record === undefined) return undefined;
 
-      return next;
-    },
-    /** Remember a head the review has not seen; a known head changes nothing. */
-    observe(id: string, revision: Revision): ReviewRecord | undefined {
-      const record = reviews.find((review) => review.id === id);
+    const next = change(record);
 
-      if (record === undefined) return undefined;
+    this.#replace(next);
 
-      const last = record.revisions.at(-1);
+    return next;
+  }
 
-      if (last?.head === revision.head && last.base === revision.base) return record;
+  /** Remember a head the review has not seen; a known head changes nothing. */
+  observe(id: string, revision: Revision): ReviewRecord | undefined {
+    const record = this.get(id);
 
-      const next: ReviewRecord = { ...record, revisions: [...record.revisions, revision] };
+    if (record === undefined) return undefined;
 
-      reviews = reviews.map((review) => (review.id === id ? next : review));
-      save();
+    const last = record.revisions.at(-1);
 
-      return next;
-    },
-    /** Whether any review has compared exactly these two commits. */
-    knows(base: string, head: string): boolean {
-      return reviews.some((review) =>
-        review.revisions.some((revision) => revision.base === base && revision.head === head),
-      );
-    },
-  };
+    if (last?.head === revision.head && last.base === revision.base) return record;
+
+    const next: ReviewRecord = { ...record, revisions: [...record.revisions, revision] };
+
+    this.#replace(next);
+
+    return next;
+  }
+
+  /** Whether any review has compared exactly these two commits. */
+  knows(base: string, head: string): boolean {
+    return this.#reviews.some((review) =>
+      review.revisions.some((revision) => revision.base === base && revision.head === head),
+    );
+  }
+
+  #replace(next: ReviewRecord): void {
+    this.#reviews = this.#reviews.map((review) => (review.id === next.id ? next : review));
+    this.#save();
+  }
 }
 
-export type Registry = ReturnType<typeof openRegistry>;
+/** The stored reviews, or none when the file is missing or no longer matches the schema. */
+function readReviews(path: string): ReviewRecord[] {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+
+    if (!Value.Check(FileSchema, parsed)) return [];
+
+    return parsed.reviews.map((review) =>
+      review.briefHeads === undefined
+        ? {
+            ...review,
+            briefHeads: Object.fromEntries(
+              review.revisions.map((revision) => [revision.head, briefName(revision.head)]),
+            ),
+          }
+        : review,
+    );
+  } catch {
+    return [];
+  }
+}

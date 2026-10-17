@@ -118,8 +118,11 @@ test("the read is unbounded, so one read answers every range", async () => {
   readUsage.mockResolvedValueOnce(recorded);
   const observer = openUsage();
   await vi.waitFor(() => assert.equal(observer.getCurrentResult().isSuccess, true));
-  // No range reaches the host: the page narrows the report it already holds.
-  assert.deepEqual(readUsage.mock.calls[0], [WINDOW]);
+  assert.deepEqual(
+    readUsage.mock.calls[0],
+    [WINDOW],
+    "no range reaches the host: the page narrows the report it already holds",
+  );
   assert.equal(readUsage.mock.calls.length, 1);
 });
 

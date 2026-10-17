@@ -20,9 +20,8 @@ import {
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
-import { nyte } from "../nyte.ts";
 import { useSession } from "../queries.ts";
-import { button, glyph, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { button, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -43,8 +42,8 @@ import type {
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "./controller.ts";
-import { copyTerminal, clearTerminal } from "./terminal-runtime.ts";
-import { isJobTerminal, terminalActions, useTerminalRuntime } from "./terminal-store.ts";
+import { readDeferred } from "../deferred.tsx";
+import { terminalActions, useTerminalRuntime } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 
@@ -67,19 +66,19 @@ const styles = create({
   item: {
     "--_tab-close-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":has(:focus-visible)": "1",
       "@media (hover: none)": "1",
     },
     "--_tab-close-pointer-events": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "auto" },
+      ":hover": { [media.hover]: "auto" },
       ":has(:focus-visible)": "auto",
       "@media (hover: none)": "auto",
     },
     "--_tab-content-mask": {
       default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": TAB_CONTENT_FADE },
+      ":hover": { [media.hover]: TAB_CONTENT_FADE },
       ":has(:focus-visible)": TAB_CONTENT_FADE,
       "@media (hover: none)": TAB_CONTENT_FADE,
     },
@@ -94,7 +93,7 @@ const styles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentInteractiveSecondary,
   },
@@ -129,7 +128,7 @@ const styles = create({
   agentTerminal: {
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
       ":focus-within": role.contentPrimary,
     },
   },
@@ -184,8 +183,6 @@ type TerminalCloseState =
   | { readonly kind: "closing"; readonly tab: WorkbenchTab; readonly terminal: TerminalTab };
 
 function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void {
-  if (nyte.host.terminal === undefined) return;
-
   const id = workbenchController.actions.openTab({
     view,
     tab: { kind: "terminal", owner: { kind: "user" } },
@@ -254,19 +251,15 @@ export function WorkbenchTabStrip({
   };
 
   const requestTerminalClose = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
-    if (isJobTerminal(terminal)) {
+    if (terminal.kind === "job") {
       await closeTerminal(tab, terminal);
 
       return;
     }
 
-    const terminalBridge = nyte.host.terminal;
-
-    if (terminalBridge === undefined) return;
-
     const idle =
       terminal.state.kind === "running"
-        ? await terminalBridge.idle({ id: terminal.id }).catch(() => false)
+        ? await terminalActions.idle(terminal.id).catch(() => false)
         : true;
 
     if (idle) await closeTerminal(tab, terminal);
@@ -341,7 +334,7 @@ export function WorkbenchTabStrip({
             listRef={listRef}
             onPick={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
             onReorder={(order, id) => {
-              const after = order[order.indexOf(id) + 1];
+              const after = order[order.findIndex((entry) => entry === id) + 1];
 
               workbenchController.actions.moveTab({
                 view: viewKey,
@@ -360,7 +353,7 @@ export function WorkbenchTabStrip({
               const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
               const label = terminal?.title ?? workbenchTabLabel(tab);
 
-              const agentTerminal = terminal !== undefined && isJobTerminal(terminal);
+              const agentTerminal = terminal !== undefined && terminal.kind === "job";
               const running = agentTerminal && terminal.state.kind === "running";
 
               const trigger = (
@@ -473,18 +466,28 @@ export function WorkbenchTabStrip({
                     <ContextMenu>
                       <ContextMenuTrigger render={trigger} />
                       <ContextMenuContent aria-label={`${label} actions`}>
-                        {capabilities.terminal && (
-                          <ContextMenuItem
-                            icon="console"
-                            onClick={() => newTerminal(viewKey, workspacePath)}
-                          >
-                            New Terminal
-                          </ContextMenuItem>
-                        )}
-                        <ContextMenuItem icon="copy" onClick={() => copyTerminal(terminal.id)}>
+                        <ContextMenuItem
+                          icon="console"
+                          onClick={() => newTerminal(viewKey, workspacePath)}
+                        >
+                          New Terminal
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          icon="copy"
+                          onClick={() => readDeferred("workbench")?.copyTerminal(terminal.id)}
+                        >
                           Copy Selection
                         </ContextMenuItem>
-                        <ContextMenuItem icon="refresh" onClick={() => clearTerminal(terminal.id)}>
+                        <ContextMenuItem
+                          icon="paperclip"
+                          onClick={() => readDeferred("workbench")?.addTerminalToChat(terminal.id)}
+                        >
+                          Add Selection to Chat
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          icon="refresh"
+                          onClick={() => readDeferred("workbench")?.clearTerminal(terminal.id)}
+                        >
                           Clear Terminal
                         </ContextMenuItem>
                         <ContextMenuSeparator />

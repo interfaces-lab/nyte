@@ -13,7 +13,7 @@ import { Composer } from "../chat/composer.tsx";
 import { WorkspacePicker } from "../chat/workspace-menu.tsx";
 import {
   hasFailed,
-  isActive,
+  inProgress,
   needsAttention,
   needsInput,
   useSessionList,
@@ -44,7 +44,7 @@ const filterLabels: Record<Filter, string> = {
 /** Typing in the search field must not spend one host request per keystroke. */
 const SEARCH_DEBOUNCE_MS = 250;
 
-function isToday(session: SessionInfo, now: number): boolean {
+function activeToday(session: SessionInfo, now: number): boolean {
   const then = new Date(session.lastActivityAt);
   const date = new Date(now);
 
@@ -84,6 +84,16 @@ function SessionSection({
   );
 }
 
+/**
+ * The session list with the composer for a new conversation. A pull is the only load that blanks the
+ * rows, so the spinner belongs to it alone; returning to the app reloads in place.
+ *
+ * One table drives the sections, the filter menu, and the empty state, so a row never sits in a section
+ * the filter of the same name hides. Groups with no filter of their own show only in the unfiltered
+ * list. Settled agents split by day only while the date sections are on; otherwise they run together
+ * under no heading. Hiding the filter cards also hides the only way out of a filter, so the list then
+ * shows everything.
+ */
 export function InboxScreen() {
   const theme = useTheme();
   const { client } = useHost();
@@ -97,8 +107,6 @@ export function InboxScreen() {
   const [composerHeight, setComposerHeight] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { list, busy, error, refresh, more } = useSessionList(client, search);
-  // A pull is the only load that blanks the rows, so the spinner belongs to it
-  // alone; returning to the app reloads in place and never sets loading.
   const [pulled, setPulled] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [filterCards] = useFilterCards();
@@ -109,23 +117,18 @@ export function InboxScreen() {
     (session) => !session.archived,
   );
 
-  const working = sessions.filter(isActive);
-  const attention = sessions.filter((session) => needsInput(session) && !isActive(session));
-  const failed = sessions.filter((session) => hasFailed(session) && !isActive(session));
-  const settled = sessions.filter((session) => !isActive(session) && !needsAttention(session));
+  const working = sessions.filter(inProgress);
+  const attention = sessions.filter((session) => needsInput(session) && !inProgress(session));
+  const failed = sessions.filter((session) => hasFailed(session) && !inProgress(session));
+  const settled = sessions.filter((session) => !inProgress(session) && !needsAttention(session));
   const pinned = settled.filter((session) => session.pinned);
   const rest = settled.filter((session) => !session.pinned);
 
-  // One table drives the sections, the filter menu, and the empty state, so a
-  // row can never sit in a section the filter of the same name hides. Groups
-  // with no filter of their own show only in the unfiltered list. Settled
-  // agents split by day only while the date sections are on; otherwise they
-  // run together under no heading at all.
   const settledGroups: readonly { title?: string; sessions: readonly SessionInfo[] }[] =
     dateSections
       ? [
-          { title: "Today", sessions: rest.filter((session) => isToday(session, now)) },
-          { title: "Earlier", sessions: rest.filter((session) => !isToday(session, now)) },
+          { title: "Today", sessions: rest.filter((session) => activeToday(session, now)) },
+          { title: "Earlier", sessions: rest.filter((session) => !activeToday(session, now)) },
         ]
       : [{ sessions: rest }];
 
@@ -141,8 +144,6 @@ export function InboxScreen() {
     ...settledGroups,
   ];
 
-  // Hiding the filter cards also hides the only way back out of a filter, so
-  // the list falls back to showing everything while they are off.
   const activeFilter = filterCards && !searchActive ? filter : "all";
 
   const visible = groups.filter(

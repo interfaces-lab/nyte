@@ -10,6 +10,8 @@ interface Child {
 
 interface TaskIndexOptions {
   readonly connection: Connection;
+  /** The session's workspace's job list after each change. */
+  readonly jobs: AsyncIterable<readonly JobView[]>;
   readonly onChange: () => void;
   readonly onError: (error: unknown) => void;
 }
@@ -31,7 +33,7 @@ export class TaskIndex {
         options.onError,
       ),
       follow(
-        connection.workspace(session.workspace).jobs.watch(),
+        options.jobs,
         (jobs) => {
           this.jobs = jobs.filter((job) => job.session === session.id);
           options.onChange();

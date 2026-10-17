@@ -7,7 +7,6 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
-
 if (process.platform !== "darwin" || process.arch !== "arm64") {
   throw new Error("The update test requires an Apple Silicon Mac.");
 }

@@ -1,4 +1,5 @@
 import type {
+  CommandInfo,
   Delivery,
   MessageId,
   ModelCatalogView,
@@ -7,11 +8,14 @@ import type {
   SessionId,
   SessionInfo,
   SessionView,
+  SettingInfo,
   Thinking,
   ModelRef,
+  WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ResolvedSettings } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
+import type { ThemeMode } from "../lib/theme.ts";
 import type { CompletionState, MentionFile } from "./completion.ts";
 import type { Dialog } from "./dialogs/dialog.ts";
 import type { ListDialog } from "./dialogs/list.ts";
@@ -25,9 +29,14 @@ export interface State {
 }
 
 export interface Facts {
-  readonly phase: Phase;
-  readonly session: FollowedSession | null;
+  /** Whether `ports.host` answers yet; until it does, host effects wait and a new chat's first message waits with them. */
+  readonly host: "opening" | "open";
+  readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
+  /** The host's own settings, which a chat's catalog repeats; what a blank chat offers. */
+  readonly hostSettings: readonly SettingInfo[];
+  /** The plugin commands a new chat in `workspace` would offer; what a blank chat there offers. */
+  readonly folderCommands: FolderCommands | null;
   readonly settings: ResolvedSettings;
   readonly tasks: readonly Task[];
   readonly shells: readonly ShellJob[];
@@ -42,12 +51,28 @@ export type RemoteFacts =
   | { readonly kind: "shared"; readonly devices: number }
   | { readonly kind: "interrupted" };
 
-export type Phase =
-  | { readonly kind: "starting"; readonly step: "workspace" | "settings" | "providers" }
-  | { readonly kind: "ready" }
-  | { readonly kind: "closing" };
+/** The chat on screen: a blank one is a client-side draft that the first send starts under `id`; a session is a started chat the TUI follows. */
+export type Chat = BlankChat | FollowedSession;
+
+export interface BlankChat {
+  readonly kind: "blank";
+  readonly id: SessionId;
+  readonly folder: ChatFolder;
+  readonly selection: Selection;
+  /**
+   * Set on a launch's first chat when no model is known before the host answers: `selection`
+   * is a stand-in the footer leaves out, and the first send starts on the host's default.
+   */
+  readonly unresolved?: true;
+}
+
+/** Where a blank chat starts: the folder the TUI launched in until the host registers it, then that workspace. */
+export type ChatFolder =
+  | { readonly kind: "launch-folder" }
+  | { readonly kind: "folder"; readonly id: WorkspaceId };
 
 export interface FollowedSession {
+  readonly kind: "session";
   readonly id: SessionId;
   readonly info: SessionInfo;
   readonly view: SessionView | null;
@@ -63,7 +88,13 @@ export interface Selection {
   readonly fast: boolean;
 }
 
-export interface CatalogFacts {
+interface FolderCommands {
+  readonly generation: number;
+  readonly workspace: WorkspaceId;
+  readonly commands: readonly CommandInfo[];
+}
+
+interface CatalogFacts {
   readonly generation: number;
   readonly catalog: ModelCatalogView | null;
 }
@@ -94,7 +125,8 @@ export interface WorkspaceFacts {
 export interface TerminalFacts {
   readonly width: number;
   readonly height: number;
-  readonly theme: "dark" | "light";
+  /** The mode the terminal reported, or `null` when it hasn't. */
+  readonly theme: ThemeMode | null;
   readonly selection: boolean;
   readonly dragging: boolean;
 }
@@ -105,6 +137,7 @@ export interface Local {
   readonly editing: Editing | null;
   readonly dialogs: readonly Dialog[];
   readonly question: QuestionLocal;
+  readonly approval: ApprovalLocal;
   readonly notice: Notice | null;
   readonly failures: readonly FailureReport[];
   readonly pending: readonly PendingOp[];
@@ -124,7 +157,7 @@ export interface Local {
   readonly preview: string | null;
 }
 
-export interface MoveContext {
+interface MoveContext {
   readonly purpose: "retract" | "tree";
   readonly message: MessageId | null;
 }
@@ -136,7 +169,7 @@ export interface Draft {
   readonly parts: DraftParts;
 }
 
-export interface Editing {
+interface Editing {
   readonly message: MessageId;
   readonly delivery: "steer" | "queue";
   readonly saved: DraftSnapshot;
@@ -185,6 +218,13 @@ export interface QuestionLocal {
   readonly drafts: ReadonlyMap<SessionId, ReadonlyMap<PartId, QuestionDraft>>;
 }
 
+/** The approval panel's highlight, kept for the part it was moved on, and the part whose answer is in flight. */
+export interface ApprovalLocal {
+  readonly part: PartId | null;
+  readonly highlighted: number;
+  readonly sending: PartId | null;
+}
+
 export interface Notice {
   readonly tone: "info" | "ok" | "warning" | "error";
   readonly text: string;
@@ -210,7 +250,7 @@ export interface Handback {
   readonly unlessLanded: MessageId | null;
 }
 
-export interface HistoryCursor {
+interface HistoryCursor {
   readonly index: number;
   readonly saved: DraftSnapshot;
 }
@@ -229,20 +269,24 @@ export interface Submission {
   readonly replace: MessageId | null;
 }
 
-export interface Bootstrap {
+interface Bootstrap {
   readonly cwd: string;
   readonly settings: ResolvedSettings;
   readonly terminal: TerminalFacts;
+  /** The chat the first frame shows, drawn from what the last launch saw; `null` until the host opens one. */
+  readonly chat: BlankChat | null;
 }
 
-export const EMPTY_DRAFT: Draft = { text: "", cursor: 0, row: "only", parts: NO_PARTS };
+const EMPTY_DRAFT: Draft = { text: "", cursor: 0, row: "only", parts: NO_PARTS };
 
 export function initialState(bootstrap: Bootstrap): State {
   return {
     facts: {
-      phase: { kind: "starting", step: "workspace" },
-      session: null,
+      host: "opening",
+      chat: bootstrap.chat,
       catalog: { generation: -1, catalog: null },
+      hostSettings: [],
+      folderCommands: null,
       settings: bootstrap.settings,
       tasks: [],
       shells: [],
@@ -256,6 +300,7 @@ export function initialState(bootstrap: Bootstrap): State {
       editing: null,
       dialogs: [],
       question: { dismissed: null, highlighted: 0, drafts: new Map() },
+      approval: { part: null, highlighted: 0, sending: null },
       notice: null,
       failures: [],
       pending: [],
@@ -282,8 +327,38 @@ export function initialState(bootstrap: Bootstrap): State {
   };
 }
 
+/** The workspace a chat starts in or runs in. */
+export function chatFolder(chat: Chat): ChatFolder {
+  return chat.kind === "blank" ? chat.folder : { kind: "folder", id: chat.info.workspace };
+}
+
+/** The started session on screen, or `null` while the chat is blank or opening. */
+export function followedSession(state: State): FollowedSession | null {
+  const { chat } = state.facts;
+
+  return chat?.kind === "session" ? chat : null;
+}
+
+export function rowStatus(
+  state: State,
+  session: SessionId,
+  message: MessageId,
+): "pending" | "landed" | "unsent" | "absent" {
+  const followed = followedSession(state);
+
+  if (followed === null || followed.id !== session || followed.view === null) return "absent";
+
+  const row = followed.view.messages.find(
+    (candidate) => candidate.kind === "user" && candidate.id === message,
+  );
+
+  if (row === undefined || row.kind !== "user") return "absent";
+
+  return row.status.kind;
+}
+
 export function followedShells(state: State): readonly ShellJob[] {
-  const followed = state.facts.session?.id ?? null;
+  const followed = state.facts.chat?.id ?? null;
 
   return state.facts.shells.filter((job) => job.session === followed);
 }

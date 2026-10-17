@@ -1,7 +1,6 @@
-import { asId } from "@nyte-ai/schema";
-import type { ByteReader, OutputFrame, SdkErrorWire } from "@nyte-ai/schema";
-import { SdkError, dev } from "@nyte-ai/core";
-import type { SdkErrorCode } from "@nyte-ai/core";
+import { asId, SdkError } from "@nyte-ai/schema";
+import type { ByteReader, Json, OutputFrame, SdkErrorCode, SdkErrorWire } from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
 import { assert, describe, expect, it } from "vitest";
 import {
   decodeError,
@@ -16,9 +15,8 @@ import {
   statusCode,
   withInputHeader,
 } from "../src/index.ts";
-import type { SseFrame } from "../src/index.ts";
 import { parseJson } from "../src/json.ts";
-import { endless } from "./fakes.ts";
+import { endless } from "./endless.ts";
 
 type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
@@ -45,7 +43,7 @@ function trickle(bytes: Uint8Array, size: number): ReadableStream<Uint8Array> {
   });
 }
 
-async function bytesOf(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+async function readBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
@@ -96,16 +94,16 @@ describe("errors", () => {
 });
 
 describe("server-sent events", () => {
-  it("frames ids and data and parses them back across any chunking", async () => {
-    const sent: readonly SseFrame[] = [
-      { id: "3", data: { kind: "run", seq: 3, text: "é\nline" } },
-      { id: null, data: { kind: "patch", append: "x" } },
-      { id: "4", data: [1, null, "two"] },
+  it("frames data and parses it back across any chunking", async () => {
+    const sent: readonly Json[] = [
+      { kind: "run", seq: 3, text: "é\nline" },
+      null,
+      [1, null, "two"],
     ];
-    const bytes = await bytesOf(sseFrames(frames(...sent)));
+    const bytes = await readBytes(sseFrames(frames(...sent)));
     const text = new TextDecoder().decode(bytes);
 
-    expect(text.startsWith('id: 3\ndata: {"kind":"run"')).toBe(true);
+    expect(text.startsWith('data: {"kind":"run"')).toBe(true);
     expect(await collect(parseSse(trickle(bytes, 1)))).toEqual(sent);
     expect(await collect(parseSse(trickle(bytes, 7)))).toEqual(sent);
   });
@@ -113,9 +111,7 @@ describe("server-sent events", () => {
   it("skips comments and parses CRLF line ends and multi-line data", async () => {
     const raw = ': ping\r\n\r\nid: 9\r\ndata: {"a":\r\ndata: 1}\r\n\r\n';
 
-    expect(await collect(parseSse(trickle(new TextEncoder().encode(raw), 3)))).toEqual([
-      { id: "9", data: { a: 1 } },
-    ]);
+    expect(await collect(parseSse(trickle(new TextEncoder().encode(raw), 3)))).toEqual([{ a: 1 }]);
   });
 
   it("sends a ping while the source waits", async () => {
@@ -123,7 +119,7 @@ describe("server-sent events", () => {
       {
         async *[Symbol.asyncIterator]() {
           await new Promise((resolve) => setTimeout(resolve, 40));
-          yield { id: null, data: 1 };
+          yield 1;
         },
       },
       { heartbeatMs: 5 },
@@ -137,23 +133,23 @@ describe("server-sent events", () => {
   it("ends with an error event the parser throws as the same SdkError", async () => {
     const source = {
       async *[Symbol.asyncIterator]() {
-        yield { id: "1", data: "first" };
+        yield "first";
         throw new SdkError("stale", "Moved.");
       },
     };
-    const parsed: SseFrame[] = [];
+    const parsed: Json[] = [];
 
     await expect(async () => {
       for await (const frame of parseSse(sseFrames(source))) parsed.push(frame);
     }).rejects.toMatchObject({ code: "stale", message: "Moved." });
-    expect(parsed).toEqual([{ id: "1", data: "first" }]);
+    expect(parsed).toEqual(["first"]);
   });
 
   it("returns the source when the stream is cancelled", async () => {
     let returned = false;
-    const source: AsyncIterable<SseFrame> = {
+    const source: AsyncIterable<Json> = {
       [Symbol.asyncIterator]: () => ({
-        next: async () => ({ done: false, value: { id: null, data: 1 } }),
+        next: async () => ({ done: false, value: 1 }),
         return: async () => {
           returned = true;
 
@@ -177,7 +173,7 @@ describe("output frames", () => {
       { kind: "bytes", data: new Uint8Array([0, 1, 255]) },
       { kind: "exit", code: 0 },
     ];
-    const bytes = await bytesOf(outputFrames(frames(...sent)));
+    const bytes = await readBytes(outputFrames(frames(...sent)));
 
     expect(Array.from(bytes.slice(0, 5))).toEqual([0, 0, 0, 0, 6]);
     expect(bytes[11]).toBe(1);
@@ -234,7 +230,7 @@ describe("byte bodies", () => {
 
     expect(init.headers["X-Nyte-Input"]).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(readInputHeader(request)).toEqual(input);
-    expect([...(await bytesOf(request.body ?? new ReadableStream()))]).toEqual([1, 2, 3]);
+    expect([...(await readBytes(request.body ?? new ReadableStream()))]).toEqual([1, 2, 3]);
     expect(readInputHeader(new Request("http://host.test/x", { method: "POST" }))).toBeNull();
     expect(() =>
       readInputHeader(new Request("http://host.test/x", { headers: { "X-Nyte-Input": "%%%" } })),

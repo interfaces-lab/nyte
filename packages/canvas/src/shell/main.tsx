@@ -3,18 +3,21 @@ import "@nyte-ai/ui/styles/tokens.stylex";
 import React, { Component, StrictMode } from "react";
 import type { ComponentType, ErrorInfo, ReactElement, ReactNode } from "react";
 import jsxRuntime from "react/jsx-runtime";
+import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { create, props } from "@stylexjs/stylex";
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
-import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   CANVAS_GLOBAL,
   CANVAS_RUNTIME,
+  LIBRARY_EXPORTS,
   errorNotification,
   initializeRequest,
   initializedNotification,
+  locateCanvasStack,
   openLinkRequest,
   readHostMessage,
   sizeChangedNotification,
@@ -37,8 +40,9 @@ const styles = create({
   failure: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    padding: "10px 12px",
+    gap: space.s1,
+    paddingBlock: space.s2_5,
+    paddingInline: space.s3,
     borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",
@@ -59,8 +63,30 @@ const styles = create({
   },
 });
 
+/**
+ * Loads one of the libraries, each its own chunk beside the shell, so only a
+ * canvas that imports `three` downloads it. A shell with no base URL (the
+ * inline one in a WebView) has nowhere to load a chunk from.
+ */
+function library(name: string): Promise<unknown> {
+  if (!Object.hasOwn(LIBRARY_EXPORTS, name))
+    return Promise.reject(new Error(`"${name}" is not a canvas library.`));
+  const url = URL.parse(`libraries/${name}.js`, document.baseURI);
+
+  if (url === null) return Promise.reject(new Error(`This client cannot load "${name}".`));
+
+  return import(/* @vite-ignore */ url.href);
+}
+
 Object.defineProperty(globalThis, CANVAS_GLOBAL, {
-  value: { runtime: CANVAS_RUNTIME, react: React, jsxRuntime, kit },
+  value: {
+    runtime: CANVAS_RUNTIME,
+    react: React,
+    jsxRuntime,
+    reactDom: { createPortal, flushSync },
+    kit,
+    library,
+  },
   writable: false,
   configurable: false,
 });
@@ -77,6 +103,8 @@ let reportedHeight = 0;
 let links = 0;
 
 let moduleUrl: string | null = null;
+
+let moduleCode = "";
 
 function post(message: unknown): void {
   const bridge = "ReactNativeWebView" in window ? window.ReactNativeWebView : undefined;
@@ -95,7 +123,11 @@ function post(message: unknown): void {
   window.parent.postMessage(message, "*");
 }
 
-function fail(failure: Failure, stack?: string): void {
+/** Shows a failure and reports it, its message ending in the canvas file and line the stack points at. */
+function fail(cause: Failure, stack?: string): void {
+  const where = stack === undefined ? undefined : locateCanvasStack(moduleCode, stack);
+  const failure =
+    where === undefined ? cause : { ...cause, message: `${cause.message} (${where})` };
   state = { ...state, failure };
   paint();
   post(
@@ -178,7 +210,8 @@ function paint(): void {
   root.render(<Shell {...state} />);
 }
 
-function isComponent(value: unknown): value is ComponentType {
+// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- typeof narrows an imported default export only to Function, not ComponentType
+function exportsComponent(value: unknown): value is ComponentType {
   return typeof value === "function";
 }
 
@@ -193,6 +226,7 @@ async function load(module: CanvasModule): Promise<void> {
   }
 
   if (moduleUrl !== null) URL.revokeObjectURL(moduleUrl);
+  moduleCode = module.code;
   moduleUrl = URL.createObjectURL(new Blob([module.code], { type: "text/javascript" }));
 
   try {
@@ -202,7 +236,7 @@ async function load(module: CanvasModule): Promise<void> {
         ? imported.default
         : undefined;
 
-    if (!isComponent(Canvas)) {
+    if (!exportsComponent(Canvas)) {
       fail({ phase: "load", message: "The module's default export is not a component." });
 
       return;
@@ -289,22 +323,17 @@ window.addEventListener("unhandledrejection", (event) => {
 document.addEventListener(
   "click",
   (event) => {
-    if (!event.isTrusted) return;
     const anchor = event.composedPath().find((target) => target instanceof HTMLAnchorElement);
 
     if (!(anchor instanceof HTMLAnchorElement)) return;
-    let url: URL;
+    const href = anchor.getAttribute("href");
 
-    try {
-      url = new URL(anchor.getAttribute("href") ?? "", document.baseURI);
-    } catch {
-      return;
-    }
-
-    if (url.protocol !== "http:" && url.protocol !== "https:") return;
+    if (href === null || href.startsWith("#")) return;
     event.preventDefault();
+
+    if (!event.isTrusted) return;
     links += 1;
-    post(openLinkRequest(`link-${String(links)}`, url.href));
+    post(openLinkRequest(`link-${String(links)}`, href));
   },
   true,
 );

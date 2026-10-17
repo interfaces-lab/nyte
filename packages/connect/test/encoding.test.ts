@@ -3,7 +3,7 @@ import {
   base64ToBase64Url,
   base64Url,
   fromBase64Url,
-  isRelayAddress,
+  namesRelayAddress,
   relayAddress,
 } from "../src/index.ts";
 
@@ -32,7 +32,7 @@ describe("relay addresses", () => {
     const address = relayAddress(origin, environmentId);
 
     expect(address).toBe(`${origin}/r/${environmentId}`);
-    expect(isRelayAddress(address, origin)).toBe(true);
+    expect(namesRelayAddress(address, origin)).toBe(true);
   });
 
   it.each([
@@ -43,7 +43,7 @@ describe("relay addresses", () => {
     `${origin}/r/../${environmentId}`,
     `${origin}/x/${environmentId}`,
   ])("refuses %s", (address) => {
-    expect(isRelayAddress(address, origin)).toBe(false);
+    expect(namesRelayAddress(address, origin)).toBe(false);
   });
 
   it("refuses an origin or id it would not derive from", () => {

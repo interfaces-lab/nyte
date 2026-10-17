@@ -10,8 +10,7 @@ import { useMountEffect } from "../use-mount-effect.ts";
 import { resolveChoice, type Choice, type Choices } from "./choice.ts";
 import type { TranscriptFont } from "../theme.ts";
 
-// One instance for the whole app: a handful of small keys, one memory-mapped
-// file. The connection token stays in the Keychain, not here.
+/** One instance for the whole app: a handful of small keys, one memory-mapped file. The connection token stays in the Keychain, not here. */
 const store = createMMKV({ id: "nyte.preferences" });
 
 /**
@@ -53,11 +52,10 @@ function useFlag(key: string, fallback: boolean): [boolean, (value: boolean) => 
   return [stored ?? fallback, setStored];
 }
 
+/** The appearance setting. Choosing is the only way it changes, so the OS scheme moves with the tap rather than a render pass behind it. */
 export function useAppearance() {
   const setting = useChoice("appearance", appearanceChoices);
 
-  // Choosing is the only way the value changes, so the OS scheme moves with
-  // the tap rather than a render pass behind it.
   return {
     ...setting,
     select: (value: AppearancePreference) => {

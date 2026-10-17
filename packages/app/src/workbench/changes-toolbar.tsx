@@ -32,14 +32,13 @@ import {
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { macPlatform } from "../platform.ts";
 import { useVcsLog } from "../queries.ts";
 import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
+import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,
   commitScopeOptions,
@@ -57,6 +56,7 @@ import type {
 } from "./change-scopes.ts";
 import type { ChangesLayout, ChangesViewOptions } from "./changes-view-options.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
+import { nyte } from "../nyte.ts";
 
 /** One page of history, and how deep the menu will page before it stops offering more. */
 const COMMIT_PAGE_SIZE = 20;
@@ -64,7 +64,7 @@ const COMMIT_PAGE_SIZE = 20;
 const MAX_COMMIT_PAGES = 10;
 
 /** The panel's own keyboard bindings, which is all the Changes panel claims. */
-export type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
+type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
 
 type ShortcutEvent = Pick<
   KeyboardEvent,
@@ -103,7 +103,7 @@ export function changesShortcutAction(
   return key === "r" ? "refresh" : undefined;
 }
 
-export function changesShortcutLabel(action: ChangesShortcutAction, mac: boolean): string {
+function changesShortcutLabel(action: ChangesShortcutAction, mac: boolean): string {
   switch (action) {
     case "filter-files":
       return mac ? "⌘F" : "Ctrl+F";
@@ -177,7 +177,7 @@ const styles = create({
   spacer: { flex: 1, minWidth: 0 },
 });
 
-export function ChangeStats({
+function ChangeStats({
   added,
   removed,
 }: {
@@ -367,7 +367,7 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
   );
 }
 
-export interface ChangesToolbarProps {
+interface ChangesToolbarProps {
   /** The scope the panel is showing, which is not always the stored one. */
   readonly scope: WorkbenchChangesScope;
   readonly scopeLabel: string;
@@ -383,11 +383,14 @@ export interface ChangesToolbarProps {
   readonly onViewOptionsChange: (changes: Partial<ChangesViewOptions>) => void;
   readonly onToggleFileTree: () => void;
   readonly onRefresh: () => void;
+  readonly refreshing: boolean;
   /** Focuses the rail's file filter; the rail owns the only search surface. */
   readonly onFilterFiles: () => void;
   /** Every file in the scope is collapsed, so the command offers to expand instead. */
   readonly allFilesCollapsed: boolean;
   readonly onToggleCollapseAll: () => void;
+  /** Opens a pull request or check page; the system browser when absent. */
+  readonly onOpenLink?: (url: string) => void;
 }
 
 export function ChangesToolbar({
@@ -405,12 +408,14 @@ export function ChangesToolbar({
   onViewOptionsChange,
   onToggleFileTree,
   onRefresh,
+  refreshing,
   onFilterFiles,
   allFilesCollapsed,
   onToggleCollapseAll,
+  onOpenLink,
 }: ChangesToolbarProps): ReactElement {
   const [showAllTurns, setShowAllTurns] = useState(false);
-  const mac = macPlatform(undefined);
+  const mac = nyte.platform === "darwin";
   const scopeKey = changesScopeValue(scope);
   const selectedTurnId = scope.kind === "turn" ? scope.turnId : undefined;
   const visibleTurns = visibleTurnOptions(turnOptions, showAllTurns, selectedTurnId);
@@ -508,7 +513,13 @@ export function ChangesToolbar({
         </Menu>
         {branch !== undefined && <BranchReadoutChip branch={branch} />}
         <span {...props(styles.spacer)} />
-        <Button iconOnly icon="refresh" aria-label="Refresh changes" onClick={onRefresh} />
+        <Button
+          iconOnly
+          icon="refresh"
+          aria-label="Refresh changes"
+          loading={refreshing}
+          onClick={onRefresh}
+        />
         <Menu>
           <MenuTrigger
             render={<Button iconOnly icon="more-horizontal" aria-label="More changes options" />}
@@ -588,12 +599,13 @@ export function ChangesToolbar({
           <PanelToggleIcon side="right" visible={fileTreeVisible} />
         </Toggle>
       </div>
-      {repository !== undefined && isWorkingTreeScope(scope) && (
+      {repository !== undefined && readsWorkingTree(scope) && (
         <ChangesCommitBar
           scope={scope}
           branch={branch}
           revision={repository.revision}
           fileCount={scopeFileCount ?? 0}
+          onOpenLink={onOpenLink}
         />
       )}
     </>

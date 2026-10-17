@@ -12,5 +12,7 @@ export default defineConfig({
     "**/routeTree.gen.ts",
     "packages/ai/src/providers/data/**",
     "packages/ai/src/providers/snapshots/**",
+    // Playwright writes these on --update-snapshots.
+    "**/*-snapshots/**",
   ],
 });

@@ -4,7 +4,7 @@ import { SLASH_COMMANDS } from "../../src/lib/slash.ts";
 import { liveChoices } from "../../src/model/choices.ts";
 import { commandRegistry, resolveCommand, slashNamespace } from "../../src/model/commands.ts";
 import type { Intent } from "../../src/model/msg.ts";
-import { viewOf } from "../fixture/view.ts";
+import { buildView } from "../fixture/view.ts";
 import { ready } from "./support.ts";
 
 function command(name: string, side: CommandInfo["side"]): CommandInfo {
@@ -18,7 +18,7 @@ function command(name: string, side: CommandInfo["side"]): CommandInfo {
   };
 }
 
-const base = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+const base = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
 const view: SessionView = {
   ...base,
@@ -96,6 +96,8 @@ describe("built-in commands", () => {
     ["tree", "", { kind: "open", dialog: { kind: "tree", filter: "default" } }],
     ["edit", "", { kind: "open", dialog: { kind: "tree", filter: "users" } }],
     ["plugins", "", { kind: "open", dialog: { kind: "text", content: "plugins" } }],
+    ["pr", "", { kind: "open", dialog: { kind: "text", content: "pull-request" } }],
+    ["pr", "status", { kind: "open", dialog: { kind: "text", content: "pull-request" } }],
     ["reload", "", { kind: "reload" }],
     ["update", "", { kind: "update", version: null }],
     ["update", "1.2.3", { kind: "update", version: "1.2.3" }],
@@ -154,7 +156,7 @@ describe("settings", () => {
   test("settings other than model and effort wait for the run", () => {
     const busy: SessionView = {
       ...view,
-      execution: viewOf((v) => v.turn("t1", (t) => t.user("x")).live()).execution,
+      execution: buildView((v) => v.turn("t1", (t) => t.user("x")).live()).execution,
     };
 
     const state = ready(busy);

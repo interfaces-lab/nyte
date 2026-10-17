@@ -1,5 +1,5 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
@@ -76,11 +76,11 @@ const styles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
       ":active": role.contentPrimary,
     },
     cursor: appearance.cursorInteractive,

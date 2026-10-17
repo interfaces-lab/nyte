@@ -17,6 +17,7 @@ import type {
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { HostState } from "../nyte.ts";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
+import { PaneController } from "../layout/pane-controller.ts";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient, useSessionView } from "../queries.ts";
 import { installConnection } from "../sdk.tsx";
@@ -26,7 +27,7 @@ import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { scriptedConnection } from "../../test/scripted-connection.ts";
-import { COMPLETED, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
+import { COMPLETED, USAGE, endedTurn, sessionRow } from "../../test/view-fixtures.ts";
 import { Composer } from "./composer.tsx";
 import { conversationMessages } from "./transcript-rows.ts";
 
@@ -121,6 +122,7 @@ function view(
         ...(busy && { state: { kind: "working", activity: null } }),
       }).info,
     ],
+    usage: USAGE,
     execution,
     background: [],
     configuration: { selected: liveRun.configuration, effective: liveRun.configuration },
@@ -280,9 +282,9 @@ const STATES: readonly ComposerState[] = [
     view: undefined,
     check: ({ editor, button }) => [
       ...(editor.getAttribute("aria-disabled") === "true"
-        ? []
-        : ["editor takes input before the view"]),
-      ...(inert(button("Add to message")) ? [] : ["Add is live before the view"]),
+        ? ["editor refuses input before the view"]
+        : []),
+      ...(inert(button("Add to message")) ? ["Add is dead before the view"] : []),
     ],
   },
 ];
@@ -299,15 +301,15 @@ const WIDTHS = { wide: 760, narrow: 340 } satisfies Record<Width, number>;
 
 const HEIGHT = 560;
 
-const sessionOf = (state: ComposerState) => asId<"session">(`composer-${state.name}`);
+const stateSession = (state: ComposerState) => asId<"session">(`composer-${state.name}`);
 
 installConnection(
   scriptedConnection({
     sessions: STATES.map((state) =>
-      sessionRow(sessionOf(state), { name: `Composer ${state.name}` }),
+      sessionRow(stateSession(state), { name: `Composer ${state.name}` }),
     ),
     views: new Map(
-      STATES.map((state) => [sessionOf(state), state.view === undefined ? [] : [state.view]]),
+      STATES.map((state) => [stateSession(state), state.view === undefined ? [] : [state.view]]),
     ),
   }).connection,
 );
@@ -315,7 +317,6 @@ installConnection(
 function seedQueries(): void {
   queryClient.setQueryData(keys.host, {
     workspace: undefined,
-    platform: "linux",
   } satisfies HostState);
   queryClient.setQueryData(keys.modelCatalog("initial"), {
     generation: asId<"catalog-generation">("initial"),
@@ -326,7 +327,7 @@ function seedQueries(): void {
 }
 
 function LoneComposer({ state }: { readonly state: ComposerState }): ReactElement {
-  const sessionId = sessionOf(state);
+  const sessionId = stateSession(state);
   const sessionView = useSessionView(sessionId);
   const messages = conversationMessages(sessionView);
 
@@ -336,7 +337,6 @@ function LoneComposer({ state }: { readonly state: ComposerState }): ReactElemen
       execution={sessionView?.execution}
       pending={messages.queued}
       unsent={messages.unsent}
-      disabled={sessionView === undefined}
     />
   );
 }
@@ -352,23 +352,26 @@ function Stage({
 }): ReactElement {
   const [router] = useState(() =>
     createAppRouter({
-      history: createMemoryHistory({ initialEntries: [`/session/${sessionOf(state)}`] }),
+      history: createMemoryHistory({ initialEntries: [`/session/${stateSession(state)}`] }),
     }),
   );
 
-  const [workspaceKey] = useState(() => `composer-states-${String((mounts += 1))}`);
+  const [panes] = useState(() => {
+    const controller = new PaneController({
+      storageKey: `composer-states-${String((mounts += 1))}`,
+    });
+    controller.selectSession(stateSession(state));
+
+    return controller;
+  });
 
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>
         <TooltipProvider delay={0} closeDelay={0} timeout={0}>
-          <PaneControllerProvider workspaceKey={workspaceKey}>
+          <PaneControllerProvider controller={panes}>
             <SessionDndProvider>
-              {layer === "composer" ? (
-                <LoneComposer state={state} />
-              ) : (
-                <ThreadScreen routeSessionId={sessionOf(state)} />
-              )}
+              {layer === "composer" ? <LoneComposer state={state} /> : <ThreadScreen />}
             </SessionDndProvider>
           </PaneControllerProvider>
         </TooltipProvider>
@@ -432,7 +435,8 @@ async function show(host: HTMLElement, state: ComposerState, layer: Layer, width
   if (state.view !== undefined)
     await until(
       () =>
-        layer === "composer" || stage.querySelector("[role='log'] [data-message-id]") !== null
+        layer === "composer" ||
+        stage.querySelector("[aria-label='Messages'] [data-message-id]") !== null
           ? true
           : null,
       "the transcript",

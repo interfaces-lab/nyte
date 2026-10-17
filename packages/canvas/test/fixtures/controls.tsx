@@ -85,7 +85,7 @@ export default function Controls() {
           <Card>
             <Stack gap={3}>
               <Text tone="secondary">Deploy days</Text>
-              <ToggleGroup value={days} onValueChange={setDays} toggleMultiple>
+              <ToggleGroup value={days} onValueChange={setDays} multiple>
                 <Toggle value="mon">Mon</Toggle>
                 <Toggle value="tue">Tue</Toggle>
                 <Toggle value="wed">Wed</Toggle>
@@ -136,11 +136,11 @@ export default function Controls() {
                 tone="primary"
                 loading={busy}
                 onClick={() => setBusy((value) => !value)}
-              />
+              >
+                Deploy
+              </Button>
             }
-          >
-            Deploy
-          </TooltipTrigger>
+          ></TooltipTrigger>
           <TooltipContent>
             Press <Kbd keys={["⌘", "Enter"]} /> to deploy
           </TooltipContent>

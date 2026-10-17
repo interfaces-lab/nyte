@@ -157,22 +157,22 @@ const REAP_LIMIT_MS = 1_000;
  * reported, before its id could have been handed out again.
  */
 async function reap(pid: number | undefined): Promise<void> {
-  if (pid === undefined) return;
-
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch {
-    return;
-  }
+  if (pid === undefined || !signalGroup(pid, "SIGKILL")) return;
 
   for (let waited = 0; waited < REAP_LIMIT_MS; waited += 10) {
-    try {
-      process.kill(-pid, 0);
-    } catch {
-      return;
-    }
-
+    if (!signalGroup(pid, 0)) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+/** Send `signal` to the process group `pid` leads; false once the group is gone. */
+function signalGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
+  try {
+    process.kill(-pid, signal);
+
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -183,7 +183,7 @@ const DEFAULT_TIMING: ConnectorTiming = {
   stopTimeoutMs: 8_000,
 };
 
-export interface ConnectorOptions {
+interface ConnectorOptions {
   readonly executable: string;
   readonly tunnelToken: string;
   readonly hostname: string;
@@ -210,13 +210,12 @@ export async function findCloudflared(): Promise<string | undefined> {
   if (process.platform === "win32") return undefined;
 
   for (const path of CLOUDFLARED_PATHS) {
-    try {
-      await access(path, constants.X_OK);
+    const executable = await access(path, constants.X_OK).then(
+      () => true,
+      () => false,
+    );
 
-      return path;
-    } catch {
-      // Not here; try the next one.
-    }
+    if (executable) return path;
   }
 
   return undefined;
@@ -245,7 +244,7 @@ export async function prepareConnectorDirectory(directory: string): Promise<void
   );
 }
 
-export function connectorArguments(directory: string): readonly string[] {
+function connectorArguments(directory: string): readonly string[] {
   return [
     "tunnel",
     "--config",
@@ -346,6 +345,12 @@ export class CloudflaredConnector {
     if (run !== undefined) await this.end(run);
   }
 
+  /**
+   * Start a supervised run. The supervisor leads its own process group, so a stuck stop can kill it
+   * and cloudflared together, and the run is over only once that whole group is gone: the
+   * supervisor can exit before cloudflared does when it is killed on its own. A write to the
+   * supervisor's pipe after it is gone is swallowed rather than thrown into this process.
+   */
   private spawn(): void {
     const { directory } = this.options;
 
@@ -359,7 +364,6 @@ export class CloudflaredConnector {
         ...connectorArguments(directory),
       ],
       {
-        // Its own process group, so a stuck stop can kill the supervisor and cloudflared together.
         detached: true,
         stdio: ["pipe", "ignore", "pipe"],
         env: {
@@ -388,35 +392,27 @@ export class CloudflaredConnector {
     let dropping = false;
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (chunk: string) => {
-      let rest = chunk;
+      const lines = chunk.split("\n");
+      const tail = lines.pop() ?? "";
 
-      for (;;) {
-        const newline = rest.indexOf("\n");
-
-        if (newline < 0) {
-          if (!dropping) buffered += rest;
-
-          if (buffered.length > LINE_LIMIT) {
-            buffered = "";
-            dropping = true;
-          }
-
-          return;
-        }
-
-        const line = dropping ? "" : buffered + rest.slice(0, newline);
+      for (const piece of lines) {
+        const line = dropping ? "" : buffered + piece;
         buffered = "";
         dropping = false;
-        rest = rest.slice(newline + 1);
 
         if (line !== "") this.read(run, line);
+      }
+
+      if (!dropping) buffered += tail;
+
+      if (buffered.length > LINE_LIMIT) {
+        buffered = "";
+        dropping = true;
       }
     });
 
     let settled = false;
 
-    // The supervisor can exit before cloudflared does (it was killed on its
-    // own), so the run is over only once its whole process group is gone.
     const finish = (): void => {
       if (settled) return;
       settled = true;
@@ -430,10 +426,10 @@ export class CloudflaredConnector {
 
     child.once("exit", finish);
     child.once("error", finish);
-    // A write after the supervisor is gone must not throw into this process.
     child.stdin?.on("error", () => undefined);
   }
 
+  /** Track one JSON log line's connections and ingress; only an unbroken connected stretch earns back the retries. */
   private read(run: Run, line: string): void {
     if (this.run !== run || run.ending) return;
     let value: unknown;
@@ -478,7 +474,6 @@ export class CloudflaredConnector {
       );
     }
 
-    // Only an unbroken connected stretch earns back the retries.
     if (this.status().kind !== "connected") {
       clearTimeout(this.stableTimer);
       this.stableTimer = undefined;
@@ -543,11 +538,7 @@ export class CloudflaredConnector {
 
       if (run.exited || pid === undefined) return;
 
-      try {
-        process.kill(-pid, "SIGKILL");
-      } catch {
-        // Already gone.
-      }
+      signalGroup(pid, "SIGKILL");
     }, this.timing.stopTimeoutMs);
 
     const abandon = Promise.withResolvers<void>();

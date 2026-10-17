@@ -2,20 +2,20 @@ import { asId } from "@nyte-ai/schema";
 import { describe, expect, mock, test } from "bun:test";
 import { RGBA } from "@opentui/core";
 import { testRender } from "@opentui/solid";
-import { DARK_THEME } from "../../../src/lib/theme.ts";
+import { DARK_THEME, themeForMode } from "../../../src/lib/theme.ts";
 import { ErrorScreen } from "../../../src/ui/chrome/error-screen.tsx";
 import { Footer } from "../../../src/ui/chrome/footer.tsx";
 import { Hints } from "../../../src/ui/chrome/hints.tsx";
 import { NoticeLine } from "../../../src/ui/chrome/notice.tsx";
 import { TasksLine } from "../../../src/ui/chrome/tasks-line.tsx";
 import type { State } from "../../../src/model/state.ts";
-import { viewOf } from "../../fixture/view.ts";
+import { buildView } from "../../fixture/view.ts";
 import { play, ready, S1, typed } from "../../model/support.ts";
 import { mount } from "./support.tsx";
 
-const idle = viewOf((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
+const idle = buildView((v) => v.turn("t1", (t) => t.user("hi").text("ok").ended("completed")));
 
-const working = viewOf((v) =>
+const working = buildView((v) =>
   v.turn("t1", (t) => t.user("hi").tool("bash", { running: true })).live(),
 );
 
@@ -84,12 +84,12 @@ describe("notice line", () => {
     await using app = await mount(state, () => <NoticeLine />, { width: 100, height: 4 });
     const frame = app.captureCharFrame();
 
-    expect(frame).toContain("Session updates stopped · socket closed · retry");
+    expect(frame).toContain("Chat updates stopped · socket closed · retry");
     expect(frame).toContain("Something failed in effect: boom · /home/.nyte/logs/tui.log");
     expect(frame).toContain("Already sent");
 
     const row = frame.split("\n").findIndex((line) => line.includes("retry"));
-    const column = frame.split("\n")[row]?.indexOf("retry") ?? -1;
+    const column = (frame.split("\n")[row] ?? "").split("retry")[0]?.length ?? -1;
     await app.mockMouse.click(column + 1, row);
 
     expect(app.dispatched).toContainEqual({ kind: "retry-watch" });
@@ -159,6 +159,7 @@ describe("error screen", () => {
     await using app = await testRender(
       () => (
         <ErrorScreen
+          theme={DARK_THEME}
           error={new Error("render exploded")}
           logPath="/home/.nyte/logs/tui.log"
           reset={reset}
@@ -181,5 +182,34 @@ describe("error screen", () => {
 
     app.mockInput.pressKey("q");
     expect(quit).toHaveBeenCalledTimes(1);
+  });
+
+  test("draws in the app theme, so NO_COLOR leaves it gray", async () => {
+    const plain = themeForMode("dark", { NO_COLOR: "1" });
+
+    await using app = await testRender(
+      () => (
+        <ErrorScreen
+          theme={plain}
+          error={new Error("render exploded")}
+          logPath="/home/.nyte/logs/tui.log"
+          reset={() => undefined}
+          quit={() => undefined}
+        />
+      ),
+      { width: 80, height: 20 },
+    );
+
+    await app.renderOnce();
+    const line = app
+      .captureSpans()
+      .lines.find((candidate) =>
+        candidate.spans.some((span) => span.text.includes("Something went wrong")),
+      );
+
+    const span = line?.spans.find((candidate) => candidate.text.includes("Something went wrong"));
+
+    expect(span?.fg.toString()).toBe(RGBA.fromHex(plain.error).toString());
+    expect(plain.error).toMatch(/^#(..)\1\1$/u);
   });
 });

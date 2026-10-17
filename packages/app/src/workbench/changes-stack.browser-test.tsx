@@ -8,14 +8,14 @@ import { parsePatchFiles } from "@pierre/diffs";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
-function patchOf(path: string, prefix: string): string {
+function buildPatch(path: string, prefix: string): string {
   const added = Array.from({ length: 16 }, (_, index) => `+${prefix} ${String(index)}`);
 
   return [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,17 @@", " keep", ...added, ""].join("\n");
 }
 
-function itemOf(path: string, prefix: string): ChangesStackItem {
-  const patch = patchOf(path, prefix);
+function buildItem(path: string, prefix: string): ChangesStackItem {
+  const patch = buildPatch(path, prefix);
   const digest = patchDigest(patch);
 
   return {
@@ -28,7 +28,7 @@ function itemOf(path: string, prefix: string): ChangesStackItem {
   };
 }
 
-const ITEMS = [itemOf("src/alpha.ts", "alpha"), itemOf("src/beta.ts", "beta")];
+const ITEMS = [buildItem("src/alpha.ts", "alpha"), buildItem("src/beta.ts", "beta")];
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);

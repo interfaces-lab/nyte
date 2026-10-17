@@ -8,9 +8,11 @@ const THEMES = [
   { value: "system", label: "System", Icon: IconImac },
 ] as const;
 
+/**
+ * The stored theme is unknown until the client reads storage, so the server
+ * renders no selection and hydration fills it in.
+ */
 export function ThemeToggle() {
-  // The stored theme is unknown until the client reads storage; select nothing
-  // on the server and let hydration fill it in.
   const { theme: value, resolvedTheme } = useTheme();
   const Current = resolvedTheme === "dark" ? IconMoon : IconSun;
 

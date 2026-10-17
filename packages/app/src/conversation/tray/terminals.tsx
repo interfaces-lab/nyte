@@ -5,7 +5,6 @@ import { useMutation } from "@tanstack/react-query";
 import type { JobEnd, JobView, SessionId, StopOutcome } from "@nyte-ai/sdk";
 import { Row } from "@nyte-ai/ui/row";
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import { nyte } from "../../nyte.ts";
 import { useSession, useWorkspaceJobs } from "../../queries.ts";
 import { connection } from "../../sdk.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -13,11 +12,11 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { focusTerminal } from "../../workbench/terminal-runtime.ts";
+import { readDeferred } from "../../deferred.tsx";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
 
 const styles = create({
-  actions: { marginInlineEnd: `calc(${space.s1} - ${tray.rowInset})` },
+  actions: { marginInlineEnd: `calc(${space.s1} + ${tray.rowInset} - ${tray.paddingInline})` },
 });
 
 function jobActionMessage(outcome: StopOutcome<JobEnd>): string {
@@ -44,7 +43,11 @@ interface BackgroundWorkProps {
   readonly viewport: HTMLElement | null;
 }
 
-function AvailableBackgroundWork({
+/**
+ * Until the list lands there is nothing to say: most chats have no jobs, and
+ * a placeholder would sit under a transcript that already painted.
+ */
+export function BackgroundWork({
   sessionId,
   open,
   onOpenChange,
@@ -92,8 +95,6 @@ function AvailableBackgroundWork({
     if (held) requestAnimationFrame(() => pillRef.current?.focus());
   };
 
-  // Until the list lands there is nothing to say: most chats have no jobs, and
-  // a placeholder here would sit under a transcript that already painted.
   if (!hasTerminals) return null;
 
   return (
@@ -163,7 +164,9 @@ function AvailableBackgroundWork({
                 aria-label={`Open terminal for ${job.command}`}
                 title={job.command}
                 onClick={() => {
-                  focusTerminal(onOpenTerminal(job));
+                  const terminal = onOpenTerminal(job);
+
+                  readDeferred("workbench")?.focusTerminal(terminal);
                   onOpenChange(false);
                 }}
               >
@@ -211,8 +214,4 @@ function AvailableBackgroundWork({
       </Tray>
     </div>
   );
-}
-
-export function BackgroundWork(props: BackgroundWorkProps) {
-  return nyte.host.terminal === undefined ? null : <AvailableBackgroundWork {...props} />;
 }

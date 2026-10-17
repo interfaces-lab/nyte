@@ -1,7 +1,7 @@
 import type { JsonRecord } from "./wire.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { isNativeMessage, isRecord } from "./wire.ts";
+import { matchesRecord, messageSchema } from "./wire.ts";
 import {
   getDeclaredTools,
   getInitialSystemMessage,
@@ -22,7 +22,7 @@ import type { NativeContentBlock, NativeFrame, NativeMessage } from "./wire.ts";
 
 export const TOOL_PREFIX = "mcp__nyte__";
 
-export const NATIVE_REPLAY_DIAGNOSTIC = "claude-code.native-assistant.v1";
+const NATIVE_REPLAY_DIAGNOSTIC = "claude-code.native-assistant.v1";
 
 export const NATIVE_TOOL_CHANGES_BETA = "mid-conversation-tool-changes-2026-07-01";
 
@@ -85,22 +85,19 @@ const projectionSchema = Type.Object({
   ),
 });
 
-function isReplayCarrier(value: unknown): value is ReplayCarrier {
-  return (
-    isRecord(value) &&
-    value.version === 1 &&
-    isNativeMessage(value.message) &&
-    Value.Check(projectionSchema, value.projection) &&
-    (value.initialUserPrefix === undefined || Array.isArray(value.initialUserPrefix)) &&
-    (value.initialSystemMessages === undefined || Array.isArray(value.initialSystemMessages))
-  );
-}
+const replayCarrierSchema = Type.Object({
+  version: Type.Literal(1),
+  message: messageSchema,
+  projection: projectionSchema,
+  initialUserPrefix: Type.Optional(Type.Array(Type.Unknown())),
+  initialSystemMessages: Type.Optional(Type.Array(Type.Unknown())),
+});
 
 function replayCarrier(message: AssistantMessage): ReplayCarrier | undefined {
   const diagnostic = message.diagnostics?.find((item) => item.type === NATIVE_REPLAY_DIAGNOSTIC);
   const candidate = diagnostic?.details?.carrier;
 
-  return isReplayCarrier(candidate) ? candidate : undefined;
+  return Value.Check(replayCarrierSchema, candidate) ? candidate : undefined;
 }
 
 function replayMetadata(
@@ -268,7 +265,7 @@ export function prepareFrames(messages: Message[]): NativeFrame[] {
 function withoutNullVariant(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(withoutNullVariant);
 
-  if (!isRecord(schema)) return schema;
+  if (!matchesRecord(schema)) return schema;
 
   const output: JsonRecord = {};
 
@@ -280,7 +277,9 @@ function withoutNullVariant(schema: unknown): unknown {
   }
 
   if (Array.isArray(output.anyOf)) {
-    const nonNull = output.anyOf.filter((branch) => !(isRecord(branch) && branch.type === "null"));
+    const nonNull = output.anyOf.filter(
+      (branch) => !(matchesRecord(branch) && branch.type === "null"),
+    );
 
     if (nonNull.length === 1 && nonNull.length !== output.anyOf.length) {
       const replacement = nonNull[0];
@@ -293,10 +292,10 @@ function withoutNullVariant(schema: unknown): unknown {
   return output;
 }
 
-export function normalizeInputSchema(schema: unknown): JsonRecord {
+function normalizeInputSchema(schema: unknown): JsonRecord {
   const normalized = withoutNullVariant(schema);
 
-  if (!isRecord(normalized)) throw new Error("Tool input schema must be an object");
+  if (!matchesRecord(normalized)) throw new Error("Tool input schema must be an object");
 
   for (const key of ["oneOf", "allOf", "anyOf"]) delete normalized[key];
 

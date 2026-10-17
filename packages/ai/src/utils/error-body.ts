@@ -4,7 +4,7 @@
 
 export const MAX_PROVIDER_ERROR_BODY_CHARS = 4000;
 
-export interface NormalizedProviderError {
+interface NormalizedProviderError {
   /** HTTP status code, when one could be extracted from the SDK error object. */
   status?: number;
   /** Raw HTTP body reason, already trimmed and truncated to the cap. */
@@ -79,25 +79,22 @@ function extractBody(error: ProviderSdkError): string | undefined {
 function pickBodyText(error: ProviderSdkError): string | undefined {
   if (typeof error.body === "string") return error.body;
 
-  if (isPlainNonEmptyObject(error.error)) return safeJsonStringify(error.error);
+  if (plainObjectWithFields(error.error)) return safeJsonStringify(error.error);
   const responseBody = error.$response?.body;
 
   if (typeof responseBody === "string") return responseBody;
 
-  if (isReadableStreamLike(responseBody)) return undefined;
+  if (
+    typeof responseBody === "object" &&
+    responseBody !== null &&
+    "pipe" in responseBody &&
+    typeof responseBody.pipe === "function"
+  )
+    return undefined;
 
-  if (isPlainNonEmptyObject(responseBody)) return safeJsonStringify(responseBody);
+  if (plainObjectWithFields(responseBody)) return safeJsonStringify(responseBody);
 
   return undefined;
-}
-
-function isReadableStreamLike(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pipe" in value &&
-    typeof value.pipe === "function"
-  );
 }
 
 /**
@@ -114,7 +111,7 @@ function isReadableStreamLike(value: unknown): boolean {
  * classes fail the prototype check, while parsed JSON bodies (plain objects
  * by construction) still pass.
  */
-function isPlainNonEmptyObject(value: unknown): boolean {
+function plainObjectWithFields(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const proto = Object.getPrototypeOf(value);
 
@@ -144,13 +141,13 @@ export function formatProviderError(norm: NormalizedProviderError, prefix?: stri
     : `${norm.status}: ${norm.body}`;
 }
 
-export function truncateErrorText(text: string, maxChars: number): string {
+function truncateErrorText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
 
   return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
 }
 
-export function safeJsonStringify(value: unknown): string {
+function safeJsonStringify(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
 

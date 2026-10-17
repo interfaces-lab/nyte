@@ -17,6 +17,7 @@ import {
 import { parseAuthorizationInput } from "./authorization-input.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.ts";
+import { registerOAuthFlow } from "./load.ts";
 import { generatePKCE } from "./pkce.ts";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -199,6 +200,7 @@ async function refreshAccessToken(refreshToken: string, signal: AbortSignal): Pr
   return readTokenResponse(response, "refresh");
 }
 
+/** Starts a device-code login. `interval` converts with Number(), which trims whitespace, so numeric strings and numbers convert alike. */
 async function startOpenAICodexDeviceAuth(signal: AbortSignal): Promise<DeviceAuthInfo> {
   const response = await fetchWithLoginCancellation(DEVICE_USER_CODE_URL, {
     method: "POST",
@@ -225,7 +227,6 @@ async function startOpenAICodexDeviceAuth(signal: AbortSignal): Promise<DeviceAu
   const invalid = new Error(`Invalid OpenAI Codex device code response: ${JSON.stringify(json)}`);
 
   if (!Value.Check(DeviceCodeResponse, json)) throw invalid;
-  // Number() trims surrounding whitespace, so numeric strings and numbers convert alike.
   const intervalSeconds = Number(json.interval);
 
   if (!Number.isFinite(intervalSeconds) || intervalSeconds < 0) throw invalid;
@@ -606,3 +607,5 @@ export const openaiCodexOAuth: OAuthAuth = {
     return { apiKey: credential.access, headers: { "chatgpt-account-id": accountId } };
   },
 };
+
+registerOAuthFlow("openaiCodex", openaiCodexOAuth);

@@ -169,7 +169,7 @@ test("user messages with images omit empty text parts", async () => {
   ]);
 });
 
-test("incomplete tool arguments survive a failed stream without parser scratch fields", async () => {
+test("incomplete tool arguments are reported on a failed stream without parser scratch fields", async () => {
   const { result } = await exchange({
     chunks: [
       {
@@ -193,7 +193,13 @@ test("incomplete tool arguments survive a failed stream without parser scratch f
   assert.equal(result.stopReason, "error");
   assert.equal(result.errorMessage, "Stream ended without finish_reason");
   assert.deepEqual(result.content, [
-    { type: "toolCall", id: "call_1", name: "read", arguments: { path: "a" } },
+    {
+      type: "toolCall",
+      id: "call_1",
+      name: "read",
+      arguments: {},
+      argumentsError: `Expected ',' or '}' after property value in JSON at position 11 (line 1 column 12)\n\nReceived arguments:\n{"path":"a"`,
+    },
   ]);
 });
 

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { NavSection } from "~/lib/docs";
 import { Sidebar } from "./sidebar";
 
-/* The docs frame under the site nav: sidebar, then the page. */
+/** The docs frame under the site nav: sidebar, then the page. */
 export function DocFrame({
   sections,
   children,

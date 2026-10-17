@@ -26,6 +26,10 @@ export const MIRROR_TOOL = "claude_code";
 
 export const BACKGROUND_TOOL = "BackgroundTasks";
 
+export const NYTE_SERVER = "nyte";
+
+export const NYTE_TOOL_PREFIX = `mcp__${NYTE_SERVER}__`;
+
 export function emptyMessage(model: Model<Api>): AssistantMessage {
   return {
     role: "assistant",
@@ -67,6 +71,7 @@ export class Translator {
   readonly #stream: AssistantMessageEventStream;
   #spent = 0;
   #current = 0;
+  #started = false;
 
   constructor(model: Model<Api>, output: AssistantMessage, stream: AssistantMessageEventStream) {
     this.#model = model;
@@ -74,9 +79,11 @@ export class Translator {
     this.#stream = stream;
   }
 
+  /** Applies one stream event. Returns the raw stop reason at a message's end, and `"tool_use"` as soon as a Nyte tool call's input is complete: Claude Code waits for Nyte to run it before it runs the message's later calls. */
   apply(event: StreamEvent): string | undefined {
     switch (event.type) {
       case "message_start":
+        this.#started = true;
         this.#blocks.clear();
         this.#output.responseId = event.message.id;
 
@@ -94,9 +101,7 @@ export class Translator {
 
         return undefined;
       case "content_block_stop":
-        this.#stop(event.index);
-
-        return undefined;
+        return this.#stop(event.index);
       case "message_delta":
         if (event.delta.stop_reason !== null) {
           this.#output.rawStopReason = event.delta.stop_reason;
@@ -132,9 +137,13 @@ export class Translator {
 
   #usage(usage: ApiUsage): void {
     const usageOutput = this.#output.usage;
-    usageOutput.input = usage.input_tokens ?? usageOutput.input;
-    usageOutput.cacheRead = usage.cache_read_input_tokens ?? usageOutput.cacheRead;
-    usageOutput.cacheWrite = usage.cache_creation_input_tokens ?? usageOutput.cacheWrite;
+
+    if (this.#started) {
+      usageOutput.input = usage.input_tokens ?? usageOutput.input;
+      usageOutput.cacheRead = usage.cache_read_input_tokens ?? usageOutput.cacheRead;
+      usageOutput.cacheWrite = usage.cache_creation_input_tokens ?? usageOutput.cacheWrite;
+    }
+
     this.#current = usage.output_tokens ?? this.#current;
     usageOutput.output = this.#spent + this.#current;
     usageOutput.totalTokens =
@@ -159,7 +168,14 @@ export class Translator {
                 redacted: true,
               }
             : block.type === "tool_use"
-              ? mirrorCall(block.id, block.name, {})
+              ? block.name.startsWith(NYTE_TOOL_PREFIX)
+                ? {
+                    type: "toolCall",
+                    id: block.id,
+                    name: block.name.slice(NYTE_TOOL_PREFIX.length),
+                    arguments: {},
+                  }
+                : mirrorCall(block.id, block.name, {})
               : undefined;
 
     if (content === undefined) return;
@@ -205,7 +221,8 @@ export class Translator {
       content.thinkingSignature = (content.thinkingSignature ?? "") + delta.signature;
     } else if (delta.type === "input_json_delta" && content?.type === "toolCall") {
       slot.json += delta.partial_json;
-      content.arguments = { ...content.arguments, input: parseStreamingJson(slot.json) };
+      const input = parseStreamingJson(slot.json);
+      content.arguments = content.name === MIRROR_TOOL ? { ...content.arguments, input } : input;
       this.#stream.push({
         type: "toolcall_delta",
         contentIndex,
@@ -215,10 +232,10 @@ export class Translator {
     }
   }
 
-  #stop(native: number): void {
+  #stop(native: number): string | undefined {
     const slot = this.#blocks.get(native);
 
-    if (slot === undefined) return;
+    if (slot === undefined) return undefined;
     this.#blocks.delete(native);
     const content = this.#output.content[slot.index];
     const contentIndex = slot.index;
@@ -237,12 +254,21 @@ export class Translator {
         content: content.thinking,
         partial: this.#output,
       });
-    else if (content?.type === "toolCall")
+    else if (content?.type === "toolCall") {
       this.#stream.push({
         type: "toolcall_end",
         contentIndex,
         toolCall: content,
         partial: this.#output,
       });
+
+      if (content.name !== MIRROR_TOOL) {
+        this.#output.stopReason = "toolUse";
+
+        return "tool_use";
+      }
+    }
+
+    return undefined;
   }
 }

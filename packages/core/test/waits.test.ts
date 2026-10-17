@@ -2,35 +2,40 @@ import { asId, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer, Json, PartId, RunId, SessionId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { assert, describe, expect, it, vi } from "vitest";
+import { executeCall } from "../src/agent/tool-runner.ts";
+import { createKernel } from "../src/compose.ts";
+import { repair } from "../src/drive/execution.ts";
+import { LEASE_MS, runStep } from "../src/engine/durable.ts";
+import { earliestWake, loadWaits } from "../src/engine/waits.ts";
+import { readCalls } from "../src/store/session.ts";
+import { LOCAL, ALL_AUTHORITY, definePart } from "../src/index.ts";
 import {
-  LEASE_MS,
-  LOCAL,
-  ALL_AUTHORITY,
   callRef,
-  createKernel,
   decodeCallRecord,
   decodePartRecord,
   decodeRunRecord,
-  definePart,
-  executeCall,
-  failedParts,
-  loadWaits,
   partRef,
-  repair,
   runRef,
-  runStep,
-} from "../src/index.ts";
-import type {
-  ActionContext,
-  ActionOutput,
-  CallRecord,
-  Durable,
-  Kernel,
-  ToolDefinition,
-  ToolSource,
-} from "../src/index.ts";
-import { commit, put } from "../src/session-state.ts";
-import { configuration, main, setup, startRun, until } from "./harness.ts";
+} from "../src/store.ts";
+import { failedParts } from "../src/store/parts.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { ActionContext, ActionOutput, Durable, ToolDefinition } from "../src/index.ts";
+import type { CallRecord } from "../src/store.ts";
+import { commit } from "../src/fold/commit.ts";
+import { put } from "../src/store/session.ts";
+import { configuration, main, setup, startRun, until } from "../src/harness.ts";
+import { toolPlugin } from "./tool-support.ts";
+
+/** The earliest time a wait on the main head is due, read from its parked calls. */
+async function nextWake(kernel: Kernel, session: SessionId): Promise<number | null> {
+  const calls = await readCalls(kernel.store, session);
+
+  return earliestWake(
+    kernel.store,
+    session,
+    calls.flatMap((record) => (record.head === main ? [record.id] : [])),
+  );
+}
 
 const question = definePart({
   kind: "test/question",
@@ -214,7 +219,7 @@ async function partStatus(kernel: Kernel, session: SessionId, part: PartId) {
   return decodePartRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null)?.status;
 }
 
-async function runOf(kernel: Kernel, session: SessionId, run: RunId) {
+async function readRunRecord(kernel: Kernel, session: SessionId, run: RunId) {
   const ref = await kernel.store.refs.get(runRef(session, run));
 
   return decodeRunRecord(ref?.target ? await kernel.store.objects.get(ref.target) : null);
@@ -226,14 +231,6 @@ function restart(kernel: Kernel): Kernel {
     store: kernel.store,
     description: kernel.description,
     host: kernel.host,
-  });
-}
-
-function tools(definition: ToolDefinition): () => ToolSource {
-  return () => ({
-    get: (name) => (name === definition.name ? { definition, owner: "test" } : undefined),
-    list: () => [],
-    activate: async () => undefined,
   });
 }
 
@@ -255,9 +252,9 @@ const yes = { action: "answer", input: { choice: "yes" } };
 
 describe("waits as store facts", () => {
   it("stops a call parked on another instance through the store: its holder's poll wakes it and repair finds the run (ADV E N4)", async () => {
-    const holder = await setup({ tools: tools(parker) });
+    const holder = await setup({ plugins: [toolPlugin([parker])] });
     const other = await setup({ store: holder.kernel.store });
-    const session = await holder.host.sessions.create();
+    const { session } = await holder.host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     await session.send("Wait.");
     const step = holder.host.execution.advance(head);
@@ -267,7 +264,7 @@ describe("waits as store facts", () => {
     expect(
       await executeCall(holder.kernel, {
         session: session.id,
-        runtime: holder.kernel.pluginsFor(session.id),
+        runtime: holder.kernel.plugins.runtime(session.id),
         head: main,
         run,
         call: asId("w1"),
@@ -296,19 +293,22 @@ describe("waits as store facts", () => {
       waiting: null,
       waits: [{ kind: "stopped" }],
     });
-    expect(await runOf(other.kernel, session.id, run)).toMatchObject({ parked: [], waiting: null });
+    expect(await readRunRecord(other.kernel, session.id, run)).toMatchObject({
+      parked: [],
+      waiting: null,
+    });
     expect(await other.host.execution.repair({ limit: 10 })).toMatchObject({ runnable: [head] });
 
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect(notified).toEqual([`${session.id}/${main}`]);
-    expect(holder.kernel.waits.nextDeadline(session.id, main)).toBeNull();
+    expect(await nextWake(holder.kernel, session.id)).toBeNull();
   });
 
-  it("lists a stopping parked run as owed, so repair re-dispatches a stop whose dispatch was lost (ADV E-3 X1)", async () => {
-    const holder = await setup({ tools: tools(parker) });
+  it("ends a stopped run's parked waits from any instance, and repair re-dispatches a stop whose dispatch was lost (ADV E-3 X1)", async () => {
+    const holder = await setup({ plugins: [toolPlugin([parker])] });
     const other = await setup({ store: holder.kernel.store });
-    const session = await holder.host.sessions.create();
+    const { session } = await holder.host.sessions.start({ content: "Hi." });
     const head = { session: session.id, head: main };
     await session.send("Wait.");
     const step = holder.host.execution.advance(head);
@@ -317,7 +317,7 @@ describe("waits as store facts", () => {
 
     await executeCall(holder.kernel, {
       session: session.id,
-      runtime: holder.kernel.pluginsFor(session.id),
+      runtime: holder.kernel.plugins.runtime(session.id),
       head: main,
       run,
       call: asId("w1"),
@@ -335,10 +335,11 @@ describe("waits as store facts", () => {
     await step;
 
     expect(await other.host.session(session.id).run(run).stop()).toEqual({ kind: "requested" });
-    expect(await runOf(other.kernel, session.id, run)).toMatchObject({
+    expect(await readRunRecord(other.kernel, session.id, run)).toMatchObject({
       stopping: true,
-      parked: [asId("w1")],
+      parked: [],
     });
+    expect((await readCall(other.kernel, session.id, "w1")).waits).toEqual([{ kind: "stopped" }]);
 
     const fresh = restart(holder.kernel);
 
@@ -346,9 +347,8 @@ describe("waits as store facts", () => {
   });
 
   it("wakes no head when its turn parks: the advance reports waiting itself (ADV E-2 N7)", async () => {
-    const { kernel, host, script } = await setup({ tools: tools(parker) });
-    const session = await host.sessions.create();
-    await session.send("Wait.");
+    const { kernel, host, script } = await setup({ plugins: [toolPlugin([parker])] });
+    const { session } = await host.sessions.start({ content: "Wait." });
     const notified: string[] = [];
     kernel.wakes.subscribe((woken, at) => notified.push(`${woken}/${at}`));
     const step = host.execution.advance({ session: session.id, head: main });
@@ -356,7 +356,7 @@ describe("waits as store facts", () => {
 
     await executeCall(kernel, {
       session: session.id,
-      runtime: kernel.pluginsFor(session.id),
+      runtime: kernel.plugins.runtime(session.id),
       head: main,
       run: turn.input.run.id,
       call: asId("w1"),
@@ -379,7 +379,7 @@ describe("waits as store facts", () => {
   it("answers a modal whose step stopped waiting on it: the answer stays on the part, answer() resolves and a later step takes it; a modal no longer live refuses the act and its pending answer() resolves null (ADV B N1, B-3 N1)", async () => {
     const { kernel, host } = await setup();
     const cold = await setup({ store: kernel.store });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
     const at = Date.now() + 60_000;
 
@@ -419,7 +419,7 @@ describe("waits as store facts", () => {
 
     const pending = failed.answer();
 
-    const updates = await failedParts(kernel, session.id, main, [failed.id], {
+    const updates = await failedParts(kernel.store, session.id, main, [failed.id], {
       class: "aborted",
       message: "Stopped.",
     });
@@ -435,7 +435,7 @@ describe("waits as store facts", () => {
 
   it("resolves a pending answer() null when the stop fence fails its modal, on a host with no poll (ADV B-3 N1)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const { id: run } = await startRun(
       kernel,
@@ -451,19 +451,21 @@ describe("waits as store facts", () => {
     await commit(kernel, [
       {
         name: partRef(session.id, part.id),
-        target: await put(kernel, "part", { ...record, run, status: { kind: "live", run } }),
-        event: {
-          head: main,
-          kind: "part",
-          part: part.id,
-          change: "created",
-          partKind: record.partKind,
-          placement: record.placement,
-          state: record.state,
-          version: record.version,
-          run,
-          owner: record.owner,
-        },
+        target: await put(kernel.store, "part", { ...record, run, status: { kind: "live", run } }),
+        events: [
+          {
+            head: main,
+            kind: "part",
+            part: part.id,
+            change: "created",
+            partKind: record.partKind,
+            placement: record.placement,
+            state: record.state,
+            version: record.version,
+            run,
+            owner: record.owner,
+          },
+        ],
       },
     ]);
     const pending = part.answer();
@@ -479,7 +481,7 @@ describe("waits as store facts", () => {
   it("keeps an early answer on the part when a step takes it: a cold answer() returns it and a later act does not replace it (ADV B N2)", async () => {
     const { kernel, host } = await setup();
     const cold = await setup({ store: kernel.store });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
     const early = { action: "answer", input: { choice: "early" } };
 
@@ -516,7 +518,7 @@ describe("waits as store facts", () => {
 
   it("settles every step parked on a part from the answer the store holds, on a cold host (ADV B N3)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
 
     for (const call of ["s1", "s2"])
@@ -536,23 +538,17 @@ describe("waits as store facts", () => {
       kind: "ok",
       output: undefined,
     });
-    expect((await readCall(kernel, session.id, "s2")).waits).toEqual([
-      { kind: "part", part: part.id, answer: yes },
-    ]);
-    expect((await readCall(kernel, session.id, "s1")).waits).toEqual([]);
-
-    await loadWaits(restart(kernel));
-
-    expect(await readCall(kernel, session.id, "s1")).toMatchObject({
-      waiting: null,
-      waits: [{ kind: "part", part: part.id, answer: yes }],
-    });
+    for (const call of ["s1", "s2"])
+      expect(await readCall(kernel, session.id, call)).toMatchObject({
+        waiting: null,
+        waits: [{ kind: "part", part: part.id, answer: yes }],
+      });
   });
 
   it("re-runs a part action parked across a restart once a wake written there completes its wait (ADV B N5, §33j)", async () => {
     const { kernel, host } = await setup();
     kernel.partDefinitions.register(holding, "plugin");
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(holding, {
       state: { done: false },
@@ -604,7 +600,7 @@ describe("waits as store facts", () => {
 
     for (const kernel of [holder.kernel, other.kernel])
       kernel.partDefinitions.register(gated, "plugin");
-    const session = await holder.host.sessions.create();
+    const { session } = await holder.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(gated, {
       state: { done: false },
@@ -631,7 +627,7 @@ describe("waits as store facts", () => {
     await loadWaits(other.kernel, [session.id]);
     await other.kernel.waits.tick(at);
     await until(async () => (resumed.length === 1 ? true : undefined));
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(resumed).toHaveLength(1);
@@ -639,7 +635,7 @@ describe("waits as store facts", () => {
     await until(async () =>
       (await readCall(holder.kernel, session.id, call)).result === null ? undefined : true,
     );
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
     expect(resumed).toHaveLength(1);
@@ -651,7 +647,7 @@ describe("waits as store facts", () => {
 
     for (const kernel of [holder.kernel, other.kernel])
       kernel.partDefinitions.register(dying, "plugin");
-    const session = await holder.host.sessions.create();
+    const { session } = await holder.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(dying, {
       state: { done: false },
@@ -666,7 +662,7 @@ describe("waits as store facts", () => {
     await loadWaits(other.kernel, [session.id]);
     await other.kernel.waits.tick(at);
     await until(async () => (resumed.length === 1 ? true : undefined));
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect((await readCall(holder.kernel, session.id, call)).reran).toMatchObject({
       waits: 1,
@@ -674,7 +670,7 @@ describe("waits as store facts", () => {
     });
 
     await leaseLater(async () => {
-      await holder.kernel.waits.settleFromStore();
+      await holder.kernel.waits.refresh();
 
       expect(await acting).toEqual({ kind: "ok", output: { woke: "timer" } });
     });
@@ -688,7 +684,7 @@ describe("waits as store facts", () => {
 
     for (const kernel of [holder.kernel, other.kernel])
       kernel.partDefinitions.register(dying, "plugin");
-    const session = await holder.host.sessions.create();
+    const { session } = await holder.host.sessions.start({ content: "Hi." });
 
     const part = await session.parts.create(dying, {
       state: { done: false },
@@ -726,7 +722,7 @@ describe("waits as store facts", () => {
   it("wakes an untilInput wait parked on another instance when the user sends here, and a wait on a modal another instance closes (ADV B N6, E N5)", async () => {
     const holder = await setup();
     const other = await setup({ store: holder.kernel.store });
-    const session = await holder.host.sessions.create();
+    const { session } = await holder.host.sessions.start({ content: "Hi." });
     const run = await liveRun(holder.kernel, session.id);
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
     const notified: string[] = [];
@@ -760,16 +756,19 @@ describe("waits as store facts", () => {
     expect((await readCall(other.kernel, session.id, "c2")).waits).toEqual([
       { kind: "part", part: part.id, answer: null },
     ]);
-    expect(await runOf(other.kernel, session.id, run)).toMatchObject({ parked: [], waiting: null });
+    expect(await readRunRecord(other.kernel, session.id, run)).toMatchObject({
+      parked: [],
+      waiting: null,
+    });
 
-    await holder.kernel.waits.settleFromStore();
+    await holder.kernel.waits.refresh();
 
     expect(notified).toEqual([`${session.id}/${main}`, `${session.id}/${main}`]);
   });
 
-  it("drops a wait held here once its deadline finds the step settled elsewhere, so it is no longer the head's next deadline", async () => {
+  it("settles a timer once across instances: a wait another instance settled is no head's next deadline, and a tick here leaves it", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const at = Date.now() + 60_000;
 
     await waitStep(kernel, {
@@ -782,14 +781,14 @@ describe("waits as store facts", () => {
     await loadWaits(elsewhere);
     await elsewhere.waits.tick(at);
 
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(at);
+    expect(await nextWake(kernel, session.id)).toBeNull();
     await kernel.waits.tick(at);
-    expect(kernel.waits.nextDeadline(session.id, main)).toBeNull();
+    expect((await readCall(kernel, session.id, "c1")).waits).toEqual([{ kind: "timer" }]);
   });
 
   it("judges a wait held here again from the store: repair settles one whose part went away, and a slot at an older wait gives way to the stored one (ADV E N1)", async () => {
     const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const part = await session.parts.create(question, { state: {}, placement: { kind: "modal" } });
 
     await waitStep(kernel, {
@@ -822,9 +821,9 @@ describe("waits as store facts", () => {
     await loadWaits(elsewhere);
     await elsewhere.waits.tick(first);
     await waitStep(elsewhere, { session: session.id, call: "c2", body: twice });
-    await kernel.waits.settleFromStore();
+    await kernel.waits.refresh();
 
-    expect(kernel.waits.nextDeadline(session.id, main)).toBe(second);
+    expect(await nextWake(kernel, session.id)).toBe(second);
     await kernel.waits.tick(second);
     expect((await readCall(kernel, session.id, "c2")).waits).toEqual([
       { kind: "timer" },

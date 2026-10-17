@@ -49,8 +49,10 @@ it("searches tools within a namespace", async () => {
     codemode,
     { id: "tools", contribute: { tools: [echo, lookup] } },
   ]);
-  const session = await host.sessions.create();
-  await (await session.send("Find tools.")).settled();
+  const { session, receipt: started } = await host.sessions.start({
+    content: "Find tools.",
+  });
+  await started.settled();
 
   const call = (await session.view()).messages.find(
     (message) => isPart(message, tool) && message.state.name === "codemode",
@@ -97,8 +99,10 @@ it("runs a script that calls two tools, one exposed to code only, and keeps its 
     codemode,
     { id: "tools", contribute: { tools: [echo, shout] } },
   ]);
-  const session = await host.sessions.create();
-  await (await session.send("Script it.")).settled();
+  const { session, receipt: started } = await host.sessions.start({
+    content: "Script it.",
+  });
+  await started.settled();
 
   const outcomes = (await session.view()).messages.flatMap((message) =>
     isPart(message, tool) && message.state.name === "codemode" && message.state.phase === "settled"
@@ -115,4 +119,7 @@ it("runs a script that calls two tools, one exposed to code only, and keeps its 
 
   assert(system?.role === "system");
   expect(system.toolsAdded?.map((declared) => declared.name)).not.toContain("shout");
+  expect(system.content).toContain(
+    "returns a tool's arguments:\n- shout: Upper-case the text; callable from code only.\n</0096-codemode>",
+  );
 });

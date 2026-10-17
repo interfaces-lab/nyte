@@ -1,24 +1,34 @@
 import { create, props } from "@stylexjs/stylex";
 import type { ToolClass } from "@nyte-ai/sdk";
-import { toolOutput, toolStatus } from "../view-helpers.ts";
-import type { ToolMessage, ToolStatus, ToolTense } from "../view-helpers.ts";
 import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import {
+  customTool,
+  placeName,
+  toolNoun,
+  toolOutput,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type {
+  CustomTool,
+  ToolMessage,
+  ToolStatus,
+  ToolTense,
+} from "@nyte-ai/plugin/client/presentation";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
-import { activityStyles } from "./styles.stylex.ts";
-import { terminalText } from "./terminal-text.ts";
-import { customTool, placeName, toolNoun, toolVerbs } from "./tool-copy.ts";
-import type { CustomTool } from "./tool-copy.ts";
+import { activityStyles } from "./activity.stylex.ts";
+import { ToolOutputText, excerptText, outputExcerpt } from "./tool-output.tsx";
 
-export type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
+type LineToolClass = Extract<ToolClass, { readonly kind: "read" | "list" | "custom" }>;
 
 const COLOR_TRANSITION = {
   transitionProperty: "color",
@@ -29,7 +39,7 @@ const COLOR_TRANSITION = {
   transitionTimingFunction: "ease-in-out",
 } as const;
 
-const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
 
 export const toolLineStyles = create({
   root: { display: "flex", flexDirection: "column", minWidth: 0 },
@@ -60,15 +70,15 @@ export const toolLineStyles = create({
     cursor: appearance.cursorInteractive,
     "--_action": {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
     "--_details": {
       default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":hover": { [media.hover]: role.contentPrimary },
     },
     "--_chevron": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
       "[data-panel-open]": "1",
     },
@@ -213,12 +223,14 @@ export const ToolLineView = memo(function ToolLineView({
   const running = status.tense === "running";
   const opener = useReferenceOpener();
   const { state } = message;
+
   const raw = running
     ? state.phase === "running"
       ? (state.progress?.text ?? "")
       : ""
     : toolOutput(state);
-  const output = useMemo(() => terminalText(raw).trimEnd(), [raw]);
+
+  const excerpt = useMemo(() => outputExcerpt(raw.trimEnd()), [raw]);
   const copy = lineCopy(toolClass, cwd, status.tense);
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -229,7 +241,7 @@ export const ToolLineView = memo(function ToolLineView({
       : undefined;
 
   const open = file === undefined ? undefined : opener?.({ kind: "file", file });
-  const expandable = open === undefined && output.trim() !== "";
+  const expandable = open === undefined && (excerpt.hidden > 0 || excerpt.head.trim() !== "");
   const hasDetails = copy.name !== undefined || copy.detail !== undefined;
 
   const content: ReactNode = (
@@ -313,12 +325,12 @@ export const ToolLineView = memo(function ToolLineView({
           <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
         </PreviewCardTrigger>
         <PreviewCardContent side="bottom" align="start" sideOffset={8} xstyle={toolLineStyles.card}>
-          <div {...props(toolLineStyles.cardText)}>{output}</div>
+          <div {...props(toolLineStyles.cardText)}>{excerptText(excerpt)}</div>
         </PreviewCardContent>
       </PreviewCard>
       <Collapsible.Panel data-tool-body role="region" aria-label="Tool output">
         <div data-nyte-scrollport {...props(toolLineStyles.output)}>
-          {output}
+          <ToolOutputText raw={raw} excerpt={excerpt} />
         </div>
       </Collapsible.Panel>
     </Collapsible.Root>

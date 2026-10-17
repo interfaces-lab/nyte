@@ -19,6 +19,8 @@ export type {
   FileBatch,
   FilesApi,
   GitApi,
+  GitHubAccountApi,
+  GitHubApi,
   Head,
   HookEntry,
   HookHandler,
@@ -59,7 +61,6 @@ export type {
   Resources,
   Row,
   Run,
-  SdkErrorCode,
   SendReceipt,
   Session,
   Sessions,
@@ -120,7 +121,9 @@ export type {
   DurableEvent,
   EndReason,
   EnvironmentIdentity,
+  ExcerptSource,
   Execution,
+  Failure,
   ExecutionCoverage,
   FileDocument,
   FileEntryView,
@@ -136,6 +139,16 @@ export type {
   GitScope,
   GitStatus,
   GitWrite,
+  GitHubAccount,
+  GitHubAccountState,
+  GitHubCheck,
+  GitHubDeviceCode,
+  GitHubPullRequest,
+  GitHubPullRequestContext,
+  GitHubPullRequestInput,
+  GitHubPullRequestOutcome,
+  GitHubRepository,
+  GitHubState,
   HeadInfo,
   HeadName,
   HostDescription,
@@ -171,7 +184,6 @@ export type {
   MessageSource,
   ModelAccount,
   ModelCatalogView,
-  ModelContext,
   ModelInfo,
   ModelRef,
   ModelRequest,
@@ -216,8 +228,10 @@ export type {
   RunView,
   ScanFrame,
   Schedule,
+  SdkErrorCode,
   Schema,
   SearchFrame,
+  SearchInput,
   SendOptions,
   Seq,
   SessionCatalogView,
@@ -255,6 +269,7 @@ export type {
   ViewOptions,
   WaitOutcome,
   WaitTarget,
+  WorkspaceCommandOutcome,
   WorkspaceId,
   WorkspaceInfo,
   WorkspaceInspection,
@@ -262,8 +277,28 @@ export type {
   WriteOutcome,
 } from "@nyte-ai/schema";
 
-export type { Failure } from "@nyte-ai/schema/model";
+export { dev } from "@nyte-ai/core";
 
-export { dev, SdkError } from "@nyte-ai/core";
+export {
+  clearSpans,
+  enableTracing,
+  followTrace,
+  followedTrace,
+  readSpans,
+  SPAN_NAMES,
+  startSpan,
+  traced,
+  tracing,
+} from "@nyte-ai/core";
+
+export type { EndSpan, Span, SpanDetail, SpanName } from "@nyte-ai/core";
+
+export { SdkError } from "@nyte-ai/schema";
+
+export { pagedViews } from "./history.ts";
+
+export { tracePaints } from "./paint-spans.ts";
+
+export type { PagedViews } from "./history.ts";
 
 export type { DevRow } from "@nyte-ai/core";

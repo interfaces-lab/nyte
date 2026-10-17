@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView, ModelInfo, SessionView } from "@nyte-ai/sdk";
 import type { Msg } from "../../src/model/msg.ts";
 import { reduce } from "../../src/model/reduce.ts";
-import type { Step } from "../../src/model/reduce.ts";
+import type { Step } from "../../src/model/step.ts";
 import { initialState } from "../../src/model/state.ts";
 import type { State } from "../../src/model/state.ts";
 import { followed } from "../fixture/view.ts";
@@ -18,11 +18,13 @@ export function model(
     name: id,
     reasoning: true,
     thinking,
+    defaultThinking: thinking.find((level) => level !== "off") ?? "off",
     fast: null,
     contextWindow: 100_000,
     compactAt: 90_000,
     maxOutput: 8_000,
     input: ["text"],
+    capabilities: { steer: true },
     cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
   };
 }
@@ -53,6 +55,7 @@ export function blank(): State {
       followUp: "steer",
     },
     terminal: { width: 100, height: 32, theme: "dark", selection: false, dragging: false },
+    chat: null,
   });
 }
 
@@ -74,7 +77,7 @@ export function ready(view: SessionView): State {
 
   return play(
     blank(),
-    { kind: "phase", phase: { kind: "ready" } },
+    { kind: "host-opened" },
     { kind: "catalog", generation: 1, catalog: CATALOG },
     {
       kind: "session-opened",

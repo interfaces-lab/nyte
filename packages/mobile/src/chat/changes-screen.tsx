@@ -7,6 +7,8 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
+import { readHunks } from "@nyte-ai/schema";
+import type { Hunk } from "@nyte-ai/schema";
 import type { Connection, FileStatus, PatchEntry, PatchSet, SessionId } from "@nyte-ai/sdk";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -31,6 +33,7 @@ type FileSection = {
   removed: number;
   subtitle: string | undefined;
   file: TextPatch;
+  hunks: readonly Hunk[];
   lineCount: number;
 };
 
@@ -40,11 +43,11 @@ const LINE_LIMIT = 400;
 /** How much of one file is on screen. The header toggles, the footer promotes. */
 type FileView = "collapsed" | "head" | "whole";
 
-/** Parsed patch → display lines with new-side (or old-side) line numbers. */
-function linesOf(file: TextPatch, limit: number): Line[] {
+/** A file's hunks → display lines with new-side (or old-side) line numbers. */
+function displayLines(hunks: readonly Hunk[], limit: number): Line[] {
   const out: Line[] = [];
 
-  for (const hunk of file.hunks) {
+  for (const hunk of hunks) {
     if (out.length === limit) return out;
 
     out.push({
@@ -75,6 +78,8 @@ function linesOf(file: TextPatch, limit: number): Line[] {
 }
 
 function fileSection(file: TextPatch, subtitle: string | undefined): FileSection {
+  const hunks = readHunks(file.patch);
+
   return {
     key: file.path + (subtitle ?? ""),
     path: file.path,
@@ -83,7 +88,8 @@ function fileSection(file: TextPatch, subtitle: string | undefined): FileSection
     removed: file.removed,
     subtitle,
     file,
-    lineCount: file.hunks.reduce((count, hunk) => count + hunk.lines.length + 1, 0),
+    hunks,
+    lineCount: hunks.reduce((count, hunk) => count + hunk.lines.length + 1, 0),
   };
 }
 
@@ -97,6 +103,10 @@ async function textPatches(stream: AsyncIterable<PatchSet>): Promise<TextPatch[]
   );
 }
 
+/**
+ * A session's changes, from the agent's record or the Mac's working tree. Past three files, only the
+ * file the user arrived on starts open; a tap moves one file between collapsed, head, and full views.
+ */
 export function ChangesScreen({
   client,
   sessionId,
@@ -111,7 +121,6 @@ export function ChangesScreen({
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [source, setSource] = useState<Source>(initialSource ?? "agent");
-  // Sections past three start collapsed; taps move one file between views.
   const [views, setViews] = useState<ReadonlyMap<string, FileView>>(new Map());
   const [pulling, setPulling] = useState(false);
   const chat = useRemoteChat(client, sessionId);
@@ -223,8 +232,7 @@ export function ChangesScreen({
     return (macDiffsQuery.data ?? []).map((file) => fileSection(file, undefined));
   }, [source, agentQuery.data, macDiffsQuery.data]);
 
-  // Past three files, only the one the user arrived on starts open.
-  const viewOf = useCallback(
+  const readView = useCallback(
     (section: FileSection): FileView =>
       views.get(section.key) ??
       (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head"),
@@ -292,7 +300,7 @@ export function ChangesScreen({
             description="The agent didn't report file edits in this conversation. Try On Mac to see what's changed there."
           />
         ) : (
-          <DiffSections sections={sections} viewOf={viewOf} onSetView={setView} />
+          <DiffSections sections={sections} readView={readView} onSetView={setView} />
         )
       ) : macDiffs.kind === "loading" ? (
         <html.div style={styles.state}>
@@ -313,7 +321,7 @@ export function ChangesScreen({
       ) : (
         <DiffSections
           sections={sections}
-          viewOf={viewOf}
+          readView={readView}
           onSetView={setView}
           refreshControl={
             <RefreshControl
@@ -334,12 +342,12 @@ export function ChangesScreen({
 
 function DiffSections({
   sections,
-  viewOf,
+  readView,
   onSetView,
   refreshControl,
 }: {
   sections: FileSection[];
-  viewOf: (section: FileSection) => FileView;
+  readView: (section: FileSection) => FileView;
   onSetView: (key: string, view: FileView) => void;
   refreshControl?: ReactElement<RefreshControlProps>;
 }) {
@@ -348,17 +356,20 @@ function DiffSections({
   const visibleSections = useMemo(
     () =>
       sections.map((section) => {
-        const view = viewOf(section);
+        const view = readView(section);
 
         return {
           ...section,
           data:
             view === "collapsed"
               ? []
-              : linesOf(section.file, view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY),
+              : displayLines(
+                  section.hunks,
+                  view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY,
+                ),
         };
       }),
-    [sections, viewOf],
+    [sections, readView],
   );
 
   return (
@@ -373,7 +384,7 @@ function DiffSections({
       refreshControl={refreshControl}
       contentContainerStyle={{ paddingBottom: spacing.xl }}
       renderSectionHeader={({ section }) => {
-        const collapsed = viewOf(section) === "collapsed";
+        const collapsed = readView(section) === "collapsed";
 
         return (
           <html.button
@@ -407,7 +418,7 @@ function DiffSections({
       renderSectionFooter={({ section }) => {
         const hidden = section.lineCount - LINE_LIMIT;
 
-        if (viewOf(section) !== "head" || hidden <= 0) return null;
+        if (readView(section) !== "head" || hidden <= 0) return null;
 
         return (
           <html.button onClick={() => onSetView(section.key, "whole")} style={styles.showRest}>

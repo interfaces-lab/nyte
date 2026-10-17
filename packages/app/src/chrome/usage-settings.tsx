@@ -1,4 +1,4 @@
-import { BarChart, Sparkline, type ChartSeries } from "@nyte-ai/ui/chart";
+import type { ChartSeries } from "@nyte-ai/ui/chart";
 import { Meter } from "@nyte-ai/ui/meter";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -8,9 +8,10 @@ import { intent, surfaceTheme, type Tint } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { Fragment, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { Deferred } from "../deferred.tsx";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { useChromeTab } from "./use-chrome-tab.ts";
-import { isOption } from "./sidebar-view.ts";
+import { amongOptions } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import {
@@ -73,7 +74,7 @@ function rowTint(row: UsageRow, rank: number): Tint | undefined {
   return row.share > 0 ? RANK_TINTS[rank] : undefined;
 }
 
-function percentOf(share: number): string {
+function shareWidth(share: number): string {
   return `${String(Math.min(Math.max(share, 0), 1) * 100)}%`;
 }
 
@@ -91,6 +92,14 @@ function Bone({
   return <span aria-hidden="true" {...props(bone.bone)} style={{ width, height }} />;
 }
 
+function Trend({ values }: { readonly values: readonly number[] }): ReactElement {
+  return (
+    <Deferred entry="charts" fallback={<Bone width={72} height={20} />}>
+      {({ Sparkline }) => <Sparkline values={values} />}
+    </Deferred>
+  );
+}
+
 export function UsageRangePicker(): ReactElement {
   const [range, setRange] = useUsageRange();
 
@@ -99,7 +108,7 @@ export function UsageRangePicker(): ReactElement {
       variant="segmented"
       value={range}
       onValueChange={(value) => {
-        if (isOption(value, USAGE_RANGES)) setRange(value);
+        if (amongOptions(value, USAGE_RANGES)) setRange(value);
       }}
     >
       <Tabs.List aria-label="Usage range">
@@ -245,12 +254,16 @@ function SpendCard({
           <span {...props(text.sm, styles.fact)}>{describeTotals(usage.totals)}</span>
         </span>
       </div>
-      <BarChart
-        label={`${usage.measure === "cost" ? "Spend" : "Tokens"} per ${usage.grain}`}
-        series={layers.series}
-        buckets={layers.buckets}
-        format={format}
-      />
+      <Deferred entry="charts" fallback={<Bone width="100%" height={108} />}>
+        {({ BarChart }) => (
+          <BarChart
+            label={`${usage.measure === "cost" ? "Spend" : "Tokens"} per ${usage.grain}`}
+            series={layers.series}
+            buckets={layers.buckets}
+            format={format}
+          />
+        )}
+      </Deferred>
     </section>
   );
 }
@@ -411,7 +424,7 @@ function BreakdownTable({
               {row.trend === undefined ? (
                 <span {...props(text.base, styles.number, styles.absent)}>—</span>
               ) : (
-                <Sparkline values={row.trend} />
+                <Trend values={row.trend} />
               )}
             </span>
             <span role="cell" {...props(styles.cost)}>
@@ -430,7 +443,7 @@ function BreakdownTable({
                     styles.shareFill,
                     tint === undefined && styles.dotIdle,
                   )}
-                  style={{ width: percentOf(row.share) }}
+                  style={{ width: shareWidth(row.share) }}
                 />
               </span>
             </span>
@@ -442,8 +455,8 @@ function BreakdownTable({
   );
 }
 
+/** The heading and the query keep the day the panel opened on, even past midnight. */
 export function UsageSettings(): ReactElement {
-  // Keep the heading and the query on the same day if the panel stays open past midnight.
   const [openedAt] = useState(() => Date.now());
   const [range, setRange] = useUsageRange();
   const [axis, setAxis] = useChromeTab("usage", AXES);
@@ -564,7 +577,7 @@ export function UsageSettings(): ReactElement {
           variant="segmented"
           value={axis}
           onValueChange={(next) => {
-            if (isOption(next, AXES)) setAxis(next);
+            if (amongOptions(next, AXES)) setAxis(next);
           }}
           xstyle={styles.breakdown}
         >

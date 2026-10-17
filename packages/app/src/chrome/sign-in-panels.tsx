@@ -15,7 +15,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import type { DeviceCode } from "../bridge.ts";
 import { answerLogin } from "./login-attempts.ts";
 import type { BrowserSignIn } from "./login-attempts.ts";
-import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 
@@ -59,11 +59,9 @@ export function DeviceCodePanel({ deviceCode }: { deviceCode: DeviceCode }): Rea
             {...props(styles.deviceCodeLink)}
             onClick={(event) => {
               event.preventDefault();
-              void nyte.host.openExternal({ url: verificationUri }).catch(() =>
-                toast.add({
-                  type: "error",
-                  title: `Couldn't open ${linkText(verificationUri)}. Enter the code there yourself.`,
-                }),
+              openExternal(
+                verificationUri,
+                `Couldn't open ${linkText(verificationUri)}. Enter the code there yourself.`,
               );
             }}
           >
@@ -182,11 +180,7 @@ export function BrowserSignInPanel({
           tone="primary"
           onClick={(event) => {
             event.preventDefault();
-            void nyte.host
-              .openExternal({ url: browser.url })
-              .catch(() =>
-                toast.add({ type: "error", title: `Couldn't open ${host ?? "the sign-in page"}.` }),
-              );
+            openExternal(browser.url, `Couldn't open ${host ?? "the sign-in page"}.`);
           }}
         >
           {host === undefined ? "Open Sign-In Page" : `Open ${host}`}

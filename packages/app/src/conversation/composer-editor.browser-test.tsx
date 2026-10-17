@@ -70,8 +70,9 @@ export async function run(): Promise<string> {
     await paint();
     const handle = ref.current;
 
-    if (handle === null || handle.element === null) throw new Error("editor did not mount");
-    const area = handle.element;
+    const area = handle?.readElement() ?? null;
+
+    if (handle === null || area === null) throw new Error("editor did not mount");
     area.style.cssText =
       "width: 600px; max-height: 150px; overflow: auto; font: 16px/24px sans-serif";
     check(handle.readDocument().text === text, "restored long draft survives chip conversion");

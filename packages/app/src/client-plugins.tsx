@@ -1,253 +1,110 @@
 import { isValidElement } from "react";
 import type { ReactNode } from "react";
+import { mountClientPlugins } from "@nyte-ai/plugin/client/mount";
+import type { ClientPlugins } from "@nyte-ai/plugin/client/mount";
 import notifications from "@nyte-ai/plugin/client/notifications";
-import renderers from "@nyte-ai/plugin/client/transcript";
+import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import questions from "@nyte-ai/plugin/client/questions";
-import type {
-  HookEntry,
-  HookHandler,
-  HookName,
-  Plugin,
-  PluginApi,
-  Renderer,
-  SettingDefinition,
-} from "@nyte-ai/plugin/client";
-import type {
-  Disposer,
-  Json,
-  PluginStorage,
-  Registry,
-  RegistryDraft,
-  SessionId,
-  SessionInfo,
-  Setting,
-} from "@nyte-ai/sdk";
+import renderers from "@nyte-ai/plugin/client/transcript";
+import type { Placement, SessionId, SubmitDraft } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./conversation/canvas-frame.tsx";
-import { connection } from "./sdk.tsx";
-import type { PartMessage } from "./view-helpers.ts";
+import { connected, connection, directoryWatch } from "./sdk.tsx";
 
-type ClientRegistries = PluginApi["contribute"];
+let mounting: Promise<ClientPlugins> | undefined;
 
-type Derive<T> = (draft: RegistryDraft<T>, siblings: ClientRegistries) => void;
+let mounted: ClientPlugins | undefined;
 
-type RunEnded = Parameters<HookHandler<"run_ended_anywhere">>[0];
-
-function registry<T>(
-  key: (item: T) => string,
-  isItem: (entry: T | Derive<T>) => entry is T,
-  siblings: () => ClientRegistries,
-): Registry<T, "client"> {
-  const items = new Set<T>();
-  const derives = new Set<Derive<T>>();
-
-  function add(item: T): Disposer;
-  function add(derive: Derive<T>): Disposer;
-  function add(entry: T | Derive<T>): Disposer {
-    if (isItem(entry)) {
-      items.add(entry);
-
-      return () => void items.delete(entry);
-    }
-
-    derives.add(entry);
-
-    return () => void derives.delete(entry);
-  }
-
-  return {
-    add,
-    list() {
-      const draft = new Map<string, T>([...items].map((item) => [key(item), item]));
-
-      for (const derive of derives)
-        derive(
-          {
-            set: (id, item) => void draft.set(id, item),
-            get: (id) => draft.get(id),
-            delete: (id) => void draft.delete(id),
-            ids: () => [...draft.keys()],
-            wrap: (id, wrap) => {
-              const inner = draft.get(id);
-
-              if (inner !== undefined) draft.set(id, wrap(inner));
-            },
-          },
-          siblings(),
-        );
-
-      return [...draft.values()];
-    },
-  };
-}
-
-function settingsRegistry(siblings: () => ClientRegistries): ClientRegistries["settings"] {
-  const base = registry<SettingDefinition>(
-    (item) => item.id,
-    (entry): entry is SettingDefinition => typeof entry !== "function",
-    siblings,
-  );
-  const values = new Map<string, unknown>();
-
-  const value = async (id: string): Promise<unknown> => {
-    const definition = base.list().find((item) => item.id === id);
-
-    if (definition === undefined) throw new Error(`No setting is declared with id ${id}.`);
-
-    return values.has(id) ? values.get(id) : definition.default;
-  };
-
-  function add(item: SettingDefinition): Setting<unknown> & Disposer;
-  function add(derive: Derive<SettingDefinition>): Disposer;
-  function add(entry: SettingDefinition | Derive<SettingDefinition>): Disposer {
-    if (typeof entry === "function") return base.add(entry);
-    const remove = base.add(entry);
-
-    return Object.assign(remove, {
-      get: () => value(entry.id),
-      set: async (next: unknown) => void values.set(entry.id, next),
-      watch: async function* () {
-        yield await value(entry.id);
-      },
-    });
-  }
-
-  return {
-    add,
-    list: () => base.list(),
-    value,
-    watch: async function* (id) {
-      yield await value(id);
-    },
-  };
-}
-
-function memoryStorage(): PluginStorage {
-  const values = new Map<string, Json>();
-
-  function get<T extends Json>(key: string): Promise<T | undefined>;
-  async function get(key: string): Promise<Json | undefined> {
-    return values.get(key);
-  }
-
-  const storage: PluginStorage = {
-    get,
-    set: async (key, value) => void values.set(key, value),
-    delete: async (key) => void values.delete(key),
-    keys: async () => [...values.keys()],
-    at: () => storage,
-    secrets: {
-      get: async () => undefined,
-      set: async () => {
-        throw new Error("The app keeps no client secrets.");
-      },
-      delete: async () => undefined,
-    },
-  };
-
-  return storage;
-}
-
-const plugins: readonly Plugin[] = [notifications, renderers, questions, canvasRenderers];
-
-const runEnded: { readonly run: HookHandler<"run_ended_anywhere">; readonly api: PluginApi }[] = [];
-
-const drawers = new Map<string, Renderer>();
-
-let mounted = false;
-
-export function mountClientPlugins(session: () => SessionId | undefined): void {
-  if (mounted) return;
-  mounted = true;
-  const controller = new AbortController();
-
-  for (const plugin of plugins) {
-    const contribute: ClientRegistries = {
-      commands: registry(
-        (item) => item.name,
-        (entry) => typeof entry !== "function",
-        () => contribute,
-      ),
-      settings: settingsRegistry(() => contribute),
-      renderers: registry(
-        (item) => item.kind.kind,
-        (entry) => typeof entry !== "function",
-        () => contribute,
-      ),
-      keybindings: registry(
-        (item) => item.key,
-        (entry) => typeof entry !== "function",
-        () => contribute,
-      ),
-    };
-
-    const api: PluginApi = {
-      side: "client",
-      sdk: connection(),
-      contribute,
-      storage: memoryStorage(),
-      signal: controller.signal,
-      hook:
-        <N extends HookName>(_name: N, _entry: HookEntry<N>): Disposer =>
-        () =>
-          undefined,
-      report: (issue) => toast.add({ type: "error", title: `${plugin.id}: ${issue.message}` }),
-      reload: () => undefined,
+/**
+ * Mounts the desktop's client plugins once the host connects, feeds them the
+ * session directory, so a run that ends anywhere reaches their hooks, and
+ * tells them each time the focused session changes (`focusMoved` calls its
+ * listener after any change that may move it).
+ */
+export function watchClientPlugins(
+  session: () => SessionId | undefined,
+  focusMoved: (listener: () => void) => () => void,
+): () => void {
+  mounting ??= connected().then(async (current) => {
+    mounted = await mountClientPlugins({
+      connection: current,
+      plugins: [notifications, renderers, questions, canvasRenderers],
       client: { name: "desktop", frameworks: ["react"] },
-      get session() {
+      session: () => {
         const id = session();
 
-        return id === undefined ? null : connection().session(id);
+        return id === undefined ? null : current.session(id);
       },
-      ui: {
-        notify: (input) =>
-          toast.add({
-            type:
-              input.level === "error" ? "error" : input.level === "warning" ? "warning" : "info",
-            title: input.title ?? input.message,
-            description: input.title === undefined ? undefined : input.message,
-          }),
-      },
-    };
+      notify: (input) =>
+        toast.add({
+          type: input.level === "error" ? "error" : input.level === "warning" ? "warning" : "info",
+          title: input.title ?? input.message,
+          description: input.title === undefined ? undefined : input.message,
+        }),
+      report: (plugin, message) => toast.add({ type: "error", title: `${plugin}: ${message}` }),
+    });
 
-    for (const item of plugin.contribute?.renderers ?? []) contribute.renderers.add(item);
+    return mounted;
+  });
 
-    const entry = plugin.hooks?.run_ended_anywhere;
+  const plugins = mounting;
+  const directory = directoryWatch("all");
 
-    if (entry !== undefined)
-      runEnded.push({ run: typeof entry === "function" ? entry : entry.run, api });
-    void plugin.activate?.(api);
+  const feed = (): void => {
+    const sessions = directory.value;
 
-    for (const drawer of contribute.renderers.list())
-      if (drawer.framework === "react" && !drawers.has(drawer.kind.kind))
-        drawers.set(drawer.kind.kind, drawer);
-  }
+    if (sessions !== undefined) void plugins.then((mount) => mount.sessionsChanged(sessions));
+  };
+
+  let focused: SessionId | undefined;
+
+  const refocus = (): void => {
+    const next = session();
+
+    if (next === focused) return;
+    const previous = focused;
+    focused = next;
+
+    if (next !== undefined)
+      void plugins.then((mount) =>
+        mount.switched(
+          previous === undefined ? null : connection().session(previous),
+          connection().session(next),
+        ),
+      );
+  };
+
+  feed();
+  refocus();
+  const stopDirectory = directory.subscribe(feed);
+  const stopFocus = focusMoved(refocus);
+
+  return () => {
+    stopDirectory();
+    stopFocus();
+  };
 }
 
-export function observeRunEnds(
-  previous: readonly SessionInfo[],
-  next: readonly SessionInfo[],
-): void {
-  const before = new Map(previous.map((session) => [session.id, session.heads[0]?.execution]));
+/** The draft the client plugins' before_submit hooks let through, as they rewrote it; throws with the reason one refused it. A window whose plugins failed to mount sends it as it is. */
+export async function admitDraft(draft: SubmitDraft): Promise<SubmitDraft> {
+  const plugins = await mounting?.catch(() => undefined);
 
-  for (const session of next) {
-    const was = before.get(session.id);
-    const now = session.heads[0]?.execution;
+  if (plugins === undefined) return draft;
+  const decision = await plugins.beforeSubmit(draft);
 
-    if (was === undefined || was.kind === "idle" || now?.kind !== "idle" || now.lastRun === null)
-      continue;
-    const event: RunEnded = { session: session.id, run: now.lastRun.id, end: now.lastRun.end };
+  switch (decision.action) {
+    case "continue":
+      return draft;
+    case "modify":
+      return decision.value;
+    case "reject":
+      throw new Error(decision.reason);
+    case "error":
+      throw new Error(decision.message);
+    default: {
+      const _exhaustive: never = decision;
 
-    for (const handler of runEnded) {
-      void Promise.resolve(
-        handler.run(event, {
-          api: handler.api,
-          signal: AbortSignal.timeout(5_000),
-          session: session.id,
-          head: null,
-          run: now.lastRun.id,
-        }),
-      ).catch(() => undefined);
+      return _exhaustive;
     }
   }
 }
@@ -255,15 +112,9 @@ export function observeRunEnds(
 export function drawPart(
   sessionId: SessionId,
   message: PartMessage,
-  placement: Parameters<Renderer["render"]>[0]["placement"],
+  placement: Placement,
 ): ReactNode {
-  const drawer = drawers.get(message.partKind);
-
-  if (drawer === undefined) return null;
-  const drawn = drawer.render(
-    { state: message.state, version: message.version, placement },
-    (action, input) => connection().session(sessionId).part(message.part).act(action, input),
-  );
+  const drawn = mounted?.draw(connection().session(sessionId), message, placement);
 
   return isValidElement(drawn) ? drawn : null;
 }

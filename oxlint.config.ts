@@ -42,8 +42,16 @@ const reflectGlobal = {
 };
 
 export default defineConfig({
-  // Generated brand assets and audit evidence, not source.
-  ignorePatterns: ["output/**", ".agents/**"],
+  // Generated code, vendored upstream code, brand assets, and audit evidence are not ours to edit.
+  ignorePatterns: [
+    "output/**",
+    ".agents/**",
+    "scripts/oxlint/anti-slop/**",
+    "**/worker-configuration.d.ts",
+    "**/routeTree.gen.ts",
+    "**/*.gen.*",
+    "**/models.generated*",
+  ],
   plugins: ["react", "eslint", "typescript", "unicorn", "import", "oxc"],
   // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
   jsPlugins: [
@@ -51,6 +59,7 @@ export default defineConfig({
     "./packages/app/lint/interactions.js",
     "./packages/app/lint/restyle.js",
     "./scripts/oxlint/anti-slop/index.ts",
+    "./scripts/oxlint/nyte-code/index.ts",
   ],
   categories: {
     correctness: "error",
@@ -70,11 +79,43 @@ export default defineConfig({
     "react/no-unstable-nested-components": "error",
     // A component React Compiler cannot compile ships without memoization.
     "react/todo": "warn",
+    "typescript/no-explicit-any": "error",
+    "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
+    "eslint/max-lines": ["error", { max: 1000, skipBlankLines: false, skipComments: false }],
+    "nyte-code/declarative-comments": "error",
+    "nyte-code/no-cross-package-relative-imports": "error",
+    "nyte-code/no-index-of": "error",
+    "nyte-code/no-is-helper-names": "error",
+    "nyte-code/no-of-lookup-names": "error",
+    "nyte-code/no-one-off-boolean-helpers": "error",
   },
   options: {
     typeAware: true,
   },
+  settings: {
+    shadcn: { ui: "@nyte-ai/ui" },
+    tailwindcss: { callees: ["clsx", "cva", "cn"] },
+  },
   overrides: [
+    {
+      files: ["packages/docs/**"],
+      jsPlugins: ["@shadcn/lint"],
+      rules: {
+        "shadcn/no-unknown-classes": ["warn", { allow: ["doc", "doc-*", "docs-*", "cloud-*"] }],
+        "shadcn/no-arbitrary-values": "warn",
+        "shadcn/no-raw-colors": "warn",
+        "shadcn/no-inline-styles": "warn",
+        "shadcn/require-static-classes": "warn",
+        "shadcn/no-restyle": ["warn", { allow: ["layout"] }],
+      },
+    },
+    {
+      files: [
+        "packages/docs/src/routes/opengraph-image[.]png.tsx",
+        "packages/docs/src/routes/og/**",
+      ],
+      rules: { "shadcn/no-inline-styles": "off" },
+    },
     {
       // CommonJS configs, tests, and scripts run from the repository and never ship in a bundle.
       files: ["**/*.cjs", "**/*.test.{ts,tsx}", "scripts/**"],
@@ -90,12 +131,10 @@ export default defineConfig({
       rules: {
         "anti-slop/no-array-filter-map": "warn",
         "anti-slop/no-reduce-accumulator-copy": "warn",
-        "anti-slop/no-chained-type-assertions": "warn",
         "anti-slop/no-conditional-empty-object-spread": "warn",
         "anti-slop/no-known-value-widening": "warn",
         "anti-slop/no-module-mocking": "warn",
         "anti-slop/no-object-parameters": "warn",
-        "anti-slop/no-of-lookup-names": "warn",
         "anti-slop/no-reflect-apply": "warn",
         "anti-slop/no-reflect-get": "warn",
         "anti-slop/no-runtime-typeof": "warn",
@@ -104,21 +143,15 @@ export default defineConfig({
         "anti-slop/no-unknown-returns": "warn",
         "anti-slop/no-unknown-type-aliases": "warn",
         "anti-slop/no-unsafe-dictionary-type": "warn",
-        "anti-slop/no-widen-then-assert": "warn",
         "anti-slop/require-readable-spacing": "warn",
-        "anti-slop/require-safety-comment-for-type-assertion": "warn",
       },
     },
     {
-      files: ["packages/core/src/**", "packages/sdk/src/**"],
-      rules: {
-        "anti-slop/no-of-lookup-names": "error",
-      },
-    },
-    {
-      // Solid components run once and read refs after the tree is built; the
-      // React render-purity rules describe a different runtime, and React
-      // Compiler never compiles them.
+      /**
+       * Solid components run once and read refs after the tree is built; the
+       * React render-purity rules describe a different runtime, and React
+       * Compiler never compiles them.
+       */
       files: ["packages/tui/src/**/*.tsx"],
       rules: {
         "react/refs": "off",
@@ -128,15 +161,17 @@ export default defineConfig({
     },
     {
       // Playwright hands each fixture a `use` callback; it is not React's hook.
-      files: ["packages/app/e2e/**"],
+      files: ["packages/app/e2e/**", "packages/desktop/e2e/**"],
       rules: {
         "react/rules-of-hooks": "off",
       },
     },
     {
-      // The terminal client and the plugin examples carry every suspicious and
-      // perf rule as an error. Sequential awaits are how a shell is written, so
-      // that one rule stays off; `_exhaustive` is the never-check idiom.
+      /**
+       * The terminal client and the plugin examples carry every suspicious and
+       * perf rule as an error. Sequential awaits are how a shell is written, so
+       * that one rule stays off; `_exhaustive` is the never-check idiom.
+       */
       files: ["packages/tui/**", "packages/plugin/**"],
       rules: {
         "eslint/block-scoped-var": "error",
@@ -162,7 +197,6 @@ export default defineConfig({
         "typescript/no-unnecessary-type-assertion": "error",
         "typescript/no-unnecessary-type-parameters": "error",
         "typescript/no-unsafe-enum-comparison": "error",
-        "typescript/no-unsafe-type-assertion": "error",
         "unicorn/consistent-function-scoping": "error",
         "unicorn/no-accessor-recursion": "error",
         "unicorn/no-array-fill-with-reference-type": "error",
@@ -196,7 +230,6 @@ export default defineConfig({
         "eslint/no-useless-escape": "off",
         "typescript/restrict-template-expressions": "off",
         "typescript/no-redundant-type-constituents": "off",
-        "typescript/no-explicit-any": "off",
         "typescript/unbound-method": "off",
         "typescript/require-array-sort-compare": "off",
         "typescript/no-base-to-string": "off",
@@ -248,6 +281,7 @@ export default defineConfig({
         "packages/app/src/**/*.{ts,tsx}",
         "packages/desktop/src/renderer/**/*.{ts,tsx}",
         "packages/ui/src/**/*.{ts,tsx}",
+        "packages/canvas/src/**/*.{ts,tsx}",
       ],
       excludeFiles: ["packages/ui/src/styles/**"],
       rules: {
@@ -302,10 +336,12 @@ export default defineConfig({
       },
     },
     {
-      // The restriction above keeps Node-only core code out of the shipped
-      // renderer bundle. A Node-run unit test is not part of that bundle, so it
-      // may import the full surface; `*.browser-test.tsx` still loads in a real
-      // browser and stays restricted.
+      /**
+       * The restriction above keeps Node-only core code out of the shipped
+       * renderer bundle. A Node-run unit test is not part of that bundle, so it
+       * may import the full surface; `*.browser-test.tsx` still loads in a real
+       * browser and stays restricted.
+       */
       files: ["packages/app/src/**/*.test.{ts,tsx}"],
       rules: {
         "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
@@ -320,17 +356,21 @@ export default defineConfig({
       },
     },
     {
-      // The QR code needs a white quiet zone a camera can read, which no
-      // token guarantees in every appearance.
+      /**
+       * The QR code needs a white quiet zone a camera can read, which no
+       * token guarantees in every appearance.
+       */
       files: ["packages/app/src/chrome/pairing-code.tsx"],
       rules: {
         "nyte-design/no-raw-colors": "off",
       },
     },
     {
-      // Effects exist to synchronize with an external system; derived state,
-      // fetching (TanStack Query), event relays, and per-prop resets each have
-      // a better primitive. Legitimate survivors carry an inline disable.
+      /**
+       * Effects exist to synchronize with an external system; derived state,
+       * fetching (TanStack Query), event relays, and per-prop resets each have
+       * a better primitive. Legitimate survivors carry an inline disable.
+       */
       files: ["packages/mobile/src/**/*.{ts,tsx}"],
       rules: {
         "eslint/no-restricted-imports": [

@@ -1,7 +1,8 @@
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { verifyWithRequest } from "../auth/verify.ts";
-import { createProvider, type Provider } from "../models.ts";
+import type { Provider } from "../models-types.ts";
+import { createProvider } from "../provider.ts";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 

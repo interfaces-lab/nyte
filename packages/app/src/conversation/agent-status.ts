@@ -1,5 +1,5 @@
-import { sessionMark } from "../view-helpers.ts";
 import type { SessionInfo } from "@nyte-ai/sdk";
+import { sessionMark } from "@nyte-ai/plugin/client/presentation";
 
 export type SubagentTrayState = "working" | "attention" | "inactive";
 

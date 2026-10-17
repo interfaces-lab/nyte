@@ -1,10 +1,10 @@
-import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * The transcript's shape while a session's snapshot is still on its way:
  * a user card, a work row, and a prose block at the transcript's row gaps so
  * the real rows land in place without a shift. Local sessions resolve in a
  * frame or two and never show it; cloud sessions do.
  */
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";

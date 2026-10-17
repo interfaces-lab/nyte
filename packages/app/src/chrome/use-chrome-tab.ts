@@ -1,5 +1,5 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import type { ShellSearch } from "../router.tsx";
+import type { ShellSearch } from "../shell/search.ts";
 
 export function useChromeTab<Value extends string>(
   key: keyof ShellSearch,

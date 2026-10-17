@@ -9,7 +9,7 @@ import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   TOKEN_KINDS,
   TOKEN_LABELS,
-  sumOf,
+  sumKinds,
   type Account,
   type Tally,
   type TokenKind,
@@ -30,7 +30,7 @@ export const readKind = (tally: Tally, metric: Metric, kind: TokenKind): number 
   metric === "cost" ? tally.cost[kind] : tally.tokens[kind];
 
 export const readTotal = (tally: Tally, metric: Metric): number =>
-  sumOf(metric === "cost" ? tally.cost : tally.tokens);
+  sumKinds(metric === "cost" ? tally.cost : tally.tokens);
 
 export const hitRate = (tally: Tally): number => {
   const prompt = tally.tokens.input + tally.tokens.cacheRead + tally.tokens.cacheWrite;

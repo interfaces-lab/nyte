@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, writePatch } from "@nyte-ai/schema";
 import type {
   Availability,
   ChangeSet,
@@ -14,20 +14,24 @@ import type {
   SnapshotId,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
-import { createHost, createHostState, createKernel, memoryStore } from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { createHostState } from "../src/api/host.ts";
+import { createKernel } from "../src/compose.ts";
+import { memoryStore } from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
 import type {
   BrowserApi,
   EnvironmentProvider,
   ExecutionEnv,
   FilesApi,
   GitApi,
+  GitHubApi,
   Host,
   Job,
-  Kernel,
   Page,
   Plugin,
 } from "../src/index.ts";
-import { configuration } from "./harness.ts";
+import { configuration } from "../src/harness.ts";
 
 export interface Disk {
   readonly files: Map<
@@ -35,6 +39,8 @@ export interface Disk {
     { readonly contents: string | Uint8Array; readonly version: FileVersion }
   >;
   readonly directories: Set<string>;
+  /** Hears every `put`, with the file's absolute path; an open `watch` is one listener. */
+  readonly watchers: Set<(path: string) => void>;
   put(path: string, contents: string | Uint8Array): void;
   text(path: string): string | undefined;
   pause(): () => void;
@@ -73,15 +79,19 @@ export function createDisk(): Disk {
   let held = 0;
   const files: Disk["files"] = new Map();
   const directories = new Set<string>(["/"]);
+  const watchers = new Set<(path: string) => void>();
 
   const disk: Disk = {
     files,
     directories,
+    watchers,
     put(path: string, contents: string | Uint8Array) {
       minted += 1;
       files.set(normalize(path), { contents, version: asId<"file-version">(`v${minted}`) });
 
-      for (const parent of parentsOf(normalize(path))) directories.add(parent);
+      for (const parent of listParentDirectories(normalize(path))) directories.add(parent);
+
+      for (const heard of watchers) heard(normalize(path));
     },
     text(path: string) {
       const contents = files.get(normalize(path))?.contents;
@@ -183,6 +193,7 @@ export function fakeProvider(
     availability: null,
     failure: null,
     git: options?.git === false ? undefined : () => fakeGit(),
+    github: () => fakeGitHub(),
     browser: options?.browser === true ? () => fakeBrowser(provider) : undefined,
     script: (process) => {
       const command =
@@ -194,7 +205,7 @@ export function fakeProvider(
       }
     },
     inspect: async (target) => ({
-      identity: asId<"environment-identity">(`id:${pathOf(target)}`),
+      identity: asId<"environment-identity">(`id:${readTargetPath(target)}`),
       availability: provider.availability ?? { kind: "available" },
       projectSources: [".nyte/plugins/x.ts"],
     }),
@@ -202,7 +213,7 @@ export function fakeProvider(
       if (provider.failure !== null) throw new Error(provider.failure);
       provider.attaches += 1;
 
-      return env(provider, pathOf(target), options?.confined === true);
+      return env(provider, readTargetPath(target), options?.confined === true);
     },
     snapshots: (attached) => ({
       async before(run) {
@@ -244,7 +255,7 @@ export function fakeProvider(
             kind: "text",
             added: file.added.length,
             removed: file.removed.length,
-            hunks: [
+            patch: writePatch(file.path, file.status, [
               {
                 oldStart: 1,
                 oldLines: file.removed.length,
@@ -256,7 +267,7 @@ export function fakeProvider(
                   ...file.added.map((text) => ({ kind: "add" as const, text })),
                 ],
               },
-            ],
+            ]),
           }));
       },
     }),
@@ -273,6 +284,7 @@ export async function world(options?: {
   readonly browser?: boolean;
   readonly disk?: Disk;
   readonly execution?: Kernel["execution"];
+  readonly loadPlugins?: Kernel["plugins"]["load"];
 }): Promise<{
   readonly kernel: Kernel;
   readonly host: Omit<Host, "listen">;
@@ -297,18 +309,32 @@ export function kernelOver(
     readonly builtins?: readonly Plugin<"core">[];
     readonly home?: string;
     readonly execution?: Kernel["execution"];
+    readonly loadPlugins?: Kernel["plugins"]["load"];
   },
 ): Kernel {
   return createKernel({
     hostId: asId("h1"),
     store,
     description: { name: "studio", platform: "darwin", version: "0.1.0" },
-    host: createHostState({ catalog: asId("g1"), plugins: [], settings: [], operations: [] }),
-    turn: { run: () => new Promise(() => {}) },
+    host: createHostState({
+      catalog: asId("g1"),
+      plugins: [],
+      settings: [],
+      defaultWorkspace: null,
+    }),
+    turn: {
+      run: (input) =>
+        new Promise((resolve) =>
+          input.signal.addEventListener("abort", () => resolve({ kind: "stopped" }), {
+            once: true,
+          }),
+        ),
+    },
     resolveConfiguration: async () => configuration,
     home: options?.home,
     execution: options?.execution,
     builtins: options?.builtins,
+    loadPlugins: options?.loadPlugins,
     hostPlugins: [{ id: "fake-environment", environment: provider }, ...(options?.plugins ?? [])],
   });
 }
@@ -359,7 +385,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
   const relative = (path: string): string =>
     path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
 
-  const isDirectory = (path: string): boolean =>
+  const hasDirectory = (path: string): boolean =>
     disk.directories.has(path) ||
     [...disk.files.keys()].some((file) => file.startsWith(`${path}/`));
 
@@ -399,7 +425,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
           version: file.version,
         };
 
-      return isDirectory(resolve(path))
+      return hasDirectory(resolve(path))
         ? { kind: "directory", size: 0, version: asId<"file-version">("directory") }
         : null;
     },
@@ -418,7 +444,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
         return { kind: "stale", current };
       const parent = target.slice(0, target.lastIndexOf("/")) || "/";
 
-      if (!options?.parents && !isDirectory(parent)) return { kind: "missing-parent" };
+      if (!options?.parents && !hasDirectory(parent)) return { kind: "missing-parent" };
       disk.put(target, contents);
       const written = disk.files.get(target);
 
@@ -446,7 +472,7 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
       const files = [...disk.files.keys()].filter((path) => path.startsWith(`${base}/`));
 
       const directories = new Set(
-        [...disk.directories, ...files.flatMap(parentsOf)].filter((path) =>
+        [...disk.directories, ...files.flatMap(listParentDirectories)].filter((path) =>
           path.startsWith(`${base}/`),
         ),
       );
@@ -475,7 +501,49 @@ function filesAt(disk: Disk, root: string, confined: boolean): FilesApi {
     async *search() {
       yield { kind: "complete" };
     },
-    async *watch() {},
+    watch(input) {
+      const prefixes = (input?.paths ?? [""]).map(resolve);
+      const heard: string[] = [];
+      let wake: (() => void) | null = null;
+
+      const listener = (path: string): void => {
+        if (!prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return;
+        heard.push(path);
+        wake?.();
+      };
+
+      disk.watchers.add(listener);
+      const done = { done: true, value: undefined } as const;
+
+      return {
+        [Symbol.asyncIterator]() {
+          return {
+            async next() {
+              while (heard.length === 0) {
+                if (!disk.watchers.has(listener)) return done;
+                await new Promise<void>((resolve) => {
+                  wake = resolve;
+                });
+              }
+
+              const events = heard.splice(0).map((path) => ({
+                kind: "created" as const,
+                path: relative(path),
+                version: disk.files.get(path)?.version ?? asId<"file-version">("gone"),
+              }));
+
+              return { done: false, value: events };
+            },
+            async return() {
+              disk.watchers.delete(listener);
+              wake?.();
+
+              return done;
+            },
+          };
+        },
+      };
+    },
     upload() {
       throw new Error("Core wraps upload.");
     },
@@ -648,6 +716,14 @@ function fakeBrowser(provider: FakeProvider): BrowserApi {
   };
 }
 
+/** GitHub with the `gh` CLI missing: a folder with no repository, and no pull request opened. */
+function fakeGitHub(): GitHubApi {
+  return {
+    state: async () => ({ pullRequest: { kind: "unavailable" } }),
+    createPullRequest: async () => ({ kind: "cli_missing" }),
+  };
+}
+
 function fakeGit(): GitApi {
   const revision = asId<"git-revision">("rev1");
   const none = async () => ({ kind: "none" as const });
@@ -671,7 +747,7 @@ function fakeGit(): GitApi {
   };
 }
 
-function pathOf(target: WorkspaceTarget): string {
+function readTargetPath(target: WorkspaceTarget): string {
   return "path" in target && typeof target.path === "string" ? target.path : "/remote";
 }
 
@@ -688,7 +764,7 @@ function normalize(path: string): string {
   return `/${parts.join("/")}`;
 }
 
-function parentsOf(path: string): readonly string[] {
+function listParentDirectories(path: string): readonly string[] {
   const parts = path.split("/").filter((part) => part !== "");
 
   return parts.slice(0, -1).map((_part, index) => `/${parts.slice(0, index + 1).join("/")}`);

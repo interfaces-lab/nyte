@@ -259,8 +259,11 @@ test("only paired devices get in; refusals are what the server answers, and no s
 
   assert.equal(fromPage.status, 200);
   assert.equal(fromPage.headers.get("access-control-allow-origin"), ORIGIN);
-  // Settings hears the claim; nothing else would tell it the device stopped waiting.
-  assert.equal(changes(), beforeClaim + 1);
+  assert.equal(
+    changes(),
+    beforeClaim + 1,
+    "Settings hears the claim; nothing else would tell it the device stopped waiting",
+  );
 
   const foreign = await info(setup, {
     ...bearer(pairing.token),
@@ -314,8 +317,11 @@ test("revoking refuses that device on the same port while other devices keep the
 
   assert.deepEqual(await info(setup, bearer(first.token)), { status: 403, code: "denied" });
   assert.equal((await info(setup, bearer(second.token))).status, 200);
-  // Same listener, same connector: the port was never released.
-  assert.deepEqual(await pids(setup), [connector]);
+  assert.deepEqual(
+    await pids(setup),
+    [connector],
+    "same listener, same connector: the port was never released",
+  );
   assert.equal(connector !== undefined && alive(connector), true);
 });
 
@@ -437,9 +443,16 @@ test("once the settings cannot be written, no token is accepted and remote acces
   const before = await stored(setup);
 
   await chmod(setup.state, 0o500);
-  // The waiting device's claim cannot be written, so it is refused, and so is everyone after it.
-  assert.deepEqual(await info(setup, bearer(waiting.token)), { status: 403, code: "denied" });
-  assert.deepEqual(await info(setup, bearer(paired.token)), { status: 403, code: "denied" });
+  assert.deepEqual(
+    await info(setup, bearer(waiting.token)),
+    { status: 403, code: "denied" },
+    "the waiting device's claim cannot be written, so it is refused",
+  );
+  assert.deepEqual(
+    await info(setup, bearer(paired.token)),
+    { status: 403, code: "denied" },
+    "and so is everyone after it",
+  );
 
   await assert.rejects(
     host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: paired.deviceId }),

@@ -1,10 +1,11 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type { AdvanceReport, HeadName, Owned, SessionId } from "@nyte-ai/schema";
 import type { Models } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
-import { SdkError, composeHost } from "@nyte-ai/core";
-import type { Host, Kernel, Listener, OpenOptions, WaitRegistry } from "@nyte-ai/core";
-import { encodeError, errorStatus, operations } from "@nyte-ai/protocol";
+import { composeHost } from "@nyte-ai/core/server";
+import type { Host, Listener, OpenOptions } from "@nyte-ai/core";
+import type { ServedHost, ServerHost } from "@nyte-ai/core/server";
+import { encodeError, errorStatus } from "@nyte-ai/protocol";
 import { Settings } from "typebox/system";
 import { credentialStore } from "@nyte-ai/host/credentials";
 import { durableObjectStore } from "@nyte-ai/host/durable-object";
@@ -41,7 +42,7 @@ export type PassBudget = {
 };
 
 export type PassHost = Pick<Host, "execution"> & {
-  readonly kernel: { readonly waits: Pick<WaitRegistry, "tick"> };
+  readonly server: Pick<ServerHost, "tick">;
 };
 
 const PASS_BUDGET = { heads: 32, ms: 10_000 } as const;
@@ -73,8 +74,8 @@ export async function pass(
   budget: PassBudget,
 ): Promise<number | null> {
   const began = Date.now();
-  const schedule = scheduleOf(storage);
-  await host.kernel.waits.tick(began);
+  const schedule = openSchedule(storage);
+  await host.server.tick(began);
 
   if (budget.repair) {
     let cursor: Parameters<Host["execution"]["repair"]>[0]["cursor"];
@@ -176,7 +177,7 @@ export default {
 };
 
 type Served = {
-  readonly host: Omit<Host, "listen"> & { readonly kernel: Kernel };
+  readonly host: ServedHost;
   readonly listener: Listener;
   readonly coverage: Owned;
 };
@@ -199,15 +200,14 @@ async function compose(
     execution: { kind: "admit-only" },
     secrets,
     home: null,
-    operations: operations(),
     description,
   });
 
   try {
     const coverage = await host.execution.cover({ kind: "all" });
-    const schedule = scheduleOf(storage);
+    const schedule = openSchedule(storage);
 
-    host.kernel.wakes.subscribe((session, head) => {
+    host.server.onWake((session, head) => {
       const now = Date.now();
       schedule.write(session, head, now);
       void storage.setAlarm(now);
@@ -247,7 +247,7 @@ function secretsFrom(key: string | undefined): NonNullable<OpenOptions["secrets"
   return { key: async () => bytes };
 }
 
-function scheduleOf(storage: Pick<DurableObjectSql, "sql">) {
+function openSchedule(storage: Pick<DurableObjectSql, "sql">) {
   const rows = (query: string, ...bindings: SqlValue[]): Record<string, SqlValue>[] =>
     storage.sql.exec(query, ...bindings).toArray();
 
@@ -255,7 +255,7 @@ function scheduleOf(storage: Pick<DurableObjectSql, "sql">) {
     "CREATE TABLE IF NOT EXISTS nyte_schedule (session TEXT NOT NULL, head TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (session, head))",
   );
 
-  const atOf = (session: SessionId, head: HeadName): number | null => {
+  const readAt = (session: SessionId, head: HeadName): number | null => {
     const at = rows("SELECT at FROM nyte_schedule WHERE session = ? AND head = ?", session, head)[0]
       ?.at;
 
@@ -291,7 +291,7 @@ function scheduleOf(storage: Pick<DurableObjectSql, "sql">) {
       entry: { readonly session: SessionId; readonly head: HeadName; readonly at: number },
       next: number | null,
     ): void {
-      if (atOf(entry.session, entry.head) !== entry.at) return;
+      if (readAt(entry.session, entry.head) !== entry.at) return;
 
       if (next === null)
         rows("DELETE FROM nyte_schedule WHERE session = ? AND head = ?", entry.session, entry.head);

@@ -94,7 +94,7 @@ export type BrowserActionResult =
   | { readonly kind: "ok"; readonly state: BrowserPageState }
   | { readonly kind: "failed"; readonly failure: BrowserActionFailure };
 
-export interface BrowserTypeInput {
+interface BrowserTypeInput {
   readonly ref: string;
   readonly text: string;
   readonly clear?: boolean;
@@ -166,7 +166,7 @@ export interface BrowserAgent {
     readonly session: SessionId;
     readonly limit: number;
     readonly clear?: boolean;
-  }): readonly BrowserConsoleEntry[];
+  }): Promise<readonly BrowserConsoleEntry[]>;
   evaluate(input: {
     readonly session: SessionId;
     readonly expression: string;

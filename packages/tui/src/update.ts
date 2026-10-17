@@ -30,7 +30,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { valid } from "semver";
-import { fetchLatestRelease, isNewerVersion, REPO, VERSION } from "./version.ts";
+import { fetchLatestRelease, REPO, supersedes, VERSION } from "./version.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -127,7 +127,7 @@ async function resolveUpdateTarget(
     };
   }
 
-  if (!isNewerVersion(latest.version, current)) return { kind: "current", version: current };
+  if (!supersedes(latest.version, current)) return { kind: "current", version: current };
 
   return { kind: "install", version: latest.version, explicit: false };
 }
@@ -271,6 +271,7 @@ async function checkMatchingDocs(source: string, destination: string): Promise<v
   }
 }
 
+/** Stages a release's docs beside the binary under `share/nyte/<version>`. `mkdir` reserves the version exclusively before the rename, since a rename alone can replace an existing empty directory, one a concurrent publisher created included. */
 async function stageDocs(source: string, binaryPath: string, version: string) {
   const parent = resolve(dirname(binaryPath), "../share/nyte");
   const destination = join(parent, version);
@@ -287,8 +288,6 @@ async function stageDocs(source: string, binaryPath: string, version: string) {
 
   try {
     await cp(source, join(stage, "docs"), { recursive: true, errorOnExist: true, force: false });
-    // mkdir reserves this version exclusively. rename alone can replace an
-    // existing empty directory, including one created by a concurrent publisher.
     await checkDestination(destination, dirname(dirname(binaryPath)));
 
     try {
@@ -308,6 +307,7 @@ async function stageDocs(source: string, binaryPath: string, version: string) {
   }
 }
 
+/** Downloads, verifies and installs a release over the running binary. The new binary is staged in a private directory on the binary's filesystem and swapped in by one atomic rename once its docs are complete, leaving older versioned docs alone; a cleanup failure afterwards never turns that swap into a failed result. */
 export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOutcome> {
   const report = options.report ?? (() => undefined);
   const fetchFn = options.fetchFn ?? globalThis.fetch;
@@ -408,8 +408,6 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
     await chmod(staged, 0o755);
 
     if (plan.docs) await stageDocs(join(extracted, "docs"), installed, target.version);
-    // The private staging directory shares the binary's filesystem. Docs are
-    // complete before this atomic swap; older versioned docs remain untouched.
     await rename(staged, installed);
 
     return { kind: "updated", from: VERSION, to: target.version, path: binaryPath };
@@ -428,7 +426,6 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
 
     return { kind: "failed", message: `${message}${hint}` };
   } finally {
-    // Cleanup failure must not turn a completed atomic swap into a failed result.
     if (workDir !== undefined) {
       await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
     }

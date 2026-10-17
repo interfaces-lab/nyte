@@ -15,7 +15,7 @@ type ConfigureResult =
   | { readonly kind: "superseded" }
   | { readonly kind: "failed"; readonly message: string };
 
-export interface SubmissionSlot {
+interface SubmissionSlot {
   readonly configured: Promise<ConfigureResult | undefined>;
   release(): void;
 }
@@ -77,7 +77,7 @@ function failureMessage(
   }
 }
 
-function isIntent(entry: Intent | Slot): entry is Intent {
+function configIntent(entry: Intent | Slot): entry is Intent {
   return entry.kind === "config";
 }
 
@@ -102,7 +102,7 @@ export class SessionConfigurator {
   }
 
   get pending(): boolean {
-    return this.preparingSelection || this.inFlight !== undefined || this.queue.some(isIntent);
+    return this.preparingSelection || this.inFlight !== undefined || this.queue.some(configIntent);
   }
 
   get preparingSelection(): boolean {
@@ -234,7 +234,7 @@ export class SessionConfigurator {
   private reservePreparedSubmission(): SubmissionSlot {
     const slot: Slot = {
       kind: "slot",
-      awaiting: this.queue.findLast(isIntent) ?? this.inFlight,
+      awaiting: this.queue.findLast(configIntent) ?? this.inFlight,
       configured: Promise.withResolvers<ConfigureResult | undefined>(),
       reached: false,
       released: false,
@@ -248,7 +248,7 @@ export class SessionConfigurator {
       release: () => {
         if (slot.released) return;
         slot.released = true;
-        const index = this.queue.indexOf(slot);
+        const index = this.queue.findIndex((queued) => queued === slot);
 
         if (index !== -1) this.queue.splice(index, 1);
 
@@ -291,7 +291,7 @@ export class SessionConfigurator {
     const run: Intent[] = [];
 
     for (const entry of this.queue) {
-      if (!isIntent(entry)) break;
+      if (!configIntent(entry)) break;
       run.push(entry);
     }
 
@@ -341,7 +341,7 @@ export class SessionConfigurator {
       this.acknowledgedChoice = intent.choice;
 
       if (!this.disposed) this.options.onAcknowledged(intent.choice, intent.patch);
-    } else if (this.queue.some(isIntent)) {
+    } else if (this.queue.some(configIntent)) {
       this.carried = { ...this.carried, ...intent.patch };
     } else {
       this.selectedChoice = this.acknowledgedChoice;

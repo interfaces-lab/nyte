@@ -15,7 +15,10 @@
   ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./store": "./src/store.ts",
+    "./testing": "./src/testing.ts"
   },
   "publishConfig": {
     "access": "public"

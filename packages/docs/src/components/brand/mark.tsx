@@ -5,7 +5,7 @@ interface WordmarkProps extends ComponentProps<"span"> {
   size?: number;
 }
 
-/*
+/**
  * The wordmark is live type, not outlines: Inter at weight 600, tracked in.
  * Keeping it as text means it inherits the page's colour and antialiasing.
  */

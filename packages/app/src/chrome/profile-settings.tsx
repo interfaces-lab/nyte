@@ -15,16 +15,11 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type {
-  ConnectBridge,
-  GitHubBridge,
-  GitHubPullRequest,
-  GitHubPullRequestContext,
-  GitHubRepository,
-} from "../bridge.ts";
+import type { GitHubPullRequest, GitHubPullRequestContext, GitHubRepository } from "@nyte-ai/sdk";
+import type { ConnectBridge } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { nyte } from "../nyte.ts";
-import { useHostState } from "../queries.ts";
+import { openExternal } from "../open-external.ts";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import {
@@ -34,7 +29,12 @@ import {
   useConnectView,
 } from "./connect-view.ts";
 import { ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
-import { signOutDescription, useGitHubAccount } from "./github-account.ts";
+import {
+  signOutDescription,
+  useGitHub,
+  useGitHubAccount,
+  useGitHubState,
+} from "./github-account.ts";
 import { LinkTray } from "./link-tray.tsx";
 import { DeviceCodePanel } from "./sign-in-panels.tsx";
 
@@ -131,10 +131,6 @@ function Group({ label, children }: { readonly label: string; readonly children:
       {children}
     </section>
   );
-}
-
-function openExternal(url: string): void {
-  void nyte.host.openExternal({ url }).catch(() => undefined);
 }
 
 /** The Nyte account signed in on this Mac: an address, or the way to sign in. */
@@ -243,7 +239,7 @@ function GitHubAccountRow({
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const web = nyte.clientSurface === "web";
-  const state = query.data;
+  const state = query.data ?? undefined;
 
   if (connecting) {
     return (
@@ -455,6 +451,14 @@ function PullRequestRow({
           description="None for the current branch"
         />
       );
+    case "unavailable":
+      return (
+        <Row
+          glyph={<Icon name="pull-request" size={14} />}
+          title="Pull request"
+          description="Sign in to GitHub to see it"
+        />
+      );
     case "ready": {
       const { pullRequest } = context;
 
@@ -489,24 +493,29 @@ function PullRequestRow({
   }
 }
 
-/** The GitHub CLI login and what it reaches in the selected workspace. */
-function GitHubGroup({ github }: { readonly github: GitHubBridge }): ReactElement {
-  const account = useGitHubAccount(github);
-  const state = account.query.data;
-  const repository = state?.repository;
+/** The machine's GitHub CLI login and what it reaches in the selected folder; nothing where the host serves no GitHub. */
+function GitHubGroup(): ReactElement | null {
+  const account = useGitHubAccount();
+  const folder = useGitHubState(useGitHub());
+  const repository = folder.data?.repository;
 
   const refresh = () => {
     account.auth.reset();
     void account.query.refetch();
+    void folder.refetch();
   };
+
+  if (account.query.data === null) return null;
 
   return (
     <Group label="GitHub">
       <GitHubAccountRow account={account} refresh={refresh} />
       {repository !== undefined && <RepositoryRow repository={repository} />}
-      {state?.kind === "ready" && repository !== undefined && (
-        <PullRequestRow context={state.pullRequest} refresh={refresh} />
-      )}
+      {account.query.data?.kind === "ready" &&
+        repository !== undefined &&
+        folder.data !== undefined && (
+          <PullRequestRow context={folder.data.pullRequest} refresh={refresh} />
+        )}
     </Group>
   );
 }
@@ -523,10 +532,9 @@ function MacGroup({
   readonly connect: ConnectBridge;
   readonly onOpenEnvironments: () => void;
 }): ReactElement {
-  const host = useHostState();
   const view = useConnectView(connect, true).data;
   const [trayOpen, setTrayOpen] = useState(false);
-  const name = host.data?.machineName ?? "This Mac";
+  const name = nyte.machineName ?? "This Mac";
 
   const environments = (
     <Button variant="ghost" onClick={onOpenEnvironments}>
@@ -590,13 +598,12 @@ export function ProfileSettings({
 }: {
   readonly onOpenEnvironments: () => void;
 }): ReactElement {
-  const { github } = nyte.host;
   const desktop = nyte.clientSurface === "desktop";
 
   return (
     <div {...props(styles.page)}>
       {desktop && <AccountGroup connect={nyte.host.connect} />}
-      {github !== undefined && <GitHubGroup github={github} />}
+      <GitHubGroup />
       {desktop && <MacGroup connect={nyte.host.connect} onOpenEnvironments={onOpenEnvironments} />}
     </div>
   );

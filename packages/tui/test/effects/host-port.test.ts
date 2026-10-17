@@ -4,8 +4,25 @@ import { asId } from "@nyte-ai/schema";
 import type { MessageId, SessionView } from "@nyte-ai/sdk";
 import { expect, test } from "bun:test";
 import { hostPort } from "../../src/effects/host-port.ts";
-import type { SessionPort } from "../../src/effects/ports.ts";
+import type { HostPort, SessionPort } from "../../src/effects/ports.ts";
+import { fallbackSelection } from "../../src/effects/session.ts";
 import { openTestHost, until } from "../fixture/host.ts";
+
+async function startChat(
+  port: HostPort,
+  content: string,
+): Promise<{ readonly session: SessionPort; readonly message: MessageId }> {
+  const id = asId<"session">(crypto.randomUUID());
+  const selection = fallbackSelection(await port.listModels(), "off");
+
+  if (selection === null) throw new Error("The test host lists no model.");
+  const workspace = await port.openFolder(null);
+  const started = await port.start({ id, workspace, selection, content });
+
+  if (started.kind !== "started") throw new Error("A fresh id was taken.");
+
+  return { session: port.session(id), message: started.message };
+}
 
 function userStatus(view: SessionView, id: MessageId): string | undefined {
   const message = view.messages.find((candidate) => candidate.id === id);
@@ -21,15 +38,31 @@ async function viewWhere(
   throw new Error("The watch ended first.");
 }
 
+test("a start under an id another start took answers taken, and a replay answers started", async () => {
+  await using fixture = await openTestHost();
+  const port = hostPort(fixture.host, null);
+  fixture.reply({ content: [{ type: "text", text: "Hi." }] });
+  const id = asId<"session">(crypto.randomUUID());
+  const selection = fallbackSelection(await port.listModels(), "off");
+
+  if (selection === null) throw new Error("The test host lists no model.");
+  const workspace = await port.openFolder(null);
+  const first = await port.start({ id, workspace, selection, content: "first" });
+
+  expect(first).toEqual({ kind: "started", message: asId<"message">(id) });
+  expect(await port.start({ id, workspace, selection, content: "first" })).toEqual(first);
+  expect(await port.start({ id, workspace, selection, content: "other" })).toEqual({
+    kind: "taken",
+  });
+});
+
 test("send, withdraw and stop round trips with real views", async () => {
   await using fixture = await openTestHost();
   const port = hostPort(fixture.host, null);
-  const id = await port.create({ workspace: null, selection: null });
-  const session = port.session(id);
-  expect((await session.info()).id).toBe(id);
   fixture.reply({ content: [{ type: "text", text: "Working on it." }], hold: true });
-
-  const first = await session.send("first", { delivery: "steer" });
+  const { session, message: firstMessage } = await startChat(port, "first");
+  const first = { message: firstMessage };
+  expect((await session.info()).id).toBe(session.id);
   await fixture.requested(1);
   const live = await viewWhere(session, (view) => view.execution.kind === "live");
   expect(userStatus(live, first.message)).toBe("landed");
@@ -57,9 +90,9 @@ test("send, withdraw and stop round trips with real views", async () => {
 test("revise replaces a pending message in place and refuses one that landed", async () => {
   await using fixture = await openTestHost();
   const port = hostPort(fixture.host, null);
-  const session = port.session(await port.create({ workspace: null, selection: null }));
   fixture.reply({ content: [{ type: "text", text: "Hold." }], hold: true });
-  const first = await session.send("first", { delivery: "steer" });
+  const { session, message: firstMessage } = await startChat(port, "first");
+  const first = { message: firstMessage };
   await fixture.requested(1);
   const later = await session.send("later", { delivery: "queue" });
   await viewWhere(session, (view) => userStatus(view, later.message) === "pending");
@@ -82,8 +115,13 @@ test("revise replaces a pending message in place and refuses one that landed", a
 test("answer settles a question part once; a different answer afterwards is refused", async () => {
   await using fixture = await openTestHost();
   const port = hostPort(fixture.host, null);
-  const id = await port.create({ workspace: null, selection: null });
-  const session = port.session(id);
+  fixture.reply({ content: [{ type: "text", text: "Asking." }] });
+  const { session, message: prompt } = await startChat(port, "ask me");
+  await viewWhere(
+    session,
+    (view) => userStatus(view, prompt) === "landed" && view.execution.kind === "idle",
+  );
+  const { id } = session;
 
   const part = await fixture.host.session(id).parts.create(question, {
     state: {
@@ -119,8 +157,13 @@ test("answer settles a question part once; a different answer afterwards is refu
 test("the host port lists the catalog, root sessions and tasks, and configures the head", async () => {
   await using fixture = await openTestHost();
   const port = hostPort(fixture.host, null);
-  const id = await port.create({ workspace: null, selection: null });
-  const session = port.session(id);
+  fixture.reply({ content: [{ type: "text", text: "Hello." }] });
+  const { session, message: greeted } = await startChat(port, "hi");
+  await viewWhere(
+    session,
+    (view) => userStatus(view, greeted) === "landed" && view.execution.kind === "idle",
+  );
+  const { id } = session;
   const catalog = await port.listModels();
   expect(catalog.providers.map((provider) => provider.id)).toEqual(["test"]);
   expect((await Array.fromAsync(port.rootSessions())).map((info) => info.id)).toEqual([id]);

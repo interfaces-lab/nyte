@@ -1,4 +1,7 @@
 import process from "node:process";
+import { files } from "@nyte-ai/canvas/shell-files";
+import { chromiumCanvasPreview } from "@nyte-ai/host/canvas-preview";
+import { canvasPlugin } from "@nyte-ai/plugin/core/canvas";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { dev, sdk } from "@nyte-ai/sdk";
 import type { Host, OpenHostOptions } from "@nyte-ai/sdk";
@@ -9,5 +12,8 @@ export function openTerminalHost(
 ): Promise<Host> {
   if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "tui");
 
-  return sdk.open({ plugins: [codemodePlugin(codemodeRuntimeOptions())], execution });
+  return sdk.open({
+    plugins: [codemodePlugin(codemodeRuntimeOptions()), canvasPlugin(chromiumCanvasPreview(files))],
+    execution,
+  });
 }

@@ -1,29 +1,11 @@
 import type { JSX } from "@opentui/solid";
-import { renderMermaidASCII } from "beautiful-mermaid";
-import { createMemo, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
-import { displayWidth } from "../../lib/width.ts";
+import type { Diagram } from "../../app/context.tsx";
 import { useTranscript } from "./scope.tsx";
 
-interface Diagram {
-  readonly text: string;
-  readonly height: number;
-  readonly width: number;
-}
-
 const MAX_VIEWPORT_ROWS = 24;
-
-export function prepareDiagram(source: string): Diagram {
-  if (source.length > 8_000 || source.split("\n").length > 120)
-    throw new RangeError("Diagram is too large");
-  const text = renderMermaidASCII(source, { colorMode: "none", paddingX: 3, paddingY: 2 });
-  const lines = text.split("\n");
-
-  if (lines.length > 300 || text.length > 100_000) throw new RangeError("Diagram is too large");
-
-  return { text, height: lines.length, width: Math.max(1, ...lines.map(displayWidth)) };
-}
 
 export function Mermaid(props: {
   readonly source: string;
@@ -32,14 +14,24 @@ export function Mermaid(props: {
   const app = useApp();
   const scope = useTranscript();
   const theme = (): ReturnType<typeof app.kit.theme> => app.kit.theme();
+  const [diagram, setDiagram] = createSignal<Diagram | null>(null);
 
-  const diagram = createMemo<Diagram | null>((last) => {
-    try {
-      return prepareDiagram(props.source);
-    } catch {
-      return last;
-    }
-  }, null);
+  createEffect(
+    on(
+      () => props.source,
+      (source) => {
+        let current = true;
+
+        onCleanup(() => (current = false));
+        app.kit.diagram(source).then(
+          (drawn) => {
+            if (current) setDiagram(drawn);
+          },
+          () => undefined,
+        );
+      },
+    ),
+  );
 
   const showingSource = (): boolean =>
     diagram() === null || scope.model().disclosures.has(props.disclosure);

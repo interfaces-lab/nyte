@@ -1,9 +1,14 @@
+import { readFile } from "node:fs/promises";
 import process from "node:process";
-import { composeHost, dev, memoryStore } from "@nyte-ai/core";
-import type { Plugin } from "@nyte-ai/core";
-import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
+import { dev } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
+import type { ExecutionEnv, GitHubAccountApi, Plugin } from "@nyte-ai/core";
+import { chatOnly, fakeModels, testModel } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
+import { asId } from "@nyte-ai/schema";
+import type { WorkspaceTarget } from "@nyte-ai/schema";
 
 export type Reply = FakeModels["reply"] extends (...replies: readonly (infer R)[]) => void
   ? R
@@ -24,18 +29,29 @@ export interface TestHost extends AsyncDisposable {
 
 export async function openTestHost(options?: {
   readonly plugins?: readonly Plugin<"core">[];
+  /** The workspace's environment plugin, of kind `chat-only`; default one whose files and processes refuse. */
+  readonly environment?: Plugin<"core">;
+  /** The fake provider's catalog; default one model `model` without thinking levels. */
+  readonly models?: readonly ReturnType<typeof testModel>[];
+  /** The machine's GitHub CLI login the host serves; default none. */
+  readonly github?: GitHubAccountApi;
+  /** The host's default workspace, which `environment` provides; default a `chat-only` one. */
+  readonly workspace?: WorkspaceTarget;
+  /** Imports a trusted workspace's project plugins; default none load. */
+  readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
 }): Promise<TestHost> {
   dev.off();
-  const models = fakeModels();
+  const models = fakeModels({ models: options?.models });
 
   const host = await composeHost({
     store: memoryStore(),
     models: models.models,
-    plugins: [chatOnly, questionPlugin, ...(options?.plugins ?? [])],
-    workspace: { kind: "chat-only", locator: null },
+    plugins: [options?.environment ?? chatOnly, questionPlugin, ...(options?.plugins ?? [])],
+    workspace: options?.workspace ?? { kind: "chat-only", locator: null },
     home: null,
-    operations: [],
     description: { name: "tui-test", platform: process.platform, version: "0.0.0" },
+    github: options?.github,
+    loadPlugins: options?.loadPlugins,
   });
 
   let closed: Promise<void> | null = null;
@@ -70,4 +86,39 @@ export async function until<T>(
     if (Date.now() > deadline) throw new Error("Timed out waiting for a condition.");
     await Bun.sleep(5);
   }
+}
+
+/**
+ * A `chat-only` environment like the default one, but whose files read from disk by absolute
+ * path and whose processes run `exec`.
+ */
+export function testEnvironment(exec: ExecutionEnv["exec"]): Plugin<"core"> {
+  const base = chatOnly.environment;
+
+  if (base === undefined) throw new Error("chatOnly provides no environment.");
+
+  return {
+    id: "test-environment",
+    environment: {
+      kind: base.kind,
+      inspect: (target) => base.inspect(target),
+      async attach(target) {
+        const env = await base.attach(target);
+
+        return {
+          ...env,
+          files: {
+            ...env.files,
+            read: async (path) => ({
+              kind: "text",
+              path,
+              contents: await readFile(path, "utf8"),
+              version: asId("v1"),
+            }),
+          },
+          exec,
+        };
+      },
+    },
+  };
 }

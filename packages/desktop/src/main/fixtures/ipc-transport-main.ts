@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { app, BrowserWindow, ipcMain } from "electron";
-import { SdkError } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { ipcDiagnostics, ipcResult } from "../errors.ts";
+import { ExpectedHostError, ipcDiagnostics, ipcResult } from "../errors.ts";
 import { callIpc } from "../ipc-call.ts";
 import { decodeCallRequest } from "../ipc-inputs.ts";
 import { CALL_CHANNEL } from "../../shared/ipc.ts";
@@ -47,7 +46,7 @@ void app.whenReady().then(async () => {
         () => {
           throw request.path === "host.fonts"
             ? operationCause
-            : new SdkError("stale", "The host moved on.");
+            : new ExpectedHostError({ code: "stale", message: "The host moved on." });
         },
         1,
         request,

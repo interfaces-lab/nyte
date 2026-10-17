@@ -1,34 +1,110 @@
-import type { CallId, CommitId, PartId, RunId } from "./ids.ts";
-import type { Failure } from "./model/message.ts";
-import type { Json } from "./primitives.ts";
-import type { WaitTarget } from "./runs.ts";
-import type { ToolClass, ToolOutcome, ToolProgress } from "./tools.ts";
+import { Type } from "typebox";
+import type { TSchema } from "typebox";
+import { FailureType } from "./errors.ts";
+import { idSchema } from "./ids.ts";
+import { JsonType, withJson } from "./json.ts";
+import { WaitTargetType } from "./runs.ts";
+import { standard } from "./schema.ts";
+import type { Decoded, Schema } from "./schema.ts";
+import { ToolClassType, ToolOutcomeType, ToolProgressType } from "./tools.ts";
+import { nullable } from "./wire/nullable.ts";
 
-export type Placement =
-  | { readonly kind: "transcript"; readonly role: "step" | "answer" | "note" }
-  | { readonly kind: "modal" }
-  | { readonly kind: string; readonly [detail: string]: Json };
+export const SignatureType = nullable(JsonType);
 
-export type PartStatus =
-  | {
-      readonly kind: "live";
-      readonly run: RunId | null;
-      readonly waiting?: CallId;
-      readonly answer?: { readonly action: string; readonly input: Json };
-    }
-  | { readonly kind: "waiting"; readonly run: RunId; readonly on: WaitTarget }
-  | { readonly kind: "settled"; readonly commit: CommitId; readonly endedAt: number }
-  | { readonly kind: "failed"; readonly run: RunId | null; readonly failure: Failure };
+export const PlacementType = Type.Union([
+  Type.Object({ kind: Type.Literal("transcript"), role: Type.Enum(["step", "answer", "note"]) }),
+  Type.Object({ kind: Type.Literal("modal") }),
+  Type.Intersect([Type.Object({ kind: Type.String() }), Type.Record(Type.String(), JsonType)]),
+]);
 
-export type PartView = {
-  readonly id: PartId;
-  readonly partKind: string;
-  readonly placement: Placement;
-  readonly state: Json;
-  readonly version: number;
-  readonly status: PartStatus;
-  readonly owner: string | null;
+export type Placement = Decoded<typeof PlacementType>;
+
+export const PartStatusType = Type.Union([
+  Type.Object({
+    kind: Type.Literal("live"),
+    run: nullable(idSchema<"run">()),
+    waiting: Type.Optional(idSchema<"call">()),
+    answer: Type.Optional(Type.Object({ action: Type.String(), input: JsonType })),
+  }),
+  Type.Object({ kind: Type.Literal("waiting"), run: idSchema<"run">(), on: WaitTargetType }),
+  Type.Object({
+    kind: Type.Literal("settled"),
+    commit: idSchema<"commit">(),
+    endedAt: Type.Number(),
+  }),
+  Type.Object({
+    kind: Type.Literal("failed"),
+    run: nullable(idSchema<"run">()),
+    failure: FailureType,
+  }),
+]);
+
+export type PartStatus = Decoded<typeof PartStatusType>;
+
+export const PartViewType = Type.Object({
+  id: idSchema<"part">(),
+  partKind: Type.String(),
+  placement: PlacementType,
+  state: JsonType,
+  version: Type.Number(),
+  status: PartStatusType,
+  owner: nullable(Type.String()),
+});
+
+export type PartView = Decoded<typeof PartViewType>;
+
+const TOOL_CALL = {
+  call: idSchema<"call">(),
+  name: Type.String(),
+  args: JsonType,
+  class: ToolClassType,
 };
+
+export const ToolPartStateType = Type.Union([
+  Type.Object({ ...TOOL_CALL, phase: Type.Literal("calling") }),
+  Type.Object({
+    ...TOOL_CALL,
+    phase: Type.Literal("running"),
+    progress: nullable(ToolProgressType),
+  }),
+  Type.Object({
+    ...TOOL_CALL,
+    phase: Type.Literal("settled"),
+    outcome: ToolOutcomeType,
+    changes: nullable(
+      Type.Object({
+        added: Type.Number(),
+        removed: Type.Number(),
+        paths: Type.Array(Type.String()),
+      }),
+    ),
+  }),
+]);
+
+export type ToolPartState = Decoded<typeof ToolPartStateType>;
+
+export function actOutcomeSchema<T extends TSchema>(output: T) {
+  return standard(
+    withJson(
+      Type.Union([
+        Type.Object({ kind: Type.Literal("ok"), output }),
+        Type.Object({ kind: Type.Literal("rejected"), reason: Type.String() }),
+        Type.Object({ kind: Type.Literal("unknown-action") }),
+        Type.Object({ kind: Type.Literal("closed") }),
+        Type.Object({ kind: Type.Literal("no-owner") }),
+        Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
+      ]),
+    ),
+  );
+}
+
+export const PlacementSchema: Schema<Placement> = standard(withJson(PlacementType));
+
+export const PartStatusSchema: Schema<PartStatus> = standard(withJson(PartStatusType));
+
+export const PartViewSchema: Schema<PartView> = standard(withJson(PartViewType));
+
+export const ToolPartStateSchema: Schema<ToolPartState> = standard(withJson(ToolPartStateType));
 
 export type ActOutcome<Output> =
   | { readonly kind: "ok"; readonly output: Output }
@@ -37,22 +113,3 @@ export type ActOutcome<Output> =
   | { readonly kind: "closed" }
   | { readonly kind: "no-owner" }
   | { readonly kind: "failed"; readonly message: string };
-
-export type ToolPartState = {
-  readonly call: CallId;
-  readonly name: string;
-  readonly args: Json;
-  readonly class: ToolClass;
-} & (
-  | { readonly phase: "calling" }
-  | { readonly phase: "running"; readonly progress: ToolProgress | null }
-  | {
-      readonly phase: "settled";
-      readonly outcome: ToolOutcome;
-      readonly changes: {
-        readonly added: number;
-        readonly removed: number;
-        readonly paths: readonly string[];
-      } | null;
-    }
-);

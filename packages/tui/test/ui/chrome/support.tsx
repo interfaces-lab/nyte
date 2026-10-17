@@ -52,6 +52,7 @@ export async function mount(
         now: () => 0,
         report: () => undefined,
         highlight: () => null,
+        diagram: () => Promise.reject(new Error("chrome draws no diagrams")),
         blob: noBlob,
         drawPart: () => null,
         attach: {

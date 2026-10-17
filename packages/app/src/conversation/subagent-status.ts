@@ -1,8 +1,12 @@
-import type { SessionInfo, SessionView, ToolClass } from "@nyte-ai/sdk";
-import { isToolMessage, toolStatus } from "../view-helpers.ts";
-import type { ToolStatus } from "../view-helpers.ts";
-import { toolDetail, toolVerbs } from "./tool-copy.ts";
-import type { ToolVerbs } from "./tool-copy.ts";
+import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
+import {
+  mainHead,
+  showsTool,
+  toolDetail,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type { ToolStatus } from "@nyte-ai/plugin/client/presentation";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
@@ -34,7 +38,7 @@ export function callStatus(status: ToolStatus): SubagentStatus {
 }
 
 export function sessionStatus(session: SessionInfo, unread: boolean): SubagentStatus {
-  const execution = session.heads[0]?.execution;
+  const execution = mainHead(session)?.execution;
 
   if (execution === undefined) return { indicator: "done", text: "" };
 
@@ -69,51 +73,19 @@ export function sessionStatus(session: SessionInfo, unread: boolean): SubagentSt
   }
 }
 
-export type DelegateClass = Extract<ToolClass, { readonly kind: "delegate" }>;
-
-type DelegateRole = DelegateClass["role"];
-
-export const DELEGATE_VERBS: Readonly<Record<DelegateRole, ToolVerbs>> = {
-  task: { running: "Delegating", past: "Delegated" },
-  create: { running: "Creating", past: "Created" },
-  send: { running: "Messaging", past: "Messaged" },
-  await: { running: "Waiting on", past: "Waited on" },
-  read: { running: "Reading transcript", past: "Read transcript" },
-  stop: { running: "Stopping", past: "Stopped" },
-};
-
-/** The noun a verbless line adds after the agent it names: "review agent message · Blocked". */
-export const DELEGATE_NOUNS: Readonly<Record<DelegateRole, string>> = {
-  task: "agent",
-  create: "agent",
-  send: "message",
-  await: "wait",
-  read: "transcript",
-  stop: "stop",
-};
-
-function delegateDetail(toolClass: DelegateClass): string {
-  return toolClass.title ?? "subagent";
-}
-
 /** What a running child is doing now: its unsettled call, else what it streams. */
 export function subagentActivity(
   view: SessionView | undefined,
   cwd: string | undefined,
 ): string | undefined {
   const call = view?.messages.findLast(
-    (message) => isToolMessage(message) && toolStatus(message).tense === "running",
+    (message) => showsTool(message) && toolStatus(message).tense === "running",
   );
 
-  if (call !== undefined && isToolMessage(call)) {
+  if (call !== undefined && showsTool(call)) {
     const toolClass = call.state.class;
-    const verb =
-      toolClass.kind === "delegate"
-        ? DELEGATE_VERBS[toolClass.role].running
-        : toolVerbs(toolClass).running;
-
-    const detail =
-      toolClass.kind === "delegate" ? delegateDetail(toolClass) : toolDetail(toolClass, cwd)?.text;
+    const verb = toolVerbs(toolClass).running;
+    const detail = toolDetail(toolClass, cwd)?.text;
 
     return detail === undefined ? verb : `${verb} ${detail}`;
   }

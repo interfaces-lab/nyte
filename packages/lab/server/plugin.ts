@@ -4,7 +4,7 @@ import type { Plugin } from "vite";
 import { canvasRoutes } from "./canvas-routes.ts";
 import { openRepo } from "./git.ts";
 import { CACHE_DIR, openReviewHost, type ReviewHost } from "./host.ts";
-import { openRegistry } from "./registry.ts";
+import { Registry } from "./registry.ts";
 import { createReviews } from "./review.ts";
 import { labPlugins } from "./reviewer.ts";
 import { requestListener } from "./http.ts";
@@ -21,7 +21,7 @@ function describeError(cause: unknown): string {
 
 async function open(log: (message: string) => void): Promise<Opened> {
   const repo = await openRepo();
-  const registry = openRegistry(join(CACHE_DIR, "reviews.json"));
+  const registry = new Registry(join(CACHE_DIR, "reviews.json"));
 
   const host = await openReviewHost({
     plugins: labPlugins({ repo, registry }),

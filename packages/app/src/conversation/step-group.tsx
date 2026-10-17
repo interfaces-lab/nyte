@@ -1,4 +1,3 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * Intermediate narration, reasoning, and tool calls form one work episode.
  * Compact mode keeps the episode in a clipped window
@@ -7,22 +6,23 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/work-group.tsx
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
+import { showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus, srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { isToolMessage } from "../view-helpers.ts";
-import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
+import { stepGroupStyles } from "./step-group.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Prose } from "./prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
-import { isThinkingMessage } from "./transcript-presentation.ts";
 import type { StepMessage } from "./transcript-presentation.ts";
 import {
   FOLLOW_INPUT_MS,
@@ -63,7 +63,7 @@ function StepEntryView({
 }): ReactElement | null {
   const { message } = entry;
 
-  if (isToolMessage(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
+  if (showsTool(message)) return <ToolCallView message={message} cwd={cwd} density={density} />;
   const streaming = message.status.kind === "live";
 
   if (thinkingOnly) {
@@ -81,6 +81,15 @@ function StepEntryView({
   return <ThinkingLine text={entry.markdown} streaming={streaming} />;
 }
 
+/**
+ * The preview follows new output. Scrolling away pauses that; ten seconds
+ * without another input, or a return to the bottom, resumes it.
+ *
+ * The disclosure controls the full list alone. The preview is the group's own
+ * window onto live work, so it neither reads as expanded nor closes on the
+ * trigger; opening from either state shows the list, and closing the list
+ * returns the group to whatever the density shows by default.
+ */
 export function StepGroupView({
   messages,
   cwd,
@@ -116,7 +125,7 @@ export function StepGroupView({
 
   const { active, summary } = presentation;
 
-  const thinkingOnly = messages.every(isThinkingMessage);
+  const thinkingOnly = messages.every(showsThinking);
 
   const entries = useMemo(
     () =>
@@ -125,9 +134,9 @@ export function StepGroupView({
 
         if (
           !thinkingOnly &&
-          isThinkingMessage(message) &&
+          showsThinking(message) &&
           previous !== undefined &&
-          isThinkingMessage(previous.message)
+          showsThinking(previous.message)
         ) {
           merged[merged.length - 1] = {
             ...previous,
@@ -141,7 +150,7 @@ export function StepGroupView({
         merged.push({
           key: message.id,
           message,
-          markdown: isThinkingMessage(message) ? message.state.markdown : "",
+          markdown: showsThinking(message) ? message.state.markdown : "",
         });
 
         return merged;
@@ -160,7 +169,7 @@ export function StepGroupView({
     entries.length > 0 &&
     !(
       titled &&
-      isThinkingMessage(onlyThought) &&
+      showsThinking(onlyThought) &&
       reasoningHeading(onlyThought.state.markdown).body.trim() === ""
     );
 
@@ -176,8 +185,6 @@ export function StepGroupView({
   const expanded = content === "open";
   const panelId = useId();
 
-  // The preview follows new output. Scrolling away pauses that; ten seconds
-  // without another input, or a return to the bottom, resumes it.
   const viewportRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const callsRef = useRef<HTMLDivElement>(null);
@@ -297,10 +304,6 @@ export function StepGroupView({
     );
   }
 
-  // The disclosure controls the full list alone. The preview is the group's
-  // own window onto live work, so it neither reads as expanded nor closes on
-  // the trigger; opening from either state shows the list, and closing the
-  // list returns the group to whatever the density shows by default.
   const disclosure = {
     variant: "plain",
     "aria-controls": expanded ? panelId : undefined,

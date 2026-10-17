@@ -1,9 +1,8 @@
 import { PatchEntryType } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
-import type { ToolMessage } from "../view-helpers.ts";
-import { formatPatch } from "../workbench/patch-text.ts";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
 
-export interface EditPatch {
+interface EditPatch {
   readonly patch: string;
   readonly added: number;
   readonly removed: number;
@@ -19,7 +18,7 @@ export function editPatch(message: ToolMessage): EditPatch | undefined {
   if (!Value.Check(PatchEntryType, output) || output.kind !== "text") return undefined;
 
   return {
-    patch: formatPatch(output),
+    patch: output.patch,
     added: output.added,
     removed: output.removed,
     created: output.status === "added",

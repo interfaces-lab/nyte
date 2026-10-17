@@ -14,7 +14,7 @@ export const FOLLOW_RESUME_MS = 10_000;
 /** A scroll this soon after wheel, touch, or key input is the reader's. */
 export const FOLLOW_INPUT_MS = 400;
 
-export interface ScrollMetrics {
+interface ScrollMetrics {
   readonly scrollTop: number;
   readonly clientHeight: number;
   readonly scrollHeight: number;
@@ -29,16 +29,13 @@ export function overflows(metrics: ScrollMetrics): boolean {
   return metrics.scrollHeight > metrics.clientHeight;
 }
 
-export function scrolledAway(metrics: ScrollMetrics): boolean {
-  return metrics.scrollTop + metrics.clientHeight < metrics.scrollHeight - FOLLOW_SLACK_PX;
-}
-
 /**
  * Rows measured after the window pinned itself scroll it too. Only a scroll
  * the reader drove pauses following; any other one leaves it to re-pin.
  */
 export function followOnScroll(metrics: ScrollMetrics, reading: boolean): FollowStep | undefined {
-  if (!scrolledAway(metrics)) return { paused: false, resumeTimer: "clear" };
+  if (metrics.scrollTop + metrics.clientHeight >= metrics.scrollHeight - FOLLOW_SLACK_PX)
+    return { paused: false, resumeTimer: "clear" };
 
   return reading ? { paused: true, resumeTimer: "arm" } : undefined;
 }

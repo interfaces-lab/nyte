@@ -1,4 +1,5 @@
 import type {
+  CommandInfo,
   CommitId,
   Delivery,
   Json,
@@ -10,6 +11,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionView,
+  SettingInfo,
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ChatCommand } from "../lib/constants.ts";
@@ -20,9 +22,10 @@ import type { MentionFile } from "./completion.ts";
 import type { DialogData, DialogId, DialogInput, DialogRequest } from "./dialogs/dialog.ts";
 import type { DraftInsert, DraftSnapshot } from "./draft.ts";
 import type {
+  BlankChat,
   FailureReport,
   Notice,
-  Phase,
+  PendingOp,
   QuestionRequest,
   QuestionTypedDraft,
   RemoteFacts,
@@ -60,6 +63,7 @@ export type Intent =
   | { readonly kind: "run-shell"; readonly command: string; readonly include: boolean }
   | { readonly kind: "stop-shell" }
   | { readonly kind: "clear-draft" }
+  | { readonly kind: "recall-first-message" }
   | { readonly kind: "quit" }
   | { readonly kind: "escape-tree"; readonly at: number }
   | { readonly kind: "refuse"; readonly reason: string; readonly tone?: Notice["tone"] }
@@ -71,6 +75,7 @@ export type Intent =
       readonly to: "page-up" | "page-down" | "latest" | "previous-turn" | "next-turn";
     }
   | { readonly kind: "reveal-earlier" }
+  | { readonly kind: "reveal-later" }
   | { readonly kind: "toggle-tool-output" }
   | { readonly kind: "toggle-disclosure"; readonly key: string }
   | { readonly kind: "cycle-thinking" }
@@ -144,30 +149,39 @@ export type Intent =
     }
   | { readonly kind: "step-task"; readonly dialog: DialogId; readonly direction: -1 | 1 };
 
-export type CompletionAction =
+type CompletionAction =
   | { readonly kind: "accept"; readonly alternate: Delivery | null }
   | { readonly kind: "fill" }
   | { readonly kind: "close" }
   | { readonly kind: "move"; readonly by: -1 | 1 | "page-up" | "page-down" }
   | { readonly kind: "pick"; readonly index: number };
 
-export type PasteSource =
+type PasteSource =
   | { readonly kind: "terminal"; readonly text: string; readonly bytes: Uint8Array | null }
   | { readonly kind: "clipboard" };
 
 export type Fact =
-  | { readonly kind: "phase"; readonly phase: Phase }
+  | { readonly kind: "host-opened" }
   | {
       readonly kind: "session-opened";
       readonly session: SessionId;
       readonly info: SessionInfo;
       readonly selection: Selection;
     }
+  | { readonly kind: "blank-opened"; readonly chat: BlankChat }
+  | { readonly kind: "blank-folder"; readonly session: SessionId; readonly workspace: WorkspaceId }
   | { readonly kind: "view"; readonly session: SessionId; readonly view: SessionView }
   | { readonly kind: "watch-ended"; readonly session: SessionId; readonly failure: string | null }
   | { readonly kind: "session-info"; readonly session: SessionId; readonly info: SessionInfo }
   | { readonly kind: "selection"; readonly session: SessionId; readonly selection: Selection }
   | { readonly kind: "catalog"; readonly generation: number; readonly catalog: ModelCatalogView }
+  | { readonly kind: "host-settings"; readonly settings: readonly SettingInfo[] }
+  | {
+      readonly kind: "folder-commands";
+      readonly generation: number;
+      readonly workspace: WorkspaceId;
+      readonly commands: readonly CommandInfo[];
+    }
   | { readonly kind: "settings"; readonly settings: ResolvedSettings }
   | { readonly kind: "tasks"; readonly session: SessionId; readonly tasks: readonly Task[] }
   | { readonly kind: "workspace"; readonly workspace: WorkspaceFacts }
@@ -211,6 +225,7 @@ export type Outcome =
         | { readonly kind: "failed"; readonly message: string };
       readonly typed: QuestionTypedDraft | null;
     }
+  | { readonly kind: "approved"; readonly part: PartId; readonly failure: string | null }
   | {
       readonly kind: "moved";
       readonly outcome: MoveOutcome;
@@ -229,7 +244,7 @@ export type Outcome =
   | { readonly kind: "editor-closed"; readonly text: string | null }
   | {
       readonly kind: "op-finished";
-      readonly op: "switch" | "cd" | "auth" | "reload" | "editor";
+      readonly op: PendingOp["kind"];
       readonly notice: Notice | null;
     }
   | { readonly kind: "effect-failed"; readonly effect: string; readonly message: string }

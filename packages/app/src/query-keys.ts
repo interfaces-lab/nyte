@@ -5,12 +5,18 @@ export const keys = {
   hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
   workspaces: ["workspaces"] as const,
+  /** The last run's folders, shown until the live list arrives. */
+  firstFrameWorkspaces: ["first-frame", "workspaces"] as const,
+  /** The last run's recent chats, shown until the live directory arrives. */
+  firstFrameRoots: ["first-frame", "roots"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
-  // Usage reads everything once. A read walks every stored commit whatever
-  // window it is asked for, so the window buys nothing on the way in and costs
-  // a full re-read on every range press. The day is the key, so the page reads
-  // again after midnight and not before.
+  /**
+   * Usage reads everything once. A read walks every stored commit whatever
+   * window it is asked for, so the window buys nothing on the way in and costs
+   * a full re-read on every range press. The day is the key, so the page reads
+   * again after midnight and not before.
+   */
   usage: (untilDay: string) => ["usage", untilDay] as const,
   github: ["github"] as const,
   server: ["server"] as const,
@@ -26,7 +32,6 @@ export const keys = {
   ) => ["git", "changes", workspace, scope, ignoreWhitespace, revision] as const,
   gitLog: (workspace: WorkspaceId | undefined, limit: number, cursor: string | undefined) =>
     ["git", "log", workspace, limit, cursor] as const,
-  gitRefs: (workspace: WorkspaceId | undefined) => ["git", "refs", workspace] as const,
   runChanges: (workspace: WorkspaceId | undefined, run: RunId | undefined, live: boolean) =>
     ["git", "run", workspace, run, live ? "live" : "settled"] as const,
   mentionFiles: ["files", "mentions"] as const,

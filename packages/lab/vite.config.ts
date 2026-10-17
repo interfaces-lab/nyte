@@ -4,7 +4,7 @@ import { defaultClientConditions, defineConfig, type Plugin } from "vite";
 import { reviewCore } from "./server/plugin.ts";
 
 /** A blank room: StyleX and nothing else. No Tailwind, no inherited palette. */
-export default defineConfig(() => ({
+export default defineConfig({
   resolve: {
     conditions: ["nyte-source", ...defaultClientConditions],
     dedupe: ["react", "react-dom", "@stylexjs/stylex"],
@@ -24,8 +24,10 @@ export default defineConfig(() => ({
   plugins: [
     stylex.vite({
       useCSSLayers: true,
-      // The desktop's Electron Chromium. Older targets make lightningcss
-      // polyfill the tokens' light-dark() with variables nothing here defines.
+      /**
+       * The desktop's Electron Chromium. Older targets make lightningcss
+       * polyfill the tokens' light-dark() with variables nothing here defines.
+       */
       lightningcssOptions: { targets: { chrome: 152 << 16 } },
     }),
     react(),
@@ -50,4 +52,4 @@ export default defineConfig(() => ({
     },
   },
   server: { port: 5178 },
-}));
+});

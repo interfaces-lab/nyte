@@ -11,7 +11,7 @@ import { deriveScreen } from "../../../src/model/screen.ts";
 import type { State } from "../../../src/model/state.ts";
 import { DialogHost } from "../../../src/ui/dialogs/dialog-host.tsx";
 import { render } from "../../fixture/render.tsx";
-import { stateOf } from "../../fixture/state.ts";
+import { buildState } from "../../fixture/state.ts";
 
 export interface DialogHarness extends TestRendererSetup {
   readonly dispatched: Msg[];
@@ -40,7 +40,7 @@ export async function renderDialog(
   options: DialogOptions = {},
 ): Promise<DialogHarness> {
   const [stack, setStack] = createSignal<readonly Dialog[]>([dialog]);
-  const base = options.state ?? stateOf(null);
+  const base = options.state ?? buildState(null);
 
   const screen = createMemo(() =>
     deriveScreen({ ...base, local: { ...base.local, dialogs: stack() } }, null),
@@ -57,6 +57,7 @@ export async function renderDialog(
     now: () => 0,
     report: () => undefined,
     highlight: () => null,
+    diagram: () => Promise.reject(new Error("dialogs draw no diagrams")),
     blob: () => {
       throw new Error("dialogs read no blobs");
     },

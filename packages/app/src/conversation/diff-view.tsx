@@ -1,11 +1,11 @@
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 /**
  * One diff surface shared by transcript receipts and the Changes workbench.
  * Pierre renders the patch inside a shadow root; Nyte's tokens reach it as
  * inherited custom properties on the host, so only rules that must live in
  * the shadow tree go through `unsafeCSS`.
  */
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { button, glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
@@ -22,7 +22,7 @@ import {
 import { preferences, useSetting } from "../preferences/index.ts";
 import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { patchDigest } from "../workbench/changes-viewed.ts";
-import { diffStyles } from "./styles.stylex.ts";
+import { diffStyles } from "./diff.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
 
 type DiffViewVariant = "inline" | "card" | "workbench" | "stack";
@@ -180,14 +180,16 @@ ${DIFF_SEPARATOR_CSS}`;
  * StrictMode detaches and re-attaches the ref on mount, so the replacement
  * instance would find that empty `<pre>`, treat it as prerendered HTML, and
  * never render.
+ *
+ * Scope classes live outside the shadow tree, so computed custom properties
+ * are copied in, keeping light-dark() intact so system appearance changes
+ * still resolve.
  */
 function applyDiffScopes(node: HTMLElement): void {
   const sample = document.createElement("span");
   sample.hidden = true;
   node.after(sample);
 
-  // Scope classes live outside the shadow tree. Copy computed custom properties,
-  // keeping light-dark() intact so system appearance changes still resolve.
   for (const entry of [
     {
       scope: surfaceTheme.green,
@@ -315,12 +317,17 @@ function renderablePatch(patch: string): RenderablePatch {
 }
 
 /** The bytes a diff draws and the counts beside them; the counts are the record's, not a reparse. */
-export interface DiffFacts {
+interface DiffFacts {
   readonly patch: string;
   readonly added: number;
   readonly removed: number;
 }
 
+/**
+ * `expandUnchanged` stays off: it would open every gap at once, and the point
+ * of the expansion band is that the reader chooses. A path can repeat within
+ * one patch, so file diffs key on their position too.
+ */
 export const DiffView = memo(function DiffView({
   path,
   label,
@@ -360,8 +367,6 @@ export const DiffView = memo(function DiffView({
       diffStyle: layout,
       overflow: wrapped ? "wrap" : "scroll",
       themeType: theme,
-      // `expandUnchanged` stays off: it would open every gap at once, and the
-      // point of the band is that the reader chooses.
       loadDiffFiles: expansion,
       expansionLineCount: EXPANSION_LINE_COUNT,
     }),
@@ -415,7 +420,6 @@ export const DiffView = memo(function DiffView({
           <pre {...props(text.code, rawStyles.raw)}>{renderable.text}</pre>
         ) : (
           <PierreWorkerProvider>
-            {/* A path can repeat within one patch, so it cannot key these on its own. */}
             {renderable.files.map((fileDiff, index) => (
               <FileDiff
                 key={`${String(index)}:${fileDiff.name ?? path}`}

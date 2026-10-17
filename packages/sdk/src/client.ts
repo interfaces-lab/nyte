@@ -1,39 +1,41 @@
-import { asId, isJson } from "@nyte-ai/schema";
+import { asId, isJson, SdkError } from "@nyte-ai/schema";
 import type {
   CredentialSource,
   HeadName,
   HostId,
   JournalEntry,
   Json,
-  Message,
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { SdkError, closable, dev } from "@nyte-ai/core";
-import type { Connection, Head, Login, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
-import type { OperationOutput, Transport } from "@nyte-ai/protocol";
-import { createFolds, watchHead, watchHost, withUnsent } from "./fold.ts";
-import type { Folds } from "./fold.ts";
+import { dev, followTrace, traced } from "@nyte-ai/core";
+import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
+import type { Transport } from "@nyte-ai/protocol";
+import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";
+import type { HeadViews } from "./watch.ts";
 import { journalLoop } from "./journal.ts";
 import type { JournalLoop } from "./journal.ts";
 import { partHandle } from "./part.ts";
 import { moveOutcome, receiptHandle, runHandle, sendReceipt } from "./receipts.ts";
 import { createLink, createRows } from "./rows.ts";
 import type { Rows } from "./rows.ts";
+import { loginHandle } from "./login.ts";
 import { workspaceHandle } from "./workspace.ts";
 
-export type ClientContext = {
+type ClientContext = {
   readonly hostId: HostId;
   readonly principal: PrincipalId;
   readonly credential: CredentialSource;
   readonly journal: RequestJournal;
   readonly journaled: readonly JournalEntry[];
+  /** The `connection.watch` that connecting read the host's first view from, left open for the first host watch to continue. */
+  readonly hostFrames?: AsyncIterator<Json>;
 };
 
 type Bound = {
   readonly rows: Rows;
   readonly journal: JournalLoop;
-  readonly folds: Folds;
+  readonly views: HeadViews;
 };
 
 const MAIN = asId<"head">("main");
@@ -45,10 +47,13 @@ export function createClient(transport: Transport, context: ClientContext): Conn
   const bound: Bound = {
     rows,
     journal: journalLoop(rows, context.journal),
-    folds: createFolds(rows, context.principal),
+    views: createHeadViews(rows),
   };
 
   bound.journal.replay(context.journaled);
+  let hostFrames = context.hostFrames;
+
+  link.signal.addEventListener("abort", () => void hostFrames?.return?.(), { once: true });
 
   const close = async (): Promise<void> => {
     link.close("client");
@@ -60,8 +65,19 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     credential: context.credential,
     sessions: {
       watch: (input) => rows.watch("sessions.watch", input ?? {}),
-      create: async (input) =>
-        sessionHandle(bound, (await rows.call("sessions.create", input ?? {})).session),
+      async start(input) {
+        const id = input.id ?? asId<"session">(crypto.randomUUID());
+        followTrace(id, id);
+
+        const started = await traced("sdk.send", id, { session: id }, () =>
+          rows.wait("sessions.start", { ...input, id }),
+        );
+
+        return {
+          session: sessionHandle(bound, started.session),
+          receipt: sendReceipt(rows, started.session, started.receipt, started.message),
+        };
+      },
       list: (input) => rows.call("sessions.list", input ?? {}),
     },
     workspaces: {
@@ -72,7 +88,12 @@ export function createClient(transport: Transport, context: ClientContext): Conn
     },
     session: (id) => sessionHandle(bound, id),
     workspace: (id) => workspaceHandle(rows, id),
-    watch: () => watchHost(rows),
+    watch: () => {
+      const opened = hostFrames;
+      hostFrames = undefined;
+
+      return watchHost(rows, opened);
+    },
     blob: (id) => rows.bytes("connection.blob", { id }),
     models: {
       list: () => rows.call("models.list", {}),
@@ -101,6 +122,11 @@ export function createClient(transport: Transport, context: ClientContext): Conn
       },
     },
     settings: { apply: (id, value) => rows.call("settings.apply", { id, value }) },
+    github: {
+      account: () => rows.call("github.account", {}),
+      signIn: () => rows.call("github.signIn", {}),
+      signOut: () => rows.call("github.signOut", {}),
+    },
     plugins: {
       replace: (plugins, scope) => rows.call("plugins.replace", { plugins: files(plugins), scope }),
       check: (plugins) => rows.call("plugins.check", { plugins: files(plugins) }),
@@ -166,30 +192,30 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       const { id, ...rest } = options ?? {};
       const receipt = id ?? asId<"receipt">(crypto.randomUUID());
       dev("sdk", "send", { session, head, receipt });
+      followTrace(session, receipt);
 
-      const sent = await journal.send({
-        id: receipt,
-        session,
-        head,
-        content,
-        options: rest,
-        at: Date.now(),
-      });
+      const sent = await traced("sdk.send", receipt, { session }, () =>
+        journal.send({
+          id: receipt,
+          session,
+          head,
+          content,
+          options: rest,
+          at: Date.now(),
+        }),
+      );
 
       return sendReceipt(rows, session, sent.receipt, sent.message);
     },
     configure: (patch) => rows.call("head.configure", { session, head, patch }),
     async view(options) {
       const view = await rows.call("head.view", { session, head, options });
+      journal.landed(session, head, view);
+      const ids = new Set(view.messages.map((message) => message.id));
 
-      const known = (id: Message["id"]): boolean =>
-        view.messages.some((message) => message.id === id);
-
-      journal.landed(known);
-
-      return withUnsent(view, journal.unsent(session, head), known);
+      return withUnsent(view, journal.unsent(session, head), (id) => ids.has(id));
     },
-    watch: (options) => watchHead(bound.folds, journal, { session, head, options }),
+    watch: (options) => watchHead(bound.views, journal, { session, head, options }),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),
     async move(position, options) {
@@ -204,47 +230,6 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       return receiptHandle(rows, session, receipt, moveOutcome);
     },
     compact: (input) => rows.call("head.compact", { session, head, ...input }),
-  };
-}
-
-/**
- * A login streamed over `login.steps`: `begin` starts it on the host and
- * answers the key its steps and answers go by; `known` is that key when the
- * caller knows it before starting.
- */
-export function loginHandle(rows: Rows, begin: () => Promise<string>, known: string | null): Login {
-  let started: Promise<string> | null = null;
-
-  return {
-    steps: () =>
-      closable<OperationOutput<"login.steps">>(() => {
-        let steps: AsyncIterator<OperationOutput<"login.steps">> | null = null;
-        let closed = false;
-
-        return {
-          async pull() {
-            if (steps === null) {
-              const provider = await (started ??= begin());
-
-              if (closed) return { done: true, value: undefined };
-              steps = rows.frames("login.steps", { provider })[Symbol.asyncIterator]();
-            }
-
-            return steps.next();
-          },
-          close() {
-            closed = true;
-            void steps?.return?.();
-          },
-        };
-      }),
-    async answer(code) {
-      const provider = started === null ? known : await started;
-
-      if (provider === null)
-        throw new SdkError("invalid", "Read the login's steps before answering.");
-      await rows.call("login.answer", { provider, code });
-    },
   };
 }
 

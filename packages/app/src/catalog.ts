@@ -15,6 +15,7 @@ export interface DesktopModelOption {
     | { readonly kind: "unavailable" }
     | { readonly kind: "available"; readonly id: string };
   readonly input: ModelInfo["input"];
+  readonly capabilities: ModelInfo["capabilities"];
   readonly listed: boolean;
 }
 
@@ -24,7 +25,7 @@ export interface DesktopCatalog {
   readonly defaults?: { readonly model: ModelRef; readonly thinkingLevel: Thinking | undefined };
 }
 
-export function catalogOf(view: ModelCatalogView): DesktopCatalog {
+export function toDesktopCatalog(view: ModelCatalogView): DesktopCatalog {
   const models = view.providers.flatMap((provider) =>
     provider.models.map((model): DesktopModelOption => ({
       key: `${model.ref.provider}/${model.ref.id}`,
@@ -37,6 +38,7 @@ export function catalogOf(view: ModelCatalogView): DesktopCatalog {
       fastMode:
         model.fast === null ? { kind: "unavailable" } : { kind: "available", id: model.fast.id },
       input: model.input,
+      capabilities: model.capabilities,
       listed: provider.credential !== "missing",
     })),
   );

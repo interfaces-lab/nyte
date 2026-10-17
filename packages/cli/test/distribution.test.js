@@ -20,6 +20,28 @@ import { ensureBinary, platformTarget, releaseAssetName } from "../src/launcher.
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const cli = join(repo, "packages/cli");
 
+/**
+ * Writes a `curl` into `bin` that serves release files from `$FIXTURE_RELEASE` and returns `bin`.
+ * Only the download transport is fake: the installer still checks the real checksum and extracts tar.
+ */
+async function fakeCurl(bin) {
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "curl"),
+    `#!/bin/sh
+set -eu
+case "$1" in
+  -fsSLI) printf 200 ;;
+  -fsSL) cp "$FIXTURE_RELEASE/\${4##*/}" "$3" ;;
+  *) exit 99 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+
+  return bin;
+}
+
 async function checkDocs(root) {
   const physicalRoot = await realpath(root);
   const pending = [join(root, "README.md")];
@@ -125,21 +147,7 @@ test("native assembly, npm cache, and installer retain matching docs without net
     });
     await checkDocs(join(dirname(cachedBinary), "docs"));
 
-    const fakeBin = join(fixture, "fake-bin");
-    await mkdir(fakeBin);
-    // Replace only the download transport. The installer still checks the real checksum and extracts tar.
-    await writeFile(
-      join(fakeBin, "curl"),
-      `#!/bin/sh
-set -eu
-case "$1" in
-  -fsSLI) printf 200 ;;
-  -fsSL) cp "$FIXTURE_RELEASE/\${4##*/}" "$3" ;;
-  *) exit 99 ;;
-esac
-`,
-      { mode: 0o755 },
-    );
+    const fakeBin = await fakeCurl(join(fixture, "fake-bin"));
     const installDir = join(fixture, "custom prefix/bin");
     const installed = execFileSync(
       "sh",

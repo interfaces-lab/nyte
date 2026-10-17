@@ -83,6 +83,7 @@ function betterSnapshot(previous: Snapshot | undefined, next: Snapshot): boolean
   );
 }
 
+/** Reads one Claude Code transcript's usage snapshots. An unparsable last line without its newline is not counted malformed: a writer may still be appending it. */
 async function scanClaudeCodeFile(
   path: string,
   signal: AbortSignal | undefined,
@@ -100,7 +101,6 @@ async function scanClaudeCodeFile(
     try {
       value = JSON.parse(line.text);
     } catch {
-      // A writer may still be appending the last JSON object.
       if (line.terminated) malformedRecords++;
       continue;
     }
@@ -187,6 +187,13 @@ function pruneCache<T>(cache: UsageScanCache<T> | undefined, seen: Set<string>):
   for (const path of cache.keys()) if (!seen.has(path)) cache.delete(path);
 }
 
+/**
+ * Reads Claude Code's local usage under `<configDir>/projects`. The configured root may be a
+ * symlink (as may a system ancestor such as macOS `/tmp`), but links below it are skipped, to
+ * avoid loops and duplicate history. Every read prices cached snapshots again on a copy, since
+ * the catalog can change between reads while a transcript does not; a snapshot that records its
+ * own cost keeps that total, with no invented breakdown.
+ */
 export async function readClaudeCodeUsage(
   options: ClaudeCodeUsageOptions,
 ): Promise<ClaudeCodeUsage> {
@@ -202,7 +209,6 @@ export async function readClaudeCodeUsage(
   if (!existsSync(projects)) return { kind: "missing" };
 
   try {
-    // Configured roots may be symlinks, as may system ancestors such as macOS /tmp.
     const root = await stat(projects);
     options.signal?.throwIfAborted();
 
@@ -227,7 +233,6 @@ export async function readClaudeCodeUsage(
       options.signal?.throwIfAborted();
 
       try {
-        // Follow the configured root, but skip child links to avoid loops and duplicate history.
         if (directory !== projects && (await lstat(directory)).isSymbolicLink()) continue;
         const entries = await opendir(directory);
 
@@ -278,12 +283,9 @@ export async function readClaudeCodeUsage(
 
     for (const snapshot of [...keyed.values(), ...anonymous]) {
       options.signal?.throwIfAborted();
-      // Cached usage is priced on every read, since the catalog can change
-      // between reads while the transcript does not. Copy before writing.
       const usage: Usage = { ...snapshot.usage, cost: { ...snapshot.usage.cost } };
 
       if (snapshot.costUSD !== undefined) {
-        // History reports a total, not a cost breakdown. Do not invent allocations.
         usage.cost.total = snapshot.costUSD;
       } else {
         const matches = catalog.filter((model) => model.id === snapshot.model);
@@ -405,6 +407,13 @@ function parseMs(value: string | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+/**
+ * Reads Codex's local usage from `sessions` and `archived_sessions` (where the legacy format
+ * lives). A `response_id` is unique across files, so one map dedups a forked rollout's repeated
+ * parent responses as well as repeats within a file; a file with modern records counts only
+ * those, since the legacy event is written beside them. Rows are priced on a copy against the
+ * `openai-codex` catalog, the ChatGPT-backend model ids Codex writes.
+ */
 export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexUsage> {
   options.signal?.throwIfAborted();
 
@@ -412,7 +421,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
     options.homeDir ?? (process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")),
   );
 
-  // Archived rollouts are history too, and they are where the legacy format lives.
   const roots = [join(home, "sessions"), join(home, "archived_sessions")];
   const present: string[] = [];
 
@@ -430,8 +438,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
   if (present.length === 0) return { kind: "missing" };
 
-  // `response_id` is unique across files, so a forked rollout that repeats its
-  // parent's responses is deduplicated by the same map that dedups within one.
   const responses = new Map<string, CodexRow>();
   const legacy: CodexRow[] = [];
   const seen = new Set<string>();
@@ -448,8 +454,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
           malformedRecords += scan.malformedRecords;
 
-          // The legacy event is still written beside the modern record, so a
-          // file that has both must be counted only once.
           if (scan.modern.length > 0) {
             for (const [id, row] of scan.modern) if (!responses.has(id)) responses.set(id, row);
           } else {
@@ -465,8 +469,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
     options.signal?.throwIfAborted();
     pruneCache(options.cache, seen);
 
-    // Codex writes the ChatGPT-backend model ids, which is the `openai-codex`
-    // provider's catalog, not the API provider's.
     const catalog = options.models
       .getModels("openai-codex")
       .filter((model) => model.provider === "openai-codex");
@@ -476,7 +478,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
     for (const row of [...responses.values(), ...legacy]) {
       options.signal?.throwIfAborted();
-      // Priced on a copy: the cached usage outlives this read and this catalog.
       const usage: Usage = { ...row.usage, cost: { ...row.usage.cost } };
       const matches = catalog.filter((model) => model.id === row.model);
       const model = matches.length === 1 ? matches[0] : undefined;
@@ -505,6 +506,12 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
   }
 }
 
+/**
+ * Reads one Codex rollout. A `token_count` names no model, so the last `turn_context` does; only
+ * the file's first session meta counts, since a fork repeats its ancestors' metas straight after
+ * and would move the fork anchor; and a `token_count` equal to the one before is a re-emission
+ * at a stream boundary, not new usage.
+ */
 async function scanCodexRollout(
   path: string,
   signal: AbortSignal | undefined,
@@ -512,7 +519,6 @@ async function scanCodexRollout(
   const modern = new Map<string, CodexRow>();
   const legacy: CodexRow[] = [];
   let malformedRecords = 0;
-  // `token_count` carries no model of its own; the last `turn_context` names it.
   let model = "";
   let sawMeta = false;
   let signature: string | undefined;
@@ -542,8 +548,6 @@ async function scanCodexRollout(
     }
 
     if (Value.Check(sessionMeta, value)) {
-      // Only the first meta describes this file. A fork repeats its ancestors'
-      // metas straight after, and letting those through would move the anchor.
       if (sawMeta) continue;
       sawMeta = true;
 
@@ -568,7 +572,6 @@ async function scanCodexRollout(
     const last = value.payload.info.last_token_usage;
 
     if (last === undefined || model === "") continue;
-    // Codex re-emits an unchanged token_count on some stream boundaries.
     const next = JSON.stringify(last);
 
     if (next === signature) continue;
@@ -615,6 +618,7 @@ async function* jsonlFiles(root: string, signal: AbortSignal | undefined): Async
   }
 }
 
+/** Yields a history file's lines up to the size it had when opened, though its writer may keep appending; the last line is `terminated: false` without its newline. */
 async function* historyLines(path: string, signal: AbortSignal | undefined) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 
@@ -627,7 +631,6 @@ async function* historyLines(path: string, signal: AbortSignal | undefined) {
     let pending = "";
     let position = 0;
 
-    // Stop at the size observed on open, even if Claude keeps appending.
     while (position < stat.size) {
       signal?.throwIfAborted();
 
@@ -640,15 +643,10 @@ async function* historyLines(path: string, signal: AbortSignal | undefined) {
 
       if (bytesRead === 0) break;
       position += bytesRead;
-      pending += decoder.write(buffer.subarray(0, bytesRead));
-      let start = 0;
+      const lines = `${pending}${decoder.write(buffer.subarray(0, bytesRead))}`.split("\n");
+      pending = lines.pop() ?? "";
 
-      for (let end = pending.indexOf("\n"); end !== -1; end = pending.indexOf("\n", start)) {
-        yield { text: pending.slice(start, end), terminated: true };
-        start = end + 1;
-      }
-
-      pending = pending.slice(start);
+      for (const text of lines) yield { text, terminated: true };
     }
 
     pending += decoder.end();

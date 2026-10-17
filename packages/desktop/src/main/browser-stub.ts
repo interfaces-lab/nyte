@@ -8,6 +8,7 @@ const fail = (): never => {
   throw new Error("Browser agent is not used in this test");
 };
 
+/** Every method fails except `release`, which plugin dispose calls and so must not throw. */
 export function unusedBrowserAgent(): BrowserAgent {
   return {
     open: fail,
@@ -20,7 +21,6 @@ export function unusedBrowserAgent(): BrowserAgent {
     console: fail,
     evaluate: fail,
     capture: fail,
-    // release is called during plugin dispose; it must not throw.
     release() {},
     sessionSurfaceId: fail,
   };

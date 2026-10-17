@@ -62,8 +62,7 @@ const REQUESTS: Readonly<
       "Page->>Lab: POST /core/review/tasks",
       "Lab->>Lab: branch + worktree",
       "Lab->>Core: workspaces.add(local target: worktree)",
-      "Lab->>Core: sessions.create(workspace)",
-      "Lab->>Core: head.send(task)",
+      "Lab->>Core: sessions.start(workspace, task)",
     ]),
     head: "main",
     from: "Empty",
@@ -77,11 +76,12 @@ const REQUESTS: Readonly<
       "App->>Page: click",
       "Page->>Lab: POST /core/review/reviews/:id/guide",
       "Lab->>Lab: pick an earlier brief to cut from",
-      "Lab->>Core: session.heads.create(brief-sha, from: source tip)",
+      "Lab->>Core: sessions.start(patch) for the first guide",
+      "Lab->>Core: else session.heads.create(brief-sha, from: start or source tip)",
       "Lab->>Core: head.send(patch or interdiff)",
     ]),
-    head: "brief-<sha>",
-    from: "main + patch, or an earlier brief + interdiff",
+    head: "main, then brief-<sha>",
+    from: "The patch, or an earlier brief + interdiff",
     tools: "Read-only, publish_guide",
     saved: "No",
   },
@@ -106,7 +106,8 @@ const REQUESTS: Readonly<
     path: sequence("Side chat", [
       "App->>Page: change",
       "Page->>Lab: POST /core/review/reviews/:id/change",
-      "Lab->>Core: head.send(change) on main",
+      "Lab->>Core: sessions.start(change) the first time",
+      "Lab->>Core: else head.send(change) on main",
     ]),
     head: "main",
     from: "Nyte's chat so far",
@@ -131,15 +132,13 @@ const HEADS: readonly {
   readonly x: number;
   readonly y: number;
 }[] = [
-  { id: "review-main", session: "review", name: "main", sent: "empty", by: [], x: 20, y: 48 },
   {
-    id: "brief-a",
+    id: "review-main",
     session: "review",
-    name: "brief-3f9c21ab07de",
+    name: "main",
     sent: "patch",
-    from: "review-main",
     by: ["guide"],
-    x: 250,
+    x: 20,
     y: 48,
   },
   {
@@ -147,9 +146,9 @@ const HEADS: readonly {
     session: "review",
     name: "brief-8e4d55c1a2b0",
     sent: "interdiff",
-    from: "brief-a",
+    from: "review-main",
     by: ["guide"],
-    x: 480,
+    x: 250,
     y: 48,
   },
   {
@@ -159,7 +158,7 @@ const HEADS: readonly {
     sent: "question",
     from: "brief-b",
     by: ["side"],
-    x: 710,
+    x: 480,
     y: 48,
   },
   {
@@ -167,9 +166,9 @@ const HEADS: readonly {
     session: "review",
     name: "side-3f9c21ab07de-k3x9",
     sent: "question",
-    from: "brief-a",
+    from: "review-main",
     by: ["side"],
-    x: 480,
+    x: 250,
     y: 140,
   },
   {
@@ -189,7 +188,7 @@ const BOXES: Readonly<
     { readonly x: number; readonly y: number; readonly w: number; readonly h: number }
   >
 > = {
-  review: { x: 200, y: 0, w: 940, h: 216 },
+  review: { x: 200, y: 0, w: 710, h: 216 },
   author: { x: 200, y: 256, w: 250, h: 124 },
 };
 
@@ -261,7 +260,7 @@ const NODE_TYPES = {
   head: HeadCard,
 } satisfies NodeTypes;
 
-function graphOf(selected: RequestId) {
+function buildGraph(selected: RequestId) {
   const lit = { stroke: role.contentPrimary, strokeWidth: 1.5 };
   const quiet = { stroke: role.borderPrimaryTranslucent };
 
@@ -316,7 +315,7 @@ function graphOf(selected: RequestId) {
 export function RequestsPage(): ReactElement {
   const [selected, setSelected] = useState<RequestId>("chat");
   const request = REQUESTS[selected];
-  const { nodes, edges } = graphOf(selected);
+  const { nodes, edges } = buildGraph(selected);
 
   const select = (value: string | undefined): void => {
     const next = ORDER.find((id) => id === value);

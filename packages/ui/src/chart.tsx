@@ -38,17 +38,17 @@ const styles = create({
     width: 8,
     height: 8,
     borderRadius: 2,
-    backgroundColor: role.bgInteractiveStrong,
+    backgroundColor: role.chartSeries,
   },
   spark: { display: "block", flexShrink: 0, color: role.contentSecondary },
-  sparkTinted: { color: role.bgInteractiveStrong },
+  sparkTinted: { color: role.chartSeries },
 });
 
 const BAR_THEME = {
   text: {
     fontFamily: type.fontSans,
-    fontSize: 11,
-    fill: role.contentTertiary,
+    fontSize: type.fontXs,
+    fill: role.contentSecondary,
     fontVariantNumeric: "tabular-nums",
   },
 } as const;
@@ -110,16 +110,16 @@ const BarChartContext = createContext<BarChartContextValue>({
 
 type Datum = Record<string, string | number>;
 
+/** One bar inside its series' tint scope. `fill` on the datum wins over nivo's resolved colour, so the scope applies. */
 function Segment(item: BarItemProps<Datum>): ReactElement {
   const { series } = useContext(BarChartContext);
   const layer = series[Number(String(item.bar.data.id).slice(1))];
 
   return (
     <g {...props(layer !== undefined && surfaceTheme[layer.tint])}>
-      {/* `fill` on the datum wins over nivo's resolved colour, so the scope applies. */}
       <BarItem
         {...item}
-        bar={{ ...item.bar, data: { ...item.bar.data, fill: role.bgInteractiveStrong } }}
+        bar={{ ...item.bar, data: { ...item.bar.data, fill: role.chartSeries } }}
       />
     </g>
   );

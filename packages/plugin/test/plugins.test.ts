@@ -1,4 +1,4 @@
-import { checkPlugins } from "@nyte-ai/core";
+import { checkPlugins } from "@nyte-ai/core/testing";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { Plugin as ClientPlugin } from "../src/client.ts";
 import type { Plugin as CorePlugin } from "../src/core.ts";
@@ -57,8 +57,8 @@ describe("the plugins", () => {
 
   it("activate together in one session without issues", async () => {
     await using host = await open(fakeModels(), core);
-    const session = await host.sessions.create();
-    await host.kernel.pluginsFor(session.id).ready;
+    const { session } = await host.sessions.start({ content: "Hi." });
+    await host.kernel.plugins.runtime(session.id).ready;
 
     expect(host.kernel.host.current().plugins.filter((row) => row.issues.length > 0)).toEqual([]);
     expect((await session.view()).catalog.tools.map((info) => info.name)).toEqual(

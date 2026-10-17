@@ -6,7 +6,7 @@ import { app, BrowserWindow, shell } from "electron";
 import type { WebContents } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { openSecret } from "@nyte-ai/host/credentials";
+import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { ACCOUNT_CHANNELS } from "../../account/protocol.ts";
 import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { registerAccount } from "../account.ts";
@@ -41,14 +41,20 @@ const saved = join(directory, "profile", "account.json");
 class CountingStore extends AccountStore {
   opens = 0;
 
-  override open(sealed: string): Promise<string | undefined> {
+  override open(sealed: string): Promise<string> {
     this.opens += 1;
 
     return super.open(sealed);
   }
 }
 
-const store = new CountingStore({ path: saved, secrets });
+const store = new CountingStore({
+  path: saved,
+  sealer: {
+    seal: (plain) => sealSecret(secrets, plain),
+    open: (sealed) => openSecret(secrets, sealed),
+  },
+});
 
 async function until(check: () => boolean | Promise<boolean>, message: string): Promise<void> {
   for (let attempt = 0; !(await check()); attempt += 1) {
@@ -76,7 +82,7 @@ const server = createServer((request, response) => {
         () => response.writeHead(404).end(),
       );
 
-    if (basename(path).startsWith("clerk-")) {
+    if (basename(path).startsWith("account-")) {
       accountModuleRequests += 1;
 
       if (accountModuleMode === "hold") releaseAccountModule.push(serve);
@@ -215,7 +221,9 @@ async function run(): Promise<void> {
   accountModuleMode = "serve";
   await until(
     async () =>
-      (await contents.executeJavaScript("window.nyteAccountRuntime !== undefined")) === true,
+      (await contents.executeJavaScript(
+        'performance.getEntriesByType("resource").some((entry) => entry.name.includes("/account-") && entry.responseEnd > 0)',
+      )) === true,
     "Account module did not finish loading",
   );
   await new Promise((resolve) => setTimeout(resolve, 100));

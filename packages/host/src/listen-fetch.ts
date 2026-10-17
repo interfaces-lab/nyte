@@ -1,23 +1,13 @@
+import { SdkError } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type { Authority, Disposer, Owned, PrincipalId } from "@nyte-ai/schema";
-import {
-  SdkError,
-  TOKEN,
-  TOKEN_AUTHORITY,
-  authenticateToken,
-  createConnection,
-  dev,
-  driveInProcess,
-  redeemPairing,
-} from "@nyte-ai/core";
-import type { Connection, Host, Kernel, ListenOptions, Listener } from "@nyte-ai/core";
-import {
-  HOST_HEADER,
-  asSdkError,
-  createHandler,
-  encodeError,
-  errorStatus,
-} from "@nyte-ai/protocol";
-import type { HandlerOptions } from "@nyte-ai/protocol";
+import { dev } from "@nyte-ai/core";
+import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
+import type { Connection, ListenOptions, Listener } from "@nyte-ai/core";
+import type { ServedHost, Verdict } from "@nyte-ai/core/server";
+import { HOST_HEADER, asSdkError, encodeError, errorStatus } from "@nyte-ai/protocol";
+import { createHandler } from "./serve/handler.ts";
+import type { HandlerOptions } from "./serve/handler.ts";
 
 type Cached = {
   readonly connection: Connection;
@@ -32,36 +22,32 @@ type Flight = {
   principal: PrincipalId | null;
 };
 
-type Verdict = { readonly principal: PrincipalId; readonly authority: ReadonlySet<Authority> };
-
 type Device = {
   readonly principal: PrincipalId;
   readonly authority: ReadonlySet<Authority>;
   readonly token: string;
-  readonly expiresAt: number;
 };
-
-const DEVICE_TTL_MS = 60_000;
 
 const encoder = new TextEncoder();
 
-/** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): `before`, the unauthenticated identity and describe routes, then protocol's `createHandler` over one cached connection per principal and authority, every response carrying `X-Nyte-Host` (§43a, §43j). A request authenticates by a pairing code, then the listener token (compared in constant time over SHA-256 digests) or a device token remembered for 60 s, then `authorize` under `custom`; a revoke aborts that principal's open requests and streams. A `token` shorter than 16 characters throws `SdkError("invalid")`; `execution` (default: run covering all) drives covered sessions in process on an `admit-only` kernel, covers their leases otherwise and takes nothing on a `dispatch` kernel (§42v); `close()` disconnects the clients and releases the execution once, after which every request answers `unavailable`. */
+/** Serves a composed host as a bare fetch handler with no socket and no `node:*` import, so a Worker can serve it (§41j): `before`, the unauthenticated identity and describe routes, then `createHandler` over one cached connection per principal and authority, every response carrying `X-Nyte-Host` (§43a, §43j). A request authenticates by a pairing code, then the listener token (compared in constant time over SHA-256 digests) or a device token remembered until a commit from another process moves the host's principals, then `authorize` under `custom`; a revoke aborts that principal's open requests and streams. A `token` shorter than 16 characters throws `SdkError("invalid")`; `execution` (default: run covering all) drives covered sessions in process on an `admit-only` host, covers their leases otherwise and takes nothing on a `dispatch` host (§42v); `close()` disconnects the clients and releases the execution once, after which every request answers `unavailable`. */
 export async function listenFetch(
-  host: Omit<Host, "listen"> & { readonly kernel: Kernel },
+  host: ServedHost,
   options: ListenOptions & { readonly transport: { readonly kind: "fetch" } },
 ): Promise<Listener> {
   const { auth } = options;
 
   if (auth.kind === "token" && auth.token.length < 16)
     throw new SdkError("invalid", "A listener token needs at least 16 characters.");
-  const { kernel } = host;
+  const { server } = host;
   const cache = new Map<string, Cached>();
   const devices = new Map<string, Device>();
   const streams = new Map<PrincipalId, Set<Flight>>();
   const flights = new WeakMap<Request, Flight>();
   let generation = new AbortController();
   let closing: Promise<void> | null = null;
-  let rechecking: ReturnType<typeof setInterval> | null = null;
+  let principalsRevision: string | null = null;
+  const rechecks = serial();
 
   const drop = (key: string, entry: Cached, reason: SdkError): void => {
     if (cache.get(key) === entry) cache.delete(key);
@@ -103,7 +89,7 @@ export async function listenFetch(
     authority: ReadonlySet<Authority>,
     token: string,
   ): Cached => {
-    const connection = createConnection(kernel, {
+    const connection = server.connect({
       principal,
       authority,
       credential: { kind: "token", token },
@@ -111,7 +97,7 @@ export async function listenFetch(
     });
 
     const entry: Cached = { connection, principal, dispose: () => undefined };
-    const admitted = kernel.connections.register(principal, () =>
+    const admitted = server.connections.register(principal, () =>
       drop(key, entry, new SdkError("unauthenticated", "The principal was revoked.")),
     );
 
@@ -123,63 +109,47 @@ export async function listenFetch(
     return entry;
   };
 
-  const reread = async (
-    token: string,
-    digest: string,
-    known: Device | undefined,
-  ): Promise<Device | null> => {
-    const found = await authenticateToken(kernel, token);
+  const reread = async (token: string, digest: string): Promise<Device | null> => {
+    const found = await server.authenticate(token);
 
     if (found === null) {
+      const known = devices.get(digest);
       devices.delete(digest);
 
-      if (known !== undefined) kernel.connections.revoke(known.principal);
+      if (known !== undefined) server.connections.revoke(known.principal);
 
       return null;
     }
 
-    return { ...found, token, expiresAt: Date.now() + DEVICE_TTL_MS };
+    return { ...found, token };
   };
 
-  const deviceOf = async (
+  const findDevice = async (
     token: string,
   ): Promise<{ readonly digest: string; readonly device: Device } | null> => {
     const digest = hex(await sha256(token));
-    const known = devices.get(digest);
-
-    if (known !== undefined && known.expiresAt > Date.now()) return { digest, device: known };
-    const device = await reread(token, digest, known);
+    const device = devices.get(digest) ?? (await reread(token, digest));
 
     return device === null ? null : { digest, device };
   };
 
   const recheck = async (): Promise<void> => {
-    const open = [...devices].filter(([, device]) => streams.has(device.principal));
+    if (devices.size === 0) return;
+    const revision = await server.principalsRevision();
 
-    if (open.length === 0 && rechecking !== null) {
-      clearInterval(rechecking);
-      rechecking = null;
-    }
+    if (revision === principalsRevision) return;
+    principalsRevision = revision;
 
-    await Promise.all(
-      open.map(async ([digest, known]) => {
-        const device = await reread(known.token, digest, known);
-
-        if (device !== null) devices.set(digest, device);
-      }),
-    );
+    await Promise.all([...devices].map(([digest, known]) => reread(known.token, digest)));
   };
 
-  const remember = (digest: string, device: Device): void => {
-    devices.set(digest, device);
-    rechecking ??= setInterval(() => {
-      recheck().catch((error: unknown) => {
-        dev("listen", "device re-check failed", {
-          message: error instanceof Error ? error.message : String(error),
-        });
-      });
-    }, DEVICE_TTL_MS);
+  const externalCommit = (): void => {
+    void rechecks
+      .run(recheck)
+      .catch((error) => dev("listen", "device re-check failed", { error: String(error) }));
   };
+
+  const unwatchCommits = server.onExternalCommit(externalCommit);
 
   const isListenerToken: (token: string) => Promise<boolean> =
     auth.kind === "token" ? (token) => sameSecret(token, auth.token) : async () => false;
@@ -213,14 +183,14 @@ export async function listenFetch(
     const pairing = /^Pairing\s+(\S+)\s*$/i.exec(header)?.[1];
 
     if (pairing !== undefined) {
-      const redeemed = await redeemPairing(kernel, pairing);
+      const redeemed = await server.redeem(pairing);
 
       if (redeemed === null)
         throw new SdkError("unauthenticated", "The pairing code is unknown or has expired.");
       const digest = hex(await sha256(redeemed.token));
       const { principal, authority, token } = redeemed;
       const connection = connectionFor(flight, principal, authority, token);
-      remember(digest, { principal, authority, token, expiresAt: Date.now() + DEVICE_TTL_MS });
+      devices.set(digest, { principal, authority, token });
 
       return { connection, authority, headers: { "X-Nyte-Credential": token } };
     }
@@ -233,12 +203,12 @@ export async function listenFetch(
           connection: connectionFor(flight, TOKEN, TOKEN_AUTHORITY, token),
           authority: TOKEN_AUTHORITY,
         };
-      const remembered = await deviceOf(token);
+      const remembered = await findDevice(token);
 
       if (remembered !== null) {
         const { digest, device } = remembered;
         const connection = connectionFor(flight, device.principal, device.authority, token);
-        remember(digest, device);
+        devices.set(digest, device);
 
         return { connection, authority: device.authority };
       }
@@ -253,7 +223,7 @@ export async function listenFetch(
   };
 
   const handler = createHandler({
-    kernel,
+    server,
     origins: options.origins,
     maxBodyBytes: options.maxBodyBytes,
     connection: (request) => {
@@ -296,7 +266,7 @@ export async function listenFetch(
         );
 
       return json(
-        { ...(await options.identity.sign(nonce)), hostId: kernel.hostId },
+        { ...(await options.identity.sign(nonce)), hostId: server.hostId },
         cors(request),
       );
     }
@@ -339,16 +309,16 @@ export async function listenFetch(
       ms: Date.now() - started,
     });
 
-    return withHost(response, kernel.hostId);
+    return withHost(response, server.hostId);
   };
 
   const execution = options.execution ?? { kind: "run", coverage: { kind: "all" } };
 
   const coverage: Owned | null =
-    execution.kind === "admit-only" || kernel.execution.kind === "dispatch"
+    execution.kind === "admit-only" || server.execution.kind === "dispatch"
       ? null
-      : kernel.execution.kind === "admit-only"
-        ? driveInProcess(kernel, execution.coverage)
+      : server.execution.kind === "admit-only"
+        ? server.drive(execution.coverage)
         : await host.execution.cover(execution.coverage);
 
   const disconnectClients = (): void => {
@@ -361,7 +331,7 @@ export async function listenFetch(
 
   const close = (): Promise<void> => {
     closing ??= (async () => {
-      if (rechecking !== null) clearInterval(rechecking);
+      unwatchCommits();
       disconnectClients();
       await coverage?.close();
     })();

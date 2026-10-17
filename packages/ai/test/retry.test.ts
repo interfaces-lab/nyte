@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, vi, test } from "vitest";
 import type { AssistantMessage } from "@nyte-ai/schema/model";
 import {
-  isRetryableAssistantError,
+  failedTransiently,
   type RetryPolicy,
   retryAssistantCall,
   retryDelayMs,
@@ -50,24 +50,28 @@ function errorMessage(text: string): AssistantMessage {
 }
 
 describe("provider retry classification", () => {
-  test("retries provider overload, rate limiting, and explicit retry guidance", () => {
-    assert.equal(isRetryableAssistantError(errorMessage(openAIExplicitRetryMessage)), true);
-    assert.equal(isRetryableAssistantError(errorMessage(nvidiaNIMResourceExhaustedMessage)), true);
-    // Regression for #9669.
-    assert.equal(isRetryableAssistantError(errorMessage(azurePeakLoadError)), true);
-    // Regression for #9627.
-    assert.equal(isRetryableAssistantError(errorMessage("520 status code (no body)")), true);
+  test("retries provider overload, rate limiting, and explicit retry guidance (#9669, #9627)", () => {
+    assert.equal(failedTransiently(errorMessage(openAIExplicitRetryMessage)), true);
+    assert.equal(failedTransiently(errorMessage(nvidiaNIMResourceExhaustedMessage)), true);
+    assert.equal(failedTransiently(errorMessage(azurePeakLoadError)), true);
+    assert.equal(failedTransiently(errorMessage("520 status code (no body)")), true);
   });
 
   test("retries DNS failures, socket drops, and streams that end before a terminal event", () => {
-    assert.equal(isRetryableAssistantError(errorMessage(wrappedDnsLookupError)), true);
-    assert.equal(isRetryableAssistantError(errorMessage(bunFetchSocketClosedMessage)), true);
-    assert.equal(isRetryableAssistantError(errorMessage(openAIResponsesEarlyEofMessage)), true);
+    assert.equal(failedTransiently(errorMessage(wrappedDnsLookupError)), true);
+    assert.equal(failedTransiently(errorMessage(bunFetchSocketClosedMessage)), true);
+    assert.equal(failedTransiently(errorMessage(openAIResponsesEarlyEofMessage)), true);
   });
 
   test("does not retry quota exhaustion or a message that did not fail", () => {
-    assert.equal(isRetryableAssistantError(errorMessage("429 quota exceeded")), false);
-    assert.equal(isRetryableAssistantError(fauxAssistantMessage("not an error")), false);
+    assert.equal(failedTransiently(errorMessage("429 quota exceeded")), false);
+    assert.equal(
+      failedTransiently(
+        errorMessage('429 {"type":"error","error":{"type":"extra_usage_out_of_credits"}}'),
+      ),
+      false,
+    );
+    assert.equal(failedTransiently(fauxAssistantMessage("not an error")), false);
   });
 });
 
@@ -107,13 +111,12 @@ describe("retryAssistantCall", () => {
       onRetryFinished,
     });
     assert.equal(res.stopReason, "error");
-    assert.equal(produce.mock.calls.length, 4); // 1 initial + 3 retries
+    assert.equal(produce.mock.calls.length, 1 + enabled.maxRetries);
     assert.equal(onRetryScheduled.mock.calls.length, 3);
     assert.deepEqual(onRetryFinished.mock.calls.at(-1), [false, 3, "terminated"]);
   });
 
-  test("caps agent retry delay", async () => {
-    // Regression for #8826.
+  test("caps agent retry delay (#8826)", async () => {
     assert.equal(retryDelayMs({ baseDelayMs: 2000 }, 6), 60000);
     assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 5000 }, 5), 5000);
     assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 0 }, 5), 0);
@@ -137,6 +140,41 @@ describe("retryAssistantCall", () => {
       onRetryScheduled.mock.calls.map((call) => call[2]),
       [10, 15, 15, 15],
     );
+  });
+
+  test("waits the provider's retry-after and gives up when it asks past the cap", async () => {
+    const limited = (retryAfterMs: number) =>
+      fauxAssistantMessage("", {
+        stopReason: "error",
+        errorMessage: "terminated",
+        diagnostics: [{ type: "http", timestamp: 0, details: { retryAfterMs } }],
+      });
+    const policy: RetryPolicy = {
+      enabled: true,
+      maxRetries: 2,
+      baseDelayMs: 1,
+      maxAgentDelayMs: 40,
+    };
+    const onRetryScheduled = vi.fn();
+    let n = 0;
+    const produce = vi.fn(async () => {
+      n++;
+      return n === 1 ? limited(30) : fauxAssistantMessage("recovered");
+    });
+
+    const res = await retryAssistantCall(produce, policy, undefined, { onRetryScheduled });
+
+    assert.equal(res.stopReason, "stop");
+    assert.deepEqual(
+      onRetryScheduled.mock.calls.map((call) => call[2]),
+      [30],
+    );
+
+    const tooLong = vi.fn(async () => limited(41));
+    const given = await retryAssistantCall(tooLong, policy, undefined);
+
+    assert.equal(given.stopReason, "error");
+    assert.equal(tooLong.mock.calls.length, 1);
   });
 
   test("reports an aborted retried call as unsuccessful", async () => {
@@ -209,7 +247,6 @@ describe("retryAssistantCall", () => {
     const policy: RetryPolicy = { enabled: true, maxRetries: 5, baseDelayMs: 10_000 };
     const onRetryFinished = vi.fn();
     const p = retryAssistantCall(produce, policy, controller.signal, { onRetryFinished });
-    // Let one error call resolve and the first backoff sleep start, then abort.
     while (produce.mock.calls.length === 0) await new Promise((resolve) => setTimeout(resolve, 1));
     await new Promise((resolve) => setTimeout(resolve, 1));
     controller.abort();

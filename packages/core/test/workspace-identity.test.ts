@@ -1,6 +1,7 @@
 import { asId } from "@nyte-ai/schema";
 import { assert, expect, it } from "vitest";
-import { createHost, memoryStore } from "../src/index.ts";
+import { createHost } from "../src/api/connection.ts";
+import { memoryStore } from "../src/store.ts";
 import { createDisk, fakeProvider, kernelOver, world } from "./fake-env.ts";
 
 it("converges concurrent registrations across kernels on one stored workspace", async () => {
@@ -73,6 +74,11 @@ it("keeps equal identities from different environment providers separate", async
 it("keeps old history readable but refuses a replacement environment", async () => {
   const { host, kernel, provider, disk, workspace } = await world();
   disk.put("/work/project/replacement.txt", "replacement folder");
+  const { session } = await host.sessions.start({
+    workspace,
+    name: "Original chat",
+    content: "Hi.",
+  });
   const inspect = provider.inspect.bind(provider);
   const attach = provider.attach.bind(provider);
   provider.inspect = async (target) => ({
@@ -84,7 +90,7 @@ it("keeps old history readable but refuses a replacement environment", async () 
     identity: asId("replacement"),
   });
 
-  const session = await host.sessions.create({ workspace, name: "Original chat" });
+  await kernel.environments.detach(session.id);
   expect(await session.info()).toMatchObject({ name: "Original chat", workspace });
   expect(await host.workspace(workspace).info()).toMatchObject({
     identity: "id:/work/project",
@@ -94,7 +100,9 @@ it("keeps old history readable but refuses a replacement environment", async () 
     kind: "unavailable",
     reason: `Workspace ${workspace} no longer refers to its registered environment.`,
   });
-  await expect(kernel.env(session.id)).rejects.toMatchObject({ code: "unavailable" });
+  await expect(kernel.environments.attach(session.id)).rejects.toMatchObject({
+    code: "unavailable",
+  });
 
   const replacement = await host.workspaces.add({ kind: "local", path: "/work/project" });
   assert(replacement.kind === "added");

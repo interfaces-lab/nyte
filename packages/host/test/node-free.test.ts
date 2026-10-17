@@ -19,7 +19,7 @@ const SPECIFIER = /^(?:import|export)\s(?!type\s)[^;]*?from\s+"([^"]+)"|^import\
 
 const exported: Readonly<Record<string, string>> = manifest.exports;
 
-function fileOf(from: string, specifier: string): string | null {
+function resolveSpecifier(from: string, specifier: string): string | null {
   if (specifier.startsWith(".")) return resolve(dirname(from), specifier);
   const subpath =
     specifier === "@nyte-ai/host" ? "." : specifier.replace(/^@nyte-ai\/host\//, "./");
@@ -44,7 +44,7 @@ function reachable(entry: string): ReadonlyMap<string, readonly string[]> {
     seen.set(file, specifiers);
 
     for (const specifier of specifiers) {
-      const next = fileOf(file, specifier);
+      const next = resolveSpecifier(file, specifier);
 
       if (next !== null) queue.push(next);
     }

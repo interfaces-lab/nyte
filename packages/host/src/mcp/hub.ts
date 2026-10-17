@@ -1,38 +1,46 @@
-import { unwatchFile, watchFile } from "node:fs";
 import { join } from "node:path";
-import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
-import type { Tool } from "@earendil-works/pi-mcp";
+import { StdioTransport } from "@earendil-works/pi-mcp";
+import type { McpClient, Tool } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import type { OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
-import { SdkError, closable, dev, forwarded, isJsonObject } from "@nyte-ai/core";
+import { processEnvironment, closable, dev, forwarded, traced } from "@nyte-ai/core";
+import type { Login, PluginStorage, ToolDefinition } from "@nyte-ai/core";
+import type { McpHub, McpHubFactory, McpServerBrief, McpWorkspace } from "@nyte-ai/core/server";
+import { isJson, isJsonObject, SdkError } from "@nyte-ai/schema";
 import type {
-  Login,
-  McpHub,
-  McpHubFactory,
-  McpWorkspace,
-  PluginStorage,
-  ToolDefinition,
-} from "@nyte-ai/core";
-import { isJson } from "@nyte-ai/schema";
-import type { McpChange, McpServerState, McpServerView, McpView } from "@nyte-ai/schema";
+  Disposer,
+  McpChange,
+  McpServerState,
+  McpServerView,
+  McpView,
+  ValidationIssue,
+} from "@nyte-ai/schema";
+import { watchPath } from "../local/tree.ts";
 import { parseMcpConfig, planMcpEdit, readMcpFile, writeMcpFile } from "./config.ts";
 import type { McpConfig, McpFile, McpFileContents, McpServerEntry } from "./config.ts";
 import { connectServer, oauthSettings } from "./connect.ts";
 import type { McpConnector } from "./connect.ts";
 import { oauthKey, oauthStore, signIn } from "./oauth.ts";
-import { bridgeTools, toolExposure } from "./tools.ts";
+import { bridgeTools, checkToolSchemas, toolExposure, TracingMcpClient } from "./tools.ts";
+import type { McpCall } from "./tools.ts";
 
 const STDERR_TAIL = 4000;
 
-const POLL_MS = 1000;
+const WATCH_DELAY_MS = 100;
 
 const LINGER_MS = 30_000;
 
+const UNTRUSTED: McpChange = {
+  kind: "invalid",
+  message: "Project servers need a trusted folder on this machine.",
+};
+
 /**
  * Serves the servers in `<home>/.nyte/mcp.json`, and in a trusted local
- * workspace's `.nyte/mcp.json`, to the host's sessions. Edits to either file
- * apply within a second: a changed server reconnects, an unchanged one keeps
- * its connection. A workspace's connections close 30 seconds after its last
+ * workspace's `.nyte/mcp.json`, to the host's sessions. Each file is watched
+ * (created, edited, replaced or removed) without polling, and an edit applies
+ * once the file system reports it: a changed server reconnects, an unchanged
+ * one keeps its connection. A workspace's connections close 30 seconds after its last
  * watcher stops.
  *
  * @example
@@ -49,17 +57,27 @@ export function createMcpHub(input: {
 
 type LinkState =
   | { readonly kind: "connecting" }
-  | { readonly kind: "connected"; readonly tools: readonly Tool[] }
+  | {
+      readonly kind: "connected";
+      readonly tools: readonly Tool[];
+      readonly issues: readonly ValidationIssue[];
+    }
   | { readonly kind: "needs-sign-in" }
   | { readonly kind: "failed"; readonly message: string; readonly stderr: string | null };
+
+/** A server's last successful listing, kept while it reconnects so its sessions' tools and prompt do not change. */
+type Listing = { readonly tools: readonly Tool[]; readonly instructions: string | null };
 
 type Link = {
   readonly key: string;
   entry: McpServerEntry;
   readonly state: () => LinkState;
+  readonly brief: () => McpServerBrief;
   /** The server's last OAuth challenge, which a sign-in follows for its scope and metadata. */
   readonly challenge: () => OAuthChallenge | null;
   readonly tools: () => readonly ToolDefinition[];
+  /** The first connection attempt while it runs, or null once it has connected, failed or asked for sign-in, or the link closed. */
+  readonly attempting: () => Promise<void> | null;
   close(): Promise<void>;
 };
 
@@ -69,6 +87,8 @@ type Pool = {
   readonly files: readonly Omit<McpFile, "contents">[];
   config: McpConfig;
   readonly loaded: Promise<void>;
+  /** True until `mcp.json` has been read and the links reconciled. */
+  loading: boolean;
   readonly links: Map<string, Link>;
   readonly listeners: Set<() => void>;
   holders: number;
@@ -82,7 +102,7 @@ function hub(input: {
 }): McpHub {
   const pools = new Map<string, Pool>();
   const contents = new Map<string, McpFileContents>();
-  const watched = new Set<string>();
+  const watched = new Map<string, Disposer>();
   const userPath = join(input.home, ".nyte", "mcp.json");
   let closed = false;
 
@@ -120,28 +140,40 @@ function hub(input: {
 
   const openLink = (entry: McpServerEntry, pool: Pool): Link => {
     let state: LinkState = { kind: "connecting" };
+    let listed: Listing | null = null;
+
     let bridged: {
       readonly entry: McpServerEntry;
+      readonly listed: Listing;
       readonly tools: readonly ToolDefinition[];
     } | null = null;
+
     let client: McpClient | null = null;
     let stderr: () => string | null = () => null;
     let challenge: OAuthChallenge | null = null;
     let ended = false;
     let delay = 1000;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempted = Promise.withResolvers<void>();
+    let attempting: Promise<void> | null = attempted.promise;
+
+    const attempt = (): void => {
+      attempting = null;
+      attempted.resolve();
+    };
 
     const set = (next: LinkState): void => {
       if (ended) return;
       state = next;
-      bridged = null;
+
+      if (next.kind !== "connecting") attempt();
       notify(pool);
     };
 
     const schedule = (wait: number): void => {
       clearTimeout(timer);
 
-      if (!ended) timer = setTimeout(() => void connect(), wait);
+      if (!ended) timer = setTimeout(() => void connectTraced(), wait);
     };
 
     const retry = (): void => {
@@ -161,9 +193,11 @@ function hub(input: {
     };
 
     const connect = async (): Promise<void> => {
+      if (link.entry.transport.kind === "stdio") await processEnvironment();
+
       if (ended) return;
 
-      const next = new McpClient({
+      const next = new TracingMcpClient({
         name: "nyte",
         version: "0.1.0",
         requestTimeoutMs: link.entry.timeoutMs,
@@ -204,19 +238,25 @@ function hub(input: {
         }
 
         const refresh = async (): Promise<void> => {
-          const tools = await next.listTools();
+          const offered = await next.listTools();
 
           if (client !== next) return;
-          dev("mcp", "tools listed", { server: entry.name, tools: tools.length });
-          set({ kind: "connected", tools });
+          const { usable, issues } = checkToolSchemas(entry.name, offered);
+
+          dev("mcp", "tools listed", { server: entry.name, tools: usable.length });
+          listed = { tools: usable, instructions: next.instructions ?? null };
+          set({ kind: "connected", tools: usable, issues });
         };
 
         client = next;
         delay = 1000;
-        next.onNotification("notifications/tools/list_changed", () => {
-          void refresh().catch((error: unknown) => {
-            if (client === next) drop(errorMessage(error));
-          });
+        next.onNotification("notifications/tools/list_changed", async () => {
+          try {
+            await refresh();
+          } catch (error) {
+            if (client === next)
+              drop(`${entry.name} failed to list its tools: ${errorMessage(error)}`);
+          }
         });
         await refresh();
       } catch (error) {
@@ -240,21 +280,44 @@ function hub(input: {
       }
     };
 
+    const connectTraced = (): Promise<void> =>
+      traced("mcp.connect", null, { server: entry.name }, connect);
+
+    const call: McpCall = (name, args, options) => {
+      if (client === null) throw new Error(notConnected(entry.name, state));
+
+      return client.callTool(name, args, options);
+    };
+
     const link: Link = {
       key: linkKey(entry),
       entry,
       state: () => state,
+      brief: () => ({
+        name: entry.name,
+        instructions: listed?.instructions ?? null,
+        unavailable:
+          listed === null && (state.kind === "failed" || state.kind === "needs-sign-in")
+            ? state.kind
+            : null,
+      }),
       challenge: () => challenge,
       tools() {
-        if (client === null || state.kind !== "connected") return [];
+        if (listed === null) return [];
 
-        if (bridged?.entry !== link.entry)
-          bridged = { entry: link.entry, tools: bridgeTools(link.entry, state.tools, client) };
+        if (bridged?.entry !== link.entry || bridged.listed !== listed)
+          bridged = {
+            entry: link.entry,
+            listed,
+            tools: bridgeTools(link.entry, listed.tools, call),
+          };
 
         return bridged.tools;
       },
+      attempting: () => attempting,
       async close() {
         ended = true;
+        attempt();
         clearTimeout(timer);
         const previous = client;
         client = null;
@@ -262,7 +325,7 @@ function hub(input: {
       },
     };
 
-    void connect();
+    void connectTraced();
 
     return link;
   };
@@ -290,7 +353,7 @@ function hub(input: {
 
   const unfollow = (path: string): void => {
     if ([...pools.values()].some((pool) => pool.files.some((file) => file.path === path))) return;
-    unwatchFile(path);
+    watched.get(path)?.();
     watched.delete(path);
     contents.delete(path);
   };
@@ -341,12 +404,14 @@ function hub(input: {
     if (known !== undefined) return known;
 
     const files = filesFor(workspace);
-    const unread = files.filter((file) => !watched.has(file.path)).map((file) => file.path);
 
-    for (const path of unread) {
-      watched.add(path);
-      watchFile(path, { interval: POLL_MS, persistent: false }, () => changed(path));
-    }
+    const unread = files.flatMap((file) => (watched.has(file.path) ? [] : [file.path]));
+
+    for (const path of unread)
+      watched.set(
+        path,
+        watchPath(path, { delay: WATCH_DELAY_MS }, () => changed(path)),
+      );
 
     const pool: Pool = {
       key,
@@ -354,8 +419,11 @@ function hub(input: {
       files,
       config: { servers: new Map(), issues: [] },
       loaded: load(unread).then(() => {
+        pool.loading = false;
+
         if (pools.get(key) === pool) reconcile(pool);
       }),
+      loading: true,
       links: new Map(),
       listeners: new Set(),
       holders: 0,
@@ -467,15 +535,17 @@ function hub(input: {
     return queued;
   };
 
-  const UNTRUSTED: McpChange = {
-    kind: "invalid",
-    message: "Project servers need a trusted folder on this machine.",
-  };
-
   const signingIn = new Set<string>();
 
   const view = (pool: Pool): McpView => ({
-    issues: pool.config.issues,
+    issues: [
+      ...pool.config.issues,
+      ...[...pool.links.values()].flatMap((link) => {
+        const state = link.state();
+
+        return state.kind === "connected" ? state.issues : [];
+      }),
+    ],
     servers: [...pool.config.servers.values()]
       .toSorted((a, b) => a.name.localeCompare(b.name))
       .map((entry): McpServerView => ({
@@ -543,6 +613,35 @@ function hub(input: {
       const pool = pools.get(poolKey(workspace));
 
       return pool === undefined ? [] : [...pool.links.values()].flatMap((link) => link.tools());
+    },
+    briefs(workspace) {
+      const pool = pools.get(poolKey(workspace));
+
+      return pool === undefined
+        ? []
+        : [...pool.links.values()]
+            .map((link) => link.brief())
+            .toSorted((a, b) => a.name.localeCompare(b.name));
+    },
+    async ready(workspace, signal) {
+      const watched = [...pools.values()].filter((pool) => pool.workspace.id === workspace);
+
+      const attempting = (pool: Pool): Promise<void>[] =>
+        [...pool.links.values()].flatMap((link) => link.attempting() ?? []);
+
+      const attempts = watched.flatMap((pool) =>
+        pool.loading
+          ? [pool.loaded.then(() => Promise.all(attempting(pool))).then(() => undefined)]
+          : attempting(pool),
+      );
+
+      if (attempts.length === 0 || signal.aborted) return false;
+      const aborted = Promise.withResolvers<void>();
+
+      signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+      await Promise.race([Promise.all(attempts), aborted.promise]);
+
+      return true;
     },
     reconnect: (workspace, server) =>
       held(workspace, async (pool) => {
@@ -704,6 +803,15 @@ function serverState(entry: McpServerEntry, state: LinkState): McpServerState {
       exposure: toolExposure(entry, tool.name),
     })),
   };
+}
+
+function notConnected(server: string, state: LinkState): string {
+  if (state.kind === "failed") return `${server} is not connected: ${state.message}`;
+
+  if (state.kind === "needs-sign-in")
+    return `${server} needs the user to sign in again before its tools work.`;
+
+  return `${server} is reconnecting; try the call again shortly.`;
 }
 
 function poolKey(workspace: McpWorkspace): string {

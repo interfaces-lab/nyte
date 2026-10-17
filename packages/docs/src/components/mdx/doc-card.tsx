@@ -1,7 +1,7 @@
-import { docsIcons, isDocsIconName } from "~/lib/docs-icons";
+import { docsIcons, hasDocsIcon } from "~/lib/docs-icons";
 
 function CentralIcon({ name }: { name: string }) {
-  if (!isDocsIconName(name)) return null;
+  if (!hasDocsIcon(name)) return null;
   const Icon = docsIcons[name];
   return <Icon size={20} />;
 }

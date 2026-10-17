@@ -1,9 +1,9 @@
-import type { Json } from "@nyte-ai/sdk";
 import { keycap } from "../lib/constants.ts";
 import type { ChatCommand } from "../lib/constants.ts";
 import type { PowerlineState } from "../lib/format.ts";
 import { displayWidth } from "../lib/width.ts";
 import type { Interactions } from "./interactions.ts";
+import { followedSession } from "./state.ts";
 import type { State } from "./state.ts";
 
 export interface FooterModel {
@@ -17,41 +17,39 @@ export interface Hint {
   readonly tier: "primary" | "secondary";
 }
 
-export const HINT_ORDER: readonly { readonly command: ChatCommand; readonly tier: Hint["tier"] }[] =
-  [
-    { command: "completion.accept", tier: "primary" },
-    { command: "completion.fill", tier: "primary" },
-    { command: "completion.previous", tier: "primary" },
-    { command: "completion.close", tier: "primary" },
-    { command: "completion.next", tier: "secondary" },
-    { command: "completion.page.up", tier: "secondary" },
-    { command: "completion.page.down", tier: "secondary" },
-    { command: "chat.submit", tier: "primary" },
-    { command: "chat.queue.submit", tier: "secondary" },
-    { command: "chat.interrupt", tier: "primary" },
-    { command: "chat.quit", tier: "secondary" },
-    { command: "chat.commands.open", tier: "primary" },
-    { command: "chat.thinking.cycle", tier: "secondary" },
-    { command: "chat.model.next", tier: "secondary" },
-    { command: "chat.history.next", tier: "secondary" },
-  ];
+const HINT_ORDER: readonly { readonly command: ChatCommand; readonly tier: Hint["tier"] }[] = [
+  { command: "completion.accept", tier: "primary" },
+  { command: "completion.fill", tier: "primary" },
+  { command: "completion.previous", tier: "primary" },
+  { command: "completion.close", tier: "primary" },
+  { command: "completion.next", tier: "secondary" },
+  { command: "completion.page.up", tier: "secondary" },
+  { command: "completion.page.down", tier: "secondary" },
+  { command: "chat.submit", tier: "primary" },
+  { command: "chat.queue.submit", tier: "secondary" },
+  { command: "chat.interrupt", tier: "primary" },
+  { command: "chat.quit", tier: "secondary" },
+  { command: "chat.commands.open", tier: "primary" },
+  { command: "chat.thinking.cycle", tier: "secondary" },
+  { command: "chat.model.next", tier: "secondary" },
+  { command: "chat.history.next", tier: "secondary" },
+];
 
 function basename(path: string): string {
   return path.replace(/\/+$/u, "").split("/").at(-1) ?? path;
 }
 
-function sameJson(left: Json, right: Json): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 export function footerFor(state: State, queued: number): FooterModel {
-  const session = state.facts.session;
-  const view = session?.view ?? null;
+  const chat = state.facts.chat;
+  const session = chat?.kind === "blank" && chat.unresolved === true ? null : chat;
+  const view = followedSession(state)?.view ?? null;
   const { workspace } = state.facts;
   const context = view?.context;
 
   const badges = (view?.catalog.settings ?? []).flatMap((setting) => {
-    const badge = setting.choices?.find((choice) => sameJson(choice.value, setting.value))?.badge;
+    const badge = setting.choices?.find(
+      (choice) => JSON.stringify(choice.value) === JSON.stringify(setting.value),
+    )?.badge;
 
     return badge === undefined ? [] : [badge];
   });
@@ -81,7 +79,30 @@ function hintText(hint: Hint): string {
   return `${hint.keycap} ${hint.label}`;
 }
 
+/** The hints `hintsFor` last fitted, by the inputs they were fitted from. */
+let fitted: { readonly key: string; readonly hints: readonly Hint[] } | null = null;
+
+/**
+ * The footer hints for these interactions at this width. Fitting measures every hint, and the
+ * inputs rarely change between frames, so the last result is kept by what it was fitted from.
+ */
 export function hintsFor(interactions: Interactions, width: number): readonly Hint[] {
+  const key = HINT_ORDER.reduce((built, { command }) => {
+    const interaction = interactions[command];
+
+    return interaction.intent === null || interaction.hidden
+      ? `${built}\u0000`
+      : `${built}\u0000${interaction.label}\u0001`;
+  }, String(width));
+
+  if (fitted?.key === key) return fitted.hints;
+  const hints = fitHints(interactions, width);
+  fitted = { key, hints };
+
+  return hints;
+}
+
+function fitHints(interactions: Interactions, width: number): readonly Hint[] {
   const interruptShown =
     interactions["chat.interrupt"].intent !== null && !interactions["chat.interrupt"].hidden;
 

@@ -51,7 +51,9 @@ export function ModelPickerSheet({
 /**
  * Stays mounted so the Modal's dismissal carries the content down with it; the
  * catalog fetch is gated on `open`, and reopening refetches since nothing here
- * is ever fresh.
+ * is ever fresh. Each open starts a clean search, reset from the prop rather
+ * than an effect. Re-choosing the session's explicit model just closes, since
+ * configuring it again would queue a no-op.
  */
 function SheetBody({
   client,
@@ -66,7 +68,6 @@ function SheetBody({
   const insets = useSafeAreaInsets();
   const searchRef = useRef<TextInput>(null);
   const [query, setQuery] = useState("");
-  // Each open starts a clean search; the reset rides the prop, not an effect.
   const [seenOpen, setSeenOpen] = useState(open);
 
   if (seenOpen !== open) {
@@ -93,7 +94,6 @@ function SheetBody({
   );
 
   async function choose(model: ModelInfo) {
-    // Re-choosing the session's explicit model would only queue a no-op configure.
     if (selectedModel?.provider === model.ref.provider && selectedModel.id === model.ref.id) {
       onClose();
 

@@ -14,14 +14,10 @@ export interface LoginDriver {
   progress(message: string): void;
 }
 
-export interface ProviderChoice {
+interface ProviderChoice {
   readonly id: string;
   readonly label: string;
   readonly description: string;
-}
-
-function signedIn(provider: Provider): boolean {
-  return provider.credential === "configured" || provider.credential === "verified";
 }
 
 function methodLabel(method: LoginMethod): string {
@@ -41,7 +37,11 @@ function authProviderChoices(
     .map((provider) => ({
       id: provider.id,
       label: provider.name,
-      description: action === "login" && signedIn(provider) ? "signed in" : "",
+      description:
+        action === "login" &&
+        (provider.credential === "configured" || provider.credential === "verified")
+          ? "signed in"
+          : "",
     }));
 }
 

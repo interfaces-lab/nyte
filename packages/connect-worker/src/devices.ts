@@ -26,17 +26,17 @@ import { forwardRequest, resetRelay } from "./relay-stub.ts";
 import {
   activateDevice,
   findDevice,
-  findOwnedEnvironment,
-  pendingSessionRevocation,
   markDeviceReleased,
   releaseReservation,
   reserveDevice,
   revokeDevice,
-} from "./store.ts";
-import type { Environment } from "./store.ts";
+} from "./store/devices.ts";
+import { findOwnedEnvironment } from "./store/environments.ts";
+import { pendingSessionRevocation } from "./store/owners.ts";
+import type { Environment } from "./store/rows.ts";
 
 /** How long the broker waits for the desktop to record an enrollment. */
-export const ENROLL_TIMEOUT_MS = 10_000;
+const ENROLL_TIMEOUT_MS = 10_000;
 
 const RECEIPT_LIMIT = 16_384;
 

@@ -1,7 +1,9 @@
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
-import type { ConfigurationPatch, RunEnd, Session, SessionId } from "@nyte-ai/sdk";
+import type { RunEnd, SendReceipt, Session, SessionId } from "@nyte-ai/sdk";
+import { showsText, showsTool } from "@nyte-ai/plugin/client/presentation";
 import { sessionRecovery } from "./flags.ts";
-import { isTextMessage, isToolMessage } from "./lib/view-helpers.ts";
+import { exitStatus } from "./lifecycle.ts";
+import type { Ending } from "./lifecycle.ts";
 
 export interface PrintOutput {
   write(text: string): void;
@@ -10,8 +12,8 @@ export interface PrintOutput {
 
 interface PrintOptions {
   readonly session: Session;
-  readonly configuration?: ConfigurationPatch;
-  readonly content: string;
+  /** The prompt's receipt: its start or send already admitted it. */
+  readonly receipt: SendReceipt;
   readonly json: boolean;
   /** Skip tool lines; the answer alone is what a pipe wants. */
   readonly quiet: boolean;
@@ -23,10 +25,10 @@ export type PrintOutcome =
   | { readonly kind: "completed" }
   | { readonly kind: "aborted" }
   | { readonly kind: "failed"; readonly message: string; readonly code?: string }
-  | { readonly kind: "cancelled"; readonly signal?: "SIGINT" | "SIGTERM" }
+  | { readonly kind: "cancelled"; readonly signal?: Ending }
   | { readonly kind: "input-required" };
 
-function outcomeOf(end: RunEnd): PrintOutcome {
+function toPrintOutcome(end: RunEnd): PrintOutcome {
   switch (end.kind) {
     case "completed":
       return { kind: "completed" };
@@ -43,14 +45,13 @@ function outcomeOf(end: RunEnd): PrintOutcome {
 }
 
 export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
-  const { session, output } = options;
+  const { session, receipt, output } = options;
 
-  if (options.signal?.aborted === true) return { kind: "cancelled" };
+  if (options.signal?.aborted === true) {
+    await receipt.stop();
 
-  const receipt = await session.send(
-    options.content,
-    options.configuration === undefined ? undefined : { configuration: options.configuration },
-  );
+    return { kind: "cancelled" };
+  }
 
   const written = new Map<string, string>();
   const tools = new Set<string>();
@@ -71,6 +72,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
   });
 
   const views = session.watch()[Symbol.asyncIterator]();
+  // oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- read through a call: inline, the early return keeps `signal.aborted` narrowed to false across the awaits
   const aborted = (): boolean => options.signal?.aborted === true;
 
   try {
@@ -92,7 +94,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
       for (const message of view.messages) {
         if (message.turn !== turn.id || message.kind !== "part") continue;
 
-        if (isTextMessage(message)) {
+        if (showsText(message)) {
           const before = written.get(message.id) ?? "";
 
           if (message.status.kind === "failed" && before !== "")
@@ -106,7 +108,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
             );
           writeText(message.state.markdown.slice(before.length));
           written.set(message.id, message.state.markdown);
-        } else if (isToolMessage(message) && !tools.has(message.id)) {
+        } else if (showsTool(message) && !tools.has(message.id)) {
           tools.add(message.id);
 
           if (options.quiet) continue;
@@ -124,7 +126,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
         return { kind: "input-required" };
       }
 
-      if (turn.state.kind === "ended") return outcomeOf(turn.state.end);
+      if (turn.state.kind === "ended") return toPrintOutcome(turn.state.end);
     }
   } catch (cause) {
     if (aborted()) {
@@ -193,7 +195,7 @@ export function reportPrintOutcome(
     case "aborted":
       return 130;
     case "cancelled":
-      return outcome.signal === "SIGTERM" ? 143 : 130;
+      return exitStatus(outcome.signal ?? "SIGINT");
     default: {
       const exhaustive: never = outcome;
 

@@ -3,7 +3,7 @@
  * model, and tool types live in @nyte-ai/schema and are re-exported here so
  * callers can import everything from one place; this
  * file adds only what a provider request needs on top of them: transport and
- * auth options, the stream function contract, and the per-API option map.
+ * auth options, and the stream function contract.
  */
 import type {
   Api,
@@ -13,11 +13,6 @@ import type {
   ThinkingLevel,
   TranscriptContext,
 } from "@nyte-ai/schema/model";
-import type { AnthropicOptions } from "./api/anthropic-messages.ts";
-import type { GoogleOptions } from "./api/google-generative-ai.ts";
-import type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
-import type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
-import type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 import type { AssistantMessageEventStream } from "./utils/event-stream.ts";
 
 export type { AssistantMessageEventStream } from "./utils/event-stream.ts";
@@ -167,11 +162,8 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
    * proxy variables.
    */
   env?: ProviderEnv;
-  /**
-   * Optional callback for inspecting or replacing provider payloads before sending.
-   * Return undefined to keep the payload unchanged.
-   */
-  onPayload?: (payload: unknown, model: TModel) => unknown;
+  /** Inspects the provider request body just before it is sent. */
+  onPayload?: (payload: unknown, model: TModel) => void | Promise<void>;
   /**
    * Optional callback invoked after an HTTP response is received.
    */
@@ -263,26 +255,6 @@ export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>>
 export type DeferredCancelOptions = ProviderRequestOptions<Model<Api>>;
 
 /**
- * Maps known APIs to their full provider-specific stream option types.
- * Type-only imports from API implementation modules are erased at emit, so
- * this is tree-shake safe.
- */
-export interface ApiOptionsMap {
-  "anthropic-messages": AnthropicOptions;
-  "google-generative-ai": GoogleOptions;
-  "openai-completions": OpenAICompletionsOptions;
-  "openai-responses": OpenAIResponsesOptions;
-  "openai-codex-responses": OpenAICodexResponsesOptions;
-}
-
-/**
- * Full stream options for an API. Known APIs resolve to their concrete option
- * type; custom API strings fall back to the generic shape.
- */
-export type ApiStreamOptions<TApi extends Api> = StreamOptions &
-  (TApi extends keyof ApiOptionsMap ? ApiOptionsMap[TApi] : Record<string, unknown>);
-
-/**
  * The uniform stream contract of an API implementation module: every module
  * under `src/api/` exports `stream` and `streamSimple`; capable modules may also
  * export deferred-response methods. Lazy wrappers (`lazyApi()`) and provider
@@ -324,16 +296,18 @@ export interface SimpleStreamOptions extends StreamOptions {
   thinkingBudgets?: ThinkingBudgets;
 }
 
-// Generic StreamFunction with typed options.
-//
-// Contract:
-// - Receives a normalized transcript: the system prompt and tools live in the
-//   leading system message, never on the context itself.
-// - Must return an AssistantMessageEventStream.
-// - Once invoked, request/model/runtime failures should be encoded in the
-//   returned stream, not thrown.
-// - Error termination must produce an AssistantMessage with stopReason
-//   "error" or "aborted" and errorMessage, emitted via the stream protocol.
+/**
+ * Generic StreamFunction with typed options.
+ *
+ * Contract:
+ * - Receives a normalized transcript: the system prompt and tools live in the
+ *   leading system message, never on the context itself.
+ * - Must return an AssistantMessageEventStream.
+ * - Once invoked, request/model/runtime failures should be encoded in the
+ *   returned stream, not thrown.
+ * - Error termination must produce an AssistantMessage with stopReason
+ *   "error" or "aborted" and errorMessage, emitted via the stream protocol.
+ */
 export type StreamFunction<
   TApi extends Api = Api,
   TOptions extends StreamOptions = StreamOptions,

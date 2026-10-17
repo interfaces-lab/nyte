@@ -8,6 +8,7 @@ import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
 import { FileModelsStore, nyteProviders } from "@nyte-ai/ai";
 import { createModels } from "@nyte-ai/ai/models";
 import { isJson } from "@nyte-ai/schema";
+import { serial } from "@nyte-ai/schema/serial";
 import type {
   HostDescription,
   HostView,
@@ -16,8 +17,12 @@ import type {
   ValidationIssue,
   WorkspaceTarget,
 } from "@nyte-ai/schema";
-import { composeHost, dev, readModelSelection } from "@nyte-ai/core";
+import { dev, processEnvironment } from "@nyte-ai/core";
+import { composeHost } from "@nyte-ai/core/server";
+import { readModelSelection } from "@nyte-ai/core/store";
 import type { Host, ListenOptions, Listener, OpenOptions, Plugin, Store } from "@nyte-ai/core";
+import approvals from "@nyte-ai/plugin/core/approvals";
+import { acpAgents } from "@nyte-ai/plugin/core/acp";
 import bashDescription from "@nyte-ai/plugin/core/bash-description";
 import browserTools from "@nyte-ai/plugin/core/browser-tools";
 import canvas from "@nyte-ai/plugin/core/canvas";
@@ -29,11 +34,11 @@ import question from "@nyte-ai/plugin/core/question";
 import rename from "@nyte-ai/plugin/core/rename";
 import telemetry from "@nyte-ai/plugin/core/telemetry";
 import webSearch from "@nyte-ai/plugin/core/web-search";
-import { operations } from "@nyte-ai/protocol";
 import manifest from "../package.json" with { type: "json" };
 import { credentialStore } from "./credentials.ts";
 import { identitySigner } from "./identity-key.ts";
-import { codeOf } from "./local/tree.ts";
+import { readErrorCode } from "./local/tree.ts";
+import { localGitHubAccount } from "./local/github.ts";
 import { localProvider } from "./local/provider.ts";
 import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
 import { listen } from "./listen.ts";
@@ -64,20 +69,22 @@ export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models"
   readonly plugins?: readonly Plugin<"core">[];
   /** The directory whose `.nyte` holds the store, settings, plugins, secrets key and identity key; default `os.homedir()`. */
   readonly home?: string;
+  /** The login shell the default local provider's pty jobs run, read at each start; absent or null is `$SHELL`. */
+  readonly shell?: () => string | null;
 };
 
 /**
  * Opens the Node host the sdk's Node `open` calls: `composeHost` with
  * `home` (default `os.homedir()`), `store` (default `<home>/.nyte/nyte.db`,
- * re-read every 500 ms so a second process on the file sees the first one's
- * runs live),
+ * checked every 500 ms for another process's commits, which are then read so
+ * a second process on the file sees the first one's runs live),
  * `workspace` (default the local folder `process.cwd()`), `secrets` (default
  * `defaultSecrets(home)`), `models` (default `nyteModels`), `localProvider`
  * unless a plugin provides the `local` environment, every first-party plugin
  * of `@nyte-ai/plugin` that `plugins` does not replace by id, then `plugins`
- * and `filePlugins`' files, `settingsSeed`'s seed, protocol's `operations()` and
+ * and `filePlugins`' files, `settingsSeed`'s seed and
  * `hostDescription()`; each file that did not load becomes a
- * `kernel.host.report` row. The kernel's `loadPlugins` is `pluginLoader` over
+ * `server.report` row. The host's `loadPlugins` is `pluginLoader` over
  * the plugin directories (§47l), which `watchPlugins` watches for hot reload
  * (§49a). `listen` defaults `identity` to `identitySigner(host.hostId, home)`
  * and `describe` to the description; nothing here reads the secrets key, even
@@ -121,14 +128,19 @@ async function composeOpen(
   const given = options.plugins ?? [];
   const usesLocalProvider = !given.some((plugin) => plugin.environment?.kind === "local");
 
-  if (usesLocalProvider) await migrateLocalWorkspaceIdentities(await store.open());
   const claudeCode = claudeCodeSdk();
+  const acp = acpAgents();
 
-  const models =
+  const [models, files, settings] = await Promise.all([
     options.models ??
-    (await nyteModels({ store, secrets, home, providers: [claudeCode.provider] }));
+      nyteModels({ store, secrets, home, providers: [claudeCode.provider, acp.provider] }),
+    filePlugins(home),
+    settingsSeed(home),
+    usesLocalProvider ? store.open().then(migrateLocalWorkspaceIdentities) : undefined,
+  ]);
 
   const builtins = [
+    approvals,
     question,
     rename,
     bashDescription,
@@ -140,15 +152,17 @@ async function composeOpen(
     canvas,
     browserTools,
     claudeCode.plugin,
+    acp.plugin,
   ];
 
   const plugins = [
-    ...(usesLocalProvider ? [{ id: "local", environment: localProvider({ home }) }] : []),
+    ...(usesLocalProvider
+      ? [{ id: "local", environment: localProvider({ home, shell: options.shell }) }]
+      : []),
     ...builtins.filter((builtin) => !given.some((plugin) => plugin.id === builtin.id)),
     ...given,
   ];
 
-  const [files, settings] = await Promise.all([filePlugins(home), settingsSeed(home)]);
   let projectDirs: () => Promise<readonly string[]> = async () => [];
 
   const host = await composeHost({
@@ -158,11 +172,11 @@ async function composeOpen(
     loadPlugins: async (paths) => pluginLoader([...files.dirs, ...(await projectDirs())])(paths),
     models,
     mcp: options.mcp ?? createMcpHub({ home }),
+    github: options.github ?? (usesLocalProvider ? localGitHubAccount({ home }) : undefined),
     plugins: [...plugins, ...files.plugins],
     pluginSources: files.sources,
     secrets,
     home,
-    operations: operations(),
     description,
     ...(settings.seed === null ? {} : { seed: settings.seed }),
     ...(owned === null ? {} : { poll: STORE_POLL_MS }),
@@ -175,10 +189,10 @@ async function composeOpen(
         : [],
     );
 
-  for (const row of files.failed) host.kernel.host.report(row);
+  for (const row of files.failed) host.server.report(row);
 
   if (settings.issue !== null)
-    host.kernel.host.report({
+    host.server.report({
       id: "settings",
       source: "user",
       path: settingsPath(home),
@@ -193,9 +207,9 @@ async function composeOpen(
   });
 
   const reported = new Map(
-    host.kernel.host
-      .current()
-      .plugins.filter((row) => row.path !== null && row.id === row.path)
+    host.server
+      .pluginRows()
+      .filter((row) => row.path !== null && row.id === row.path)
       .map((row) => [row.id, row]),
   );
 
@@ -207,15 +221,15 @@ async function composeOpen(
     const failed = [...next.failed, ...refused(next, report)];
 
     for (const [id, row] of reported)
-      if (!failed.some((row) => row.id === id)) host.kernel.host.report({ ...row, issues: [] });
+      if (!failed.some((row) => row.id === id)) host.server.report({ ...row, issues: [] });
 
-    for (const row of failed) host.kernel.host.report(row);
+    for (const row of failed) host.server.report(row);
     reported.clear();
 
     for (const row of failed) reported.set(row.id, row);
 
     for (const plugin of files.sources.keys())
-      if (!host.kernel.hostPlugins.includes(plugin)) files.sources.delete(plugin);
+      if (!host.server.loaded(plugin)) files.sources.delete(plugin);
     dev("open", "plugins reloaded", {
       generation: report.generation,
       pluginFiles: next.plugins.length,
@@ -265,17 +279,27 @@ async function nyteModels(input: {
   readonly providers: readonly Provider[];
 }): Promise<Models> {
   const credentials = credentialStore(input.store, input.secrets);
+  const auth = defaultProviderAuthContext();
 
   const models = createModels({
     credentials,
     modelsStore: new FileModelsStore(join(input.home, ".nyte", "models-store.json")),
-    authContext: defaultProviderAuthContext(),
+    authContext: {
+      ...auth,
+      env: async (name) => {
+        await processEnvironment();
+
+        return auth.env(name);
+      },
+    },
     catalog: { url: process.env.NYTE_MODELS_URL },
   });
 
   for (const provider of [...nyteProviders(), ...input.providers]) models.setProvider(provider);
-  const stored = await credentials.list();
-  const selected = await readModelSelection(await input.store.open());
+  const [stored, selected] = await Promise.all([
+    credentials.list(),
+    input.store.open().then(readModelSelection),
+  ]);
 
   const restored = await models.refresh({
     providers: [
@@ -342,11 +366,11 @@ function refused(
 
 function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () => Promise<void> {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let running = Promise.resolve();
+  const reloads = serial();
 
   const run = (): void => {
     timer = null;
-    running = running.then(reload).catch((error: unknown) =>
+    void reloads.run(reload).catch((error: unknown) =>
       dev("open", "plugin reload failed", {
         message: error instanceof Error ? error.message : String(error),
       }),
@@ -371,7 +395,7 @@ function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () 
 
       return [watcher];
     } catch (error) {
-      dev("open", "plugins unwatched", { dir, code: codeOf(error) });
+      dev("open", "plugins unwatched", { dir, code: readErrorCode(error) });
 
       return [];
     }
@@ -381,7 +405,7 @@ function watchPlugins(dirs: readonly string[], reload: () => Promise<void>): () 
     for (const watcher of watchers) watcher.close();
 
     if (timer !== null) clearTimeout(timer);
-    await running;
+    await reloads.settled();
   };
 }
 
@@ -395,7 +419,11 @@ async function settingsSeed(home: string): Promise<{
   const path = settingsPath(home);
 
   const text = await readFile(path, "utf8").catch((error: unknown) =>
-    codeOf(error) === "ENOENT" ? null : error instanceof Error ? error : new Error(String(error)),
+    readErrorCode(error) === "ENOENT"
+      ? null
+      : error instanceof Error
+        ? error
+        : new Error(String(error)),
   );
 
   if (text === null) return { seed: null, issue: null };

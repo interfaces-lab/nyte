@@ -18,6 +18,12 @@ export const nyte: NyteBridge = {
   get clientSurface() {
     return bridge().clientSurface;
   },
+  get platform() {
+    return bridge().platform;
+  },
+  get machineName() {
+    return bridge().machineName;
+  },
   get canvasShell() {
     return bridge().canvasShell;
   },
@@ -29,22 +35,4 @@ export const nyte: NyteBridge = {
   },
 };
 
-export type {
-  GitHubAccount,
-  GitHubProviderState,
-  GitHubPullRequest,
-  GitHubPullRequestContext,
-  GitHubRepository,
-  HostEvent,
-  HostState,
-  LocalFontCatalog,
-  OpenWorkspaceOutcome,
-  ThemePreference,
-  UsageEntry,
-  UsageReport,
-  UsageSession,
-  UsageSource,
-  UsageSubject,
-  UsageTotals,
-  UsageWindow,
-} from "./bridge.ts";
+export type { HostState, UsageReport, UsageTotals, UsageWindow } from "./bridge.ts";

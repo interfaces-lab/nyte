@@ -8,6 +8,9 @@ export const SERVICE_ROUTES = {
   watch: "/_nyte/service/connect/watch",
   share: "/_nyte/service/connect/share",
   unlink: "/_nyte/service/connect/unlink",
+  attach: "/_nyte/service/attach",
+  clients: "/_nyte/service/clients",
+  retire: "/_nyte/service/retire",
 } as const;
 
 export const ServiceEventSchema = Type.Union([
@@ -17,3 +20,28 @@ export const ServiceEventSchema = Type.Union([
 ]);
 
 export type ServiceEvent = Static<typeof ServiceEventSchema>;
+
+/** A client process holding an attachment open: its pid, when the process started (ms since the epoch), and the build it expects. */
+export const AttachmentSchema = Type.Object({
+  pid: Type.Integer({ minimum: 1 }),
+  startedAt: Type.Number(),
+  build: Type.String(),
+});
+
+export type Attachment = Static<typeof AttachmentSchema>;
+
+/** An attached client as `nyte service status` lists it: the attachment plus the process's terminal, null when it has none. */
+export const ServiceClientSchema = Type.Object({
+  ...AttachmentSchema.properties,
+  tty: Type.Union([Type.String(), Type.Null()]),
+});
+
+export type ServiceClient = Static<typeof ServiceClientSchema>;
+
+/** Why a service refused to retire: how many clients other than the caller are attached, and whether a run or job is working. */
+export const BusySchema = Type.Object({
+  clients: Type.Integer({ minimum: 0 }),
+  working: Type.Boolean(),
+});
+
+export type Busy = Static<typeof BusySchema>;

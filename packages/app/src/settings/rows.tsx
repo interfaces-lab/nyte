@@ -19,7 +19,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { useSetting, type Setting } from "../preferences/index.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { available, type Capability } from "./pages.ts";
+import { available, type Capability } from "./capability.ts";
 import { settingsStyles } from "./settings.stylex.ts";
 
 /** Marks a rendered row, so an empty card can hide itself. */
@@ -133,7 +133,7 @@ export function SwitchRow(input: Bound<boolean>): ReactElement | null {
   );
 }
 
-export interface Option<T extends string> {
+interface Option<T extends string> {
   readonly value: T;
   readonly label: string;
 }
@@ -180,7 +180,11 @@ export function SelectRow<T extends string>(
   );
 }
 
-/** min, max, and step bound the control; the setting's schema bounds what is stored. */
+/**
+ * min, max, and step bound the control; the setting's schema bounds what is
+ * stored. The field is keyed by the value, so a change from another window
+ * remounts it.
+ */
 export function NumberRow(
   input: Bound<number> & { readonly min: number; readonly max: number; readonly step?: number },
 ): ReactElement | null {
@@ -191,7 +195,6 @@ export function NumberRow(
   return (
     <SettingsRow title={input.title} description={input.description}>
       <NumberField
-        // Keyed by the value, so a change from another window remounts the field.
         key={value}
         defaultValue={value}
         min={input.min}

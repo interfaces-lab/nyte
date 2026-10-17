@@ -9,6 +9,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { glyph, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
+import { occludes } from "../../workbench/browser-occlusion.ts";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /** Parts every composer tray draws: its pill, rows, header actions, and notices. */
@@ -31,11 +32,11 @@ export const trayParts = create({
   listHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
   row: {
     minHeight: tray.rowHeight,
-    "--_row-padding-inline": tray.rowInset,
+    "--_row-padding-inline": `calc(${tray.paddingInline} - ${tray.rowInset})`,
   },
   notice: {
     paddingBlock: space.s2,
-    paddingInline: space.s3,
+    paddingInline: tray.paddingInline,
     color: role.contentSecondary,
     fontSize: type.fontSm,
   },
@@ -171,6 +172,7 @@ export function Tray({
     <AnimatePresence initial={false}>
       {open && (
         <motion.section
+          ref={occludes}
           key="surface"
           data-slot="tray"
           id={id}

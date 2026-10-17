@@ -1,31 +1,34 @@
 import { asId, asSeq } from "@nyte-ai/schema";
 import type { CallId, Json, PatchEvent, WaitTarget } from "@nyte-ai/schema";
 import { assert, describe, expect, it } from "vitest";
+import { driveInProcess } from "../src/drive/execution.ts";
+import { runStep } from "../src/engine/durable.ts";
+import { endRun, publishPatch } from "../src/engine/runs.ts";
+import { LOCAL, isPart, text } from "../src/index.ts";
 import {
-  LOCAL,
   callRef,
   decodeCallRecord,
   decodePartRecord,
   decodeReceiptRecord,
   decodeRunRecord,
-  driveInProcess,
-  endRun,
-  emptyFold,
   envelope,
-  fold,
-  isPart,
   memoryStore,
   partRef,
-  publishPatch,
-  project,
   receiptRef,
   runRef,
-  runStep,
-  sessionEvents,
-  text,
-} from "../src/index.ts";
-import type { Kernel, StoreConnection } from "../src/index.ts";
-import { completed, configuration, label, livePart, main, setup, startRun } from "./harness.ts";
+} from "../src/store.ts";
+import type { Kernel } from "../src/contract/kernel.ts";
+import type { StoreConnection } from "../src/index.ts";
+import {
+  completed,
+  configuration,
+  label,
+  livePart,
+  main,
+  settledChat,
+  setup,
+  startRun,
+} from "../src/harness.ts";
 
 describe("runs", () => {
   it("settles the receipts of a run's landed inputs in its end set, so a crash right after it leaves none pending", async () => {
@@ -40,9 +43,9 @@ describe("runs", () => {
           if (crashed) throw new Error("Crashed.");
           const outcome = await store.refs.set(updates);
 
-          crashed = updates.some(
-            (update) => update.event?.kind === "run" && update.event.change === "ended",
-          );
+          crashed = updates
+            .flatMap((update) => update.events ?? [])
+            .some((event) => event.kind === "run" && event.change === "ended");
 
           return outcome;
         },
@@ -50,8 +53,7 @@ describe("runs", () => {
     };
 
     const { host, script: turns } = await setup({ store: crashing });
-    const session = await host.sessions.create();
-    const receipt = await session.send("Go.");
+    const { session, receipt } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     (await turns.started(1)).finish();
     await step.catch(() => undefined);
@@ -65,7 +67,7 @@ describe("runs", () => {
 
   it("logs the stop fence before the run ends, then aborts: parts fail and patches drop", async () => {
     const { kernel, host, script: turns } = await setup();
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
     const hold = kernel.folds.acquire(session.id, LOCAL);
     await hold.ready();
     const receipt = await session.send("Write it.");
@@ -100,7 +102,7 @@ describe("runs", () => {
     expect(patches).toHaveLength(1);
 
     const fenced = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
-    const stopping = fenced.indexOf("run:stopping");
+    const stopping = fenced.findIndex((entry) => entry === "run:stopping");
 
     expect(fenced.slice(stopping, stopping + 3)).toEqual([
       "run:stopping",
@@ -112,8 +114,8 @@ describe("runs", () => {
 
     const log = (await kernel.store.refs.log(session.id, asSeq(0), 100)).map(label);
 
-    expect(log.indexOf("run:stopping")).toBe(stopping);
-    expect(log.indexOf("run:ended")).toBeGreaterThan(stopping + 2);
+    expect(log.findIndex((entry) => entry === "run:stopping")).toBe(stopping);
+    expect(log.findIndex((entry) => entry === "run:ended")).toBeGreaterThan(stopping + 2);
 
     for (const part of parts) {
       const ref = await kernel.store.refs.get(partRef(session.id, part));
@@ -137,54 +139,38 @@ describe("runs", () => {
     hold.release();
   });
 
-  it("seeds a live text part emptied while a watcher was away, so its next append is not added to stale text (ADV F-2 F4, probe P7)", async () => {
+  it("shows a live text part emptied before a watch opened, so its next append is not added to stale text (ADV F-2 F4, probe P7)", async () => {
     const { kernel, host, script: turns } = await setup();
-    const session = await host.sessions.create();
-    await session.send("Write it.");
+    const { session } = await host.sessions.start({ content: "Write it." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await turns.started(1);
     const run = turn.input.run.id;
     const part = asId<"part">(`${run}:1:0`);
     await livePart(kernel, session.id, run, part, "A");
-    const resume = await kernel.store.refs.tail(session.id);
-    let state = emptyFold({ session: session.id, principal: LOCAL });
-
-    for (const event of await kernel.store.refs.log(session.id, asSeq(0), 1000))
-      state = fold(state, event);
-
-    expect(project(state, main).messages.at(-1)).toMatchObject({ state: { markdown: "A" } });
     publishPatch(kernel, session.id, run, { kind: "patch", part, markdown: "" });
+    const views = session.watch()[Symbol.asyncIterator]();
 
-    const iterator = sessionEvents(kernel, session.id, resume)[Symbol.asyncIterator]();
-
-    for (;;) {
-      const next = await iterator.next();
+    const shown = async (): Promise<string | null> => {
+      const next = await views.next();
       assert(next.done !== true);
-      const event = next.value.event;
-      state = fold(state, event);
+      const message = next.value.messages.find(
+        (candidate) => isPart(candidate, text) && candidate.part === part,
+      );
 
-      if (event.kind === "catalog")
-        publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
+      return message !== undefined && isPart(message, text) ? message.state.markdown : null;
+    };
 
-      if (
-        project(state, main).messages.some(
-          (message) =>
-            isPart(message, text) && message.part === part && message.state.markdown === "B",
-        )
-      )
-        break;
-    }
-
-    await iterator.return?.();
-
-    expect(project(state, main).messages.at(-1)).toMatchObject({ state: { markdown: "B" } });
+    expect(await shown()).toBe("");
+    publishPatch(kernel, session.id, run, { kind: "patch", part, append: "B" });
+    expect(await shown()).toBe("B");
+    await views.return?.();
     turn.finish(completed);
     await step;
   });
 
   it("ends a waiting run stopped once session.stop() fences it and wakes the driver", async () => {
-    const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { kernel, host, script: turns } = await setup();
+    const session = await settledChat(host, turns);
 
     const run = await startRun(
       kernel,
@@ -226,8 +212,8 @@ describe("runs", () => {
   });
 
   it("ends a stopped run no turn drives here once the driver takes the head", async () => {
-    const { kernel, host } = await setup();
-    const session = await host.sessions.create();
+    const { kernel, host, script: turns } = await setup();
+    const session = await settledChat(host, turns);
 
     const run = await startRun(
       kernel,
@@ -248,8 +234,7 @@ describe("runs", () => {
 
   it("stops every live run of a session and withdraws everything queued", async () => {
     const { host, script: turns } = await setup();
-    const session = await host.sessions.create();
-    await session.send("Go.");
+    const { session } = await host.sessions.start({ content: "Go." });
     const step = host.execution.advance({ session: session.id, head: main });
     const turn = await turns.started(1);
     const later = await session.send("Later.", { delivery: "queue" });
@@ -270,9 +255,11 @@ describe("runs", () => {
 
   it("attaches a child's report to the parent head when no wait is parked on the run", async () => {
     const { kernel, host, script: turns } = await setup();
-    const parent = await host.sessions.create({ name: "parent" });
-    const child = await host.sessions.create({ parent: parent.id });
-    await child.send("Investigate.");
+    const { session: parent } = await host.sessions.start({ name: "parent", content: "Hi." });
+    const { session: child } = await host.sessions.start({
+      parent: parent.id,
+      content: "Investigate.",
+    });
     const step = host.execution.advance({ session: child.id, head: main });
     const turn = await turns.started(1);
     const run = turn.input.run.id;
@@ -282,8 +269,8 @@ describe("runs", () => {
 
     const view = await parent.view();
 
-    expect(view.messages).toHaveLength(1);
-    expect(view.messages[0]).toMatchObject({
+    expect(view.messages).toHaveLength(2);
+    expect(view.messages[1]).toMatchObject({
       kind: "user",
       content: "Found it.",
       source: { kind: "child", session: child.id, end: "completed" },
@@ -294,8 +281,8 @@ describe("runs", () => {
 
   it("attaches no report when a wait parked here took the child's end", async () => {
     const { kernel, host } = await setup({ execution: { kind: "admit-only" } });
-    const parent = await host.sessions.create();
-    const child = await host.sessions.create({ parent: parent.id });
+    const { session: parent } = await host.sessions.start({ content: "Hi." });
+    const { session: child } = await host.sessions.start({ parent: parent.id, content: "Hi." });
     const run = await startRun(
       kernel,
       child.id,
@@ -326,14 +313,14 @@ describe("runs", () => {
     expect(await waited).toEqual({ kind: "parked" });
     await endRun(kernel, child.id, run.id, completed);
 
-    expect((await parent.view()).messages).toEqual([]);
+    expect((await parent.view()).messages.map((message) => message.id)).toEqual([parent.id]);
   });
 
   it("attaches no report when a durable wait parked on another instance holds the child's run, which a later cover wakes once", async () => {
     const store = await memoryStore().open();
     const x = await setup({ store, execution: { kind: "admit-only" } });
-    const parent = await x.host.sessions.create();
-    const child = await x.host.sessions.create({ parent: parent.id });
+    const { session: parent } = await x.host.sessions.start({ content: "Hi." });
+    const { session: child } = await x.host.sessions.start({ parent: parent.id, content: "Hi." });
 
     const run = await startRun(
       x.kernel,
@@ -367,18 +354,16 @@ describe("runs", () => {
 
     expect(await waited(x.kernel)).toEqual({ kind: "parked" });
 
-    const stored = await store.refs.get(runRef(child.id, run.id));
-
     expect(
-      decodeRunRecord(stored?.target ? await store.objects.get(stored.target) : null),
-    ).toMatchObject({
-      waitedBy: [{ session: parent.id, call }],
-    });
+      (await store.refs.list(`waits/run/${child.id}/${run.id}/`)).map((ref) => ref.name),
+    ).toEqual([`waits/run/${child.id}/${run.id}/${parent.id}/${call}/0/0`]);
 
     const y = await setup({ store, execution: { kind: "admit-only" } });
     await endRun(y.kernel, child.id, run.id, completed);
 
-    expect((await y.host.session(parent.id).view()).messages).toEqual([]);
+    expect((await y.host.session(parent.id).view()).messages.map((message) => message.id)).toEqual([
+      parent.id,
+    ]);
 
     const z = await setup({ store, execution: { kind: "admit-only" } });
     const owned = await z.host.execution.cover({ kind: "sessions", sessions: [parent.id] });
@@ -391,7 +376,9 @@ describe("runs", () => {
       waits: [{ kind: "run", session: child.id, run: run.id, end: completed }],
     });
     expect(await waited(z.kernel)).toEqual({ kind: "done", value: "run" });
-    expect((await z.host.session(parent.id).view()).messages).toEqual([]);
+    expect((await z.host.session(parent.id).view()).messages.map((message) => message.id)).toEqual([
+      parent.id,
+    ]);
     await owned.close();
   });
 });

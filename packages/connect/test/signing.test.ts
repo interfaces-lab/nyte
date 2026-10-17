@@ -11,7 +11,7 @@ import {
   createProof,
   generateMachineKey,
   nowSeconds,
-  publicKeyOf,
+  toPublicJwk,
   publicKeySet,
   randomId,
   sha256,
@@ -42,7 +42,7 @@ describe("request proofs", () => {
     const { key, token } = await proofFor("{}");
     const claims = await verifyProof({
       token,
-      key: publicKeyOf(key),
+      key: toPublicJwk(key),
       issuer: environmentId,
       audience: origin,
       method: "POST",
@@ -65,7 +65,7 @@ describe("request proofs", () => {
     await expect(
       verifyProof({
         token,
-        key: publicKeyOf(key),
+        key: toPublicJwk(key),
         issuer: environmentId,
         audience: origin,
         method: "POST",
@@ -88,11 +88,11 @@ describe("request proofs", () => {
       body: "{}",
     };
 
-    await expect(verifyProof({ ...base, key: publicKeyOf(other) })).rejects.toThrow();
+    await expect(verifyProof({ ...base, key: toPublicJwk(other) })).rejects.toThrow();
     const { key, token: old } = await proofFor("{}");
 
     await expect(
-      verifyProof({ ...base, token: old, key: publicKeyOf(key), now: Date.now() + 120_000 }),
+      verifyProof({ ...base, token: old, key: toPublicJwk(key), now: Date.now() + 120_000 }),
     ).rejects.toThrow();
   });
 });

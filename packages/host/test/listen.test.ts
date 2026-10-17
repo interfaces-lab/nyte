@@ -1,21 +1,22 @@
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { asId } from "@nyte-ai/schema";
+import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Authority,
   ExecutionCoverage,
   HeadName,
+  Json,
   Owned,
   PrincipalId,
   ReceiptId,
   SessionId,
 } from "@nyte-ai/schema";
-import type { ComposeOptions, Listener, ListenOptions } from "@nyte-ai/core";
-import { SdkError, memoryStore } from "@nyte-ai/core";
-import { createTransport, decodeError, operations, parseSse } from "@nyte-ai/protocol";
-import type { SseFrame } from "@nyte-ai/protocol";
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import type { Listener, ListenOptions } from "@nyte-ai/core";
+import type { ComposeOptions } from "@nyte-ai/core/server";
+import { memoryStore } from "@nyte-ai/core/store";
+import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
+import { afterEach, assert, describe, expect, it } from "vitest";
 import { listen, pluginLoader } from "../src/index.ts";
 import { fakeModels, open } from "../src/bench/fake-models.ts";
 import type { FakeModels } from "../src/bench/fake-models.ts";
@@ -36,7 +37,7 @@ async function compose(
   fake: FakeModels,
   execution?: ComposeOptions["execution"],
 ): Promise<Composed> {
-  const host = await open(fake, { execution, operations: operations() });
+  const host = await open(fake, { execution });
   cleanups.push(() => host.close());
 
   return host;
@@ -77,26 +78,21 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
-async function codeOf(response: Response): Promise<string> {
+async function readErrorCode(response: Response): Promise<string> {
   return decodeError(JSON.parse(await response.text()), response.status).code;
 }
 
-function kindOf(frame: SseFrame): string | null {
-  const data = frame.data;
-
-  return typeof data === "object" &&
-    data !== null &&
-    "kind" in data &&
-    typeof data.kind === "string"
-    ? data.kind
+function readKind(frame: Json): string | null {
+  return typeof frame === "object" &&
+    frame !== null &&
+    "kind" in frame &&
+    typeof frame.kind === "string"
+    ? frame.kind
     : null;
 }
 
-async function until(
-  response: Response,
-  done: (frame: SseFrame) => boolean,
-): Promise<readonly SseFrame[]> {
-  const frames: SseFrame[] = [];
+async function until(response: Response, done: (frame: Json) => boolean): Promise<readonly Json[]> {
+  const frames: Json[] = [];
   assert(response.body !== null);
 
   for await (const frame of parseSse(response.body)) {
@@ -111,27 +107,20 @@ async function until(
 async function sent(
   target: Listener | string,
 ): Promise<{ readonly session: SessionId; readonly receipt: ReceiptId }> {
-  const created = await json(await post(target, "sessions.create", {}));
-  assert(
-    typeof created === "object" &&
-      created !== null &&
-      "session" in created &&
-      typeof created.session === "string",
-  );
-  const session: SessionId = asId(created.session);
-
-  const receipt = await json(
-    await post(target, "head.send", { session, head: main, content: "Hi." }),
+  const started = await json(
+    await post(target, "sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
   );
 
   assert(
-    typeof receipt === "object" &&
-      receipt !== null &&
-      "receipt" in receipt &&
-      typeof receipt.receipt === "string",
+    typeof started === "object" &&
+      started !== null &&
+      "session" in started &&
+      typeof started.session === "string" &&
+      "receipt" in started &&
+      typeof started.receipt === "string",
   );
 
-  return { session, receipt: asId(receipt.receipt) };
+  return { session: asId(started.session), receipt: asId(started.receipt) };
 }
 
 async function pair(host: Composed, authority: readonly Authority[]): Promise<string> {
@@ -145,7 +134,7 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T | "timed out"> {
   ]);
 }
 
-async function endOf(frames: AsyncIterator<SseFrame>): Promise<string> {
+async function drainFrames(frames: AsyncIterator<Json>): Promise<string> {
   try {
     while ((await frames.next()).done !== true);
 
@@ -179,7 +168,7 @@ describe("listen", () => {
     ]) {
       const response = await post(listener, "sessions.list", {}, { Authorization: authorization });
 
-      expect([response.status, await codeOf(response)]).toEqual([401, "unauthenticated"]);
+      expect([response.status, await readErrorCode(response)]).toEqual([401, "unauthenticated"]);
     }
   });
 
@@ -210,13 +199,15 @@ describe("listen", () => {
 
     await host.principals.revoke(paired.id);
     const revoked = await post(listener, "sessions.list", {}, device);
-    expect([revoked.status, await codeOf(revoked)]).toEqual([401, "unauthenticated"]);
+    expect([revoked.status, await readErrorCode(revoked)]).toEqual([401, "unauthenticated"]);
   });
 
   it("ends a revoked principal's open head.watch at once, unauthenticated, while another principal's keeps flowing", async () => {
     const host = await compose(fakeModels());
     const listener = await serve(host);
-    const created = await json(await post(listener, "sessions.create", {}));
+    const created = await json(
+      await post(listener, "sessions.start", { id: crypto.randomUUID(), content: "Hi." }),
+    );
     assert(
       typeof created === "object" &&
         created !== null &&
@@ -246,11 +237,10 @@ describe("listen", () => {
         headers: async () => ({ Authorization: `Bearer ${token}` }),
         fetch: async (input, init) => listener.fetch(new Request(input, init)),
       });
-      const frames = transport.watch("head.watch", { session, head: main })[Symbol.asyncIterator]();
-      let seen = (await frames.next()).value;
-
-      while (seen !== undefined && kindOf(seen) !== "catalog") seen = (await frames.next()).value;
-      expect(seen).toBeDefined();
+      const frames = transport
+        .frames("head.watch", { session, head: main })
+        [Symbol.asyncIterator]();
+      expect(readKind((await frames.next()).value ?? null)).toBe("view");
 
       return frames;
     };
@@ -261,35 +251,30 @@ describe("listen", () => {
     assert(id !== undefined);
     await host.principals.revoke(id);
 
-    expect(await within(endOf(revoked), 100)).toBe("unauthenticated");
-    await post(listener, "session.update", { session, patch: { name: "Renamed" } });
+    expect(await within(drainFrames(revoked), 100)).toBe("unauthenticated");
+    await post(listener, "head.send", { session, head: main, content: "Still here." });
 
-    const renamed = within(
+    const delivered = within(
       (async () => {
         for (let next = await kept.next(); next.done !== true; next = await kept.next())
-          if (kindOf(next.value) === "session") return next.value.id;
+          if (JSON.stringify(next.value).includes("Still here.")) return readKind(next.value);
 
         return "ended";
       })(),
       1_000,
     );
 
-    expect(await renamed).toBe("3");
+    expect(await delivered).toBe("delta");
     await kept.return?.(undefined);
   });
 
-  it("re-reads a device token after a minute, so another host's revoke is seen, ending its open head.watch here (ADV C 3)", async () => {
+  it("re-reads a remembered device token when another host commits, so its revoke there ends an open head.watch here (ADV C 3)", async () => {
     const store = memoryStore();
-    const host = await open(fakeModels(), { store, operations: operations() });
+    const host = await open(fakeModels(), { store, poll: 10 });
     cleanups.push(() => host.close());
-    const other = await open(fakeModels(), { store, operations: operations() });
+    const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
-    vi.useFakeTimers({ toFake: ["Date"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
-    const start = Date.now();
 
     const exchange = await post(
       listener,
@@ -303,59 +288,31 @@ describe("listen", () => {
     const device = { Authorization: `Bearer ${token}` };
 
     expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    vi.setSystemTime(start + 30_000);
-    expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-    vi.setSystemTime(start + 61_000);
-    expect((await post(listener, "sessions.list", {}, device)).status).toBe(200);
-
-    const created = await json(await post(listener, "sessions.create", {}));
-    assert(
-      typeof created === "object" &&
-        created !== null &&
-        "session" in created &&
-        typeof created.session === "string",
-    );
-
-    const watch = await post(
-      listener,
-      "head.watch",
-      { session: created.session, head: main },
-      device,
-    );
+    const { session: created } = await host.sessions.start({ content: "Hi." });
+    const watch = await post(listener, "head.watch", { session: created.id, head: main }, device);
 
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    let frame = (await frames.next()).value;
+    expect(readKind((await frames.next()).value ?? null)).toBe("view");
 
-    while (frame !== undefined && kindOf(frame) !== "catalog") frame = (await frames.next()).value;
-    expect(frame).toBeDefined();
-
-    const ended = endOf(frames);
-
+    const ended = drainFrames(frames);
     const [paired] = await other.principals.list();
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
 
-    expect(await within(ended, 50)).toBe("timed out");
-    vi.setSystemTime(start + 122_000);
+    expect(await within(ended, 1_000)).toBe("unauthenticated");
     const revoked = await post(listener, "sessions.list", {}, device);
-
-    expect([revoked.status, await codeOf(revoked)]).toEqual([401, "unauthenticated"]);
-    expect(await within(ended, 100)).toBe("unauthenticated");
+    expect([revoked.status, await readErrorCode(revoked)]).toEqual([401, "unauthenticated"]);
   });
 
-  it("ends a head.watch opened by its own pairing request within one re-check window of another host's revoke (ADV C-3 N2, probe N2r)", async () => {
+  it("ends a head.watch opened by its own pairing request once another host's revoke commits (ADV C-3 N2, probe N2r)", async () => {
     const store = memoryStore();
-    const host = await open(fakeModels(), { store, operations: operations() });
+    const host = await open(fakeModels(), { store, poll: 10 });
     cleanups.push(() => host.close());
-    const other = await open(fakeModels(), { store, operations: operations() });
+    const other = await open(fakeModels(), { store });
     cleanups.push(() => other.close());
     const listener = await serve(host);
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    cleanups.push(async () => {
-      vi.useRealTimers();
-    });
-    const session = await host.sessions.create();
+    const { session } = await host.sessions.start({ content: "Hi." });
 
     const watch = await post(
       listener,
@@ -367,19 +324,14 @@ describe("listen", () => {
     expect(watch.headers.get("X-Nyte-Credential")).not.toBeNull();
     assert(watch.body !== null);
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
-    let frame = (await frames.next()).value;
+    expect(readKind((await frames.next()).value ?? null)).toBe("view");
 
-    while (frame !== undefined && kindOf(frame) !== "catalog") frame = (await frames.next()).value;
-    expect(frame).toBeDefined();
-
-    const ended = endOf(frames);
+    const ended = drainFrames(frames);
     const [paired] = await other.principals.list();
     assert(paired !== undefined);
     await other.principals.revoke(paired.id);
 
-    expect(await within(ended, 50)).toBe("timed out");
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(await within(ended, 100)).toBe("unauthenticated");
+    expect(await within(ended, 1_000)).toBe("unauthenticated");
   });
 
   it("denies a participant git.stage by the row's authority", async () => {
@@ -403,14 +355,13 @@ describe("listen", () => {
       { Authorization: `Bearer ${token}` },
     );
 
-    expect([response.status, await codeOf(response)]).toEqual([403, "denied"]);
+    expect([response.status, await readErrorCode(response)]).toEqual([403, "denied"]);
   });
 
   it("maps custom authorization to a principal, 401 and 403, and loads wire plugin paths through the kernel's loader", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "nyte-listen-")));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
     const host = await open(fakeModels(), {
-      operations: operations(),
       loadPlugins: pluginLoader([dir]),
     });
     cleanups.push(() => host.close());
@@ -478,7 +429,7 @@ describe("listen", () => {
     ).toBe(200);
     const refused = await post(listener, "sessions.list", {}, { Authorization: random });
 
-    expect([refused.status, await codeOf(refused)]).toEqual([401, "unauthenticated"]);
+    expect([refused.status, await readErrorCode(refused)]).toEqual([401, "unauthenticated"]);
     expect(asked).toEqual([random]);
   });
 
@@ -560,17 +511,20 @@ describe("listen", () => {
     expect(allowed.headers.get("Access-Control-Expose-Headers")).toContain("X-Nyte-Credential");
 
     const other = await post(listener, "sessions.list", {}, { Origin: "https://evil.example" });
-    expect([other.status, await codeOf(other)]).toEqual([403, "denied"]);
+    expect([other.status, await readErrorCode(other)]).toEqual([403, "denied"]);
   });
 
   it("limits the body to maxBodyBytes", async () => {
     const listener = await serve(await compose(fakeModels()), { maxBodyBytes: 64 });
-    const response = await post(listener, "sessions.create", { title: "x".repeat(200) });
+    const response = await post(listener, "sessions.start", {
+      content: "Hi.",
+      title: "x".repeat(200),
+    });
 
-    expect([response.status, await codeOf(response)]).toEqual([413, "invalid"]);
+    expect([response.status, await readErrorCode(response)]).toEqual([413, "invalid"]);
   });
 
-  it("serves over node:http and resumes a head.watch stream after Last-Event-ID", async () => {
+  it("serves a head.watch over node:http, the head's whole view first", async () => {
     const fake = fakeModels();
     fake.reply({ content: [{ type: "text", text: "Hello there." }] });
     const listener = await serve(await compose(fake), { transport: { kind: "http" } });
@@ -582,24 +536,15 @@ describe("listen", () => {
     const settled = await post(address, "receipt.settled", { session, receipt });
     expect(await json(settled)).toMatchObject({ kind: "completed" });
 
-    const first = await until(
+    const [first] = await until(
       await post(address, "head.watch", { session, head: main }),
-      (frame) => kindOf(frame) === "catalog",
+      () => true,
     );
 
-    const ids = first.flatMap((frame) => (frame.id === null ? [] : [frame.id]));
-    const resume = ids[2];
-    assert(resume !== undefined && ids.length > 3);
-
-    const resumed = await until(
-      await post(address, "head.watch", { session, head: main }, { "Last-Event-ID": resume }),
-      (frame) => kindOf(frame) === "catalog",
-    );
-
-    const replayed = resumed.flatMap((frame) => (frame.id === null ? [] : [frame.id]));
-
-    expect(replayed.slice(0, ids.length - 3)).toEqual(ids.slice(3));
-    expect(replayed.every((id) => Number(id) > Number(resume))).toBe(true);
+    expect(first).toMatchObject({
+      kind: "view",
+      view: { messages: [{ kind: "user", content: "Hi." }, { kind: "part" }] },
+    });
   });
 
   it("streams events as they happen over node:http without buffering, and disconnects clients", async () => {
@@ -622,7 +567,8 @@ describe("listen", () => {
     const frames = parseSse(watch.body)[Symbol.asyncIterator]();
     let seen = (await frames.next()).value;
 
-    while (seen !== undefined && kindOf(seen) !== "run") seen = (await frames.next()).value;
+    while (seen !== undefined && !JSON.stringify(seen).includes('"kind":"live"'))
+      seen = (await frames.next()).value;
     expect(seen).toBeDefined();
 
     listener.disconnectClients();
@@ -650,7 +596,7 @@ describe("listen", () => {
 
     await expect(fetch(`${address}/sessions.list`, { method: "POST" })).rejects.toThrow();
     const after = await post(listener, "sessions.list", {});
-    expect([after.status, await codeOf(after)]).toEqual([503, "unavailable"]);
+    expect([after.status, await readErrorCode(after)]).toEqual([503, "unavailable"]);
   });
 });
 

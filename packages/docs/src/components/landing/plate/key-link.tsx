@@ -9,7 +9,7 @@ interface KeyLinkProps {
   children: ReactNode;
 }
 
-/* A link that also follows its letter key, unless the user is typing. */
+/** A link that also follows its letter key, unless the user is typing. */
 export function KeyLink({ href, shortcut, className, kbdClassName, children }: KeyLinkProps) {
   const ref = useRef<HTMLAnchorElement>(null);
 

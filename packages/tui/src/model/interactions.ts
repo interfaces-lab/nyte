@@ -7,41 +7,17 @@ import { listActions } from "./dialogs/list.ts";
 import type { DraftModel } from "./draft.ts";
 import type { Intent } from "./msg.ts";
 import type { QueueRow } from "./queue.ts";
-import type { QuestionModel } from "./question.ts";
-import type { Blocked, EditingModel, RunModel } from "./screen.ts";
-import type { Draft, ShellJob } from "./state.ts";
+import type { Blocked, TableInput } from "./table-input.ts";
 
 export type CoreCommand = "chat.submit" | "chat.queue.submit" | "chat.interrupt" | "chat.quit";
 
-export interface Interaction {
+interface Interaction {
   readonly intent: Intent | null;
   readonly label: string;
   readonly hidden: boolean;
 }
 
 export type Interactions = Readonly<Record<ChatCommand, Interaction>>;
-
-export interface TableInput {
-  readonly run: RunModel;
-  readonly question: QuestionModel | null;
-  readonly draft: DraftModel;
-  readonly runsCommand: boolean;
-  readonly editing: EditingModel | null;
-  readonly shell: ShellJob | null;
-  readonly completion: CompletionModel | null;
-  readonly dialog: Dialog | null;
-  readonly blocked: Blocked | null;
-  readonly queue: readonly QueueRow[];
-  readonly followUp: "steer" | "queue";
-  readonly tasks: number;
-  readonly now: number;
-  readonly cursor: {
-    readonly row: Draft["row"];
-    readonly atStart: boolean;
-    readonly atEnd: boolean;
-  };
-  readonly browsing: boolean;
-}
 
 type Cell = (input: TableInput) => Interaction | null;
 
@@ -90,19 +66,19 @@ function on(intent: Intent, label: string, hidden = false): Interaction {
   return { intent, label, hidden };
 }
 
-function isMessage(
+function composesMessage(
   input: TableInput,
 ): input is TableInput & { readonly draft: Extract<DraftModel, { kind: "message" }> } {
   return input.draft.kind === "message";
 }
 
-export function busyDelivery(followUp: "steer" | "queue", alternate: boolean): Delivery {
+function busyDelivery(followUp: "steer" | "queue", alternate: boolean): Delivery {
   if (!alternate) return followUp;
 
   return followUp === "steer" ? "queue" : "steer";
 }
 
-export function promotable(queue: readonly QueueRow[]): QueueRow | null {
+function promotable(queue: readonly QueueRow[]): QueueRow | null {
   return (
     queue.find(
       (row) => row.withdrawable && row.place.kind !== "joining" && row.place.kind !== "uncovered",
@@ -112,11 +88,9 @@ export function promotable(queue: readonly QueueRow[]): QueueRow | null {
 
 export function blockedReason(blocked: Blocked): string {
   switch (blocked.kind) {
-    case "starting":
-      return "Still starting. Your draft is saved here.";
     case "no-session":
-      return "Loading session. Your draft is saved here.";
     case "switching":
+      return "Opening the chat. Your draft is saved here.";
     case "changing-directory":
       return "Switching workspace. Your draft is saved here.";
     case "authenticating":
@@ -196,13 +170,13 @@ function stopShellQuietly(): Interaction | null {
 function saveEdit(input: TableInput): Interaction | null {
   if (input.editing === null) return null;
 
-  return isMessage(input)
+  return composesMessage(input)
     ? on({ kind: "save-edit", delivery: input.editing.delivery }, "save")
     : on({ kind: "refuse", reason: "Type the message, or esc to cancel the edit" }, "save");
 }
 
 function saveEditAsSteer(input: TableInput): Interaction | null {
-  return isMessage(input)
+  return composesMessage(input)
     ? on({ kind: "save-edit", delivery: "steer" }, "steer")
     : on({ kind: "noop" }, "steer", true);
 }
@@ -258,7 +232,7 @@ function answerOrOpenQuestion(input: TableInput): Interaction | null {
 }
 
 function sendSteer(input: TableInput): Interaction | null {
-  return isMessage(input) ? on({ kind: "send", delivery: "steer" }, "steer") : null;
+  return composesMessage(input) ? on({ kind: "send", delivery: "steer" }, "steer") : null;
 }
 
 function stopRun(input: TableInput): Interaction | null {
@@ -268,7 +242,7 @@ function stopRun(input: TableInput): Interaction | null {
 function sendFollowUpOrPromote(input: TableInput): Interaction | null {
   const delivery = busyDelivery(input.followUp, false);
 
-  if (isMessage(input)) return on({ kind: "send", delivery }, delivery);
+  if (composesMessage(input)) return on({ kind: "send", delivery }, delivery);
   const head = promotable(input.queue);
 
   return head === null
@@ -279,13 +253,13 @@ function sendFollowUpOrPromote(input: TableInput): Interaction | null {
 function sendAlternate(input: TableInput): Interaction | null {
   const delivery = busyDelivery(input.followUp, true);
 
-  return isMessage(input)
+  return composesMessage(input)
     ? on({ kind: "send", delivery }, delivery)
     : on({ kind: "noop" }, delivery, true);
 }
 
 function sendOrPromote(input: TableInput): Interaction | null {
-  if (isMessage(input)) return on({ kind: "send", delivery: "queue" }, "send");
+  if (composesMessage(input)) return on({ kind: "send", delivery: "queue" }, "send");
   const head = promotable(input.queue);
 
   return head === null
@@ -294,7 +268,7 @@ function sendOrPromote(input: TableInput): Interaction | null {
 }
 
 function hiddenNone(input: TableInput): Interaction | null {
-  return isMessage(input)
+  return composesMessage(input)
     ? on({ kind: "send", delivery: "queue" }, "send", true)
     : on({ kind: "noop" }, "send", true);
 }
@@ -318,7 +292,7 @@ function clearOrQuit(input: TableInput): Interaction | null {
     : on({ kind: "clear-draft" }, "clear draft");
 }
 
-export const SITUATIONS: readonly Row[] = [
+const SITUATIONS: readonly Row[] = [
   {
     name: "blocked",
     active: (input) => input.blocked !== null,
@@ -390,6 +364,16 @@ export const SITUATIONS: readonly Row[] = [
     },
   },
   {
+    name: "waiting",
+    active: (input) => input.waiting,
+    cells: {
+      "chat.submit": pass,
+      "chat.queue.submit": pass,
+      "chat.interrupt": () => on({ kind: "recall-first-message" }, "withdraw"),
+      "chat.quit": pass,
+    },
+  },
+  {
     name: "idle",
     active: () => true,
     cells: {
@@ -412,7 +396,9 @@ function core(command: CoreCommand, input: TableInput): Interaction {
   return OFF;
 }
 
-function isCore(command: ChatCommand): command is CoreCommand {
+/** Whether core's table answers `command`; every other command goes to {@link otherInteraction}. */
+// oxlint-disable-next-line nyte-code/no-one-off-boolean-helpers -- a guard: inlined, the miss branch cannot narrow to Exclude<ChatCommand, CoreCommand>
+function handledByCore(command: ChatCommand): command is CoreCommand {
   return CORE_COMMANDS.some((candidate) => candidate === command);
 }
 
@@ -430,7 +416,7 @@ export function dialogKeys(dialog: Dialog): readonly ChatCommand[] {
     case "list":
       return [
         ...LIST_KEYS,
-        ...(dialog.purpose.kind === "question"
+        ...(dialog.purpose.kind === "question" || dialog.purpose.kind === "approval"
           ? (["picker.detail.up", "picker.detail.down"] as const)
           : []),
         ...listActions(dialog.purpose).map((action) => action.command),
@@ -497,17 +483,6 @@ export function dialogKeys(dialog: Dialog): readonly ChatCommand[] {
   }
 }
 
-const DIALOG_ONLY = (command: ChatCommand): boolean =>
-  command.startsWith("picker.") ||
-  command.startsWith("model.") ||
-  command.startsWith("tree.") ||
-  command.startsWith("auth.") ||
-  command === "chat.queue.edit" ||
-  command === "chat.queue.delete" ||
-  command === "chat.queue.up" ||
-  command === "chat.queue.down" ||
-  command === "chat.task.stop";
-
 export function interactionsFor(input: TableInput): Interactions {
   const { dialog } = input;
 
@@ -526,7 +501,7 @@ export function interactionsFor(input: TableInput): Interactions {
   }
 
   return entries((command) =>
-    isCore(command) ? core(command, input) : otherInteraction(command, input),
+    handledByCore(command) ? core(command, input) : otherInteraction(command, input),
   );
 }
 
@@ -600,13 +575,24 @@ function entries(decide: (command: ChatCommand) => Interaction): Interactions {
   };
 }
 
-export function otherInteraction(
+function otherInteraction(
   command: Exclude<ChatCommand, CoreCommand>,
   input: TableInput,
 ): Interaction {
   if (command.startsWith("completion.")) return completionInteraction(command, input.completion);
 
-  if (command.startsWith("composer.") || DIALOG_ONLY(command)) return OFF;
+  const dialogOnly =
+    command.startsWith("picker.") ||
+    command.startsWith("model.") ||
+    command.startsWith("tree.") ||
+    command.startsWith("auth.") ||
+    command === "chat.queue.edit" ||
+    command === "chat.queue.delete" ||
+    command === "chat.queue.up" ||
+    command === "chat.queue.down" ||
+    command === "chat.task.stop";
+
+  if (command.startsWith("composer.") || dialogOnly) return OFF;
 
   if (input.blocked !== null) return OFF;
 
@@ -627,11 +613,13 @@ export function otherInteraction(
     case "chat.message.next":
       return on({ kind: "scroll", to: "next-turn" }, "next message", true);
     case "chat.thinking.cycle":
-      return on({ kind: "cycle-thinking" }, "thinking");
+      return input.models ? on({ kind: "cycle-thinking" }, "thinking") : OFF;
     case "chat.model.next":
-      return on({ kind: "cycle-model", direction: 1 }, "model");
+      return input.models ? on({ kind: "cycle-model", direction: 1 }, "model") : OFF;
     case "chat.model.previous":
-      return on({ kind: "cycle-model", direction: -1 }, "previous model", true);
+      return input.models
+        ? on({ kind: "cycle-model", direction: -1 }, "previous model", true)
+        : OFF;
     case "chat.editor.open":
       return on({ kind: "open-editor" }, "editor", true);
     case "chat.attachment.open":
@@ -710,14 +698,14 @@ function completionInteraction(
   }
 }
 
-function isChatCommand(name: string): name is ChatCommand {
+function namesChatCommand(name: string): name is ChatCommand {
   return Object.hasOwn(CHAT_KEYBINDS, name);
 }
 
 let commandList: readonly ChatCommand[] | null = null;
 
 export function chatCommands(): readonly ChatCommand[] {
-  commandList ??= Object.keys(CHAT_KEYBINDS).filter(isChatCommand);
+  commandList ??= Object.keys(CHAT_KEYBINDS).filter(namesChatCommand);
 
   return commandList;
 }

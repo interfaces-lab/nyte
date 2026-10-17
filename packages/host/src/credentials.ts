@@ -1,7 +1,9 @@
 import { readCredentialAccounts } from "@nyte-ai/ai/auth/types";
 import type { CredentialAccounts, CredentialStore } from "@nyte-ai/ai/auth/types";
+import { SdkError } from "@nyte-ai/schema";
+import { keyedSerial } from "@nyte-ai/schema/serial";
 import type { Json, Ref } from "@nyte-ai/schema";
-import { SdkError, decodeKvValue, envelope, kvRef } from "@nyte-ai/core";
+import { decodeKvValue, envelope, kvRef } from "@nyte-ai/core/store";
 import type { Store, StoreConnection } from "@nyte-ai/core";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -54,7 +56,7 @@ const RETRIES = 5;
  */
 export function credentialStore(store: Store, secrets: SecretsSource): CredentialStore {
   let key: Promise<CryptoKey> | null = null;
-  const chains = new Map<string, Promise<unknown>>();
+  const writes = keyedSerial<string>();
 
   const readKey = (): Promise<CryptoKey> => {
     const known = key ?? importedKey(secrets);
@@ -71,23 +73,12 @@ export function credentialStore(store: Store, secrets: SecretsSource): Credentia
     provider: string,
     signal: AbortSignal | undefined,
     task: () => Promise<T>,
-  ): Promise<T> => {
-    const queued = (chains.get(provider) ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => {
-        signal?.throwIfAborted();
+  ): Promise<T> =>
+    writes.run(provider, () => {
+      signal?.throwIfAborted();
 
-        return task();
-      });
-
-    const tail = queued.catch(() => undefined);
-    chains.set(provider, tail);
-    void tail.then(() => {
-      if (chains.get(provider) === tail) chains.delete(provider);
+      return task();
     });
-
-    return queued;
-  };
 
   return {
     async read(provider, options) {

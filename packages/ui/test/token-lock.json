@@ -126,9 +126,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/styles/theme.stylex.ts danger": [
-      "border"
-    ],
+    "ui/src/styles/theme.stylex.ts danger": ["border"],
     "ui/src/styles/theme.stylex.ts gray": [
       "--nyte-theme-0",
       "--nyte-theme-10",
@@ -471,10 +469,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/styles/theme.stylex.ts tint": [
-      "--nyte-custom-chroma-scale",
-      "--nyte-custom-hue"
-    ],
+    "ui/src/styles/theme.stylex.ts tint": ["--nyte-custom-chroma-scale", "--nyte-custom-hue"],
     "ui/src/styles/theme.stylex.ts yellow": [
       "--nyte-theme-0",
       "--nyte-theme-10",
@@ -553,6 +548,7 @@
       "--nyte-button-fill",
       "--nyte-button-fill-hover",
       "--nyte-button-fill-pressed",
+      "--nyte-chart-series",
       "--nyte-content-chrome",
       "--nyte-content-disabled",
       "--nyte-content-interactive-primary",
@@ -683,19 +679,14 @@
       "--nyte-toast-close-gutter",
       "--nyte-toast-min-height"
     ],
-    "ui/src/styles/tokens.stylex.ts displayMode": [
-      "--nyte-popup-material-filter"
-    ],
+    "ui/src/styles/tokens.stylex.ts displayMode": ["--nyte-popup-material-filter"],
     "ui/src/styles/tokens.stylex.ts elevation": [
       "--nyte-shadow-lg",
       "--nyte-shadow-sm",
       "--nyte-shadow-workbench",
       "--nyte-shadow-xl"
     ],
-    "ui/src/styles/tokens.stylex.ts focusModality": [
-      "--nyte-focus-color",
-      "--nyte-focus-ring"
-    ],
+    "ui/src/styles/tokens.stylex.ts focusModality": ["--nyte-focus-color", "--nyte-focus-ring"],
     "ui/src/styles/tokens.stylex.ts motion": [
       "--nyte-duration-fast",
       "--nyte-duration-instant",
@@ -705,15 +696,9 @@
       "--nyte-easing-out",
       "--nyte-easing-out-quint"
     ],
-    "ui/src/styles/tokens.stylex.ts pointerCursor": [
-      "--nyte-cursor-interactive"
-    ],
-    "ui/src/styles/tokens.stylex.ts spacing": [
-      "--nyte-space-unit"
-    ],
-    "ui/src/styles/tokens.stylex.ts transparency": [
-      "--nyte-reduce-transparency"
-    ],
+    "ui/src/styles/tokens.stylex.ts pointerCursor": ["--nyte-cursor-interactive"],
+    "ui/src/styles/tokens.stylex.ts spacing": ["--nyte-space-unit"],
+    "ui/src/styles/tokens.stylex.ts transparency": ["--nyte-reduce-transparency"],
     "ui/src/styles/tokens.stylex.ts typography": [
       "--nyte-code-font-jetbrains-mono",
       "--nyte-code-font-system",
@@ -805,9 +790,7 @@
       "--nyte-workbench-row-padding-inline",
       "--nyte-workbench-sash-width"
     ],
-    "app/src/theme/tokens.stylex.ts windowInput": [
-      "--nyte-window-zoom"
-    ]
+    "app/src/theme/tokens.stylex.ts windowInput": ["--nyte-window-zoom"]
   },
   "handles": {
     "ui/src/styles/vars.stylex.ts appearance": [
@@ -861,6 +844,7 @@
       "buttonFill",
       "buttonFillHover",
       "buttonFillPressed",
+      "chartSeries",
       "contentChrome",
       "contentDisabled",
       "contentInteractivePrimary",
@@ -909,12 +893,7 @@
       "weightRegular",
       "weightSemibold"
     ],
-    "ui/src/styles/schema.stylex.ts avatar": [
-      "lg",
-      "md",
-      "sm",
-      "xs"
-    ],
+    "ui/src/styles/schema.stylex.ts avatar": ["lg", "md", "sm", "xs"],
     "ui/src/styles/schema.stylex.ts button": [
       "gap2xs",
       "gapLg",
@@ -948,27 +927,10 @@
       "radiusXl",
       "radiusXs"
     ],
-    "ui/src/styles/schema.stylex.ts checkbox": [
-      "radius",
-      "sizeLg",
-      "sizeMd"
-    ],
-    "ui/src/styles/schema.stylex.ts clipboardPreview": [
-      "maxHeight",
-      "maxWidth"
-    ],
-    "ui/src/styles/schema.stylex.ts dialog": [
-      "gap",
-      "padding",
-      "radius",
-      "width"
-    ],
-    "ui/src/styles/schema.stylex.ts glyph": [
-      "box",
-      "lg",
-      "md",
-      "sm"
-    ],
+    "ui/src/styles/schema.stylex.ts checkbox": ["radius", "sizeLg", "sizeMd"],
+    "ui/src/styles/schema.stylex.ts clipboardPreview": ["maxHeight", "maxWidth"],
+    "ui/src/styles/schema.stylex.ts dialog": ["gap", "padding", "radius", "width"],
+    "ui/src/styles/schema.stylex.ts glyph": ["box", "lg", "md", "sm"],
     "ui/src/styles/schema.stylex.ts input": [
       "heightLg",
       "heightMd",
@@ -1004,6 +966,7 @@
       "tooltip",
       "workbench"
     ],
+    "ui/src/styles/schema.stylex.ts media": ["hover"],
     "ui/src/styles/schema.stylex.ts menu": [
       "itemGap",
       "itemHeight",
@@ -1018,13 +981,7 @@
       "radius",
       "width"
     ],
-    "ui/src/styles/schema.stylex.ts radius": [
-      "card",
-      "control",
-      "indicator",
-      "pill",
-      "surface"
-    ],
+    "ui/src/styles/schema.stylex.ts radius": ["card", "control", "indicator", "pill", "surface"],
     "ui/src/styles/schema.stylex.ts row": [
       "gap",
       "heightLg",
@@ -1033,9 +990,7 @@
       "paddingInlineMd",
       "radius"
     ],
-    "ui/src/styles/schema.stylex.ts slider": [
-      "thumb"
-    ],
+    "ui/src/styles/schema.stylex.ts slider": ["thumb"],
     "ui/src/styles/schema.stylex.ts space": [
       "px",
       "s0_5",
@@ -1049,20 +1004,9 @@
       "s6",
       "s8"
     ],
-    "ui/src/styles/schema.stylex.ts switchControl": [
-      "heightMd",
-      "knobMd",
-      "paddingMd",
-      "widthMd"
-    ],
-    "ui/src/styles/schema.stylex.ts target": [
-      "gap",
-      "min"
-    ],
-    "ui/src/styles/schema.stylex.ts toast": [
-      "closeGutter",
-      "minHeight"
-    ],
+    "ui/src/styles/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
+    "ui/src/styles/schema.stylex.ts target": ["gap", "min"],
+    "ui/src/styles/schema.stylex.ts toast": ["closeGutter", "minHeight"],
     "app/src/theme/schema.stylex.ts conversation": [
       "composerExpandedRadius",
       "composerInset",
@@ -1077,14 +1021,8 @@
       "rowMinHeight",
       "turnGap"
     ],
-    "app/src/theme/schema.stylex.ts diffView": [
-      "lineHeight",
-      "previewMaxHeight"
-    ],
-    "app/src/theme/schema.stylex.ts pane": [
-      "dividerGap",
-      "sashSize"
-    ],
+    "app/src/theme/schema.stylex.ts diffView": ["lineHeight", "previewMaxHeight"],
+    "app/src/theme/schema.stylex.ts pane": ["dividerGap", "sashSize"],
     "app/src/theme/schema.stylex.ts settings": [
       "cardGap",
       "contentGutter",
@@ -1099,11 +1037,7 @@
       "sectionTitleLineHeight",
       "sectionTitleSize"
     ],
-    "app/src/theme/schema.stylex.ts shell": [
-      "cardInset",
-      "titlebarHeight",
-      "trafficLightInset"
-    ],
+    "app/src/theme/schema.stylex.ts shell": ["cardInset", "titlebarHeight", "trafficLightInset"],
     "app/src/theme/schema.stylex.ts sidebar": [
       "actionSize",
       "askRowHeight",

@@ -6,7 +6,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Toolbar } from "@nyte-ai/ui/toolbar";
-import { iconReferences } from "../../ui/test/icon-references.ts";
+import { iconReferences } from "@nyte-ai/ui/test/icon-references";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../src/theme/tokens.stylex.ts";
 
@@ -108,22 +108,28 @@ export function mount(): void {
     root.render(
       <>
         <style>{"* { transition: none !important; }"}</style>
-        {iconReferences.flatMap(({ name, outlined, filled }) =>
-          (["outlined", "filled"] as const).map((variant) => {
-            const Reference = variant === "outlined" ? outlined : filled;
-
-            return (
-              <div key={`${name}:${variant}`} data-icon-pair={`${name}:${variant}`}>
-                <span data-sample>
-                  <Icon name={name} variant={variant} size={16} />
-                </span>
-                <span data-reference>
-                  <Reference size={16} mode="raw" ariaHidden />
-                </span>
-              </div>
-            );
-          }),
-        )}
+        {iconReferences.flatMap((reference) => [
+          <div key={`${reference.name}:outlined`} data-icon-pair={`${reference.name}:outlined`}>
+            <span data-sample>
+              <Icon name={reference.name} size={16} />
+            </span>
+            <span data-reference>
+              <reference.outlined size={16} mode="raw" ariaHidden />
+            </span>
+          </div>,
+          ...("filled" in reference
+            ? [
+                <div key={`${reference.name}:filled`} data-icon-pair={`${reference.name}:filled`}>
+                  <span data-sample>
+                    <Icon name={reference.name} variant="filled" size={16} />
+                  </span>
+                  <span data-reference>
+                    <reference.filled size={16} mode="raw" ariaHidden />
+                  </span>
+                </div>,
+              ]
+            : []),
+        ])}
         {(["left", "right"] as const).flatMap((side) =>
           [false, true].map((visible) => (
             <div key={`${side}:${visible}`} data-panel={`${side}:${visible}`}>
@@ -145,7 +151,7 @@ export function mount(): void {
             <div key={`${variant}:${disabled}`} data-control={`button:${variant}:${disabled}`}>
               <Button variant={variant} disabled={disabled} iconOnly aria-label="Back">
                 <Icon
-                  name="arrow-left"
+                  name="warning"
                   variant="filled"
                   size={16}
                   style={{ color: "red", opacity: 0.2 }}
@@ -171,6 +177,7 @@ export function mount(): void {
   );
 }
 
+/** A disabled control dims as a whole; only the glyph's own opacity must not leak into its ink. */
 export async function run(): Promise<string> {
   mount();
 
@@ -253,11 +260,10 @@ export async function run(): Promise<string> {
 
         if (name.startsWith("button:") || name === "toolbar" || name === "local") {
           const reference = host.querySelector(
-            `[data-icon-pair="arrow-left:${name === "toolbar" || name === "local" ? "outlined" : "filled"}"] [data-reference]`,
+            `[data-icon-pair="${name === "toolbar" || name === "local" ? "arrow-left:outlined" : "warning:filled"}"] [data-reference]`,
           );
 
           if (!reference) throw new Error("Missing button reference");
-          // A disabled control dims as a whole; only the glyph's own opacity must not leak.
           const dimming = Number(getComputedStyle(control).opacity);
           check(
             Math.abs(actual.ink / ((await raster(reference)).ink * dimming) - 1) < 0.05,

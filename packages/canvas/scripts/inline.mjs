@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CANVAS_RUNTIME } from "@nyte-ai/plugin/canvas/protocol";
 
@@ -64,6 +64,25 @@ await writeFile(
   join(dist, "shell-inline.d.ts"),
   "export declare const shell: { readonly runtime: number; readonly html: string };\n",
 );
+/** Every file of the shell directory, base64 by its path from it, for a host that serves the shell itself at a URL of its own (a headless preview), as the chat's clients serve dist/shell. */
+const files = Object.fromEntries(
+  await Promise.all(
+    (await readdir(shell, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(entry.parentPath, entry.name))
+      .toSorted()
+      .map(async (path) => [
+        relative(shell, path).split(sep).join("/"),
+        (await readFile(path)).toString("base64"),
+      ]),
+  ),
+);
+
+await writeFile(join(dist, "shell-files.js"), `export const files = ${JSON.stringify(files)};\n`);
+await writeFile(
+  join(dist, "shell-files.d.ts"),
+  "export declare const files: Readonly<Record<string, string>>;\n",
+);
 process.stdout.write(
-  `dist/shell-inline.js: ${String(Math.round(inlined.length / 1024))} KB, script ${hash}\n`,
+  `dist/shell-inline.js: ${String(Math.round(inlined.length / 1024))} KB, script ${hash}; dist/shell-files.js: ${Object.keys(files).length} files\n`,
 );
