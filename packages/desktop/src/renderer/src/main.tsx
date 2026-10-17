@@ -13,9 +13,8 @@ import { focusManager } from "@tanstack/react-query";
 import {
   App,
   connectLocalHost,
-  loadHostState,
   createAppRouter,
-  restoreFocusedFolder,
+  loadWindowHostState,
   startRendererStartup,
   startWindowTabs,
   windowTabRoute,
@@ -95,7 +94,7 @@ startRendererStartup({
   mountShell,
   loadResources: () =>
     Promise.all([
-      Promise.all([loadHostState(), windowTabsReady]).then(restoreFocusedFolder),
+      windowTabsReady.then(loadWindowHostState),
       document.fonts.load('13px "Inter Variable"'),
       document.fonts.load('12px "JetBrains Mono Variable"'),
     ]).then(() => undefined),

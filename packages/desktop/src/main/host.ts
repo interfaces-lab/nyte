@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
+import { asId } from "@nyte-ai/schema";
 import { serial } from "@nyte-ai/schema/serial";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
@@ -426,11 +427,12 @@ export class DesktopHost {
 
       return { url, credentials: { kind: "token", token }, expect: { hostId: host.hostId } };
     },
-    "host.state": async (window) => ({
-      workspace: this.#selections.get(window),
-      platform: process.platform,
-      machineName: machineName(),
-    }),
+    "host.state": async (window) => this.#state(window),
+    "host.restore": async (window, { session }) => {
+      if (!this.#selections.has(window)) await this.#selectChatFolder(window, session);
+
+      return this.#state(window);
+    },
     "host.openWorkspace": (window, { path }) => this.#openWorkspace(window, path),
     "host.trustWorkspace": (window, { path }) => this.#openWorkspace(window, path, true),
     "host.closeWorkspace": async (window) => {
@@ -522,6 +524,37 @@ export class DesktopHost {
 
   async autostartConnect(): Promise<void> {
     await this.#deps.connect?.autostart(this.#connectShare);
+  }
+
+  #state(window: HostWindow) {
+    return {
+      workspace: this.#selections.get(window),
+      platform: process.platform,
+      machineName: machineName(),
+    };
+  }
+
+  /** Selects chat `session`'s folder for `window` without announcing it; the caller's reply carries it. */
+  async #selectChatFolder(window: HostWindow, session: string): Promise<void> {
+    const { host } = await this.#opened;
+    const info = await host
+      .session(asId<"session">(session))
+      .info()
+      .catch(() => null);
+
+    if (info === null) return;
+    const workspace = (await host.workspaces.list()).find((entry) => entry.id === info.workspace);
+
+    if (
+      workspace === undefined ||
+      workspace.availability.kind === "unavailable" ||
+      workspace.target.kind !== "local" ||
+      !("path" in workspace.target) ||
+      (workspace.trusted === null && workspace.projectSources.length > 0)
+    )
+      return;
+    const { path } = workspace.target;
+    this.#selections.set(window, { id: workspace.id, path, name: basename(path) });
   }
 
   async #openWorkspace(

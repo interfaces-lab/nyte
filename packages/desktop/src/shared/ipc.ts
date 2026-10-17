@@ -45,6 +45,7 @@ export const MAIN_OPERATION_PATHS = [
 const HOST_PROCESS_PATHS = [
   "host.endpoint",
   "host.state",
+  "host.restore",
   "host.usage",
   "host.openWorkspace",
   "host.trustWorkspace",
@@ -103,6 +104,7 @@ export type DesktopBridge = {
       Pick<
         HostBridge,
         | "usage"
+        | "restore"
         | "pickWorkspace"
         | "trustWorkspace"
         | "updates"

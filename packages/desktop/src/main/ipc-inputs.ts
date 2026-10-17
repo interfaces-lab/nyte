@@ -76,6 +76,7 @@ type CallInputParsers = { readonly [P in CallPath]: Parser<CallInput<P>> };
 export const CALL_INPUT_SCHEMAS: CallInputParsers = {
   "host.endpoint": compile(noInput),
   "host.state": compile(noInput),
+  "host.restore": compile(strict({ session: nonEmpty })),
   "host.fonts": compile(noInput),
   "host.usage": checkedUsageWindow,
   "host.openWorkspace": compile(strict({ path: nonEmpty })),

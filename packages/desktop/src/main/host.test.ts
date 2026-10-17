@@ -178,6 +178,28 @@ test("opening a folder registers it and selects it for that window only; a faile
   ]);
 });
 
+test("a window reopening on a chat answers its state with the chat's folder selected, and announces nothing", async () => {
+  const received: HostEvent[] = [];
+  const made = await desktop({ emitHostEvent: (event) => received.push(event) });
+  const folder = join(made.home, "project");
+  await mkdir(folder);
+  const opened = await made.host.call(1, "host.openWorkspace", { path: folder });
+
+  if (opened.kind !== "opened") throw new Error("The folder did not open");
+  const host = await made.host.host();
+  await host.workspace(opened.workspace.id).update({ projectResources: true });
+  const chat = await host.sessions.create({ workspace: opened.workspace.id });
+  received.length = 0;
+
+  assert.deepEqual((await made.host.call(2, "host.restore", { session: chat.id })).workspace, {
+    id: opened.workspace.id,
+    path: folder,
+    name: "project",
+  });
+  assert.equal((await made.host.call(3, "host.restore", { session: "gone" })).workspace, undefined);
+  assert.deepEqual(received, []);
+});
+
 test("a key login over the loopback listener connects the provider, and the reopened home keeps it without reading the key", async () => {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-login-")));
   const store = sqliteStore({ path: join(home, "credentials.db") });

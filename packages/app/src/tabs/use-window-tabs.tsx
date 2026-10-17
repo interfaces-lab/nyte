@@ -5,14 +5,14 @@
  */
 import { useRouter } from "@tanstack/react-router";
 import { useMemo, useSyncExternalStore } from "react";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
+import { nyte } from "../nyte.ts";
 import {
   keys,
+  loadHostState,
   queryClient,
   sessionFolderPath,
   useWorkingSessionIds,
@@ -33,63 +33,18 @@ export function useWindowTabsState(): WindowState {
   return useSyncExternalStore(windowTabs.subscribe, windowTabs.getSnapshot, windowTabs.getSnapshot);
 }
 
-const FOLDERS_KEY = "nyte.desktop.chat-folders.v1";
-
-const FoldersSchema = Type.Record(Type.String(), Type.Union([Type.String(), Type.Null()]));
-
-function readFolders(): Readonly<Record<string, string | null>> {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(FOLDERS_KEY) ?? "{}");
-
-    return Value.Check(FoldersSchema, parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-/** Keeps the folder each chat open in this window's tabs was last shown in, for the next launch's first frame. */
-function rememberFolder(sessionId: SessionId, folder: string | null): void {
-  const open = new Set<string>(
-    windowTabs
-      .getSnapshot()
-      .tabs.flatMap((tab) => tabPlaces(tab))
-      .flatMap((place) => (place.kind === "session" ? [place.sessionId] : [])),
-  );
-
-  const kept = Object.entries(readFolders()).filter(([id]) => open.has(id) && id !== sessionId);
-
-  try {
-    localStorage.setItem(
-      FOLDERS_KEY,
-      JSON.stringify(Object.fromEntries([...kept, [sessionId, folder]])),
-    );
-  } catch {
-    return;
-  }
-}
-
-function sessionFolder(sessionId: SessionId): string | null | undefined {
-  const folder = sessionFolderPath(sessionId);
-
-  if (folder !== undefined) rememberFolder(sessionId, folder);
-
-  return folder;
-}
-
 /**
- * Selects the folder the restored active tab's chat was last shown in, before
- * the window's first frame. The session directory that names it arrives only
- * after the host connection opens, and selecting the folder then swaps the
- * workbench under a transcript already painted. A chat with no remembered
- * folder, or a folder that no longer opens, waits for the directory as before.
+ * Loads the host state for the window's first frame. A window reopening on a
+ * chat asks the host to select that chat's folder in the same answer, since
+ * the session directory that names the folder arrives only after the host
+ * connection opens and selecting it then swaps the workbench under a
+ * transcript already painted.
  */
-export async function restoreFocusedFolder(): Promise<void> {
+export async function loadWindowHostState(): Promise<void> {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
 
-  if (place.kind !== "session") return;
-  const folder = readFolders()[place.sessionId];
-
-  if (folder !== undefined) await activateWorkspace(folder).catch(() => false);
+  if (place.kind !== "session" || nyte.host.restore === undefined) return loadHostState();
+  queryClient.setQueryData(keys.host, await nyte.host.restore({ session: place.sessionId }));
 }
 
 /**
@@ -126,7 +81,7 @@ export function useWindowTabsSync(): void {
         return;
       }
 
-      const folder = sessionFolder(place.sessionId);
+      const folder = sessionFolderPath(place.sessionId);
 
       if (folder === undefined) return;
       followed = focus;

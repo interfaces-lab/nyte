@@ -717,6 +717,14 @@ export interface HostBridge {
   setThemePreference(preference: ThemePreference): void;
   state(): Promise<HostState>;
   /**
+   * The host state for a window reopening on chat `session`: when the window
+   * has no folder yet, the chat's folder is selected first, so the window's
+   * first frame shows the chat where it lives. A folder that is gone, or one
+   * whose project files still await a trust decision, is left for the window
+   * to open. Absent where the host keeps no folder per window: the web app.
+   */
+  readonly restore?: (input: { readonly session: string }) => Promise<HostState>;
+  /**
    * Where the host's listener is and the credential to reach it with. The
    * interface connects with `sdk.connect` and holds that one connection.
    */

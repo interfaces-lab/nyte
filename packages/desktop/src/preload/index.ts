@@ -99,6 +99,7 @@ const bridge = {
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
     endpoint: none("host.endpoint"),
     state: none("host.state"),
+    restore: object("host.restore"),
     fonts: none("host.fonts"),
     usage: object("host.usage"),
     openWorkspace: object("host.openWorkspace"),
