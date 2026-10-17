@@ -54,6 +54,13 @@ const metricFields = [
     unit: "ms",
     budget: every(495),
   },
+  { key: "spawnToWindowShownMs", label: "Spawn to window shown", unit: "ms", budget: null },
+  {
+    key: "windowShownToFirstPaintMs",
+    label: "Window shown to first paint (FCP)",
+    unit: "ms",
+    budget: null,
+  },
   { key: "keystrokeToPaintMs", label: "Keystroke to paint", unit: "ms", budget: every(16.7) },
   {
     key: "longTasks",
@@ -635,6 +642,11 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
       created === null ? [] : [renderer.timeOriginEpochMs + rendererMs - created];
 
     const firstKeystroke = renderer.keystrokes[0];
+    const windowShown = main.marks.find((mark) => mark.name === "nyte:window-shown");
+
+    const windowShownEpochMs =
+      windowShown === undefined ? undefined : main.timeOriginEpochMs + windowShown.startTime;
+
     const longTasks = renderer.longTasks ?? [];
     const fcp = renderer.firstContentfulPaintMs ?? renderer.firstPaintMs;
 
@@ -658,6 +670,14 @@ async function measure(identity: Identity, fixture: StartupFixture): Promise<Sam
             : sinceSpawn(firstKeystroke.startTime + firstKeystroke.duration),
         spawnToComposerMs: sinceSpawn(ready.readyMs),
         spawnToFirstPaintMs: sinceSpawn(fcp),
+        spawnToWindowShownMs:
+          created === null || windowShownEpochMs === undefined
+            ? []
+            : [windowShownEpochMs - created],
+        windowShownToFirstPaintMs:
+          windowShownEpochMs === undefined
+            ? []
+            : [renderer.timeOriginEpochMs + fcp - windowShownEpochMs],
         keystrokeToPaintMs: renderer.keystrokes.map(({ duration }) => duration),
         longTasks: renderer.longTasks === null ? [] : [longTasks.length],
         longTaskMs:

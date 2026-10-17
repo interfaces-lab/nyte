@@ -6,6 +6,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { WINDOW_PAINTED_CHANNEL } from "../src/shared/ipc.ts";
 
 const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
 
@@ -45,6 +46,11 @@ interface LaunchOptions {
   readonly appData?: string;
   /** Hold the host this long before it opens. */
   readonly hostDelayMs?: number;
+  /**
+   * Typed into the focused element by main the moment the renderer reports its first frame,
+   * long before Playwright could reach the window.
+   */
+  readonly typeAtFirstFrame?: string;
 }
 
 interface LaunchedDesktop {
@@ -107,9 +113,14 @@ export async function launchDesktop(options: LaunchOptions): Promise<LaunchedDes
       ? ""
       : `app.setPath("downloads", ${JSON.stringify(resolve(options.downloadsDirectory))});\n`;
 
+  const typing =
+    options.typeAtFirstFrame === undefined
+      ? ""
+      : `ipcMain.once(${JSON.stringify(WINDOW_PAINTED_CHANNEL)}, (event) => {\n  for (const character of ${JSON.stringify(Array.from(new Intl.Segmenter().segment(options.typeAtFirstFrame), ({ segment }) => segment))}) {\n    const key = character === " " ? "Space" : character;\n    event.sender.sendInputEvent({ type: "keyDown", keyCode: key });\n    event.sender.sendInputEvent({ type: "char", keyCode: character });\n    event.sender.sendInputEvent({ type: "keyUp", keyCode: key });\n  }\n});\n`;
+
   await writeFile(
     join(root, "environment.mjs"),
-    `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(join(appData, "user-data"))});\n${downloads}`,
+    `import { app, ipcMain } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\napp.setPath("userData", ${JSON.stringify(join(appData, "user-data"))});\n${downloads}${typing}`,
   );
   await writeFile(
     join(root, "entry.mjs"),

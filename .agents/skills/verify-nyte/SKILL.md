@@ -145,8 +145,8 @@ For performance, inspect `actions["text.idle"]` in the TUI report. QA enforces p
 16.67 ms and maximum at or below 50 ms. Compare matching inputs on the same identified build;
 unit-test duration is not application latency. For packaged desktop startup, use
 `pnpm bench:desktop --exe /absolute/path/to/Nyte --scenario fresh --runs 3 --warmup 1 --out /tmp/nyte-startup.json`.
-The executable must already be packaged. Report measured count, spread, failures and whether
-the five-second splash limit passed. Use `--compare` for two identified builds; a single-build
+The executable must already be packaged. Report measured count, spread, failures and which
+metric budgets passed. Use `--compare` for two identified builds; a single-build
 budget check does not establish a before/after speedup.
 
 Let runner cleanup finish after a pass or failure. If interrupted, inspect the recorded process

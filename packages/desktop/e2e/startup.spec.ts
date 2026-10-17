@@ -13,6 +13,17 @@ const HOST_DELAY_MS = 6_000;
 
 const DRAFT = "Typed before the host opened";
 
+/** One refresh of a 60 Hz display. */
+const FRAME_MS = 1_000 / 60;
+
+/**
+ * Frames the window server takes to put a newly shown window's frame on glass, read from a
+ * startup trace: a frame swapped while the window was hidden gets no presentation time, so FCP
+ * is the first frame presented after the show, two refreshes later (one to bring the window
+ * on screen, one to present the next swap). One more allows for a missed deadline.
+ */
+const SHOW_TO_PAINT_FRAMES = 3;
+
 interface RendererMarks {
   readonly timeOrigin: number;
   readonly startup: number | undefined;
@@ -22,7 +33,8 @@ interface RendererMarks {
    * paint before the shell's first frame.
    */
   readonly firstContentfulPaint: number | undefined;
-  readonly firstInput: number | undefined;
+  /** When the renderer finished handling the first key main typed at its first frame. */
+  readonly firstInputHandled: number | undefined;
   readonly sdkConnected: number | undefined;
 }
 
@@ -35,7 +47,9 @@ function readMarks(page: Page): Promise<RendererMarks> {
       startup: at("nyte:startup"),
       shellReady: at("nyte:shell-ready"),
       firstContentfulPaint: at("first-contentful-paint"),
-      firstInput: at("e2e:first-input"),
+      firstInputHandled: performance
+        .getEntriesByType("first-input")
+        .find((entry) => entry instanceof PerformanceEventTiming)?.processingEnd,
       sdkConnected: at("nyte:sdk-connected"),
     };
   });
@@ -67,6 +81,7 @@ test("a relaunch draws the last run's chats and model while the host is held, an
     parentDirectory: parent,
     appData,
     hostDelayMs: HOST_DELAY_MS,
+    typeAtFirstFrame: DRAFT,
   });
 
   cleanup.defer(() => second.close());
@@ -93,15 +108,7 @@ test("a relaunch draws the last run's chats and model while the host is held, an
       .toBe(true);
   });
 
-  await test.step("typing lands and Enter holds the draft until the host opens", async () => {
-    await page.evaluate(() =>
-      document.addEventListener("input", () => performance.mark("e2e:first-input"), {
-        capture: true,
-        once: true,
-      }),
-    );
-    await field.click();
-    await page.keyboard.type(DRAFT);
+  await test.step("keys typed at the first frame land, and Enter holds the draft until the host opens", async () => {
     await expect(field).toHaveText(DRAFT);
     await field.press("Enter");
     await expect(chatPane(page).getByRole("status")).toContainText("Sends when Nyte connects");
@@ -128,10 +135,17 @@ test("a relaunch draws the last run's chats and model while the host is held, an
     await expect(sidebar(page).getByRole("button", { name: /^Draft /u })).toHaveCount(0);
   });
 
-  const { shellReady, firstContentfulPaint, firstInput, startup, timeOrigin } = held;
+  const { shellReady, firstContentfulPaint, firstInputHandled, startup, timeOrigin } = held;
 
-  if (shellReady === undefined || firstContentfulPaint === undefined || firstInput === undefined)
-    throw new Error(`Missing a first-frame mark: ${JSON.stringify(held)}`);
+  if (
+    shellReady === undefined ||
+    firstContentfulPaint === undefined ||
+    firstInputHandled === undefined ||
+    windowShown === undefined
+  )
+    throw new Error(`Missing a first-frame mark: ${JSON.stringify({ ...held, windowShown })}`);
+
+  const shown = windowShown - timeOrigin;
 
   const connected = (await readMarks(page)).sdkConnected;
 
@@ -141,11 +155,10 @@ test("a relaunch draws the last run's chats and model while the host is held, an
     shellReadyMs: shellReady,
     firstContentfulPaintMs: firstContentfulPaint,
     firstContentfulPaintAfterShellMs: firstContentfulPaint - shellReady,
-    windowShownAfterShellMs:
-      windowShown === undefined ? undefined : windowShown - (timeOrigin + shellReady),
-    firstContentfulPaintAfterWindowShownMs:
-      windowShown === undefined ? undefined : timeOrigin + firstContentfulPaint - windowShown,
-    firstInputMs: firstInput,
+    windowShownAfterShellMs: shown - shellReady,
+    firstContentfulPaintAfterWindowShownMs: firstContentfulPaint - shown,
+    firstInputHandledMs: firstInputHandled,
+    firstInputHandledAfterFirstContentfulPaintMs: firstInputHandled - firstContentfulPaint,
     sdkConnectedMs: connected,
   };
 
@@ -155,8 +168,10 @@ test("a relaunch draws the last run's chats and model while the host is held, an
   });
   process.stdout.write(`first-frame marks ${JSON.stringify(report)}\n`);
 
-  expect(firstContentfulPaint).toBeGreaterThanOrEqual(shellReady);
-  expect(firstInput).toBeLessThan(connected ?? Number.POSITIVE_INFINITY);
+  expect(shown).toBeGreaterThanOrEqual(shellReady);
+  expect(firstContentfulPaint - shown).toBeLessThanOrEqual(SHOW_TO_PAINT_FRAMES * FRAME_MS);
+  expect(firstInputHandled).toBeLessThanOrEqual(firstContentfulPaint + FRAME_MS);
+  expect(firstInputHandled).toBeLessThan(connected ?? Number.POSITIVE_INFINITY);
   expect(errors.pageErrors).toEqual([]);
   expect(errors.consoleErrors.filter((text) => !text.startsWith("DEV:"))).toEqual([]);
 });
