@@ -215,6 +215,35 @@ describe("toolCard", () => {
     );
   });
 
+  test("a delegation card marks a subagent that works in a worktree", () => {
+    const create = findTool("task", {
+      class: { kind: "delegate", role: "create", child: null, title: "explore" },
+      args: { prompt: "look around", isolation: "worktree" },
+      running: true,
+    });
+
+    const task: Task = {
+      kind: "agent",
+      id: asId("child-1"),
+      info: {
+        id: asId("child-1"),
+        name: "explorer",
+        parent: asId("s1"),
+        call: create.state.call,
+        workspace: asId("w"),
+        pinned: false,
+        archived: false,
+        activation: { kind: "active" },
+        heads: [],
+        createdAt: 0,
+        lastActivityAt: 0,
+      },
+      view: buildView((v) => v.turn("c1", (t) => t.user("look around")).live()),
+    };
+
+    expect(text(toolCard(create, [task], false))).toBe("● explorer  model · medium · worktree");
+  });
+
   test("a call on a child is one line naming it", () => {
     const sendClass: ToolClass = {
       kind: "delegate",
