@@ -102,18 +102,33 @@ if (target === undefined) {
   visit(entry);
 }
 
-const publishedExport = (source) => ({
-  types: source.replace("./", "./dist/").replace(/\.tsx?$/, ".d.ts"),
-  import: source.replace("./", "./dist/").replace(/\.tsx?$/, ".js"),
-});
+const publishedExport = (target) =>
+  typeof target === "string"
+    ? {
+        types: target.replace("./", "./dist/").replace(/\.tsx?$/, ".d.ts"),
+        import: target.replace("./", "./dist/").replace(/\.tsx?$/, ".js"),
+      }
+    : Object.fromEntries(
+        Object.entries(target).map(([condition, source]) => [condition, publishedExport(source)]),
+      );
+
+const publishedFiles = (entry) =>
+  typeof entry === "string" ? [entry] : Object.values(entry).flatMap(publishedFiles);
+
+function defaultSource(name, target) {
+  const source = typeof target === "string" ? target : target.default;
+
+  if (typeof source !== "string") throw new Error(`${name} needs a default export condition`);
+
+  return source;
+}
 
 const paths = {};
 
 for (const { directory, manifest } of packages) {
-  for (const [subpath, source] of Object.entries(manifest.exports)) {
+  for (const [subpath, target] of Object.entries(manifest.exports)) {
     const name = subpath === "." ? manifest.name : `${manifest.name}${subpath.slice(1)}`;
-    const published = publishedExport(source);
-    paths[name] = [resolve(root, directory, published.types)];
+    paths[name] = [resolve(root, directory, publishedExport(defaultSource(name, target)).types)];
   }
 }
 
@@ -139,9 +154,9 @@ if (command === "check") {
     const config = join(dist, "tsconfig.json");
     const ownPaths = { ...paths };
 
-    for (const [subpath, source] of Object.entries(manifest.exports)) {
+    for (const [subpath, target] of Object.entries(manifest.exports)) {
       const name = subpath === "." ? manifest.name : `${manifest.name}${subpath.slice(1)}`;
-      ownPaths[name] = [resolve(cwd, source)];
+      ownPaths[name] = [resolve(cwd, defaultSource(name, target))];
     }
 
     writeFileSync(
@@ -205,14 +220,12 @@ if (command === "check") {
     }
 
     const exports = Object.fromEntries(
-      Object.entries(manifest.exports).map(([name, source]) => [name, publishedExport(source)]),
+      Object.entries(manifest.exports).map(([name, target]) => [name, publishedExport(target)]),
     );
 
-    for (const entry of Object.values(exports)) {
-      for (const file of [entry.types, entry.import]) {
-        if (!existsSync(resolve(cwd, file)))
-          throw new Error(`Missing ${manifest.name} export ${file}`);
-      }
+    for (const file of Object.values(exports).flatMap(publishedFiles)) {
+      if (!existsSync(resolve(cwd, file)))
+        throw new Error(`Missing ${manifest.name} export ${file}`);
     }
 
     console.log(`Built ${manifest.name}@${version}`);
@@ -224,7 +237,10 @@ if (command === "check") {
 
       try {
         for (const name of notices) copyFileSync(join(root, name), join(cwd, name));
-        writeFileSync(file, `${JSON.stringify({ ...manifest, exports }, null, 2)}\n`);
+        writeFileSync(
+          file,
+          `${JSON.stringify({ ...manifest, exports, devDependencies: undefined }, null, 2)}\n`,
+        );
         execFileSync("pnpm", ["pack", "--pack-destination", destination], {
           cwd,
           stdio: "inherit",

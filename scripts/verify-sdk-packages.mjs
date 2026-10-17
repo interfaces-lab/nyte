@@ -88,7 +88,7 @@ const fixture = `import assert from "node:assert/strict";
 import { join } from "node:path";
 import process from "node:process";
 import { asId } from "@nyte-ai/schema";
-import { operations } from "@nyte-ai/protocol";
+import { operationsDigest } from "@nyte-ai/protocol";
 import { uuidv7 } from "@nyte-ai/ai";
 import type { Store } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
@@ -102,7 +102,7 @@ const directory = process.cwd();
 globalThis.fetch = async () => { throw new Error("Smoke verification must not use the network"); };
 assert.equal(asId<"session">("packed"), "packed");
 assert.ok(uuidv7().length > 0);
-assert.ok(operations().length > 0);
+assert.match(await operationsDigest(), /^[0-9a-f]{16}$/);
 const smokePlugin = { id: "smoke" } satisfies Plugin;
 
 function open(store: Store) {
@@ -311,7 +311,10 @@ try {
       );
 
       for (const { condition, target } of targets) {
-        assert.ok(target.startsWith("./dist/src/"), `Uncompiled export ${entry.name}: ${target}`);
+        assert.ok(
+          /^\.\/dist\/(?:src|examples)\//.test(target),
+          `Uncompiled export ${entry.name}: ${target}`,
+        );
         assert.ok(
           condition === "types" ? target.endsWith(".d.ts") : target.endsWith(".js"),
           `Invalid ${condition} export ${target}`,
