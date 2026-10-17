@@ -1,10 +1,16 @@
-import { readFile, readdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
+import { promisify } from "node:util";
+import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
+
+const execute = promisify(execFile);
 
 const canvasPackage = fileURLToPath(new URL("../../../canvas/", import.meta.url));
 
@@ -32,29 +38,38 @@ export default function Broken() {
   return <Text>{first.label}</Text>;
 }`;
 
-async function compileFolder(folder: string) {
-  const names = (await readdir(folder)).filter((name) => /\.tsx?$/u.test(name));
-  const read = (name: string) => readFile(join(folder, name), "utf8");
-  const files = Object.fromEntries(
-    await Promise.all(
-      names.filter((name) => name !== "main.tsx").map(async (name) => [name, await read(name)]),
-    ),
-  );
+const Compiled = Type.Object({
+  kind: Type.Literal("compiled"),
+  runtime: Type.Number(),
+  code: Type.String(),
+});
 
-  return compileCanvas(await read("main.tsx"), files);
+/** Compiles a canvas in a child process over the canvas package's script, since a client package may not import the compiler. */
+async function compile(canvas: {
+  readonly source: string;
+  readonly files: Readonly<Record<string, string>>;
+}) {
+  const running = execute(process.execPath, [join(canvasPackage, "scripts", "compile.mjs")]);
+  running.child.stdin?.end(JSON.stringify(canvas));
+  const { stdout } = await running;
+  const outcome: unknown = JSON.parse(stdout);
+
+  if (!Value.Check(Compiled, outcome)) throw new Error(stdout);
+
+  return outcome;
 }
 
 test.skipIf(!built)(
   "a canvas frame over the built shell draws the multi-file three.js galaxy and reports a runtime error with its file and line",
   { timeout: 90_000 },
   async () => {
-    const galaxy = await compileFolder(join(canvasPackage, "test/fixtures/repo-galaxy"));
-    const broken = await compileCanvas(BROKEN, {
-      "rows.ts": "export const rows: { label: string }[] = [];",
+    const galaxy = await compile(
+      await readCanvasFixture(join(canvasPackage, "test/fixtures/repo-galaxy")),
+    );
+    const broken = await compile({
+      source: BROKEN,
+      files: { "rows.ts": "export const rows: { label: string }[] = [];" },
     });
-
-    if (galaxy.kind !== "compiled" || broken.kind !== "compiled")
-      throw new Error(JSON.stringify([galaxy, broken]));
     const server = createServer((request, response) => {
       const path = normalize((request.url ?? "/").split("?")[0] ?? "/");
       const file = join(shellRoot, path === "/" ? "index.html" : path);
