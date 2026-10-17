@@ -192,15 +192,24 @@ export function formatHopTable(table: readonly HopRow[]): string {
   ].join("\n");
 }
 
-/** Expects every budgeted hop in `table` within its budget, naming the ones over it. */
+/** Budgeted hops a run may lack: `mcp.connect` carries no trace and shows only when the link connects inside the run. */
+const UNTRACED: ReadonlySet<string> = new Set(["mcp.connect"]);
+
+/** Expects every budgeted hop in `table` within its budget, naming the ones over it and the ones it lacks. */
 export function expectWithinBudgets(table: readonly HopRow[]): void {
+  const missing = [...HOP_BUDGETS.keys()].flatMap((key) =>
+    UNTRACED.has(key) || table.some((row) => row.hop === key || row.hop.startsWith(`${key}:`))
+      ? []
+      : [`${key} missing`],
+  );
+
   const over = table.flatMap((row) =>
     row.budget !== null && row.max > row.budget
       ? [`${row.hop} [${row.process}] ${row.max.toFixed(1)} ms > ${String(row.budget)} ms`]
       : [],
   );
 
-  expect(over, "hops over budget").toEqual([]);
+  expect([...missing, ...over], "hops missing or over budget").toEqual([]);
 }
 
 /** Scenario D's waterfall of `trace` across `sources`, with its hop table. */
