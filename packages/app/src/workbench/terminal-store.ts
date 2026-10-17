@@ -324,6 +324,19 @@ async function findShellWorkspace(
   return found.id;
 }
 
+/** Tells the user a write to a running shell failed; a shell that stopped or failed already says so. */
+function writeFailed(id: WorkbenchTabId, cause: unknown): void {
+  const current = getTerminal(id);
+
+  if (current === undefined || current.kind !== "shell" || current.state.kind !== "running") return;
+  toast.add({
+    type: "error",
+    title: "Couldn't write to terminal",
+    id: "terminal-write-" + id,
+    description: errorMessage(cause),
+  });
+}
+
 function startShell(
   id: WorkbenchTabId,
   workspacePath: string | null,
@@ -363,12 +376,13 @@ function startShell(
     typedAhead.delete(id);
 
     if (ahead.length === 0) return;
-    const flushed = feed.job.write(encoder.encode(ahead.join("")));
     flushing.set(
       id,
-      flushed.catch(() => undefined),
+      feed.job
+        .write(encoder.encode(ahead.join("")))
+        .catch((cause: unknown) => writeFailed(id, cause))
+        .finally(() => flushing.delete(id)),
     );
-    await flushed.finally(() => flushing.delete(id));
   })()
     .catch((cause: unknown) => {
       typedAhead.delete(id);
@@ -561,9 +575,12 @@ export const terminalActions = {
 
     const ahead = flushing.get(id);
 
-    return ahead === undefined
-      ? feed.job.write(encoder.encode(data))
-      : ahead.then(() => feed.job.write(encoder.encode(data)));
+    const sent =
+      ahead === undefined
+        ? feed.job.write(encoder.encode(data))
+        : ahead.then(() => feed.job.write(encoder.encode(data)));
+
+    return sent.catch((cause: unknown) => writeFailed(id, cause));
   },
   async resize(id: WorkbenchTabId, columns: number, rows: number): Promise<void> {
     await feeds.get(id)?.job.resize({ columns, rows });

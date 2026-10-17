@@ -117,21 +117,6 @@ function takesInput(tab: TerminalTab): boolean {
   return tab.kind === "shell" && (tab.state.kind === "running" || tab.state.kind === "starting");
 }
 
-function sendInput(id: string, data: string): Promise<void> {
-  return terminalActions.write(id, data).catch((cause: unknown) => {
-    const current = getTerminal(id);
-
-    if (current !== undefined && current.kind === "shell" && current.state.kind === "running") {
-      toast.add({
-        type: "error",
-        title: "Couldn't write to terminal",
-        id: "terminal-write-" + id,
-        description: errorMessage(cause),
-      });
-    }
-  });
-}
-
 /**
  * Ghostty's compatibility container is editable; only its input should accept
  * native text and IME. The fit addon defers a fit that lands while a previous
@@ -286,7 +271,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   document.fonts.addEventListener("loadingdone", scheduleFit);
   const input = serial();
-  const data = terminal.onData((value) => void input.run(() => sendInput(id, value)));
+  const data = terminal.onData((value) => void input.run(() => terminalActions.write(id, value)));
 
   const title = terminal.onTitleChange((value) => terminalActions.title(id, value));
 

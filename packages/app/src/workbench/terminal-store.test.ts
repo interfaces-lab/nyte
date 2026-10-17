@@ -182,6 +182,23 @@ beforeEach(() => {
 });
 
 describe("shell terminals", () => {
+  test("keeps a shell running when the input typed while it started fails to reach it", async () => {
+    next = fakeJob("typeahead");
+    const job = next;
+    job.job.write = async () => {
+      throw new Error("The pipe closed");
+    };
+    const id = tabId();
+    const starting = terminalActions.create({ id, workspacePath: "/workspace" });
+
+    await terminalActions.write(id, "ls\r");
+    await starting;
+    await terminalActions.write(id, "pwd\r");
+
+    assert.equal(getTerminal(id)?.state.kind, "running");
+    await terminalActions.close(id);
+  });
+
   test("start a pty job in the open folder, stream its output, take input and sizes, and stop it on close", async () => {
     next = fakeJob("shell");
     const job = next;
