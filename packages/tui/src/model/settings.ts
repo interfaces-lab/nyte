@@ -55,7 +55,7 @@ export function settingRows(state: State): readonly SettingRow[] {
   const providerName = (provider: string): string =>
     catalog?.providers.find((candidate) => candidate.id === provider)?.name ?? provider;
 
-  const plugin = (followedSession(state)?.view?.catalog.settings ?? []).flatMap(
+  const plugin = (followedSession(state)?.view?.catalog.settings ?? state.facts.hostSettings).flatMap(
     (setting): SettingRow[] =>
       setting.choices === null
         ? []
@@ -76,7 +76,7 @@ export function settingRows(state: State): readonly SettingRow[] {
                   value: choice.value,
                 },
               })),
-              whileBusy: false,
+              whileBusy: setting.scope === "host",
             },
           ],
   );
@@ -198,7 +198,10 @@ export function matchChoice(row: SettingRow, argument: string): SettingChoice | 
   return (
     row.choices.find(
       (choice) =>
-        choice.id === argument || choice.label === argument || choice.id.endsWith(`/${argument}`),
+        choice.id === argument ||
+        choice.id === JSON.stringify(argument) ||
+        choice.label === argument ||
+        choice.id.endsWith(`/${argument}`),
     ) ?? null
   );
 }

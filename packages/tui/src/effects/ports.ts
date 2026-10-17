@@ -70,7 +70,7 @@ export interface HostPort {
     { readonly kind: "started"; readonly message: MessageId } | { readonly kind: "taken" }
   >;
   rootSessions(): AsyncIterable<SessionInfo>;
-  catalog(): AsyncIterable<Pick<HostView, "catalog">>;
+  catalog(): AsyncIterable<Pick<HostView, "catalog" | "settings">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
   listModels(): Promise<ModelCatalogView>;
   accounts(provider: string | null): Promise<readonly ModelAccount[]>;

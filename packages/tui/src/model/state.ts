@@ -7,6 +7,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionView,
+  SettingInfo,
   Thinking,
   ModelRef,
   WorkspaceId,
@@ -31,6 +32,8 @@ export interface Facts {
   readonly host: "opening" | "open";
   readonly chat: Chat | null;
   readonly catalog: CatalogFacts;
+  /** The host's own settings, which a chat's catalog repeats; what a blank chat offers. */
+  readonly hostSettings: readonly SettingInfo[];
   readonly settings: ResolvedSettings;
   readonly tasks: readonly Task[];
   readonly shells: readonly ShellJob[];
@@ -268,6 +271,7 @@ export function initialState(bootstrap: Bootstrap): State {
       remote: { kind: "off" },
     },
     local: {
+      hostSettings: [],
       draft: EMPTY_DRAFT,
       completion: { kind: "closed", dismissed: null },
       editing: null,
