@@ -233,6 +233,8 @@ export function renderCommandHelp(
         "--header KEY=VALUE, --bearer-token-env-var <NAME>, --oauth-client-id <id>,",
         "--oauth-client-secret <secret>, --oauth-callback-port <n>, --oauth-client-name <name>,",
         "--exposure direct|deferred|codemode|codemode-deferred|hidden, --description <text>.",
+        "${VAR} in env, headers and secrets comes from the environment Nyte runs in, so export it and",
+        "run `nyte service stop` before it applies. --bearer-token-env-var keeps a token out of the file.",
         "list exits 1 when an entry is invalid or an enabled server is not connected.",
         "login without a name needs an interactive terminal; over SSH, paste the URL the browser ends on.",
         "Examples: nyte mcp add docs --url https://example.com/mcp",

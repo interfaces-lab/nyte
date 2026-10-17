@@ -94,7 +94,9 @@ function expand(values: Readonly<Record<string, string>>, server: string): Recor
         const found = process.env[name];
 
         if (found === undefined)
-          throw new Error(`${server} needs the environment variable ${name}.`);
+          throw new Error(
+            `${server} needs the environment variable ${name}. Set it where Nyte runs, then restart Nyte (for the CLI, \`nyte service stop\`).`,
+          );
 
         return found;
       }),
