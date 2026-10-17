@@ -132,7 +132,7 @@ it("tells the model why a canvas did not compile, keeps the canvas it replaces, 
   const [broken, , foreign] = outcomes;
 
   assert(broken?.kind === "failed" && foreign?.kind === "failed");
-  expect(broken.message).toMatch(/^The canvas did not compile:\ncanvas\.tsx:5:\d+ /u);
+  expect(broken.message).toMatch(/^The canvas did not compile:\nmain\.tsx:5:\d+ /u);
   expect(foreign.message).toContain("lodash");
   expect(
     fake.requests.map(lastToolText).filter((text) => text.includes("did not compile")),
