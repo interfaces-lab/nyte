@@ -24,7 +24,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { queryClient, readSession } from "./queries.ts";
+import { keys, queryClient, readSession } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
 import { directoryWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
@@ -293,7 +293,10 @@ const indexRoute = createRoute({
     if (search.customize !== undefined || search.environment !== undefined) return;
 
     if (preferences.startupDestination.get() === "new-chat") return;
-    const directory = directoryWatch("all").value;
+
+    const directory =
+      directoryWatch("all").value ??
+      queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots);
 
     if (directory === undefined) {
       context.startup.openLastChatOnArrival();
@@ -319,9 +322,10 @@ function lastChat(directory: readonly SessionInfo[]): SessionId | undefined {
 }
 
 /**
- * Startup shows a new chat until the directory arrives, then moves to the
- * last chat, unless the user has started typing or clicking in the meantime:
- * a draft in the new chat outranks the startup destination.
+ * Without a directory or the last run's chats, startup shows a new chat until
+ * the directory arrives, then moves to the last chat, unless the user has
+ * started typing or clicking in the meantime: a draft in the new chat
+ * outranks the startup destination.
  */
 function openLastChatOnArrival(router: AppRouter): void {
   const directory = directoryWatch("all");
