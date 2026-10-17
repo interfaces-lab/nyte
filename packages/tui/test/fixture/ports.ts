@@ -301,6 +301,7 @@ export function fakeHost(): FakeHost {
       throw new Error("Logout is not scripted in the fake host.");
     },
     hostPlugins: async () => [],
+    github: async () => null,
     mcp: async () => ({ servers: [], issues: [] }),
     mcpAction: async () => ({ kind: "missing" }),
     mcpLogin: async () => undefined,

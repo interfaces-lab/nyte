@@ -87,6 +87,11 @@ export function hostPort(host: Connection, folder: string | null): HostPort {
 
       return [];
     },
+    async github(workspace) {
+      const capability = await host.workspace(workspace).github();
+
+      return capability.kind === "available" ? capability.api.state() : null;
+    },
     async trustInfo(workspace) {
       const info = await host.workspace(workspace).info();
       const inspected = await host.workspaces.inspect(info.target).catch(() => null);

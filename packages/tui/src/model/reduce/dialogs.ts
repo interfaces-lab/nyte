@@ -218,9 +218,12 @@ export function openDialog(
         scroll: null,
       });
     case "text": {
-      const title = { usage: "Usage", shortcuts: "Keyboard shortcuts", plugins: "Plugins" }[
-        request.content
-      ];
+      const title = {
+        usage: "Usage",
+        shortcuts: "Keyboard shortcuts",
+        plugins: "Plugins",
+        "pull-request": "Pull request",
+      }[request.content];
 
       if (request.content === "shortcuts")
         return push(minted.state, {
@@ -233,6 +236,18 @@ export function openDialog(
 
       if (request.content === "usage" && followed === null)
         return refuse(state, "Wait for the chat to open", now);
+
+      if (request.content === "pull-request") {
+        const folder = followed === null ? null : chatFolder(followed);
+
+        if (folder?.kind !== "folder") return refuse(state, "Wait for the chat to open", now);
+
+        return push(
+          minted.state,
+          { kind: "text", id, title, body: { kind: "loading" }, scroll: 0 },
+          [{ kind: "load", dialog: id, request: { kind: "pull-request", workspace: folder.id } }],
+        );
+      }
 
       return push(minted.state, { kind: "text", id, title, body: { kind: "loading" }, scroll: 0 }, [
         {

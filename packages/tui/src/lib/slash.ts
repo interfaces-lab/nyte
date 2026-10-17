@@ -76,6 +76,7 @@ export const SLASH_COMMANDS = [
   { name: "tree", description: "Move to a chat branch", kind: "action" },
   { name: "edit", description: "Edit a message you sent", kind: "action" },
   { name: "plugins", description: "List loaded plugins", kind: "action" },
+  { name: "pr", description: "Show this branch's pull request and its checks", kind: "action" },
   { name: "trust", description: "Choose whether this folder's project files load", kind: "action" },
   {
     name: "mcp",

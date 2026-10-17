@@ -96,6 +96,8 @@ describe("built-in commands", () => {
     ["tree", "", { kind: "open", dialog: { kind: "tree", filter: "default" } }],
     ["edit", "", { kind: "open", dialog: { kind: "tree", filter: "users" } }],
     ["plugins", "", { kind: "open", dialog: { kind: "text", content: "plugins" } }],
+    ["pr", "", { kind: "open", dialog: { kind: "text", content: "pull-request" } }],
+    ["pr", "status", { kind: "open", dialog: { kind: "text", content: "pull-request" } }],
     ["reload", "", { kind: "reload" }],
     ["update", "", { kind: "update", version: null }],
     ["update", "1.2.3", { kind: "update", version: "1.2.3" }],

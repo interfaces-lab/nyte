@@ -94,6 +94,10 @@ function builtin(name: BuiltinSlashName, argument: string): Intent | null {
         kind: "open",
         dialog: { kind: "text", content: "plugins" },
       });
+    case "pr":
+      return argument === "" || argument === "status"
+        ? { kind: "open", dialog: { kind: "text", content: "pull-request" } }
+        : refuse("/pr takes status or no argument");
     case "trust":
       return noArgument(name, argument, { kind: "review-trust" });
     case "mcp":
