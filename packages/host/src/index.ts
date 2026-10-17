@@ -11,6 +11,7 @@ export * from "./local/provider.ts";
 export { createMcpHub } from "./mcp/hub.ts";
 export type { McpConnector } from "./mcp/connect.ts";
 export * from "./local/snapshots.ts";
+export * from "./local/worktrees.ts";
 export * from "./open.ts";
 export * from "./plugins/loader.ts";
 export * from "./postgres.ts";
