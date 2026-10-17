@@ -109,34 +109,18 @@ export function canvasFilesComment(spans: readonly CanvasFileSpan[]): string {
   return `/*nyte-canvas-files:${JSON.stringify(spans)}*/`;
 }
 
-/** A position in one of a canvas's source files, lines from 1. */
-export type CanvasSourcePosition = {
-  readonly file: string;
-  readonly line: number;
-  readonly column: number;
-};
-
-/** Returns the source position a compiled module's line and column come from, or undefined on the linker's own lines and in a module without the files comment. */
-export function locateCanvasPosition(
-  code: string,
-  line: number,
-  column: number,
-): CanvasSourcePosition | undefined {
+/** Returns `file:line` for the first frame of a stack that runs in a compiled module, which the shell loads from a blob URL, or undefined when no frame lands in a source file (the linker's own lines, a module without the files comment). Sucrase keeps lines, not columns, so a stack's column belongs to the compiled code and is left out. */
+export function locateCanvasStack(code: string, stack: string): string | undefined {
   const comment = FILES_COMMENT.exec(code);
 
   if (comment === null) return undefined;
   const spans = parseSpans(comment[1] ?? "");
-  const span = spans.find(([, start, lines]) => line >= start && line < start + lines);
 
-  return span === undefined ? undefined : { file: span[0], line: line - span[1] + 1, column };
-}
+  for (const frame of stack.matchAll(/blob:[^\s)]+:(\d+):\d+/gu)) {
+    const line = Number(frame[1]);
+    const span = spans.find(([, start, lines]) => line >= start && line < start + lines);
 
-/** Returns `file:line` for the first frame of a stack that runs in a compiled module, which the shell loads from a blob URL. Sucrase keeps lines, not columns, so a stack's column belongs to the compiled code and is left out. */
-export function locateCanvasStack(code: string, stack: string): string | undefined {
-  for (const frame of stack.matchAll(/blob:[^\s)]+:(\d+):(\d+)/gu)) {
-    const position = locateCanvasPosition(code, Number(frame[1]), Number(frame[2]));
-
-    if (position !== undefined) return `${position.file}:${position.line}`;
+    if (span !== undefined) return `${span[0]}:${line - span[1] + 1}`;
   }
 
   return undefined;

@@ -9,7 +9,6 @@ import {
   CANVAS_SOURCE_LIMIT,
   KIT_SPECIFIER,
   LIBRARY_EXPORTS,
-  locateCanvasPosition,
   locateCanvasStack,
 } from "../src/canvas/canvas-protocol.ts";
 
@@ -120,12 +119,7 @@ describe("the canvas compiler", () => {
     const lines = outcome.code.split("\n");
     const thrown = lines.findIndex((line) => line.includes("throw new Error('boom')")) + 1;
 
-    expect(locateCanvasPosition(outcome.code, thrown, 4)).toEqual({
-      file: "boom.ts",
-      line: 2,
-      column: 4,
-    });
-    expect(locateCanvasPosition(outcome.code, 1, 0)).toBeUndefined();
+    expect(locateCanvasStack(outcome.code, `Error\n    at x (blob:null/1f2e:1:0)`)).toBeUndefined();
     expect(
       locateCanvasStack(
         outcome.code,
