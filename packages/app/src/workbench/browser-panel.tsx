@@ -15,7 +15,6 @@ import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { nyte } from "../nyte";
 import { openExternal } from "../open-external.ts";
-import { macPlatform } from "../platform.ts";
 import { keys } from "../queries.ts";
 import { displayAddress, parseWebUrl } from "./browser-address.ts";
 import { AddressField } from "./browser-address-field.tsx";
@@ -622,7 +621,7 @@ export function BrowserPanel({
 
         const shortcut = resolveBrowserShortcut(
           event,
-          macPlatform(undefined),
+          nyte.platform === "darwin",
           event.target === event.currentTarget ? "page" : "panel",
         );
 

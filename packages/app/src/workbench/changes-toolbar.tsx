@@ -32,7 +32,6 @@ import {
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { macPlatform } from "../platform.ts";
 import { useVcsLog } from "../queries.ts";
 import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
@@ -57,6 +56,7 @@ import type {
 } from "./change-scopes.ts";
 import type { ChangesLayout, ChangesViewOptions } from "./changes-view-options.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
+import { nyte } from "../nyte.ts";
 
 /** One page of history, and how deep the menu will page before it stops offering more. */
 const COMMIT_PAGE_SIZE = 20;
@@ -412,7 +412,7 @@ export function ChangesToolbar({
   onToggleCollapseAll,
 }: ChangesToolbarProps): ReactElement {
   const [showAllTurns, setShowAllTurns] = useState(false);
-  const mac = macPlatform(undefined);
+  const mac = nyte.platform === "darwin";
   const scopeKey = changesScopeValue(scope);
   const selectedTurnId = scope.kind === "turn" ? scope.turnId : undefined;
   const visibleTurns = visibleTurnOptions(turnOptions, showAllTurns, selectedTurnId);

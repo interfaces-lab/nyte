@@ -9,7 +9,6 @@ import { formatTimeAgo } from "../components/ui.tsx";
 import { StatusGlyph } from "./status-glyph.tsx";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { macPlatform } from "../platform.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 
 import { amongOptions, sessionsForNavigation } from "./sidebar-view.ts";
@@ -18,6 +17,7 @@ import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
 import { clientActionKeys, clientActions } from "../client-actions.ts";
+import { nyte } from "../nyte.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
 
@@ -26,7 +26,6 @@ type PaletteTab = (typeof TABS)[number];
 interface SearchPaletteProps {
   readonly trigger: ReactElement;
   readonly open: boolean;
-  readonly platform: NodeJS.Platform | undefined;
   /** The sidebar's chat rows, in its order. Undefined while they load. */
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
@@ -83,7 +82,6 @@ function tabLabel(tab: PaletteTab): string {
 export function SearchPalette({
   trigger,
   open,
-  platform,
   recentSessions,
   onOpenChange,
   onOpenSession,
@@ -113,7 +111,7 @@ export function SearchPalette({
     ? sessionsForNavigation(sessionSearch.data?.items ?? [])
     : (recentSessions ?? []);
 
-  const mac = macPlatform(platform);
+  const mac = nyte.platform === "darwin";
   const settingsSections = settingsSectionGroups().flat();
 
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {

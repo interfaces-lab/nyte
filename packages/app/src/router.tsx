@@ -38,7 +38,6 @@ import { shell } from "./theme/schema.stylex.ts";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { nyte } from "./nyte.ts";
-import { macPlatform } from "./platform.ts";
 import { clientCapabilities, resolveClientAction, resolveTabShortcut } from "./client-actions.ts";
 import { activeTab, tabPlace } from "./tabs/model.ts";
 import { placeHref } from "./tabs/places.ts";
@@ -147,7 +146,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const page = useStagePage();
   const { about } = useOverlays();
   const sidebarVisible = useSetting(preferences.sidebarVisible);
-  const mac = macPlatform(nyte.platform);
+  const mac = nyte.platform === "darwin";
   const strip = windowTabs.strip;
   useWindowTabsSync();
 

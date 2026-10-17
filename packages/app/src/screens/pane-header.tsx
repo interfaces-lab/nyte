@@ -7,7 +7,6 @@ import { Button } from "@nyte-ai/ui/button";
 import { usePaneActions, useCanSplitPane } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 
 import { clientActions, clientActionShortcut } from "../client-actions.ts";
 
@@ -25,7 +24,7 @@ export function PaneHeader({
 }): ReactElement {
   const actions = usePaneActions();
   const canSplit = useCanSplitPane();
-  const mac = macPlatform(nyte.platform);
+  const mac = nyte.platform === "darwin";
 
   return (
     <div {...props(threadStyles.header)}>

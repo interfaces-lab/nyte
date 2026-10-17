@@ -20,7 +20,6 @@ import {
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { useHostState, useSession, useWorkspaces } from "../queries.ts";
 import {
   workbenchController,
@@ -126,7 +125,7 @@ export function Titlebar(): ReactElement {
   const workbench = useWorkbenchSnapshot();
   const sidebarVisible = useSetting(preferences.sidebarVisible);
   const page = useStagePage();
-  const mac = macPlatform(nyte.platform);
+  const mac = nyte.platform === "darwin";
   const capabilities = clientCapabilities(nyte.host);
   const selection = activePane(layout).selection;
   const workspacePath = host.data.workspace?.path;

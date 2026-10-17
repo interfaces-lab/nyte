@@ -3,7 +3,6 @@
  * A DOM menu would hide any page it covered.
  */
 import type { ContextMenuTemplateItem, HostBridge } from "../bridge.ts";
-import { macPlatform } from "../platform.ts";
 
 /** An item owns the work it performs, so no call site matches choices back up. */
 type ContextMenuEntry =
@@ -11,8 +10,8 @@ type ContextMenuEntry =
   | (Extract<ContextMenuTemplateItem, { kind: "item" }> & { readonly run: () => void });
 
 /** Matches the system file manager. */
-export function revealLabel(platform: NodeJS.Platform | undefined): string {
-  if (macPlatform(platform)) return "Reveal in Finder";
+export function revealLabel(platform: NodeJS.Platform): string {
+  if (platform === "darwin") return "Reveal in Finder";
 
   return platform === "win32" ? "Reveal in File Explorer" : "Open Containing Folder";
 }

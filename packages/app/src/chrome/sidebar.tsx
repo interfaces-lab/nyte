@@ -36,7 +36,6 @@ import {
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import {
   sessionFolderPath,
@@ -202,7 +201,7 @@ export function Sidebar(): ReactElement {
   const selection = activePane(layout).selection;
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const activeSessionId = page === undefined ? paneSessionId : undefined;
-  const mac = macPlatform(nyte.platform);
+  const mac = nyte.platform === "darwin";
 
   const paneSession =
     paneSessionId === undefined
@@ -385,7 +384,6 @@ export function Sidebar(): ReactElement {
 
           <SearchPalette
             open={paletteOpen}
-            platform={nyte.platform}
             recentSessions={listed?.map(({ session }) => session)}
             onOpenChange={shellActions.setSearchOpen}
             onOpenSession={(sessionId) =>

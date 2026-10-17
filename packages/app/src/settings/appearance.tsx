@@ -5,7 +5,6 @@ import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore, type ReactElement } from "react";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { subscribeSystemTransparency, systemReducesTransparency } from "../theme/appearance.ts";
 import {
@@ -245,7 +244,7 @@ function FontFamilyRows(): ReactElement {
 function FontSmoothingRow(): ReactElement | null {
   const smoothing = useSetting(preferences.fontSmoothing);
 
-  if (!macPlatform(undefined)) return null;
+  if (nyte.platform !== "darwin") return null;
 
   return (
     <SettingsSwitchRow

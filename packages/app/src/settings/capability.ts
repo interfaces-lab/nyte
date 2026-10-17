@@ -4,7 +4,6 @@
  */
 import { clientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 
 /** What this host can back. A row or page shows only where everything it needs holds. */
 export interface SettingsContext {
@@ -21,17 +20,14 @@ export interface SettingsContext {
 
 export type Capability = keyof SettingsContext;
 
-/**
- * Computed per call: the installed bridge decides, and tests install different
- * ones. Tests resolve pages under node, where there is no document to ask.
- */
+/** Computed per call: the installed bridge decides, and tests install different ones. */
 export function settingsContext(): SettingsContext {
   const ownEnvironment = nyte.clientSurface === "desktop";
   const { browser } = clientCapabilities(nyte.host);
 
   return {
     hostSettings: nyte.host.settings !== undefined,
-    mac: typeof document !== "undefined" && macPlatform(undefined),
+    mac: nyte.platform === "darwin",
     browser,
     providers: ownEnvironment,
     account: ownEnvironment,
