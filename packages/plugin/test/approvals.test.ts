@@ -91,7 +91,8 @@ describe("approvalReason", () => {
   const command = { name: "bash", class: { kind: "shell", command: "ls" } as const };
   const read = { name: "read", class: { kind: "read", path: "/etc/hosts" } as const };
   const mcp = { name: "mcp__db__drop", class: { kind: "custom", label: "Dropping" } as const };
-  const search = { ...mcp, name: "web_search", effects: "none" as const };
+  const search = { ...mcp, name: "web_search", approval: "never" as const };
+  const readOnly = { ...mcp, name: "mcp__db__list" };
 
   it.each([
     ["ask", edit("src/a.ts"), "edit"],
@@ -100,6 +101,7 @@ describe("approvalReason", () => {
     ["ask", mcp, "tool"],
     ["ask", read, null],
     ["ask", search, null],
+    ["ask", readOnly, "tool"],
     ["auto-edit", edit("src/a.ts"), null],
     ["auto-edit", edit("/tmp/project/src/a.ts"), null],
     ["auto-edit", edit("/tmp/project-other/a.ts"), "outside"],

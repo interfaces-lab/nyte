@@ -84,6 +84,7 @@ function codemode(
     grammar: { kind: "lark", source: CODEMODE_SOURCE_GRAMMAR },
     class: () => ({ kind: "custom", label: "Running a script" }),
     effects: "none",
+    approval: "never",
     replay: "never",
     async execute(args, invocation) {
       const { code, options } = parseCodemodeSource(args.code);

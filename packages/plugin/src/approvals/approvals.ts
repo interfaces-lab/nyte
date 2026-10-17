@@ -28,11 +28,11 @@ type Handlers = {
   ) => Awaitable<ActionOutput<Actions[A]>>;
 };
 
-/** A tool call as the policy sees it: its tool's name, its class, and the tool's declared effects. */
+/** A tool call as the policy sees it: its tool's name, its class, and whether its tool lets a policy hold it. */
 export interface ApprovalTool {
   readonly name: string;
   readonly class: ToolClass;
-  readonly effects?: ToolDefinition["effects"];
+  readonly approval?: ToolDefinition["approval"];
 }
 
 /** What a gated call may do: run, or not, with the reason the model reads. */
@@ -75,9 +75,9 @@ function inside(cwd: string, path: string): boolean {
 
 /**
  * Why `policy` stops `tool` for the user in a workspace at `cwd`, or null
- * when the call runs without asking. Calls that change nothing outside the
- * session, reads, listings and delegation never ask; a subagent's own calls
- * ask in its session.
+ * when the call runs without asking. Reads, listings, delegation and tools
+ * whose `approval` is not `policy` never ask; a subagent's own calls ask in
+ * its session.
  *
  * @category plugins
  * @since 0.1.0
@@ -89,7 +89,7 @@ export function approvalReason(
 ): ApprovalState["reason"] | null {
   const subject = tool.class;
 
-  if (policy === "full" || tool.effects === "none") return null;
+  if (policy === "full" || (tool.approval ?? "policy") !== "policy") return null;
 
   if (subject.kind === "read" || subject.kind === "list" || subject.kind === "delegate")
     return null;
@@ -238,10 +238,10 @@ export default {
   hooks: {
     before_tool: async (call, context) => {
       const { api } = context;
-      const effects = api.contribute.tools.list().find((tool) => tool.name === call.name)?.effects;
+      const definition = api.contribute.tools.list().find((tool) => tool.name === call.name);
 
       const reason = await context.memo("reason", () =>
-        pendingReason(api, { name: call.name, class: call.class, effects }),
+        pendingReason(api, { name: call.name, class: call.class, approval: definition?.approval }),
       );
 
       if (reason === null) return { action: "continue" };
