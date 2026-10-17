@@ -258,8 +258,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   );
 
   store.runner.boot(options.boot);
-  store.runner.run({ kind: "refresh-workspace", cwd: options.cwd });
   options.typeahead?.release();
+  store.runner.run({ kind: "refresh-workspace", cwd: options.cwd });
 
   return {
     store,
