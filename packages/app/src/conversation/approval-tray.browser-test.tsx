@@ -280,7 +280,7 @@ export async function run(): Promise<string> {
   if (document.activeElement?.textContent !== "Deny")
     failures.push(`← from the card moves to ${document.activeElement?.textContent ?? "nothing"}`);
 
-  card.focus();
+  if (card instanceof HTMLElement) card.focus();
   press("ArrowRight");
 
   if (document.activeElement?.textContent !== "Allow once")
