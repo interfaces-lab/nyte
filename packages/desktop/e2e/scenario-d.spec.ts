@@ -168,7 +168,7 @@ test("scenario D on the desktop: why did CI fail on my PR, fix it", async () => 
 
   await test.step("the agent ran the failing test, and its failure came back into the turn", async () => {
     await press(log.getByRole("button", { name: /^Edited sum\.js, ran 2 commands, 1 tool$/u }));
-    await press(log.getByRole("button", { name: "Ran Run the failing test" }));
+    await press(log.getByRole("button", { name: "Run the failing test" }));
     const output = log.getByRole("region", { name: "Command output" }).first();
     await expect(output).toContainText("$ node --test");
     await expect(output).toContainText("✖ sum adds");

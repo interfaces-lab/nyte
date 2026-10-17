@@ -127,7 +127,7 @@ test("scenario D on the web: why did CI fail on my PR, fix it", async ({ page })
 
   await test.step("the agent ran the failing test, and its failure came back into the turn", async () => {
     await press(log.getByRole("button", { name: /^Edited sum\.js, ran 2 commands, 1 tool$/u }));
-    await press(log.getByRole("button", { name: "Ran Run the failing test" }));
+    await press(log.getByRole("button", { name: "Run the failing test" }));
     const output = log.getByRole("region", { name: "Command output" }).first();
     await expect(output).toContainText("✖ sum adds");
     await expect(output).toContainText("ℹ fail 1");
@@ -320,10 +320,8 @@ test("scenario D on the web without a CI server: the skill falls back to gh", as
     await expect(log.getByText(/passes now/u)).toBeVisible({ timeout: 60_000 });
     expect(server.route()).toBe("gh");
     await press(log.getByRole("button", { name: /^Explored SKILL\.md/u }));
-    await expect(
-      log.getByRole("button", { name: "Ran List the pull request's checks" }),
-    ).toBeVisible();
-    await expect(log.getByRole("button", { name: "Ran Read the failing job's log" })).toBeVisible();
+    await expect(log.getByRole("button", { name: "List the pull request's checks" })).toBeVisible();
+    await expect(log.getByRole("button", { name: "Read the failing job's log" })).toBeVisible();
     await expect(log.getByRole("button", { name: /^ci: /u })).toHaveCount(0);
     expect(
       server.fake.requests
