@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -325,4 +326,99 @@ it("waits for sign-in when the server needs OAuth, and refuses to sign in to a c
     kind: "invalid",
     message: "files runs a command and has no sign-in.",
   });
+});
+
+it("keeps concurrent edits, writes a project override explicitly, refuses clashing names, and cancels a waiting watch", async () => {
+  const folder = await home({ docs: { url: "https://docs.test/mcp" } });
+  const project = join(folder, "project");
+  await mkdir(join(project, ".nyte"), { recursive: true });
+  await writeFile(
+    join(project, ".nyte", "mcp.json"),
+    JSON.stringify({ mcpServers: { docs: { enabled: false } } }),
+  );
+
+  const hub = createMcpHub({ home: folder, connect: () => fakeServer() })({
+    secrets: {
+      get: async () => undefined,
+      set: async () => undefined,
+      delete: async () => undefined,
+    },
+  });
+
+  const trusted = { id: asId<"workspace">("w"), root: project, trusted: true };
+  const untrusted = { id: asId<"workspace">("u"), root: project, trusted: false };
+  const config = { url: "https://more.test/mcp" };
+
+  expect(
+    await Promise.all(["a", "b", "c"].map((name) => hub.add(trusted, name, config, "user"))),
+  ).toEqual([{ kind: "updated" }, { kind: "updated" }, { kind: "updated" }]);
+  expect(
+    Object.keys(JSON.parse(await readFile(join(folder, ".nyte", "mcp.json"), "utf8")).mcpServers),
+  ).toEqual(["docs", "a", "b", "c"]);
+
+  expect(await hub.add(trusted, "my-docs", config, "user")).toEqual({ kind: "updated" });
+  expect(await hub.add(trusted, "my_docs", config, "user")).toEqual({
+    kind: "invalid",
+    message: "my_docs and my-docs name the same server.",
+  });
+
+  expect(await hub.setEnabled(trusted, "docs", true)).toEqual({ kind: "updated" });
+  expect(JSON.parse(await readFile(join(project, ".nyte", "mcp.json"), "utf8"))).toEqual({
+    mcpServers: { docs: { enabled: true } },
+  });
+  expect(await hub.remove(trusted, "docs", "user")).toEqual({ kind: "updated" });
+  expect(await hub.remove(untrusted, "docs", "project")).toEqual({
+    kind: "invalid",
+    message: "Project servers need a trusted folder on this machine.",
+  });
+
+  const views = hub.watch(trusted)[Symbol.asyncIterator]();
+  await views.next();
+  const pending = views.next();
+  const started = Date.now();
+  await views.return?.();
+
+  expect(await pending).toEqual({ done: true, value: undefined });
+  expect(Date.now() - started).toBeLessThan(100);
+  await hub.close();
+});
+
+it("stops a sign-in at once when its steps end, so the next one can start", async () => {
+  const silent = createServer(() => undefined);
+  await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+  const address = silent.address();
+  assert(address !== null && typeof address === "object");
+  const url = `http://127.0.0.1:${String(address.port)}/mcp`;
+  const folder = await home({ slow: { url } });
+
+  const hub = createMcpHub({ home: folder, connect: () => fakeServer() })({
+    secrets: {
+      get: async () => undefined,
+      set: async () => undefined,
+      delete: async () => undefined,
+    },
+  });
+
+  const workspace = { id: asId<"workspace">("w"), root: null, trusted: false };
+  const first = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
+  const pending = first.next();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const started = Date.now();
+  await first.return?.();
+
+  expect(await pending).toEqual({ done: true, value: undefined });
+  expect(Date.now() - started).toBeLessThan(500);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const second = hub.login(workspace, "slow").steps()[Symbol.asyncIterator]();
+  const next = await Promise.race([
+    second.next(),
+    new Promise((resolve) => setTimeout(() => resolve("still running"), 300)),
+  ]);
+
+  expect(next).not.toMatchObject({ value: { reason: "A sign-in to slow is already running." } });
+  await second.return?.();
+  await hub.close();
+  silent.closeAllConnections();
+  silent.close();
 });

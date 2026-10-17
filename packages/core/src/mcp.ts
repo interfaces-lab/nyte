@@ -2,6 +2,7 @@ import type { McpChange, McpScope, McpServerConfig, McpView, WorkspaceId } from 
 import type { Login, PluginStorage } from "./connection.ts";
 import { readWorkspace } from "./environment.ts";
 import { SdkError } from "./error.ts";
+import { forwarded } from "./watch.ts";
 import type { Kernel } from "./kernel.ts";
 import { projectTrust } from "./resources.ts";
 import type { ToolDefinition } from "./tools.ts";
@@ -193,20 +194,22 @@ export function mcpApi(kernel: Kernel, id: WorkspaceId): McpApi {
     run(hub(), await readMcpWorkspace(kernel, id));
 
   return {
-    async *watch() {
-      yield* hub().watch(await readMcpWorkspace(kernel, id));
-    },
+    watch: () => forwarded(async () => hub().watch(await readMcpWorkspace(kernel, id))),
     reconnect: (server) => act((mcp, workspace) => mcp.reconnect(workspace, server)),
     setEnabled: (server, enabled) =>
       act((mcp, workspace) => mcp.setEnabled(workspace, server, enabled)),
     login(server) {
-      const login = act(async (mcp, workspace) => mcp.login(workspace, server));
+      let login: Promise<Login> | null = null;
+      const begin = (): Promise<Login> =>
+        (login ??= act(async (mcp, workspace) => mcp.login(workspace, server)));
 
       return {
-        async *steps() {
-          yield* (await login).steps();
+        steps: () => forwarded(async () => (await begin()).steps()),
+        async answer(code) {
+          if (login === null)
+            throw new SdkError("invalid", "Read the login's steps before answering.");
+          await (await login).answer(code);
         },
-        answer: async (code) => (await login).answer(code),
       };
     },
     logout: (server) => act((mcp, workspace) => mcp.logout(workspace, server)),

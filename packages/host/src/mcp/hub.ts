@@ -4,7 +4,7 @@ import { McpClient, StdioTransport } from "@earendil-works/pi-mcp";
 import type { Tool } from "@earendil-works/pi-mcp";
 import { McpOAuthAuthorizationRequiredError } from "@earendil-works/pi-mcp/oauth";
 import type { OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
-import { SdkError, closable, dev, isJsonObject } from "@nyte-ai/core";
+import { SdkError, closable, dev, forwarded, isJsonObject } from "@nyte-ai/core";
 import type {
   Login,
   McpHub,
@@ -14,8 +14,8 @@ import type {
   ToolDefinition,
 } from "@nyte-ai/core";
 import { isJson } from "@nyte-ai/schema";
-import type { McpChange, McpScope, McpServerState, McpServerView, McpView } from "@nyte-ai/schema";
-import { editMcpFile, parseMcpConfig, readMcpFile } from "./config.ts";
+import type { McpChange, McpServerState, McpServerView, McpView } from "@nyte-ai/schema";
+import { parseMcpConfig, planMcpEdit, readMcpFile, writeMcpFile } from "./config.ts";
 import type { McpConfig, McpFile, McpFileContents, McpServerEntry } from "./config.ts";
 import { connectServer, oauthSettings } from "./connect.ts";
 import type { McpConnector } from "./connect.ts";
@@ -327,18 +327,20 @@ function hub(input: {
     pool.linger.unref();
   };
 
+  const filesFor = (workspace: McpWorkspace): readonly Omit<McpFile, "contents">[] => [
+    { path: userPath, scope: "user" },
+    ...(workspace.trusted && workspace.root !== null
+      ? [{ path: join(workspace.root, ".nyte", "mcp.json"), scope: "project" as const }]
+      : []),
+  ];
+
   const open = (workspace: McpWorkspace): Pool => {
     const key = poolKey(workspace);
     const known = pools.get(key);
 
     if (known !== undefined) return known;
 
-    const files: Omit<McpFile, "contents">[] = [
-      { path: userPath, scope: "user" },
-      ...(workspace.trusted && workspace.root !== null
-        ? [{ path: join(workspace.root, ".nyte", "mcp.json"), scope: "project" as const }]
-        : []),
-    ];
+    const files = filesFor(workspace);
     const unread = files.filter((file) => !watched.has(file.path)).map((file) => file.path);
 
     for (const path of unread) {
@@ -404,23 +406,71 @@ function hub(input: {
     for (const { pool, server } of signed) restart(pool, server);
   };
 
-  const write = async (
+  const configFor = async (
+    workspace: McpWorkspace,
+    replaced?: { readonly path: string; readonly text: string },
+  ): Promise<McpConfig> =>
+    parseMcpConfig(
+      await Promise.all(
+        filesFor(workspace).map(async (file) => ({
+          ...file,
+          contents:
+            replaced?.path === file.path
+              ? { kind: "text" as const, text: replaced.text }
+              : await readMcpFile(file.path),
+        })),
+      ),
+    );
+
+  const writing = new Map<string, Promise<unknown>>();
+
+  const edit = (
+    workspace: McpWorkspace,
     path: string,
-    change: Parameters<typeof editMcpFile>[1],
+    server: string,
+    change: Parameters<typeof planMcpEdit>[1],
+    check: "introduced-issues" | "none",
   ): Promise<McpChange> => {
-    const outcome = await editMcpFile(path, change);
+    const queued = (writing.get(path) ?? Promise.resolve()).then(async (): Promise<McpChange> => {
+      const plan = await planMcpEdit(path, change);
 
-    if (outcome.kind !== "updated" || outcome.text === undefined) return outcome;
-    contents.set(path, { kind: "text", text: outcome.text });
+      if (plan.kind !== "planned") return plan;
 
-    for (const pool of pools.values())
-      if (pool.files.some((file) => file.path === path)) reconcile(pool);
+      if (check === "introduced-issues") {
+        const about = (config: McpConfig): readonly string[] =>
+          config.issues.filter((issue) => issue.path[1] === server).map((issue) => issue.message);
 
-    return { kind: "updated" };
+        const before = new Set(about(await configFor(workspace)));
+
+        const introduced = about(await configFor(workspace, { path, text: plan.text })).find(
+          (message) => !before.has(message),
+        );
+
+        if (introduced !== undefined) return { kind: "invalid", message: introduced };
+      }
+
+      await writeMcpFile(path, plan.text);
+
+      if (watched.has(path)) contents.set(path, { kind: "text", text: plan.text });
+
+      for (const pool of pools.values())
+        if (pool.files.some((file) => file.path === path)) reconcile(pool);
+
+      return { kind: "updated" };
+    });
+
+    writing.set(
+      path,
+      queued.catch(() => undefined),
+    );
+
+    return queued;
   };
 
-  const fileFor = (pool: Pool, scope: McpScope): string | null =>
-    pool.files.find((file) => file.scope === scope)?.path ?? null;
+  const UNTRUSTED: McpChange = {
+    kind: "invalid",
+    message: "Project servers need a trusted folder on this machine.",
+  };
 
   const signingIn = new Set<string>();
 
@@ -505,122 +555,133 @@ function hub(input: {
 
         return { kind: "updated" };
       }),
-    setEnabled: (workspace, server, enabled) =>
-      held(workspace, async (pool) => {
-        const entry = pool.config.servers.get(server);
+    async setEnabled(workspace, server, enabled) {
+      const entry = (await configFor(workspace)).servers.get(server);
 
-        if (entry === undefined) return { kind: "missing" };
+      if (entry === undefined) return { kind: "missing" };
+      const override = entry.override !== null;
 
-        return write(entry.override ?? entry.path, (servers) => {
+      return edit(
+        workspace,
+        entry.override ?? entry.path,
+        server,
+        (servers) => {
           const current = servers[server];
 
           if (!isJsonObject(current)) return null;
           const { enabled: _previous, ...rest } = current;
 
-          return { ...servers, [server]: enabled ? rest : { ...rest, enabled: false } };
-        });
-      }),
+          return {
+            ...servers,
+            [server]: override
+              ? { ...rest, enabled }
+              : enabled
+                ? rest
+                : { ...rest, enabled: false },
+          };
+        },
+        "introduced-issues",
+      );
+    },
     login(workspace, server) {
-      const begun = held(workspace, async (pool): Promise<Login> => {
-        const entry = pool.config.servers.get(server);
+      let begun: Promise<Login> | null = null;
 
-        if (entry === undefined) return failedLogin(`No MCP server is named ${server}.`);
-        const { transport } = entry;
+      const begin = (): Promise<Login> =>
+        (begun ??= held(workspace, async (pool): Promise<Login> => {
+          const entry = pool.config.servers.get(server);
 
-        if (transport.kind !== "http")
-          return failedLogin(`${server} runs a command, so it has nothing to sign in to.`);
+          if (entry === undefined) return failedLogin(`No MCP server is named ${server}.`);
+          const { transport } = entry;
 
-        if (Object.keys(transport.headers).some((name) => name.toLowerCase() === "authorization"))
-          return failedLogin(`${server} sends its own Authorization header.`);
-        const key = oauthKey(server, transport.url);
+          if (transport.kind !== "http")
+            return failedLogin(`${server} runs a command, so it has nothing to sign in to.`);
 
-        if (signingIn.has(key)) return failedLogin(`A sign-in to ${server} is already running.`);
-        let settings: ReturnType<typeof oauthSettings>;
+          if (Object.keys(transport.headers).some((name) => name.toLowerCase() === "authorization"))
+            return failedLogin(`${server} sends its own Authorization header.`);
+          const key = oauthKey(server, transport.url);
 
-        try {
-          settings = oauthSettings(transport.oauth, server);
-        } catch (error) {
-          return failedLogin(errorMessage(error));
-        }
+          if (signingIn.has(key)) return failedLogin(`A sign-in to ${server} is already running.`);
+          let settings: ReturnType<typeof oauthSettings>;
 
-        signingIn.add(key);
-        pool.holders += 1;
+          try {
+            settings = oauthSettings(transport.oauth, server);
+          } catch (error) {
+            return failedLogin(errorMessage(error));
+          }
 
-        return signIn({
-          server,
-          serverUrl: transport.url,
-          store: oauthStore(input.secrets, key),
-          settings,
-          challenge: pool.links.get(server)?.challenge() ?? null,
-          signedIn: () => restartSignedIn(key),
-          ended: () => {
-            signingIn.delete(key);
-            pool.holders -= 1;
-            idle(pool);
-          },
-        });
-      });
+          signingIn.add(key);
+          pool.holders += 1;
+
+          return signIn({
+            server,
+            serverUrl: transport.url,
+            store: oauthStore(input.secrets, key),
+            settings,
+            challenge: pool.links.get(server)?.challenge() ?? null,
+            signedIn: () => restartSignedIn(key),
+            ended: () => {
+              signingIn.delete(key);
+              pool.holders -= 1;
+              idle(pool);
+            },
+          });
+        }));
 
       return {
-        async *steps() {
-          yield* (await begun).steps();
+        steps: () => forwarded(async () => (await begin()).steps()),
+        async answer(code) {
+          if (begun === null)
+            throw new SdkError("invalid", "Read the login's steps before answering.");
+          await (await begun).answer(code);
         },
-        answer: async (code) => (await begun).answer(code),
       };
     },
-    logout: (workspace, server) =>
-      held(workspace, async (pool) => {
-        const entry = pool.config.servers.get(server);
+    async logout(workspace, server) {
+      const entry = (await configFor(workspace)).servers.get(server);
 
-        if (entry === undefined) return { kind: "missing" };
+      if (entry === undefined) return { kind: "missing" };
 
-        if (entry.transport.kind !== "http")
-          return { kind: "invalid", message: `${server} runs a command and has no sign-in.` };
-        const key = oauthKey(server, entry.transport.url);
-        await input.secrets.delete(key);
-        restartSignedIn(key);
+      if (entry.transport.kind !== "http")
+        return { kind: "invalid", message: `${server} runs a command and has no sign-in.` };
+      const key = oauthKey(server, entry.transport.url);
+      await input.secrets.delete(key);
+      restartSignedIn(key);
 
-        return { kind: "updated" };
-      }),
-    add: (workspace, server, config, scope) =>
-      held(workspace, async (pool) => {
-        const path = fileFor(pool, scope);
+      return { kind: "updated" };
+    },
+    async add(workspace, server, config, scope) {
+      const path = filesFor(workspace).find((file) => file.scope === scope)?.path;
 
-        if (path === null)
-          return {
-            kind: "invalid",
-            message: "Project servers need a trusted folder on this machine.",
-          };
+      if (path === undefined) return UNTRUSTED;
 
-        if (!isJson(config))
-          return { kind: "invalid", message: "The server's config is not JSON." };
+      if (!isJson(config)) return { kind: "invalid", message: "The server's config is not JSON." };
 
-        const checked = parseMcpConfig([
-          {
-            path,
-            scope: "user",
-            contents: { kind: "text", text: JSON.stringify({ mcpServers: { [server]: config } }) },
-          },
-        ]);
-        const [problem] = checked.issues;
+      return edit(
+        workspace,
+        path,
+        server,
+        (servers) => ({ ...servers, [server]: config }),
+        "introduced-issues",
+      );
+    },
+    async remove(workspace, server, scope) {
+      const path = filesFor(workspace).find((file) => file.scope === scope)?.path;
 
-        if (problem !== undefined) return { kind: "invalid", message: problem.message };
+      if (path === undefined) return UNTRUSTED;
 
-        return write(path, (servers) => ({ ...servers, [server]: config }));
-      }),
-    remove: (workspace, server, scope) =>
-      held(workspace, async (pool) => {
-        const path = fileFor(pool, scope);
-
-        if (path === null) return { kind: "missing" };
-
-        return write(path, (servers) => {
+      return edit(
+        workspace,
+        path,
+        server,
+        (servers) => {
           if (!(server in servers)) return null;
           const { [server]: _removed, ...rest } = servers;
 
           return rest;
-        });
-      }),
+        },
+        "none",
+      );
+    },
     async close() {
       closed = true;
       const live = [...pools.values()];

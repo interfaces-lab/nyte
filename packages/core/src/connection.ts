@@ -36,6 +36,7 @@ import { inspect } from "./inspect.ts";
 import type { Kernel } from "./kernel.ts";
 import type { Plugin } from "./plugin.ts";
 import { ALL_AUTHORITY, LOCAL, gate, gated } from "./principals.ts";
+import { forwarded } from "./watch.ts";
 import type { ConnectionContext } from "./principals.ts";
 import { createSessions, sessionHandle } from "./session.ts";
 import type { Session, Sessions } from "./session.ts";
@@ -265,10 +266,12 @@ export function createConnection(kernel: Kernel, context: ConnectionContext): Co
 
     return gated("workspace", handle, authority, {
       mcp: gated("mcp", handle.mcp, authority, {
-        async *watch() {
-          gate(authority, "mcp.watch");
-          yield* handle.mcp.watch();
-        },
+        watch: () =>
+          forwarded(async () => {
+            gate(authority, "mcp.watch");
+
+            return handle.mcp.watch();
+          }),
         login(server) {
           gate(authority, "mcp.login");
 

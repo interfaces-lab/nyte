@@ -14,6 +14,7 @@ import type {
   OAuthChallenge,
   OAuthClientInformationMixed,
 } from "@earendil-works/pi-mcp/oauth";
+import { closable } from "@nyte-ai/core";
 import type { Login, PluginStorage } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -162,6 +163,8 @@ export function createAuthProvider(input: {
   };
 }
 
+type LoginStep = ReturnType<Login["steps"]> extends AsyncIterable<infer Step> ? Step : never;
+
 /**
  * Signs in to a server: refreshes stored tokens when that is enough, or
  * runs the browser authorization code flow against a loopback callback.
@@ -178,25 +181,19 @@ export function signIn(input: {
   signedIn(): void;
   ended(): void;
 }): Login {
-  type Step = Parameters<typeof deliver>[0];
-  const queued: Step[] = [];
-  let wake: (() => void) | null = null;
+  const queued: LoginStep[] = [];
+  const wakers = new Set<() => void>();
   let pasted: PromiseWithResolvers<string> | null = null;
   const controller = new AbortController();
 
-  const deliver = (
-    step:
-      | { readonly kind: "open"; readonly url: string }
-      | { readonly kind: "paste"; readonly message: string; readonly secret: boolean }
-      | { readonly kind: "waiting" }
-      | { readonly kind: "done" }
-      | { readonly kind: "failed"; readonly reason: string },
-  ): void => {
+  const deliver = (step: LoginStep): void => {
     queued.push(step);
-    wake?.();
+
+    for (const wake of wakers) wake();
+    wakers.clear();
   };
 
-  const run = (async () => {
+  void (async () => {
     try {
       await authorize({
         ...input,
@@ -228,27 +225,33 @@ export function signIn(input: {
   })();
 
   return {
-    async *steps() {
-      try {
-        for (;;) {
-          const step = queued.shift();
+    steps: () =>
+      closable<LoginStep>(() => {
+        let finished = false;
 
-          if (step === undefined) {
-            await new Promise<void>((resolve) => (wake = resolve));
-            wake = null;
+        return {
+          async pull() {
+            if (finished) return { done: true, value: undefined };
+            let step = queued.shift();
 
-            continue;
-          }
+            while (step === undefined && !controller.signal.aborted) {
+              await new Promise<void>((resolve) => wakers.add(resolve));
+              step = queued.shift();
+            }
 
-          yield step;
+            if (step === undefined) return { done: true, value: undefined };
+            finished = step.kind === "done" || step.kind === "failed";
 
-          if (step.kind === "done" || step.kind === "failed") return;
-        }
-      } finally {
-        controller.abort();
-        await run;
-      }
-    },
+            return { done: false, value: step };
+          },
+          close() {
+            controller.abort();
+
+            for (const wake of wakers) wake();
+            wakers.clear();
+          },
+        };
+      }),
     async answer(code) {
       pasted?.resolve(code);
     },
@@ -315,6 +318,7 @@ async function authorize(input: {
       throw new Error("The server did not give an authorization page.");
     const state = await provider.state();
     const expected = new URL(authorizationUrl.searchParams.get("redirect_uri") ?? redirectUrl);
+    signal.throwIfAborted();
     const pasted = input.show(authorizationUrl);
 
     const response = await Promise.race([

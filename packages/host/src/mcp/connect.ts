@@ -22,7 +22,7 @@ export type McpConnector = (
     readonly workspace: McpWorkspace;
     readonly home: string;
     readonly secrets: PluginStorage["secrets"];
-    challenged(challenge: OAuthChallenge): void;
+    readonly challenged: (challenge: OAuthChallenge) => void;
   },
 ) => McpTransport;
 
@@ -93,7 +93,9 @@ function expand(values: Readonly<Record<string, string>>, server: string): Recor
         const found = process.env[name];
 
         if (found === undefined)
-          throw new Error(`${server} needs the environment variable ${name}.`);
+          throw new Error(
+            `${server} needs the environment variable ${name}. Set it where Nyte runs, then restart Nyte (for the CLI, \`nyte service stop\`).`,
+          );
 
         return found;
       }),

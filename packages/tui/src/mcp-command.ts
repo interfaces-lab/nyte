@@ -11,7 +11,7 @@ import type {
 } from "@nyte-ai/sdk";
 import { alignedRows, ansiEnabled } from "./cli-style.ts";
 import { cliLoginDriver } from "./interaction.ts";
-import { exposureName } from "./model/mcp.ts";
+import { exposureName, target } from "./model/mcp.ts";
 import { addFolder } from "./run.ts";
 import { runLogin } from "./services/auth.ts";
 
@@ -203,14 +203,26 @@ function report(
 
 async function settled(mcp: McpApi, signal: AbortSignal): Promise<McpView> {
   const deadline = AbortSignal.any([signal, AbortSignal.timeout(LIST_WAIT_MS)]);
+  const views = mcp.watch()[Symbol.asyncIterator]();
+  const stopped = new Promise<"stopped">((resolve) =>
+    deadline.addEventListener("abort", () => resolve("stopped"), { once: true }),
+  );
   let latest: McpView | null = null;
 
-  for await (const view of mcp.watch()) {
-    latest = view;
+  try {
+    for (;;) {
+      const next = await Promise.race([views.next(), stopped]);
 
-    if (deadline.aborted || view.servers.every((server) => server.state.kind !== "connecting"))
-      return view;
+      if (next === "stopped" || next.done === true) break;
+      latest = next.value;
+
+      if (latest.servers.every((server) => server.state.kind !== "connecting")) break;
+    }
+  } finally {
+    await views.return?.();
   }
+
+  signal.throwIfAborted();
 
   if (latest === null) throw new Error("The MCP servers could not be read.");
 
@@ -234,7 +246,7 @@ function listLines(view: McpView): readonly string[] {
       server.state.kind === "failed"
         ? [
             "",
-            `${server.name}: ${server.state.message}`,
+            server.state.message,
             ...(server.state.stderr === null ? [] : [server.state.stderr]),
           ]
         : server.state.kind === "needs-sign-in"
@@ -252,12 +264,6 @@ function stateText(server: McpServerView): string {
     return `${String(state.tools.length)} ${state.tools.length === 1 ? "tool" : "tools"}, ${exposureName(server.exposure)}`;
 
   return state.kind === "disabled" ? "off" : state.kind;
-}
-
-function target(server: McpServerView): string {
-  return server.transport.kind === "http"
-    ? server.transport.url
-    : [server.transport.command, ...server.transport.args].join(" ");
 }
 
 function parseNamed(
@@ -291,9 +297,8 @@ function parseAdd(args: readonly string[]): {
   readonly scope: McpScope;
 } {
   const split = args.indexOf("--");
-  const options = split < 0 ? args : args.slice(0, split);
+  const flags = split < 0 ? args : args.slice(0, split);
   const command = split < 0 ? [] : args.slice(split + 1);
-  const flags = options;
   let positional: string | undefined;
 
   let scope: McpScope = "user";
