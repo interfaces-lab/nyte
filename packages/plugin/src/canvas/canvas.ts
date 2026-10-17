@@ -1,5 +1,5 @@
 import { definePart, followedTrace, traced } from "@nyte-ai/core";
-import type { ActionContext, ActionOutput, ToolDefinition } from "@nyte-ai/core";
+import type { ActionContext, ActionOutput, ToolDefinition, ToolInvocation } from "@nyte-ai/core";
 import { asId, standard } from "@nyte-ai/schema";
 import type { Awaitable, Infer } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -15,6 +15,8 @@ import {
   TINTS,
 } from "./canvas-protocol.ts";
 import { compileCanvas } from "./canvas-compile.ts";
+import { CANVAS_PREVIEW_WIDTHS, describeCanvasPreview } from "./canvas-preview.ts";
+import type { CanvasPreviewer } from "./canvas-preview.ts";
 import type { CompileError } from "./canvas-compile.ts";
 import type { Plugin } from "@nyte-ai/plugin/core";
 import { canvas as canvasContract } from "./schema.ts";
@@ -47,18 +49,22 @@ export const canvas = definePart({
   onAction: (action, input, context) => handlers[action](input, context),
 });
 
+const source = Type.String({
+  maxLength: CANVAS_SOURCE_LIMIT,
+  description: `${CANVAS_ENTRY}: the TSX module whose default export is the component.`,
+});
+
+const files = Type.Optional(
+  Type.Record(Type.String(), Type.String({ maxLength: CANVAS_SOURCE_LIMIT }), {
+    description: `The canvas's other modules, keyed by path from ${CANVAS_ENTRY}'s folder (\`chart.tsx\`, \`lib/scale.ts\`), which it imports as \`./chart\` or \`./lib/scale.ts\`.`,
+  }),
+);
+
 const parameters = standard(
   Type.Object({
     title: Type.String({ minLength: 1, maxLength: 120, description: "Shown above the canvas." }),
-    source: Type.String({
-      maxLength: CANVAS_SOURCE_LIMIT,
-      description: `${CANVAS_ENTRY}: the TSX module whose default export is the component.`,
-    }),
-    files: Type.Optional(
-      Type.Record(Type.String(), Type.String({ maxLength: CANVAS_SOURCE_LIMIT }), {
-        description: `The canvas's other modules, keyed by path from ${CANVAS_ENTRY}'s folder (\`chart.tsx\`, \`lib/scale.ts\`), which it imports as \`./chart\` or \`./lib/scale.ts\`.`,
-      }),
-    ),
+    source,
+    files,
     canvas: Type.Optional(
       Type.String({
         description: "The id of a canvas to replace in place; omit to add a new one.",
@@ -118,65 +124,149 @@ function describeErrors(errors: readonly CompileError[]): string {
     .join("\n");
 }
 
-const render: ToolDefinition<Infer<typeof parameters>> = {
-  name: "canvas_render",
-  description: CANVAS_DESCRIPTION,
-  parameters,
-  class: (args) => ({
-    kind: "custom",
-    label: args.canvas === undefined ? `Rendering ${args.title}` : `Updating ${args.title}`,
-  }),
-  effects: "none",
-  replay: "safe",
-  async execute(args, invocation) {
-    const compiled = await traced(
-      "canvas.compile",
-      followedTrace(invocation.session.id),
-      { bytes: args.source.length, files: Object.keys(args.files ?? {}).length },
-      () => compileCanvas(args.source, args.files),
-    );
+/** Compiles a tool call's canvas, or throws the diagnostics for the model to fix. */
+async function compile(
+  args: { readonly source: string; readonly files?: Readonly<Record<string, string>> },
+  invocation: ToolInvocation,
+) {
+  const compiled = await traced(
+    "canvas.compile",
+    followedTrace(invocation.session.id),
+    { bytes: args.source.length, files: Object.keys(args.files ?? {}).length },
+    () => compileCanvas(args.source, args.files),
+  );
 
-    if (compiled.kind === "failed")
-      throw new Error(`The canvas did not compile:\n${describeErrors(compiled.errors)}`);
-    const next = {
-      runtime: compiled.runtime,
-      title: args.title,
-      code: compiled.code,
-      height: args.height ?? null,
-    };
+  if (compiled.kind === "failed")
+    throw new Error(`The canvas did not compile:\n${describeErrors(compiled.errors)}`);
 
-    if (args.canvas === undefined) {
-      const part = await invocation.session.parts.create(canvas, {
-        state: { ...next, error: null },
-        placement: { kind: "transcript", role: "answer" },
-      });
+  return compiled;
+}
+
+const PREVIEW_FIRST =
+  "Before rendering, call `canvas_preview` with the same `source` and `files`: it shows you the canvas and its errors, console and height without the user seeing it. Fix what it shows, then render once.";
+
+function renderTool(previewing: boolean): ToolDefinition<Infer<typeof parameters>> {
+  return {
+    name: "canvas_render",
+    description: previewing ? `${PREVIEW_FIRST}\n\n${CANVAS_DESCRIPTION}` : CANVAS_DESCRIPTION,
+    parameters,
+    class: (args) => ({
+      kind: "custom",
+      label: args.canvas === undefined ? `Rendering ${args.title}` : `Updating ${args.title}`,
+    }),
+    effects: "none",
+    replay: "safe",
+    async execute(args, invocation) {
+      const compiled = await compile(args, invocation);
+      const next = {
+        runtime: compiled.runtime,
+        title: args.title,
+        code: compiled.code,
+        height: args.height ?? null,
+      };
+
+      if (args.canvas === undefined) {
+        const part = await invocation.session.parts.create(canvas, {
+          state: { ...next, error: null },
+          placement: { kind: "transcript", role: "answer" },
+        });
+
+        return {
+          content: [{ kind: "text", text: `Rendered canvas ${part.id}: ${args.title}.` }],
+          parts: [part.id],
+        };
+      }
+
+      const outcome = await invocation.session.part(asId(args.canvas)).act("replace", next);
+
+      if (outcome.kind !== "ok")
+        throw new Error(`Canvas ${args.canvas} was not replaced: ${outcome.kind}.`);
 
       return {
-        content: [{ kind: "text", text: `Rendered canvas ${part.id}: ${args.title}.` }],
-        parts: [part.id],
+        content: [{ kind: "text", text: `Replaced canvas ${args.canvas}: ${args.title}.` }],
+        parts: [asId(args.canvas)],
       };
-    }
+    },
+  };
+}
 
-    const outcome = await invocation.session.part(asId(args.canvas)).act("replace", next);
+const previewParameters = standard(
+  Type.Object({
+    source,
+    files,
+    theme: Type.Optional(
+      Type.Union([Type.Literal("light"), Type.Literal("dark")], {
+        description: "The theme to preview in; default light.",
+      }),
+    ),
+  }),
+);
 
-    if (outcome.kind !== "ok")
-      throw new Error(`Canvas ${args.canvas} was not replaced: ${outcome.kind}.`);
+function previewTool(preview: CanvasPreviewer): ToolDefinition<Infer<typeof previewParameters>> {
+  return {
+    name: "canvas_preview",
+    description: `Render a canvas off-screen in the real canvas runtime and see it before the user does: a PNG at the chat column's width (${CANVAS_PREVIEW_WIDTHS.chat} px), its height there and at a phone's width (${CANVAS_PREVIEW_WIDTHS.phone} px), every load or render error with its file and line, and the canvas's console output. Takes the same \`source\` and \`files\` as canvas_render and compiles them the same way; nothing is added to the chat.`,
+    parameters: previewParameters,
+    class: () => ({ kind: "custom", label: "Previewing canvas" }),
+    effects: "none",
+    replay: "safe",
+    async execute(args, invocation) {
+      const compiled = await compile(args, invocation);
+      const outcome = await preview({
+        module: { runtime: compiled.runtime, code: compiled.code, title: "Preview" },
+        theme: args.theme ?? "light",
+      });
 
-    return {
-      content: [{ kind: "text", text: `Replaced canvas ${args.canvas}: ${args.title}.` }],
-      parts: [asId(args.canvas)],
-    };
-  },
-};
+      if (outcome.kind === "unavailable")
+        return {
+          content: [
+            {
+              kind: "text",
+              text: `No preview here: ${outcome.reason} Render with canvas_render; an error it hits comes back in the canvas next turn.`,
+            },
+          ],
+        };
+      const { png } = outcome.report;
+      const blob = await invocation.env.files.upload(
+        (async function* () {
+          yield png;
+        })(),
+      );
+
+      return {
+        content: [
+          { kind: "text", text: describeCanvasPreview(outcome.report) },
+          { kind: "file", blob, mime: "image/png" },
+        ],
+      };
+    },
+  };
+}
 
 /**
- * The canvas plugin: the `canvas` part and the `canvas_render` tool, which
- * compiles in-process on any host.
+ * Returns the canvas plugin: the `canvas` part and `canvas_render`, which
+ * compiles in-process on any host, plus `canvas_preview` when the host
+ * passes a previewer, in which case `canvas_render` tells the model to
+ * preview first.
  *
  * @category plugins
  * @since 0.1.0
  */
-export default {
-  id: "canvas",
-  contribute: { parts: [canvas], tools: [render] },
-} satisfies Plugin;
+export function canvasPlugin(preview?: CanvasPreviewer): Plugin {
+  return {
+    id: "canvas",
+    contribute: {
+      parts: [canvas],
+      tools: preview === undefined ? [renderTool(false)] : [renderTool(true), previewTool(preview)],
+    },
+  };
+}
+
+/**
+ * The canvas plugin without a previewer, as a host that cannot render one
+ * loads it.
+ *
+ * @category plugins
+ * @since 0.1.0
+ */
+export default canvasPlugin();
