@@ -18,14 +18,33 @@
       "entry": ["lint/*.js", "lint/fixtures/*.{ts,tsx}"],
       // The test runs electron-vite with cwd packages/desktop, which lists it.
       "ignoreBinaries": ["electron-vite"],
-      // vite.ts serves ../canvas/dist/shell by path; the workspace dependency orders turbo's ^build.
-      "ignoreDependencies": ["@nyte-ai/canvas"],
     },
     "packages/canvas": {
-      // check-shell is a manual Playwright check; kit.test.ts and check-shell compile every fixture by readdir.
-      "entry": ["scripts/check-shell.mjs", "test/fixtures/*.tsx"],
-      // src/shell/fonts.css imports them, and knip does not read CSS.
-      "ignoreDependencies": ["@fontsource-variable/inter", "@fontsource-variable/jetbrains-mono"],
+      // check-shell is a manual Playwright check, library-exports a manual generator, and the app's
+      // shell test runs compile.mjs by path; kit.test.ts, check-shell and the preview tests compile
+      // every fixture and probe by readdir.
+      "entry": [
+        "scripts/check-shell.mjs",
+        "scripts/compile.mjs",
+        "scripts/library-exports.mjs",
+        "test/fixtures/*.tsx",
+        "test/fixtures/*/main.tsx",
+        "test/probes/*/main.tsx",
+      ],
+      "ignoreDependencies": [
+        // src/shell/fonts.css imports them, and knip does not read CSS.
+        "@fontsource-variable/inter",
+        "@fontsource-variable/jetbrains-mono",
+        // vite.libraries.config.ts builds each library a canvas may import by name from LIBRARY_EXPORTS.
+        "d3-array",
+        "d3-hierarchy",
+        "d3-scale",
+        "d3-shape",
+        "@types/d3-array",
+        "@types/d3-hierarchy",
+        "@types/d3-scale",
+        "@types/d3-shape",
+      ],
     },
     "packages/cli": {
       // distribution.test.js verifies the tarball with the system shasum.
@@ -58,8 +77,6 @@
         "@anthropic-ai/claude-agent-sdk",
         "@lydell/node-pty",
         "sucrase",
-        // scripts/build.mjs and electron-builder.config.ts read ../canvas/dist/shell; this orders turbo's ^build.
-        "@nyte-ai/canvas",
       ],
     },
     "packages/docs": {
