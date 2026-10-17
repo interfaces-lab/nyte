@@ -133,6 +133,7 @@ export class AcpProcess {
     }
 
     const thread = new AcpThread(`acp-${randomUUID().slice(0, 8)}-`, {
+      cwd,
       approve,
       prompt: (blocks) =>
         this.#connection.agent.request(methods.agent.session.prompt, {

@@ -11,7 +11,10 @@ import { composeServer } from "@nyte-ai/core/testing";
 import { asId } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame } from "@nyte-ai/schema";
 import { afterEach, assert, beforeEach, expect, it } from "vitest";
+import approvalsPlugin from "../src/approvals/approvals.ts";
+import { openApprovals, PERMISSIONS } from "../src/approvals/schema.ts";
 import { acpAgents } from "../src/acp/index.ts";
+import type { AcpAgent } from "../src/acp/index.ts";
 import { installedAgents, registryEntries } from "../src/acp/registry.ts";
 import { env as chatOnly, until } from "./fake-models.ts";
 
@@ -84,7 +87,7 @@ function pipeJob(command: readonly string[], extra: Readonly<Record<string, stri
 
 async function openHost(gate: Plugin<"core">) {
   const acp = acpAgents({
-    agents: async () => [
+    agents: async (): Promise<readonly AcpAgent[]> => [
       {
         id: "fake",
         name: "Fake Agent",
@@ -240,6 +243,42 @@ it("runs a turn whose tool calls ask permission through the before_tool gate", a
     ]),
   );
 });
+
+it.each([
+  ["Please move.", "yes"],
+  ["Please move, always.", "cancelled"],
+])(
+  "asks about %o by the path outside the folder and answers the agent %o",
+  async (content, answered) => {
+    await using opened = await openHost(approvalsPlugin);
+    expect(await opened.host.settings.apply(PERMISSIONS, "auto-edit")).toEqual({
+      kind: "applied",
+    });
+
+    const { session, receipt } = await opened.host.sessions.start({
+      content,
+      configuration: { model: { provider: "acp", id: "fake" } },
+    });
+
+    const [asked] = await until(async () => {
+      const pending = openApprovals(await session.view());
+
+      return pending.length > 0 ? pending : undefined;
+    });
+
+    assert(asked !== undefined);
+    expect(asked).toMatchObject({
+      tool: "move",
+      reason: "outside",
+      class: { kind: "edit", path: "/etc/notes.txt" },
+    });
+    await session.part(asked.part).act("once", {});
+
+    expect((await receipt.settled()).kind).toBe("completed");
+    expect(openApprovals(await session.view())).toEqual([]);
+    expect(await readLog()).toContainEqual({ permission: "m1", outcome: answered });
+  },
+);
 
 it("stops a run by cancelling the agent's turn", async () => {
   await using opened = await openHost(refuseDeletes);

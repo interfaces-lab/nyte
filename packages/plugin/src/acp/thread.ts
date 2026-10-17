@@ -9,6 +9,7 @@ import type {
   ToolCallStatus,
   ToolCallUpdate,
 } from "@agentclientprotocol/sdk";
+import { posix } from "node:path";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
 import type { Api, AssistantMessageEventStream, Model, StopReason } from "@nyte-ai/ai";
 import type { RuntimeCall, RuntimeVerdict } from "@nyte-ai/core";
@@ -46,8 +47,9 @@ export interface AcpToolOutput {
   readonly failed: boolean;
 }
 
-/** How a thread reaches its agent: one prompt turn, the cancel notification for it, and how a permission it asks for is decided. */
+/** How a thread reaches its agent: one prompt turn, the cancel notification for it, the folder its session runs in, and how a permission it asks for is decided. */
 export interface AcpChannel {
+  readonly cwd: string;
   prompt(blocks: readonly ContentBlock[]): Promise<PromptResponse>;
   cancel(): void;
   readonly approve: AcpApprove;
@@ -84,13 +86,14 @@ class Inbox<T> {
 
 const input = Type.Record(Type.String(), Type.Unknown());
 
+/** The agent's option for a choice: allow only ever once, so one "Allow once" never becomes a standing grant inside the agent; reject once, else always. */
 function answer(
   choice: "allow" | "reject" | "cancelled",
   options: readonly PermissionOption[],
 ): RequestPermissionResponse {
   const kinds =
     choice === "allow"
-      ? ["allow_once", "allow_always"]
+      ? ["allow_once"]
       : choice === "reject"
         ? ["reject_once", "reject_always"]
         : [];
@@ -100,6 +103,19 @@ function answer(
   return option === undefined
     ? { outcome: { outcome: "cancelled" } }
     : { outcome: { outcome: "selected", optionId: option.optionId } };
+}
+
+/** The paths a call touches, those outside `cwd` first, so its class (which reads the first) names the one a policy guards. */
+function guardedFirst(cwd: string, paths: readonly string[]): string[] {
+  const root = posix.resolve(cwd);
+
+  const inside = (path: string): boolean => {
+    const target = posix.resolve(root, path);
+
+    return target === root || target.startsWith(`${root}/`);
+  };
+
+  return [...paths.filter((path) => !inside(path)), ...paths.filter(inside)];
 }
 
 function stopReason(
@@ -398,7 +414,7 @@ export class AcpThread {
       title: tool?.title ?? "Tool",
       kind: tool?.kind ?? "other",
       input: tool?.input ?? {},
-      paths: tool?.paths ?? [],
+      paths: guardedFirst(this.#channel.cwd, tool?.paths ?? []),
     };
   }
 

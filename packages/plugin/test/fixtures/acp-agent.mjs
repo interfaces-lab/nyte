@@ -4,7 +4,9 @@ import { createInterface } from "node:readline";
 /**
  * A fake ACP agent over stdio: newline-delimited JSON-RPC, no dependencies.
  * "tools" in a prompt runs a turn with two tool calls that ask permission;
- * "wait" streams a line and holds the turn until the client cancels it.
+ * "move" asks to move a file from the session's folder to /etc, offering
+ * only allow_always with "always"; "wait" streams a line and holds the turn
+ * until the client cancels it.
  * Every message the client sends is appended to $ACP_LOG.
  */
 const log = (entry) => {
@@ -21,6 +23,8 @@ const cancels = new Map();
 let next = 0;
 
 let sessions = 0;
+
+const cwds = new Map();
 
 const request = (method, params) =>
   new Promise((resolve) => {
@@ -40,8 +44,12 @@ const options = [
   { optionId: "no", name: "Reject", kind: "reject_once" },
 ];
 
-async function ask(sessionId, toolCall) {
-  const response = await request("session/request_permission", { sessionId, toolCall, options });
+async function ask(sessionId, toolCall, choices = options) {
+  const response = await request("session/request_permission", {
+    sessionId,
+    toolCall,
+    options: choices,
+  });
   const outcome = response.outcome.outcome === "selected" ? response.outcome.optionId : "cancelled";
   log({ permission: toolCall.toolCallId, outcome });
 
@@ -91,6 +99,36 @@ async function tools(sessionId) {
   };
 }
 
+async function move(sessionId, always) {
+  const cwd = cwds.get(sessionId) ?? "/";
+
+  const outcome = await ask(
+    sessionId,
+    {
+      toolCallId: "m1",
+      title: "Move notes",
+      kind: "move",
+      status: "pending",
+      locations: [{ path: `${cwd}/notes.txt` }, { path: "/etc/notes.txt" }],
+    },
+    always
+      ? [
+          { optionId: "always", name: "Always allow", kind: "allow_always" },
+          { optionId: "no", name: "Reject", kind: "reject_once" },
+        ]
+      : options,
+  );
+
+  update(sessionId, {
+    sessionUpdate: "tool_call_update",
+    toolCallId: "m1",
+    status: outcome === "yes" || outcome === "always" ? "completed" : "failed",
+  });
+  say(sessionId, `Moved: ${outcome}.`);
+
+  return { stopReason: "end_turn" };
+}
+
 async function hold(sessionId) {
   say(sessionId, "Working.");
   await new Promise((resolve) => cancels.set(sessionId, resolve));
@@ -103,13 +141,15 @@ async function prompt(params) {
 
   if (text.includes("tools")) return tools(params.sessionId);
 
+  if (text.includes("move")) return move(params.sessionId, text.includes("always"));
+
   if (text.includes("wait")) return hold(params.sessionId);
   say(params.sessionId, "Hello.");
 
   return { stopReason: "end_turn" };
 }
 
-createInterface({ input: process.stdin }).on("line", async (line) => {
+async function receive(line) {
   if (line.trim() === "") return;
   const message = JSON.parse(line);
   log(message.method === undefined ? { response: message.id } : { method: message.method });
@@ -135,6 +175,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       break;
     case "session/new":
       sessions += 1;
+      cwds.set(`s${String(sessions)}`, message.params.cwd);
       send({ id: message.id, result: { sessionId: `s${String(sessions)}` } });
       break;
     case "session/prompt":
@@ -150,4 +191,6 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
           error: { code: -32601, message: `${message.method} is not handled.` },
         });
   }
-});
+}
+
+createInterface({ input: process.stdin }).on("line", (line) => void receive(line));
