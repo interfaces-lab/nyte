@@ -258,8 +258,10 @@ describe("client streaming", () => {
       return next(request);
     });
 
-    const done = (view: SessionView): boolean =>
-      view.execution.kind === "idle" && view.messages.length === 4;
+    const done = async (view: SessionView): Promise<boolean> =>
+      view.execution.kind === "idle" &&
+      view.messages.length === 4 &&
+      JSON.stringify(view) === JSON.stringify(await host.view(session.id));
 
     const first = until(session.watch(), done);
     const second = until(connection.session(session.id).watch(), done);
@@ -268,7 +270,6 @@ describe("client streaming", () => {
 
     expect(opened).toBe(1);
     expect(right).toEqual(left);
-    expect(left).toEqual(await host.view(session.id));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(closed).toBe(1);
   });
