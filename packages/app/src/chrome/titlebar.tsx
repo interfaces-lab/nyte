@@ -8,7 +8,7 @@ import { props } from "@stylexjs/stylex";
 import { createLink, useMatch } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/sdk";
-import { PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -46,7 +46,8 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 
 /**
  * Where the open chat runs, ahead of its title: the machine when it is not
- * this one, then the folder. A Home chat on this machine names nothing.
+ * this one, then the folder, then the branch of a chat in a worktree. A Home
+ * chat on this machine names nothing.
  */
 function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement | null {
   const session = useSession(sessionId);
@@ -54,13 +55,32 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
   const workspace = workspaces.data?.find((candidate) => candidate.id === session.data?.workspace);
 
   if (workspace === undefined) return null;
+  const { worktree } = workspace;
+
+  const folder =
+    worktree === null
+      ? workspace
+      : workspaces.data?.find((candidate) => candidate.id === worktree.source);
 
   return (
     <>
-      <span title={workspace.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
-        {workspace.name}
-      </span>
-      <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
+      {folder !== undefined && (
+        <>
+          <span title={folder.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
+            {folder.name}
+          </span>
+          <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
+        </>
+      )}
+      {worktree !== null && (
+        <>
+          <span title={workspace.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
+            <Icon name="git-branch" size={12} />
+            {worktree.branch}
+          </span>
+          <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
+        </>
+      )}
     </>
   );
 }

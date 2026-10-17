@@ -317,6 +317,7 @@ export function Sidebar(): ReactElement {
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & RailWorkspace))[] = [
     ...(homeVisible ? [{ kind: "home" } as const] : []),
     ...(workspaces.data ?? [])
+      .filter((workspace) => workspace.worktree === null)
       .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((workspace) => ({ kind: "project", ...workspace }) as const),
   ];
