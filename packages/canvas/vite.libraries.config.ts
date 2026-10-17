@@ -13,13 +13,15 @@ export default defineConfig({
     target: ["chrome123", "safari16.4"],
     minify: true,
     modulePreload: false,
-    lib: {
-      entry: Object.fromEntries(
-        Object.keys(LIBRARY_EXPORTS).map((name) => [name, `src/libraries/${name}.ts`]),
-      ),
-      formats: ["es"],
-      fileName: (_format, name) => `${name}.js`,
+    chunkSizeWarningLimit: 1_000,
+    rolldownOptions: {
+      input: Object.fromEntries(Object.keys(LIBRARY_EXPORTS).map((name) => [name, name])),
+      preserveEntrySignatures: "strict",
+      output: {
+        format: "es",
+        entryFileNames: "[name].js",
+        chunkFileNames: "chunks/[name]-[hash].js",
+      },
     },
-    rolldownOptions: { output: { chunkFileNames: "chunks/[name]-[hash].js" } },
   },
 });
