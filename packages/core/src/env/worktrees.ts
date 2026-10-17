@@ -115,13 +115,11 @@ export async function releaseWorktree(
   await kernel.environments.detachWorkspace(workspace);
 
   try {
-    const removal = await kernel.environments
-      .provider(record.target.kind)
-      ?.worktrees?.remove({
-        target: record.target,
-        branch: isolation.branch,
-        base: isolation.base,
-      });
+    const removal = await kernel.environments.provider(record.target.kind)?.worktrees?.remove({
+      target: record.target,
+      branch: isolation.branch,
+      base: isolation.base,
+    });
 
     dev("worktrees", "removed", { session, workspace, ...removal });
   } catch (error) {
