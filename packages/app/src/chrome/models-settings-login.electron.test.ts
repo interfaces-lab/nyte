@@ -161,7 +161,9 @@ beforeEach(async () => {
   await page.reload();
   await page.locator("#root").waitFor();
   await catalogBecomes(disconnected);
-  await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+    .waitFor();
 });
 
 async function catalogBecomes(catalog: Catalog): Promise<void> {
@@ -238,7 +240,9 @@ test(
     await step(deviceCode);
     await page.getByLabel("Device code").waitFor();
     await page.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     await page.getByRole("region", { name: "Popular providers" }).waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
     assert.ok((await recordedCalls()).some((call) => call.path === "models.login.cancel"));
@@ -269,7 +273,9 @@ test(
       .waitFor();
     assert.deepEqual(await page.evaluate(() => [...window.nyteLoginHarness.clipboard]), []);
     await page.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,
@@ -282,7 +288,9 @@ test(
     await step(deviceCode);
     await step({ kind: "failed", reason: "denied" });
     await page.getByText(/Couldn't sign in to GitHub Copilot/).waitFor();
-    await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
     assert.deepEqual(pageErrors, []);
   },
@@ -320,7 +328,9 @@ test(
     assert.equal(await page.getByText("Select login method:").count(), 0);
     assert.equal(await page.getByText("Paste the code:").count(), 0);
     await page.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,
@@ -334,13 +344,17 @@ test(
         "https://connect.example/r/5f0c7d2e-3c1a-4b8e-9f6a-2d4e8c1b7a90",
       ),
     );
-    await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .click();
     await page.getByText("Waiting for the browser").waitFor();
     const login = (await recordedCalls()).find((call) => call.path === "models.login");
     assert.ok(login !== undefined);
     assert.equal(login.input.browser, "elsewhere");
     await page.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,

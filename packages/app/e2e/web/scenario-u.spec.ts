@@ -238,7 +238,9 @@ test("scenario U on the web: a random restaurant nearby, quit mid-answer, reopen
       .getByRole("figure", { name: "Random pick nearby" })
       .frameLocator("iframe");
     await expect(restored.getByRole("heading", { name: "Luigi's Trattoria" })).toBeVisible();
-    await expect(workbench(reopened).getByRole("textbox", { name: "Terminal input" })).toBeVisible();
+    await expect(
+      workbench(reopened).getByRole("textbox", { name: "Terminal input" }),
+    ).toBeVisible();
     expect(await savedScrollback(reopened)).toContain(HOURS_DONE);
     await shot("web-terminal-after-reopen", reopened);
     await writeFile(
