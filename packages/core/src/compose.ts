@@ -55,6 +55,7 @@ import { createExecutionState, dispatchHead, driveInProcess } from "./drive/exec
 import { createJobTable } from "./engine/jobs.ts";
 import { createPartDefinitions } from "./engine/part-definitions.ts";
 import { createConnectionRegistry } from "./engine/principals.ts";
+import { stopStart } from "./engine/start.ts";
 import { createWaitRegistry } from "./engine/waits.ts";
 import { createPageTable } from "./env/browser.ts";
 import { createEnvironmentRegistry } from "./env/environment.ts";
@@ -509,6 +510,7 @@ export function createKernel(input: KernelOptions): Kernel {
       session: (context, session) => sessionHandle(kernel, context, session),
       activationSession: (context, session) => activationSession(kernel, context, session),
     },
+    stopStart: (session) => stopStart(kernel, session),
   };
 
   const execution = kernel.execution;

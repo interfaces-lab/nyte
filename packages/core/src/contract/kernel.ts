@@ -149,6 +149,9 @@ export interface Kernel {
 
   /** Builds the public connection and session handles, so engine and plugin code never import the api layer. */
   readonly handles: Handles;
+
+  /** Removes a chat whose first message is still deciding, the way a refusal does; returns that message, or null when nothing on the chat is deciding. On the kernel so receipts reach it without importing start.ts. */
+  stopStart(session: SessionId): Promise<MessageId | null>;
 }
 
 /** The host's plugins and the per-session runtimes that load them. */

@@ -9,7 +9,7 @@ import type {
   SessionId,
   StopOutcome,
 } from "@nyte-ai/schema";
-import { CORE_CONTEXT, LOCAL } from "../contract/host.ts";
+import { LOCAL } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { ReceiptRecord } from "../contract/records.ts";
 import type { Receipt, SendReceipt } from "../contract/session.ts";
@@ -298,7 +298,7 @@ async function stopReceipt<O extends Json>(
   if (input === undefined) return { kind: "missing" };
 
   if (input.schedule.kind === "deciding") {
-    await kernel.handles.session(CORE_CONTEXT, session).stop();
+    await kernel.stopStart(session);
 
     return { kind: "requested" };
   }
