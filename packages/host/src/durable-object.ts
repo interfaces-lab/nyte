@@ -23,6 +23,7 @@ import {
   parseNumber,
   prefixEnd,
   parseRef,
+  parseStoredObject,
   parseStoredRecord,
   parseText,
 } from "./store-rows.ts";
@@ -94,6 +95,12 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
       return rows(
         "SELECT refs.name, refs.target, refs.revision, objects.body FROM refs JOIN objects ON objects.id = refs.target WHERE objects.body IS NOT NULL",
       ).map(parseStoredRecord);
+    },
+    async *objects(kind) {
+      yield* rows(
+        "SELECT id, body FROM objects WHERE body IS NOT NULL AND instr(body, ?) > 0",
+        `"kind":${JSON.stringify(kind)}`,
+      ).map(parseStoredObject);
     },
     async *logs() {
       if (rows("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'log'").length === 0)

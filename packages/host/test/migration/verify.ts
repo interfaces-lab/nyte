@@ -154,6 +154,49 @@ function readStamp(database: DatabaseSync, schema: string): number {
       );
 }
 
+/**
+ * The ended-run refs `MAPPING`'s step 15 adds to the store before migration,
+ * each with the object it points at, read from that store's log and objects
+ * with SQL rather than the step's own walk.
+ */
+function endedRunRefs(
+  database: DatabaseSync,
+  refs: ReadonlyMap<string, RefRow>,
+): ReadonlyMap<string, string> {
+  const sessions = new Map<string, Set<string>>();
+
+  for (const row of database
+    .prepare(
+      "SELECT session, json_extract(event, '$.run') AS run FROM before.log WHERE json_extract(event, '$.kind') = 'run' AND json_extract(event, '$.change') = 'ended' AND json_type(event, '$.run') = 'text'",
+    )
+    .all())
+    sessions.set(text(row.run), (sessions.get(text(row.run)) ?? new Set()).add(text(row.session)));
+
+  const latest = database.prepare(
+    "SELECT id, body FROM before.objects WHERE json_valid(body) AND CASE WHEN json_valid(body) THEN json_extract(body, '$.kind') = 'run' AND json_extract(body, '$.body.view.id') = ? AND json_type(body, '$.body.snapshot') = 'text' END ORDER BY json_extract(body, '$.at') DESC, id DESC LIMIT 1",
+  );
+  const added = new Map<string, string>();
+
+  for (const [run, ended] of sessions) {
+    const [session, ...others] = ended;
+    const row = latest.get(run);
+
+    if (session === undefined || others.length > 0 || row === undefined) continue;
+
+    if (decodeRunRecord(decodeObject(text(row.body))) === null) continue;
+    const name = `sessions/${session}/ended/${run}`;
+
+    if (
+      refs.has(`sessions/${session}`) &&
+      !refs.has(`sessions/${session}/runs/${run}`) &&
+      !refs.has(name)
+    )
+      added.set(name, text(row.id));
+  }
+
+  return added;
+}
+
 function readRefs(database: DatabaseSync, schema: string): Map<string, RefRow> {
   return new Map(
     database
@@ -299,6 +342,9 @@ export async function verifyMigration(
         count(fieldChanges, `${changeKind(record, kind)} ${fieldPattern(path)}`);
       count(outcomes, `rewritten ${kind}`);
     }
+
+    if (from < 15)
+      for (const [name, target] of endedRunRefs(database, refsBefore)) derived.set(name, target);
 
     const added = new Map<string, number>();
 

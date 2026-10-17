@@ -1,7 +1,7 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { ByteReader, Ref, Revision, SessionEvent } from "@nyte-ai/schema";
 import { loggedEvent } from "@nyte-ai/core/store";
-import type { LoggedRow, StoredRecord } from "@nyte-ai/core/store";
+import type { LoggedRow, StoredObject, StoredRecord } from "@nyte-ai/core/store";
 
 export function prefixEnd(prefix: string): string | null {
   const points = Array.from(prefix);
@@ -63,6 +63,15 @@ export function parseStoredRecord(row: Readonly<Record<string, unknown>>): Store
     throw new SdkError("internal", "A stored ref is malformed.");
 
   return { name, target: asId<"object">(target), revision, body };
+}
+
+export function parseStoredObject(row: Readonly<Record<string, unknown>>): StoredObject {
+  const id = parseText(row.id);
+  const body = parseText(row.body);
+
+  if (id === null || body === null) throw new SdkError("internal", "A stored object is malformed.");
+
+  return { id: asId<"object">(id), body };
 }
 
 export function loggedRow(row: Readonly<Record<string, unknown>>): LoggedRow {

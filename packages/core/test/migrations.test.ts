@@ -1,4 +1,4 @@
-import { asId } from "@nyte-ai/schema";
+import { asId, isJsonObject } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
 import { owedCalls, readToolInput } from "../src/agent/tool-runner.ts";
@@ -9,7 +9,7 @@ import { createHookDispatch } from "../src/extend/hooks.ts";
 import { migrateStore } from "../src/store.ts";
 import type { StoredRecord } from "../src/store.ts";
 import type { StoreChange } from "../src/store/migrations.ts";
-import { callRef, liveRef, partRef } from "../src/store/refs.ts";
+import { callRef, endedRunRef, liveRef, partRef, runRef, sessionRef } from "../src/store/refs.ts";
 import { wokenIndex } from "../src/store/wait-index.ts";
 import { configuration, main, setup, startRun } from "../src/harness.ts";
 
@@ -61,6 +61,7 @@ it("gives an older store's unstopped runs their live ref and its parked calls th
     stamp: async () => ({ version: 8, empty: false }),
     records: async () => records,
     logs: async function* () {},
+    objects: async function* () {},
     commit: async (change) => {
       created.push(...change.creates.map((creation) => creation.name));
       moved.push(...change.repoints.map((repoint) => repoint.name));
@@ -103,6 +104,75 @@ async function landChange(kernel: Kernel, change: StoreChange): Promise<"committ
 
   return "committed";
 }
+
+it("keeps an older store's ended runs' last snapshot records under their ended refs", async () => {
+  const { kernel, host } = await setup();
+  const session = await host.sessions.create();
+
+  const run = await startRun(
+    kernel,
+    session.id,
+    main,
+    { kind: "continuation", from: "wake" },
+    configuration,
+  );
+
+  const live = await kernel.store.refs.get(runRef(session.id, run.id));
+  const stored = live?.target ? await kernel.store.objects.get(live.target) : null;
+
+  if (!isJsonObject(stored) || !isJsonObject(stored.body))
+    throw new Error("The run has no record.");
+  const record = { ...stored, body: { ...stored.body, snapshot: "git:before" } };
+  const first = { ...record, at: 1, body: { ...record.body, lastSnapshot: null } };
+  const last = { ...record, at: 5, body: { ...record.body, lastSnapshot: "git:after" } };
+  const [firstId, lastId] = [
+    await kernel.store.objects.put(first),
+    await kernel.store.objects.put(last),
+  ];
+  const sessionRecord = await kernel.store.refs.get(sessionRef(session.id));
+  const created: StoreChange["creates"][number][] = [];
+
+  await migrateStore({
+    dialect: "sqlite",
+    stamp: async () => ({ version: 14, empty: false }),
+    records: async () => [
+      {
+        name: sessionRef(session.id),
+        target: sessionRecord?.target ?? asId("missing"),
+        revision: sessionRecord?.revision ?? "r",
+        body: "{}",
+      },
+    ],
+    logs: async function* () {
+      yield {
+        session: session.id,
+        events: [
+          {
+            seq: 1,
+            event: JSON.stringify({
+              head: main,
+              kind: "run",
+              run: run.id,
+              change: "ended",
+              end: { kind: "stopped" },
+            }),
+          },
+        ],
+      };
+    },
+    objects: async function* () {
+      yield { id: firstId, body: JSON.stringify(first) };
+      yield { id: lastId, body: JSON.stringify(last) };
+    },
+    commit: async (change) => {
+      created.push(...change.creates);
+
+      return "committed";
+    },
+  });
+
+  expect(created).toEqual([{ name: endedRunRef(session.id, run.id), target: lastId }]);
+});
 
 it("moves a tool call's name and args to its part alone, which recovery then replays", async () => {
   const { kernel, host } = await setup();
@@ -171,6 +241,7 @@ it("moves a tool call's name and args to its part alone, which recovery then rep
     stamp: async () => ({ version: 10, empty: false }),
     records: async () => storedRecords(kernel),
     logs: async function* () {},
+    objects: async function* () {},
     commit: async (change) => landChange(kernel, change),
   });
 
@@ -221,6 +292,7 @@ it("gives an older Nyte's unopened tool call position 0, so recovery still owes 
     stamp: async () => ({ version: 11, empty: false }),
     records: async () => storedRecords(kernel),
     logs: async function* () {},
+    objects: async function* () {},
     commit: async (change) => landChange(kernel, change),
   });
 
@@ -266,6 +338,7 @@ it("indexes as woken a call an older Nyte woke and had not stepped since", async
     stamp: async () => ({ version: 12, empty: false }),
     records: async () => storedRecords(kernel),
     logs: async function* () {},
+    objects: async function* () {},
     commit: async (change) => {
       created.push(...change.creates.map((creation) => creation.name));
 
@@ -301,6 +374,7 @@ it("keeps a before_tool hook call's modify result its old decoder could not read
     stamp: async () => ({ version: 13, empty: false }),
     records: async () => storedRecords(kernel),
     logs: async function* () {},
+    objects: async function* () {},
     commit: async (change) => landChange(kernel, change),
   });
 
@@ -344,6 +418,7 @@ it("keeps a before_tool hook call's principal and changed args alone, which its 
     stamp: async () => ({ version: 13, empty: false }),
     records: async () => storedRecords(kernel),
     logs: async function* () {},
+    objects: async function* () {},
     commit: async (change) => landChange(kernel, change),
   });
 

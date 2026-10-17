@@ -1,4 +1,5 @@
 import {
+  asId,
   compile,
   FileStatusType,
   HunkType,
@@ -14,7 +15,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { decodeCallRecord, decodeRunRecord } from "../contract/records.ts";
 import { objectId } from "../util/content.ts";
-import { callRef, liveRef, parseSessionRef, runRef } from "./refs.ts";
+import { callRef, endedRunRef, liveRef, parseSessionRef, runRef, sessionRef } from "./refs.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 
 type StoreDialect = "sqlite" | "postgres";
@@ -35,7 +36,18 @@ interface RewriteStep {
   adds?(name: string, record: Json): readonly string[];
 }
 
-type StoreStep = SchemaStep | RewriteStep;
+/** Finds refs to add at records no ref reaches any more (`recover`, the refs to create from every ref's name, every session's log and the objects of a record kind); one that exists is kept. */
+interface RecoverStep {
+  readonly kind: "recover";
+  readonly name: string;
+  recover(input: {
+    readonly refs: ReadonlySet<string>;
+    readonly logs: AsyncIterable<SessionLog>;
+    readonly objects: (kind: string) => AsyncIterable<StoredObject>;
+  }): Promise<readonly Creation[]>;
+}
+
+type StoreStep = SchemaStep | RewriteStep | RecoverStep;
 
 interface StoreStamp {
   readonly version: number;
@@ -52,6 +64,12 @@ export interface StoredRecord {
 interface Repoint {
   readonly name: string;
   readonly expect: string;
+  readonly id: ObjectId;
+  readonly body: string;
+}
+
+/** An object as the store keeps it: its id and its JSON body. */
+export interface StoredObject {
   readonly id: ObjectId;
   readonly body: string;
 }
@@ -100,8 +118,10 @@ export interface MigrationTarget {
   readonly dialect: StoreDialect;
   stamp(): Promise<StoreStamp>;
   records(): Promise<readonly StoredRecord[]>;
-  /** Every session's log, one session at a time; read only when a step rewrites logged events. */
+  /** Every session's log, one session at a time; read only when a step rewrites logged events or recovers refs. */
   logs(): AsyncIterable<SessionLog>;
+  /** Every object whose record kind is `kind`, reached by a ref or not, and possibly others whose body holds the same text; read only when a step recovers refs, which checks each one. */
+  objects(kind: string): AsyncIterable<StoredObject>;
   commit(change: StoreChange): Promise<CommitOutcome>;
   /**
    * Saves the current rows of `refs`, the refs the next commit repoints, and
@@ -486,6 +506,71 @@ const hookToolArgs: RewriteStep = {
   },
 };
 
+/**
+ * A run's record went with its ref when the run ended, until endRun kept the
+ * last one under `sessions/<s>/ended/<run>` for the turn's changes. Objects
+ * are never deleted, so each run that one session's log ended gets that ref
+ * at its latest record holding a snapshot (by `at`, then id), unless the run
+ * is still live, its session is gone, or that record predates today's run
+ * record (no `lastSnapshot`, so no end to compare with).
+ */
+const endedRunRecords: RecoverStep = {
+  kind: "recover",
+  name: "2026-10-16-ended-run-records",
+  async recover({ refs, logs, objects }) {
+    const ended = new Map<string, Set<string>>();
+
+    for await (const log of logs)
+      for (const row of log.events) {
+        const event = parsed(row.event);
+
+        if (
+          isJsonObject(event) &&
+          event.kind === "run" &&
+          event.change === "ended" &&
+          typeof event.run === "string"
+        )
+          ended.set(event.run, (ended.get(event.run) ?? new Set()).add(log.session));
+      }
+
+    const latest = new Map<string, { readonly id: ObjectId; readonly at: number; record: Json }>();
+
+    for await (const object of objects("run")) {
+      const record = parsed(object.body);
+      const body =
+        isJsonObject(record) && record.kind === "run" && isJsonObject(record.body)
+          ? record.body
+          : null;
+      const run = body !== null && isJsonObject(body.view) ? body.view.id : null;
+
+      if (record === null || typeof run !== "string" || typeof body?.snapshot !== "string")
+        continue;
+      const at = isJsonObject(record) && typeof record.at === "number" ? record.at : 0;
+      const kept = latest.get(run);
+
+      if (kept === undefined || at > kept.at || (at === kept.at && object.id > kept.id))
+        latest.set(run, { id: object.id, at, record });
+    }
+
+    return [...latest].flatMap(([run, { id, record }]) => {
+      const [only, ...others] = ended.get(run) ?? [];
+
+      if (only === undefined || others.length > 0 || decodeRunRecord(record) === null) return [];
+      const session = asId<"session">(only);
+      const ran = asId<"run">(run);
+
+      if (
+        !refs.has(sessionRef(session)) ||
+        refs.has(runRef(session, ran)) ||
+        refs.has(endedRunRef(session, ran))
+      )
+        return [];
+
+      return [{ name: endedRunRef(session, ran), target: id }];
+    });
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -501,6 +586,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   intentPosition,
   wokenCalls,
   hookToolArgs,
+  endedRunRecords,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
@@ -524,11 +610,20 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
     const steps = STORE_STEPS.slice(stamp.version);
 
     const rewrites = steps.flatMap((step) => (step.kind === "rewrite" ? [step] : []));
+    const recovers = steps.flatMap((step) => (step.kind === "recover" ? [step] : []));
+    const rewritesRecords = rewrites.some(
+      (step) => step.rewrite !== undefined || step.adds !== undefined,
+    );
+
+    const records =
+      stamp.empty || (!rewritesRecords && recovers.length === 0) ? [] : await target.records();
 
     const { moved, created } =
-      stamp.empty || !rewrites.some((step) => step.rewrite !== undefined || step.adds !== undefined)
+      stamp.empty || !rewritesRecords
         ? { moved: [], created: [] }
-        : await rewriteRecords(rewrites, await target.records());
+        : await rewriteRecords(rewrites, records);
+
+    const recovered = stamp.empty ? [] : await recoverRefs(recovers, target, records);
 
     const relogged =
       stamp.empty || !rewrites.some((step) => step.rewriteLog !== undefined)
@@ -548,7 +643,7 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
       to: STORE_VERSION,
       sql: steps.flatMap((step) => (step.kind === "schema" ? step.sql[target.dialect] : [])),
       repoints: moved,
-      creates: created,
+      creates: [...created, ...recovered],
       relogs: relogged,
       reindexSessions: steps.includes(sessionIndex) || steps.includes(orderedSessionIndex),
     });
@@ -560,6 +655,26 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
     "unavailable",
     "Nyte couldn't update its data because another Nyte kept writing to it. Try again.",
   );
+}
+
+async function recoverRefs(
+  recovers: readonly RecoverStep[],
+  target: MigrationTarget,
+  records: readonly StoredRecord[],
+): Promise<readonly Creation[]> {
+  const refs = new Set(records.map((record) => record.name));
+  const found: Creation[] = [];
+
+  for (const step of recovers)
+    found.push(
+      ...(await step.recover({
+        refs,
+        logs: target.logs(),
+        objects: (kind) => target.objects(kind),
+      })),
+    );
+
+  return found;
 }
 
 async function rewriteRecords(

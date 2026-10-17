@@ -349,12 +349,58 @@ function events(from: number): fc.Arbitrary<readonly Json[]> {
     .map((groups) => groups.flat());
 }
 
-/** A store an older Nyte could have written: its stamp, its refs and their records, and its sessions' logged events, each in a form the stamp still allows. */
+/** A run an older Nyte ended before it kept the run's last record: the run's records, which no ref reaches, and whether its session ref and its `runs/` ref are still there. */
+interface EndedRun {
+  readonly session: string;
+  readonly run: string;
+  readonly records: readonly Json[];
+  readonly sessionRecord: Json | null;
+  readonly live: boolean;
+}
+
+const endedRun: fc.Arbitrary<EndedRun> = fc
+  .record({
+    session: ID,
+    run: ID,
+    records: fc.array(
+      fc.record({
+        body: body("run"),
+        at: fc.integer({ min: 0, max: 20 }),
+        snapshot: fc.option(fc.constantFrom("git:a", "git:b"), { nil: null }),
+        lastSnapshot: fc.option(fc.constantFrom("git:b", "git:c"), { nil: null }),
+        legacy: fc.boolean(),
+      }),
+      { minLength: 1, maxLength: 3 },
+    ),
+    sessionRecord: fc.option(body("session"), { nil: null }),
+    live: fc.boolean(),
+  })
+  .map(({ session, run, records: written, sessionRecord, live }) => ({
+    session,
+    run,
+    sessionRecord: sessionRecord === null ? null : envelope("session", sessionRecord, 0),
+    live,
+    records: written.map(({ body: value, at, snapshot, lastSnapshot, legacy }) => {
+      const view = isJsonObject(value.view) ? value.view : {};
+      const record = { ...value, view: { ...view, id: run }, snapshot, lastSnapshot };
+
+      return envelope(
+        "run",
+        legacy
+          ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== "lastSnapshot"))
+          : record,
+        at,
+      );
+    }),
+  }));
+
+/** A store an older Nyte could have written: its stamp, its refs and their records, its sessions' logged events, each in a form the stamp still allows, and the runs it ended before it kept their last records. */
 export const scenario = fc.integer({ min: 0, max: STORE_VERSION }).chain((from) =>
   fc.record({
     from: fc.constant(from),
     records: fc.uniqueArray(records(from), { selector: (item) => item.name, maxLength: 14 }),
     logs: fc.dictionary(ID, events(from), { maxKeys: 3 }),
+    ended: older(from, 15) ? fc.array(endedRun, { maxLength: 3 }) : fc.constant([]),
   }),
 );
 
@@ -365,6 +411,7 @@ export async function writeStore(
     readonly from: number;
     readonly records: readonly Entry[];
     readonly logs: Readonly<Record<string, readonly Json[]>>;
+    readonly ended: readonly EndedRun[];
   },
 ): Promise<void> {
   const store = sqliteStore({ path });
@@ -384,11 +431,43 @@ export async function writeStore(
     if (outcome.kind !== "set") throw new Error(`Writing ${item.name} was ${outcome.kind}.`);
   }
 
+  const logs = new Map(Object.entries(input.logs));
+
+  for (const ended of input.ended) {
+    for (const record of ended.records) await connection.objects.put(record);
+    const [first] = ended.records;
+
+    if (ended.sessionRecord !== null)
+      await connection.refs.set([
+        {
+          name: `sessions/${ended.session}`,
+          target: await connection.objects.put(ended.sessionRecord),
+          expect: "absent",
+        },
+      ]);
+
+    if (ended.live && isJsonObject(first) && isJsonObject(first.body))
+      await connection.refs.set([
+        {
+          name: `sessions/${ended.session}/runs/${ended.run}`,
+          target: await connection.objects.put({
+            ...first,
+            body: { lastSnapshot: null, ...first.body },
+          }),
+          expect: "absent",
+        },
+      ]);
+    logs.set(ended.session, [
+      ...(logs.get(ended.session) ?? []),
+      { head: "main", kind: "run", run: ended.run, change: "ended", end: { kind: "stopped" } },
+    ]);
+  }
+
   await store.close();
   const database = new DatabaseSync(path);
   const append = database.prepare("INSERT INTO log (session, seq, at, event) VALUES (?, ?, ?, ?)");
 
-  for (const [session, logged] of Object.entries(input.logs))
+  for (const [session, logged] of logs)
     for (const [index, event] of logged.entries())
       append.run(session, index + 1, 1_000 + index, JSON.stringify(event));
 

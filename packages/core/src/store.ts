@@ -42,6 +42,7 @@ export type {
   LoggedRow,
   MigrationTarget,
   Relog,
+  StoredObject,
   StoredRecord,
 } from "./store/migrations.ts";
 

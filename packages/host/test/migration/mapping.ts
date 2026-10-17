@@ -163,6 +163,14 @@ export const MAPPING = [
       "hook decisions kept unreadable",
     ],
   },
+  {
+    version: 15,
+    step: "2026-10-16-ended-run-records",
+    target: "refs",
+    change:
+      "adds `sessions/<s>/ended/<run>` for each run that only session `<s>`'s log ended, whose `sessions/<s>` ref exists and whose `runs/` and `ended/` refs don't, at the run's latest record holding a snapshot (greatest `at`, then id) when that record reads as today's run record",
+    covers: ["from 14", "added sessions/*/ended"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {

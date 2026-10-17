@@ -32,6 +32,7 @@ import {
   parseNumber,
   prefixEnd,
   parseRef,
+  parseStoredObject,
   parseStoredRecord,
   parseText,
 } from "./store-rows.ts";
@@ -123,6 +124,16 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
           ),
         )
       ).rows.map(parseStoredRecord),
+    async *objects(kind) {
+      const { rows } = await withClient(pool, (client) =>
+        client.query(
+          "SELECT id, body FROM objects WHERE body IS NOT NULL AND strpos(body, $1) > 0",
+          [`"kind":${JSON.stringify(kind)}`],
+        ),
+      );
+
+      yield* rows.map(parseStoredObject);
+    },
     async *logs() {
       const sessions = await withClient(pool, async (client) => {
         const { rows } = await client.query("SELECT to_regclass('log') IS NOT NULL AS present");

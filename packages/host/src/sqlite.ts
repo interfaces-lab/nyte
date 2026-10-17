@@ -28,6 +28,7 @@ import {
   parseNumber,
   prefixEnd,
   parseRef,
+  parseStoredObject,
   parseStoredRecord,
   parseText,
 } from "./store-rows.ts";
@@ -135,6 +136,12 @@ function sqliteTarget(database: DatabaseSync, path: string | null): MigrationTar
         )
         .all()
         .map(parseStoredRecord);
+    },
+    async *objects(kind) {
+      yield* database
+        .prepare("SELECT id, body FROM objects WHERE body IS NOT NULL AND instr(body, ?) > 0")
+        .all(`"kind":${JSON.stringify(kind)}`)
+        .map(parseStoredObject);
     },
     async *logs() {
       if (!hasTable(database, "log")) return;
