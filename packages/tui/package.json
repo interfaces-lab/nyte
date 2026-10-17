@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/canvas": "workspace:*",
     "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/schema": "workspace:*",

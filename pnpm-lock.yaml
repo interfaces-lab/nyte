@@ -1384,6 +1384,9 @@ importers:
       '@nyte-ai/ai':
         specifier: workspace:*
         version: link:../ai
+      '@nyte-ai/canvas':
+        specifier: workspace:*
+        version: link:../canvas
       '@nyte-ai/connect':
         specifier: workspace:*
         version: link:../connect
