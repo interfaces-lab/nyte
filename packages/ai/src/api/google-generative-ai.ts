@@ -1,10 +1,5 @@
 /**
  * Google Generative AI adapter.
- *
- * Based on:
- * - https://github.com/earendil-works/pi/blob/16235fd93521f9f96164f5891beea62e6bea5b18/packages/ai/src/api/google-generative-ai.ts
- * - https://github.com/earendil-works/pi/blob/16235fd93521f9f96164f5891beea62e6bea5b18/packages/ai/src/api/google-shared.ts
- * Synced with pi 16235fd93.
  */
 import {
   type Content,
@@ -18,9 +13,8 @@ import {
   type ThinkingConfig,
   ThinkingLevel as GoogleThinkingLevel,
 } from "@google/genai";
-import { calculateCost, clampThinkingLevel } from "../models.ts";
+import { calculateCost, clampThinkingLevel } from "../model-capabilities.ts";
 import type {
-  AssistantMessage,
   ImageContent,
   Model,
   ProviderHeaders,
@@ -36,8 +30,7 @@ import type {
   ToolCall,
   TranscriptContext,
 } from "../types.ts";
-import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
-import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -49,6 +42,7 @@ import {
   getInitialSystemMessage,
   withoutInitialSystemMessage,
 } from "../utils/transcript.ts";
+import { emptyCost, runAssistantStream } from "./assistant-stream.ts";
 import {
   getJsonSchemaToolParameters,
   resolveJsonSchemaStrictSampling,
@@ -62,153 +56,71 @@ export interface GoogleOptions extends StreamOptions {
   toolChoice?: "auto" | "none" | "any";
   thinking?: {
     enabled: boolean;
-    budgetTokens?: number; // -1 for dynamic, 0 to disable
+    /** -1 for dynamic, 0 to disable. */
+    budgetTokens?: number;
     level?: GoogleThinkingLevel;
   };
 }
 
-// Counter for generating unique tool call IDs
 let toolCallCounter = 0;
 
+/**
+ * Streams a Gemini response. Only `thought: true` marks a thought summary: a thought signature
+ * preserves reasoning context, but it can appear on any part and does not make that part a thought.
+ * `responseId` keeps the first non-empty one the stream sends; @google/genai documents it as an
+ * output-only field that identifies the response.
+ */
 export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
   model: Model<"google-generative-ai">,
   context: TranscriptContext,
   options?: GoogleOptions,
 ): AssistantMessageEventStream => {
-  const stream = new AssistantMessageEventStream();
   const normalizedContext = collapseSystemMessages(context);
 
-  (async () => {
-    const output: AssistantMessage = {
-      role: "assistant",
-      content: [],
-      api: "google-generative-ai",
-      provider: model.provider,
-      model: model.id,
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-      stopReason: "pending",
-      timestamp: Date.now(),
-    };
+  return runAssistantStream(model, options?.signal, "Google", async (output, stream) => {
+    if (options?.fetch && options.fetch !== globalThis.fetch) {
+      throw new Error("Custom fetch is not supported by the Google Generative AI adapter");
+    }
 
-    try {
-      if (options?.fetch && options.fetch !== globalThis.fetch) {
-        throw new Error("Custom fetch is not supported by the Google Generative AI adapter");
-      }
+    const apiKey = options?.apiKey;
 
-      const apiKey = options?.apiKey;
+    if (!apiKey) {
+      throw new Error(`No API key for provider: ${model.provider}`);
+    }
 
-      if (!apiKey) {
-        throw new Error(`No API key for provider: ${model.provider}`);
-      }
+    const client = createClient(model, apiKey, options?.headers);
+    const params = buildParams(model, normalizedContext, options);
+    await options?.onPayload?.(params, model);
 
-      const client = createClient(model, apiKey, options?.headers);
-      let params = buildParams(model, normalizedContext, options);
-      const nextParams = await options?.onPayload?.(params, model);
+    const googleStream = await retryGoogleRequest(
+      () => client.models.generateContentStream(params),
+      options,
+    );
 
-      if (nextParams !== undefined) {
-        // SAFETY: onPayload's contract is to return this provider's request body (possibly mutated); its signature is unknown because each API defines its own shape.
-        params = nextParams as GenerateContentParameters;
-      }
+    stream.push({ type: "start", partial: output });
+    let currentBlock: TextContent | ThinkingContent | null = null;
+    const blocks = output.content;
+    const blockIndex = () => blocks.length - 1;
 
-      const googleStream = await retryGoogleRequest(
-        () => client.models.generateContentStream(params),
-        options,
-      );
+    for await (const chunk of googleStream) {
+      output.responseId ||= chunk.responseId;
+      const candidate = chunk.candidates?.[0];
 
-      stream.push({ type: "start", partial: output });
-      let currentBlock: TextContent | ThinkingContent | null = null;
-      const blocks = output.content;
-      const blockIndex = () => blocks.length - 1;
+      if (candidate?.content?.parts) {
+        for (const part of candidate.content.parts) {
+          if (part.text !== undefined) {
+            const isThinking = part.thought === true;
 
-      for await (const chunk of googleStream) {
-        // @google/genai documents GenerateContentResponse.responseId as an output-only field
-        // used to identify each response. Keep the first non-empty one from the stream.
-        output.responseId ||= chunk.responseId;
-        const candidate = chunk.candidates?.[0];
-
-        if (candidate?.content?.parts) {
-          for (const part of candidate.content.parts) {
-            if (part.text !== undefined) {
-              const isThinking = isThinkingPart(part);
-
-              if (
-                !currentBlock ||
-                (isThinking && currentBlock.type !== "thinking") ||
-                (!isThinking && currentBlock.type !== "text")
-              ) {
-                if (currentBlock) {
-                  if (currentBlock.type === "text") {
-                    stream.push({
-                      type: "text_end",
-                      contentIndex: blocks.length - 1,
-                      content: currentBlock.text,
-                      partial: output,
-                    });
-                  } else {
-                    stream.push({
-                      type: "thinking_end",
-                      contentIndex: blockIndex(),
-                      content: currentBlock.thinking,
-                      partial: output,
-                    });
-                  }
-                }
-
-                if (isThinking) {
-                  currentBlock = { type: "thinking", thinking: "", thinkingSignature: undefined };
-                  output.content.push(currentBlock);
-                  stream.push({
-                    type: "thinking_start",
-                    contentIndex: blockIndex(),
-                    partial: output,
-                  });
-                } else {
-                  currentBlock = { type: "text", text: "" };
-                  output.content.push(currentBlock);
-                  stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
-                }
-              }
-
-              if (currentBlock.type === "thinking") {
-                currentBlock.thinking += part.text;
-                currentBlock.thinkingSignature = retainThoughtSignature(
-                  currentBlock.thinkingSignature,
-                  part.thoughtSignature,
-                );
-                stream.push({
-                  type: "thinking_delta",
-                  contentIndex: blockIndex(),
-                  delta: part.text,
-                  partial: output,
-                });
-              } else {
-                currentBlock.text += part.text;
-                currentBlock.textSignature = retainThoughtSignature(
-                  currentBlock.textSignature,
-                  part.thoughtSignature,
-                );
-                stream.push({
-                  type: "text_delta",
-                  contentIndex: blockIndex(),
-                  delta: part.text,
-                  partial: output,
-                });
-              }
-            }
-
-            if (part.functionCall) {
+            if (
+              !currentBlock ||
+              (isThinking && currentBlock.type !== "thinking") ||
+              (!isThinking && currentBlock.type !== "text")
+            ) {
               if (currentBlock) {
                 if (currentBlock.type === "text") {
                   stream.push({
                     type: "text_end",
-                    contentIndex: blockIndex(),
+                    contentIndex: blocks.length - 1,
                     content: currentBlock.text,
                     partial: output,
                   });
@@ -220,125 +132,156 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
                     partial: output,
                   });
                 }
-
-                currentBlock = null;
               }
 
-              // Generate unique ID if not provided or if it's a duplicate
-              const providedId = part.functionCall.id;
+              if (isThinking) {
+                currentBlock = { type: "thinking", thinking: "", thinkingSignature: undefined };
+                output.content.push(currentBlock);
+                stream.push({
+                  type: "thinking_start",
+                  contentIndex: blockIndex(),
+                  partial: output,
+                });
+              } else {
+                currentBlock = { type: "text", text: "" };
+                output.content.push(currentBlock);
+                stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
+              }
+            }
 
-              const needsNewId =
-                !providedId ||
-                output.content.some((b) => b.type === "toolCall" && b.id === providedId);
-
-              const toolCallId = needsNewId
-                ? `${part.functionCall.name}_${Date.now()}_${++toolCallCounter}`
-                : providedId;
-
-              const toolCall: ToolCall = {
-                type: "toolCall",
-                id: toolCallId,
-                name: part.functionCall.name || "",
-                arguments: part.functionCall.args ?? {},
-                ...(part.thoughtSignature && { thoughtSignature: part.thoughtSignature }),
-              };
-
-              output.content.push(toolCall);
-              stream.push({ type: "toolcall_start", contentIndex: blockIndex(), partial: output });
+            if (currentBlock.type === "thinking") {
+              currentBlock.thinking += part.text;
+              currentBlock.thinkingSignature = retainThoughtSignature(
+                currentBlock.thinkingSignature,
+                part.thoughtSignature,
+              );
               stream.push({
-                type: "toolcall_delta",
+                type: "thinking_delta",
                 contentIndex: blockIndex(),
-                delta: JSON.stringify(toolCall.arguments),
+                delta: part.text,
                 partial: output,
               });
+            } else {
+              currentBlock.text += part.text;
+              currentBlock.textSignature = retainThoughtSignature(
+                currentBlock.textSignature,
+                part.thoughtSignature,
+              );
               stream.push({
-                type: "toolcall_end",
+                type: "text_delta",
                 contentIndex: blockIndex(),
-                toolCall,
+                delta: part.text,
                 partial: output,
               });
             }
           }
-        }
 
-        if (candidate?.finishReason) {
-          output.rawStopReason = candidate.finishReason;
-          output.stopReason = mapStopReason(candidate.finishReason);
+          if (part.functionCall) {
+            if (currentBlock) {
+              if (currentBlock.type === "text") {
+                stream.push({
+                  type: "text_end",
+                  contentIndex: blockIndex(),
+                  content: currentBlock.text,
+                  partial: output,
+                });
+              } else {
+                stream.push({
+                  type: "thinking_end",
+                  contentIndex: blockIndex(),
+                  content: currentBlock.thinking,
+                  partial: output,
+                });
+              }
 
-          if (output.content.some((b) => b.type === "toolCall") && output.stopReason === "stop") {
-            output.stopReason = "toolUse";
+              currentBlock = null;
+            }
+
+            const providedId = part.functionCall.id;
+
+            const needsNewId =
+              !providedId ||
+              output.content.some((b) => b.type === "toolCall" && b.id === providedId);
+
+            const toolCallId = needsNewId
+              ? `${part.functionCall.name}_${Date.now()}_${++toolCallCounter}`
+              : providedId;
+
+            const toolCall: ToolCall = {
+              type: "toolCall",
+              id: toolCallId,
+              name: part.functionCall.name || "",
+              arguments: part.functionCall.args ?? {},
+              ...(part.thoughtSignature && { thoughtSignature: part.thoughtSignature }),
+            };
+
+            output.content.push(toolCall);
+            stream.push({ type: "toolcall_start", contentIndex: blockIndex(), partial: output });
+            stream.push({
+              type: "toolcall_delta",
+              contentIndex: blockIndex(),
+              delta: JSON.stringify(toolCall.arguments),
+              partial: output,
+            });
+            stream.push({
+              type: "toolcall_end",
+              contentIndex: blockIndex(),
+              toolCall,
+              partial: output,
+            });
           }
         }
+      }
 
-        if (chunk.usageMetadata) {
-          output.usage = {
-            input:
-              (chunk.usageMetadata.promptTokenCount || 0) -
-              (chunk.usageMetadata.cachedContentTokenCount || 0),
-            output:
-              (chunk.usageMetadata.candidatesTokenCount || 0) +
-              (chunk.usageMetadata.thoughtsTokenCount || 0),
-            cacheRead: chunk.usageMetadata.cachedContentTokenCount || 0,
-            cacheWrite: 0,
-            reasoning: chunk.usageMetadata.thoughtsTokenCount || 0,
-            totalTokens: chunk.usageMetadata.totalTokenCount || 0,
-            cost: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              total: 0,
-            },
-          };
-          calculateCost(model, output.usage);
+      if (candidate?.finishReason) {
+        output.rawStopReason = candidate.finishReason;
+        output.stopReason = mapStopReason(candidate.finishReason);
+
+        if (output.content.some((b) => b.type === "toolCall") && output.stopReason === "stop") {
+          output.stopReason = "toolUse";
         }
       }
 
-      if (currentBlock) {
-        if (currentBlock.type === "text") {
-          stream.push({
-            type: "text_end",
-            contentIndex: blockIndex(),
-            content: currentBlock.text,
-            partial: output,
-          });
-        } else {
-          stream.push({
-            type: "thinking_end",
-            contentIndex: blockIndex(),
-            content: currentBlock.thinking,
-            partial: output,
-          });
-        }
+      if (chunk.usageMetadata) {
+        output.usage = {
+          input:
+            (chunk.usageMetadata.promptTokenCount || 0) -
+            (chunk.usageMetadata.cachedContentTokenCount || 0),
+          output:
+            (chunk.usageMetadata.candidatesTokenCount || 0) +
+            (chunk.usageMetadata.thoughtsTokenCount || 0),
+          cacheRead: chunk.usageMetadata.cachedContentTokenCount || 0,
+          cacheWrite: 0,
+          reasoning: chunk.usageMetadata.thoughtsTokenCount || 0,
+          totalTokens: chunk.usageMetadata.totalTokenCount || 0,
+          cost: emptyCost(),
+        };
+        calculateCost(model, output.usage);
       }
-
-      if (options?.signal?.aborted) {
-        throw new Error("Request was aborted");
-      }
-
-      if (output.stopReason === "pending") {
-        throw new Error("Google stream ended without a finish reason");
-      }
-
-      if (output.stopReason === "aborted" || output.stopReason === "error") {
-        const errorMessage = output.rawStopReason
-          ? `Provider stopped with: ${output.rawStopReason}`
-          : "An unknown error occurred";
-
-        throw new Error(errorMessage);
-      }
-
-      stream.push({ type: "done", reason: output.stopReason, message: output });
-      stream.end();
-    } catch (error) {
-      output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatProviderError(normalizeProviderError(error));
-      stream.push({ type: "error", reason: output.stopReason, error: output });
-      stream.end();
     }
-  })();
 
-  return stream;
+    if (currentBlock) {
+      if (currentBlock.type === "text") {
+        stream.push({
+          type: "text_end",
+          contentIndex: blockIndex(),
+          content: currentBlock.text,
+          partial: output,
+        });
+      } else {
+        stream.push({
+          type: "thinking_end",
+          contentIndex: blockIndex(),
+          content: currentBlock.thinking,
+          partial: output,
+        });
+      }
+    }
+
+    if (output.stopReason === "error" && output.rawStopReason) {
+      output.errorMessage = `Provider stopped with: ${output.rawStopReason}`;
+    }
+  });
 };
 
 export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOptions> = (
@@ -352,10 +295,7 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
     throw new Error(`No API key for provider: ${model.provider}`);
   }
 
-  const base = {
-    ...buildBaseOptions(model, context, options, apiKey),
-    toolChoice: options?.toolChoice,
-  } satisfies GoogleOptions;
+  const base = buildBaseOptions(model, context, options) satisfies GoogleOptions;
 
   if (!options?.reasoning) {
     return stream(model, context, {
@@ -394,6 +334,7 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
   } satisfies GoogleOptions);
 };
 
+/** Creates the SDK client. A model `baseUrl` already includes the version path, so the SDK appends none. */
 function createClient(
   model: Model<"google-generative-ai">,
   apiKey: string,
@@ -403,7 +344,7 @@ function createClient(
 
   if (model.baseUrl) {
     httpOptions.baseUrl = model.baseUrl;
-    httpOptions.apiVersion = ""; // baseUrl already includes version path, don't append
+    httpOptions.apiVersion = "";
   }
 
   const headers = providerHeadersToRecord(
@@ -441,7 +382,7 @@ function buildParams(
     generationConfig.maxOutputTokens = options.maxTokens;
   }
 
-  const supportsStrictMode = isGemini3OrLater(model.id);
+  const supportsStrictMode = atLeastGemini3(model.id);
 
   const functionCallingMode =
     currentTools.length > 0
@@ -503,11 +444,10 @@ function usesGoogleThinkingLevel(model: Model<"google-generative-ai">): boolean 
   );
 }
 
+/** Gemini 3 and Gemma 4 cannot fully disable thinking, so they get the lowest supported level without includeThoughts, which keeps hidden thinking invisible. */
 function getDisabledThinkingConfig(model: Model<"google-generative-ai">): ThinkingConfig {
   if (!usesGoogleThinkingLevel(model)) return { thinkingBudget: 0 };
 
-  // Gemini 3 and Gemma 4 cannot fully disable thinking; use the lowest supported level without
-  // includeThoughts so hidden thinking stays invisible.
   const fallback = clampThinkingLevel(model, "off");
 
   if (fallback === "off") return { thinkingBudget: 0 };
@@ -593,14 +533,6 @@ function resolveGoogleThinkingLevel(
   }
 }
 
-/**
- * `thought` marks a thought summary. A thought signature preserves reasoning context, but it can
- * appear on any part and does not make that part a thought summary.
- */
-function isThinkingPart(part: Pick<Part, "thought" | "thoughtSignature">): boolean {
-  return part.thought === true;
-}
-
 /** Preserve a signature when later streaming deltas omit it. */
 function retainThoughtSignature(
   existing: string | undefined,
@@ -611,20 +543,18 @@ function retainThoughtSignature(
 
 const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
 
-function isValidThoughtSignature(signature: string | undefined): boolean {
-  return (
-    signature !== undefined &&
-    signature.length > 0 &&
-    signature.length % 4 === 0 &&
-    base64SignaturePattern.test(signature)
-  );
-}
-
+/** Keeps a signature from the same provider and model when it is well-formed base64. */
 function resolveThoughtSignature(
   isSameProviderAndModel: boolean,
   signature: string | undefined,
 ): string | undefined {
-  return isSameProviderAndModel && isValidThoughtSignature(signature) ? signature : undefined;
+  return isSameProviderAndModel &&
+    signature !== undefined &&
+    signature.length > 0 &&
+    signature.length % 4 === 0 &&
+    base64SignaturePattern.test(signature)
+    ? signature
+    : undefined;
 }
 
 function getGeminiMajorVersion(modelId: string): number | undefined {
@@ -634,7 +564,7 @@ function getGeminiMajorVersion(modelId: string): number | undefined {
 }
 
 /** Gemini 3+ requires tool call ids and supports strict tool sampling. */
-function isGemini3OrLater(modelId: string): boolean {
+function atLeastGemini3(modelId: string): boolean {
   const majorVersion = getGeminiMajorVersion(modelId);
 
   return majorVersion !== undefined && majorVersion >= 3;
@@ -646,16 +576,16 @@ function supportsMultimodalFunctionResponse(modelId: string): boolean {
   return majorVersion === undefined || majorVersion >= 3;
 }
 
+/** Converts the transcript to Gemini contents. Gemini has no mid-conversation system messages, so the leading prompt goes out as systemInstruction instead. */
 function convertMessages(
   model: Model<"google-generative-ai">,
   context: TranscriptContext,
 ): Content[] {
-  // Gemini has no mid-conversation system messages; the leading prompt is sent as systemInstruction.
   const conversation = withoutInitialSystemMessage(collapseSystemMessages(context).messages);
   const contents: Content[] = [];
 
   const normalizeToolCallId = (id: string): string => {
-    if (!isGemini3OrLater(model.id)) return id;
+    if (!atLeastGemini3(model.id)) return id;
 
     return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
   };
@@ -736,7 +666,7 @@ function convertMessages(
           functionCall: {
             name: block.name,
             args: block.arguments ?? {},
-            ...(isGemini3OrLater(model.id) && { id: block.id }),
+            ...(atLeastGemini3(model.id) && { id: block.id }),
           },
           ...(thoughtSignature && { thoughtSignature }),
         });
@@ -777,7 +707,7 @@ function convertMessages(
         name: message.toolName,
         response: message.isError ? { error: responseValue } : { output: responseValue },
         ...(hasImages && supportsMultimodalResponse && { parts: imageParts }),
-        ...(isGemini3OrLater(model.id) && { id: message.toolCallId }),
+        ...(atLeastGemini3(model.id) && { id: message.toolCallId }),
       },
     };
 
@@ -863,6 +793,7 @@ function mapStopReason(reason: FinishReason): StopReason {
   }
 }
 
+/** Retries a Google SDK request under the common policy. The SDK's errors carry a status without headers, so the missing field is added for the policy to classify them. */
 function retryGoogleRequest<T>(
   request: () => Promise<T>,
   options?: Pick<StreamOptions, "maxRetries" | "maxRetryDelayMs" | "signal">,
@@ -872,8 +803,6 @@ function retryGoogleRequest<T>(
       try {
         return await request();
       } catch (error) {
-        // The Google SDK exposes a status without headers. Add the missing field so the common
-        // retry policy can classify the error.
         if (error instanceof Error && "status" in error && !("headers" in error)) {
           Object.assign(error, { headers: undefined });
         }

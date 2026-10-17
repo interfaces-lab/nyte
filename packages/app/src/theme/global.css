@@ -1,12 +1,14 @@
 /*
  * StyleX emits every rule inside `@layer priority1..6` (`useCSSLayers` in the
  * vite config), and unlayered author styles outrank every layer. So the resets
- * here live in a `base` layer pinned below StyleX's: this file is the first
- * stylesheet the entry imports, which makes this statement the first layer
- * declaration, and first declaration fixes the order. Component styles win
- * over the resets again; the resets still win over user-agent styles.
+ * here live in a `base` layer pinned below StyleX's. The first declaration
+ * fixes the order, and in development the StyleX sheet loads before this one,
+ * so `index.html` declares `base` before either. Component styles win over the
+ * resets again; the resets still win over user-agent styles.
  */
 @layer base, priority1, priority2, priority3, priority4, priority5, priority6;
+
+@import "@nyte-ai/ui/styles/base.css";
 
 @layer base {
   html,
@@ -20,43 +22,13 @@
   }
 
   :root {
-    color: var(--nyte-content-primary);
     background: transparent;
-    font-family: var(--nyte-font-family-sans);
-    font-size: var(--nyte-font-size-base);
-    line-height: var(--nyte-line-height-base);
-    font-weight: 400;
-    font-optical-sizing: auto;
-    font-variant-numeric: tabular-nums;
-    -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
-    -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
   }
 
   [data-nyte-session-drag-active],
   [data-nyte-session-drag-active] * {
     cursor: grabbing !important;
     user-select: none !important;
-  }
-
-  *,
-  *::before,
-  *::after {
-    box-sizing: border-box;
-  }
-
-  button,
-  input,
-  textarea {
-    font: inherit;
-    color: inherit;
-  }
-
-  dialog::backdrop {
-    background: var(--nyte-bg-scrim);
-  }
-
-  ::selection {
-    background: var(--nyte-bg-interactive-primary-translucent);
   }
 
   /*
@@ -89,20 +61,13 @@
     scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
   }
 
-  /* Shiki dual-theme output: pick the palette side by the html attribute. */
-  .shiki,
-  .shiki span {
-    color: var(--shiki-light);
+  /* Highlighted code carries both palettes; pick the side by the html attribute. */
+  [data-nyte-code] span {
+    color: var(--diffs-token-light);
   }
 
-  :root[data-display-mode="dark"] .shiki,
-  :root[data-display-mode="dark"] .shiki span {
-    color: var(--shiki-dark);
-  }
-
-  .shiki {
-    margin: 0;
-    background: transparent !important;
+  :root[data-display-mode="dark"] [data-nyte-code] span {
+    color: var(--diffs-token-dark);
   }
 }
 

@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@nyte-ai/ui/button";
 import { Popover } from "@nyte-ai/ui/popover";
 import { create, props } from "@stylexjs/stylex";

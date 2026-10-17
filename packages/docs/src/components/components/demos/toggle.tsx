@@ -1,5 +1,3 @@
-"use client";
-
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { useState } from "react";

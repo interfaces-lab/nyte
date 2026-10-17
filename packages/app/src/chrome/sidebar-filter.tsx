@@ -1,4 +1,4 @@
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { useId } from "react";
 import { props } from "@stylexjs/stylex";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -29,7 +29,7 @@ import {
   ENVIRONMENTS,
   GROUPINGS,
   hasSessionFilters,
-  isOption,
+  amongOptions,
   PULL_REQUESTS,
   SHOW_FIELDS,
   STATUSES,
@@ -148,7 +148,7 @@ export function WorkspaceControls({
               <MenuRadioGroup
                 value={value.grouping}
                 onValueChange={(grouping) => {
-                  if (isOption(grouping, GROUPINGS)) onChange({ ...value, grouping });
+                  if (amongOptions(grouping, GROUPINGS)) onChange({ ...value, grouping });
                 }}
               >
                 <MenuRadioItem value="inbox" icon="inbox-empty" closeOnClick={false}>
@@ -209,9 +209,8 @@ export function WorkspaceControls({
               <MenuGroupLabel xstyle={styles.groupLabel}>Filters</MenuGroupLabel>
               {filtersActive && (
                 <MenuItem
-                  layout="plain"
+                  layout="action"
                   closeOnClick={false}
-                  xstyle={styles.groupAction}
                   onClick={() => onChange(clearSessionFilters(value))}
                 >
                   Reset

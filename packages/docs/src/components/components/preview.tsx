@@ -1,8 +1,8 @@
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactNode } from "react";
 
-/*
+/**
  * A framed canvas for live Cloud examples. Document color-scheme (set from
  * the theme class) drives the `light-dark()` Cloud tokens; the preview does
  * not restyle them.

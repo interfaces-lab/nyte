@@ -1,27 +1,10 @@
 /**
  * Shared normalization for provider HTTP error objects. Gateways and proxies can return non-2xx bodies the SDK cannot fold into `error.message`; this probes the known SDK field shapes so adapters can surface status and body instead of an opaque message.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/error-body.ts
- * Synced with pi 7ebf9087e.
  */
-// Shared normalization for provider HTTP error objects.
-//
-// Endpoints behind a proxy / gateway may return a non-2xx response whose body
-// the provider SDK cannot fold into `error.message`. The SDK error object still
-// carries the HTTP status and the raw/parsed body, but under SDK-specific field
-// names. Provider catch blocks that read only `error.message` therefore drop
-// the body and surface opaque messages like `"403 status code (no body)"` or
-// collapse to `"Unknown: UnknownError"`.
-//
-// `normalizeProviderError` probes the known SDK field shapes (Mistral,
-// `openai`, `@google/genai`, AWS Bedrock) and returns a struct each provider
-// composes into its display string. The `messageCarriesBody` flag captures the
-// Anthropic / `@google/genai` happy path where the SDK already folded the body
-// into the message, so providers can preserve it without double-printing.
 
 export const MAX_PROVIDER_ERROR_BODY_CHARS = 4000;
 
-export interface NormalizedProviderError {
+interface NormalizedProviderError {
   /** HTTP status code, when one could be extracted from the SDK error object. */
   status?: number;
   /** Raw HTTP body reason, already trimmed and truncated to the cap. */
@@ -96,25 +79,22 @@ function extractBody(error: ProviderSdkError): string | undefined {
 function pickBodyText(error: ProviderSdkError): string | undefined {
   if (typeof error.body === "string") return error.body;
 
-  if (isPlainNonEmptyObject(error.error)) return safeJsonStringify(error.error);
+  if (plainObjectWithFields(error.error)) return safeJsonStringify(error.error);
   const responseBody = error.$response?.body;
 
   if (typeof responseBody === "string") return responseBody;
 
-  if (isReadableStreamLike(responseBody)) return undefined;
+  if (
+    typeof responseBody === "object" &&
+    responseBody !== null &&
+    "pipe" in responseBody &&
+    typeof responseBody.pipe === "function"
+  )
+    return undefined;
 
-  if (isPlainNonEmptyObject(responseBody)) return safeJsonStringify(responseBody);
+  if (plainObjectWithFields(responseBody)) return safeJsonStringify(responseBody);
 
   return undefined;
-}
-
-function isReadableStreamLike(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pipe" in value &&
-    typeof value.pipe === "function"
-  );
 }
 
 /**
@@ -131,7 +111,7 @@ function isReadableStreamLike(value: unknown): boolean {
  * classes fail the prototype check, while parsed JSON bodies (plain objects
  * by construction) still pass.
  */
-function isPlainNonEmptyObject(value: unknown): boolean {
+function plainObjectWithFields(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
   const proto = Object.getPrototypeOf(value);
 
@@ -161,13 +141,13 @@ export function formatProviderError(norm: NormalizedProviderError, prefix?: stri
     : `${norm.status}: ${norm.body}`;
 }
 
-export function truncateErrorText(text: string, maxChars: number): string {
+function truncateErrorText(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
 
   return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
 }
 
-export function safeJsonStringify(value: unknown): string {
+function safeJsonStringify(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
 

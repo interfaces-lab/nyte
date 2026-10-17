@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import { reducePaneLayout } from "../layout/pane-layout.ts";
 import type { PaneLayoutAction, PaneSelection } from "../layout/pane-layout.ts";
 import { activeTab, canTravel, initialWindow, reduce, tabPlace, tabPlaces } from "./model.ts";
@@ -17,7 +17,7 @@ function run(actions: readonly WindowAction[], state = initialWindow("t1")): Win
   return actions.reduce((current, action) => reduce(current, action, createId), state);
 }
 
-const chat = (id: string): PaneSelection => ({ kind: "session", sessionId: sessionId(id) });
+const chat = (id: string): PaneSelection => ({ kind: "session", sessionId: asId<"session">(id) });
 
 const customize: Place = { kind: "customize", section: undefined, sessionId: undefined };
 
@@ -46,9 +46,11 @@ test("back walks the focused pane, then returns from a page to the exact split",
   expect(activeTab(state).views[activeTab(state).index]).toBe(split);
   expect(tabPlaces(activeTab(state))).toEqual([chat("c"), chat("b")]);
 
-  // The new pane's own entries come first: c, then the new chat it started as.
   state = run([{ kind: "travel", step: -1 }], state);
-  expect(tabPlace(activeTab(state))).toEqual({ kind: "blank" });
+  expect(
+    tabPlace(activeTab(state)),
+    "the new pane's own entries come first: c, then the new chat it started as",
+  ).toEqual({ kind: "blank" });
   expect(canTravel(state, -1)).toBe(false);
 
   state = run([pane(state, { kind: "focus", paneId: "primary" })], state);

@@ -1,0 +1,47 @@
+---
+title: Remote access
+description: Use Nyte on your computer from your phone or a browser.
+---
+
+Your computer does the work. A phone or browser sends messages and shows the answers. Sessions, folders, and model credentials stay on the computer, so closing the app on your phone doesn't stop work the computer already accepted. The computer has to stay awake, with Nyte running.
+
+A Nyte account connects from any network. A direct address needs no account, but your phone has to reach the computer, for example over Tailscale.
+
+## Desktop
+
+1. Open **Settings > Environments**. Under **Remote access**, find **Nyte account** and click **Link This Mac…**.
+2. Click **Sign In and Link…** and sign in. If you're already signed in, the button says **Link This Mac**.
+3. Turn on **Remote Access**, then click **Done**.
+
+While Remote Access is on, any device signed in to that Nyte account can connect. Remote access starts in the folder open in Nyte. If you haven't trusted that folder yet, Nyte asks you to first.
+
+## Connect a device
+
+Open the Nyte iOS app or the Nyte web app. Sign in with the same Nyte account and pick the computer. The device adds itself, and there's nothing to approve on the computer.
+
+## Connect without an account
+
+On the desktop, open **Settings > Environments**, go to **Manual setup**, and click **Start** next to **Over Tailscale**. In the iOS app, tap **Connect with Tailscale**, then **Scan QR code**, or enter the address and token. The QR code contains the token, so treat it like a password. Each Start makes a new token, and **Stop Remote Access** ends it.
+
+**This Mac only** listens on an address only that Mac can reach, so a physical phone can't connect to it. **Over Cloudflare Tunnel** needs your own named tunnel and domain.
+
+## Stop or remove access
+
+| Action                                      | Result                                                                                                   |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Turn Off Remote Access**                  | Devices are refused until you turn it back on. The link and the device list stay.                        |
+| Sign out of Nyte on the desktop             | Remote access doesn't change. The link, its devices, and the Remote Access setting stay as they were.    |
+| **Unlink This Mac…**                        | The computer leaves the account and every device loses access. Link again to come back.                  |
+| **Revoke…** next to a device on the desktop | That device loses access right away, and the Nyte sign-in it used ends. It must sign in again to return. |
+| Sign out of Nyte on the device              | Disconnects the device and asks Nyte to remove its access.                                               |
+| **Stop Remote Access** in manual setup      | The address and token stop working.                                                                      |
+
+## Troubleshooting
+
+| What you see                                                 | What to do                                                                                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| The desktop shows **Off**, or devices can't see a linked Mac | Turn on **Remote Access**. It starts off.                                                                                      |
+| The computer isn't listed, or doesn't answer                 | Wake it. Check that Nyte is open with Remote Access on.                                                                        |
+| The desktop shows **Offline**                                | The computer can't reach Nyte to verify itself, so it refuses devices. Check its internet connection.                          |
+| The token is refused                                         | A manual token ends when you stop sharing. Start again and scan the new code. A revoked device has to sign in again.           |
+| **Different host**, with **Pair as New Host**                | The address answered with a different host key. Pair again only if you reinstalled Nyte or reset its profile on that computer. |

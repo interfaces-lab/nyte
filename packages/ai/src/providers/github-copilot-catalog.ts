@@ -1,4 +1,4 @@
-/** Account availability from Pi 71dca871, separate from the hosted model catalog. */
+/** Account availability, separate from the hosted model catalog. */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { GITHUB_COPILOT_DEFAULT_ORIGIN } from "../api/github-copilot-headers.ts";
@@ -16,6 +16,7 @@ const CatalogModel = Type.Object({
   ),
 });
 
+/** Parses Copilot's model list into the models the account may pick. Only Individual accounts fall back to explicit enabled policies when picker flags fail. */
 export function parseGitHubCopilotCatalog(
   value: unknown,
   origin: string,
@@ -32,18 +33,19 @@ export function parseGitHubCopilotCatalog(
         model.capabilities?.supports?.tool_calls !== false && model.policy?.state !== "disabled",
     );
 
-  // Only Individual accounts fall back to explicit enabled policies when picker flags fail.
-  const fallback =
+  const individualFallback =
     origin === GITHUB_COPILOT_DEFAULT_ORIGIN && !models.some((model) => model.model_picker_enabled);
 
-  const visible = models.filter((model) => fallback || model.model_picker_enabled);
+  const visible = models.filter((model) => individualFallback || model.model_picker_enabled);
 
   return {
     availableModelIds: [
       ...new Set(
         visible
           .filter((model) =>
-            fallback ? model.policy?.state === "enabled" : model.policy?.state !== "unconfigured",
+            individualFallback
+              ? model.policy?.state === "enabled"
+              : model.policy?.state !== "unconfigured",
           )
           .map((model) => model.id),
       ),

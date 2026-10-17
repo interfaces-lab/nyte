@@ -15,7 +15,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v4
+      - uses: jdx/mise-action@v5
       - run: pnpm install --filter @nyte-ai/ai... --frozen-lockfile
       - run: pnpm --dir packages/ai models:generate
       - run: pnpm --dir packages/ai models:publish

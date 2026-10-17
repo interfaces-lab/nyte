@@ -17,7 +17,7 @@ const CanvasVariablesSchema = Type.Object({
   "--canvas-chart-6": Type.String(),
 });
 
-export const CanvasThemeSchema = Type.Object({
+const CanvasThemeSchema = Type.Object({
   scheme: Type.String({ pattern: "^[a-z ]{1,32}$" }),
   variables: CanvasVariablesSchema,
 });

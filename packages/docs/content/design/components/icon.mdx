@@ -1,0 +1,75 @@
+---
+title: Icon
+description: "Named glyphs from Central Icons, outlined or filled"
+---
+
+```ts title="Import"
+import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
+```
+
+## Usage
+
+- `Icon` takes the text color of its parent.
+- `PanelToggleIcon` animates its divider as the panel shows or hides, except under reduced motion.
+
+## Examples
+
+<Preview>
+  <IconDemo />
+</Preview>
+
+```tsx
+<Icon name="folder" />
+<Icon name="warning" variant="filled" />
+<Icon name="warning" size={14} label="Warning" />
+<Icon name="sparkle" size={12} />
+```
+
+### Panel toggle
+
+<Preview>
+  <PanelToggleIconDemo />
+</Preview>
+
+```tsx
+const [visible, setVisible] = useState(true);
+
+<Button
+  iconOnly
+  aria-label={visible ? "Hide sidebar" : "Show sidebar"}
+  onClick={() => setVisible(!visible)}
+>
+  <PanelToggleIcon side="left" visible={visible} />
+</Button>;
+```
+
+## Props
+
+### Icon
+
+| Prop        | Type                     | Default      | Description                                 |
+| ----------- | ------------------------ | ------------ | ------------------------------------------- |
+| `name`      | `IconName`               |              |                                             |
+| `size`      | `number`                 | `16`         | Width and height in pixels.                 |
+| `variant`   | `"outlined" \| "filled"` | `"outlined"` | Fill needs a `FilledIconName`.              |
+| `label`     | `string`                 |              | Announced as `role="img"`. Omit to hide it. |
+| `xstyle`    | `XStyle`                 |              | See [Theming](/design/theming).             |
+| `className` | `string`                 |              | See [Theming](/design/theming).             |
+| `style`     | `React.CSSProperties`    |              | See [Theming](/design/theming).             |
+
+### PanelToggleIcon
+
+| Prop      | Type                | Default | Description                   |
+| --------- | ------------------- | ------- | ----------------------------- |
+| `side`    | `"left" \| "right"` |         | The panel's edge.             |
+| `visible` | `boolean`           |         | Whether the panel is showing. |
+| `size`    | `number`            | `16`    | Width and height in pixels.   |
+
+### IconName
+
+`agent`, `apps`, `archive`, `arrow-down`, `arrow-left`, `arrow-right`, `arrow-up`, `arrow-wall-left`, `bell`, `bolt`, `book`, `box-3d`, `bubble-question`, `bug`, `canvas-grid`, `chart`, `checkmark`, `chevron-down`, `chevron-right`, `circle-x`, `circles`, `clock`, `close`, `cloud`, `cloud-api`, `code-brackets`, `command`, `computer`, `console`, `copy`, `customize`, `devices`, `diff`, `drag-handle`, `draft`, `expand`, `eye`, `file`, `file-text`, `filters`, `folder`, `folder-add`, `folder-open`, `git`, `git-branch`, `github`, `globe`, `grok`, `inbox-checked`, `inbox-empty`, `javascript`, `key`, `keyboard`, `laptop`, `layers`, `linear`, `list`, `loader`, `lock`, `mcp`, `merged`, `minimize`, `model-anthropic`, `model-generic`, `model-kimi`, `model-openai`, `model-zai`, `more`, `more-horizontal`, `new-chat`, `new-chat-folder`, `panel-left`, `panel-right`, `paperclip`, `pencil`, `phone`, `pin`, `plus`, `provider-opencode`, `pull-request`, `pull-request-closed`, `react`, `refresh`, `return`, `ruler`, `search`, `server`, `settings`, `shield`, `slack`, `skills`, `sparkle`, `split-down`, `split-right`, `square`, `square-checklist`, `test-tube`, `trash`, `trending`, `typescript`, `unarchive`, `unpin`, `user`, `user-key`, `warning`, `website`, `window-app`, `x`.
+
+## Accessibility
+
+- Without `label`, the icon is `aria-hidden`. An icon-only control needs its own `aria-label`.
+- `PanelToggleIcon` is always hidden. Name the control that holds it.

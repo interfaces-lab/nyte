@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
-import { input, layer, radius } from "@nyte-ai/ui/schema.stylex";
+import { layer, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation, pane } from "../theme/schema.stylex.ts";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const threadStyles = create({
   stage: {
@@ -10,7 +10,7 @@ export const threadStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   floatingMount: {
     position: "absolute",
@@ -27,7 +27,7 @@ export const threadStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   splitRight: { flexDirection: "row" },
   splitDown: { flexDirection: "column" },
@@ -37,7 +37,7 @@ export const threadStyles = create({
     flexDirection: "column",
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
     backgroundColor: role.bgBase,
   },
   paneSingle: { flex: 1 },
@@ -51,15 +51,15 @@ export const threadStyles = create({
   embeddedScreen: {
     width: "100%",
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "clip",
     backgroundColor: "transparent",
   },
   header: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     height: conversation.headerHeight,
-    paddingInline: 12,
+    paddingInline: space.s3,
     flexShrink: 0,
   },
   title: {
@@ -69,16 +69,11 @@ export const threadStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     fontSize: type.fontBase,
-    fontWeight: 600,
+    fontWeight: type.weightSemibold,
     color: role.contentPrimary,
   },
-  headerActions: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
-  renameInput: {
-    flex: 1,
-    height: input.heightMd,
-    borderRadius: radius.indicator,
-    fontWeight: 600,
-  },
+  headerActions: { display: "inline-flex", alignItems: "center", gap: space.s0_5, flexShrink: 0 },
+  renameInput: { flex: 1, fontWeight: type.weightSemibold },
   body: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   conversation: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   blank: {
@@ -92,13 +87,24 @@ export const threadStyles = create({
   blankColumn: {
     display: "flex",
     flexDirection: "column",
-    gap: 8,
+    gap: space.s2,
     width: "min(608px, calc(100% - 40px))",
   },
-  greeting: { paddingInlineStart: 4, color: role.contentSecondary, fontSize: type.fontLg },
-  blankHint: { paddingInlineStart: 4, color: role.contentSecondary, fontSize: type.fontBase },
-  blankActions: { display: "flex", gap: 8, paddingInlineStart: 4 },
-  error: { paddingInlineStart: 4, color: role.contentSecondary, fontSize: type.fontBase },
+  blankHint: {
+    paddingInlineStart: space.s1,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+  },
+  error: { paddingInlineStart: space.s1, color: role.contentSecondary, fontSize: type.fontBase },
+  /** A line under a new chat's composer that carries an action at its end. */
+  startRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space.s2,
+    paddingInlineStart: space.s1,
+    color: role.contentSecondary,
+  },
   sash: {
     position: "relative",
     display: "grid",
@@ -118,9 +124,9 @@ export const threadStyles = create({
   sashLineDown: { width: "100%", height: 1 },
   dropPreviewLayer: {
     position: "absolute",
-    inset: 2,
+    inset: space.s0_5,
     zIndex: layer.dragPreview,
-    overflow: "hidden",
+    overflow: "clip",
     pointerEvents: "none",
   },
   dropPreview: {

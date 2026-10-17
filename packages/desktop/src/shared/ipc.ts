@@ -1,24 +1,7 @@
-/**
- * The wire between the Electron main host and the renderer client.
- *
- * The bridge contract itself lives in `@nyte-ai/app/bridge.ts`; this file
- * is how Electron IPC carries it: one channel per concern, one operation path
- * per bridge method, the method's single input object as the payload, its
- * receipt or outcome union as the response. `watch` is the one transport
- * adaptation: an AsyncIterable cannot cross IPC, so it becomes a start/stop
- * pair around a push channel, cursor semantics unchanged.
- */
-import type { Operation, Seq, SessionEvent, SessionId } from "@nyte-ai/protocol";
 import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
 
 export const CALL_CHANNEL = "nyte:call";
-
-export const WATCH_START_CHANNEL = "nyte:watch-start";
-
-export const WATCH_STOP_CHANNEL = "nyte:watch-stop";
-
-export const WATCH_EVENT_CHANNEL = "nyte:watch-event";
 
 export const HOST_EVENT_CHANNEL = "nyte:host-event";
 
@@ -26,91 +9,59 @@ export const THEME_PREFERENCE_CHANNEL = "nyte:theme-preference";
 
 export const BROWSER_BOUNDS_CHANNEL = "nyte:browser-bounds";
 
+export const BROWSER_FOCUS_CHANNEL = "nyte:browser-focus";
+
 export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
 export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
-/** Every SDK operation the bridge carries, one path per operation. Each is a wire-protocol operation. */
-export const SDK_OPERATION_PATHS = [
-  "sessions.create",
-  "sessions.get",
-  "sessions.snapshot",
-  "sessions.metadata",
-  "sessions.list",
-  "sessions.rename",
-  "sessions.setPinned",
-  "sessions.setArchived",
-  "sessions.delete",
-  "sessions.configure",
-  "messages.send",
-  "messages.cancel",
-  "messages.redeliver",
-  "jobs.list",
-  "jobs.start",
-  "jobs.background",
-  "jobs.cancel",
-  "runs.abort",
-  "runs.reply",
-  "runs.diff",
-  "heads.move",
-  "workspace.list",
-  "workspace.forget",
-  "workspace.files",
-  "workspace.read",
-  "workspace.save",
-  "workspace.format",
-  "workspace.search",
-  "workspace.blame",
-  "workspace.vcs.snapshot",
-  "workspace.vcs.diff",
-  "workspace.vcs.contents",
-  "workspace.vcs.log",
-  "workspace.vcs.refs",
-  "workspace.vcs.stage",
-  "workspace.vcs.discard",
-  "workspace.vcs.commit",
-  "workspace.vcs.createBranch",
-  "workspace.vcs.push",
-  "provider.models.default",
-  "plugins.catalog",
-  "plugins.list",
-  "plugins.commands.list",
-  "plugins.commands.run",
-  "plugins.settings.list",
-  "plugins.settings.apply",
-  "plugins.resources.list",
-] as const satisfies readonly Operation[];
+export const WINDOW_PAINTED_CHANNEL = "nyte:window-painted";
 
-export type SdkOperationPath = (typeof SDK_OPERATION_PATHS)[number];
+export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
-/** Host operations beside the SDK: workspace lifecycle and provider auth. */
-export const HOST_OPERATION_PATHS = [
-  "host.state",
-  "host.sessionDirectory",
+/** This computer's name, which main reads when it creates a window so the first frame never asks. */
+export const MACHINE_NAME_ARGUMENT = "--nyte-machine-name";
+
+/** Present when no other window of this launch was open: the window adopts the strip the last one saved. */
+export const FIRST_WINDOW_ARGUMENT = "--nyte-first-window";
+
+/** Operations main answers itself: native dialogs and menus, fonts, updates and the browser panel. */
+export const MAIN_OPERATION_PATHS = [
   "host.fonts",
-  "host.openWorkspace",
   "host.pickWorkspace",
-  "host.trustWorkspace",
-  "host.closeWorkspace",
-  "host.catalog",
-  "host.usage",
-  "host.accountLimits",
-  "host.login",
-  "host.cancelLogin",
-  "host.logout",
-  "host.setPreference",
-  "host.settings.get",
-  "host.settings.set",
   "host.updates.state",
   "host.updates.check",
-  "host.github.state",
-  "host.github.signIn",
-  "host.github.signOut",
-  "host.github.createPullRequest",
+  "host.openExternal",
+  "host.confirmExternal",
+  "host.revealPath",
+  "host.openPluginsFolder",
+  "host.contextMenu",
+  "host.browser.open",
+  "host.browser.navigate",
+  "host.browser.menu",
+  "host.browser.perform",
+  "host.browser.close",
+  "host.browser.captureFrame",
+  "host.browser.pickElement",
+  "host.browser.find",
+  "host.browser.cancelDownload",
+  "host.browser.login",
+  "host.browser.history",
+  "host.browser.forgetHistory",
+] as const;
+
+/** Operations the host process answers: the Nyte host, its listeners and remote access. */
+const HOST_PROCESS_PATHS = [
+  "host.endpoint",
+  "host.state",
+  "host.restore",
+  "host.usage",
+  "host.openWorkspace",
+  "host.trustWorkspace",
+  "host.closeWorkspace",
   "host.server.state",
   "host.server.connect",
   "host.server.disconnect",
-  "host.server.createSession",
   "host.remote.state",
   "host.remote.start",
   "host.remote.stop",
@@ -126,51 +77,59 @@ export const HOST_OPERATION_PATHS = [
   "host.connect.revokeDevice",
   "host.connect.openAccount",
   "host.connect.signOut",
-  "host.openExternal",
-  "host.confirmExternal",
-  "host.revealPath",
-  "host.openPluginsFolder",
-  "host.contextMenu",
-  "host.browser.open",
-  "host.browser.navigate",
-  "host.browser.menu",
-  "host.browser.perform",
-  "host.browser.close",
-  "host.browser.captureFrame",
-  "host.terminal.create",
-  "host.terminal.write",
-  "host.terminal.resize",
-  "host.terminal.acknowledge",
-  "host.terminal.idle",
-  "host.terminal.close",
 ] as const;
 
-export type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
+export const HOST_OPERATION_PATHS = [...MAIN_OPERATION_PATHS, ...HOST_PROCESS_PATHS] as const;
 
-export type CallPath = SdkOperationPath | HostOperationPath;
+type HostOperationPath = (typeof HOST_OPERATION_PATHS)[number];
 
-export interface WatchStartInput {
-  readonly watchId: string;
-  readonly sessionId: SessionId;
-  /** Replay from this cursor. Omitted with `live` unset replays from the start. */
-  readonly afterSeq?: Seq;
-  /** Skip replay and start at the tip; `synced` still arrives first. */
-  readonly live?: boolean;
-}
+export type CallPath = HostOperationPath;
 
-export type WatchEnvelope =
-  | { readonly watchId: string; readonly kind: "event"; readonly event: SessionEvent }
-  | { readonly watchId: string; readonly kind: "ended"; readonly error?: IpcFailure };
+export type MainCallPath = (typeof MAIN_OPERATION_PATHS)[number];
 
-/**
- * The desktop carries every host capability the contract leaves optional for
- * browsers. It opens sign-in pages itself, so it never takes a code back.
- */
-export type DesktopBridge = Omit<NyteBridge, "host"> & {
-  readonly host: Required<Omit<HostBridge, "answerLogin">>;
+export type HostCallPath = (typeof HOST_PROCESS_PATHS)[number];
+
+export type DesktopBridge = {
+  readonly clientSurface: NyteBridge["clientSurface"];
+  readonly platform: NyteBridge["platform"];
+  readonly machineName: NyteBridge["machineName"];
+  readonly firstWindow: boolean;
+  /** The interface drew its first frame, so main can show the window without a blank flash. */
+  windowPainted(): void;
+  readonly canvasShell?: NyteBridge["canvasShell"];
+  readonly host: Pick<
+    HostBridge,
+    | "onMenuCommand"
+    | "setThemePreference"
+    | "state"
+    | "endpoint"
+    | "fonts"
+    | "openWorkspace"
+    | "closeWorkspace"
+    | "server"
+    | "remote"
+    | "connect"
+    | "openExternal"
+    | "confirmExternal"
+    | "pathForFile"
+    | "onEvent"
+  > &
+    Required<
+      Pick<
+        HostBridge,
+        | "usage"
+        | "restore"
+        | "pickWorkspace"
+        | "trustWorkspace"
+        | "updates"
+        | "revealPath"
+        | "openPluginsFolder"
+        | "contextMenu"
+        | "browser"
+      >
+    >;
 };
 
-/** Walk `sessions.create` / `host.github.state` to the matching DesktopBridge method. */
 type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
   ? Head extends keyof T
     ? BridgeMethod<T[Head], Rest>
@@ -180,7 +139,7 @@ type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
     : never;
 
 /** The authoritative path-to-method relationship carried by Electron IPC. */
-export type CallMethodByPath = {
+type CallMethodByPath = {
   readonly [P in CallPath]: BridgeMethod<DesktopBridge, P>;
 };
 
@@ -189,7 +148,7 @@ export type CallInput<P extends CallPath> =
 
 export type CallOutput<P extends CallPath> = Awaited<ReturnType<CallMethodByPath[P]>>;
 
-export type CallRequestFor<P extends CallPath> = P extends CallPath
+type CallRequestFor<P extends CallPath> = P extends CallPath
   ? { readonly path: P; readonly input: CallInput<P> }
   : never;
 
@@ -200,3 +159,12 @@ export type CallReplyFor<P extends CallPath> =
   | { readonly ok: false; readonly error: IpcFailure };
 
 export type CallReply = { readonly [P in CallPath]: CallReplyFor<P> }[CallPath];
+
+/** Answers one operation for a window, its input already decoded. */
+export type CallHandler<P extends CallPath> = (
+  window: number,
+  input: CallInput<P>,
+) => Promise<CallOutput<P>>;
+
+/** The operations one process answers; a path it does not answer is absent. */
+export type CallTable = { readonly [P in CallPath]?: CallHandler<P> };

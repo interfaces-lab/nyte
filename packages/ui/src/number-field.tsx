@@ -1,10 +1,11 @@
-import { radius, target } from "./schema.stylex.ts";
+import { media, radius, target } from "./styles/schema.stylex.ts";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
-import { appearance, role, shadow, type } from "./vars.stylex.ts";
+import type { Restyle } from "./styles/contracts.ts";
+import { appearance, role, shadow, type } from "./styles/vars.stylex.ts";
 
 const styles = create({
   group: {
@@ -13,7 +14,7 @@ const styles = create({
     boxSizing: "border-box",
     width: "max-content",
     minHeight: `calc(${target.min} + 2px)`,
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: radius.control,
     borderWidth: 1,
     borderStyle: "solid",
@@ -37,12 +38,16 @@ const styles = create({
     backgroundColor: "transparent",
     backgroundImage: {
       default: "none",
-      ":hover:not([data-disabled])": role.layerHover,
+      ":hover:not([data-disabled])": {
+        [media.hover]: role.layerHover,
+      },
       ":active:not([data-disabled])": role.layerPressed,
     },
     color: {
       default: role.contentSecondary,
-      ":hover:not([data-disabled])": role.contentPrimary,
+      ":hover:not([data-disabled])": {
+        [media.hover]: role.contentPrimary,
+      },
       "[data-disabled]": role.contentDisabled,
     },
     fontSize: type.fontLg,
@@ -64,6 +69,7 @@ const styles = create({
       "@media (pointer: coarse)": `max(16px, ${type.fontSm})`,
     },
     lineHeight: type.leadingSm,
+    fontVariantNumeric: "tabular-nums",
     textAlign: "center",
     // The global ::selection is an accent wash and would tint the value.
     "::selection": {
@@ -81,7 +87,7 @@ export function NumberFieldGroup({
   className,
   style,
   ...rest
-}: StyledProps<NumberFieldPrimitive.Group.Props>): ReactElement {
+}: StyledProps<NumberFieldPrimitive.Group.Props, Restyle<"NumberFieldGroup">>): ReactElement {
   return (
     <NumberFieldPrimitive.Group
       data-slot="number-field-group"
@@ -97,7 +103,10 @@ export function NumberFieldDecrement({
   className,
   style,
   ...rest
-}: StyledProps<NumberFieldPrimitive.Decrement.Props>): ReactElement {
+}: StyledProps<
+  NumberFieldPrimitive.Decrement.Props,
+  Restyle<"NumberFieldDecrement">
+>): ReactElement {
   return (
     <NumberFieldPrimitive.Decrement
       data-slot="number-field-decrement"
@@ -114,7 +123,7 @@ export function NumberFieldInput({
   className,
   style,
   ...rest
-}: StyledProps<NumberFieldPrimitive.Input.Props>): ReactElement {
+}: StyledProps<NumberFieldPrimitive.Input.Props, Restyle<"NumberFieldInput">>): ReactElement {
   return (
     <NumberFieldPrimitive.Input
       data-slot="number-field-input"
@@ -130,7 +139,10 @@ export function NumberFieldIncrement({
   className,
   style,
   ...rest
-}: StyledProps<NumberFieldPrimitive.Increment.Props>): ReactElement {
+}: StyledProps<
+  NumberFieldPrimitive.Increment.Props,
+  Restyle<"NumberFieldIncrement">
+>): ReactElement {
   return (
     <NumberFieldPrimitive.Increment
       data-slot="number-field-increment"

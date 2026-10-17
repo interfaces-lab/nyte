@@ -2,26 +2,49 @@
  * Pure rules the model picker and Settings › Models share. The host already
  * decided which models are listed; this file only formats and groups.
  */
-import type { RunConfig } from "@nyte-ai/protocol";
-import type { ModelThinkingLevel } from "@nyte-ai/schema";
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
-import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../nyte.ts";
+import type { ModelRef } from "@nyte-ai/sdk";
+import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
+import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../catalog.ts";
 import type { IconName } from "@nyte-ai/ui/icon";
+
+export function selectedModelOption(
+  options: readonly DesktopModelOption[],
+  model: ModelRef | undefined,
+): { readonly option: DesktopModelOption; readonly fast: boolean } | undefined {
+  if (model === undefined) return undefined;
+
+  for (const option of options) {
+    if (option.provider !== model.provider) continue;
+
+    if (option.id === model.id) return { option, fast: false };
+
+    if (option.fastMode.kind === "available" && option.fastMode.id === model.id)
+      return { option, fast: true };
+  }
+
+  return undefined;
+}
+
+export function modelRefFor(option: DesktopModelOption, fast: boolean) {
+  return {
+    provider: option.provider,
+    id: fast && option.fastMode.kind === "available" ? option.fastMode.id : option.id,
+  };
+}
 
 /** The catalog's name for a session's model; the raw id until the catalog loads. */
 export function modelDisplayName(
   catalog: DesktopCatalog | undefined,
-  model: RunConfig["model"],
+  model: ModelRef | undefined,
 ): string | undefined {
   if (model === undefined) return undefined;
 
-  const option = catalog?.models.find(
-    (candidate) =>
-      candidate.id === model.id &&
-      (model.provider === undefined || candidate.provider === model.provider),
-  );
+  const selected = selectedModelOption(catalog?.models ?? [], model);
 
-  return option?.name ?? model.id;
+  if (selected === undefined) return model.id;
+
+  return selected.fast ? `${selected.option.name} Fast` : selected.option.name;
 }
 
 export function providerIcon(providerId: string): IconName {
@@ -49,23 +72,6 @@ export const THINKING_LABELS: Readonly<Record<ModelThinkingLevel, string>> = {
   xhigh: "Extra High",
   max: "Max",
 };
-
-/** 1,050,000 is "1M", not "1.1M": the label never promises more than the model has. */
-export function formatContextWindow(tokens: number): string {
-  if (tokens >= 1_000_000) return `${String(Math.floor(tokens / 100_000) / 10)}M`;
-
-  return `${String(Math.round(tokens / 1_000))}K`;
-}
-
-/** "Free", or input and output dollars per million tokens: "$2.50 / $15". */
-export function formatPricing(cost: DesktopModelOption["cost"]): string {
-  if (cost.input === 0 && cost.output === 0) return "Free";
-
-  const rate = (dollars: number): string =>
-    Number.isInteger(dollars) ? `$${String(dollars)}` : `$${dollars.toFixed(2)}`;
-
-  return `${rate(cost.input)} / ${rate(cost.output)}`;
-}
 
 export function thinkingLevelsFor(
   option: DesktopModelOption | undefined,

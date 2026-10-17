@@ -1,13 +1,15 @@
-import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomplete";
+import { Combobox } from "@base-ui/react/combobox";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { glyph, input, layer, menu, radius } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { glyph, input, layer, menu, radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { appearance, motion, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, type } from "./styles/vars.stylex.ts";
 import { PickerTrigger, type PickerTriggerProps } from "./button.tsx";
 import { Icon } from "./icon.tsx";
 
@@ -25,7 +27,7 @@ const styles = create({
     maxWidth: "min(280px, var(--available-width))",
     maxHeight: "min(320px, var(--available-height))",
     padding: 0,
-    overflowY: "hidden",
+    overflowY: "clip",
     borderStyle: "none",
     borderRadius: radius.control,
     outline: "none",
@@ -58,7 +60,7 @@ const styles = create({
     height: input.heightXl,
     margin: 0,
     paddingBlock: 0,
-    paddingInline: 12,
+    paddingInline: space.s3,
     borderStyle: "none",
     borderRadius: 0,
     backgroundColor: "transparent",
@@ -77,19 +79,19 @@ const styles = create({
     flexDirection: "column",
     flex: "0 1 auto",
     minHeight: 0,
-    paddingBlock: 6,
+    paddingBlock: space.s1_5,
     overflowY: "auto",
     overscrollBehavior: "contain",
     outline: "none",
   },
   item: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gridTemplateColumns: "minmax(0, 1fr) 12px",
     alignItems: "center",
-    columnGap: 6,
+    columnGap: space.s1_5,
     minHeight: menu.itemHeight,
     paddingBlock: 0,
-    paddingInline: 12,
+    paddingInline: space.s3,
     borderRadius: radius.control,
     outlineStyle: { default: "none", "[data-highlighted]": "solid" },
     outlineWidth: 1,
@@ -97,9 +99,6 @@ const styles = create({
     outlineOffset: -1,
     backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",
   },
@@ -117,25 +116,21 @@ const styles = create({
     color: role.contentSecondary,
   },
   groupLabel: {
-    paddingBlockStart: 6,
-    paddingBlockEnd: 2,
-    paddingInline: 12,
+    paddingBlockStart: space.s1_5,
+    paddingBlockEnd: space.s0_5,
+    paddingInline: space.s3,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   separator: {
     flexShrink: 0,
     height: 1,
-    marginBlock: 4,
+    marginBlock: space.s1,
     backgroundColor: role.borderSecondaryTranslucent,
   },
   empty: {
     flexShrink: 0,
-    padding: { default: 0, ":not(:empty)": "10px 12px" },
+    padding: { default: 0, ":not(:empty)": `${space.s2_5} ${space.s3}` },
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
 });
 
@@ -145,22 +140,28 @@ const styles = create({
  */
 const inputVariants = create({
   popup: {},
-  inline: { height: menu.itemHeight, paddingInline: 8, boxShadow: "none" },
+  inline: { height: menu.itemHeight, paddingInline: space.s2, boxShadow: "none" },
 });
 
 const listVariants = create({
   popup: {},
-  inline: { display: "block", flex: 1, marginInline: -4, paddingBlock: 0, paddingInline: 4 },
+  inline: {
+    display: "block",
+    flex: 1,
+    marginInline: `calc(${space.s1} * -1)`,
+    paddingBlock: 0,
+    paddingInline: space.s1,
+  },
 });
 
 const itemVariants = create({
   popup: {},
   inline: {
     gridTemplateColumns: `minmax(0, 1fr) ${glyph.sm}`,
-    columnGap: 8,
+    columnGap: space.s2,
     minHeight: menu.itemHeight,
-    paddingBlock: 4,
-    paddingInline: 8,
+    paddingBlock: space.s1,
+    paddingInline: space.s2,
     borderRadius: menu.itemRadius,
   },
 });
@@ -175,9 +176,9 @@ const groupLabelVariants = create({
   inline: {
     display: "flex",
     alignItems: "baseline",
-    gap: 6,
-    paddingBlockStart: 4,
-    paddingInline: 8,
+    gap: space.s1_5,
+    paddingBlockStart: space.s1,
+    paddingInline: space.s2,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
     userSelect: "none",
@@ -186,15 +187,15 @@ const groupLabelVariants = create({
 
 type AutocompleteVariant = keyof typeof inputVariants;
 
-export const Autocomplete = AutocompletePrimitive.Root;
+export const Autocomplete = Combobox.Root;
 
-export const AutocompleteValue = AutocompletePrimitive.Value;
+export const AutocompleteValue = Combobox.Value;
 
-export const AutocompleteInputGroup = AutocompletePrimitive.InputGroup;
+export const AutocompleteInputGroup = Combobox.InputGroup;
 
-export const AutocompleteGroup = AutocompletePrimitive.Group;
+export const AutocompleteGroup = Combobox.Group;
 
-export const AutocompleteCollection = AutocompletePrimitive.Collection;
+export const AutocompleteCollection = Combobox.Collection;
 
 export function AutocompleteTrigger({
   width,
@@ -202,10 +203,10 @@ export function AutocompleteTrigger({
   className,
   style,
   ...rest
-}: Omit<AutocompletePrimitive.Trigger.Props, "className" | "style" | "render"> &
+}: Omit<Combobox.Trigger.Props, "className" | "style" | "render"> &
   Pick<PickerTriggerProps, "width" | "xstyle" | "className" | "style">): ReactElement {
   return (
-    <AutocompletePrimitive.Trigger
+    <Combobox.Trigger
       data-slot="autocomplete-trigger"
       render={<PickerTrigger width={width} xstyle={xstyle} className={className} style={style} />}
       {...rest}
@@ -218,9 +219,9 @@ export function AutocompleteClear({
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.Clear.Props>): ReactElement {
+}: StyledProps<Combobox.Clear.Props, Restyle<"AutocompleteClear">>): ReactElement {
   return (
-    <AutocompletePrimitive.Clear
+    <Combobox.Clear
       data-slot="autocomplete-clear"
       {...mergeStyleProps(props(styles.clear, focus.ring, xstyle), className, style)}
       {...rest}
@@ -228,9 +229,12 @@ export function AutocompleteClear({
   );
 }
 
-export type AutocompleteContentProps = StyledProps<AutocompletePrimitive.Popup.Props> &
+export type AutocompleteContentProps = StyledProps<
+  Combobox.Popup.Props,
+  Restyle<"AutocompleteContent">
+> &
   Pick<
-    AutocompletePrimitive.Positioner.Props,
+    Combobox.Positioner.Props,
     "side" | "align" | "sideOffset" | "alignOffset" | "anchor" | "collisionAvoidance"
   > & {
     /** Scopes the popup to a hue. */
@@ -251,8 +255,8 @@ export function AutocompleteContent({
   ...rest
 }: AutocompleteContentProps): ReactElement {
   return (
-    <AutocompletePrimitive.Portal>
-      <AutocompletePrimitive.Positioner
+    <Combobox.Portal>
+      <Combobox.Positioner
         positionMethod="fixed"
         side={side}
         align={align}
@@ -263,7 +267,7 @@ export function AutocompleteContent({
         collisionPadding={8}
         {...props(styles.positioner)}
       >
-        <AutocompletePrimitive.Popup
+        <Combobox.Popup
           data-slot="autocomplete-content"
           {...mergeStyleProps(
             props(
@@ -277,8 +281,8 @@ export function AutocompleteContent({
           )}
           {...rest}
         />
-      </AutocompletePrimitive.Positioner>
-    </AutocompletePrimitive.Portal>
+      </Combobox.Positioner>
+    </Combobox.Portal>
   );
 }
 
@@ -288,11 +292,11 @@ export function AutocompleteInput({
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.Input.Props> & {
+}: StyledProps<Combobox.Input.Props, Restyle<"AutocompleteInput">> & {
   readonly variant?: AutocompleteVariant;
 }): ReactElement {
   return (
-    <AutocompletePrimitive.Input
+    <Combobox.Input
       data-slot="autocomplete-input"
       {...mergeStyleProps(
         props(styles.input, focus.ringInset, inputVariants[variant], xstyle),
@@ -310,11 +314,11 @@ export function AutocompleteList({
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.List.Props> & {
+}: StyledProps<Combobox.List.Props, Restyle<"AutocompleteList">> & {
   readonly variant?: AutocompleteVariant;
 }): ReactElement {
   return (
-    <AutocompletePrimitive.List
+    <Combobox.List
       data-slot="autocomplete-list"
       {...mergeStyleProps(props(styles.list, listVariants[variant], xstyle), className, style)}
       {...rest}
@@ -324,28 +328,29 @@ export function AutocompleteList({
 
 export function AutocompleteItem({
   variant = "popup",
-  selected = false,
   children,
   className,
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.Item.Props> & {
+}: StyledProps<Combobox.Item.Props, Restyle<"AutocompleteItem">> & {
   readonly variant?: AutocompleteVariant;
-  /** Marks the current value with a trailing checkmark. */
-  readonly selected?: boolean;
 }): ReactElement {
   return (
-    <AutocompletePrimitive.Item
+    <Combobox.Item
       data-slot="autocomplete-item"
-      {...mergeStyleProps(props(styles.item, itemVariants[variant], xstyle), className, style)}
+      {...mergeStyleProps(
+        props(text.base, styles.item, itemVariants[variant], xstyle),
+        className,
+        style,
+      )}
       {...rest}
     >
       <span {...props(styles.itemText)}>{children}</span>
-      <span aria-hidden="true" {...props(styles.itemIndicator, itemIndicatorVariants[variant])}>
-        {selected ? <Icon name="checkmark" size={11} /> : null}
-      </span>
-    </AutocompletePrimitive.Item>
+      <Combobox.ItemIndicator {...props(styles.itemIndicator, itemIndicatorVariants[variant])}>
+        <Icon name="checkmark" size={11} />
+      </Combobox.ItemIndicator>
+    </Combobox.Item>
   );
 }
 
@@ -355,14 +360,14 @@ export function AutocompleteGroupLabel({
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.GroupLabel.Props> & {
+}: StyledProps<Combobox.GroupLabel.Props, Restyle<"AutocompleteGroupLabel">> & {
   readonly variant?: AutocompleteVariant;
 }): ReactElement {
   return (
-    <AutocompletePrimitive.GroupLabel
+    <Combobox.GroupLabel
       data-slot="autocomplete-group-label"
       {...mergeStyleProps(
-        props(styles.groupLabel, groupLabelVariants[variant], xstyle),
+        props(text.sm, styles.groupLabel, groupLabelVariants[variant], xstyle),
         className,
         style,
       )}
@@ -376,9 +381,9 @@ export function AutocompleteSeparator({
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.Separator.Props>): ReactElement {
+}: StyledProps<Combobox.Separator.Props, Restyle<"AutocompleteSeparator">>): ReactElement {
   return (
-    <AutocompletePrimitive.Separator
+    <Combobox.Separator
       data-slot="autocomplete-separator"
       {...mergeStyleProps(props(styles.separator, xstyle), className, style)}
       {...rest}
@@ -391,11 +396,11 @@ export function AutocompleteEmpty({
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.Empty.Props>): ReactElement {
+}: StyledProps<Combobox.Empty.Props, Restyle<"AutocompleteEmpty">>): ReactElement {
   return (
-    <AutocompletePrimitive.Empty
+    <Combobox.Empty
       data-slot="autocomplete-empty"
-      {...mergeStyleProps(props(styles.empty, xstyle), className, style)}
+      {...mergeStyleProps(props(text.sm, styles.empty, xstyle), className, style)}
       {...rest}
     />
   );
@@ -406,11 +411,11 @@ export function AutocompleteStatus({
   style,
   xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.Status.Props>): ReactElement {
+}: StyledProps<Combobox.Status.Props, Restyle<"AutocompleteStatus">>): ReactElement {
   return (
-    <AutocompletePrimitive.Status
+    <Combobox.Status
       data-slot="autocomplete-status"
-      {...mergeStyleProps(props(styles.empty, xstyle), className, style)}
+      {...mergeStyleProps(props(text.sm, styles.empty, xstyle), className, style)}
       {...rest}
     />
   );

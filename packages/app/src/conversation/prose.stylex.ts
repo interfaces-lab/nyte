@@ -1,0 +1,245 @@
+/** Rendered markdown and its code blocks. */
+import { create } from "@stylexjs/stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { conversation } from "../theme/schema.stylex.ts";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+
+/** The ring around a code surface; prose, the composer, and diffs each draw this one. */
+const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
+
+export const proseStyles = create({
+  root: {
+    display: "flow-root",
+    width: "100%",
+    minWidth: 0,
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
+  measure: { width: "100%", maxWidth: conversation.proseMeasure },
+  paragraph: {
+    marginInline: 0,
+    marginBlockStart: {
+      default: conversation.paragraphGap,
+      ":is(h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p)": space.s1,
+      ":is(li > p)": 0,
+      ":first-child": 0,
+    },
+    marginBlockEnd: {
+      default: conversation.paragraphGap,
+      ":has(+ ul, + ol)": space.s2,
+      ":has(+ figure, + blockquote, + [data-prose-table])": space.s3,
+      ":is(li > p)": 0,
+      ":last-child": 0,
+    },
+    whiteSpace: "normal",
+  },
+  heading: {
+    marginInline: 0,
+    marginBlockStart: { default: type.leadingLg, ":first-child": 0 },
+    marginBlockEnd: { default: space.s1, ":last-child": 0 },
+    fontWeight: type.weightSemibold,
+    lineHeight: type.leadingLg,
+    textWrap: "balance",
+  },
+  h1: { fontSize: "1.214em" },
+  h2: { fontSize: "1.214em" },
+  h3: { fontSize: "1.133em" },
+  h4: { fontSize: "1em", marginBlockStart: { default: space.s3, ":first-child": 0 } },
+  h5: { fontSize: "0.866em", color: role.contentSecondary },
+  h6: { fontSize: "0.8em", color: role.contentSecondary },
+  list: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s2,
+    marginInline: 0,
+    marginBlockStart: { default: space.s2, ":is(li > ul, li > ol)": space.s1, ":first-child": 0 },
+    marginBlockEnd: { default: space.s4, ":last-child": 0 },
+    paddingInlineStart: "2em",
+    listStyleType: "revert",
+  },
+  listItem: { whiteSpace: "normal" },
+  strong: {
+    color: `var(--_prose-strong-color, ${role.contentPrimary})`,
+    fontWeight: type.weightSemibold,
+  },
+  inlineCode: {
+    paddingInline: { default: space.s0_5, ":is(a code)": 0 },
+    paddingBlock: { default: space.px, ":is(a code)": 0 },
+    borderRadius: { default: radius.indicator, ":is(a code)": 0 },
+    backgroundColor: { default: role.bgMutedTranslucent, ":is(a code)": "transparent" },
+    color: "inherit",
+    fontFamily: type.fontMono,
+    fontSize: "0.9em",
+    letterSpacing: "normal",
+    lineHeight: "inherit",
+    whiteSpace: "break-spaces",
+    overflowWrap: "break-word",
+    wordBreak: "normal",
+    boxDecorationBreak: "clone",
+  },
+  link: {
+    color: role.contentSecondary,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": {
+        [media.hover]: role.bgInteractiveSecondaryTranslucent,
+      },
+    },
+    display: "inline",
+    marginInline: `calc(${space.s0_5} * -1)`,
+    paddingInline: space.s0_5,
+    paddingBlock: space.s0_5,
+    borderRadius: radius.indicator,
+    fontWeight: type.weightMedium,
+    textDecorationLine: "none",
+    boxDecorationBreak: "clone",
+    cursor: appearance.cursorInteractive,
+    transitionProperty: "background-color, color",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+  },
+  /**
+   * A web link carries an underline as well as its colour: the link ink sits
+   * under 3:1 against body text, so colour alone would not mark it.
+   */
+  webLink: {
+    textDecorationLine: "underline",
+    textDecorationColor: {
+      default: role.borderStrong,
+      ":hover": { [media.hover]: "currentColor" },
+    },
+    textDecorationThickness: "from-font",
+    textUnderlinePosition: "from-font",
+  },
+  linkLead: { whiteSpace: "nowrap" },
+  linkIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "1em",
+    height: "1em",
+    marginInlineEnd: "0.3em",
+    overflow: "visible",
+    verticalAlign: "middle",
+    transform: "translateY(-0.085em)",
+    userSelect: "none",
+  },
+  blockquote: {
+    marginInline: 0,
+    marginBlockStart: { default: space.s3, ":first-child": 0 },
+    marginBlockEnd: { default: space.s4, ":last-child": 0 },
+    paddingInlineStart: space.s3,
+    borderInlineStartWidth: 2,
+    borderInlineStartStyle: "solid",
+    borderInlineStartColor: role.borderPrimaryTranslucent,
+    color: role.contentSecondary,
+  },
+  rule: {
+    width: "100%",
+    maxWidth: conversation.proseMeasure,
+    height: 1,
+    marginBlock: space.s2,
+    borderStyle: "none",
+    backgroundColor: role.borderSecondaryTranslucent,
+  },
+  tableWrap: {
+    marginBlockStart: { default: space.s3, ":first-child": 0 },
+    marginBlockEnd: { default: space.s4, ":last-child": 0 },
+    width: "100%",
+    maxWidth: "100%",
+    overflowX: "auto",
+    /**
+     * A horizontal scroller must not become a vertical one: `overflow-x: auto`
+     * alone computes `overflow-y` to `auto`, which latches the wheel and stops
+     * the conversation under the reader. The transcript owns vertical scroll.
+     */
+    overflowY: "hidden",
+    borderRadius: radius.control,
+    boxShadow: CODE_RING,
+  },
+  table: {
+    width: "max-content",
+    minWidth: "100%",
+    borderCollapse: "collapse",
+    fontSize: type.fontBase,
+  },
+  cell: {
+    paddingBlock: space.s1,
+    paddingInline: space.s2_5,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: role.borderSecondaryTranslucent,
+    textAlign: "start",
+    verticalAlign: "top",
+  },
+  headerCell: { backgroundColor: role.bgMutedTranslucent, fontWeight: type.weightSemibold },
+  fallbackPre: {
+    width: "100%",
+    marginBlockStart: { default: space.s2, ":first-child": 0 },
+    marginBlockEnd: { default: space.s2, ":last-child": 0 },
+    marginInline: 0,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2_5,
+    overflowX: "auto",
+    overflowY: "hidden",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: role.borderSecondaryTranslucent,
+    borderRadius: radius.card,
+    backgroundColor: role.bgBase,
+    color: role.contentPrimary,
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
+    lineHeight: type.leadingBase,
+    whiteSpace: "pre",
+  },
+  imageLabel: { color: role.contentSecondary },
+});
+
+export const codeBlockStyles = create({
+  figure: {
+    position: "relative",
+    marginBlockStart: { default: space.s2, ":first-child": 0 },
+    marginBlockEnd: { default: space.s2, ":last-child": 0 },
+    marginInline: 0,
+    overflow: "clip",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: role.borderSecondaryTranslucent,
+    borderRadius: radius.card,
+    backgroundColor: role.bgBase,
+    "--_code-copy-opacity": {
+      default: 0,
+      ":hover": { [media.hover]: 1 },
+      ":focus-within": 1,
+      ":has([data-copied])": 1,
+    },
+  },
+  scroll: { maxWidth: "100%", overflowX: "auto", overflowY: "hidden" },
+  pre: {
+    margin: 0,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2_5,
+    color: role.contentPrimary,
+    fontWeight: type.weightRegular,
+    whiteSpace: "pre",
+    userSelect: "text",
+  },
+  copy: {
+    position: "absolute",
+    insetBlockStart: space.s1,
+    insetInlineEnd: space.s1,
+    zIndex: 1,
+    display: "flex",
+    opacity: "var(--_code-copy-opacity)",
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+  },
+});

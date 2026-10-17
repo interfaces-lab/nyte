@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { HrefLink } from "~/components/site/href-link";
 import { useEffect, useRef, type ReactNode } from "react";
 
 interface KeyLinkProps {
@@ -11,13 +9,14 @@ interface KeyLinkProps {
   children: ReactNode;
 }
 
-/* A link that also follows its letter key, unless the user is typing. */
+/** A link that also follows its letter key, unless the user is typing. */
 export function KeyLink({ href, shortcut, className, kbdClassName, children }: KeyLinkProps) {
   const ref = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat)
+        return;
       if (event.key.toLowerCase() !== shortcut.toLowerCase()) return;
       const target = event.target;
       if (
@@ -33,11 +32,11 @@ export function KeyLink({ href, shortcut, className, kbdClassName, children }: K
   }, [shortcut]);
 
   return (
-    <Link ref={ref} href={href} aria-keyshortcuts={shortcut} className={className}>
+    <HrefLink ref={ref} href={href} aria-keyshortcuts={shortcut} className={className}>
       {children}
       <kbd aria-hidden="true" className={kbdClassName}>
         {shortcut}
       </kbd>
-    </Link>
+    </HrefLink>
   );
 }

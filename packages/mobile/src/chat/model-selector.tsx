@@ -1,5 +1,4 @@
-import type { NyteClient } from "@nyte-ai/client";
-import type { ModelInfo, ModelRef } from "@nyte-ai/protocol";
+import type { Connection, ModelInfo, ModelRef } from "@nyte-ai/sdk";
 import { LegendList } from "@legendapp/list/react-native";
 import { SymbolView } from "expo-symbols";
 import { useRef, useState } from "react";
@@ -21,7 +20,7 @@ export function ModelPickerSheet({
   modelError,
   onSelect,
 }: {
-  client: NyteClient;
+  client: Connection;
   open: boolean;
   onClose: () => void;
   selectedModel: ModelRef | undefined;
@@ -52,7 +51,9 @@ export function ModelPickerSheet({
 /**
  * Stays mounted so the Modal's dismissal carries the content down with it; the
  * catalog fetch is gated on `open`, and reopening refetches since nothing here
- * is ever fresh.
+ * is ever fresh. Each open starts a clean search, reset from the prop rather
+ * than an effect. Re-choosing the session's explicit model just closes, since
+ * configuring it again would queue a no-op.
  */
 function SheetBody({
   client,
@@ -67,7 +68,6 @@ function SheetBody({
   const insets = useSafeAreaInsets();
   const searchRef = useRef<TextInput>(null);
   const [query, setQuery] = useState("");
-  // Each open starts a clean search; the reset rides the prop, not an effect.
   const [seenOpen, setSeenOpen] = useState(open);
 
   if (seenOpen !== open) {
@@ -77,24 +77,24 @@ function SheetBody({
   }
 
   const { catalog, refresh } = useModelCatalog(client, open);
-  const current = selectedModel ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
+
+  const current =
+    selectedModel ?? (catalog.kind === "ready" ? catalog.defaultModel?.ref : undefined);
+
   const models = catalog.kind === "ready" ? catalog.models : [];
 
   const selected = models.find(
-    (model) =>
-      model.id === current?.id &&
-      (current?.provider === undefined || model.provider === current.provider),
+    (model) => model.ref.id === current?.id && model.ref.provider === current.provider,
   );
 
   const search = query.trim().toLocaleLowerCase();
 
   const matches = models.filter((model) =>
-    `${model.name} ${model.provider} ${model.id}`.toLocaleLowerCase().includes(search),
+    `${model.name} ${model.ref.provider} ${model.ref.id}`.toLocaleLowerCase().includes(search),
   );
 
   async function choose(model: ModelInfo) {
-    // Re-choosing the session's explicit model would only queue a no-op configure.
-    if (selectedModel?.provider === model.provider && selectedModel.id === model.id) {
+    if (selectedModel?.provider === model.ref.provider && selectedModel.id === model.ref.id) {
       onClose();
 
       return;
@@ -177,35 +177,27 @@ function SheetBody({
           ) : (
             <LegendList
               data={matches}
-              keyExtractor={(model) => JSON.stringify([model.provider, model.id])}
+              keyExtractor={(model) => JSON.stringify([model.ref.provider, model.ref.id])}
               style={{ flex: 1 }}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              renderItem={({ item, index }) => {
+              renderItem={({ item }) => {
                 const chosen = item === selected;
 
                 return (
                   <html.button
-                    aria-label={`${item.name}, ${item.provider}`}
+                    aria-label={`${item.name}, ${item.ref.provider}`}
                     aria-pressed={chosen}
                     disabled={selectingModel}
                     onClick={() => void choose(item)}
-                    style={[styles.row, index === matches.length - 1 && styles.rowLast]}
+                    style={[styles.row, chosen && styles.selectedRow]}
                   >
                     <html.div style={styles.rowText}>
                       <html.span style={textStyles.body}>{item.name}</html.span>
                       <html.span style={[textStyles.caption, styles.modelName]}>
-                        {item.provider} / {item.id}
+                        {item.ref.provider} / {item.ref.id}
                       </html.span>
                     </html.div>
-                    {chosen && (
-                      <SymbolView
-                        name="checkmark"
-                        size={controls.iconSm}
-                        weight="semibold"
-                        tintColor={theme.foreground}
-                      />
-                    )}
                   </html.button>
                 );
               }}
@@ -273,20 +265,22 @@ const styles = css.create({
     padding: spacing.gutter,
   },
   row: {
-    borderWidth: 0,
+    borderWidth: 2,
+    borderStyle: "solid",
+    borderColor: "transparent",
+    borderRadius: radii.control,
     minHeight: controls.touchTarget,
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    padding: spacing.gutter,
+    marginInline: spacing.gutter,
+    marginBlock: spacing.xs,
+    paddingInline: spacing.md,
     paddingBlock: spacing.sm,
-    borderBottomWidth: controls.hairline,
-    borderBottomStyle: "solid",
-    borderBottomColor: tokens.separator,
     backgroundColor: { default: "transparent", ":active": tokens.fill },
   },
-  rowLast: { borderBottomWidth: 0 },
+  selectedRow: { borderColor: tokens.accent, backgroundColor: tokens.selection },
   rowText: {
     display: "flex",
     flexDirection: "column",

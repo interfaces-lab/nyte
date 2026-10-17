@@ -2,7 +2,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Type } from "typebox";
 import type { TProperties } from "typebox";
 import { Compile } from "typebox/compile";
-import { ACCOUNT_HOST } from "./scheme.ts";
+import { ACCOUNT_HOST, CANVAS_HOST } from "./scheme.ts";
 
 const PUBLISHABLE_KEY = /^pk_(?:test|live)_([A-Za-z0-9+/_-]+={0,2})$/u;
 
@@ -38,6 +38,7 @@ export function checkedFrontendApiHost(config: {
 export function rendererContentSecurityPolicy(input: {
   readonly frontendApiHost: string | undefined;
   readonly developmentOrigin: string | undefined;
+  readonly canvasOrigin: string;
 }): string {
   const api = input.frontendApiHost === undefined ? "" : ` https://${input.frontendApiHost}`;
 
@@ -53,12 +54,12 @@ export function rendererContentSecurityPolicy(input: {
   return [
     "default-src 'self'",
     `script-src 'self' 'wasm-unsafe-eval'${api === "" ? "" : " 'unsafe-inline'"}${evaluation}${api}${challenges}`,
-    `connect-src 'self'${api}${api === "" ? "" : " https://*.protect.clerk.com:*"}${socket}`,
+    `connect-src 'self'${api}${api === "" ? "" : " https://*.protect.clerk.com:*"} http://127.0.0.1:*${socket}`,
     `img-src 'self' data: blob: https://avatars.githubusercontent.com${api === "" ? "" : " https://img.clerk.com"}`,
     "style-src 'self' 'unsafe-inline'",
     "font-src 'self' data:",
     "worker-src 'self' blob:",
-    `frame-src 'self'${challenges}`,
+    `frame-src 'self' ${input.canvasOrigin}${challenges}`,
     "form-action 'self'",
     "object-src 'none'",
     "base-uri 'none'",
@@ -66,14 +67,41 @@ export function rendererContentSecurityPolicy(input: {
   ].join("; ");
 }
 
-export type RendererFile =
-  | { readonly kind: "file"; readonly path: string; readonly html: boolean }
+export function shellContentSecurityPolicy(input: { readonly frameAncestor: string }): string {
+  return [
+    "default-src 'none'",
+    "script-src 'self' blob:",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src data: blob:",
+    "font-src 'self'",
+    "connect-src 'none'",
+    `frame-ancestors ${input.frameAncestor}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join("; ");
+}
+
+type RendererFile =
+  | {
+      readonly kind: "file";
+      readonly host: typeof ACCOUNT_HOST | typeof CANVAS_HOST;
+      readonly path: string;
+      readonly html: boolean;
+    }
   | { readonly kind: "refused"; readonly status: 400 | 403 | 404 };
 
-export function resolveRendererFile(root: string, requestUrl: string): RendererFile {
+export function resolveRendererFile(
+  roots: { readonly account: string | undefined; readonly canvas: string },
+  requestUrl: string,
+): RendererFile {
   const url = new URL(requestUrl);
 
-  if (url.host !== ACCOUNT_HOST) return { kind: "refused", status: 404 };
+  const host =
+    url.host === ACCOUNT_HOST ? ACCOUNT_HOST : url.host === CANVAS_HOST ? CANVAS_HOST : undefined;
+
+  const root = host === undefined ? undefined : roots[host];
+
+  if (host === undefined || root === undefined) return { kind: "refused", status: 404 };
   let pathname: string;
 
   try {
@@ -83,19 +111,22 @@ export function resolveRendererFile(root: string, requestUrl: string): RendererF
   }
 
   if (pathname === "/" || pathname === "/index.html") {
-    return { kind: "file", path: join(root, "index.html"), html: true };
+    return { kind: "file", host, path: join(root, "index.html"), html: true };
   }
 
-  if (!pathname.startsWith("/assets/")) return { kind: "refused", status: 404 };
-  const assets = join(root, "assets");
-  const target = resolve(assets, `.${pathname.slice("/assets".length)}`);
+  const folder = /^\/(assets|libraries)\//u.exec(pathname)?.[1];
+
+  if (folder === undefined || (folder === "libraries" && host !== CANVAS_HOST))
+    return { kind: "refused", status: 404 };
+  const assets = join(root, folder);
+  const target = resolve(assets, `.${pathname.slice(folder.length + 1)}`);
   const inside = relative(assets, target);
 
   if (inside === "" || inside.split(sep)[0] === ".." || isAbsolute(inside)) {
     return { kind: "refused", status: 403 };
   }
 
-  return { kind: "file", path: target, html: false };
+  return { kind: "file", host, path: target, html: false };
 }
 
 const strict = <P extends TProperties>(properties: P) =>

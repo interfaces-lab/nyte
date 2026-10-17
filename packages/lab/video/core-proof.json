@@ -1,0 +1,137 @@
+{
+  "kind": "actual-core-sdk-sqlite-proof",
+  "provider": "scripted; no external model or network",
+  "ids": {
+    "host": "790fb026-1b8f-4564-8c4f-020d1b53683b",
+    "session": "b18b0499-5242-4f86-9256-b94022a7ff8a",
+    "main": "main",
+    "branch": "alternative",
+    "receipt": "98a6ed11-7f55-4ec9-af9a-3a1b3a2c8cc5",
+    "message": "98a6ed11-7f55-4ec9-af9a-3a1b3a2c8cc5",
+    "run": "51b28319-b0d6-4eab-a49d-11ea0fce6f5e",
+    "question": "6ac9d7e0-d7b2-428d-9279-88a2a651e200",
+    "branchReceipt": "272514ec-db36-4dd7-8846-fe82ebf92ff6",
+    "continuationReceipt": "996d7b10-7247-4d14-8453-ec8200bbe158"
+  },
+  "heads": {
+    "main": {
+      "name": "main",
+      "tip": "bf5f7ddbab5b45a15a09772323fc9d7a87a459ea11cdb1dbdf929e7658aac39b",
+      "messages": 5,
+      "reopenedMessages": 5
+    },
+    "alternative": {
+      "name": "alternative",
+      "tip": "6774c582cdf7c24adbf34ad66ecdd892ec0ba502ffa4e87ca04429683643e84f",
+      "messages": 5,
+      "reopenedMessages": 5
+    }
+  },
+  "counts": {
+    "sharedMessages": 3,
+    "commitNodes": 7,
+    "toolCalls": 1,
+    "toolBodyEntries": 2,
+    "scriptedModelRequests": 4,
+    "durableEvents": 50,
+    "transientPatches": 6
+  },
+  "question": {
+    "id": "6ac9d7e0-d7b2-428d-9279-88a2a651e200",
+    "kind": "film/direction",
+    "prompt": "Which direction should we explore?",
+    "wait": "part",
+    "answeredThrough": "second SDK connection",
+    "action": "answer",
+    "choice": "Outline first"
+  },
+  "receipt": {
+    "initial": "pending",
+    "landed": "landed",
+    "settled": "completed",
+    "reopened": "settled"
+  },
+  "reopen": {
+    "newSqliteStoreInstance": true,
+    "newHostInstance": true,
+    "sameHostIdentity": true,
+    "sameSessionIdentity": true,
+    "sameHeadTips": true,
+    "sameMessages": true,
+    "sameSettledReceipt": true,
+    "newModelRequests": 0,
+    "integrity": {
+      "ok": true,
+      "issues": []
+    }
+  },
+  "claims": {
+    "session": "packages/core/src/session.ts:75",
+    "receipt": "packages/core/src/receipt.ts:11",
+    "wait": "packages/core/src/tools.ts:42",
+    "heads": "packages/core/src/head.ts:130",
+    "storage": "packages/host/src/sqlite.ts:35",
+    "recoveryTest": "packages/core/test/compose.test.ts:292"
+  },
+  "limits": [
+    "Completed state reopening, not a simulated crash.",
+    "Question part, not a security approval.",
+    "Tool body re-enters after a durable wait; no arbitrary exactly-once side effect.",
+    "Heads share a workspace; no filesystem isolation."
+  ],
+  "objects": [
+    {
+      "kind": "session",
+      "id": "ac43bebc36692717e3661d923bb804c2405f854a558c7f8ed5c21d599be033bf"
+    },
+    {
+      "kind": "call",
+      "id": "0409aec0eb5e674755b375e83e60a8c17f5d03174a5fa1bd9e29b265eb20f8c2"
+    },
+    {
+      "kind": "part",
+      "id": "21e9b8beebbcf5eab68d5a127e9b15173e22d7c74f52c47f59fe5002156b9b09"
+    },
+    {
+      "kind": "commit",
+      "id": "bf5f7ddbab5b45a15a09772323fc9d7a87a459ea11cdb1dbdf929e7658aac39b"
+    }
+  ],
+  "commits": [
+    {
+      "id": "c2bb0bdd3cdc11b1550b8dfbf8c64cb4d923672ab7431d01bb23438d230f411f",
+      "parent": null,
+      "heads": []
+    },
+    {
+      "id": "baefebf7dd880286814e16445ef6b94be8db2269d5a336eeaf974248cfecd8c4",
+      "parent": "c2bb0bdd3cdc11b1550b8dfbf8c64cb4d923672ab7431d01bb23438d230f411f",
+      "heads": []
+    },
+    {
+      "id": "d70556689e032740cb2cb5f194e2d876cc9ddbc0fc84e40680586a7f604b197e",
+      "parent": "baefebf7dd880286814e16445ef6b94be8db2269d5a336eeaf974248cfecd8c4",
+      "heads": []
+    },
+    {
+      "id": "3dfaace541307222f3f8b1001c259d6520b4fb8a2033eb8ff5de412f951356a3",
+      "parent": "d70556689e032740cb2cb5f194e2d876cc9ddbc0fc84e40680586a7f604b197e",
+      "heads": []
+    },
+    {
+      "id": "6774c582cdf7c24adbf34ad66ecdd892ec0ba502ffa4e87ca04429683643e84f",
+      "parent": "3dfaace541307222f3f8b1001c259d6520b4fb8a2033eb8ff5de412f951356a3",
+      "heads": ["alternative"]
+    },
+    {
+      "id": "548bb5d60854ffb9e382f55350336d6af3f92010dfb0f7f7c076ee638338b209",
+      "parent": "d70556689e032740cb2cb5f194e2d876cc9ddbc0fc84e40680586a7f604b197e",
+      "heads": []
+    },
+    {
+      "id": "bf5f7ddbab5b45a15a09772323fc9d7a87a459ea11cdb1dbdf929e7658aac39b",
+      "parent": "548bb5d60854ffb9e382f55350336d6af3f92010dfb0f7f7c076ee638338b209",
+      "heads": ["main"]
+    }
+  ]
+}

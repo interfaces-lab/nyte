@@ -5,17 +5,18 @@ import { useState } from "react";
 import type { AppInfo } from "../bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { media, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 const styles = create({
   popup: {
     alignItems: "center",
     gap: 0,
     width: "min(440px, calc(100vw - 48px))",
-    padding: 32,
+    padding: space.s8,
     borderStyle: "none",
-    borderRadius: 20,
     textAlign: "center",
   },
   close: {
@@ -30,37 +31,36 @@ const styles = create({
     borderStyle: "none",
     borderRadius: "50%",
     color: role.contentInteractiveSecondary,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { [media.hover]: role.bgHover },
+    },
     cursor: appearance.cursorInteractive,
   },
   icon: {
     width: 112,
     height: 112,
-    marginBottom: 12,
+    marginBottom: space.s3,
     flexShrink: 0,
   },
   title: {
     margin: 0,
     fontSize: 28,
-    fontWeight: 600,
-    lineHeight: 1.2,
+    fontWeight: type.weightSemibold,
+    lineHeight: "34px",
     letterSpacing: "-0.8px",
     textWrap: "balance",
   },
   version: {
-    margin: "8px 0 0",
+    margin: `${space.s2} 0 0`,
     color: role.contentSecondary,
-    fontSize: 15,
-    lineHeight: 1.5,
     fontVariantNumeric: "tabular-nums",
   },
   credit: {
-    margin: "20px 0 24px",
+    margin: `${space.s5} 0 ${space.s6}`,
     color: role.contentSecondary,
-    fontSize: 13,
-    lineHeight: 1.5,
   },
-  error: { margin: "12px 0 0", color: role.contentSecondary, fontSize: type.fontBase },
+  error: { margin: `${space.s3} 0 0`, color: role.contentSecondary, fontSize: type.fontBase },
 });
 
 export function AboutDialog({
@@ -87,8 +87,10 @@ export function AboutDialog({
         </Dialog.Close>
         <img src={icon} alt="" width={112} height={112} {...props(styles.icon)} />
         <Dialog.Title xstyle={styles.title}>{info.name}</Dialog.Title>
-        <Dialog.Description xstyle={styles.version}>Version {info.version}</Dialog.Description>
-        <p {...props(styles.credit)}>Made by Interfaces</p>
+        <Dialog.Description xstyle={[text.lg, styles.version]}>
+          Version {info.version}
+        </Dialog.Description>
+        <p {...props(text.base, styles.credit)}>Made by Interfaces</p>
         <Button
           variant="outline"
           onClick={() => {

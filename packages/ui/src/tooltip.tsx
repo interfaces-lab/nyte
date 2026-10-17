@@ -2,23 +2,24 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { layer, radius } from "./schema.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { layer, radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { motion, role, shadow, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { motion, role, shadow } from "./styles/vars.stylex.ts";
 
 const styles = create({
   positioner: { zIndex: layer.tooltip, outline: "none" },
   popup: {
     maxWidth: 260,
-    paddingBlock: 4,
-    paddingInline: 6,
+    paddingBlock: space.s1,
+    paddingInline: space.s1_5,
     borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMdOutline,
     color: role.contentSecondary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
     whiteSpace: "pre-line",
     overflowWrap: "anywhere",
     transformOrigin: "var(--transform-origin)",
@@ -36,6 +37,15 @@ const styles = create({
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOut,
+  },
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    width: "max-content",
+    maxWidth: "min(260px, var(--available-width))",
+    padding: space.s2,
+    color: role.contentPrimary,
+    whiteSpace: "normal",
   },
 });
 
@@ -56,18 +66,21 @@ export const TooltipTrigger = TooltipPrimitive.Trigger;
 
 export function TooltipContent({
   side = "bottom",
-  align = "center",
+  align,
   sideOffset = 6,
   alignOffset,
   tint,
+  variant = "label",
   xstyle,
   className,
   style,
   ...rest
-}: StyledProps<TooltipPrimitive.Popup.Props> &
+}: StyledProps<TooltipPrimitive.Popup.Props, Restyle<"TooltipContent">> &
   Pick<TooltipPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset"> & {
     /** Scopes the popup to a hue. */
     readonly tint?: Tint;
+    /** `card` raises a rich preview on the popup material instead of a one-line label. */
+    readonly variant?: "label" | "card";
   }): ReactElement {
   return (
     <TooltipPrimitive.Portal>
@@ -83,7 +96,13 @@ export function TooltipContent({
         <TooltipPrimitive.Popup
           data-slot="tooltip-content"
           {...mergeStyleProps(
-            props(tint !== undefined && surfaceTheme[tint], styles.popup, xstyle),
+            props(
+              text.xs,
+              tint !== undefined && surfaceTheme[tint],
+              styles.popup,
+              variant === "card" && [text.base, floatingSurfaceStyles.popup, styles.card],
+              xstyle,
+            ),
             className,
             style,
           )}

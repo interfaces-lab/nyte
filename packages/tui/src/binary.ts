@@ -1,11 +1,13 @@
-import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { ensureSolidTransformPlugin } from "@opentui/solid/bun-plugin";
 
-// From source, Solid JSX is compiled as modules load, so the transform must be
-// installed before any of them; that is the one reason the app is imported
-// dynamically here. The binary compiled it at build time.
-ensureSolidTransformPlugin();
+/**
+ * Runs the CLI from source. Solid JSX compiles as modules load, so the transform must be
+ * installed before any app module evaluates, which is why the CLI loads dynamically here.
+ * The compiled binary starts at `index.ts`, transformed at build time.
+ */
+async function runFromSource(): Promise<void> {
+  ensureSolidTransformPlugin();
+  await import("./index.ts");
+}
 
-registerBunOAuthFlows();
-
-await import("./index.ts");
+await runFromSource();

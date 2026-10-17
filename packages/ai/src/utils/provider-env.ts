@@ -1,8 +1,5 @@
 /**
  * Provider-scoped environment lookup: request-scoped overrides first, then process.env, then the Bun sandbox fallback.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/provider-env.ts
- * Synced with pi 7ebf9087e.
  */
 import type { ProviderEnv } from "../types.ts";
 
@@ -16,7 +13,8 @@ let procEnvCache: Map<string, string> | null = null;
  * This intentionally duplicates restoreSandboxEnv() in
  * packages/coding-agent/src/bun/restore-sandbox-env.ts. The ai package can be
  * used directly, without going through that entrypoint, so provider env lookup
- * must not depend on process.env having been patched.
+ * must not depend on process.env having been patched. A missing or unreadable
+ * /proc/self/environ reads as empty.
  */
 function getBunSandboxEnvValue(name: string): string | undefined {
   if (
@@ -34,14 +32,12 @@ function getBunSandboxEnvValue(name: string): string | undefined {
       const data = process.getBuiltinModule("node:fs").readFileSync("/proc/self/environ", "utf-8");
 
       for (const entry of data.split("\0")) {
-        const idx = entry.indexOf("=");
+        const variable = /^([^=]+)=(.*)$/su.exec(entry);
 
-        if (idx > 0) {
-          procEnvCache.set(entry.slice(0, idx), entry.slice(idx + 1));
-        }
+        if (variable) procEnvCache.set(variable[1], variable[2]);
       }
     } catch {
-      // /proc/self/environ may not exist or may not be readable.
+      return undefined;
     }
   }
 

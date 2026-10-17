@@ -1,4 +1,4 @@
-import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/codemode-runtime";
+import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 import type { BunPlugin } from "bun";
 
 export const codemodePlugin = {

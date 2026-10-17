@@ -1,14 +1,14 @@
 import { app, ipcMain } from "electron";
 import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { createClerkBridge } from "@clerk/electron";
-import { Value } from "typebox/value";
 import { AccountOperations } from "../account/operations.ts";
 import { accountAnswer, accountReport } from "../account/policy.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import type { AccountConfig } from "../account/protocol.ts";
 import { ACCOUNT_HOST, signedInPage } from "../account/scheme.ts";
 import type { accountScheme } from "../account/scheme.ts";
-import type { AccountSession, AccountState } from "./account-session.ts";
+import { createSignInKeeper } from "./account-keeper.ts";
+import type { AccountSession } from "./account-session.ts";
 import type { AccountStore } from "./account-store.ts";
 
 const CLIENT_TOKEN_KEY = "__clerk_client_jwt";
@@ -28,88 +28,16 @@ export function registerAccount(options: {
   /** Keeps the sign-in across restarts. Without one, quitting signs out. */
   readonly store: AccountStore | undefined;
 }): AccountSession {
-  const { store } = options;
-  let state: AccountState = { kind: "signed_out" };
-  let clientToken: string | null = null;
-  /** A restored token, sealed until Clerk first asks for it. */
-  let sealed: string | undefined;
-  let opening: Promise<void> | undefined;
-  /** What this run last saved; undefined before then, when the file may hold a restored token. */
-  let kept: { readonly signIn: Parameters<AccountStore["save"]>[0] } | undefined;
-
-  /** Bring the store in line with memory: a sign-in once both token and address describe one. */
-  const keep = (): void => {
-    if (store === undefined || sealed !== undefined) return;
-
-    const next = {
-      signIn:
-        clientToken !== null && state.kind === "signed_in"
-          ? { token: clientToken, label: state.label }
-          : undefined,
-    };
-
-    if (Value.Equal(kept, next)) return;
-    kept = next;
-    void store.save(next.signIn).catch(() => undefined);
-  };
-
-  const setState = (next: AccountState): void => {
-    if (
-      next.kind === state.kind &&
-      (next.kind !== "signed_in" || (state.kind === "signed_in" && state.label === next.label))
-    )
-      return;
-    state = next;
-    keep();
-    options.onChange();
-  };
-
-  const restoring = store?.load().then((saved) => {
-    if (saved === undefined || clientToken !== null || state.kind !== "signed_out") return;
-    sealed = saved.sealed;
-    setState({ kind: "signed_in", label: saved.label });
-  });
-
-  /** Open the restored token. One the keychain will not open signs out and leaves the store. */
-  const unseal = async (): Promise<void> => {
-    const restored = sealed;
-
-    if (store === undefined || restored === undefined) return;
-    const opened = await store.open(restored);
-
-    if (sealed !== restored) return;
-    sealed = undefined;
-
-    if (opened !== undefined) {
-      clientToken = opened;
-
-      return;
-    }
-
-    setState({ kind: "signed_out" });
-    keep();
-  };
+  const signIn = createSignInKeeper(options.store, options.onChange);
 
   const bridge = createClerkBridge({
     storage: {
-      getItem: async (key) => {
-        if (key !== CLIENT_TOKEN_KEY) return null;
-        await restoring;
-        await (opening ??= unseal());
-
-        return clientToken;
-      },
+      getItem: (key) => (key === CLIENT_TOKEN_KEY ? signIn.readToken() : null),
       setItem: (key, value) => {
-        if (key !== CLIENT_TOKEN_KEY) return;
-        clientToken = value;
-        sealed = undefined;
-        keep();
+        if (key === CLIENT_TOKEN_KEY) signIn.writeToken(value);
       },
       removeItem: (key) => {
-        if (key !== CLIENT_TOKEN_KEY) return;
-        clientToken = null;
-        sealed = undefined;
-        keep();
+        if (key === CLIENT_TOKEN_KEY) signIn.writeToken(null);
       },
     },
     manageSingleInstanceLock: false,
@@ -220,7 +148,7 @@ export function registerAccount(options: {
       return;
     }
 
-    setState(report);
+    signIn.report(report);
   });
   app.once("will-quit", () => {
     operations.cancel();
@@ -229,7 +157,7 @@ export function registerAccount(options: {
 
   return {
     requestSessionToken: ({ signal }) => serve(operations.requestToken(signal)),
-    state: () => state,
+    state: signIn.state,
     focus,
     async signOut() {
       const { id, result } = operations.requestSignOut();
@@ -241,10 +169,7 @@ export function registerAccount(options: {
 
       try {
         await serve({ id, result });
-        clientToken = null;
-        sealed = undefined;
-        setState({ kind: "signed_out" });
-        keep();
+        signIn.signOut();
       } finally {
         clearTimeout(timer);
       }

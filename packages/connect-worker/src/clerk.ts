@@ -14,9 +14,9 @@ import {
   confirmSessionRevoked,
   deferSessionRevocation,
   findOwner,
-  isSessionDenied,
+  sessionDenied,
   recordOwnerCheck,
-} from "./store.ts";
+} from "./store/owners.ts";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
@@ -25,7 +25,7 @@ const CLERK_TIMEOUT_MS = 3_000;
 const CLERK_REPLY_LIMIT = 65_536;
 
 /** How long a Backend API owner lookup stands before a lease asks again. */
-export const OWNER_RECHECK_MS = 15 * 60_000;
+const OWNER_RECHECK_MS = 15 * 60_000;
 
 /**
  * How long a lookup may serve leases while Clerk cannot be asked again. Past
@@ -79,7 +79,7 @@ type ClerkUser = Static<typeof ClerkUser>;
 
 const LABEL_LIMIT = 320;
 
-export interface Session {
+interface Session {
   readonly userId: string;
   readonly sessionId: string;
   /** A non-empty `email` claim, when the operator added one to the session token. */
@@ -146,7 +146,7 @@ export async function verifySession(context: Context, request: Request): Promise
 
   if (owner !== undefined && owner.status !== "active") throw new Refusal("owner_disabled");
 
-  if (await isSessionDenied(context.db, { sessionId: claims.sid, now: context.now() }))
+  if (await sessionDenied(context.db, { sessionId: claims.sid, now: context.now() }))
     throw new Refusal("session_revoked");
 
   return {
@@ -188,7 +188,7 @@ async function clerkCall(
   return { status: response.status, body };
 }
 
-export type Standing =
+type Standing =
   | "active"
   /** Banned or locked in Clerk, or unknown to it. Not terminal. */
   | "disabled"
@@ -230,7 +230,7 @@ export async function ownerStanding(
   return (await findOwner(context.db, input.userId))?.status ?? "active";
 }
 
-export type OwnerLookup =
+type OwnerLookup =
   | { readonly kind: "found"; readonly label: string | undefined }
   | { readonly kind: "absent" }
   | { readonly kind: "failed" };
@@ -275,8 +275,10 @@ export async function lookupOwner(context: Context, userId: string): Promise<Own
 
 /**
  * Ask Clerk to revoke a denied session, then either confirm the denial's
- * expiry or schedule another attempt. Until Clerk confirms, the D1 denial
- * never lapses; past `SESSION_REVOKE_ATTEMPTS` it is simply kept for good.
+ * expiry or schedule another attempt. A session Clerk no longer has (404,
+ * 410) counts as revoked; any other failure is retried. Until Clerk confirms,
+ * the D1 denial never lapses; past `SESSION_REVOKE_ATTEMPTS` it is simply kept
+ * for good.
  */
 export async function settleSessionRevocation(
   context: Context,
@@ -294,9 +296,7 @@ export async function settleSessionRevocation(
       if (answer === undefined) return false;
       const { status } = answer;
 
-      if (status >= 200 && status < 300) return true;
-      // Already gone. Anything else is retried; the D1 denial holds meanwhile.
-      if (status === 404 || status === 410) return true;
+      if ((status >= 200 && status < 300) || status === 404 || status === 410) return true;
       context.log.warn("session.revoke_failed", { status, attempts: input.attempts });
 
       return false;

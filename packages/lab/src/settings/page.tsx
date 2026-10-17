@@ -23,14 +23,14 @@ import {
   NumberFieldInput,
 } from "@nyte-ai/ui/number-field";
 import { Row } from "@nyte-ai/ui/row";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { SECTIONS, type Control, type Setting, type Status } from "./catalog";
 
 const FILTERS = ["all", "shipped", "wire", "new"] as const;
@@ -57,10 +57,6 @@ function count(filter: Filter): number {
   return filter === "all"
     ? ALL_SETTINGS.length
     : ALL_SETTINGS.filter((setting) => setting.status === filter).length;
-}
-
-function visible(setting: Setting, filter: Filter): boolean {
-  return filter === "all" || setting.status === filter;
 }
 
 function SliderControl({
@@ -206,7 +202,12 @@ function StepsControl({
   readonly options: readonly [string, ...string[]];
   readonly initial: string;
 }): ReactElement {
-  const [index, setIndex] = useState(Math.max(0, options.indexOf(initial)));
+  const [index, setIndex] = useState(
+    Math.max(
+      0,
+      options.findIndex((option) => option === initial),
+    ),
+  );
 
   return (
     <span {...props(shell.steps)}>
@@ -230,6 +231,7 @@ function StepsControl({
   );
 }
 
+/** A hue slider whose swatch sets its own hue: the custom ramp reads it where its class is applied. */
 function HueControl({
   title,
   initial,
@@ -250,7 +252,6 @@ function HueControl({
       />
       <span aria-hidden="true" {...props(appearance.tintSlot)}>
         <span
-          // The custom ramp reads the hue where its class is applied, so the swatch carries its own.
           ref={(node) => node?.style.setProperty("--nyte-custom-hue", String(hue))}
           {...props(surfaceTheme.custom, appearance.tintSwatch, appearance.tintSwatchActive)}
         />
@@ -321,7 +322,13 @@ function SettingRow({
   const wide = setting.control.kind === "select" && setting.control.wide === true;
 
   return (
-    <div {...props(settingsPatterns.row, annotated && settingsPatterns.rowDetailed)}>
+    <div
+      {...props(
+        settingsPatterns.rowRule,
+        settingsPatterns.row,
+        annotated && settingsPatterns.rowDetailed,
+      )}
+    >
       <span {...props(settingsPatterns.rowCopy)}>
         <span {...props(settingsPatterns.rowTitle)}>{setting.title}</span>
         <span {...props(settingsPatterns.rowDescription)}>{setting.description}</span>
@@ -347,7 +354,7 @@ export function SettingsPage(): ReactElement {
     groups: section.groups
       .map((group) => ({
         ...group,
-        settings: group.settings.filter((setting) => visible(setting, filter)),
+        settings: group.settings.filter((setting) => filter === "all" || setting.status === filter),
       }))
       .filter((group) => group.settings.length > 0),
   })).filter((section) => section.groups.length > 0);

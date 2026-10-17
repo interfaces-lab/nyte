@@ -1,0 +1,182 @@
+---
+title: Alert dialog
+description: "A modal that asks a question the user has to answer"
+---
+
+```ts title="Import"
+import { AlertDialog, ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
+```
+
+A [Dialog](/design/dialog) with alert semantics. `ConfirmDialog` is a prebuilt destructive
+confirmation.
+
+## Usage
+
+- Start with `ConfirmDialog`. Use the parts for other content or actions.
+- Include a Cancel `AlertDialog.Close`.
+- Title and `confirmLabel` name the same action and noun.
+- Put the destructive action last with `variant="solid" tone="danger"`.
+
+## Anatomy
+
+```tsx
+<AlertDialog.Root>
+  <AlertDialog.Trigger />
+  <AlertDialog.Popup>
+    <AlertDialog.Header>
+      <AlertDialog.Title />
+      <AlertDialog.Description />
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Close /> {/* cancel */}
+      <AlertDialog.Close /> {/* confirm */}
+    </AlertDialog.Footer>
+  </AlertDialog.Popup>
+</AlertDialog.Root>
+```
+
+## Examples
+
+### Confirm dialog
+
+<Preview>
+  <ConfirmDialogDemo />
+</Preview>
+
+```tsx
+const [open, setOpen] = useState(false);
+
+<Button variant="solid" tone="danger" onClick={() => setOpen(true)}>
+  Delete Chat
+</Button>
+<ConfirmDialog
+  open={open}
+  title="Delete Chat" confirmLabel="Delete Chat"
+  description="The chat and its history are removed."
+  onOpenChange={setOpen}
+  onConfirm={() => setOpen(false)}
+/>
+```
+
+```tsx
+<ConfirmDialog
+  open={open}
+  pending={signOut.isPending}
+  error={signOut.isError ? "Sign-out failed. Try again." : undefined}
+  finalFocus={signOutRef}
+  title="Sign Out"
+  description="Other apps using this login are signed out too."
+  confirmLabel="Sign Out"
+  pendingLabel="Signing out…"
+  onOpenChange={setOpen}
+  onConfirm={() => signOut.mutate(undefined, { onSuccess: () => setOpen(false) })}
+/>
+```
+
+### Parts
+
+<Preview>
+  <AlertDialogDemo />
+</Preview>
+
+```tsx
+<AlertDialog.Root>
+  <AlertDialog.Trigger
+    render={
+      <Button variant="solid" tone="danger">
+        Delete Session
+      </Button>
+    }
+  />
+  <AlertDialog.Popup>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Delete Session</AlertDialog.Title>
+      <AlertDialog.Description>
+        The history tree and every head under it are removed. This cannot be undone.
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Close render={<Button variant="outline">Cancel</Button>} />
+      <AlertDialog.Close
+        render={
+          <Button variant="solid" tone="danger">
+            Delete Session
+          </Button>
+        }
+      />
+    </AlertDialog.Footer>
+  </AlertDialog.Popup>
+</AlertDialog.Root>
+```
+
+## Props
+
+### ConfirmDialog
+
+| Prop           | Type                                    | Default | Description                                                                      |
+| -------------- | --------------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `open`         | `boolean`                               |         |                                                                                  |
+| `title`        | `string`                                |         |                                                                                  |
+| `description`  | `React.ReactNode`                       |         | The consequence.                                                                 |
+| `confirmLabel` | `string`                                |         |                                                                                  |
+| `pendingLabel` | `string`                                |         | Status line shown while `pending`.                                               |
+| `pending`      | `boolean`                               | `false` | Makes both actions busy and ignores requests to close.                           |
+| `error`        | `string`                                |         | Shown under the description as an alert.                                         |
+| `finalFocus`   | As `AlertDialog.Popup`                  |         | Where focus lands on close, for a dialog with no trigger.                        |
+| `onOpenChange` | `(open: boolean, eventDetails) => void` |         | Called with `false` and the event details on Cancel or Escape, unless `pending`. |
+| `onConfirm`    | `() => void`                            |         | Called by the danger button. Close the dialog yourself.                          |
+| `tint`         | `Tint`                                  |         |                                                                                  |
+
+### Parts
+
+| Part                      | Renders                        | Styling                 |
+| ------------------------- | ------------------------------ | ----------------------- |
+| `AlertDialog.Root`        | Nothing                        | None                    |
+| `AlertDialog.Trigger`     | `<button>`                     | None                    |
+| `AlertDialog.Popup`       | A portal, the scrim, a `<div>` | As `Dialog.Popup`       |
+| `AlertDialog.Header`      | `<div>`                        | As `Dialog.Header`      |
+| `AlertDialog.Title`       | `<h2>`                         | As `Dialog.Title`       |
+| `AlertDialog.Description` | `<p>`                          | As `Dialog.Description` |
+| `AlertDialog.Footer`      | `<div>`                        | As `Dialog.Footer`      |
+| `AlertDialog.Close`       | `<button>`                     | None                    |
+
+Except `AlertDialog.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
+take plain values, not functions of state. See [Theming](/design/theming).
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/alert-dialog/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/alert-dialog/Trigger.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/alert-dialog/Popup.md</include>
+
+### Title
+
+<include>../../base-ui-reference/alert-dialog/Title.md</include>
+
+### Description
+
+<include>../../base-ui-reference/alert-dialog/Description.md</include>
+
+### Close
+
+<include>../../base-ui-reference/alert-dialog/Close.md</include>
+
+## Accessibility
+
+- The popup has `role="alertdialog"`, labelled by `AlertDialog.Title` and described by
+  `AlertDialog.Description`.
+- Outside press does not close. Escape does. To block that, call `details.cancel()` in
+  `onOpenChange` when `details.reason` is `escape-key`.
+- Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
+  popup.
+- While open, outside content is inert and page scroll is locked.
+- `ConfirmDialog` focuses Cancel on open, sets `aria-busy` while `pending`, and gives its error
+  `role="alert"`.

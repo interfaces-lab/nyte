@@ -1,64 +1,30 @@
 # Desktop updates
 
-macOS uses `electron-sparkle` and Sparkle's native download, installation, and relaunch UI. Windows and Linux retain `electron-updater`. Release archives live in the public `interfaces-lab/nyte` GitHub releases, separate from the TUI tarballs.
+Every platform uses `electron-updater`: Squirrel.Mac on macOS, NSIS on Windows, and AppImage on Linux. Release archives and their `latest*.yml` metadata live in the public `interfaces-lab/nyte` GitHub releases, separate from the TUI tarballs.
 
-The Nyte application menu includes **Check for Updates…**. Packaged apps check 15 seconds after startup and every six hours. Downloads require user approval. On macOS, Sparkle verifies the signed archive and handles installation. Nyte does not block a check while work is running; it blocks the install. If tasks or terminal commands are still running when an update is ready, a dialog names what is running and asks you to choose **Restart to Update** once they finish.
+Packaged apps check 15 seconds after startup and every six hours. A found release downloads in the background, and the sidebar shows its progress. **Check for Updates…**, in the Nyte menu and the account menu, answers in a native dialog: Nyte is up to date, the check or download failed, or the new version is ready with **Restart to Update** and **Later**. If tasks or terminal commands are running, the dialog names them and defaults to **Later**.
 
-Before relaunch, Nyte gives its host up to 10 seconds to close sessions and terminals cleanly. Update lifecycle events go to `~/Library/Application Support/Nyte/updates.log` on macOS. This log contains event names, versions, counts, and errors, not update request headers.
+Before relaunch, Nyte gives its host up to 10 seconds to close sessions and terminals cleanly. Update lifecycle events go to `~/Library/Application Support/Nyte/updates.log` on macOS. This log contains event names, versions, and errors, not update request headers.
 
-`NYTE_OFFLINE` disables update requests. `NYTE_SKIP_VERSION_CHECK` disables scheduled checks while retaining the menu action. Source builds do not update themselves. Linux auto-update requires an AppImage installation. Runtime environment variables cannot redirect the production macOS feed.
+`NYTE_OFFLINE` disables update requests. `NYTE_SKIP_VERSION_CHECK` disables scheduled checks while retaining the menu action. Source builds do not update themselves. Linux auto-update requires an AppImage installation.
 
-## macOS signing setup
-
-The production key has already been generated. For a separate distribution, generate its own key using Sparkle's official tool:
-
-```sh
-pnpm --dir packages/desktop exec electron-sparkle generate-keys
-```
-
-The production public key is committed in `electron-builder.config.ts`; no environment setup is required for normal packaging. `NYTE_SPARKLE_PUBLIC_KEY` can override it. Local test builds require their own disposable key and never fall back to the production key. Only the public key enters the app. Never put the private key in the repository or release assets. Keep the matching private key backed up securely and use it to sign future releases.
-
-Sparkle's archive signature does not replace Apple code signing. Production macOS builds still require Developer ID signing and notarization through electron-builder's Apple credentials.
+Squirrel.Mac installs only an update signed with the same Developer ID as the running app, so production macOS builds require Developer ID signing and notarization through electron-builder's Apple credentials.
 
 ## Build and publish
 
-1. Increment the CLI, TUI, and desktop versions together and tag `v<version>`. Development versions use `0.0.9-dev.1`, `0.0.9-dev.2`, etc. Sparkle uses `GITHUB_RUN_NUMBER` as the build number; the package version is the display version.
-2. Run:
-
-   ```sh
-   pnpm --dir packages/desktop package:mac --config.mac.bundleVersion=<build-number>
-   pnpm --dir packages/desktop update:appcast dist/Nyte-<version>-mac-arm64.zip
-   ```
-
-   Manual build numbers must exceed the published appcast's `sparkle:version` and stay below the next CI run number.
-
-   The second command uses the default Sparkle Keychain key. For CI, append `--key-file /secure/path/to/sparkle-key`. It stages only the specified ZIP, generates its signed appcast with versioned GitHub download URLs, and writes `appcast.xml` beside the ZIP. Neither command publishes.
-3. Upload the DMG, ZIP, blockmaps, and `latest-mac.yml` from that build to the public versioned release `v<version>`. Upload Windows/Linux artifacts and their builder metadata when releasing those platforms. Do not overwrite metadata with artifacts from a partial build.
-4. Maintain a separate public GitHub release tagged **desktop-updates** for the stable macOS feed. It can be marked as a prerelease so it does not become GitHub's latest release. After the versioned ZIP is publicly downloadable, upload or replace `appcast.xml` on this release. Its fixed URL is embedded in Nyte:
-
-   ```text
-   https://github.com/interfaces-lab/nyte/releases/download/desktop-updates/appcast.xml
-   ```
-
-   This keeps TUI-only releases from hiding the desktop feed. The appcast points to immutable ZIP assets on the versioned release, not to the feed release. Preserve old versioned archives. Restrict who can replace the appcast.
-5. Test an installed previous version through download, installation, and automatic relaunch before announcing the release. Confirm another check finds no update.
-
-The first Sparkle-enabled release must also be delivered through the existing `latest-mac.yml`/ZIP feed so already-installed Squirrel clients can receive it. That bridge release runs only Sparkle on macOS. Later updates use the appcast. Retain the legacy feed until old clients have a path to the bridge release.
-
-The macOS ZIP supports both the bridge delivery and Sparkle. `Contents/Resources/app-update.yml` remains for electron-updater; Sparkle uses `SUFeedURL` and `SUPublicEDKey` in Info.plist instead.
+1. Increment the CLI, TUI, and desktop versions together and tag `v<version>`. Development versions use `0.0.9-dev.1`, `0.0.9-dev.2`, etc.
+2. Run `pnpm --dir packages/desktop package:mac`. It writes the DMG, ZIP, blockmaps, and `latest-mac.yml` to `dist/`. Nothing is published.
+3. Upload the DMG, ZIP, blockmaps, and `latest-mac.yml` to the public versioned release `v<version>`. Upload Windows/Linux artifacts and their builder metadata when releasing those platforms. Do not overwrite metadata with artifacts from a partial build.
+4. Test an installed previous version through download, installation, and automatic relaunch before announcing the release. Confirm another check says Nyte is up to date.
 
 Use `pnpm package` for installers on the current platform, `pnpm package:<platform>:<format>` for one artifact (`package:mac:dmg`, `package:mac:zip`, `package:linux:appimage`, `package:win:nsis`), or `pnpm package:app` for the unpacked app bundle. macOS is arm64 only.
 
-## Repeatable local updates
+## Local update test
 
 ```sh
 pnpm --dir packages/desktop update:local
 ```
 
-This builds the **real Nyte app** once, packages versions 1.0.0 and 1.0.1, verifies their code signatures, and generates a signed local appcast. It prints commands to start a loopback-only feed server and open the older build. Run those commands yourself, then choose **Check for Updates…**. After installation, About Nyte should show 1.0.1 and another check should find no update.
+This builds the real app as **Nyte Update Test** 1.0.0 and 1.0.1, signed with your Developer ID but not notarized, and serves 1.0.1 on `http://localhost:8917` until you stop it. Open the printed 1.0.0 app and choose **Check for Updates…**. After the restart, About shows 1.0.1 and another check says it is up to date.
 
-Local builds use a separate `Nyte Update Test` application identity, Electron profile, and `NYTE_HOME` under `~/Library/Application Support/Nyte Update Test`. The identity and data isolation survive relaunch without shell variables. Your installed Nyte is not replaced. This is still the real app: opening a workspace and running tools can modify that workspace.
-
-The script uses ad-hoc code signing and a disposable Ed25519 key outside the served directory. It does not touch Keychain keys or GitHub. Only test builds allow local HTTP. Quit the test app before repeating, stop the previous server, then run the script again for fresh builds and a fresh key. No version edits to the workspace manifest are needed.
-
-After testing, stop the server and remove the printed temporary directory, including its private key. Test profile data remains in Application Support until removed. These local checks do not verify Developer ID notarization, GitHub delivery, or production credentials. Before release, also test cancellation, failed downloads, signature rejection, and relaunch with active sessions and terminals.
+The test app has its own identity, Electron profile, and `NYTE_HOME` under `~/Library/Application Support/Nyte Update Test`, so your installed Nyte is not touched. It is still the real app: opening a workspace and running tools can modify that workspace. Remove the printed temporary directory when done.

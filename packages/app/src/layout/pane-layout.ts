@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sessionId } from "../schemas.ts";
@@ -55,9 +55,9 @@ export type PaneLayoutAction =
     }
   | { readonly kind: "remove-session"; readonly sessionId: SessionId };
 
-export const BLANK_SELECTION: PaneSelection = { kind: "blank" };
+const BLANK_SELECTION: PaneSelection = { kind: "blank" };
 
-export const DEFAULT_SPLIT_RATIO = 0.5;
+const DEFAULT_SPLIT_RATIO = 0.5;
 
 const MIN_SPLIT_RATIO = 0.2;
 

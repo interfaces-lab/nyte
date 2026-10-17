@@ -1,5 +1,3 @@
-"use client";
-
 import { IconPhone } from "central-icons";
 import { useState, type ReactNode } from "react";
 import { DitherMoon } from "./dither-moon";
@@ -42,21 +40,16 @@ type Host = (typeof HOSTS)[number]["value"];
 const tileShadow =
   "shadow-[inset_0_1px_0_rgb(255_255_255/0.18),inset_0_0_0_1px_rgb(255_255_255/0.06),0_8px_16px_-8px_rgb(12_16_32/0.5),0_1px_2px_rgb(12_16_32/0.2)]";
 
-/* One session, three hosts, open side by side like windows on a Mac. The dock raises one to the front. */
+/** One session, three hosts, open side by side like windows on a Mac. The dock raises one to the front. */
 export function HostStage({ hosts }: { hosts: Record<Host, ReactNode> }) {
   const [stack, setStack] = useState<readonly Host[]>(["desktop", "terminal", "mobile"]);
 
   return (
-    <div className="relative overflow-hidden bg-(--site-panel) text-left text-foreground after:pointer-events-none after:absolute after:inset-0 after:border after:border-border-subtle">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border-strong)_1px,transparent_1.5px)] bg-size-[14px_14px] mask-[radial-gradient(80%_70%_at_50%_0%,black,transparent)]"
-      />
-
+    <div className="relative overflow-clip text-left text-foreground">
       <div className="relative h-[clamp(460px,46vw,600px)] px-6 pt-10 md:px-10 md:pt-14">
         <div className="relative isolate h-full">
           {HOSTS.map((host) => {
-            const depth = stack.indexOf(host.value);
+            const depth = stack.findIndex((entry) => entry === host.value);
             return (
               <div
                 key={host.value}
@@ -73,7 +66,7 @@ export function HostStage({ hosts }: { hosts: Record<Host, ReactNode> }) {
 
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-linear-to-t from-(--site-panel) from-30% to-transparent"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-linear-to-t from-background from-30% to-transparent"
       />
 
       <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 md:bottom-6">

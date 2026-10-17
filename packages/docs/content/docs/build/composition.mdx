@@ -6,77 +6,92 @@ description: Copy a host, a web app, or a terminal interface and change it from 
 ## Make an API call
 
 ```ts title="host.ts"
-import { createNyteModels } from "@nyte-ai/ai";
-import { SqliteStore } from "@nyte-ai/core/store";
-import { createHost, resolveModel } from "@nyte-ai/host";
+import { sqliteStore } from "@nyte-ai/host";
+import { chatOnlyProvider } from "@nyte-ai/host/providers";
+import { sdk } from "@nyte-ai/sdk";
 
-const models = createNyteModels();
-const sdk = await createHost({
-  models,
-  model: await resolveModel(models, "openai-codex/gpt-6.1-sol"),
-  store: new SqliteStore("./agent.db"),
-  plugins: { kind: "chat", system: "You are a helpful assistant." },
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({
+  store,
+  plugins: [{ id: "chat-only", environment: chatOnlyProvider() }],
+  workspace: { kind: "chat-only", locator: null },
 });
 
-// Run queued messages in this process. Call once when the host starts.
-sdk.attach();
+const { session, receipt } = await host.sessions.start({
+  configuration: { model: { provider: "openai-codex", id: "{{modelId}}" } },
+  content: "Hello",
+});
+const end = await receipt.settled();
+const view = await session.view();
 
-const { sessionId } = await sdk.sessions.create();
-await sdk.messages.send({ sessionId, content: "Hello" });
-await sdk.runs.wait({ sessionId });
+console.log(end.kind, JSON.stringify(view.messages, null, 2));
 
-const snapshot = await sdk.sessions.snapshot({ sessionId });
-if (snapshot === undefined) throw new Error("Session not found");
-
-console.log(JSON.stringify(snapshot.transcript, null, 2));
+await host.close();
+await store.close();
 ```
 
-`createHost` prepares the SDK; `attach()` enables its background runner. Creating a session and
-sending a message only store data. Keeping execution separate lets a UI send messages while
-another process runs the agent. In this example, the same process does both.
+`sdk.open` composes a host in this process and runs its sessions there. `sessions.start` stores the
+session with its first message in one step and returns a receipt: admission, not an answer. Later
+messages go through `session.send`, which returns the same kind of receipt. `settled()` waits for how the run ended:
+`completed`, `stopped` or `failed`. `view()` is one snapshot of what a client draws: `messages`,
+`turns`, `execution`, `background` and `changes`. For a live view, use `watch()` as in
+[Make a web app](#make-a-web-app). The store is yours, so close it after the host.
 
-`snapshot` reads the session's current state, or returns `undefined` if the session no longer
-exists. Its `transcript` is conversation data, not a component. `JSON.stringify` is only for
-printing it here. For a live React view, use the observer in [Make a web app](#make-a-web-app).
-
-`plugins.kind` picks which plugins the host loads: `chat` is a system prompt alone, `workspace`
-adds a project folder with its tools and plugins, and `custom` takes a list you build. What a
-plugin is, and where a session gets them, is in [Plugins](/docs/kernel/plugins).
-
-To work in a project folder, switch to workspace mode:
+The host keeps provider credentials in its store, encrypted with the key in `~/.nyte/secret.key`.
+Sign in once per store, before the first send:
 
 ```ts title="host.ts"
-import { createHost, createWorkspaceBackend, createWorkspaceStore } from "@nyte-ai/host"; // [!code ++]
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
 
-const workspaces = createWorkspaceStore(); // [!code ++]
-const workspace = await workspaces.require(process.cwd()); // [!code ++]
+const catalog = await host.models.list();
 
-const sdk = await createHost({
-  models,
-  model: await resolveModel(models, "openai-codex/gpt-6.1-sol"),
-  store: new SqliteStore("./agent.db"),
-  workspace: createWorkspaceBackend(workspaces), // [!code ++]
-  plugins: { kind: "chat", system: "You are a helpful assistant." }, // [!code --]
-  plugins: { kind: "workspace", target: { kind: "project", workspace } }, // [!code ++]
+if (
+  catalog.providers.find((provider) => provider.id === "openai-codex")?.credential === "missing"
+) {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
+
+  for await (const step of login.steps()) {
+    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
+    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+    if (step.kind === "failed") throw new Error(step.reason);
+  }
+
+  prompt.close();
+}
+```
+
+`plugins` lists the host's core plugins, with exactly one environment provider per workspace
+kind.
+
+To work in a project folder, serve it with the local provider:
+
+```ts title="host.ts"
+import { sqliteStore } from "@nyte-ai/host"; // [!code --]
+import { chatOnlyProvider } from "@nyte-ai/host/providers"; // [!code --]
+import { localProvider, sqliteStore } from "@nyte-ai/host"; // [!code ++]
+import process from "node:process"; // [!code ++]
+
+const host = await sdk.open({
+  store,
+  plugins: [{ id: "chat-only", environment: chatOnlyProvider() }], // [!code --]
+  workspace: { kind: "chat-only", locator: null }, // [!code --]
+  plugins: [{ id: "local", environment: localProvider() }], // [!code ++]
+  workspace: { kind: "local", path: process.cwd() }, // [!code ++]
 });
 ```
 
-`require()` throws until the user trusts the folder. Ask first, then call `workspaces.trust(cwd)`.
-Trust lets project plugins run and gives the agent unrestricted tools in that folder. It isn't a
-sandbox, and Nyte doesn't ask per tool call. To share history with the TUI and desktop app, open
-the store at `workspaceStorePath(workspace.cwd)`.
+There is no trust step. A registered workspace runs, and the folder's own plugins, skills and
+instructions load with it: `.nyte/plugins`, `.nyte/skills`, `.agents/skills`, `.nyte/prompts`,
+`AGENTS.md` and `CLAUDE.md`. The agent gets unrestricted tools in that folder. It isn't a sandbox,
+and Nyte doesn't ask per tool call.
 
 ## Make a web app
 
-The first MIT-licensed SDK release, `0.0.16-dev.2`, is pending publication. The planned public
-packages are `@nyte-ai/{ai,core,host,server,client,plugin,protocol,schema,telemetry}`. The registry
-commands below will work after these packages publish under `@next`. Both examples are standalone
-projects and do not require a repository checkout. `@nyte-ai/serve` stays private because it depends
-on Nyte's app; `@nyte-ai/server/node` is the same listener without it.
+The SDK packages aren't on npm yet. The install commands below work once they publish under `@next`.
 
-Use Node 26.4 or later for the host. This example uses `openai/gpt-4.1` with an `OPENAI_API_KEY`.
-The `openai-codex` provider used above instead requires OAuth through `nyte login`.
-The host keeps provider credentials and the SQLite database out of the browser.
+The host needs Node 26.4 or later.
 
 ### Vite
 
@@ -86,7 +101,7 @@ Create a React app and install the public SDK packages:
 pnpm create vite chat-web --template react-ts
 cd chat-web
 pnpm install
-pnpm add @nyte-ai/client@next @nyte-ai/ai@next @nyte-ai/core@next @nyte-ai/host@next @nyte-ai/server@next
+pnpm add @nyte-ai/sdk@next @nyte-ai/host@next @nyte-ai/plugin@next
 ```
 
 #### Run the host
@@ -95,44 +110,40 @@ This is a separate Node process, not code for Vite to bundle. It serves only the
 
 ```ts title="chat-web/server.ts"
 import process from "node:process";
-import { createNyteModels } from "@nyte-ai/ai";
-import { SqliteStore } from "@nyte-ai/core/store";
-import { createHost, resolveModel } from "@nyte-ai/host";
-import { serve } from "@nyte-ai/server/node";
+import { sqliteStore } from "@nyte-ai/host";
+import { chatOnlyProvider } from "@nyte-ai/host/providers";
+import { sdk } from "@nyte-ai/sdk";
 
-const models = createNyteModels();
-const store = new SqliteStore("./agent.db");
-const sdk = await createHost({
-  models,
-  model: await resolveModel(models, "openai/gpt-4.1"),
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({
   store,
-  plugins: { kind: "chat", system: "You are a helpful assistant." },
+  plugins: [{ id: "chat-only", environment: chatOnlyProvider() }],
+  workspace: { kind: "chat-only", locator: null },
 });
-const detach = sdk.attach();
 
-const serving = await serve({
-  sdk,
-  version: "0.0.16-dev.2",
+await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+
+const listener = await host.listen({
+  transport: { kind: "http", port: 8787 },
   auth: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
-  browserOrigins: ["http://localhost:5173", "http://localhost:3000"],
-  port: 8787,
+  origins: ["http://localhost:5173", "http://localhost:3000"],
 });
+
+console.log("Listening on", listener.address);
 
 process.once("SIGINT", async () => {
-  await serving.close();
-  detach();
-  await sdk.close();
+  await host.close();
   await store.close();
 });
 ```
 
-`serve` binds `127.0.0.1` and refuses a token shorter than 16 characters. `attach()` runs queued
-messages in this process; serving the API alone does not execute them.
+`listen` binds `127.0.0.1` and refuses a token shorter than 16 characters. The host runs the
+sessions it serves; `close()` closes its listeners first. Sign in against this store as in
+[Make an API call](#make-an-api-call) before the first chat.
 
-From `chat-web`, set your OpenAI API key, generate a separate host token, and start the host:
+From `chat-web`, generate a host token and start the host:
 
 ```sh
-export OPENAI_API_KEY="your-openai-api-key"
 export NYTE_TOKEN="$(node -e 'console.log(crypto.randomUUID())')"
 printf '%s\n' "$NYTE_TOKEN"
 node server.ts
@@ -140,114 +151,99 @@ node server.ts
 
 #### Render the chat
 
-Replace the generated `src/App.tsx`. Enter the token printed by the host to create a session.
-The observer reads saved messages, follows streaming text, and reconnects when the watch breaks.
+Replace the generated `src/App.tsx`. Enter the token printed by the host and a first message; that
+submit starts the session.
+`watch()` yields the whole view on every change, and resumes from where it stopped when the link
+drops.
 
 ```tsx title="chat-web/src/App.tsx"
-import { createNyteClient, livePartKey, SessionObserver, turnPartId } from "@nyte-ai/client";
-import type { SessionState, UserTurnPart } from "@nyte-ai/client";
-import { useEffect, useMemo, useState } from "react";
+import { isPart, text } from "@nyte-ai/plugin/client";
+import { sdk } from "@nyte-ai/sdk";
+import type { Session, SessionView, UserContent } from "@nyte-ai/sdk";
+import { useEffect, useState } from "react";
 
-function messageText(content: UserTurnPart["content"]) {
+function contentText(content: UserContent) {
   return typeof content === "string"
     ? content
-    : content.map((part) => (part.type === "text" ? part.text : "")).join("");
+    : content.map((block) => (block.kind === "text" ? block.text : "")).join("");
 }
 
 export default function App() {
   const [token, setToken] = useState("");
-  const [sessionId, setSessionId] = useState<SessionState["sessionId"]>();
-  const [state, setState] = useState<SessionState>();
+  const [session, setSession] = useState<Session>();
+  const [view, setView] = useState<SessionView>();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [connectionError, setConnectionError] = useState("");
-  const [submitError, setSubmitError] = useState("");
-  const sdk = useMemo(() => createNyteClient({ baseUrl: "http://127.0.0.1:8787", token }), [token]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (sessionId === undefined) return;
-    let closed = false;
-    const observer = new SessionObserver(sdk, {
-      sessionId,
-      onError: (cause) => {
-        if (!closed) setConnectionError(cause.message);
-      },
+    if (session === undefined) return;
+    const views = session.watch()[Symbol.asyncIterator]();
+    let open = true;
+
+    void (async () => {
+      for (let next = await views.next(); open && next.done !== true; next = await views.next())
+        setView(next.value);
+    })().catch((cause: unknown) => {
+      if (open) setError(cause instanceof Error ? cause.message : String(cause));
     });
-    const unsubscribe = observer.subscribe((update) => {
-      setState(update.state);
-      setConnectionError("");
-    });
-    void observer.start().catch((cause: unknown) => {
-      if (!closed) setConnectionError(cause instanceof Error ? cause.message : String(cause));
-    });
+
     return () => {
-      closed = true;
-      unsubscribe();
-      observer.close();
+      open = false;
+      void views.return?.();
     };
-  }, [sdk, sessionId]);
+  }, [session]);
 
   async function submit() {
+    if (!input.trim()) return;
     setBusy(true);
-    setSubmitError("");
+    setError("");
     try {
-      if (sessionId === undefined) {
-        const session = await sdk.sessions.create();
-        setSessionId(session.sessionId);
-        return;
+      if (session === undefined) {
+        const connection = await sdk.connect({
+          url: "http://127.0.0.1:8787",
+          credentials: { kind: "token", token },
+        });
+        setSession((await connection.sessions.start({ content: input })).session);
+      } else {
+        await session.send(input, { delivery: "queue" });
       }
-      if (!input.trim()) return;
-      await sdk.messages.send({
-        sessionId,
-        content: input,
-        key: crypto.randomUUID(),
-        delivery: "next",
-      });
       setInput("");
     } catch (cause) {
-      setSubmitError(cause instanceof Error ? cause.message : String(cause));
+      setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
     }
   }
 
+  const lastRun = view?.execution.kind === "idle" ? view.execution.lastRun : null;
+
   return (
     <main>
       <h1>Chat</h1>
-      {state?.transcript.items.map((turn) =>
-        turn.kind === "turn" ? (
-          <section key={turn.id}>
-            {turn.parts.map((part) =>
-              part.kind === "user" || part.kind === "assistant" ? (
-                <p key={turnPartId(part)} style={{ whiteSpace: "pre-wrap" }}>
-                  <strong>{part.kind === "user" ? "You: " : "AI: "}</strong>
-                  {part.kind === "user" ? messageText(part.content) : part.text}
-                </p>
-              ) : null,
-            )}
-            {turn.failure && <p role="alert">{JSON.stringify(turn.failure)}</p>}
-          </section>
-        ) : null,
-      )}
-      {state?.pending.map((item) => (
-        <p key={item.change}>You: {messageText(item.content)} (queued)</p>
-      ))}
-      {state?.overlay.map((part) =>
-        part.kind === "text" ? (
-          <p key={livePartKey(part)} style={{ whiteSpace: "pre-wrap" }}>
-            AI: {part.text}
+      {view?.messages.map((message) =>
+        message.kind === "user" ? (
+          <p key={message.id} style={{ whiteSpace: "pre-wrap" }}>
+            <strong>You: </strong>
+            {contentText(message.content)}
+            {message.status.kind === "landed" ? "" : ` (${message.status.kind})`}
+          </p>
+        ) : isPart(message, text) ? (
+          <p key={message.id} style={{ whiteSpace: "pre-wrap" }}>
+            <strong>AI: </strong>
+            {message.state.markdown}
           </p>
         ) : null,
       )}
-      {connectionError && <p role="alert">Connection: {connectionError}</p>}
-      {submitError && <p role="alert">{submitError}</p>}
+      {lastRun?.end.kind === "failed" && <p role="alert">{lastRun.end.failure.message}</p>}
+      {error && <p role="alert">{error}</p>}
       <form
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
         }}
       >
-        {sessionId === undefined ? (
+        {session === undefined && (
           <label>
             Host token
             <input
@@ -259,19 +255,18 @@ export default function App() {
               minLength={16}
             />
           </label>
-        ) : (
-          <label>
-            Message
-            <input
-              value={input}
-              disabled={busy || state === undefined}
-              onChange={(event) => setInput(event.target.value)}
-              required
-            />
-          </label>
         )}
-        <button disabled={busy || (sessionId !== undefined && state === undefined)}>
-          {sessionId === undefined ? "Start chat" : "Send"}
+        <label>
+          Message
+          <input
+            value={input}
+            disabled={busy || (session !== undefined && view === undefined)}
+            onChange={(event) => setInput(event.target.value)}
+            required
+          />
+        </label>
+        <button disabled={busy || (session !== undefined && view === undefined)}>
+          {session === undefined ? "Start chat" : "Send"}
         </button>
       </form>
     </main>
@@ -286,22 +281,22 @@ pnpm dev --host localhost --port 5173 --strictPort
 ```
 
 Open `http://localhost:5173`. The host stores conversation history, so the browser sends only the
-new message, not the whole transcript. This example creates a new session each time you start a
-chat. Save the returned `sessionId` to reopen that session after a reload.
+new message, not the whole transcript. This example starts a new session with each first message. Save `session.id` and reopen it with `connection.session(id)` after a reload.
 
-This text-only example leaves out tool rendering and optimistic sends. A failed send can have
-reached the host even if its receipt was lost. For automatic retries under the same key and
-immediate pending messages, use `createOutbox` as shown in [Make a TUI](#make-a-tui).
+A sent message is in `view.messages` at once, `unsent` until the host admits it, then `pending`
+and `landed`. The sdk mints its id before the network and resends it under that id after a failed
+request, so it lands once. This example leaves out tool rendering: every other part has a
+`partKind`, a `state` and a `status` for a renderer to draw.
 
 ### Next.js
 
 Keep the same host running. In a separate directory, create a standalone Next.js app, choose the
-App Router without a `src` directory, and install only the browser client:
+App Router without a `src` directory, and install the browser packages:
 
 ```sh
 pnpm create next-app chat-next
 cd chat-next
-pnpm add @nyte-ai/client@next
+pnpm add @nyte-ai/sdk@next @nyte-ai/plugin@next
 ```
 
 Copy the Vite `App.tsx` to `chat-next/app/page.tsx` and add `"use client";` before its imports.
@@ -313,92 +308,76 @@ pnpm dev --hostname localhost --port 3000
 ```
 
 Open `http://localhost:3000` and enter the same host token. There is no Next.js API route in this
-version. Both frontends call the same long-running host, which owns execution and storage.
-Moving `sdk.attach()` into a serverless request handler would not keep it running after the
-request ends. For that deployment model, start with the
-[Vercel Workflow demo](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/vercel/README.md).
+version. Both frontends call the same long-running host, which owns execution and storage. A
+serverless request handler would not keep it running after the request ends. For that deployment
+model, start with the
+[Vercel template](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/vercel/README.md).
 
 ### Before deploying
 
 The loopback URLs and token entry above are for local development. For a deployed frontend, use
-an HTTPS host URL and allow its exact origin in `browserOrigins`. Never put provider credentials
-or a shared host token in `VITE_*` or `NEXT_PUBLIC_*` variables; those values go into the browser
-bundle. The local token grants full access to this host, not just one session. A multi-user app
-needs server-side authentication and session permissions through
-[`createNyteServer`](https://github.com/interfaces-lab/nyte/blob/main/packages/server/README.md#permissions-for-remote-clients).
-Nyte's SDK protocol is not the AI SDK UI message protocol, so `useChat` needs an adapter rather
-than pointing directly at these endpoints.
+an HTTPS host URL and allow its exact origin in `origins`. Never put provider credentials or a
+shared host token in `VITE_*` or `NEXT_PUBLIC_*` variables; those values go into the browser
+bundle. The token grants full access to this host, not just one session. For one principal per
+device, mint a code with `host.principals.pair({ authority })` and connect with
+`credentials: { kind: "pairing", code }`; the device token it yields is `connection.credential`.
+Behind your own sign-in, `auth: { kind: "custom", authorize }` maps each request to a principal and
+its authority. Nyte's SDK protocol is not the AI SDK UI message protocol, so `useChat` needs an
+adapter rather than pointing directly at these endpoints.
 
 ## Make a TUI
 
-Keep the host and render the session yourself. `@nyte-ai/client` gives you a `SessionObserver`, a
-live view of the session, and an outbox, which holds the messages the user has typed but the store
-hasn't confirmed yet.
+Keep the host and render the session yourself. There is nothing to fold and nothing to retry:
+`sessions.start` retries under the session id it minted, `watch()` yields the view, and `send`
+journals each later message before it reaches the wire.
 
 ```ts title="tui.ts"
-import { createOutbox, SessionObserver } from "@nyte-ai/client";
-import type { OutboxRow, SessionState } from "@nyte-ai/client";
+import process from "node:process";
+import { sdk } from "@nyte-ai/sdk";
+import type { SessionView } from "@nyte-ai/sdk";
 
-const observer = new SessionObserver(sdk, { sessionId });
-const outbox = createOutbox({ send: (input) => sdk.messages.send(input) });
-
-const draw = (state: SessionState, rows: readonly OutboxRow[]) =>
-  console.log(state.transcript.items.length, "turns,", rows.length, "pending");
-
-observer.subscribe((update) => {
-  outbox.observe(update);
-  draw(update.state, outbox.rows());
+const connection = await sdk.connect({
+  url: "http://127.0.0.1:8787",
+  credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
 });
-outbox.subscribe(() => {
-  if (observer.state !== undefined) draw(observer.state, outbox.rows());
-});
+const { session } = await connection.sessions.start({ content: "Explain this repository" });
 
-await observer.start();
-await outbox.submit({ sessionId, content: "Explain this repository", delivery: "next" });
+const draw = (view: SessionView) =>
+  console.log(view.turns.length, "turns,", view.execution.kind, "execution");
+
+for await (const view of session.watch()) draw(view);
 ```
 
-The SDK never retries. The observer handles reading: it takes a snapshot, follows live events, and
-starts over from a fresh snapshot when the watch breaks. The outbox handles writing: it shows the
-message the moment the user hits enter, retries under one idempotency key until the send lands, and
-drops its copy once the observer sees the real one.
+The sdk owns both directions. Reading, `watch()` resumes from its last position when the link
+drops, so nothing is missed or repeated. Writing, `send` mints the message id, writes it to the
+journal, and shows it `unsent`; on acknowledgement the entry is removed. If the client dies in
+between, the next `connect` resends each entry under the same id, and the host admits it or
+replays the receipt it already has.
 
-`delivery: "next"` queues the message for when the agent is idle. `"steer"` delivers it at the next
-response boundary while the agent is still working. For messages that should survive a restart,
-give the outbox a `storage` and call `activate()` on startup. The shipped TUI wires these the same
-way in
-[`packages/tui/src/interactive.ts`](https://github.com/interfaces-lab/nyte/blob/main/packages/tui/src/interactive.ts).
+`delivery: "steer"`, the default, joins the live run at its next boundary, and `"queue"` waits
+for the current run to end; either starts a run when the head is idle. `"attach"` rides with the
+next turn; a subagent's or background job's report also wakes a head whose last run completed,
+but not one that was stopped or failed. The journal is in memory by default. For messages that
+should survive a restart, pass `journal` to `connect`: an object with `load`, `put` and `remove`
+over your own storage. To edit a message, `send(content, { replace: id })`.
 
 ## Or extend what's already there
 
-To change part of the TUI, write a plugin. Its rendering, transcript, and composer are internal.
-Through `@nyte-ai/plugin` you can add tools to sessions, listen to session events, show toasts, and
-render into the `session.composer.top` slot.
+To change what a client does, write a plugin. Core plugins from `@nyte-ai/plugin/core` add tools,
+parts, commands, settings and hooks to sessions. Client plugins from `@nyte-ai/plugin/client` add
+renderers, commands, settings, keybindings and client hooks; each declares the frameworks it
+renders for, and the client mounts what it can. The supplied renderers are in
+`@nyte-ai/plugin/client/transcript` and `@nyte-ai/plugin/client/transcript-tui`. Question UI is defined by its own client plugins, `@nyte-ai/plugin/client/questions` and `@nyte-ai/plugin/client/questions-tui`.
 
 ## What there is to copy
 
-| Path                              | What runs                                                          |
-| --------------------------------- | ------------------------------------------------------------------ |
-| `packages/demo/server/cloudflare` | Local SQLite-backed Durable Object with alarm-driven execution     |
-| `packages/demo/server/vercel`     | PostgreSQL-backed chat host with durable Vercel Workflow execution |
-| `packages/demo/website`           | Static interface previews, not a live agent                        |
+| Path                                  | What runs                                                       |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `packages/host/src/deploy/cloudflare` | One host in a SQLite-backed Durable Object, run from its alarm  |
+| `packages/host/src/deploy/vercel`     | A Nitro app over PostgreSQL whose heads run as Vercel workflows |
+| `packages/demo/website`               | Static interface previews, not a live agent                     |
 
-The server demos are chat only, with no workspace or terminal. Setup is in the
-[Cloudflare guide](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/cloudflare/README.md)
-and the [Vercel guide](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/vercel/README.md).
-
-## Related
-
-<Cards>
-  <DocCard
-    icon="IconCodeBrackets"
-    title="SDK"
-    href="/docs/build/sdk"
-    description="Operations, events, storage, and execution lifecycle"
-  />
-  <DocCard
-    icon="IconAgent"
-    title="Desktop"
-    href="/docs/build/desktop"
-    description="Electron hosts, workspace trust, and the IPC bridge"
-  />
-</Cards>
+The Cloudflare host is chat only, with no files or processes; the Vercel one runs tools in a
+sandbox you supply. Setup is in the
+[Cloudflare guide](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/cloudflare/README.md)
+and the [Vercel guide](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/vercel/README.md).

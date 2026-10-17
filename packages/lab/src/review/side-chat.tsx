@@ -17,17 +17,19 @@ import type {
   ComposerMentionFiles,
   ComposerSuggestionCatalog,
 } from "@nyte-ai/app/conversation/composer-suggestions.tsx";
-import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
+import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
-import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
+import { composerStyles } from "@nyte-ai/app/conversation/composer.stylex.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useAsk, useChange, useRepo, useSideThread } from "./api";
 import {
   PART_MS,
@@ -42,11 +44,11 @@ import type { GuideWriting } from "./guide";
 import { useReviewState } from "./review-state";
 import type { ReviewDetail } from "./wire";
 
-const NO_LIVE_TOOLS = new Map();
+const NO_TURNS: readonly ConversationTurn[] = [];
 
 const NO_SUGGESTIONS = {
   status: "ready",
-  data: { plugins: [], commands: [], skills: [], settings: [] },
+  data: { commands: [], skills: [] },
 } satisfies ComposerSuggestionCatalog;
 
 const NO_FILES = { status: "ready", data: [] } satisfies ComposerMentionFiles;
@@ -61,6 +63,7 @@ export function SideChat({
   readonly writing: GuideWriting;
 }): ReactElement {
   const root = useRepo().data?.root;
+  const density = useSetting(preferences.toolCalls);
   const local = useReviewState(review.id, review.files);
   const { thread } = local;
   const [recipient, setRecipient] = useState<Recipient>("reviewer");
@@ -168,10 +171,12 @@ export function SideChat({
           )}
           {turns.map((turn, index) => (
             <TurnView
-              key={turn.id}
+              key={turn.info.id}
               turn={turn}
-              liveTools={NO_LIVE_TOOLS}
+              continuations={NO_TURNS}
+              density={density}
               cwd={root}
+              changes={[]}
               onOpenChanges={() => {}}
               running={running && index === turns.length - 1}
             />
@@ -185,7 +190,7 @@ export function SideChat({
       </div>
       {last !== undefined && playing(last) && (
         <span
-          key={`${last.turn.id}:${last.shown}`}
+          key={`${last.turn.info.id}:${last.shown}`}
           aria-hidden="true"
           onAnimationEnd={() =>
             updateLast((exchange) => ({ ...exchange, shown: exchange.shown + 1 }))
@@ -210,7 +215,6 @@ export function SideChat({
               suggestionCatalog={NO_SUGGESTIONS}
               mentionFiles={NO_FILES}
               inputRef={(handle) => {
-                // Opening the side chat, or "Ask about this section", asks for focus by bumping the counter.
                 if (handle === null || focused.current === local.focus) return;
 
                 focused.current = local.focus;

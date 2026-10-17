@@ -1,28 +1,29 @@
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
-import type { BrowserSurfaceState, HostEvent } from "../bridge.ts";
-import { nyte } from "../nyte.ts";
-import type { WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
+import type { BrowserDownload, BrowserKey, BrowserSurfaceState, HostEvent } from "../bridge.ts";
+import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 
 interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
-  readonly refusedDownload: string | undefined;
-  readonly history: readonly Pick<BrowserSurfaceState, "url" | "title">[];
-  /** The cookie jar the panel opened this surface in: a workspace path, or null for home. */
-  readonly owner: string | null | undefined;
+  readonly downloads: readonly BrowserDownload[];
+  readonly finding: boolean;
+  readonly login: { readonly host: string; readonly realm: string } | undefined;
 }
 
 const EMPTY: BrowserSurfaceView = Object.freeze({
   state: undefined,
-  refusedDownload: undefined,
-  history: [],
-  owner: undefined,
+  downloads: [],
+  finding: false,
+  login: undefined,
 });
+
+const DOWNLOADS_SHOWN = 5;
 
 let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
 
 const listeners = new Set<() => void>();
+
+const keyListeners = new Map<string, (key: BrowserKey) => void>();
 
 function set(surface: string, view: BrowserSurfaceView): void {
   const next = new Map(views);
@@ -54,37 +55,49 @@ function browserTab(
  * closing in main, and a late event must not write it back.
  */
 export function applyBrowserEvent(
-  event: Extract<HostEvent, { kind: "browser_changed" | "browser_download_refused" }>,
+  event: Extract<
+    HostEvent,
+    {
+      kind: "browser_changed" | "browser_download" | "browser_open_tab" | "browser_login_requested";
+    }
+  >,
 ): void {
   const current = views.get(event.surface);
   const tab = browserTab(event.surface);
 
-  if (event.kind === "browser_download_refused") {
-    if (current === undefined && tab === undefined) return;
-    set(event.surface, { ...(current ?? EMPTY), refusedDownload: event.url });
+  if (event.kind === "browser_open_tab") {
+    if (tab === undefined) return;
+    workbenchController.actions.openTab({
+      view: tab.view,
+      tab: { kind: "browser", url: event.url },
+      activate: !event.background,
+    });
+
+    return;
+  }
+
+  const held = current ?? EMPTY;
+  const owned = current !== undefined || tab !== undefined;
+
+  if (event.kind === "browser_login_requested") {
+    if (owned) set(event.surface, { ...held, login: { host: event.host, realm: event.realm } });
+
+    return;
+  }
+
+  if (event.kind === "browser_download") {
+    if (!owned) return;
+    const rest = held.downloads.filter((download) => download.id !== event.download.id);
+    set(event.surface, { ...held, downloads: [event.download, ...rest].slice(0, DOWNLOADS_SHOWN) });
 
     return;
   }
 
   const { state } = event;
 
-  if (current === undefined && tab === undefined && state.agentHolders === 0) return;
-  const held = current ?? EMPTY;
-  const refusedDownload = state.loading ? undefined : held.refusedDownload;
-  const latest = held.history[0];
-
-  const history =
-    !state.loading &&
-    state.error === undefined &&
-    state.url !== "" &&
-    (latest?.url !== state.url || latest.title !== state.title)
-      ? [
-          { url: state.url, title: state.title },
-          ...held.history.filter((entry) => entry.url !== state.url),
-        ]
-      : held.history;
-
-  set(event.surface, { ...held, state, refusedDownload, history });
+  if (!owned && state.agentHolders === 0) return;
+  const login = state.loading ? undefined : held.login;
+  set(event.surface, { ...held, state, login });
 
   if (tab !== undefined && state.url !== "") {
     workbenchController.actions.updateTab({
@@ -96,46 +109,64 @@ export function applyBrowserEvent(
   }
 }
 
-export function dismissRefusedDownload(surface: string): void {
+export function dismissDownload(surface: string, id: string): void {
   const current = views.get(surface);
 
-  if (current?.refusedDownload !== undefined)
-    set(surface, { ...current, refusedDownload: undefined });
+  if (current === undefined) return;
+  set(surface, { ...current, downloads: current.downloads.filter((item) => item.id !== id) });
 }
 
-export function claimBrowserSurface(surface: string, owner: string | null): void {
-  set(surface, { ...(views.get(surface) ?? EMPTY), owner });
+export function dismissLogin(surface: string): void {
+  const current = views.get(surface);
+
+  if (current?.login !== undefined) set(surface, { ...current, login: undefined });
 }
 
-/** Main clears history per cookie jar, so the displayed history follows the same owner. */
-export function clearBrowserHistory(owner: string | null): void {
-  for (const [surface, view] of views) {
-    if (view.owner === owner) set(surface, { ...view, history: [] });
-  }
+export function setBrowserFinding(surface: string, finding: boolean): void {
+  const current = views.get(surface) ?? EMPTY;
+
+  if (current.finding !== finding) set(surface, { ...current, finding });
 }
 
-/**
- * An agent opened a page on a surface. Open or update the Browser tab in the
- * workbench of the workspace the page belongs to. The tab is shown only when
- * the agent's chat is the focused one; another chat's page must not displace
- * what the user is viewing.
- */
+export function onBrowserKey(surface: string, listener: (key: BrowserKey) => void): () => void {
+  keyListeners.set(surface, listener);
+
+  return () => {
+    if (keyListeners.get(surface) === listener) keyListeners.delete(surface);
+  };
+}
+
+export function applyBrowserKey(event: Extract<HostEvent, { kind: "browser_key" }>): void {
+  keyListeners.get(event.surface)?.(event.key);
+}
+
+export function claimBrowserSurface(surface: string): void {
+  if (!views.has(surface)) set(surface, EMPTY);
+}
+
 export function applyBrowserAgentOpened(
+  controller: Pick<WorkbenchController, "actions" | "getView">,
   event: Extract<HostEvent, { kind: "browser_agent_opened" }>,
-  focusedSession: SessionId | undefined,
 ): void {
-  if (nyte.host.browser === undefined) return;
-  const current = views.get(event.surface) ?? EMPTY;
-  const revealed = { ...current, state: event.state, refusedDownload: undefined };
-  set(event.surface, revealed);
+  const view = workbenchViewKey(event.owner ?? undefined);
+  const existing = controller.getView(view).tabs.find((tab) => tab.kind === "browser");
 
-  const id = workbenchController.actions.openTab({
-    view: workbenchViewKey(event.owner ?? undefined),
-    tab: { kind: "browser", url: event.url },
-    activate: event.session === focusedSession,
+  if (existing === undefined) {
+    controller.actions.openTab({
+      view,
+      tab: { kind: "browser", url: event.url },
+      activate: false,
+    });
+
+    return;
+  }
+
+  controller.actions.updateTab({
+    view,
+    id: existing.id,
+    kind: "browser",
+    patch: { url: event.url },
   });
-
-  set(id, revealed);
 }
 
 export function forgetBrowserSurface(surface: string): void {

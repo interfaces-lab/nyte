@@ -1,7 +1,7 @@
 import { preloadPatchDiff } from "@pierre/diffs/ssr";
-import { button, glyph } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
-import { cacheLife } from "next/cache";
+import { button, glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { createServerFn } from "@tanstack/react-start";
 
 export const EDIT_STATS = { added: 3, removed: 1 } as const;
 
@@ -110,11 +110,15 @@ const SHADOW_CSS = `
 }
 `;
 
-/* Highlighted once at build with the desktop's options, so the page ships no highlighter. */
-export async function editDiffHTML(): Promise<string> {
-  "use cache";
-  cacheLife("max");
+let highlighted: Promise<string> | undefined;
 
+/** Highlighted on the server with the desktop's options, once per instance, so the page ships no highlighter. */
+export const editDiffHTML = createServerFn().handler(() => {
+  highlighted ??= highlightEditDiff();
+  return highlighted;
+});
+
+async function highlightEditDiff(): Promise<string> {
   const { prerenderedHTML } = await preloadPatchDiff({
     patch: PATCH,
     options: {

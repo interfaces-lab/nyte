@@ -1,60 +1,43 @@
 # Agent Guidelines
 
-Use pnpm. Runtime versions live in `mise.toml`.
+- Use pnpm. Runtime versions live in `mise.toml`.
+- Never start dev servers; leave them to the user.
+- Build and test individual packages, not the whole repo.
+- Make the smallest complete fix. Leave unrelated work alone. Stage only files for this change.
+- To test without your change, revert only your files (`git diff -- <files> | git apply -R`) or use `git worktree add`. Never `stash`, `reset`, `checkout .` or `clean`: they take everyone's uncommitted work with them.
+- Add backward compatibility only when requested.
+- Core contracts: JSDoc on `@nyte-ai/core` exports and `packages/lab/sdk-shape.ts`.
+- Treat `node_modules` as the source of truth for library types.
 
-Leave dev servers to the user. Build and test commands target individual packages.
+## Code style
 
-Prefer the smallest complete fix. Leave unrelated work alone.
-
-Core contracts live in `packages/docs/content/kernel/` and `packages/core/src/kernel/README.md`.
-
-Work on the public site's design, copy, or docs layout loads `.agents/skills/site-design`.
-
-Add backward compatibility only when requested.
+- No `any` and no type casts (`as T`, chained or angle-bracket assertions). Use inference, narrowing, schema-derived types, or `satisfies`. `as const` is fine.
+- Erasable syntax only: no enums, parameter properties, or namespaces.
+- Top-level imports only, including `import type`. No dynamic, type-position `import()`, star, or renamed imports (except to resolve a name collision).
+- Prefer `const`, early returns, and dot notation. Names explain the concept.
+- No `<thing>Of` helpers (`keyOf`, `childOf`, `configurationOf`). Name the operation (`findModel`, `readChild`) or inline the expression: an `Of` name hides how a value is found and how that fails.
+- Inline trivial one-use helpers; extract real operations and boundary handling.
+- Prefer deletion. Prefer no comments and no new tests unless asked.
 
 ## Commits and PR titles
 
-Use `type(scope): summary` for commit subjects and PR titles. Omit the scope for changes spanning the repository.
-
-Types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`, `chore`, and `revert`.
-
-Scope is an existing Nyte package directory such as `core`, `tui`, `desktop`, `plugin`, or `docs`. For changes outside packages, use the repository area such as `scripts` or `ci`.
-
-Examples: `fix(core): preserve tool errors`, `docs: clarify repository instructions`, `fix(tui): restore scroll position`.
-
-Add a body when the reason or migration needs explanation. Mark breaking changes with `!` before the colon and a `BREAKING CHANGE:` footer.
-
-Stage only files that belong to the requested change.
-
-## Code Style
-
-- **Do not use** `any` **or type casts, including** `as T`**, chained assertions, and angle-bracket assertions**. Use inference, narrowing, schema-derived types, or `satisfies`. `as const` preserves literals and is allowed.
-- Use code in `node_modules` as code source of truth for type inference
-- RMust use erasable syntax. No enums, parameter properties, or namespaces in package source, tests, or demo source.
-- Imports must be top-level, including `import type`. No dynamic imports, type-position `import()`, star imports, or renamed imports. A type alias import is allowed only to resolve a name collision.
-- Inline trivial one-use helpers. Extract meaningful operations and complex boundary handling.
-- **Prefer** `const`**, early returns, and dot notation.** Names explain the concept. 
-- **Prefer deletion.** When asked to refactor or improve, look for removals before additions.
-- **Prefer** `no-comments` **and** `no-tests`
-
-
+`type(scope): summary`. Types: feat, fix, docs, refactor, test, perf, build, ci, chore, revert.
+Scope is a package dir (`core`, `tui`, `desktop`, ...) or area (`scripts`, `ci`); omit it for repo-wide changes.
+Add a body when the reason needs explaining. Breaking: `!` before the colon plus a `BREAKING CHANGE:` footer.
 
 ## Verification
 
-Choose checks relevant to the change.
+- Package: `pnpm --dir packages/<package> test`.
+- Stored shapes (`packages/schema` wire types, `packages/core/src/contract/records.ts`): `pnpm --dir packages/host check:store [path]` reads a real store (default `~/.nyte/nyte.db`) with the working-tree validators. Backfill what it reports before committing.
+- Workspace: `pnpm typecheck`, `pnpm lint`, `pnpm format` (`format:fix` to apply). Docs only: `pnpm exec turbo typecheck --filter=@nyte-ai/web`.
+- Report failures in unrelated files; don't fix them.
+- Turborepo varies by version: read the installed `turbo` package's `docs/` before changing its config.
 
-- Package tests, when the package defines a test script: `pnpm --dir packages/<package> test`.
-- The docs site uses `pnpm --dir packages/docs types:check`. Root `pnpm typecheck` does not include it.
-- Workspace checks: `pnpm typecheck`, `pnpm lint`, `pnpm format`.
-- `pnpm format:fix` applies formatting. Report failures without fixing unrelated files.
+## Skills
 
-<!-- BEGIN:turborepo-agent-rules -->
-
-# This is NOT the Turborepo you know
-
-Turborepo configuration, task behavior, and CLI commands can vary between installed versions and may differ from your training data. Resolve the `turbo` package from this file's directory or relevant workspace; in monorepos, it may not be visible from the repository root. For example, run `node -p "require.resolve('turbo/package.json')"` from a workspace that depends on `turbo`.
-
-Read `docs/README.md` inside that installed package first, then read the relevant pages from its `docs/` directory before changing Turborepo configuration or commands. Heed deprecation notices. These bundled docs match the installed package version and are available without network access.
-
-This block is written and re-added by `turbo` before repository-scoped commands when an AI agent is detected. In the Turborepo source repository, its template is defined in `crates/turborepo-cli/src/cli/agent_guidance.rs`. Removing the managed block while updates are enabled means a later qualifying invocation will add it again. Set `"agentGuidance": false` in the root `turbo.json` or `turbo.jsonc` to opt out; this does not remove an existing block. Keep the block committed with your work to avoid an uncommitted change on the next agent invocation.
-<!-- END:turborepo-agent-rules -->
+Skills live in `.agents/skills`. Load the one that fits the task:
+- `site-design` for the public site's design, copy, or docs layout.
+- `nyte-styles` before writing or reviewing StyleX, tokens, or base.css.
+- `verify-nyte` and `browser` to prove UI changes in the web and desktop apps.
+- `typescript-best-practices`, `review-code-quality`, and `principle-*` for code and review.
+- `better-writing` and `unslop` for prose.

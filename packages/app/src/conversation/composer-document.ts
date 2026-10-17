@@ -1,110 +1,118 @@
-/**
- * The composer's document, in Lexical. A chip is a node, not a substring: it
- * carries its reference, serializes to that reference's one token, and
- * deletes atomically. The draft string is `$getRoot().getTextContent()` and
- * nothing else, and offsets count that string, so a chip counts for its token
- * and a caret can never rest inside one.
- */
+import { combineTransactionSteps, Extension, getChangedRanges, Node } from "@tiptap/core";
+import type { JSONContent } from "@tiptap/core";
+import { history, redo, undo } from "@tiptap/pm/history";
+import { Fragment } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { EditorState, Plugin, TextSelection } from "@tiptap/pm/state";
+import type { Command, Transaction } from "@tiptap/pm/state";
+import { Value } from "typebox/value";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
+import type { CompletionTrigger } from "@nyte-ai/plugin/client/presentation";
+import type { ContentPart, MentionFile } from "./message-references.ts";
 import {
-  $addUpdateTag,
-  $applyNodeReplacement,
-  $createParagraphNode,
-  $createRangeSelection,
-  $createTextNode,
-  $getNearestNodeFromDOMNode,
-  $getRoot,
-  $getSelection,
-  $hasUpdateTag,
-  $isElementNode,
-  $isRangeSelection,
-  $isTextNode,
-  $setSelection,
-  DecoratorNode,
-  HISTORY_MERGE_TAG,
-  isDOMTextNode,
-  PASTE_TAG,
-  SKIP_DOM_SELECTION_TAG,
-  TextNode,
-} from "lexical";
-import type {
-  DOMExportOutput,
-  LexicalEditor,
-  NodeKey,
-  PointType,
-  SerializedLexicalNode,
-} from "lexical";
-import { completionTrigger } from "@nyte-ai/client";
-import type { CompletionTrigger, MentionFile } from "@nyte-ai/client";
-import { messageParts, referencePromptText, referenceText } from "./message-references.ts";
+  messageParts,
+  messageReferenceSchema,
+  referencePart,
+  referenceText,
+} from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 
-/** Marks an update whose text came from outside the editor: a restored draft, a pane switch, a clear. */
-export const COMPOSER_EXTERNAL_TAG = "composer-external";
+export const COMPOSER_RESTORE = "composerRestore";
 
-export class ComposerReferenceNode extends DecoratorNode<MessageReference> {
-  __reference: MessageReference;
+const REFERENCE = "composerReference";
 
-  constructor(reference: MessageReference, key?: NodeKey) {
-    super(key);
-    this.__reference = reference;
-  }
+const HARD_BREAK = "hardBreak";
 
-  static getType(): string {
-    return "composer-reference";
-  }
-  static clone(node: ComposerReferenceNode): ComposerReferenceNode {
-    return new ComposerReferenceNode(node.__reference, node.__key);
-  }
-  static importJSON(
-    serialized: SerializedLexicalNode & { reference: MessageReference },
-  ): ComposerReferenceNode {
-    return $applyNodeReplacement(new ComposerReferenceNode(serialized.reference));
-  }
-  exportJSON(): SerializedLexicalNode & { reference: MessageReference } {
-    return { ...super.exportJSON(), reference: this.getReference() };
-  }
-  createDOM(): HTMLElement {
-    const element = document.createElement("span");
-    element.contentEditable = "false";
-    element.dataset["composerReference"] = this.getReference().kind;
-    // Lexical sizes this host before React portals the chip. An empty inline
-    // span collapses, and the chip paints outside the composer.
-    element.style.display = "inline-block";
-    element.style.verticalAlign = "baseline";
-    element.style.whiteSpace = "nowrap";
-    element.style.maxWidth = "100%";
+export function composerReference(node: ProseMirrorNode): MessageReference | undefined {
+  const reference: unknown = node.attrs["reference"];
 
-    return element;
-  }
-  /** HTML clipboard carries the token, so a paste anywhere reads as the draft did. */
-  exportDOM(): DOMExportOutput {
-    const element = document.createElement("span");
-    element.textContent = this.getTextContent();
-
-    return { element };
-  }
-  updateDOM(): false {
-    return false;
-  }
-  isInline(): true {
-    return true;
-  }
-  isKeyboardSelectable(): true {
-    return true;
-  }
-  getReference(): MessageReference {
-    return this.getLatest().__reference;
-  }
-  setReference(reference: MessageReference): void {
-    this.getWritable().__reference = reference;
-  }
-  getTextContent(): string {
-    return referenceText(this.getReference());
-  }
-  decorate(): MessageReference {
-    return this.getReference();
-  }
+  return node.type.name === REFERENCE && Value.Check(messageReferenceSchema, reference)
+    ? reference
+    : undefined;
 }
+
+function draftLeafText(node: ProseMirrorNode): string {
+  if (node.type.name === HARD_BREAK) return "\n";
+  const reference = composerReference(node);
+
+  return reference === undefined ? "" : referenceText(reference);
+}
+
+export const ComposerDocument = Node.create({ name: "doc", topNode: true, content: "paragraph" });
+
+export const ComposerParagraph = Node.create<{ readonly HTMLAttributes: Record<string, string> }>({
+  name: "paragraph",
+  group: "block",
+  content: "inline*",
+  addOptions: () => ({ HTMLAttributes: {} }),
+  parseHTML: () => [{ tag: "p" }],
+  renderHTML() {
+    return ["p", this.options.HTMLAttributes, 0];
+  },
+});
+
+export const ComposerText = Node.create({ name: "text", group: "inline" });
+
+export const ComposerHardBreak = Node.create({
+  name: HARD_BREAK,
+  inline: true,
+  group: "inline",
+  selectable: false,
+  linebreakReplacement: true,
+  parseHTML: () => [{ tag: "br" }],
+  renderHTML: () => ["br"],
+  renderText: () => "\n",
+});
+
+export const ComposerReference = Node.create({
+  name: REFERENCE,
+  inline: true,
+  group: "inline",
+  atom: true,
+  selectable: false,
+  addAttributes: () => ({ reference: { default: null, rendered: false } }),
+  renderHTML: ({ node }) => ["span", draftLeafText(node)],
+  renderText: ({ node }) => draftLeafText(node),
+});
+
+export function deleteComposerReference(tr: Transaction, direction: -1 | 1): boolean {
+  const cursor = tr.selection instanceof TextSelection ? tr.selection.$cursor : null;
+  const node = direction < 0 ? cursor?.nodeBefore : cursor?.nodeAfter;
+
+  if (cursor === null || node?.type.name !== REFERENCE) return false;
+  const from = direction < 0 ? cursor.pos - node.nodeSize : cursor.pos;
+  tr.delete(from, from + node.nodeSize);
+
+  return true;
+}
+
+export const ComposerEditing = Extension.create({
+  name: "composerEditing",
+  priority: 1000,
+  addProseMirrorPlugins: () => [history({ newGroupDelay: 300 })],
+  addKeyboardShortcuts() {
+    const run = (command: Command) => (): boolean =>
+      this.editor.commands.command(({ state, dispatch }) => command(state, dispatch));
+
+    const lineBreak = (): boolean =>
+      this.editor.commands.command(({ tr }) => {
+        tr.replaceSelectionWith(tr.doc.type.schema.nodes[HARD_BREAK].create()).scrollIntoView();
+
+        return true;
+      });
+
+    return {
+      Enter: lineBreak,
+      "Shift-Enter": lineBreak,
+      "Mod-Enter": lineBreak,
+      Backspace: () => this.editor.commands.command(({ tr }) => deleteComposerReference(tr, -1)),
+      Delete: () => this.editor.commands.command(({ tr }) => deleteComposerReference(tr, 1)),
+      "Mod-z": run(undo),
+      "Shift-Mod-z": run(redo),
+      "Mod-y": run(redo),
+    };
+  },
+});
 
 export interface ComposerDocumentState {
   readonly text: string;
@@ -124,9 +132,11 @@ export function sameComposerDocument(
 }
 
 export interface ComposerSubmission {
-  /** Provider text: file tokens stay, skill chips become instructions in place, and context mentions drop. */
+  /** The draft text, each chip as its token: what a command line is read from. */
   readonly text: string;
   readonly references: readonly MessageReference[];
+  /** What the message sends, trimmed: text runs, and each chip as its part. */
+  readonly parts: readonly ContentPart[];
 }
 
 export interface ComposerCompletion extends CompletionTrigger {
@@ -134,281 +144,322 @@ export interface ComposerCompletion extends CompletionTrigger {
   readonly end: number;
 }
 
-function $inlineNodes() {
-  return $getRoot()
-    .getChildren()
-    .flatMap((block) => ($isElementNode(block) ? block.getChildren() : [block]));
-}
+export function composerReferences(doc: ProseMirrorNode): readonly MessageReference[] {
+  const references: MessageReference[] = [];
+  doc.descendants((node) => {
+    const reference = composerReference(node);
 
-export function $composerReferences(): readonly MessageReference[] {
-  return $inlineNodes().flatMap((node) =>
-    node instanceof ComposerReferenceNode ? [node.getReference()] : [],
-  );
+    if (reference !== undefined) references.push(reference);
+  });
+
+  return references;
 }
 
 /** A typed lookalike is text and stays text. */
-export function $composerSubmission(): ComposerSubmission {
-  const text = $getRoot()
-    .getChildren()
-    .map((block) => {
-      if (!$isElementNode(block)) return block.getTextContent();
-
-      return block
-        .getChildren()
-        .map((node) =>
-          node instanceof ComposerReferenceNode
-            ? referencePromptText(node.getReference())
-            : node.getTextContent(),
-        )
-        .join("");
-    })
-    .join("\n\n");
-
-  return { text, references: $composerReferences() };
-}
-
-/** Offsets count the draft string, so a chip counts for its token. */
-function $pointOffset(point: PointType): number {
-  const root = $getRoot();
-  const block = root.getFirstChild();
-
-  // Plain-text drafts have one paragraph containing text, line breaks and chips.
-  // Count those leaves without allocating a root-to-caret string. Keep Lexical's
-  // range semantics for other shapes, whose block separators differ from root text.
-  if (root.getChildrenSize() === 1 && $isElementNode(block)) {
-    let offset = 0;
-    let index = 0;
-    let child = block.getFirstChild();
-
-    while (child !== null) {
-      if (point.key === block.getKey() && point.offset === index) return offset;
-
-      if (point.key === child.getKey() && $isTextNode(child)) return offset + point.offset;
-
-      if ($isElementNode(child)) break;
-      offset += child.getTextContentSize();
-      index += 1;
-      child = child.getNextSibling();
-    }
-
-    if (child === null) {
-      if (point.key === block.getKey()) return offset;
-
-      if (point.key === root.getKey()) return point.offset === 0 ? 0 : offset;
-    }
-  }
-
-  const range = $createRangeSelection();
-  range.anchor.set($getRoot().getKey(), 0, "element");
-  range.focus.set(point.key, point.offset, point.type);
-
-  return range.getTextContent().length;
-}
-
-/** The caret when the document has none yet is its end, where seeding and focus put it. */
-export function $composerSelection() {
-  const selection = $getSelection();
-
-  if (!$isRangeSelection(selection)) {
-    const length = $getRoot().getTextContentSize();
-
-    return { start: length, end: length };
-  }
-
-  const anchor = $pointOffset(selection.anchor);
-  const focus = selection.isCollapsed() ? anchor : $pointOffset(selection.focus);
-
-  return { start: Math.min(anchor, focus), end: Math.max(anchor, focus) };
-}
-
-export function $readComposerDocument(): ComposerDocumentState {
-  const selection = $composerSelection();
-
+export function composerSubmission(doc: ProseMirrorNode): ComposerSubmission {
   return {
-    text: $getRoot().getTextContent(),
-    selectionStart: selection.start,
-    selectionEnd: selection.end,
+    text: doc.textBetween(0, doc.content.size, "\n\n", draftLeafText),
+    references: composerReferences(doc),
+    parts: submissionParts(doc),
   };
 }
 
-export function $composerCompletion(caretOffset?: number): ComposerCompletion | undefined {
-  const selection = $getSelection();
+function submissionParts(doc: ProseMirrorNode): readonly ContentPart[] {
+  const parts: ContentPart[] = [];
+  let text = "";
 
-  if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.type !== "text")
-    return undefined;
+  const flush = (): void => {
+    if (text !== "") parts.push({ kind: "text", text });
+    text = "";
+  };
 
-  const trigger = completionTrigger(
-    selection.anchor.getNode().getTextContent(),
-    selection.anchor.offset,
-  );
+  doc.forEach((paragraph, _offset, index) => {
+    if (index > 0) text += "\n\n";
+
+    paragraph.forEach((node) => {
+      if (node.type.name === HARD_BREAK) text += "\n";
+      const reference = composerReference(node);
+      const part = reference === undefined ? null : referencePart(reference);
+
+      if (node.isText) text += node.text ?? "";
+      else if (part?.kind === "text") text += part.text;
+      else if (part !== null) {
+        flush();
+        parts.push(part);
+      }
+    });
+  });
+  flush();
+
+  return trimParts(parts);
+}
+
+function trimParts(parts: readonly ContentPart[]): readonly ContentPart[] {
+  const first = parts.at(0);
+  const last = parts.at(-1);
+
+  return parts.flatMap((part): readonly ContentPart[] => {
+    if (part.kind !== "text") return [part];
+    const start = part === first ? part.text.trimStart() : part.text;
+    const trimmed = part === last ? start.trimEnd() : start;
+
+    return trimmed === "" ? [] : [{ kind: "text", text: trimmed }];
+  });
+}
+
+function draftOffset(doc: ProseMirrorNode, position: number): number {
+  let offset = 0;
+  let start = 1;
+
+  for (const child of doc.firstChild?.children ?? []) {
+    if (start >= position) break;
+    offset +=
+      child.text === undefined
+        ? draftLeafText(child).length
+        : Math.min(child.text.length, position - start);
+    start += child.nodeSize;
+  }
+
+  return offset;
+}
+
+function draftPosition(doc: ProseMirrorNode, offset: number): number {
+  let remaining = Math.max(0, offset);
+  let position = 1;
+
+  for (const child of doc.firstChild?.children ?? []) {
+    const size = child.text === undefined ? draftLeafText(child).length : child.text.length;
+
+    if (remaining < size || (remaining === size && child.text !== undefined))
+      return position + (child.text === undefined ? Number(remaining > 0) : remaining);
+    remaining -= size;
+    position += child.nodeSize;
+  }
+
+  return position;
+}
+
+export function readComposerDocument(state: EditorState): ComposerDocumentState {
+  const { anchor, head } = state.selection;
+  const anchorOffset = draftOffset(state.doc, anchor);
+  const headOffset = anchor === head ? anchorOffset : draftOffset(state.doc, head);
+
+  return {
+    text: state.doc.textBetween(0, state.doc.content.size, "\n\n", draftLeafText),
+    selectionStart: Math.min(anchorOffset, headOffset),
+    selectionEnd: Math.max(anchorOffset, headOffset),
+  };
+}
+
+export function composerCompletion(
+  state: EditorState,
+  caretOffset?: number,
+): ComposerCompletion | undefined {
+  const cursor = state.selection instanceof TextSelection ? state.selection.$cursor : null;
+
+  if (cursor === null) return undefined;
+  const node = cursor.textOffset > 0 ? cursor.parent.child(cursor.index()) : cursor.nodeBefore;
+
+  if (node?.text === undefined) return undefined;
+  const offset = cursor.textOffset > 0 ? cursor.textOffset : node.text.length;
+  const trigger = completionTrigger(node.text, offset);
 
   if (trigger === undefined || (trigger.kind === "@" && trigger.query.startsWith("file://")))
     return undefined;
-  const offset = (caretOffset ?? $pointOffset(selection.anchor)) - selection.anchor.offset;
+  const start = (caretOffset ?? draftOffset(state.doc, cursor.pos)) - offset;
 
-  return { ...trigger, start: offset + trigger.start, end: offset + trigger.end };
+  return { ...trigger, start: start + trigger.start, end: start + trigger.end };
 }
 
-/** An offset inside a chip snaps to the chip's boundary; a caret never enters a token. */
-function $setPoint(point: PointType, offset: number): void {
-  const root = $getRoot();
-  const blocks = root.getChildren();
-  let remaining = Math.max(0, offset);
-
-  for (const block of blocks) {
-    if (!$isElementNode(block)) continue;
-    const children = block.getChildren();
-
-    for (const [index, child] of children.entries()) {
-      const size = child.getTextContentSize();
-
-      if (remaining < size || (remaining === size && $isTextNode(child))) {
-        if ($isTextNode(child)) point.set(child.getKey(), remaining, "text");
-        else point.set(block.getKey(), index + Number(remaining > 0), "element");
-
-        return;
-      }
-
-      remaining -= size;
-    }
-
-    if (remaining <= 0 || block === blocks.at(-1)) {
-      point.set(block.getKey(), children.length, "element");
-
-      return;
-    }
-
-    remaining -= 2;
-  }
-
-  point.set(root.getKey(), root.getChildrenSize(), "element");
+export function selectComposerRange(tr: Transaction, start: number, end = start): Transaction {
+  return tr.setSelection(
+    TextSelection.create(tr.doc, draftPosition(tr.doc, start), draftPosition(tr.doc, end)),
+  );
 }
 
-export function $selectComposerRange(start: number, end = start): void {
-  const selection = $createRangeSelection();
-  $setPoint(selection.anchor, start);
-  $setPoint(selection.focus, end);
-  $setSelection(selection);
-}
-
-export function $replaceComposerText(start: number, end: number, text: string): void {
-  $selectComposerRange(start, end);
-
-  if (text === "") {
-    const selection = $getSelection();
-
-    if ($isRangeSelection(selection)) selection.removeText();
-
-    return;
-  }
-
-  $getSelection()?.insertRawText(text);
-}
-
-/** Replace the whole document with an outside draft. Chips rebuild from its tokens through the reference transform. */
-export function $restoreComposerDocument(document: ComposerDocumentState): void {
-  $addUpdateTag(COMPOSER_EXTERNAL_TAG);
-  $getRoot().clear().append($createParagraphNode());
-  $getRoot().selectEnd();
-  $getSelection()?.insertRawText(document.text);
-  $selectComposerRange(document.selectionStart, document.selectionEnd);
-}
-
-export function $insertComposerReference(
-  reference: MessageReference,
-  start?: number,
-  end?: number,
-): void {
-  if (start !== undefined) $selectComposerRange(start, end);
-  const selection = $getSelection();
-
-  if (selection === null) $getRoot().selectEnd();
-  $getSelection()?.insertNodes([
-    $applyNodeReplacement(new ComposerReferenceNode(reference)),
-    $createTextNode(" "),
-  ]);
-}
-
-/** Move the caret to a DOM text position, such as a drop point; anywhere else keeps the caret. */
-export function $selectComposerDomPoint(node: Node, offset: number): void {
-  const target = $getNearestNodeFromDOMNode(node);
-
-  if (isDOMTextNode(node) && $isTextNode(target)) target.select(offset, offset);
+function plainText(line: string): readonly JSONContent[] {
+  return line === "" ? [] : [{ type: "text", text: line }];
 }
 
 interface ComposerReferenceCatalog {
-  /** Workspace entries; a known file keeps its workspace label and relative path. */
-  readonly files: readonly MentionFile[];
+  readonly files: ReadonlyMap<string, MentionFile>;
+  readonly complete: boolean;
 }
 
-/**
- * Turn tokens into chips as they arrive: pasted or restored text completes at
- * once, typed text only when a delimiter closes the token. The draft string
- * does not change, so offsets survive and the caret stays where it was.
- */
-export function registerComposerReferences(
-  editor: LexicalEditor,
+function referenceContent(
   catalog: ComposerReferenceCatalog,
-): () => void {
-  const files = new Map(catalog.files.map((file) => [file.url, file]));
-
-  const unregister = editor.registerNodeTransform(TextNode, (node) => {
-    const parts = messageParts(node.getTextContent(), {
-      form: "draft",
-      files,
-      complete: $hasUpdateTag(PASTE_TAG) || $hasUpdateTag(COMPOSER_EXTERNAL_TAG),
-    });
-
-    if (!parts.some((part) => part.kind === "reference")) return;
-    const selection = $getSelection();
-    const offsets = $isRangeSelection(selection) ? $composerSelection() : undefined;
-
-    const nodes = parts.map((part) =>
+): (line: string) => readonly JSONContent[] {
+  return (line) =>
+    messageParts(line, catalog).map((part) =>
       part.kind === "text"
-        ? $createTextNode(part.text)
-        : $applyNodeReplacement(new ComposerReferenceNode(part.reference)),
+        ? { type: "text", text: part.text }
+        : { type: REFERENCE, attrs: { reference: part.reference } },
     );
+}
 
-    const first = nodes[0];
+function draftContent(
+  text: string,
+  inline: (line: string) => readonly JSONContent[],
+): JSONContent[] {
+  return text
+    .split(/\r?\n/u)
+    .flatMap((line, index) => [...(index === 0 ? [] : [{ type: HARD_BREAK }]), ...inline(line)]);
+}
 
-    if (first === undefined) return;
-    node.replace(first);
-    let previous = first;
+export function composerContent(
+  text: string,
+  files: ReadonlyMap<string, MentionFile>,
+): JSONContent {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: draftContent(text, referenceContent({ files, complete: true })),
+      },
+    ],
+  };
+}
 
-    for (const next of nodes.slice(1)) {
-      previous.insertAfter(next);
-      previous = next;
-    }
+function insertComposerContent(tr: Transaction, content: readonly JSONContent[]): Transaction {
+  const end = tr.doc.content.size - 1;
+  const from = Math.min(Math.max(tr.selection.from, 1), end);
+  const to = Math.min(Math.max(tr.selection.to, 1), end);
+  const fragment = Fragment.fromJSON(tr.doc.type.schema, content);
+  tr.replaceWith(from, to, fragment);
 
-    if (offsets !== undefined) $selectComposerRange(offsets.start, offsets.end);
-  });
+  return tr.setSelection(TextSelection.create(tr.doc, from + fragment.size));
+}
 
-  // A catalog that arrives after the draft re-reads it. Only a focused editor may touch the DOM selection.
-  const root = editor.getRootElement();
-  editor.update(
-    () => {
-      // Restored URLs may already be chips before the workspace catalog arrives.
-      for (const node of $inlineNodes()) {
-        if (!(node instanceof ComposerReferenceNode)) continue;
-        const reference = node.getReference();
+export function replaceComposerText(
+  tr: Transaction,
+  start: number,
+  end: number,
+  text: string,
+): Transaction {
+  return insertComposerContent(selectComposerRange(tr, start, end), draftContent(text, plainText));
+}
 
-        if (reference.kind !== "file") continue;
-        const file = files.get(reference.file.url);
+export function pasteComposerText(tr: Transaction, text: string): Transaction {
+  return insertComposerContent(tr, draftContent(text, plainText)).setMeta("paste", true);
+}
 
-        if (file === undefined || file === reference.file) continue;
-        node.setReference({ kind: "file", file });
-      }
-
-      for (const node of $getRoot().getAllTextNodes()) node.markDirty();
-    },
-    {
-      discrete: true,
-      tag:
-        root !== null && root.ownerDocument.activeElement === root
-          ? HISTORY_MERGE_TAG
-          : [HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG],
-    },
+export function restoreComposerDocument(
+  tr: Transaction,
+  document: ComposerDocumentState,
+): Transaction {
+  tr.replaceWith(
+    1,
+    tr.doc.content.size - 1,
+    Fragment.fromJSON(tr.doc.type.schema, draftContent(document.text, plainText)),
+  );
+  const end = tr.doc.content.size - 1;
+  const position = (offset: number): number => Math.min(1 + Math.max(offset, 0), end);
+  tr.setSelection(
+    TextSelection.create(
+      tr.doc,
+      position(document.selectionStart),
+      position(document.selectionEnd),
+    ),
   );
 
-  return unregister;
+  return tr.setMeta(COMPOSER_RESTORE, true);
+}
+
+export function clearComposerHistory(state: EditorState): EditorState {
+  return EditorState.create({ doc: state.doc, selection: state.selection, plugins: state.plugins });
+}
+
+export function insertComposerReference(
+  tr: Transaction,
+  reference: MessageReference,
+  start?: number,
+  end?: number,
+): Transaction {
+  if (start !== undefined) selectComposerRange(tr, start, end);
+
+  return insertComposerContent(tr, [
+    { type: REFERENCE, attrs: { reference } },
+    { type: "text", text: " " },
+  ]);
+}
+
+function referenceTokens(
+  tr: Transaction,
+  ranges: readonly { readonly from: number; readonly to: number }[],
+  catalog: ComposerReferenceCatalog,
+): Transaction {
+  const texts = new Map<number, string>();
+
+  for (const { from, to } of ranges) {
+    tr.doc.nodesBetween(
+      Math.max(0, from - 1),
+      Math.min(tr.doc.content.size, to + 1),
+      (node, pos) => {
+        if (node.text !== undefined) texts.set(pos, node.text);
+      },
+    );
+  }
+
+  const replacements = [...texts]
+    .flatMap(([pos, text]) => {
+      const content = referenceContent(catalog)(text);
+
+      return content.some((node) => node.type === REFERENCE) ? [{ pos, text, content }] : [];
+    })
+    .toSorted((left, right) => right.pos - left.pos);
+
+  if (replacements.length === 0) return tr;
+  const anchor = draftOffset(tr.doc, tr.selection.anchor);
+  const head = draftOffset(tr.doc, tr.selection.head);
+
+  for (const { pos, text, content } of replacements)
+    tr.replaceWith(pos, pos + text.length, Fragment.fromJSON(tr.doc.type.schema, content));
+
+  return tr.setSelection(
+    TextSelection.create(tr.doc, draftPosition(tr.doc, anchor), draftPosition(tr.doc, head)),
+  );
+}
+
+export function composerReferencesPlugin(files: () => ReadonlyMap<string, MentionFile>): Plugin {
+  return new Plugin({
+    appendTransaction(transactions, oldState, newState) {
+      if (!transactions.some((transaction) => transaction.docChanged)) return null;
+
+      const complete = transactions.some(
+        (transaction) =>
+          transaction.getMeta("paste") === true || transaction.getMeta(COMPOSER_RESTORE) === true,
+      );
+
+      const ranges = getChangedRanges(combineTransactionSteps(oldState.doc, [...transactions]));
+
+      const tr = referenceTokens(
+        newState.tr,
+        ranges.map(({ newRange }) => newRange),
+        { files: files(), complete },
+      );
+
+      return tr.docChanged ? tr : null;
+    },
+  });
+}
+
+export function refreshComposerReferences(
+  tr: Transaction,
+  files: ReadonlyMap<string, MentionFile>,
+): Transaction {
+  tr.doc.descendants((node, pos) => {
+    const reference = composerReference(node);
+
+    if (reference?.kind !== "file") return;
+    const file = files.get(reference.file.url);
+
+    if (file !== undefined && file !== reference.file)
+      tr.setNodeMarkup(pos, undefined, { reference: { kind: "file", file } });
+  });
+
+  return referenceTokens(tr, [{ from: 0, to: tr.doc.content.size }], {
+    files,
+    complete: false,
+  }).setMeta("addToHistory", false);
 }

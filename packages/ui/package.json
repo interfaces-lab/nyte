@@ -4,6 +4,11 @@
   "description": "Base UI primitives styled with StyleX. The default entries are compiled; StyleX consumers opt into src with the `nyte-source` condition.",
   "type": "module",
   "exports": {
+    "./appearance": {
+      "nyte-source": "./src/appearance.ts",
+      "types": "./dist/appearance.d.ts",
+      "default": "./dist/appearance.js"
+    },
     "./alert-dialog": {
       "nyte-source": "./src/alert-dialog.tsx",
       "types": "./dist/alert-dialog.d.ts",
@@ -18,6 +23,11 @@
       "nyte-source": "./src/button.tsx",
       "types": "./dist/button.d.ts",
       "default": "./dist/button.js"
+    },
+    "./chart": {
+      "nyte-source": "./src/chart.tsx",
+      "types": "./dist/chart.d.ts",
+      "default": "./dist/chart.js"
     },
     "./checkbox": {
       "nyte-source": "./src/checkbox.tsx",
@@ -38,6 +48,11 @@
       "nyte-source": "./src/marker.tsx",
       "types": "./dist/marker.d.ts",
       "default": "./dist/marker.js"
+    },
+    "./meter": {
+      "nyte-source": "./src/meter.tsx",
+      "types": "./dist/meter.d.ts",
+      "default": "./dist/meter.js"
     },
     "./message": {
       "nyte-source": "./src/message.tsx",
@@ -179,12 +194,16 @@
       "default": "./stylex.mjs"
     },
     "./platform-colors": "./src/platform-colors.ts",
-    "./tokens.stylex": "./src/tokens.stylex.ts",
-    "./vars.stylex": "./src/vars.stylex.ts",
-    "./schema.stylex": "./src/schema.stylex.ts",
-    "./floating-surface.stylex": "./src/floating-surface.stylex.ts",
-    "./a11y.stylex": "./src/a11y.stylex.ts",
-    "./tailwind.css": "./src/tailwind.css",
+    "./styles/tokens.stylex": "./src/styles/tokens.stylex.ts",
+    "./styles/vars.stylex": "./src/styles/vars.stylex.ts",
+    "./styles/schema.stylex": "./src/styles/schema.stylex.ts",
+    "./styles/floating-surface.stylex": "./src/styles/floating-surface.stylex.ts",
+    "./styles/a11y.stylex": "./src/styles/a11y.stylex.ts",
+    "./styles/text.stylex": "./src/styles/text.stylex.ts",
+    "./styles/contracts": "./src/styles/contracts.ts",
+    "./test/icon-references": "./test/icon-references.ts",
+    "./styles/base.css": "./src/styles/base.css",
+    "./styles/tailwind.css": "./src/styles/tailwind.css",
     "./ui.css": "./dist/ui.css",
     "./avatar": {
       "nyte-source": "./src/avatar.tsx",
@@ -195,6 +214,11 @@
       "nyte-source": "./src/style.ts",
       "types": "./dist/style.d.ts",
       "default": "./dist/style.js"
+    },
+    "./selection": {
+      "nyte-source": "./src/selection.ts",
+      "types": "./dist/selection.d.ts",
+      "default": "./dist/selection.js"
     }
   },
   "scripts": {
@@ -202,16 +226,21 @@
     "dev": "node scripts/build.mjs --watch",
     "clean": "rm -rf node_modules .turbo dist",
     "check:tokens": "node scripts/check-tokens.mjs && node scripts/sync-platform-colors.mjs --check",
-    "lock:tokens": "node scripts/check-tokens.mjs --update",
+    "lock:tokens": "node scripts/check-tokens.mjs --update && oxfmt test/token-lock.json",
     "sync:tokens": "node scripts/sync-platform-colors.mjs",
-    "typecheck": "pnpm check:tokens && tsc --noEmit"
+    "check:stylex": "node scripts/stylex-capabilities.mjs --check",
+    "sync:stylex": "node scripts/stylex-capabilities.mjs",
+    "typecheck": "pnpm check:tokens && tsc --noEmit && pnpm check:stylex"
   },
   "dependencies": {
-    "@base-ui/react": "^1.8.0",
+    "@base-ui/react": "^1.9.0",
+    "@nivo/axes": "0.99.0",
+    "@nivo/bar": "0.99.0",
+    "@nivo/line": "0.99.0",
     "@shadcn/react": "0.3.1",
     "@stylexjs/stylex": "0.19.0",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.1",
-    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.1",
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.10",
+    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.2.10",
     "class-variance-authority": "0.7.1",
     "cn": "^0.4.0",
     "motion": "12.43.0"

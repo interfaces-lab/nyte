@@ -1,4 +1,4 @@
-/** Copilot wire identity from Pi 71dca871; interaction metadata follows OpenCode v2 9dd7149e. */
+/** Copilot wire identity; interaction metadata follows OpenCode v2 9dd7149e. */
 import type { Message, ProviderHeaders } from "../types.ts";
 
 export const GITHUB_COPILOT_API_VERSION = "2026-06-01";
@@ -12,6 +12,7 @@ export const GITHUB_COPILOT_HEADERS = {
   "Copilot-Integration-Id": "vscode-chat",
 } as const;
 
+/** Builds the per-request Copilot headers. `X-Interaction-Type` is always `conversation-agent`: the stream contract does not distinguish subagent, title, or compaction requests. */
 export function buildCopilotDynamicHeaders(input: {
   messages: readonly Message[];
   sessionId?: string;
@@ -22,7 +23,6 @@ export function buildCopilotDynamicHeaders(input: {
     "X-GitHub-Api-Version": GITHUB_COPILOT_API_VERSION,
     "X-Initiator": last && last.role !== "user" ? "agent" : "user",
     "Openai-Intent": "conversation-edits",
-    // The stream contract does not distinguish subagent, title, or compaction requests.
     "X-Interaction-Type": "conversation-agent",
   };
 

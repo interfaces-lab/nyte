@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ActivityIndicator, Alert, Modal, ScrollView, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, ScrollView } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
@@ -14,27 +14,23 @@ import { IconTile } from "../ui/icon-tile.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { toast } from "../ui/toast.tsx";
 import { useMountEffect } from "../use-mount-effect.ts";
+import { ConnectionForm } from "../connection/connection-form.tsx";
 import { controls, list, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 import { brokerCopy, connectEndingCopy, releaseCopy, type AccountCopy } from "./account-copy.ts";
 import type { Account, SignInEnding, SignOutEnding } from "./account-provider.tsx";
 
-/** The saved connection a panel sits over. `reconnect` lets its own Mac be picked again. */
 type Current = { readonly saved: SavedConnection; readonly reconnect: boolean };
 
-/**
- * Nyte Connect: the account, its Macs, and the address-and-token way in, as
- * one panel. The connect screen shows it inline; Settings opens it in a sheet
- * from the connection row. Clerk's hosted page is only the sign-in step.
- */
 export function ConnectPanel({
   account,
   current,
   manual,
+  welcome = false,
 }: {
   account: Account;
   current: Current | undefined;
-  /** Opens the address-and-token form. `expanded` is set where the form unfolds in place. */
-  manual: { readonly onPress: () => void; readonly expanded: boolean | undefined };
+  manual?: { readonly onPress: () => void; readonly label: string };
+  welcome?: boolean;
 }) {
   const theme = useTheme();
   const [busy, setBusy] = useState(false);
@@ -77,7 +73,7 @@ export function ConnectPanel({
 
   return (
     <html.div style={styles.panel}>
-      <SectionHeader label="Nyte account" first />
+      {welcome && status.kind !== "signedIn" ? null : <SectionHeader label="Nyte account" first />}
       {status.kind === "loading" ? (
         <Group>
           <GroupRow>
@@ -88,8 +84,8 @@ export function ConnectPanel({
       ) : status.kind === "signedOut" ? (
         <html.div style={styles.inset}>
           <GlassButton
-            label="Sign In to Nyte"
-            systemImage="person.crop.circle"
+            label={busy ? "Signing in…" : "Sign in to Nyte"}
+            systemImage={welcome ? undefined : "person.crop.circle.fill"}
             busy={busy}
             prominent
             fill
@@ -97,23 +93,26 @@ export function ConnectPanel({
           />
         </html.div>
       ) : (
-        <Group>
-          <GroupRow>
-            <IconTile name="person.crop.circle.fill" color={theme.foreground} />
-            <html.div style={styles.rowText}>
-              <html.span style={[textStyles.body, styles.clamp]}>{status.label}</html.span>
-              <html.span style={textStyles.caption}>Signed in</html.span>
-            </html.div>
-          </GroupRow>
-          <GroupRow busy={busy} onClick={() => void signIn(true)}>
-            <IconTile name="arrow.left.arrow.right" />
-            <html.span style={textStyles.body}>Switch Account</html.span>
-          </GroupRow>
-          <GroupRow busy={busy} onClick={confirmSignOut}>
-            <IconTile name="rectangle.portrait.and.arrow.right" color={theme.danger} />
-            <html.span style={[textStyles.body, styles.danger]}>Sign Out</html.span>
-          </GroupRow>
-        </Group>
+        <html.div style={styles.profileGroup}>
+          <Group>
+            <GroupRow>
+              <AccountAvatar key={status.avatarUrl} url={status.avatarUrl} size={48} />
+              <html.span style={[textStyles.headline, styles.profileLabel]}>
+                {status.label}
+              </html.span>
+            </GroupRow>
+          </Group>
+          <Group>
+            <GroupRow busy={busy} onClick={() => void signIn(true)}>
+              <IconTile name="arrow.left.arrow.right" />
+              <html.span style={textStyles.body}>Switch Account</html.span>
+            </GroupRow>
+            <GroupRow busy={busy} onClick={confirmSignOut}>
+              <IconTile name="rectangle.portrait.and.arrow.right" color={theme.danger} />
+              <html.span style={[textStyles.body, styles.danger]}>Sign Out</html.span>
+            </GroupRow>
+          </Group>
+        </html.div>
       )}
       {notice === undefined ? null : <Notice copy={notice} />}
       {status.kind === "signedIn" ? (
@@ -126,27 +125,23 @@ export function ConnectPanel({
           onRenew={() => void signIn(true)}
         />
       ) : null}
-      <SectionHeader label="Advanced" />
-      <Group>
-        <GroupRow onClick={manual.onPress}>
-          <IconTile name="qrcode" />
-          <html.span style={[textStyles.body, styles.grow]}>
-            Connect with Address and Token
-          </html.span>
-          <SymbolView
-            name={
-              manual.expanded === undefined
-                ? "chevron.right"
-                : manual.expanded
-                  ? "chevron.up"
-                  : "chevron.down"
-            }
-            size={controls.iconXs}
-            weight="semibold"
-            tintColor={theme.interactiveTertiary}
-          />
-        </GroupRow>
-      </Group>
+      {manual === undefined ? null : (
+        <>
+          <SectionHeader label="Direct connection" />
+          <Group>
+            <GroupRow onClick={manual.onPress}>
+              <IconTile name="network" />
+              <html.span style={[textStyles.body, styles.grow]}>{manual.label}</html.span>
+              <SymbolView
+                name="chevron.right"
+                size={controls.iconXs}
+                weight="semibold"
+                tintColor={theme.interactiveTertiary}
+              />
+            </GroupRow>
+          </Group>
+        </>
+      )}
     </html.div>
   );
 }
@@ -162,6 +157,12 @@ function signInNotice(ending: SignInEnding): AccountCopy | undefined {
         body: "Check that this phone is online, then try again.",
         action: "retry",
       };
+    case "unregisteredApp":
+      return {
+        title: "Sign-in unavailable",
+        body: "This version of Nyte hasn't been registered for sign-in. Connect with Tailscale or a local address.",
+        action: undefined,
+      };
     case "failed":
       return { title: "Couldn't sign in", body: "Try signing in again.", action: "retry" };
     default: {
@@ -172,15 +173,34 @@ function signInNotice(ending: SignInEnding): AccountCopy | undefined {
   }
 }
 
+export function AccountAvatar({ url, size = 36 }: { url: string | undefined; size?: number }) {
+  const theme = useTheme();
+  const [unavailable, setUnavailable] = useState(false);
+
+  return (
+    <html.div aria-hidden style={styles.avatar(size)}>
+      {url === undefined || unavailable ? (
+        <SymbolView name="person" size={size * 0.65} tintColor={theme.foreground} />
+      ) : (
+        <html.img
+          alt=""
+          src={url}
+          style={styles.avatarImage(size)}
+          onError={() => setUnavailable(true)}
+        />
+      )}
+    </html.div>
+  );
+}
+
 function signOutNotice(ending: SignOutEnding): AccountCopy | undefined {
   if (ending.kind === "notRemoved")
     return {
       title: "Still signed in",
-      body: "The Keychain kept this Mac's connection. Unlock your phone and try again.",
+      body: "The Keychain kept this computer's connection. Unlock your phone and try again.",
       action: "retry",
     };
 
-  // Letting go of the Mac usually closes this panel, so its outcome is a toast.
   if (ending.released !== undefined)
     toast.show("Signed out", releaseCopy(ending.released.name, ending.released.report));
   else if (ending.kind === "signedOut") toast.show("Signed out");
@@ -194,6 +214,11 @@ function signOutNotice(ending: SignOutEnding): AccountCopy | undefined {
     : undefined;
 }
 
+/**
+ * The owner's Macs from the broker, with connect and repair. The list is keyed by owner and dropped on
+ * any account change, and holds ids and names only, never a credential. A refusal that says the list
+ * was out of date (forbidden, not found, revoked) refetches it to show what the broker has now.
+ */
 function MacGroup({
   account,
   ownerId,
@@ -208,7 +233,6 @@ function MacGroup({
   onRenew: () => void;
 }) {
   const theme = useTheme();
-  // Keyed by owner and dropped on any account change. Ids and names only, never a credential.
   const environments = useQuery(
     {
       queryKey: ["account", ownerId, "environments"],
@@ -218,7 +242,7 @@ function MacGroup({
     account.queryClient,
   );
   const [connecting, setConnecting] = useState<string>();
-  const [problem, setProblem] = useState<AccountCopy>();
+  const [problem, setProblem] = useState<{ copy: AccountCopy; environment: EnvironmentSummary }>();
   const attempt = useRef<AbortController>(undefined);
   useMountEffect(() => () => {
     attempt.current?.abort();
@@ -230,22 +254,26 @@ function MacGroup({
       ? current.saved.binding.environmentId
       : undefined;
 
-  async function connect(environment: EnvironmentSummary) {
+  async function connect(environment: EnvironmentSummary, repair: boolean) {
     if (attempt.current !== undefined) return;
     const controller = new AbortController();
     attempt.current = controller;
     setConnecting(environment.id);
     setProblem(undefined);
-    const ending = await account.connect({ ownerId, environment, signal: controller.signal });
+    const ending = await account.connect({
+      ownerId,
+      environment,
+      repair,
+      signal: controller.signal,
+    });
 
     if (attempt.current !== controller) return;
     attempt.current = undefined;
     setConnecting(undefined);
 
     if (ending.kind === "connected" || ending.kind === "cancelled") return;
-    setProblem(connectEndingCopy(ending));
+    setProblem({ copy: connectEndingCopy(ending), environment });
 
-    // The list was out of date: show the one the broker has now.
     if (
       ending.kind === "broker" &&
       ending.failure.kind === "refused" &&
@@ -265,27 +293,28 @@ function MacGroup({
       ? undefined
       : environments.error instanceof BrokerError
         ? brokerCopy(environments.error.failure)
-        : { title: "Couldn't load your Macs", body: "Try again.", action: "retry" };
-  const shown = problem ?? listProblem;
+        : { title: "Couldn't load your computers", body: "Try again.", action: "retry" };
+  const shown = problem?.copy ?? listProblem;
   const macs = environments.data?.environments;
 
   return (
     <>
-      <SectionHeader label="Your Macs" />
+      <SectionHeader label="Your computers" />
       <Group>
         {environments.isPending ? (
           <GroupRow>
             <ActivityIndicator color={theme.muted} />
-            <html.span style={textStyles.caption}>Finding your Macs…</html.span>
+            <html.span style={textStyles.caption}>Finding your computers…</html.span>
           </GroupRow>
         ) : null}
         {macs?.length === 0 ? (
           <GroupRow>
             <IconTile name="laptopcomputer" />
             <html.div style={styles.rowText}>
-              <html.span style={textStyles.body}>No Macs on this account yet</html.span>
+              <html.span style={textStyles.body}>No computers on this account yet</html.span>
               <html.span style={[textStyles.caption, styles.start]}>
-                On your Mac, open {SHARE_LOCATION} and choose Link This Mac…
+                On a Mac, open {SHARE_LOCATION} and choose Link This Mac… On a server, run nyte
+                account login, then nyte serve --account.
               </html.span>
             </html.div>
           </GroupRow>
@@ -301,7 +330,7 @@ function MacGroup({
               key={environment.id}
               busy={active}
               disabled={connecting !== undefined && !active}
-              onClick={locked ? undefined : () => void connect(environment)}
+              onClick={locked ? undefined : () => void connect(environment, false)}
             >
               <IconTile
                 name="laptopcomputer"
@@ -323,9 +352,9 @@ function MacGroup({
               </html.div>
               {active ? (
                 <ActivityIndicator color={theme.muted} />
-              ) : (
+              ) : isCurrent && !current?.reconnect ? null : (
                 <SymbolView
-                  name={isCurrent && !current?.reconnect ? "checkmark" : "chevron.right"}
+                  name="chevron.right"
                   size={controls.iconXs}
                   weight="semibold"
                   tintColor={isCurrent ? theme.accent : theme.interactiveTertiary}
@@ -341,19 +370,24 @@ function MacGroup({
           action={
             shown.action === "signIn"
               ? { label: "Sign In Again", onPress: onRenew }
-              : problem === undefined && shown.action === "retry"
-                ? { label: "Try Again", onPress: () => void environments.refetch() }
-                : undefined
+              : problem !== undefined && shown.action === "repair"
+                ? {
+                    label: "Pair as New Host",
+                    onPress: () => void connect(problem.environment, true),
+                  }
+                : problem === undefined && shown.action === "retry"
+                  ? { label: "Try Again", onPress: () => void environments.refetch() }
+                  : undefined
           }
         />
       )}
       {connecting === undefined ? (
         <html.div style={styles.footnote}>
           <html.span style={[textStyles.caption, styles.grow]}>
-            Your Mac needs to be awake with Nyte open.
+            The computer needs to be awake and running Nyte.
           </html.span>
           <html.button
-            aria-label="Refresh your Macs"
+            aria-label="Refresh your computers"
             disabled={environments.isFetching}
             onClick={() => void environments.refetch()}
             style={styles.textButton}
@@ -399,33 +433,59 @@ function Notice({
   );
 }
 
-/**
- * The panel over a live connection, opened from Settings. A native page
- * sheet, not a route: the stack stays where it was.
- */
+export type ConnectionSheetPage = "overview" | "manual";
+
 export function ConnectSheet({
-  open,
+  page,
   onClose,
   account,
   current,
-  onManual,
 }: {
-  open: boolean;
+  page: ConnectionSheetPage | undefined;
   onClose: () => void;
-  account: Account;
+  account: Account | undefined;
   current: Current;
-  onManual: () => void;
 }) {
+  const [view, setView] = useState<ConnectionSheetPage>(page ?? "overview");
+  const [seenPage, setSeenPage] = useState(page);
+
+  if (seenPage !== page) {
+    setSeenPage(page);
+    if (page !== undefined) setView(page);
+  }
+
   return (
     <Modal
-      visible={open}
+      visible={page !== undefined}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaProvider>
-        <SheetBody onClose={onClose} account={account} current={current} onManual={onManual} />
-      </SafeAreaProvider>
+      {page === undefined ? null : (
+        <SafeAreaProvider>
+          {view === "manual" ? (
+            <ConnectionForm
+              mode={
+                current.saved.kind === "manual"
+                  ? { kind: "edit", connection: current.saved.connection }
+                  : { kind: "connect", method: "direct", initial: undefined }
+              }
+              onCancel={() => {
+                if (page === "overview") setView("overview");
+                else onClose();
+              }}
+              onSaved={onClose}
+            />
+          ) : (
+            <SheetBody
+              onClose={onClose}
+              account={account}
+              current={current}
+              onManual={() => setView("manual")}
+            />
+          )}
+        </SafeAreaProvider>
+      )}
     </Modal>
   );
 }
@@ -435,13 +495,13 @@ function SheetBody({
   account,
   current,
   onManual,
-}: Omit<Parameters<typeof ConnectSheet>[0], "open">) {
+}: Omit<Parameters<typeof ConnectSheet>[0], "page"> & { onManual: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { connection } = current.saved;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
+    <html.div style={styles.sheet}>
       <html.div style={styles.header}>
         <html.h1 style={[textStyles.title, styles.heading]}>Nyte Connect</html.h1>
         <GlassButton label="Close Nyte Connect" systemImage="xmark" onPress={onClose} iconOnly />
@@ -462,18 +522,51 @@ function SheetBody({
           </GroupRow>
         </Group>
         <html.div style={styles.gap} />
-        <ConnectPanel
-          account={account}
-          current={current}
-          manual={{ onPress: onManual, expanded: undefined }}
-        />
+        {account === undefined ? (
+          <Group>
+            <GroupRow onClick={onManual}>
+              <IconTile name="pencil" />
+              <html.span style={textStyles.body}>
+                {current.saved.kind === "manual" ? "Edit connection" : "Connect directly"}
+              </html.span>
+            </GroupRow>
+          </Group>
+        ) : (
+          <ConnectPanel
+            account={account}
+            current={current}
+            manual={{
+              onPress: onManual,
+              label: current.saved.kind === "manual" ? "Edit connection" : "Connect directly",
+            }}
+          />
+        )}
       </ScrollView>
-    </View>
+    </html.div>
   );
 }
 
 const styles = css.create({
+  sheet: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    backgroundColor: tokens.background,
+  },
   panel: { display: "flex", flexDirection: "column" },
+  profileGroup: { display: "flex", flexDirection: "column", gap: spacing.md },
+  profileLabel: { flexShrink: 1, minWidth: 0, textAlign: "start" },
+  avatar: (size: number) => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    flexShrink: 0,
+    overflow: "hidden",
+  }),
+  avatarImage: (size: number) => ({ width: size, height: size, objectFit: "cover" }),
   inset: { paddingInline: list.gutter },
   gap: { height: list.sectionGap },
   header: {

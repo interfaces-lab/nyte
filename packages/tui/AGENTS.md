@@ -1,26 +1,47 @@
 # TUI
 
-- Terminal rendering and keyboard interaction live here; session behavior belongs in core, and the client fold in `@nyte-ai/client`.
-- The screen is a Solid component (`src/app/App.tsx`) painted from the UI store in `src/app/ui.ts`. Feature code changes state through `setUi`, `notice`, `setHints`, `patchStatus`, `openPanel`; it never sets a renderable's content. Leaf widgets that only draw (transcript view, pickers, gutter) stay renderables and are mounted where the store says.
-- `bun test src` renders the screen under OpenTUI's test renderer and asserts frames; `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`; from source, `src/binary.ts` installs the same transform before loading the app.
-- Reusable shortcuts and displayed keycaps are defined in `src/constants.ts`; reference named actions from production and QA.
-- QA launches the compiled Nyte binary in a real PTY and observes it with OpenTUI's `EmbeddedTerminalRenderable`.
-- Assert visible screens, provider requests, task/process outcomes, and clean exit output. Do not import the application controller into QA.
-- The terminal driver and isolated loopback fixtures live in `qa/`. Record input-to-matching-screen latency per action.
-- Cover relevant widths, scrolling, resize, and cancellation. Wait for observable states with deadlines; close every process, PTY, renderer and fixture.
-- SQLite runs through `WorkerStore`; usage history runs through the host package's shared `UsageScanWorker`. Both stay off the rendering thread. `scripts/build-binary.ts` embeds their entries under `/$bunfs/root/core/src/kernel/store-worker.js` and `/$bunfs/root/host/src/usage-worker.js`; source runs load the corresponding `.ts` files.
-- Each workspace has one store for every client at `~/.nyte/workspaces/<path-hash>/sessions.db` (`workspaceStorePath` in `@nyte-ai/host`). The TUI attaches as runner only to sessions it opened; children follow their parent.
-- Every local input paints before host work starts: notices for stop and task actions, selected model and effort, and the composer's own text. Keys are blocked with a reason until the session is open.
+- Terminal rendering and keyboard interaction live here; session behavior belongs in core.
+- The interactive app is a Solid app on `@opentui/solid`, started by `runTui` in `src/app/main.tsx`. Print mode (`print.ts`, `print-invocation.ts`) and the CLI (`index.ts`, `flags.ts`, `run.ts`) stay outside it.
+- `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`, starting at `src/index.ts`, to bytecode so launch skips parsing; from source, `src/binary.ts` installs the same transform before loading the app.
+
+## Architecture
+
+One loop: `dispatch(msg) → reduce(state, msg, now) → { state, effects }`, then `deriveScreen(state)` for components and the runner for effects, whose results come back as messages.
+
+- `src/model/`: pure. `reduce.ts` is the only writer of `State` (`state.ts`); `screen.ts` derives everything shown; `msg.ts` and `effect.ts` are the vocabularies; dialogs are values in `model/dialogs/`.
+- `src/effects/`: IO as handlers, one per `Effect` kind in `runner.ts`. Ports (`ports.ts`) are the only way out; `host-port.ts` is the SDK adapter.
+- `src/ui/`: components. They read `useApp().screen()`, send `dispatch(intent)` and draw with the kit; they decide nothing.
+- `src/app/`: wiring: renderer, store, keymap layers, sinks, tickers, crash hooks.
+- `src/lib/` (pure helpers) and `src/services/` (IO behind ports).
+
+What Enter, Ctrl+Enter, Esc and Ctrl+C do is the situation table in `src/model/interactions.ts`; hints, placeholder and help read the same record. Change a key's behavior there, not in a handler. Shortcuts and keycaps are defined in `src/lib/constants.ts` (`CHAT_KEYBINDS`, and `FIELD_KEYBINDS` for the editing keys of a dialog's typed field, whose text and caret the dialog value holds); production and QA reference them by name.
+
+Boundary rules, enforced by `test/boundaries.test.ts`:
+
+- `model/` imports no Solid, OpenTUI, `node:*`, effects, services, ui or app, and the SDK only as types (`@nyte-ai/plugin/question/schema` and `@nyte-ai/plugin/client/presentation` excepted).
+- `ui/` imports no effects or services, and the SDK only as types.
+- Only `effects/host-port.ts` imports SDK values.
+- No `setFrameCallback` and no raw `keyInput` listeners; keys go through `@opentui/keymap` layers.
+
+Local input paints before host work: notices, the chosen model and level, and the composer's text change in `reduce` at once. Until the session is open, keys are refused with the `blocked` reason.
+
+Native resources (`SyntaxStyle`, `TextBuffer`) take `renderer.nativeScene` as owner; layout reads use `getComputedLayout()`.
+
+## Storage
+
+- Every command but `nyte serve` reaches the host through the user's background service (`@nyte-ai/service`): `src/service.ts` finds or starts it (`nyte service run`, one per home through `~/.nyte/service.lock`, on a free port unless `NYTE_SERVICE_PORT` pins one) and connects with `sdk.connect`. The service runs every session and owns the Nyte Connect link that `nyte account` shares. `nyte serve` and `nyte service run` run the host on a worker thread: `src/hosting.ts` starts `src/host-worker.ts`, a separate bundle in the binary. The CLI's own graph (`src/index.ts`, the TUI and `@nyte-ai/sdk/client`) never imports `@nyte-ai/host`, so client commands start without loading providers or the store. Usage history runs through the host package's `UsageScanWorker`.
+- Each workspace has one store at `~/.nyte/workspaces/<path-hash>/sessions.db` (`workspaceStorePath` in `@nyte-ai/host`). The TUI attaches as runner only to sessions it opened; children follow their parent.
+
+## Tests
+
+- `bun test` runs everything in process: model tests are plain functions over `test/fixture/view.ts`, effect tests run the runner over `fakeHost`/`fakePorts`, and UI tests use `testRender` from `@opentui/solid` (`bunfig.toml` preloads the Solid transform).
+- App tests start the whole TUI with `startTui()` (`test/harness/tui.ts`): a test renderer whose clock is a `ManualClock`, `mountApp` over a real in-process host with `fakeModels` from `@nyte-ai/host/bench`, and fake local ports. `opened: false` holds the host closed, `typed` types before mount, and `until`/`frame` render until a condition holds or fail after a bounded number of turns with the last frame. Drive keys by command name with `press`, never by escape sequence.
+- `qa/binary.smoke.ts` is the only test of the compiled binary: pipes and a PTY, against a service this process registers in an isolated HOME (`qa/service.ts`), so the binary connects to a real host over the fake provider. `qa/pty.ts` encodes keys with `EmbeddedTerminalRenderable.encodeKey` for the modes the binary negotiated. Keep it to what only the binary shows: startup, trust, exit codes and the resume text.
 
 ## Verification
 
 From the repository root:
 
-- Screen rendering tests, then build and binary QA: `pnpm --dir packages/tui run test`.
-- Focus a run: `pnpm --dir packages/tui run test --filter models`.
-- Visible PTY playback: `pnpm --dir packages/tui run test:show --filter models`.
-- Check source and QA types: `pnpm --dir packages/tui typecheck`.
-
-Both QA modes run the binary, not an in-process reconstruction. Results and input/output evidence
-are saved under the printed temporary run directory. A matching emulated screen does not prove
-physical terminal scanout, OS clipboard behavior, or image-protocol display.
+- Tests: `pnpm --dir packages/tui test`.
+- The compiled binary: `pnpm --dir packages/tui test:binary` (builds `bin/nyte` first; set `NYTE_BINARY` to test another build).
+- Types: `pnpm --dir packages/tui typecheck`.

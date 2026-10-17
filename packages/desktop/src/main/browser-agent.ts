@@ -11,13 +11,8 @@
  *   After that it lands while the window is blurred and while the view is
  *   hidden. Keyboard input and `capturePage` work without ever showing it.
  */
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/sdk";
 
-/**
- * The surface an agent session's pages live on. One per session, so a chat's
- * agent keeps its own page across calls; the renderer reveals it as a Browser
- * tab in the workbench of the workspace the page belongs to.
- */
 export function sessionSurfaceId(sessionId: SessionId): string {
   return `stage:session:${encodeURIComponent(sessionId)}`;
 }
@@ -99,7 +94,7 @@ export type BrowserActionResult =
   | { readonly kind: "ok"; readonly state: BrowserPageState }
   | { readonly kind: "failed"; readonly failure: BrowserActionFailure };
 
-export interface BrowserTypeInput {
+interface BrowserTypeInput {
   readonly ref: string;
   readonly text: string;
   readonly clear?: boolean;
@@ -171,7 +166,7 @@ export interface BrowserAgent {
     readonly session: SessionId;
     readonly limit: number;
     readonly clear?: boolean;
-  }): readonly BrowserConsoleEntry[];
+  }): Promise<readonly BrowserConsoleEntry[]>;
   evaluate(input: {
     readonly session: SessionId;
     readonly expression: string;

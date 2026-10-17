@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { COMMIT_ACTIONS, commitActionPlan, commitActions } from "./changes-commit-bar.tsx";
+import { COMMIT_ACTIONS, commitActions } from "./changes-commit-bar.tsx";
 
-test("a host without GitHub is offered no action that opens a pull request", () => {
-  const offered = commitActions(false);
+test("a host without GitHub is offered every action except the two that open a pull request", () => {
+  const withheld = COMMIT_ACTIONS.filter((action) => !commitActions(false).includes(action));
 
-  assert.ok(offered.length > 0);
-  assert.ok(offered.every((action) => !commitActionPlan(action).pullRequest));
-  assert.deepEqual(commitActions(true), COMMIT_ACTIONS);
+  assert.deepEqual(withheld, ["commit-pull-request", "pull-request"]);
 });

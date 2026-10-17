@@ -1,14 +1,12 @@
-/**
- * The `@` and `/` menu that grows above the composer capsule. It is a plain
- * list on a solid surface: the keyboard stays up, the draft stays visible, and
- * one tap writes the choice. The list scrolls rather than pushing the capsule.
- */
-import { ScrollView } from "react-native";
-import { SymbolView } from "expo-symbols";
+import { StyleSheet, useWindowDimensions } from "react-native";
+import { LegendList } from "@legendapp/list/react-native";
+import { useHeaderHeight } from "expo-router/react-navigation";
+import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import { css, html } from "react-strict-dom";
-import { controls, spacing, surfaces, textStyles, tokens, useTheme } from "../theme.ts";
+import { controls, menu, spacing, textStyles, tokens, typography } from "../theme.ts";
+import { CompletionIcon } from "../ui/completion-icon.tsx";
+import { GlassSurface } from "./composer-glass.tsx";
 import {
-  suggestionIcon,
   suggestionKey,
   suggestionLabel,
   suggestionNotice,
@@ -16,98 +14,119 @@ import {
   type Suggestion,
 } from "./completions.ts";
 
-/**
- * Four rows and a hint of the next: enough to choose from, short enough to keep
- * the draft and its capsule in view. Rows carry two lines, so the cap is not a
- * multiple of the touch target.
- */
-const MAX_HEIGHT = 244;
-
 export function SuggestionMenu({
   completion,
   onAccept,
+  cardHeight,
+  cardDock,
 }: {
   completion: Completion;
   onAccept: (suggestion: Suggestion) => void;
+  cardHeight: SharedValue<number>;
+  cardDock: SharedValue<number>;
 }) {
-  const theme = useTheme();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  const headerHeight = useHeaderHeight();
   const notice = suggestionNotice(completion);
   const rows = completion.list.kind === "ready" ? completion.list.value : [];
 
+  const rowHeight = Math.max(
+    controls.touchTarget,
+    (typography.body.lineHeight + typography.caption.lineHeight) * fontScale + menu.padding * 2,
+  );
+
+  const contentHeight = notice === undefined ? rows.length * rowHeight : controls.touchTarget;
+
+  const viewport = useAnimatedStyle(() => ({
+    height: Math.max(
+      controls.touchTarget + menu.padding * 2,
+      Math.min(
+        contentHeight + menu.padding * 2,
+        menu.maxHeight,
+        windowHeight - cardDock.get() - cardHeight.get() - headerHeight - spacing.sm,
+      ),
+    ),
+  }));
+
   return (
-    <html.div style={[surfaces.panel, styles.menu]}>
-      {notice === undefined ? (
-        <ScrollView
-          style={{ maxHeight: MAX_HEIGHT }}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="none"
-        >
-          {rows.map((suggestion, index) => (
-            <html.button
-              key={suggestionKey(suggestion)}
-              aria-label={`${suggestionLabel(suggestion)}, ${suggestion.detail}`}
-              onClick={() => onAccept(suggestion)}
-              style={[styles.row, index > 0 && styles.divided]}
-            >
-              <SymbolView
-                name={suggestionIcon(suggestion)}
-                size={controls.icon}
-                tintColor={theme.muted}
-              />
-              <html.div style={styles.text}>
-                <html.span style={[textStyles.body, styles.label]}>
-                  {suggestionLabel(suggestion)}
-                </html.span>
-                {suggestion.detail === "" ? null : (
-                  <html.span style={[textStyles.caption, styles.detail]}>
-                    {suggestion.detail}
-                  </html.span>
+    <Animated.View style={viewport}>
+      <GlassSurface isInteractive style={layout.glass}>
+        {notice === undefined ? (
+          <LegendList
+            key={`${completion.trigger.kind}:${completion.trigger.query}`}
+            data={rows}
+            keyExtractor={suggestionKey}
+            estimatedItemSize={rowHeight}
+            style={layout.list}
+            contentContainerStyle={layout.content}
+            recycleItems
+            maintainVisibleContentPosition={false}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="none"
+            showsVerticalScrollIndicator
+            nestedScrollEnabled
+            renderItem={({ item }) => (
+              <html.button
+                aria-label={`${suggestionLabel(item)}, ${item.detail}`}
+                onClick={() => onAccept(item)}
+                style={styles.row(rowHeight)}
+              >
+                {item.kind === "file" ? (
+                  <CompletionIcon kind="file" path={item.label} />
+                ) : (
+                  <CompletionIcon kind={item.kind} />
                 )}
-              </html.div>
-            </html.button>
-          ))}
-        </ScrollView>
-      ) : (
-        <html.div style={styles.notice} aria-live="polite">
-          <html.span
-            style={[textStyles.secondary, completion.list.kind === "failed" && styles.failed]}
-          >
-            {notice}
-          </html.span>
-        </html.div>
-      )}
-    </html.div>
+                <html.div style={styles.text}>
+                  <html.span style={[textStyles.body, styles.label]}>
+                    {suggestionLabel(item)}
+                  </html.span>
+                  {item.detail === "" ? null : (
+                    <html.span style={[textStyles.caption, styles.detail]}>{item.detail}</html.span>
+                  )}
+                </html.div>
+              </html.button>
+            )}
+          />
+        ) : (
+          <html.div style={styles.notice} aria-live="polite">
+            <html.span
+              style={[textStyles.secondary, completion.list.kind === "failed" && styles.failed]}
+            >
+              {notice}
+            </html.span>
+          </html.div>
+        )}
+      </GlassSurface>
+    </Animated.View>
   );
 }
 
+const layout = StyleSheet.create({
+  glass: { flex: 1, borderRadius: menu.radius, overflow: "hidden" },
+  list: { flex: 1 },
+  content: { padding: menu.padding },
+});
+
 const styles = css.create({
-  menu: {
-    display: "flex",
-    flexDirection: "column",
-  },
-  row: {
+  row: (height: number) => ({
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
-    minHeight: controls.touchTarget,
-    paddingInline: spacing.md,
-    paddingBlock: spacing.sm,
+    gap: menu.gap,
+    minHeight: height,
+    paddingInline: spacing.sm,
+    paddingBlock: menu.padding,
     borderWidth: 0,
+    borderRadius: spacing.sm,
     backgroundColor: { default: "transparent", ":active": tokens.fill },
-  },
-  divided: {
-    borderTopWidth: controls.hairline,
-    borderTopStyle: "solid",
-    borderTopColor: tokens.separator,
-  },
+  }),
   text: { display: "flex", flexDirection: "column", flexShrink: 1, minWidth: 0 },
-  // One line each: a long path is truncated rather than growing the row.
   label: { color: tokens.foreground, lineClamp: 1 },
   detail: { color: tokens.muted, lineClamp: 1 },
   notice: {
     display: "flex",
     justifyContent: "center",
+    flexGrow: 1,
     minHeight: controls.touchTarget,
     padding: spacing.md,
   },

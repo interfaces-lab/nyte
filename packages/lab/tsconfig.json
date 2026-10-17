@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "module": "preserve",
     "moduleResolution": "bundler",
@@ -9,5 +9,5 @@
     "types": ["vite/client", "node"],
     "customConditions": ["nyte-source"]
   },
-  "include": ["src"]
+  "include": ["src", "../app/src/router.tsx"]
 }

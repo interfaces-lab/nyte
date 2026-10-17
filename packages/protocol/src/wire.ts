@@ -1,250 +1,381 @@
-/**
- * The envelopes: how a call and its reply look as JSON, how a watch looks as
- * server-sent events, and the error every failure is reported as.
- *
- * Routes (version 1):
- *
- *   GET  {base}/v1/info                       what is answering: its version and wire version
- *   POST {base}/v1/call/{operation}          body `{ "input": <operation input> }`; omit `input` for none
- *   GET  {base}/v1/watch?sessionId=…    `&after=<seq>` to replay, `&live=1` to start at the tip
- *
- * `{operation}` is an SDK operation, or an `environment.*` operation when info
- * reports `environment: true`.
- *
- * The session id is a query parameter, not a path segment: ids are any
- * non-empty string, and `.` or `..` in a path segment would be normalized away.
- *
- * A call reply says whether the SDK returned a value. JSON has no
- * `undefined`, and `null` is a real value elsewhere (a head with no tip), so
- * the envelope carries the distinction explicitly.
- */
-import { Type } from "typebox";
-import type { Seq } from "./kernel.ts";
-import { typed } from "./schemas.ts";
-import type { SessionEvent } from "./sdk.ts";
+import { isJsonObject, SdkError, SdkErrorWireSchema, SdkErrorWireType } from "@nyte-ai/schema";
+import type { ByteReader, Json, OutputFrame, SdkErrorCode, SdkErrorWire } from "@nyte-ai/schema";
+import { dev } from "@nyte-ai/core";
+import { parseJson } from "./json.ts";
 
-export const WIRE_VERSION = 1;
+/** Maps each error code to the HTTP status the handler answers it with. */
+export const errorStatus = {
+  invalid: 400,
+  unauthenticated: 401,
+  denied: 403,
+  unknown: 404,
+  stale: 409,
+  internal: 500,
+  unavailable: 503,
+} as const satisfies Record<SdkErrorCode, number> satisfies Record<SdkErrorWire["code"], number>;
 
-export const INFO_ROUTE = "/v1/info";
+/** Names the request header that carries an operation's JSON input when the body carries its bytes. */
+export const INPUT_HEADER = "X-Nyte-Input";
 
-export const CALL_ROUTE_PREFIX = "/v1/call/";
+/** Names the response header carrying the id of the host that answered, `X-Nyte-Host: <hostId>`, on every response a listener sends, so a client compares it with `expect.hostId` on its first answer (§43a, §43j). */
+export const HOST_HEADER = "X-Nyte-Host";
 
-export const WATCH_ROUTE = "/v1/watch";
+const DATA = 0;
 
-// ---------------------------------------------------------------------------
-// Info
-// ---------------------------------------------------------------------------
+const CONTROL = 1;
 
-/** Deployment properties the SDK model catalog cannot infer. */
-export interface ServerDescription {
-  readonly capabilities: { readonly workspace: boolean };
-  readonly persistence: "durable" | "ephemeral" | "unknown";
+/** Serialises an `SdkError` as the wire error: code, message, host, issues and correlation. */
+export function encodeError(error: SdkError): SdkErrorWire {
+  return {
+    code: error.code,
+    message: error.message,
+    hostId: error.hostId,
+    issues: error.issues,
+    correlation: error.correlation,
+  };
 }
 
-const serverDescriptionProperties = {
-  capabilities: Type.Object({ workspace: Type.Boolean() }, { additionalProperties: false }),
-  persistence: Type.Enum(["durable", "ephemeral", "unknown"]),
-};
+/** Rebuilds the `SdkError` a wire error carries; a body that is not a wire error is the code `statusCode` gives the response's status, `internal` without one. */
+export function decodeError(value: Json, status?: number): SdkError {
+  const result = SdkErrorWireSchema["~standard"].validate(value);
 
-export const ServerDescriptionSchema = typed<ServerDescription>()(
-  Type.Object(serverDescriptionProperties, { additionalProperties: false }),
-);
+  if (result instanceof Promise || result.issues !== undefined)
+    return new SdkError(
+      status === undefined ? "internal" : statusCode(status),
+      typeof value === "string" && value !== ""
+        ? value
+        : "The host answered with an error it did not describe.",
+    );
+  const wire = result.value;
 
-/**
- * The host release and description in the info envelope. `wireVersion`
- * restates the route prefix; another wire answers this route with `not_found`.
- */
-export interface ServerInfo {
-  readonly version: string;
-  readonly wireVersion: typeof WIRE_VERSION;
-  /**
-   * Present when the server answers `environment.*` calls. It sits at the top
-   * level because released clients reject unknown keys under `host`.
-   */
-  readonly environment?: true;
-  readonly host:
-    | { readonly kind: "unspecified" }
-    | ({ readonly kind: "described" } & ServerDescription);
+  return new SdkError(wire.code, wire.message, {
+    hostId: wire.hostId,
+    issues: wire.issues,
+    correlation: wire.correlation,
+  });
 }
 
-export const ServerInfoSchema = typed<ServerInfo>()(
-  Type.Object({
-    version: Type.String(),
-    wireVersion: Type.Literal(WIRE_VERSION),
-    environment: Type.Optional(Type.Literal(true)),
-    host: Type.Union([
-      Type.Object({ kind: Type.Literal("unspecified") }),
-      Type.Object(
-        { kind: Type.Literal("described"), ...serverDescriptionProperties },
-        { additionalProperties: false },
-      ),
-    ]),
-  }),
-);
+/** Returns the error code an HTTP status stands for when the body is not a wire error: `invalid` for 400 and 413, `internal` for any status the table does not name. */
+export function statusCode(status: number): SdkErrorCode {
+  if (status === 413) return "invalid";
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-/** One place the input failed its schema. `path` is a JSON pointer into the input. */
-export interface Issue {
-  readonly path: string;
-  readonly message: string;
+  return (
+    SdkErrorWireType.properties.code.enum.find((code) => errorStatus[code] === status) ?? "internal"
+  );
 }
 
-export type PlainErrorCode =
-  | "unknown_operation"
-  | "unknown_session"
-  | "not_found"
-  | "method_not_allowed"
-  | "unsupported_media_type"
-  | "payload_too_large"
-  | "unauthorized"
-  | "forbidden"
-  | "closed"
-  | "internal";
+/** Frames JSON values as server-sent events, each one `data:` line; a `: ping` comment every `heartbeatMs` while it waits; an error the source throws is the last frame, an `error` event carrying the wire error. Cancelling the stream returns the source. */
+export function sseFrames(
+  source: AsyncIterable<Json>,
+  options?: { readonly heartbeatMs?: number },
+): ReadableStream<Uint8Array> {
+  const iterator = source[Symbol.asyncIterator]();
+  const encoder = new TextEncoder();
+  let timer: ReturnType<typeof setInterval> | undefined;
 
-export type WireError =
-  | { readonly code: "invalid_input"; readonly message: string; readonly issues: readonly Issue[] }
-  /** The cursor is below the stream floor: take a snapshot and watch from its seq. */
-  | { readonly code: "cursor_expired"; readonly message: string; readonly floor: Seq }
-  | { readonly code: PlainErrorCode; readonly message: string };
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      const every = options?.heartbeatMs;
 
-export type ErrorCode = WireError["code"];
+      if (every !== undefined)
+        timer = setInterval(() => controller.enqueue(encoder.encode(": ping\n\n")), every);
+    },
+    async pull(controller) {
+      try {
+        const next = await iterator.next();
 
-const plainCodes = [
-  "unknown_operation",
-  "unknown_session",
-  "not_found",
-  "method_not_allowed",
-  "unsupported_media_type",
-  "payload_too_large",
-  "unauthorized",
-  "forbidden",
-  "closed",
-  "internal",
-] as const satisfies readonly PlainErrorCode[];
+        if (next.done === true) {
+          clearInterval(timer);
+          controller.close();
 
-export const IssueSchema = typed<Issue>()(
-  Type.Object({ path: Type.String(), message: Type.String() }),
-);
+          return;
+        }
 
-export const WireErrorSchema = typed<WireError>()(
-  Type.Union([
-    Type.Object({
-      code: Type.Literal("invalid_input"),
-      message: Type.String(),
-      issues: Type.Array(IssueSchema),
-    }),
-    Type.Object({
-      code: Type.Literal("cursor_expired"),
-      message: Type.String(),
-      floor: Type.Integer({ minimum: 0 }),
-    }),
-    Type.Object({ code: Type.Enum(plainCodes), message: Type.String() }),
-  ]),
-);
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(next.value)}\n\n`));
+      } catch (error) {
+        clearInterval(timer);
+        const wire = JSON.stringify(encodeError(asSdkError(error)));
+        controller.enqueue(encoder.encode(`event: error\ndata: ${wire}\n\n`));
+        controller.close();
+      }
+    },
+    async cancel() {
+      clearInterval(timer);
+      await iterator.return?.();
+    },
+  });
+}
 
-/** The HTTP status a call reply or a refused watch carries for each error. */
-export function statusFor(code: ErrorCode): number {
-  switch (code) {
-    case "invalid_input":
-      return 400;
-    case "unauthorized":
-      return 401;
-    case "forbidden":
-      return 403;
-    case "unknown_operation":
-    case "unknown_session":
-    case "not_found":
-      return 404;
-    case "method_not_allowed":
-      return 405;
-    case "cursor_expired":
-      return 409;
-    case "payload_too_large":
-      return 413;
-    case "unsupported_media_type":
-      return 415;
-    case "internal":
-      return 500;
-    case "closed":
-      return 503;
-    default: {
-      const _exhaustive: never = code;
+/** Parses a server-sent event stream into each frame's JSON data; comments and any other field are skipped, and an `error` event throws the `SdkError` it carries. Returning early cancels the stream. */
+export async function* parseSse(stream: ReadableStream<Uint8Array>): AsyncGenerator<Json> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
 
-      return _exhaustive;
+  try {
+    for (;;) {
+      const read = await reader.read();
+      buffer += read.done ? decoder.decode() : decoder.decode(read.value, { stream: true });
+      const blocks = buffer.replace(/\r\n?/g, "\n").split("\n\n");
+      buffer = read.done ? "" : (blocks.pop() ?? "");
+
+      for (const block of blocks) {
+        const frame = parseEventBlock(block);
+
+        if (frame !== null) yield frame.data;
+      }
+
+      if (read.done) return;
     }
+  } finally {
+    await reader.cancel().catch(() => undefined);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Calls
-// ---------------------------------------------------------------------------
+/** Returns an `application/octet-stream` response over a byte reader: its mime in `X-Nyte-Mime`, its size as `Content-Length` when known (§40w), plus `headers`. The reader closes once, when the body ends, is cancelled, or `signal` aborts; an abort also errors the body. */
+export function octetStream(
+  body: { readonly reader: ByteReader; readonly headers?: Readonly<Record<string, string>> },
+  signal: AbortSignal,
+): Response {
+  const { reader } = body;
+  const chunks = reader.chunks()[Symbol.asyncIterator]();
+  const headers = new Headers(body.headers);
+  headers.set("Content-Type", "application/octet-stream");
 
-/** The request body. `input` absent means the operation's input is `undefined`. */
-export interface CallRequest {
-  readonly input?: unknown;
+  if (reader.mime !== null) headers.set("X-Nyte-Mime", reader.mime);
+
+  if (reader.size !== null) headers.set("Content-Length", String(reader.size));
+  let closing: Promise<void> | null = null;
+
+  const close = (): Promise<void> => {
+    closing ??= (async () => {
+      try {
+        await reader.close();
+      } finally {
+        await chunks.return?.();
+      }
+    })();
+
+    return closing;
+  };
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const abort = (): void => {
+        controller.error(signal.reason);
+        close().catch((error: unknown) => {
+          dev("protocol", "byte reader close failed", {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+      };
+
+      if (signal.aborted) abort();
+      else signal.addEventListener("abort", abort, { once: true });
+    },
+    async pull(controller) {
+      try {
+        const next = await chunks.next();
+
+        if (next.done === true) {
+          controller.close();
+          await close();
+
+          return;
+        }
+
+        controller.enqueue(next.value);
+      } catch (error) {
+        controller.error(error);
+        await close();
+      }
+    },
+    cancel: close,
+  });
+
+  return new Response(stream, { status: 200, headers });
 }
 
-export const CallRequestSchema = typed<CallRequest>()(
-  Type.Object({ input: Type.Optional(Type.Unknown()) }, { additionalProperties: false }),
-);
+/** Frames a job's output as one octet stream (§40h): each `bytes` frame `0x00 <u32be length> <bytes>`, each `gap` and the `exit` `0x01 <u32be length> <json>`; an error the source throws is a last control frame carrying the wire error. Cancelling the stream returns the source. */
+export function outputFrames(source: AsyncIterable<OutputFrame>): ReadableStream<Uint8Array> {
+  const iterator = source[Symbol.asyncIterator]();
+  const encoder = new TextEncoder();
 
-/** The reply before the value is checked against the operation's output schema. */
-export type CallReply =
-  | { readonly ok: true; readonly defined: true; readonly value: unknown }
-  | { readonly ok: true; readonly defined: false }
-  | { readonly ok: false; readonly error: WireError };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await iterator.next();
 
-export const CallReplySchema = typed<CallReply>()(
-  Type.Union([
-    Type.Object({ ok: Type.Literal(true), defined: Type.Literal(true), value: Type.Unknown() }),
-    Type.Object({ ok: Type.Literal(true), defined: Type.Literal(false) }),
-    Type.Object({ ok: Type.Literal(false), error: WireErrorSchema }),
-  ]),
-);
+        if (next.done === true) {
+          controller.close();
 
-export const JSON_MEDIA_TYPE = "application/json";
+          return;
+        }
 
-export const EVENT_STREAM_MEDIA_TYPE = "text/event-stream";
-
-/** The media type of a `content-type` header, without parameters; undefined when the header is absent. */
-export function mediaType(header: string | null): string | undefined {
-  if (header === null) return undefined;
-  const semicolon = header.indexOf(";");
-
-  return (semicolon === -1 ? header : header.slice(0, semicolon)).trim().toLowerCase();
+        const frame = next.value;
+        controller.enqueue(
+          frame.kind === "bytes"
+            ? framed(DATA, frame.data)
+            : framed(CONTROL, encoder.encode(JSON.stringify(frame))),
+        );
+      } catch (error) {
+        const failure = { kind: "error", error: encodeError(asSdkError(error)) };
+        controller.enqueue(framed(CONTROL, encoder.encode(JSON.stringify(failure))));
+        controller.close();
+      }
+    },
+    async cancel() {
+      await iterator.return?.();
+    },
+  });
 }
 
-// ---------------------------------------------------------------------------
-// Watch
-// ---------------------------------------------------------------------------
+/** Parses an octet stream framed by `outputFrames` back into output frames; a control frame of a kind it does not know is skipped, and an error frame throws the `SdkError` it carries. Returning early cancels the stream. */
+export async function* parseOutputFrames(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<OutputFrame> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer: Uint8Array = new Uint8Array(0);
 
-/**
- * One server-sent event on the watch route. The SSE `event` field is the
- * frame kind; `data` is the JSON below. A stream that closes without an
- * `ended` or `error` frame was interrupted, and the client reports that.
- */
-export type WatchFrame =
-  | { readonly kind: "event"; readonly event: SessionEvent }
-  | { readonly kind: "ended" }
-  | { readonly kind: "error"; readonly error: WireError };
+  try {
+    for (;;) {
+      const read = await reader.read();
 
-/** The data of an `ended` frame: an object, today empty. */
-export const WatchEndedSchema = Type.Object({});
+      if (read.done) {
+        if (buffer.byteLength > 0)
+          throw new SdkError("internal", "The output stream ended mid-frame.");
 
-export const WatchFrameKindSchema = typed<WatchFrame["kind"]>()(
-  Type.Enum(["event", "ended", "error"]),
-);
+        return;
+      }
 
-export const WATCH_QUERY = {
-  sessionId: "sessionId",
-  after: "after",
-  live: "live",
-} as const;
+      buffer = joined(buffer, read.value);
 
-/** The parsed watch query. `after` and `live` never both appear. */
-export type WatchQuery =
-  | { readonly sessionId: string; readonly afterSeq?: Seq }
-  | { readonly sessionId: string; readonly live: true };
+      while (buffer.byteLength >= 5) {
+        const length = new DataView(buffer.buffer, buffer.byteOffset, 5).getUint32(1);
+
+        if (buffer.byteLength < 5 + length) break;
+        const tag = buffer[0];
+        const payload = buffer.slice(5, 5 + length);
+        buffer = buffer.slice(5 + length);
+
+        if (tag === DATA) {
+          yield { kind: "bytes", data: payload };
+          continue;
+        }
+
+        const control = decodeControl(parseJson(decoder.decode(payload)));
+
+        if (control !== null) yield control;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+/** Returns the request init for an operation whose bytes travel as the body: the JSON input base64url in `X-Nyte-Input`, the bytes as `application/octet-stream`. A stream is sent half-duplex. */
+export function withInputHeader(
+  input: Json,
+  body: Uint8Array | ReadableStream<Uint8Array>,
+): RequestInit & { readonly headers: Readonly<Record<string, string>> } {
+  return {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream", [INPUT_HEADER]: base64url(input) },
+    ...(body instanceof ReadableStream
+      ? { body, duplex: "half" as const }
+      : {
+          body:
+            body.buffer instanceof ArrayBuffer
+              ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+              : body.slice(),
+        }),
+  };
+}
+
+/** Returns the JSON input a request carries in `X-Nyte-Input`, or null when it carries none; a header that is not base64url JSON throws `SdkError("invalid")`. */
+export function readInputHeader(request: Request): Json | null {
+  const header = request.headers.get(INPUT_HEADER);
+
+  if (header === null) return null;
+
+  try {
+    const binary = atob(header.replace(/-/g, "+").replace(/_/g, "/"));
+
+    return parseJson(
+      new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0))),
+    );
+  } catch {
+    throw new SdkError("invalid", `${INPUT_HEADER} is not base64url JSON.`);
+  }
+}
+
+/** Returns an error as the `SdkError` the wire carries: itself when it is one, else `internal` with a fresh correlation id. */
+export function asSdkError(error: unknown): SdkError {
+  if (error instanceof SdkError) return error;
+
+  return new SdkError("internal", "The host failed to answer.", {
+    correlation: crypto.randomUUID(),
+  });
+}
+
+function parseEventBlock(block: string): { readonly data: Json } | null {
+  let event = "message";
+  const data: string[] = [];
+
+  for (const line of block.split("\n")) {
+    if (line === "" || line.startsWith(":")) continue;
+    const [field, ...rest] = line.split(":");
+    const value = rest.join(":").replace(/^ /, "");
+
+    if (field === "event") event = value;
+    else if (field === "data") data.push(value);
+  }
+
+  if (data.length === 0) return null;
+  const json = parseJson(data.join("\n"));
+
+  if (event === "error") throw decodeError(json);
+
+  return { data: json };
+}
+
+function decodeControl(value: Json): OutputFrame | null {
+  if (!isJsonObject(value)) return null;
+
+  if (value.kind === "gap") return { kind: "gap" };
+
+  if (value.kind === "exit")
+    return { kind: "exit", code: typeof value.code === "number" ? value.code : null };
+
+  if (value.kind === "error" && value.error !== undefined) throw decodeError(value.error);
+
+  return null;
+}
+
+function framed(tag: number, payload: Uint8Array): Uint8Array {
+  const frame = new Uint8Array(5 + payload.byteLength);
+  frame[0] = tag;
+  new DataView(frame.buffer).setUint32(1, payload.byteLength);
+  frame.set(payload, 5);
+
+  return frame;
+}
+
+function joined(left: Uint8Array, right: Uint8Array): Uint8Array {
+  if (left.byteLength === 0) return right;
+  const both = new Uint8Array(left.byteLength + right.byteLength);
+  both.set(left);
+  both.set(right, left.byteLength);
+
+  return both;
+}
+
+function base64url(input: Json): string {
+  const utf8 = encodeURIComponent(JSON.stringify(input)).replace(
+    /%([0-9A-F]{2})/g,
+    (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)),
+  );
+
+  return btoa(utf8).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}

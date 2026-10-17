@@ -88,10 +88,13 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+/**
+ * One toast. Reduced motion swaps the slide for a fade, so the enter still reads as an arrival; the exit
+ * is an animated transition keyed on the leaving flag, while a drag moves the card directly.
+ */
 function ToastCard({ item }: { item: ToastItem }) {
   const theme = useTheme();
   const reduceMotion = useReducedMotion();
-  // Reduced motion swaps the slide for a fade; the enter still reads as an arrival.
   const offset = useSharedValue(reduceMotion ? 0 : ENTER_OFFSET);
   const opacity = useSharedValue(0);
 
@@ -103,7 +106,6 @@ function ToastCard({ item }: { item: ToastItem }) {
     return () => clearTimeout(timer);
   });
 
-  // The exit is an animated transition keyed on the leaving flag.
   useEffect(() => {
     if (item.leaving !== true) return;
     opacity.set(withTiming(0, { duration: EXIT_MS }));
@@ -118,7 +120,6 @@ function ToastCard({ item }: { item: ToastItem }) {
     Gesture.Pan()
       .activeOffsetY([-8, 8])
       .onUpdate((event) => {
-        // A finger-driven drag is direct manipulation, not an animated transition.
         offset.set(event.translationY > 0 ? event.translationY : event.translationY * 0.15);
       })
       .onEnd((event) => {
@@ -237,7 +238,6 @@ const styles = css.create({
     minWidth: 0,
     gap: 1,
   },
-  // RSD's weak-type check rejects a style whose only prop is the non-CSS
-  // lineClamp, so it rides with a real text prop.
+  /** RSD's weak-type check rejects a style whose only prop is the non-CSS lineClamp, so it rides with a real text prop. */
   body: { lineClamp: 2, textAlign: "start" },
 });

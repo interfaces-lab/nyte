@@ -16,14 +16,14 @@ import type { ReactElement, ReactNode } from "react";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
-import { glyph, radius, row } from "@nyte-ai/ui/schema.stylex";
+import { glyph, media, radius, row } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { ReviewedState } from "./code";
 import { count, plural, sectionFiles, when } from "./files";
 import { sectionNumber, type GuideWriting } from "./guide";
-import { openerOf, pullRequestNumber } from "./pull-request";
+import { readOpener, pullRequestNumber } from "./pull-request";
 import type { ShownBrief } from "./use-review-files";
 import type { Brief, ReviewDetail } from "./wire";
 
@@ -40,7 +40,7 @@ const short = (oid: string): string => oid.slice(0, 7);
 const LISTED_COMMITS = 8;
 
 /** Commit messages are hard-wrapped: rejoin each paragraph, keeping list items on their own lines. */
-function paragraphsOf(text: string): readonly string[] {
+function joinParagraphs(text: string): readonly string[] {
   return text
     .split(/\n\s*\n/)
     .map((paragraph) =>
@@ -55,8 +55,8 @@ function paragraphsOf(text: string): readonly string[] {
     .filter((paragraph) => paragraph !== "");
 }
 
-function activityOf(review: ReviewDetail): readonly Happening[] {
-  const opener = openerOf(review);
+function listActivity(review: ReviewDetail): readonly Happening[] {
+  const opener = readOpener(review);
 
   const [newest] = review.commits;
 
@@ -217,7 +217,7 @@ export function ReviewOverview({
   readonly onOpenGuide: () => void;
   readonly onOpenSection: (index: number) => void;
 }): ReactElement {
-  const opener = openerOf(review);
+  const opener = readOpener(review);
   const draft = review.author?.status === "working";
   const approval = review.approvals.at(-1);
   const approved = approval?.head === review.revision.head;
@@ -318,7 +318,7 @@ export function ReviewOverview({
             {description === "" ? (
               <p {...props(styles.quiet, styles.paragraph)}>No description.</p>
             ) : (
-              paragraphsOf(description).map((paragraph) => (
+              joinParagraphs(description).map((paragraph) => (
                 <p key={paragraph} {...props(styles.paragraph)}>
                   {paragraph}
                 </p>
@@ -372,7 +372,7 @@ export function ReviewOverview({
             Activity
           </h2>
           <ol {...props(styles.timeline)}>
-            {activityOf(review).map((happening) => (
+            {listActivity(review).map((happening) => (
               <li key={happening.key} {...props(styles.happening)}>
                 <span aria-hidden="true" {...props(styles.marker)}>
                   <Icon name={happening.icon} size={12} />
@@ -542,7 +542,7 @@ const styles = create({
     borderBottomColor: role.borderSecondaryTranslucent,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentPrimary,
     font: "inherit",

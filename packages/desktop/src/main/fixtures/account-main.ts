@@ -1,18 +1,17 @@
 import assert from "node:assert/strict";
-import { writeFileSync } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { basename, join } from "node:path";
-import { app, BrowserWindow, safeStorage, shell } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import type { WebContents } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { ACCOUNT_CHANNELS } from "../../account/protocol.ts";
 import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { registerAccount } from "../account.ts";
 import { AccountCancelled } from "../account-session.ts";
 import { AccountStore } from "../account-store.ts";
-import type { SecretCipher } from "../account-store.ts";
 import { registerRenderer } from "../renderer.ts";
 
 const directory = process.argv[2];
@@ -27,52 +26,35 @@ app.setAsDefaultProtocolClient = () => false;
 
 app.on("window-all-closed", () => undefined);
 
-const refuseKeychain = (): never => {
-  throw new Error("Account tests must not call safeStorage");
+let keyReads = 0;
+
+const secrets = {
+  key: async () => {
+    keyReads += 1;
+
+    return new Uint8Array(32).fill(7);
+  },
 };
-
-safeStorage.isEncryptionAvailable = refuseKeychain;
-
-safeStorage.isAsyncEncryptionAvailable = refuseKeychain;
-
-safeStorage.encryptString = refuseKeychain;
-
-safeStorage.encryptStringAsync = refuseKeychain;
-
-safeStorage.decryptString = refuseKeychain;
-
-safeStorage.decryptStringAsync = refuseKeychain;
-
-const seal = (plain: string): string => `sealed:${Buffer.from(plain).toString("base64")}`;
-
-/** Stands in for the OS keychain; every call is one the real app would make to it. */
-const cipherCalls: string[] = [];
-
-const cipher = {
-  available: async () => {
-    cipherCalls.push("available");
-
-    return true;
-  },
-  seal: async (plain) => {
-    cipherCalls.push("seal");
-
-    return seal(plain);
-  },
-  open: async (sealed) => {
-    cipherCalls.push("open");
-    assert.ok(sealed.startsWith("sealed:"));
-
-    return Buffer.from(sealed.slice("sealed:".length), "base64").toString();
-  },
-} satisfies SecretCipher;
 
 const saved = join(directory, "profile", "account.json");
 
-// Before registration, which must not wait: Clerk registers its scheme before `ready`.
-writeFileSync(saved, JSON.stringify({ sealed: seal("client.zero"), label: "grace@example.com" }));
+class CountingStore extends AccountStore {
+  opens = 0;
 
-const store = new AccountStore({ path: saved, cipher });
+  override open(sealed: string): Promise<string> {
+    this.opens += 1;
+
+    return super.open(sealed);
+  }
+}
+
+const store = new CountingStore({
+  path: saved,
+  sealer: {
+    seal: (plain) => sealSecret(secrets, plain),
+    open: (sealed) => openSecret(secrets, sealed),
+  },
+});
 
 async function until(check: () => boolean | Promise<boolean>, message: string): Promise<void> {
   for (let attempt = 0; !(await check()); attempt += 1) {
@@ -100,7 +82,7 @@ const server = createServer((request, response) => {
         () => response.writeHead(404).end(),
       );
 
-    if (basename(path).startsWith("clerk-")) {
+    if (basename(path).startsWith("account-")) {
       accountModuleRequests += 1;
 
       if (accountModuleMode === "hold") releaseAccountModule.push(serve);
@@ -161,7 +143,11 @@ async function run(): Promise<void> {
 
   process.env.ELECTRON_RENDERER_URL = origin;
   const scheme = ACCOUNT_SCHEMES.development;
-  const rendererUrl = registerRenderer({ scheme, frontendApiHost: "clerk.example.com" });
+  const rendererUrl = registerRenderer({
+    scheme,
+    frontendApiHost: "clerk.example.com",
+    shellRoot: join(app.getPath("temp"), "nyte-account-test-shell"),
+  });
   let window: BrowserWindow | undefined;
 
   const account = registerAccount({
@@ -212,7 +198,7 @@ async function run(): Promise<void> {
   assert.equal(clerkRequests, 0);
   assert.equal(accountModuleRequests, 0);
   assert.equal(await contents.executeJavaScript(count), "1");
-  assert.deepEqual(cipherCalls, []);
+  assert.equal(keyReads, 0);
 
   const cancelled = account.requestSessionToken({ signal });
   const cancellation = assert.rejects(cancelled, AccountCancelled);
@@ -235,7 +221,9 @@ async function run(): Promise<void> {
   accountModuleMode = "serve";
   await until(
     async () =>
-      (await contents.executeJavaScript("window.nyteAccountRuntime !== undefined")) === true,
+      (await contents.executeJavaScript(
+        'performance.getEntriesByType("resource").some((entry) => entry.name.includes("/account-") && entry.responseEnd > 0)',
+      )) === true,
     "Account module did not finish loading",
   );
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -297,11 +285,14 @@ async function run(): Promise<void> {
     })()`),
     { restored: "client.zero", kept: "client.one", cleared: null },
   );
-  await until(
-    async () =>
-      Value.Equal(await store.load(), { sealed: seal("client.two"), label: "ada@example.com" }),
-    "The new token was not sealed to disk",
-  );
+  await until(async () => {
+    const kept = await store.load();
+
+    return (
+      kept?.label === "ada@example.com" &&
+      (await openSecret(secrets, kept.sealed).catch(() => "")) === "client.two"
+    );
+  }, "The new token was not sealed to disk");
   assert.equal((await stat(saved)).mode & 0o777, 0o600);
 
   const redirectUrl = `${scheme}://${ACCOUNT_HOST}/`;
@@ -430,7 +421,7 @@ async function run(): Promise<void> {
   await assert.rejects(closed, AccountCancelled);
   window = undefined;
   await account.close();
-  assert.equal(cipherCalls.filter((call) => call === "open").length, 1);
+  assert.equal(store.opens, 1);
   server.close();
   await writeFile(join(directory, "result.txt"), "passed");
   app.exit(0);

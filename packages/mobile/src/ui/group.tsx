@@ -1,56 +1,20 @@
-import { Children, createContext, Fragment, use, type ReactNode } from "react";
+import { Children, Fragment, type ReactNode } from "react";
 import { Pressable } from "react-native";
 import { Link, type Href } from "expo-router";
 import { css, html } from "react-strict-dom";
 import { SymbolView } from "expo-symbols";
 import { controls, list, radii, spacing, tokens, useTheme } from "../theme.ts";
 
-// The chevron and outbound arrow are chrome rather than content, so they take
-// the tertiary grey of whichever appearance is active.
-const flat = createContext(false);
-
-/**
- * Rows stacked under a section header. The default card draws a rounded surface
- * behind its rows; `flat` rows sit on the page itself, the way the desktop
- * client's account page does, and their hairlines start under the label. The
- * card draws the hairlines between its rows, so a row never carries the
- * separator's inset into its own content.
- */
-export function Group({
-  children,
-  separator = "tile",
-  variant = "card",
-}: {
-  children: ReactNode;
-  /** Where the hairlines start: under the leading tile, or under the label. */
-  separator?: "tile" | "label";
-  /** `flat` drops the card surface and pads rows to the page gutter. */
-  variant?: "card" | "flat";
-}) {
-  const isFlat = variant === "flat";
-
+export function Group({ children }: { children: ReactNode }) {
   return (
-    <flat.Provider value={isFlat}>
-      <html.div style={[styles.group, isFlat && styles.flatGroup]}>
-        {Children.toArray(children).map((child, index) => (
-          <Fragment key={index}>
-            {index === 0 ? null : (
-              <html.div
-                style={[
-                  styles.separator,
-                  isFlat
-                    ? styles.pastRing
-                    : separator === "tile"
-                      ? styles.pastTile
-                      : styles.pastLabel,
-                ]}
-              />
-            )}
-            {child}
-          </Fragment>
-        ))}
-      </html.div>
-    </flat.Provider>
+    <html.div style={styles.group}>
+      {Children.toArray(children).map((child, index) => (
+        <Fragment key={index}>
+          {index === 0 ? null : <html.div style={styles.separator} />}
+          {child}
+        </Fragment>
+      ))}
+    </html.div>
   );
 }
 
@@ -79,14 +43,7 @@ export function GroupRow({
   | { href?: never; onClick?: () => void; trail?: "link"; role?: "switch"; checked?: boolean }
 )) {
   const theme = useTheme();
-  const isFlat = use(flat);
-
-  const style = [
-    styles.row,
-    isFlat && styles.flatRow,
-    align === "center" && styles.centered,
-    disabled && styles.disabled,
-  ];
+  const style = [styles.row, align === "center" && styles.centered, disabled && styles.disabled];
 
   const content = (
     <>
@@ -150,36 +107,27 @@ const styles = css.create({
     borderRadius: radii.card,
     overflow: "hidden",
   },
-  flatGroup: {
-    marginInline: 0,
-    backgroundColor: "transparent",
-    borderRadius: 0,
-    overflow: "visible",
-  },
   row: {
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "stretch",
-    minHeight: controls.touchTarget,
-    paddingInline: spacing.md,
-    paddingBlock: 10,
+    minHeight: controls.fillHeight - spacing.md * 2,
+    paddingInline: spacing.lg,
+    paddingBlock: spacing.md,
     gap: spacing.md,
     borderWidth: 0,
     backgroundColor: { default: "transparent", ":active": tokens.fill },
     fontFamily: "inherit",
     fontSize: "inherit",
   },
-  flatRow: { paddingInline: list.gutter },
   centered: { justifyContent: "center" },
   chevron: { display: "flex", alignItems: "center", flexShrink: 0, marginInlineStart: "auto" },
   disabled: { opacity: controls.disabledOpacity },
-  // Inset to the content column, so the hairline starts under the text.
   separator: {
     height: controls.hairline,
     backgroundColor: tokens.separator,
+    marginInlineStart: spacing.lg + list.tile + spacing.md,
+    marginInlineEnd: spacing.lg,
   },
-  pastTile: { marginInlineStart: spacing.md + list.tile + spacing.md },
-  pastLabel: { marginInlineStart: spacing.md },
-  pastRing: { marginInlineStart: list.gutter + list.ring + spacing.md },
 });

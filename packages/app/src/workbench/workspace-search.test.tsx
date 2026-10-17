@@ -1,12 +1,10 @@
+/** The Electron preload is absent in Node. React, styles and query observers run unchanged. */
 import assert from "node:assert/strict";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, test, vi } from "vitest";
 import type { ComponentProps } from "react";
-import type { WorkspaceSearchResult } from "@nyte-ai/protocol";
-import { WorkspaceSearch, WorkspaceSearchResults } from "./workspace-search.tsx";
+import { WorkspaceSearchResults } from "./workspace-search.tsx";
 
-// The Electron preload is absent in Node. React, styles and query observers run unchanged.
 vi.hoisted(() => vi.stubGlobal("window", { nyte: {} }));
 
 afterAll(() => vi.unstubAllGlobals());
@@ -15,7 +13,10 @@ function renderResults(state: ComponentProps<typeof WorkspaceSearchResults>["sta
   return renderToStaticMarkup(<WorkspaceSearchResults state={state} onOpen={() => undefined} />);
 }
 
-const result: WorkspaceSearchResult = {
+const result: Extract<
+  ComponentProps<typeof WorkspaceSearchResults>["state"],
+  { kind: "ready" }
+>["result"] = {
   files: [
     {
       path: "/workspace/src/hello.ts",
@@ -29,42 +30,13 @@ const result: WorkspaceSearchResult = {
     {
       path: "/workspace/test/hello.ts",
       displayPath: "test/hello.ts",
-      source: "draft",
+      source: "disk",
       matches: [{ line: 3, column: 4, length: 5, snippet: "// HELLO", snippetColumn: 1 }],
     },
   ],
   matchCount: 3,
   truncated: false,
-  skipped: null,
 };
-
-test("search starts idle with named matching controls and no replace or ignore override", () => {
-  const client = new QueryClient();
-
-  try {
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <WorkspaceSearch onOpen={() => undefined} />
-      </QueryClientProvider>,
-    );
-
-    assert.match(html, /<input[^>]*aria-label="Search workspace"/);
-
-    for (const label of ["Match case", "Match whole word", "Use regular expression"]) {
-      assert.match(
-        html,
-        new RegExp(`<button(?=[^>]*aria-label="${label}")[^>]*aria-pressed="false"`),
-      );
-    }
-
-    assert.match(html, /<button[^>]*aria-label="Search filters"[^>]*aria-expanded="false"/);
-    assert.match(html, /Files to include/);
-    assert.match(html, /Files to exclude/);
-    assert.doesNotMatch(html, /Searching…|No matches found|[Rr]eplace|Respect ignore files/);
-  } finally {
-    client.clear();
-  }
-});
 
 test("results are grouped by relative path with accessible line and column destinations", () => {
   const html = renderResults({ kind: "ready", result });
@@ -74,7 +46,6 @@ test("results are grouped by relative path with accessible line and column desti
   assert.match(html, /<button[^>]*aria-label="src\/hello.ts, line 8, column 15:/);
   assert.match(html, /<button[^>]*aria-label="src\/hello.ts, line 12, column 9:/);
   assert.match(html, /<button[^>]*aria-label="test\/hello.ts, line 3, column 4:/);
-  assert.match(html, /Unsaved/);
   assert.doesNotMatch(html, /Search limit reached|files skipped/);
 });
 
@@ -189,8 +160,11 @@ test("partial results never claim a complete workspace search", () => {
 
   assert.match(html, /3 matches in 2 files/);
   assert.match(html, /Search limit reached. Narrow your query or filters/);
-  // ripgrep cannot count what it skipped, so the panel never claims a number.
-  assert.doesNotMatch(html, /files skipped/);
+  assert.doesNotMatch(
+    html,
+    /files skipped/,
+    "ripgrep cannot count what it skipped, so the panel never claims a number",
+  );
   assert.match(html, /<mark[^>]*>Hello<\/mark>/);
 
   const empty = renderResults({

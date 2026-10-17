@@ -1,30 +1,47 @@
-import { glyph, row, radius, target } from "@nyte-ai/ui/schema.stylex";
+import { glyph, input, media, radius, row, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type {
-  WorkspaceSearchInput,
-  WorkspaceSearchMatch,
-  WorkspaceSearchResult,
-} from "@nyte-ai/protocol";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
-import { useWorkspaceSearch } from "../queries.ts";
+import { useHostState, useWorkspaceSearch } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 
-type SearchLocation = Pick<WorkspaceSearchResult["files"][number], "path" | "displayPath"> &
-  Pick<WorkspaceSearchMatch, "line" | "column" | "length">;
+interface SearchMatch {
+  readonly line: number;
+  readonly column: number;
+  readonly length: number;
+  readonly snippet: string;
+  readonly snippetColumn: number;
+}
+
+interface SearchFile {
+  readonly path: string;
+  readonly displayPath: string;
+  readonly source: "disk";
+  readonly matches: readonly SearchMatch[];
+}
+
+interface SearchResult {
+  readonly matchCount: number;
+  readonly truncated: boolean;
+  readonly files: readonly SearchFile[];
+}
+
+type SearchLocation = Pick<SearchFile, "path" | "displayPath"> &
+  Pick<SearchMatch, "line" | "column" | "length">;
 
 interface WorkspaceSearchProps {
   readonly onOpen: (location: SearchLocation) => void;
-  readonly drafts?: WorkspaceSearchInput["drafts"];
+  readonly drafts?: readonly { readonly path: string; readonly contents: string }[];
   readonly active?: boolean;
 }
 
@@ -32,7 +49,46 @@ type SearchState =
   | { readonly kind: "idle" }
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
-  | { readonly kind: "ready"; readonly result: WorkspaceSearchResult };
+  | { readonly kind: "ready"; readonly result: SearchResult };
+
+function searchResult(
+  root: string,
+  found: {
+    readonly matches: readonly {
+      readonly path: string;
+      readonly line: number;
+      readonly column: number;
+      readonly length: number;
+      readonly text: string;
+    }[];
+    readonly truncated: boolean;
+  },
+): SearchResult {
+  const files = new Map<string, SearchMatch[]>();
+
+  for (const match of found.matches) {
+    const matches = files.get(match.path) ?? [];
+    matches.push({
+      line: match.line,
+      column: match.column,
+      length: match.length,
+      snippet: match.text,
+      snippetColumn: 1,
+    });
+    files.set(match.path, matches);
+  }
+
+  return {
+    matchCount: found.matches.length,
+    truncated: found.truncated,
+    files: [...files].map(([path, matches]) => ({
+      path: `${root.replace(/\/$/u, "")}/${path}`,
+      displayPath: path,
+      source: "disk",
+      matches,
+    })),
+  };
+}
 
 const styles = create({
   panel: {
@@ -42,59 +98,81 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     color: role.contentPrimary,
   },
-  controls: { display: "flex", flexDirection: "column", gap: 4, padding: 8, flexShrink: 0 },
-  toolbar: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
+  controls: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.s1,
+    padding: space.s2,
+    flexShrink: 0,
+  },
+  toolbar: { display: "flex", alignItems: "center", gap: space.s2, minWidth: 0 },
   /** The match options sit inside the field and show once it is in use. */
   searchField: {
-    "--_search-options-opacity": { default: "0", ":hover": "1", ":focus-within": "1" },
-    "--_search-options-events": { default: "none", ":hover": "auto", ":focus-within": "auto" },
+    "--_search-options-opacity": {
+      default: "0",
+      ":hover": { [media.hover]: "1" },
+      ":focus-within": "1",
+    },
+    "--_search-options-events": {
+      default: "none",
+      ":hover": { [media.hover]: "auto" },
+      ":focus-within": "auto",
+    },
     "--_search-options-space": {
       default: "0px",
-      ":hover": `calc(3 * ${target.min} + 2px)`,
+      ":hover": { [media.hover]: `calc(3 * ${target.min} + 2px)` },
       ":focus-within": `calc(3 * ${target.min} + 2px)`,
     },
     position: "relative",
+    paddingInlineEnd: `calc(${input.paddingEndMd} + var(--_search-options-space))`,
   },
   populated: {
     "--_search-options-opacity": "1",
     "--_search-options-events": "auto",
     "--_search-options-space": `calc(3 * ${target.min} + 2px)`,
   },
-  searchInput: { paddingInlineEnd: "var(--_search-options-space)" },
-  searchIcon: { display: "inline-flex", alignItems: "center", height: glyph.lg, marginTop: -1 },
+  searchIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    height: glyph.lg,
+    marginTop: `calc(${space.px} * -1)`,
+  },
   field: { flex: 1 },
   toggles: {
     position: "absolute",
     insetBlock: 0,
-    insetInlineEnd: 4,
+    insetInlineEnd: space.s1,
     display: "flex",
     alignItems: "center",
-    gap: 1,
+    gap: space.px,
     opacity: "var(--_search-options-opacity)",
     pointerEvents: "var(--_search-options-events)",
     transitionProperty: "opacity",
     transitionDuration: motion.durationFast,
     transitionTimingFunction: motion.easeOut,
   },
-  filters: { display: "flex", flexDirection: "column", gap: 4 },
-  results: { flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", paddingBottom: 8 },
-  status: { margin: 0, paddingBlock: 6, paddingInline: 8, color: role.contentSecondary },
+  filters: { display: "flex", flexDirection: "column", gap: space.s1 },
+  results: { flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", paddingBottom: space.s2 },
+  status: {
+    margin: 0,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2,
+    color: role.contentSecondary,
+  },
   error: { color: role.contentSecondary, overflowWrap: "anywhere" },
   group: { margin: 0, padding: 0, listStyleType: "none" },
   fileHeading: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     margin: 0,
     minHeight: workbench.headingHeight,
-    paddingInline: 8,
+    paddingInline: space.s2,
     color: role.contentSecondary,
     fontSize: type.fontBase,
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
   },
   path: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   count: {
@@ -102,11 +180,9 @@ const styles = create({
     alignItems: "center",
     flexShrink: 0,
     height: type.leadingXs,
-    paddingInline: 4,
+    paddingInline: space.s1,
     borderRadius: radius.pill,
     backgroundColor: role.bgMutedTranslucent,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
     fontVariantNumeric: "tabular-nums",
     color: role.contentSecondary,
   },
@@ -114,18 +190,19 @@ const styles = create({
   result: {
     display: "flex",
     alignItems: "baseline",
-    gap: 8,
+    gap: space.s2,
     minHeight: row.heightMd,
     width: "100%",
-    paddingBlock: 2,
-    paddingInlineStart: 32,
-    paddingInlineEnd: 8,
-    marginBlockEnd: 2,
+    paddingBlock: space.s0_5,
+    paddingInlineStart: space.s8,
+    paddingInlineEnd: space.s2,
+    marginBlockEnd: space.s0_5,
     borderRadius: radius.indicator,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { [media.hover]: role.bgHover },
+    },
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
   snippet: {
     display: "flex",
@@ -189,6 +266,7 @@ export function WorkspaceSearch({
   const search = useWorkspaceSearch(
     !active || query === "" || waiting ? undefined : debouncedInput,
   );
+  const root = useHostState().data.workspace?.path ?? "";
 
   const state: SearchState =
     query === ""
@@ -199,10 +277,10 @@ export function WorkspaceSearch({
           ? { kind: "error", message: search.error.message }
           : search.data === undefined
             ? { kind: "loading" }
-            : { kind: "ready", result: search.data };
+            : { kind: "ready", result: searchResult(root, search.data) };
 
   return (
-    <section aria-label="Workspace search" {...props(styles.panel)}>
+    <section aria-label="Workspace search" {...props(text.base, styles.panel)}>
       <div {...props(styles.controls)}>
         <div {...props(styles.toolbar)}>
           <InputGroup xstyle={[styles.field, styles.searchField, query !== "" && styles.populated]}>
@@ -217,7 +295,6 @@ export function WorkspaceSearch({
               spellCheck={false}
               value={query}
               onValueChange={setQuery}
-              xstyle={styles.searchInput}
             />
             <div role="group" aria-label="Search options" {...props(styles.toggles)}>
               <Toggle
@@ -339,10 +416,7 @@ export function WorkspaceSearchResults({
             <span title={file.displayPath} {...props(styles.path)}>
               {file.displayPath}
             </span>
-            <span {...props(styles.count)}>{file.matches.length}</span>
-            {file.source === "draft" && (
-              <span {...props(intent.warning, styles.draft)}>Unsaved</span>
-            )}
+            <span {...props(text.xs, styles.count)}>{file.matches.length}</span>
           </h3>
           <ul {...props(styles.group)}>
             {file.matches.map((match) => {
@@ -362,7 +436,7 @@ export function WorkspaceSearchResults({
                         length: match.length,
                       })
                     }
-                    xstyle={styles.result}
+                    xstyle={[text.base, styles.result]}
                   >
                     <code {...props(styles.snippet)}>
                       <span {...props(styles.prefix)}>{match.snippet.slice(0, start)}</span>

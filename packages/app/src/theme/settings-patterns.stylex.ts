@@ -1,14 +1,14 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { settings } from "./schema.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const settingsPatterns = create({
   pageTitle: {
     margin: 0,
     color: role.contentPrimary,
     fontSize: settings.pageTitleSize,
-    fontWeight: 500,
+    fontWeight: type.weightMedium,
     lineHeight: settings.pageTitleLineHeight,
     letterSpacing: 0,
   },
@@ -21,14 +21,14 @@ export const settingsPatterns = create({
     display: "flex",
     flexDirection: "column",
     alignSelf: "stretch",
-    gap: 4,
-    paddingInline: 4,
+    gap: space.s1,
+    paddingInline: space.s1,
   },
   sectionTitle: {
     margin: 0,
     color: role.contentPrimary,
     fontSize: settings.sectionTitleSize,
-    fontWeight: 500,
+    fontWeight: type.weightMedium,
     lineHeight: settings.sectionTitleLineHeight,
   },
   sectionDescription: {
@@ -44,23 +44,8 @@ export const settingsPatterns = create({
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
-  row: {
+  rowRule: {
     position: "relative",
-    display: "flex",
-    flexDirection: {
-      default: "row",
-      "@media (max-width: 500px)": "column",
-      "@container (max-width: 500px)": "column",
-    },
-    flexWrap: "wrap",
-    alignItems: "center",
-    alignSelf: "stretch",
-    gap: {
-      default: 20,
-      "@media (max-width: 500px)": 12,
-      "@container (max-width: 500px)": 12,
-    },
-    padding: settings.rowPadding,
     "::before": {
       position: "absolute",
       insetInline: settings.rowPaddingInline,
@@ -71,11 +56,28 @@ export const settingsPatterns = create({
     },
     ":first-child::before": { display: "none" },
   },
-  rowDetailed: { rowGap: 8 },
+  row: {
+    display: "flex",
+    flexDirection: {
+      default: "row",
+      "@media (max-width: 500px)": "column",
+      "@container (max-width: 500px)": "column",
+    },
+    flexWrap: "wrap",
+    alignItems: "center",
+    alignSelf: "stretch",
+    gap: {
+      default: space.s5,
+      "@media (max-width: 500px)": space.s3,
+      "@container (max-width: 500px)": space.s3,
+    },
+    padding: settings.rowPadding,
+  },
+  rowDetailed: { rowGap: space.s2 },
   rowCopy: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: space.s0_5,
     width: {
       default: "auto",
       "@media (max-width: 500px)": "100%",
@@ -83,7 +85,7 @@ export const settingsPatterns = create({
     },
     minWidth: 0,
     maxWidth: "100%",
-    overflow: "hidden",
+    overflow: "clip",
     flex: {
       default: "1 1 0",
       "@media (max-width: 500px)": "0 0 auto",
@@ -94,7 +96,7 @@ export const settingsPatterns = create({
     overflow: "hidden",
     color: role.contentPrimary,
     fontSize: type.fontBase,
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
     lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
     textOverflow: "ellipsis",
@@ -102,7 +104,7 @@ export const settingsPatterns = create({
   rowDescription: {
     color: role.contentSecondary,
     fontSize: type.fontBase,
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
     lineHeight: type.leadingBase,
     overflowWrap: "break-word",
   },

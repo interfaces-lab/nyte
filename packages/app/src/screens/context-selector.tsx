@@ -1,4 +1,5 @@
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Button } from "@nyte-ai/ui/button";
@@ -14,28 +15,26 @@ import {
   resolveClientAction,
 } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
-import { useHostState } from "../queries.ts";
 import { contextStyles } from "./context-selector.stylex.ts";
 
-export function ContextHint({
+function ContextHint({
   label,
   value,
   keys = [],
 }: Partial<Pick<KbdProps, "keys">> & { readonly label: string; readonly value: string }) {
   return (
     <>
-      <div {...props(contextStyles.hintHeading)}>
+      <div {...props(text.base, contextStyles.hintHeading)}>
         <span>{label}</span>
         {keys.length > 0 && (
           <span {...props(contextStyles.keys)}>
             {keys.map((key) => (
-              <Kbd key={key} keys={[key]} xstyle={contextStyles.key} />
+              <Kbd key={key} keys={[key]} keycap />
             ))}
           </span>
         )}
       </div>
-      <div {...props(contextStyles.hintValue, contextStyles.text)}>{value}</div>
+      <div {...props(text.sm, contextStyles.hintValue, contextStyles.text)}>{value}</div>
     </>
   );
 }
@@ -53,8 +52,7 @@ export function ContextSelector({
   readonly active: boolean;
   readonly children: ReactNode;
 }) {
-  const host = useHostState();
-  const mac = macPlatform(host.data?.platform);
+  const mac = nyte.platform === "darwin";
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
 

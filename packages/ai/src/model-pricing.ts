@@ -1,16 +1,10 @@
-/**
- * Service-tier and fast-mode pricing multipliers.
- *
- * Based on https://github.com/earendil-works/pi/blob/a6ca861024ddc1492af14e5386a3d3e2bfe8ab64/packages/ai/src/api/openai-responses.ts
- * Synced with pi a6ca86102.
- */
 import type { Api, Model, Usage } from "./types.ts";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 
 export const ANTHROPIC_FAST_MODE_COST_MULTIPLIER = 2;
 
 /** Shared by request accounting and model-selection previews. GPT-6 reports Fast mode as a `fast` tier the SDK types do not list. */
-export function getServiceTierCostMultiplier(
+function getServiceTierCostMultiplier(
   model: Pick<Model<Api>, "id">,
   serviceTier: ResponseCreateParamsStreaming["service_tier"] | "fast",
 ): number {
@@ -27,7 +21,7 @@ export function getServiceTierCostMultiplier(
 
 export function applyServiceTierPricing(
   usage: Usage,
-  serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
+  serviceTier: ResponseCreateParamsStreaming["service_tier"] | "fast" | undefined,
   model: Pick<Model<Api>, "id">,
 ) {
   const multiplier = getServiceTierCostMultiplier(model, serviceTier ?? undefined);

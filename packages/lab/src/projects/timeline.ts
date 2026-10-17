@@ -1,21 +1,12 @@
-/**
- * One project, scripted: a coordinator that delegates a dialog migration to
- * agents, answers what it can from shared context, and asks you only for the
- * calls it cannot make. Each step adds to the conversation and updates the
- * agents and files; the page folds every step up to the one shown.
- */
+type AgentPlace = "cloud" | "local";
 
-export type AgentPlace = "cloud" | "local";
-
-/** Done waits on a merge or a read; archived is the coordinator putting it away. */
-export type AgentState = "working" | "done" | "archived";
+type AgentState = "working" | "done" | "archived";
 
 export interface Agent {
   readonly id: string;
   readonly task: string;
   readonly state: AgentState;
   readonly place: AgentPlace;
-  /** What it produced: a pull request, a context file, a check. */
   readonly result?: string;
 }
 
@@ -29,7 +20,6 @@ export interface Decision {
   readonly question: string;
   readonly detail: string;
   readonly action: string;
-  /** What you say when you take the action; the next step opens with it. */
   readonly reply: string;
 }
 
@@ -37,7 +27,6 @@ export type Entry =
   | { readonly kind: "you"; readonly text: string }
   | { readonly kind: "coordinator"; readonly text: string }
   | { readonly kind: "delegated"; readonly title: string; readonly agents: readonly string[] }
-  /** An agent asked; the coordinator answered from context without waking you. */
   | {
       readonly kind: "handled";
       readonly question: string;
@@ -45,7 +34,6 @@ export type Entry =
       readonly source: string;
     }
   | { readonly kind: "archived"; readonly text: string }
-  /** A subscription fired. */
   | { readonly kind: "signal"; readonly source: string; readonly text: string }
   | { readonly kind: "context"; readonly path: string; readonly text: string }
   | Decision;
@@ -53,9 +41,7 @@ export type Entry =
 interface Step {
   readonly label: string;
   readonly entries: readonly Entry[];
-  /** Upserted by id. */
   readonly agents: readonly Agent[];
-  /** Upserted by path. */
   readonly context: readonly ContextFile[];
 }
 
@@ -253,7 +239,6 @@ export interface ProjectState {
   readonly entries: readonly Entry[];
   readonly agents: ReadonlyMap<string, Agent>;
   readonly context: readonly (ContextFile & { readonly fresh: boolean })[];
-  /** A decision is open only on the step that raised it. */
   readonly pending: Decision | undefined;
 }
 
@@ -277,13 +262,11 @@ export function projectAt(step: number): ProjectState {
   };
 }
 
-/** The other projects in the rail, drawn but not scripted. */
 export const OTHER_PROJECTS = [
   { id: "garden", name: "Design system gardening", working: 2 },
   { id: "inbox", name: "Sidebar inbox", working: 0 },
 ] as const;
 
-/** One-off chats keep a folded shelf under the projects. */
 export const LOOSE_CHATS = [
   "Explain archive undo in session-actions",
   "Why is cold start slow on Intel?",

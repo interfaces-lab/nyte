@@ -2,6 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import { buttonStyle, type ButtonSize, type ButtonVariant } from "./button.tsx";
+import { mergeStyleProps } from "./style.ts";
 
 const chatButtonVariants = cva("cn-button", {
   variants: {
@@ -70,17 +71,14 @@ export function ChatButton({
       data-slot="button"
       {...props}
       render={render}
-      className={(state) =>
-        cn(
-          appearance?.className,
-          chatButtonVariants({ variant, size }),
-          className instanceof Function ? className(state) : className,
-        )
-      }
-      style={(state) => ({
-        ...appearance?.style,
-        ...(style instanceof Function ? style(state) : style),
-      })}
+      {...mergeStyleProps(
+        {
+          className: cn(appearance?.className, chatButtonVariants({ variant, size })),
+          style: appearance?.style,
+        },
+        className,
+        style,
+      )}
     />
   );
 }

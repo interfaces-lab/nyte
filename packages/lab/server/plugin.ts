@@ -1,55 +1,61 @@
-/**
- * Serves real core from the lab's dev server. `/core/nyte` is the Nyte wire
- * (`@nyte-ai/server`: JSON calls and SSE watches) that `@nyte-ai/client`
- * speaks; `/core/review` is the Review page's API in `review.ts`. Core opens
- * on the first request, so the lab still starts without a signed-in model,
- * and the static build has neither route.
- */
 import { join } from "node:path";
-import { createNyteServer, type NyteServer } from "@nyte-ai/server";
-import { requestListener } from "@nyte-ai/server/node";
+import { ALL_AUTHORITY, LOCAL, type Listener } from "@nyte-ai/core";
 import type { Plugin } from "vite";
 import { canvasRoutes } from "./canvas-routes.ts";
 import { openRepo } from "./git.ts";
 import { CACHE_DIR, openReviewHost, type ReviewHost } from "./host.ts";
-import { openRegistry } from "./registry.ts";
+import { Registry } from "./registry.ts";
 import { createReviews } from "./review.ts";
 import { labPlugins } from "./reviewer.ts";
+import { requestListener } from "./http.ts";
 
 interface Opened {
   readonly host: ReviewHost;
-  readonly server: NyteServer;
+  readonly server: Listener;
   readonly review: (request: Request) => Promise<Response>;
 }
 
-function messageOf(cause: unknown): string {
+function describeError(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
 async function open(log: (message: string) => void): Promise<Opened> {
   const repo = await openRepo();
-  const registry = openRegistry(join(CACHE_DIR, "reviews.json"));
+  const registry = new Registry(join(CACHE_DIR, "reviews.json"));
 
   const host = await openReviewHost({
     plugins: labPlugins({ repo, registry }),
-    onDiagnostic: log,
   });
 
   log(
     `core is open on ${repo.root}; new briefs use ${host.config.model?.id ?? "the default model"}`,
   );
 
-  return {
-    host,
-    server: createNyteServer({
-      sdk: host.sdk,
-      version: "lab",
-      // The dev server already decides who reaches it.
-      auth: { kind: "custom", authorize: () => ({ kind: "allow" }) },
-      onError: (failure) => log(`${failure.route} failed: ${messageOf(failure.cause)}`),
-    }),
-    review: await createReviews({ host, repo, registry, log }),
-  };
+  let listener: Listener | undefined;
+
+  try {
+    listener = await host.sdk.listen({
+      transport: { kind: "fetch" },
+      auth: {
+        kind: "custom",
+        authorize: () => ({ principal: LOCAL, authority: ALL_AUTHORITY }),
+      },
+    });
+
+    return {
+      host,
+      server: listener,
+      review: await createReviews({ host, repo, registry, log }),
+    };
+  } catch (cause) {
+    try {
+      await listener?.close();
+    } finally {
+      await host.close();
+    }
+
+    throw cause;
+  }
 }
 
 export function reviewCore(): Plugin {
@@ -65,7 +71,7 @@ export function reviewCore(): Plugin {
       const core = (): Promise<Opened> => {
         opened ??= open(log).catch((cause: unknown) => {
           opened = undefined;
-          log(`core did not open: ${messageOf(cause)}`);
+          log(`core did not open: ${describeError(cause)}`);
           throw cause;
         });
 
@@ -78,15 +84,15 @@ export function reviewCore(): Plugin {
             try {
               return await handle(await core(), request);
             } catch (cause) {
-              return Response.json({ error: messageOf(cause) }, { status: 503 });
+              return Response.json({ error: describeError(cause) }, { status: 503 });
             }
           },
-          { onError: (cause) => log(messageOf(cause)) },
+          { onError: (cause) => log(describeError(cause)) },
         );
 
       server.middlewares.use(
         "/core/canvas",
-        requestListener(canvasRoutes(core), { onError: (cause) => log(messageOf(cause)) }),
+        requestListener(canvasRoutes(core), { onError: (cause) => log(describeError(cause)) }),
       );
       server.middlewares.use(
         "/core/nyte",
@@ -98,10 +104,15 @@ export function reviewCore(): Plugin {
       );
 
       server.httpServer?.once("close", () => {
-        void opened?.then(async (live) => {
-          live.server.close();
-          await live.host.close();
-        });
+        void opened
+          ?.then(async (live) => {
+            try {
+              await live.server.close();
+            } finally {
+              await live.host.close();
+            }
+          })
+          .catch((cause: unknown) => log(`core did not close: ${describeError(cause)}`));
       });
     },
   };

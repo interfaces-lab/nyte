@@ -8,6 +8,7 @@ import {
   releaseOnHost,
   RELEASE_TIMEOUT_MS,
 } from "@nyte-ai/connect/enrollment";
+import type { DeviceRole } from "@nyte-ai/connect";
 import { AcceptanceError } from "./account-copy.ts";
 import {
   accountConnection,
@@ -19,12 +20,27 @@ import {
 } from "./account-device.ts";
 import type { AccountDevice } from "./account-device.ts";
 import { webBridge } from "./install.ts";
+import { connectPinned } from "./pins.ts";
+import type { PinRoute } from "./pins.ts";
+
+export function accountRoute(
+  device: Pick<AccountDevice, "origin" | "ownerId" | "environmentId">,
+): PinRoute {
+  return {
+    kind: "account",
+    origin: device.origin,
+    ownerId: device.ownerId,
+    environmentId: device.environmentId,
+  };
+}
 
 export async function connectAccountEnvironment(input: {
   readonly broker: BrokerClient;
   readonly config: AccountConfig;
   readonly ownerId: string;
   readonly environment: EnvironmentSummary;
+  readonly role: DeviceRole;
+  readonly repair: boolean;
   readonly signal: AbortSignal;
 }): Promise<AccountDevice | undefined> {
   const secret = await createDeviceSecret(deviceCrypto);
@@ -37,6 +53,7 @@ export async function connectAccountEnvironment(input: {
       clientId: readClientId(sessionStorage, input.ownerId),
       clientName: "Web browser",
       digest: secret.digest,
+      role: input.role,
     },
     signal: input.signal,
   });
@@ -48,6 +65,7 @@ export async function connectAccountEnvironment(input: {
     deviceId: enrolled.deviceId,
     name: input.environment.name,
     token: secret.token,
+    role: input.role,
   };
 
   const connection = {
@@ -68,12 +86,20 @@ export async function connectAccountEnvironment(input: {
     if (acceptance === "cancelled" || input.signal.aborted) return undefined;
 
     if (acceptance !== "accepted") throw new AcceptanceError(acceptance);
-    await webBridge.connect(connection, {
-      signal: AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
-      relay: true,
+    await connectPinned({
+      bridge: webBridge,
+      storage: localStorage,
+      route: accountRoute(device),
+      connection,
+      repair: input.repair,
+      options: {
+        signal: AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
+        relay: true,
+      },
     });
 
     if (input.signal.aborted) return undefined;
+
     saveAccountDevice(sessionStorage, device);
     kept = true;
 

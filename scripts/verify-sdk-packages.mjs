@@ -21,17 +21,9 @@ const root = realpathSync(fileURLToPath(new URL("../", import.meta.url)));
 
 const artifacts = join(root, "dist/sdk");
 
-const names = [
-  "telemetry",
-  "schema",
-  "ai",
-  "protocol",
-  "client",
-  "core",
-  "server",
-  "plugin",
-  "host",
-].map((name) => `@nyte-ai/${name}`);
+const names = ["schema", "ai", "protocol", "core", "plugin", "host", "sdk"].map(
+  (name) => `@nyte-ai/${name}`,
+);
 
 assert.equal(process.argv.length, 2, "Usage: bun scripts/verify-sdk-packages.mjs");
 
@@ -95,71 +87,63 @@ function exportTargets(value, condition = "default") {
 const fixture = `import assert from "node:assert/strict";
 import { join } from "node:path";
 import process from "node:process";
-import { contentText, type Api, type Model } from "@nyte-ai/schema";
-import { WIRE_VERSION } from "@nyte-ai/protocol";
-import { NOOP_TELEMETRY_CONTEXT } from "@nyte-ai/telemetry";
-import { createNyteModels, uuidv7 } from "@nyte-ai/ai";
-import { createNyte } from "@nyte-ai/core";
-import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
-import { SqliteStore, WorkerStore, type Store } from "@nyte-ai/core/store";
-import { createNyteServer } from "@nyte-ai/server";
-import { createNyteClient, NyteWireError } from "@nyte-ai/client";
-import { define } from "@nyte-ai/plugin";
-import { createHost, nyteHome } from "@nyte-ai/host";
+import { asId } from "@nyte-ai/schema";
+import { operations } from "@nyte-ai/protocol";
+import { uuidv7 } from "@nyte-ai/ai";
+import type { Store } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
+import type { Plugin } from "@nyte-ai/plugin/core";
+import { sqliteStore } from "@nyte-ai/host";
+import { fakeModels } from "@nyte-ai/host/bench";
+import { chatOnlyProvider } from "@nyte-ai/host/providers";
+import { SdkError, sdk } from "@nyte-ai/sdk";
 
 const directory = process.cwd();
-const model: Model<Api> = {
-  id: "sdk-smoke", name: "SDK smoke", provider: "openai", api: "openai-responses",
-  baseUrl: "https://example.invalid", reasoning: false, input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 8192, maxTokens: 1024,
-};
 globalThis.fetch = async () => { throw new Error("Smoke verification must not use the network"); };
-assert.equal(contentText([{ type: "text", text: "packed" }]), "packed");
+assert.equal(asId<"session">("packed"), "packed");
 assert.ok(uuidv7().length > 0);
-assert.equal(define({ id: "smoke", setup: () => undefined }).id, "smoke");
-assert.equal(nyteHome(), join(directory, "home"));
-assert.equal(await NOOP_TELEMETRY_CONTEXT.startSpan({ name: "smoke" }, () => 42), 42);
+assert.ok(operations().length > 0);
+const smokePlugin = { id: "smoke" } satisfies Plugin;
+
+function open(store: Store) {
+  return sdk.open({
+    store,
+    models: fakeModels({ fallback: { content: [{ type: "text", text: "Hello." }] } }).models,
+    plugins: [{ id: "chat-only", environment: chatOnlyProvider() }, smokePlugin],
+    workspace: { kind: "chat-only", locator: null },
+    home: join(directory, "home"),
+  });
+}
 
 async function smoke(store: Store, label: string) {
   try {
-    const sdk = await createNyte({
-      store, model,
-      models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
-      streamFn: () => { throw new Error("Smoke verification must not invoke a provider"); },
-      plugins: [localEnvironmentPlugin({ id: "smoke" })],
-      defaultWorkspace: { kind: "local", id: "smoke", cwd: directory },
-    });
-    const token = "sdk-smoke-local-token";
-    const server = createNyteServer({ sdk, version: "smoke", auth: { kind: "token", token } });
-    const transport: typeof fetch = (input, init) => server.fetch(new Request(input, init));
-    const client = createNyteClient({ baseUrl: "http://sdk.invalid", token, fetch: transport });
+    const host = await open(store);
     try {
-      assert.equal((await client.info()).wireVersion, WIRE_VERSION);
-      const unauthorized = createNyteClient({ baseUrl: "http://sdk.invalid", fetch: transport });
-      await assert.rejects(unauthorized.info(), (error: unknown) =>
-        error instanceof NyteWireError && error.code === "unauthorized");
-      const { sessionId } = await client.sessions.create({ name: label });
-      await client.sessions.rename({ sessionId, name: "packed " + label });
-      await client.sessions.setPinned({ sessionId, pinned: true });
-      const row = (await client.sessions.list()).items.find((item) => item.sessionId === sessionId);
-      assert.ok(row);
-      assert.equal(row.name, "packed " + label);
-      assert.equal(row.pinned, true);
-      assert.ok(await client.sessions.get({ sessionId }));
-      const snapshot = await client.sessions.snapshot({ sessionId });
-      assert.ok(snapshot);
-      let received = false;
-      for await (const event of client.watch({ sessionId, signal: AbortSignal.timeout(5000) })) {
-        assert.ok(Number.isSafeInteger(event.seq));
-        received = true;
-        break;
+      const token = "sdk-smoke-local-token";
+      const listener = await host.listen({ transport: { kind: "fetch" }, auth: { kind: "token", token } });
+      const transport: typeof fetch = (input, init) => listener.fetch(new Request(input, init));
+      const connection = await sdk.connect({ url: "http://sdk.invalid", credentials: { kind: "token", token }, fetch: transport });
+      try {
+        assert.equal(connection.hostId, host.hostId);
+        await assert.rejects(
+          sdk.connect({ url: "http://sdk.invalid", credentials: { kind: "token", token: "not-the-host-token" }, fetch: transport }),
+          (error: unknown) => error instanceof SdkError && error.code === "unauthenticated",
+        );
+        const { session, receipt } = await connection.sessions.start({ name: label, content: "Hi." });
+        await receipt.settled();
+        await session.update({ name: "packed " + label, pinned: true });
+        const row = (await connection.sessions.list()).items.find((item) => item.id === session.id);
+        assert.ok(row);
+        assert.equal(row.name, "packed " + label);
+        assert.equal(row.pinned, true);
+        assert.equal((await session.info()).id, session.id);
+        assert.equal((await session.view()).execution.kind, "idle");
+        return session.id;
+      } finally {
+        await connection.close();
       }
-      assert.ok(received, "Expected a replayed session event");
-      return sessionId;
     } finally {
-      server.close();
-      await sdk.close();
+      await host.close();
     }
   } finally {
     await store.close();
@@ -167,31 +151,20 @@ async function smoke(store: Store, label: string) {
 }
 
 const sqlitePath = join(directory, "sqlite.db");
-const sessionId = await smoke(new SqliteStore(sqlitePath), "SQLite");
-const reopened = new SqliteStore(sqlitePath);
+const sessionId = await smoke(sqliteStore({ path: sqlitePath }), "SQLite");
+const reopenedStore = sqliteStore({ path: sqlitePath });
 try {
-  assert.ok((await reopened.list()).some((session) => session.id === sessionId));
+  const reopened = await open(reopenedStore);
+  try {
+    assert.ok((await reopened.sessions.list()).items.some((session) => session.id === sessionId));
+  } finally {
+    await reopened.close();
+  }
 } finally {
-  await reopened.close();
+  await reopenedStore.close();
 }
-await smoke(new WorkerStore({
-  path: join(directory, "worker.db"),
-  worker: new URL(import.meta.resolve("@nyte-ai/core/store-worker")),
-}), "worker");
-const hostStore = new SqliteStore(join(directory, "host.db"));
-const host = await createHost({
-  models: createNyteModels(),
-  model,
-  store: hostStore,
-  plugins: { kind: "chat", system: "SDK smoke" },
-});
-try {
-  assert.ok((await host.sessions.create()).sessionId);
-} finally {
-  await host.close();
-  await hostStore.close();
-}
-console.log("PASS Node main imports, SQLite persistence, client/server, createHost and packed worker");
+await smoke(memoryStore(), "memory");
+console.log("PASS Node main imports, SQLite persistence, sdk.open, host.listen and sdk.connect");
 `;
 
 let temporary;
@@ -214,7 +187,7 @@ try {
   assert.equal(typeof release.version, "string", "release.version must be a string");
   assert.ok(release.version.length > 0);
   assert.ok(Array.isArray(release.packages), "release.packages must be an array");
-  assert.equal(release.packages.length, names.length, "Expected nine public SDK tarballs");
+  assert.equal(release.packages.length, names.length, "Expected seven public SDK tarballs");
   assert.deepEqual(release.packages.map((entry) => entry.name).sort(), [...names].sort());
   const tarballs = globSync("*.tgz", { cwd: artifacts }).sort();
   assert.deepEqual(
@@ -322,8 +295,8 @@ try {
     }
 
     assert.ok(
-      manifest.exports && Object.hasOwn(manifest.exports, "."),
-      `${entry.name} needs a main export`,
+      manifest.exports && Object.keys(manifest.exports).length > 0,
+      `${entry.name} needs an export`,
     );
 
     for (const [subpath, value] of Object.entries(manifest.exports)) {
@@ -338,10 +311,7 @@ try {
       );
 
       for (const { condition, target } of targets) {
-        assert.ok(
-          /^\.\/dist\/(src|examples)\//.test(target),
-          `Uncompiled export ${entry.name}: ${target}`,
-        );
+        assert.ok(target.startsWith("./dist/src/"), `Uncompiled export ${entry.name}: ${target}`);
         assert.ok(
           condition === "types" ? target.endsWith(".d.ts") : target.endsWith(".js"),
           `Invalid ${condition} export ${target}`,
@@ -448,7 +418,7 @@ console.log("PASS OAuth lazy loads without login or network");
   await verify("OAuth lazy loads", () => run("node", ["oauth.ts"], temporary));
   writeFileSync(
     join(temporary, "browser.ts"),
-    `import { createNyteClient } from "@nyte-ai/client";\nexport const client = createNyteClient({ baseUrl: "https://example.invalid" });\n`,
+    `import { isPart, text } from "@nyte-ai/plugin/client";\nimport { sdk } from "@nyte-ai/sdk";\nexport const client = { connect: sdk.connect, isPart, text };\n`,
   );
   await verify("browser bundle", async () => {
     const bundle = await build({
@@ -460,7 +430,7 @@ console.log("PASS OAuth lazy loads without login or network");
     });
 
     for (const log of bundle.logs) console.error(String(log));
-    assert.ok(bundle.success, "Browser client bundle failed");
+    assert.ok(bundle.success, "Browser sdk bundle failed");
     assert.ok(bundle.outputs.length > 0);
 
     for (const output of bundle.outputs) {
@@ -471,7 +441,7 @@ console.log("PASS OAuth lazy loads without login or network");
       );
     }
 
-    console.log("PASS browser client bundle with packages bundled and no Node externals");
+    console.log("PASS browser sdk bundle with packages bundled and no Node externals");
   });
 
   const compilerOptions = {
@@ -498,14 +468,13 @@ console.log("PASS OAuth lazy loads without login or network");
 
     if (result.error) throw result.error;
     const errors = result.stdout.split("\n").filter((line) => /: error TS\d+:/.test(line));
-    const isForeign = (line) => {
-      const file = line.slice(0, line.indexOf("("));
+    const { foreign = [], ours = [] } = Object.groupBy(errors, (line) => {
+      const file = line.split("(", 1)[0];
 
-      return file.includes("node_modules/") && !file.includes("/node_modules/@nyte-ai/");
-    };
-
-    const foreign = errors.filter(isForeign);
-    const ours = errors.filter((line) => !isForeign(line));
+      return file.includes("node_modules/") && !file.includes("/node_modules/@nyte-ai/")
+        ? "foreign"
+        : "ours";
+    });
 
     for (const line of foreign) console.warn(`Third-party declaration error, not ours: ${line}`);
     assert.equal(ours.length, 0, `Consumer or @nyte-ai type errors:\n${ours.join("\n")}`);

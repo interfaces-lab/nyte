@@ -1,0 +1,106 @@
+---
+title: Checkbox
+description: "A box that is ticked, empty, or mixed"
+---
+
+```ts title="Import"
+import { Checkbox, CheckboxField } from "@nyte-ai/ui/checkbox";
+```
+
+`CheckboxField` is a checkbox in a labelled row, with an optional description. For a setting that
+applies on change, use [Switch](/design/switch).
+
+## Usage
+
+- `indeterminate` draws a dash, for a box over a partly ticked list.
+
+## Examples
+
+```tsx
+const [archived, setArchived] = useState(false);
+
+<label>
+  <Checkbox checked={archived} onCheckedChange={setArchived} />
+  Show archived chats
+</label>;
+```
+
+<Preview>
+  <CheckboxDemo />
+</Preview>
+
+```tsx
+const [viewed, setViewed] = useState<readonly string[]>(["row.tsx"]);
+
+<>
+  <label>
+    <Checkbox
+      checked={viewed.length === files.length}
+      indeterminate={viewed.length > 0 && viewed.length < files.length}
+      onCheckedChange={(checked) => setViewed(checked ? files : [])}
+    />
+    All files viewed
+  </label>
+  {files.map((file) => (
+    <label key={file}>
+      <Checkbox
+        checked={viewed.includes(file)}
+        onCheckedChange={(checked) =>
+          setViewed((current) =>
+            checked ? [...current, file] : current.filter((path) => path !== file),
+          )
+        }
+      />
+      {file}
+    </label>
+  ))}
+</>;
+```
+
+### Field
+
+```tsx
+const [archived, setArchived] = useState(false);
+
+<CheckboxField
+  label="Show archived chats"
+  description="Archived chats appear below the active ones"
+  checked={archived}
+  onCheckedChange={setArchived}
+/>;
+```
+
+## Props
+
+### Checkbox
+
+Takes every Base UI `Checkbox.Root` prop except `children`. `className` and `style` take plain
+values, not functions of state. The indicator is built in.
+
+| Prop                           | Type                           | Default | Description |
+| ------------------------------ | ------------------------------ | ------- | ----------- |
+| `size`                         | `"md" \| "lg"`                 | `"md"`  |             |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming) |         |             |
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+<include>../../base-ui-reference/checkbox/Root.md</include>
+
+### CheckboxField
+
+Takes every `Checkbox` prop except `aria-label`, `aria-labelledby`, and `nativeButton`.
+
+| Prop                           | Type                           | Default | Description                     |
+| ------------------------------ | ------------------------------ | ------- | ------------------------------- |
+| `label`                        | `string`                       |         | Required. Names the checkbox.   |
+| `description`                  | `string`                       |         | Secondary line under the label. |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming) |         | Apply to the row, not the box.  |
+
+## Accessibility
+
+- The root carries `role="checkbox"` and `aria-checked`, which is `"mixed"` while `indeterminate`.
+  Space toggles it.
+- A hidden `<input type="checkbox">` beside it takes part in form submission.
+- `CheckboxField` renders a `<label>`. Its `label` text names the checkbox through
+  `aria-labelledby`, and `description` is added to `aria-describedby`.
+- Keyboard focus shows the [focus ring](/design/focus).

@@ -1,4 +1,4 @@
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
+export const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
 
 interface DitherMoonProps {
   cells: number;
@@ -7,7 +7,7 @@ interface DitherMoonProps {
   className?: string;
 }
 
-/*
+/**
  * A sphere lit from the upper left, ordered-dithered onto a square grid. Cells
  * the light misses stay as faint earthshine so the disc keeps its outline.
  */

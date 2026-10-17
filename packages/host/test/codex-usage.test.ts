@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import type { Models } from "@nyte-ai/ai";
-import { readCodexUsage } from "@nyte-ai/host/usage";
+import { readCodexUsage } from "../src/usage.ts";
 
 const model: ReturnType<Models["getModels"]>[number] = {
   id: "gpt-test-1",
@@ -18,7 +18,9 @@ const model: ReturnType<Models["getModels"]>[number] = {
   contextWindow: 200_000,
   maxTokens: 8192,
 };
+
 const models: Pick<Models, "getModels"> = { getModels: () => [model] };
+
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -32,6 +34,7 @@ async function fixture() {
   const homeDir = await mkdtemp(join(tmpdir(), "nyte-codex-usage-"));
   directories.push(homeDir);
   await mkdir(join(homeDir, "sessions"), { recursive: true });
+
   return homeDir;
 }
 
@@ -75,6 +78,7 @@ function tokenCount(at: string, overrides?: Partial<Record<string, number>>) {
 async function read(homeDir: string) {
   const result = await readCodexUsage({ models, homeDir });
   assert.equal(result.kind, "ready");
+
   return result;
 }
 
@@ -87,14 +91,12 @@ test("a response is counted once, with the cached share split out of the input",
 
   const { summary } = await read(homeDir);
   const total = summary.total;
-  // 100 input, of which 60 was cached and 10 freshly written, leaves 30 uncached.
-  assert.equal(total.input, 30);
+  assert.equal(total.input, 30, "100 input less 60 cached and 10 freshly written");
   assert.equal(total.cacheRead, 60);
   assert.equal(total.cacheWrite, 10);
   assert.equal(total.output, 20);
-  // Reasoning is reported inside output and is never added on top of it.
-  assert.equal(total.reasoning, 5);
-  assert.equal(total.totalTokens, 120);
+  assert.equal(total.reasoning, 5, "reasoning sits inside output, never added on top");
+  assert.equal(total.total, 120);
   assert.equal(summary.models.length, 1);
   assert.equal(summary.models[0]?.model, model.id);
 });
@@ -106,7 +108,6 @@ test("a forked rollout repeating its parent's responses is counted once", async 
     usageRecord("resp-1"),
     usageRecord("resp-2"),
   ]);
-  // A fork opens with the parent's history copied in under the same ids.
   await rollout(homeDir, "sessions/2026/01/01/fork.jsonl", [
     {
       type: "session_meta",
@@ -120,12 +121,23 @@ test("a forked rollout repeating its parent's responses is counted once", async 
   ]);
 
   const { summary } = await read(homeDir);
-  // Three distinct responses, not five.
-  assert.equal(summary.total.totalTokens, 360);
+  assert.equal(summary.total.total, 360, "three distinct responses, not five");
 });
 
 test("the legacy event drops re-emitted duplicates and the fork's copied prologue", async () => {
   const homeDir = await fixture();
+  const copiedPrologue = [
+    tokenCount("2026-01-01T00:00:00.100Z"),
+    tokenCount("2026-01-01T00:00:00.400Z", { output_tokens: 21, total_tokens: 121 }),
+  ];
+  const firstOwnTurn = tokenCount("2026-01-01T00:00:30.000Z", {
+    output_tokens: 22,
+    total_tokens: 122,
+  });
+  const reEmitted = tokenCount("2026-01-01T00:00:31.000Z", {
+    output_tokens: 22,
+    total_tokens: 122,
+  });
   await rollout(homeDir, "archived_sessions/2026/01/01/legacy.jsonl", [
     {
       type: "session_meta",
@@ -133,19 +145,14 @@ test("the legacy event drops re-emitted duplicates and the fork's copied prologu
       payload: { forked_from_id: "parent" },
     },
     turnContext,
-    // Copied prologue: written in one burst right after the fork instant.
-    tokenCount("2026-01-01T00:00:00.100Z"),
-    tokenCount("2026-01-01T00:00:00.400Z", { output_tokens: 21, total_tokens: 121 }),
-    // The child's own first turn lands a real turn later, and ends suppression.
-    tokenCount("2026-01-01T00:00:30.000Z", { output_tokens: 22, total_tokens: 122 }),
-    // Codex re-emits an unchanged token_count on some stream boundaries.
-    tokenCount("2026-01-01T00:00:31.000Z", { output_tokens: 22, total_tokens: 122 }),
+    ...copiedPrologue,
+    firstOwnTurn,
+    reEmitted,
     tokenCount("2026-01-01T00:00:40.000Z", { output_tokens: 23, total_tokens: 123 }),
   ]);
 
   const { summary } = await read(homeDir);
-  // Only the two genuine turns survive: 30 + 60 + 10 + 22 and + 23.
-  assert.equal(summary.total.totalTokens, 122 + 123);
+  assert.equal(summary.total.total, 122 + 123, "only the two turns after the prologue count");
 });
 
 test("a file carrying both formats is counted from the modern record alone", async () => {
@@ -153,12 +160,11 @@ test("a file carrying both formats is counted from the modern record alone", asy
   await rollout(homeDir, "sessions/2026/01/01/both.jsonl", [
     turnContext,
     usageRecord("resp-1"),
-    // The legacy event is still written beside it and must not double the turn.
     tokenCount("2026-01-01T00:00:01.000Z"),
   ]);
 
   const { summary } = await read(homeDir);
-  assert.equal(summary.total.totalTokens, 120);
+  assert.equal(summary.total.total, 120);
 });
 
 test("usage before any turn context has no model to attribute and is skipped", async () => {
@@ -170,7 +176,7 @@ test("usage before any turn context has no model to attribute and is skipped", a
   ]);
 
   const { summary } = await read(homeDir);
-  assert.equal(summary.total.totalTokens, 120);
+  assert.equal(summary.total.total, 120);
 });
 
 test("an unknown model keeps its tokens and reports itself as unpriced", async () => {
@@ -182,7 +188,7 @@ test("an unknown model keeps its tokens and reports itself as unpriced", async (
 
   const result = await read(homeDir);
   assert.equal(result.unpricedRecords, 1);
-  assert.equal(result.summary.total.totalTokens, 120);
+  assert.equal(result.summary.total.total, 120);
   assert.equal(result.summary.total.cost.total, 0);
 });
 
@@ -192,8 +198,10 @@ test("a priced model is costed from the catalog", async () => {
 
   const result = await read(homeDir);
   assert.equal(result.unpricedRecords, 0);
-  // 30 uncached at $2/M, 20 output at $10/M, 60 cache reads at $0.2/M.
-  assert.ok(result.summary.total.cost.total > 0);
+  assert.ok(
+    Math.abs(result.summary.total.cost.total - 0.000272) < 1e-12,
+    "30 uncached at $2/M, 20 output at $10/M and 60 cache reads at $0.2/M",
+  );
 });
 
 test("a malformed line is counted, not fatal", async () => {
@@ -208,7 +216,7 @@ test("a malformed line is counted, not fatal", async () => {
 
   const result = await read(homeDir);
   assert.equal(result.malformedRecords, 1);
-  assert.equal(result.summary.total.totalTokens, 120);
+  assert.equal(result.summary.total.total, 120);
 });
 
 test("no Codex home is missing history, not a failed read or zero spend", async () => {
@@ -224,5 +232,5 @@ test("CODEX_HOME names the history when no directory is given", async () => {
 
   const result = await readCodexUsage({ models });
   assert.equal(result.kind, "ready");
-  assert.equal(result.kind === "ready" && result.summary.total.totalTokens, 120);
+  assert.equal(result.kind === "ready" && result.summary.total.total, 120);
 });

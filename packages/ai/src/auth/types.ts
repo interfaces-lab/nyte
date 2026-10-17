@@ -2,12 +2,10 @@
  * Provider auth contract: request auth, stored credentials, the app-owned
  * credential store, the injectable auth context, and the login interaction
  * surface shared by api-key and OAuth flows.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/types.ts
- * Synced with pi 7ebf9087e.
  */
-import { typed } from "@nyte-ai/schema";
+import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type { ProviderEnv, ProviderHeaders } from "../types.ts";
 
 /**
@@ -54,13 +52,71 @@ export const OAuthTokenResponseSchema = typed<OAuthTokenResponse>()(
   }),
 );
 
-/** One type-tagged credential per provider, the shape of today's auth.json. */
+/** One type-tagged credential for a stored account. */
 export type Credential = ApiKeyCredential | OAuthCredential;
+
+/** A named provider account. Its local id stays stable across token refreshes. */
+export interface CredentialAccount {
+  readonly id: string;
+  readonly label: string;
+  readonly credential: Credential;
+}
+
+/** A provider's accounts and explicit selection, mutated together under the store lock. */
+export interface CredentialAccounts {
+  readonly active: string | null;
+  readonly accounts: readonly CredentialAccount[];
+}
 
 /** Non-secret credential metadata for account/status enumeration. */
 export interface CredentialInfo {
   providerId: string;
+  id: string;
+  label: string;
   type: Credential["type"];
+  active: boolean;
+}
+
+const CredentialSchema = Type.Union([
+  Type.Object({
+    type: Type.Literal("api_key"),
+    key: Type.Optional(Type.String()),
+    env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  }),
+  Type.Object({
+    type: Type.Literal("oauth"),
+    refresh: Type.String(),
+    access: Type.String(),
+    expires: Type.Number(),
+  }),
+]);
+
+const CredentialAccountsSchema = Type.Object({
+  active: Type.Union([Type.String(), Type.Null()]),
+  accounts: Type.Array(
+    Type.Object({
+      id: Type.String({ minLength: 1 }),
+      label: Type.String({ minLength: 1 }),
+      credential: CredentialSchema,
+    }),
+  ),
+});
+
+/** Parse persisted accounts and migrate a previous single credential at the storage boundary. */
+export function readCredentialAccounts(value: unknown): CredentialAccounts | undefined {
+  if (Value.Check(CredentialSchema, value))
+    return {
+      active: "default",
+      accounts: [{ id: "default", label: "Default", credential: value }],
+    };
+
+  if (!Value.Check(CredentialAccountsSchema, value)) return undefined;
+  const ids = new Set(value.accounts.map((account) => account.id));
+
+  if (ids.size !== value.accounts.length || (value.active !== null && !ids.has(value.active)))
+    return undefined;
+
+  return value;
 }
 
 /** Optional cancellation for public auth and credential operations. */
@@ -69,12 +125,10 @@ export interface AuthOperationOptions {
 }
 
 /**
- * App-owned credential storage, keyed by `Provider.id`, one credential per
- * provider. `modify` is the only write path, so every mutation is a
+ * App-owned account storage, keyed by `Provider.id`. `modify` is the only write path, so every mutation is a
  * serialized read-modify-write; `Models.getAuth()` runs OAuth refresh inside
  * `modify` so concurrent requests cannot double-refresh a rotated token. The
- * app persists a credential after login via
- * `modify(provider.id, async () => credential)`. Login/logout orchestration
+ * app appends and selects a completed login inside `modify`. Login/logout orchestration
  * is app-owned.
  *
  * Error semantics: `read` resolves `undefined` for missing entries. Methods
@@ -85,10 +139,10 @@ export interface AuthOperationOptions {
  */
 export interface CredentialStore {
   /**
-   * Read the stored credential, possibly expired. Display/status use;
+   * Read stored accounts, including possibly expired credentials. Display/status use;
    * resolved request auth comes from `Models.getAuth()`.
    */
-  read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined>;
+  read(providerId: string, options?: AuthOperationOptions): Promise<CredentialAccounts | undefined>;
 
   /**
    * List stored credential metadata without resolving or exposing secrets.
@@ -97,22 +151,23 @@ export interface CredentialStore {
   list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]>;
 
   /**
-   * Serialized write, the only write path. `fn` sees the current credential
+   * Serialized write, the only write path. `fn` sees the current accounts
    * because correct writes (refresh, login-during-refresh) depend on it;
-   * return the new credential, or undefined to leave the entry unchanged.
+   * return the new collection, or undefined to leave the entry unchanged.
    * Mutual exclusion per provider id, cross-process too where the backing
    * store supports it (e.g. a file lock). Resolves with the post-write
-   * credential. Rejections from `fn` propagate. A credential `fn` returned is
+   * collection. Rejections from `fn` propagate. A collection `fn` returned is
    * stored even when the operation aborts afterwards, because a refresh has
    * already rotated the token the stored one replaces.
+   * An empty account collection removes the provider entry atomically.
    */
   modify(
     providerId: string,
-    fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+    fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,
     options?: AuthOperationOptions,
-  ): Promise<Credential | undefined>;
+  ): Promise<CredentialAccounts | undefined>;
 
-  /** Remove a credential (logout). Implementations serialize this against `modify`. */
+  /** Remove every account for a provider. Implementations serialize this against `modify`. */
   delete(providerId: string, options?: AuthOperationOptions): Promise<void>;
 }
 
@@ -126,6 +181,8 @@ export interface AuthContext {
 /** Result of resolving auth for a model. */
 export interface AuthResult {
   auth: ModelAuth;
+  /** Local stored-account id captured for this request; absent for ambient or explicit auth. */
+  accountId?: string;
   /** Provider-scoped environment/config values resolved from credentials and ambient context. */
   env?: ProviderEnv;
   /** Human-readable label for status UI: "ANTHROPIC_API_KEY", "OAuth", "~/.aws/credentials". */
@@ -184,6 +241,7 @@ export type AuthEvent =
  */
 export interface AuthInteraction {
   signal?: AbortSignal;
+  browser?: "host" | "elsewhere" | undefined;
 
   prompt(prompt: AuthPrompt): Promise<string>;
   notify(event: AuthEvent): void;
@@ -241,6 +299,9 @@ export interface OAuthAuth {
 
   /** Selector label for the OAuth login option, e.g. "Sign in with SuperGrok or X Premium". */
   loginLabel?: string;
+
+  /** Availability of externally managed OAuth, without refreshing or importing its credentials. */
+  check?(input: { ctx: AuthContext; signal: AbortSignal }): Promise<AuthCheck | undefined>;
 
   login(interaction: ProviderAuthInteraction): Promise<OAuthCredential>;
 

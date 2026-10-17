@@ -2,6 +2,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { paletteLegendStyles as styles } from "./palette-legend.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
 
@@ -51,7 +52,7 @@ function Keycap({
   readonly label?: string;
 }): ReactElement {
   return (
-    <kbd aria-label={label} {...props(styles.keycap, icon && styles.keycapIcon)}>
+    <kbd aria-label={label} {...props(text.xs, styles.keycap, icon && styles.keycapIcon)}>
       {children}
     </kbd>
   );
@@ -77,7 +78,7 @@ export function PaletteLegend(): ReactElement {
   return (
     <footer aria-label="Keyboard shortcuts" {...props(styles.footer)}>
       <div {...props(styles.legend)}>
-        <span {...props(styles.item)}>
+        <span {...props(text.sm, styles.item)}>
           <span {...props(styles.keys)}>
             <Keycap icon label="Up arrow">
               <Icon name="arrow-up" size={12} />
@@ -88,13 +89,13 @@ export function PaletteLegend(): ReactElement {
           </span>
           Navigate
         </span>
-        <span {...props(styles.item)}>
+        <span {...props(text.sm, styles.item)}>
           <Keycap icon label="Enter">
             <Icon name="return" size={12} />
           </Keycap>
           Select
         </span>
-        <span {...props(styles.item)}>
+        <span {...props(text.sm, styles.item)}>
           <Keycap>esc</Keycap>
           Close
         </span>

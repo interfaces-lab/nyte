@@ -7,7 +7,7 @@ const outputPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "p
 
 const check = process.argv.includes("--check");
 
-const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "styles");
 
 const themeGroups = await readGroups(join(tokenDirectory, "theme.stylex.ts"));
 
@@ -26,15 +26,16 @@ const transparency = (await readGroups(join(tokenDirectory, "tokens.stylex.ts"))
 const defaults = (group) =>
   Object.entries(group).map(([name, value]) => [name, value.default ?? value]);
 
-// Every declaration a colour can reach, outside any scope and with the
-// appearance inputs at their defaults.
+/** Every declaration a colour can reach, outside any scope and with the appearance inputs at their defaults. */
 const neutralDeclarations = Object.fromEntries([theme, roles, transparency].flatMap(defaults));
 
 let declared = neutralDeclarations;
 
-// Role-group and unscoped entries that are not a colour: the hover and press
-// layers are images, the outlined shadow is a shadow, and the swatch follows
-// the workspace tint, which a native app does not have.
+/**
+ * Role-group and unscoped entries that are not a colour: the hover and press
+ * layers are images, the outlined shadow is a shadow, and the swatch follows
+ * the workspace tint, which a native app does not have.
+ */
 const nonColors = new Set([
   "--nyte-layer-hover",
   "--nyte-layer-pressed",
@@ -77,8 +78,7 @@ const callArguments = (value, name) => {
   return splitArguments(value.slice(name.length + 1, -1));
 };
 
-// Colours travel as linear-light sRGB channels in 0–1 plus alpha, so mixing
-// and conversion stay exact until the final 8-bit rounding.
+/** Colours travel as linear-light sRGB channels in 0–1 plus alpha, so mixing and conversion stay exact until the final 8-bit rounding. */
 const toLinear = (channel) =>
   channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
 
@@ -262,8 +262,7 @@ const relativeOklch = (value, mode, trail) => {
   return fromOklch({ ...origin, l: lightness, alpha });
 };
 
-// CSS mixes in premultiplied alpha, which is why mixing a color with
-// `transparent` keeps the color and only drops its alpha.
+/** CSS mixes in premultiplied alpha, which is why mixing a color with `transparent` keeps the color and only drops its alpha. */
 const mixColors = (first, firstWeight, second, secondWeight) => {
   const total = firstWeight + secondWeight;
   const [share, rest] = [firstWeight / total, secondWeight / total];
@@ -308,6 +307,12 @@ const parseOklch = (value) => {
   });
 };
 
+/**
+ * Reduces a token expression to one colour for an appearance. `color-mix()` is
+ * sRGB only: a token that mixes in another space fails the run instead of
+ * shipping a colour this resolver cannot reproduce. As in CSS, an omitted mix
+ * percentage is the remainder of the other.
+ */
 const resolve = (expression, mode, trail) => {
   const value = expression.trim();
 
@@ -342,8 +347,6 @@ const resolve = (expression, mode, trail) => {
 
   const mix = callArguments(value, "color-mix");
 
-  // The contract is sRGB mixing only: a token that mixes in another space fails
-  // the run instead of shipping a colour this resolver cannot reproduce.
   if (mix !== undefined) {
     const [space, ...operands] = mix;
 
@@ -352,7 +355,6 @@ const resolve = (expression, mode, trail) => {
     }
 
     const [first, second] = operands.map((operand) => parseOperand(operand, trail));
-    // CSS fills an omitted percentage with the remainder of the other.
     const firstWeight = first.weight ?? (second.weight === undefined ? 50 : 100 - second.weight);
     const secondWeight = second.weight ?? 100 - firstWeight;
 
@@ -379,21 +381,36 @@ const formatHex = (color) => {
   return color.alpha >= 1 ? opaque : `${opaque}${byte(color.alpha)}`;
 };
 
-// React Native cannot evaluate `light-dark()`, `color-mix()`, `lab()`, or
-// `var()`, so every colour reduces here to one concrete value per appearance,
-// outside any scope. A colour that fails to reduce has no value to ship and
-// fails the run.
+/**
+ * React Native cannot evaluate `light-dark()`, `color-mix()`, `lab()`, or
+ * `var()`, so every colour reduces here to one concrete value per appearance,
+ * outside any scope. A colour that fails to reduce has no value to ship and
+ * fails the run.
+ */
 const colorNames = Object.keys(roles).filter((name) => !nonColors.has(name));
 
-const scheme = (mode) =>
-  colorNames
+/**
+ * The roles a native or static consumer reads inside a hue scope: status text,
+ * diff and status fills, chart marks, and diagram strokes.
+ */
+const scopedColorNames = [
+  "--nyte-content-secondary",
+  "--nyte-content-interactive-tertiary",
+  "--nyte-bg-interactive-primary-translucent",
+  "--nyte-bg-interactive-secondary-translucent",
+  "--nyte-bg-interactive-strong",
+  "--nyte-chart-series",
+];
+
+const scheme = (mode, names) =>
+  names
     .map((name) => `    ${colorKey(name)}: "${formatHex(resolve(declared[name], mode, [name]))}",`)
     .join("\n");
 
 const notice =
   "Generated from the @nyte-ai/ui colour tokens. Run pnpm --filter @nyte-ai/ui sync:tokens.";
 
-const neutralOutput = `export const platformColors = {\n  light: {\n${scheme("light")}\n  },\n  dark: {\n${scheme("dark")}\n  },\n} as const;\n`;
+const neutralOutput = `export const platformColors = {\n  light: {\n${scheme("light", colorNames)}\n  },\n  dark: {\n${scheme("dark", colorNames)}\n  },\n} as const;\n`;
 
 const hues = [
   "gray",
@@ -417,7 +434,7 @@ const scopedScheme = (mode) =>
         ...Object.fromEntries(defaults(tinted)),
       };
 
-      return `    ${hue}: {\n${scheme(mode)
+      return `    ${hue}: {\n${scheme(mode, scopedColorNames)
         .split("\n")
         .map((line) => "  " + line)
         .join("\n")}\n    },`;

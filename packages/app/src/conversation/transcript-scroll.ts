@@ -1,93 +1,83 @@
-/**
- * Scroll arithmetic for the virtualized transcript. Everything here is pure
- * so the thread screen can feed it numbers it already has (virtual item
- * starts, cached sizes, scrollport metrics) instead of measuring the DOM.
- */
-
 /** Mirrors the transcript's former `paddingTop`. */
 export const TRANSCRIPT_PADDING_START = 16;
 
-/**
- * Room below the last row, above the docked composer: Cursor's composer
- * clearance (100px) plus its input gap (14px). It is part of the scroll
- * extent, so a reply that ends at the bottom never sits against the composer.
- */
+const STICKY_EPSILON = 2;
+
 export const TRANSCRIPT_PADDING_END = 114;
 
-/** A row's own top may sit a hair below the scroll offset after subpixel layout. */
-const STICKY_MESSAGE_ACTIVATION_EPSILON = 2;
+function setDataState(element: HTMLElement, name: string, active: boolean): void {
+  const value = active ? "true" : "false";
 
-/** Subpixel scroll positions still count as the real bottom. */
-export const TRANSCRIPT_END_TOLERANCE = 1;
-
-export interface ScrollMetrics {
-  readonly scrollTop: number;
-  readonly scrollHeight: number;
-  readonly clientHeight: number;
+  if (element.dataset[name] !== value) element.dataset[name] = value;
 }
 
-/**
- * How far the scrollport sits above its real end. The scroll height is the
- * full DOM extent, so the docked composer below the rows counts; the
- * virtualizer's own total does not include it.
- */
-export function distanceFromEnd(metrics: ScrollMetrics): number {
-  return metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop;
+export function topIn(viewport: HTMLElement, element: Element): number {
+  return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
 }
 
-export function isAtEnd(metrics: ScrollMetrics): boolean {
-  return distanceFromEnd(metrics) <= TRANSCRIPT_END_TOLERANCE;
-}
+export function syncSticky(viewport: HTMLElement, content: HTMLElement, following: boolean): void {
+  const prompts = content.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
+  const edge = viewport.getBoundingClientRect().top;
+  let active: HTMLElement | undefined;
 
-export interface StickyCandidate {
-  /** Where the turn's top sits in scroll coordinates. */
-  readonly start: number;
-  /** The whole turn row, prompt and reply. */
-  readonly height: number;
-}
+  for (const [index, prompt] of prompts.entries()) {
+    const rect = prompt.getBoundingClientRect();
 
-/**
- * Which candidate's prompt is stuck to the top edge: the last one whose turn
- * has scrolled past the top. While following the bottom the latest turn gets
- * slack equal to its own height, so its prompt lifts as soon as the reply
- * outgrows the viewport instead of waiting for the turn's top to cross the
- * edge.
- */
-export function activeStickyCandidate(
-  candidates: readonly StickyCandidate[],
-  scrollTop: number,
-  following: boolean,
-): number | undefined {
-  let active: number | undefined;
+    const naturalTop =
+      prompt.previousElementSibling?.getBoundingClientRect().bottom ??
+      prompt.parentElement?.getBoundingClientRect().top ??
+      rect.top;
 
-  for (const [index, candidate] of candidates.entries()) {
-    const last = index === candidates.length - 1;
-    const slack = following && last ? candidate.height : STICKY_MESSAGE_ACTIVATION_EPSILON;
+    const rowBottom =
+      prompt.closest("[data-message-id]")?.getBoundingClientRect().bottom ?? rect.bottom;
 
-    if (candidate.start <= scrollTop + slack) active = index;
+    const eligible =
+      rect.height < viewport.clientHeight &&
+      !(
+        following &&
+        index === prompts.length - 1 &&
+        rowBottom - naturalTop - rect.height >= viewport.clientHeight
+      );
+
+    setDataState(prompt, "stickyDisabled", !eligible);
+
+    if (eligible && Math.abs(rect.top - edge) <= STICKY_EPSILON) active = prompt;
   }
 
-  return active;
+  for (const prompt of prompts) setDataState(prompt, "stickyActive", prompt === active);
+  setDataState(viewport, "topFade", viewport.scrollTop > 0 && active === undefined);
 }
 
-/**
- * Where a returning transcript should start before its rows have measured.
- * A reader pinned to the bottom starts at the end of the content, which is
- * as good as the sizes fed in: measured heights land on the right rows,
- * estimates on nearby ones. Anyone else starts where they left off.
- */
-export function initialTranscriptOffset({
-  sizes,
-  viewportHeight,
-  scroll,
-}: {
-  readonly sizes: readonly number[];
-  readonly viewportHeight: number;
-  readonly scroll: { readonly top: number; readonly bottomPinned: boolean };
-}): number {
-  if (!scroll.bottomPinned) return scroll.top;
-  const padding = TRANSCRIPT_PADDING_START + TRANSCRIPT_PADDING_END;
-  const total = sizes.reduce((sum, size) => sum + size, padding);
+export function scrollsWithin(target: EventTarget | null, root: HTMLElement): boolean {
+  const node = target instanceof HTMLElement ? target : null;
 
-  return Math.max(0, total - viewportHeight);
+  if (node === null || node === root) return false;
+
+  const scrolls =
+    node.scrollHeight > node.clientHeight && /auto|scroll/.test(getComputedStyle(node).overflowY);
+
+  return scrolls || scrollsWithin(node.parentElement, root);
+}
+
+export function navigates(event: KeyboardEvent): boolean {
+  const editing =
+    event.target instanceof HTMLElement &&
+    event.target.closest("input, textarea, select, [contenteditable]") !== null;
+
+  return (
+    !event.defaultPrevented &&
+    (event.key === "Tab" ||
+      (!editing && /^(Arrow(Up|Down)|Page(Up|Down)|Home|End| )$/.test(event.key)))
+  );
+}
+
+export function showScrollButton(dock: HTMLElement | null, shown: boolean): void {
+  const button = dock?.querySelector<HTMLElement>("[data-slot='scroll-to-bottom']");
+
+  if (button === null || button === undefined) return;
+  setDataState(button, "scrollShown", shown);
+  button.ariaHidden = shown ? null : "true";
+  const control = button.querySelector("button");
+
+  if (control !== null) control.tabIndex = shown ? 0 : -1;
 }

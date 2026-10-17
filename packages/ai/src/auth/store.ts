@@ -1,18 +1,3 @@
-/**
- * File-backed `CredentialStore` (auth.json, one credential per provider id).
- * Every Nyte client shares this one file, so each mutation holds a lock that
- * spans the whole read-modify-write — including the OAuth refresh `Models`
- * runs inside `modify`, which rotates the refresh token and must happen once
- * across all processes — and publishes by atomic rename. Reads take no lock:
- * rename means a reader sees the previous file or the next one, never a
- * partial write.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/credential-store.ts
- * Synced with pi 7ebf9087e. Nyte divergence: pi's store is in-memory and its
- * CLI locks auth.json with proper-lockfile; Nyte owns the persistent store and
- * locks with an exclusively created file, keeping the dependency out of the
- * packaged desktop and binary builds.
- */
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -32,7 +17,13 @@ import process from "node:process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { defaultNyteHome } from "../utils/nyte-home.ts";
-import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "./types.ts";
+import { readCredentialAccounts } from "./types.ts";
+import type {
+  AuthOperationOptions,
+  CredentialAccounts,
+  CredentialInfo,
+  CredentialStore,
+} from "./types.ts";
 
 export function defaultAuthPath(): string {
   return join(defaultNyteHome(), "auth.json");
@@ -55,32 +46,9 @@ const LOCK_ABANDONED_MS = 2 * LOCK_TIMEOUT_MS;
 /** Age at which a recovery that never finished counts as crash residue instead of a live one. */
 const RECOVERY_STALE_MS = 1_000;
 
-const CredentialSchema = Type.Union([
-  Type.Object({
-    type: Type.Literal("api_key"),
-    key: Type.Optional(Type.String()),
-    env: Type.Optional(Type.Record(Type.String(), Type.String())),
-  }),
-  Type.Object({
-    type: Type.Literal("oauth"),
-    refresh: Type.String(),
-    access: Type.String(),
-    expires: Type.Number(),
-  }),
-]);
-
 const CredentialFileSchema = Type.Record(Type.String(), Type.Unknown());
 
 const SystemErrorSchema = Type.Object({ code: Type.String() });
-
-/**
- * auth.json is an external boundary. Provider-specific extras (Codex account
- * ids, Copilot model ids) ride along on the value, and an entry this version
- * cannot read is reported as no credential rather than rewritten.
- */
-function toCredential(value: unknown): Credential | undefined {
-  return Value.Check(CredentialSchema, value) ? value : undefined;
-}
 
 function errorCode(cause: unknown): string | undefined {
   return Value.Check(SystemErrorSchema, cause) ? cause.code : undefined;
@@ -113,31 +81,31 @@ function localOwnerPid(owner: string | undefined): number | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function isRunning(pid: number): boolean {
+/** A signal-0 probe; EPERM means the process exists but belongs to another user. */
+function processAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
 
     return true;
   } catch (error) {
-    // EPERM: the process exists but belongs to another user.
     return errorCode(error) === "EPERM";
   }
 }
 
+/** Undefined when the path is gone while being inspected; the next create attempt decides. */
 function ageMs(path: string): number | undefined {
   try {
     return Date.now() - statSync(path).mtimeMs;
   } catch {
-    // Gone while being inspected; the next create attempt decides.
     return undefined;
   }
 }
 
 /** Abandoned when the owning process is gone, and unconditionally once the lock ages out. */
-function isAbandoned(lockPath: string): boolean {
+function lockAbandoned(lockPath: string): boolean {
   const pid = localOwnerPid(readOwner(lockPath));
 
-  if (pid !== undefined && !isRunning(pid)) return true;
+  if (pid !== undefined && !processAlive(pid)) return true;
   const age = ageMs(lockPath);
 
   return age !== undefined && age > LOCK_ABANDONED_MS;
@@ -178,13 +146,13 @@ function createLock(lockPath: string, owner: string): boolean {
  * judged the lock abandoned before another client replaced it re-checks here
  * under exclusion and finds a live lock instead of deleting it. Without that,
  * two clients recovering from one crash both remove and create, and both end up
- * inside the critical section.
+ * inside the critical section. Reclaiming is two syscalls, so an aged recovery
+ * lock is residue from a crash and is removed.
  */
 function reclaimAbandonedLock(lockPath: string, owner: string): void {
   const recoveryPath = `${lockPath}.recovery`;
 
   if (!createLock(recoveryPath, owner)) {
-    // Reclaiming is two syscalls, so an aged recovery lock is residue from a crash.
     const age = ageMs(recoveryPath);
 
     if (age !== undefined && age > RECOVERY_STALE_MS) rmSync(recoveryPath, { force: true });
@@ -193,12 +161,18 @@ function reclaimAbandonedLock(lockPath: string, owner: string): void {
   }
 
   try {
-    if (isAbandoned(lockPath)) rmSync(lockPath, { force: true });
+    if (lockAbandoned(lockPath)) rmSync(lockPath, { force: true });
   } finally {
     rmSync(recoveryPath, { force: true });
   }
 }
 
+/**
+ * Takes the credential lock, reclaiming an abandoned one, until the timeout. Release keeps a
+ * lock that now names another process and drops an unreadable one, since leaking it blocks
+ * every client until it ages out. A failed release must not mask a completed write; the age
+ * cap recovers it.
+ */
 async function acquireLock(
   lockPath: string,
   signal: AbortSignal | undefined,
@@ -208,14 +182,11 @@ async function acquireLock(
   const lock: CredentialLock = {
     held: () => readOwner(lockPath) === owner,
     release: () => {
-      // Keep a lock that now names another process; drop an unreadable one,
-      // since leaking it blocks every client until it ages out.
       if (readOwner(lockPath) !== owner) return;
 
       try {
         rmSync(lockPath, { force: true });
       } catch {
-        // A failed release must not mask a completed write; the age cap recovers it.
         return;
       }
     },
@@ -232,7 +203,7 @@ async function acquireLock(
       throw new Error(`Timed out waiting for the credential lock at ${lockPath}`);
     }
 
-    if (isAbandoned(lockPath)) reclaimAbandonedLock(lockPath, owner);
+    if (lockAbandoned(lockPath)) reclaimAbandonedLock(lockPath, owner);
     await new Promise<void>((resolve) => {
       setTimeout(resolve, LOCK_RETRY_MS);
     });
@@ -275,10 +246,12 @@ export class FileCredentialStore implements CredentialStore {
     return parsed;
   }
 
-  /** Publish by rename so a concurrent reader never observes a half-written file. */
+  /**
+   * Publish by rename so a concurrent reader never observes a half-written file. An advisory
+   * lock cannot make the held check and the rename one step; the check keeps a holder that
+   * already lost its lock from overwriting the current owner.
+   */
   private save(lock: CredentialLock, entries: Record<string, unknown>): void {
-    // An advisory lock cannot make this check and the rename one step; it keeps
-    // a holder that already lost its lock from overwriting the current owner.
     if (!lock.held()) {
       throw new Error(`Another process took over ${this.lockPath}; nothing was written`);
     }
@@ -309,10 +282,13 @@ export class FileCredentialStore implements CredentialStore {
     }
   }
 
-  async read(providerId: string, options?: AuthOperationOptions): Promise<Credential | undefined> {
+  async read(
+    providerId: string,
+    options?: AuthOperationOptions,
+  ): Promise<CredentialAccounts | undefined> {
     options?.signal?.throwIfAborted();
 
-    return toCredential(this.load()[providerId]);
+    return readCredentialAccounts(this.load()[providerId]);
   }
 
   async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
@@ -320,29 +296,40 @@ export class FileCredentialStore implements CredentialStore {
     const stored: CredentialInfo[] = [];
 
     for (const [providerId, value] of Object.entries(this.load())) {
-      const credential = toCredential(value);
+      const accounts = readCredentialAccounts(value);
 
-      if (credential) stored.push({ providerId, type: credential.type });
+      if (accounts)
+        stored.push(
+          ...accounts.accounts.map((account) => ({
+            providerId,
+            id: account.id,
+            label: account.label,
+            type: account.credential.type,
+            active: account.id === accounts.active,
+          })),
+        );
     }
 
     return stored;
   }
 
+  /**
+   * Persists a credential `fn` produced even when the caller stopped waiting: a refresh rotates
+   * the token the stored one replaces, so dropping it would leave a spent credential on disk.
+   */
   modify(
     providerId: string,
-    fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+    fn: (current: CredentialAccounts | undefined) => Promise<CredentialAccounts | undefined>,
     options?: AuthOperationOptions,
-  ): Promise<Credential | undefined> {
+  ): Promise<CredentialAccounts | undefined> {
     return this.withLock(async (lock) => {
       const entries = this.load();
-      const current = toCredential(entries[providerId]);
+      const current = readCredentialAccounts(entries[providerId]);
       const next = await fn(current);
 
-      // A credential `fn` already produced is persisted even when the caller
-      // stopped waiting: a refresh rotates the token the stored one replaces,
-      // so dropping it here would leave a spent credential on disk.
       if (next !== undefined) {
-        entries[providerId] = next;
+        if (next.accounts.length === 0) delete entries[providerId];
+        else entries[providerId] = next;
         this.save(lock, entries);
       }
 

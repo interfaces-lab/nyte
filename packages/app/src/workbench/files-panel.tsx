@@ -1,11 +1,11 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { worktreeFiles } from "@nyte-ai/client";
-import type { MentionFile } from "@nyte-ai/client";
+import { worktreeFiles } from "../view-helpers.ts";
+import type { MentionFile } from "../conversation/message-references.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import {
@@ -20,24 +20,26 @@ import type { HostBridge } from "../bridge.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
+import { selectionWithin } from "@nyte-ai/ui/selection";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { WorkspaceFileTree } from "./file-tree.tsx";
 import { setTreeDrag } from "../conversation/composer-file-drop.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
 import { preferences, useSetting, type Preference } from "../preferences/index.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { WorkspaceFileEditor } from "./file-editor.tsx";
+import { FilesEmptyState } from "./files-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
 import { Popover } from "@nyte-ai/ui/popover";
 import { WorkspaceSearch } from "./workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
-import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
+import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
+import { WorkbenchRail } from "./workbench-rail.tsx";
 
 const styles = create({
   panel: {
@@ -48,39 +50,26 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  toolbar: { gap: 8, height: "auto", minHeight: workbench.headerHeight },
+  toolbar: { gap: space.s2, height: "auto", minHeight: workbench.headerHeight },
   explorerHeader: {
     display: "flex",
     alignItems: "center",
     height: workbench.headerHeight,
     flexShrink: 0,
-    paddingInline: 10,
+    paddingInline: space.s2_5,
     color: role.contentSecondary,
     fontSize: type.fontBase,
   },
   dirty: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontXs },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
-  explorer: {
-    display: "flex",
-    flexDirection: "column",
-    width: "min(220px, 40%)",
-    minWidth: 160,
-    minHeight: 0,
-    flexShrink: 0,
-    backgroundColor: role.bgBase,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
-  },
-  search: { width: "min(320px, 50%)", minWidth: 230 },
+  explorer: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
-  empty: { padding: 20, color: role.contentSecondary, fontSize: type.fontSm },
+  empty: { padding: space.s5, color: role.contentSecondary, fontSize: type.fontSm },
   menu: {
     minWidth: "min(220px, var(--available-width))",
     maxWidth: "min(420px, var(--available-width))",
-    borderRadius: radius.control,
   },
   tree: {
     display: "block",
@@ -120,6 +109,19 @@ function FilePreferenceItem({
   );
 }
 
+/**
+ * The workspace file tree.
+ *
+ * - The tree keeps its creation-time composition callbacks, so they read late
+ *   values through refs.
+ * - A row's menu button and its right-click share one native menu. The tree
+ *   keeps its own open state, so it closes before the native menu takes over
+ *   the pointer, and without a native menu the tree keeps neither trigger.
+ *   Directories are not in the file list, so their location comes from the root.
+ * - Rows drag out as composer mentions; nothing moves inside the tree.
+ * - The file list may arrive after a reveal, so the reveal retries until the
+ *   entry exists.
+ */
 export function FilesPanel({
   viewKey,
   visible,
@@ -137,6 +139,12 @@ export function FilesPanel({
     fileEntries.current = files.data;
   }, [files.data]);
   const vcs = useVcsSnapshot(shown);
+
+  const changes = useMemo(
+    () => (vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : undefined),
+    [vcs.data],
+  );
+
   const host = useHostState();
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
@@ -150,7 +158,6 @@ export function FilesPanel({
   const menuRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
-  // The tree keeps its creation-time composition callbacks; read late values through refs.
   const hostState = useRef(host.data);
   useLayoutEffect(() => {
     hostState.current = host.data;
@@ -176,10 +183,6 @@ export function FilesPanel({
   const contextMenu = nyte.host.contextMenu;
   const revealPath = nyte.host.revealPath;
 
-  /**
-   * Serves the row's menu button and its right-click. The tree keeps its own
-   * open state, so close it before the native menu takes over the pointer.
-   */
   const openRowMenu = (
     menu: NonNullable<HostBridge["contextMenu"]>,
     item: ContextMenuItem,
@@ -188,8 +191,7 @@ export function FilesPanel({
     context.close({ restoreFocus: false });
     const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
     const root = hostState.current?.workspace?.path;
-    // Directories are not in the file list, so their location comes from the root.
-    const separator = hostState.current?.platform === "win32" ? "\\" : "/";
+    const separator = nyte.platform === "win32" ? "\\" : "/";
     const relative = item.path.replace(/\/$/, "");
 
     const absolutePath =
@@ -207,7 +209,7 @@ export function FilesPanel({
         absolutePath !== undefined &&
           revealPath !== undefined && {
             kind: "item",
-            label: revealLabel(hostState.current?.platform),
+            label: revealLabel(nyte.platform),
             run: () => void revealPath({ path: absolutePath }),
           },
         { kind: "separator" },
@@ -235,7 +237,6 @@ export function FilesPanel({
     flattenEmptyDirectories: true,
     initialExpansion: 1,
     search: false,
-    // Rows drag out as composer mentions; nothing moves inside the tree.
     dragAndDrop: {
       canDrag: (paths) => {
         const dragged = new Set(paths);
@@ -247,14 +248,12 @@ export function FilesPanel({
       canDrop: () => false,
     },
     composition: {
-      // Without a native menu the tree keeps neither a menu button nor the right-click.
       contextMenu:
         contextMenu === undefined
           ? undefined
           : {
               triggerMode: "both",
               buttonVisibility: "always",
-              // The native menu replaces the tree's own surface for both triggers.
               render: () => null,
               onOpen: (item, context) => openRowMenu(contextMenu, item, context),
             },
@@ -274,13 +273,13 @@ export function FilesPanel({
     )
       return;
 
-    if (window.getSelection()?.toString()) return;
-
     const row = event
       .composedPath()
       .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
 
     if (!(row instanceof HTMLElement) || row.dataset.itemType !== "file") return;
+
+    if (selectionWithin(row)) return;
     const file = files.data?.find((candidate) => candidate.displayPath === row.dataset.itemPath);
 
     if (file !== undefined) fileActions.open(viewKey, { ...file, preview });
@@ -297,7 +296,6 @@ export function FilesPanel({
   );
 
   const revealed = useRef(0);
-  // The file list may arrive after the reveal; retry until the entry exists.
   useLayoutEffect(() => {
     model.resetPaths(paths);
 
@@ -313,15 +311,9 @@ export function FilesPanel({
   }, [model, paths, tabs.revealPath, tabs.revealRevision]);
   useLayoutEffect(() => {
     model.setGitStatus(
-      vcs.data?.kind === "repository"
-        ? worktreeFiles(vcs.data).map((file) => ({
-            path: file.path,
-            // The tree has no conflict mark; a conflict is a modification to resolve.
-            status: file.kind === "conflicted" ? "modified" : file.kind,
-          }))
-        : undefined,
+      changes?.map((file) => ({ path: file.path, status: treeStatus(file.kind) })),
     );
-  }, [model, vcs.data]);
+  }, [model, changes]);
 
   const discard = async (): Promise<void> => {
     if (discardPath === undefined) return;
@@ -344,7 +336,7 @@ export function FilesPanel({
   return (
     <section
       aria-label="Files"
-      {...props(styles.panel)}
+      {...props(styles.panel, treeStatusTheme)}
       onKeyDownCapture={(event) => {
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
@@ -395,7 +387,7 @@ export function FilesPanel({
           <MenuContent align="end" xstyle={styles.menu}>
             <MenuItem
               layout="plain"
-              meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
+              meta={nyte.platform === "darwin" ? "⌘S" : "Ctrl+S"}
               disabled={!unsaved}
               onClick={() => {
                 if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
@@ -439,7 +431,7 @@ export function FilesPanel({
                   if (activeFile !== undefined) void revealPath({ path: activeFile.path });
                 }}
               >
-                {revealLabel(host.data?.platform)}
+                {revealLabel(nyte.platform)}
               </MenuItem>
             )}
             <MenuSeparator inset />
@@ -484,6 +476,19 @@ export function FilesPanel({
       )}
       <div {...props(styles.body)}>
         <div {...props(styles.editors)}>
+          {tabs.tabs.length === 0 && (
+            <FilesEmptyState
+              files={files.data}
+              changes={changes ?? []}
+              explorerVisible={sidebarVisible && sidebar === "explorer"}
+              onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+              onShowExplorer={() => {
+                setSidebar("explorer");
+                setSidebarVisible(true);
+              }}
+              onSearch={showSearch}
+            />
+          )}
           {tabs.tabs.map((file) => (
             <WorkspaceFileEditor
               key={file.path}
@@ -503,49 +508,51 @@ export function FilesPanel({
             />
           ))}
         </div>
-        <aside
-          aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
-          {...props(
-            styles.explorer,
-            sidebar === "search" && styles.search,
-            !sidebarVisible && styles.hidden,
-          )}
-        >
-          <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
-            <div {...props(styles.explorerHeader)}>{host.data?.workspace?.name ?? "Workspace"}</div>
-            {files.isError && (
-              <div role="alert" {...props(styles.empty)}>
-                Could not load files. {files.error.message}
+        {sidebarVisible && (
+          <WorkbenchRail>
+            <aside
+              aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
+              {...props(styles.explorer)}
+            >
+              <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
+                <div {...props(styles.explorerHeader)}>
+                  {host.data.workspace?.name ?? "Workspace"}
+                </div>
+                {files.isError && (
+                  <div role="alert" {...props(styles.empty)}>
+                    Could not load files. {files.error.message}
+                  </div>
+                )}
+                <WorkspaceFileTree
+                  model={model}
+                  onDragEnd={() => setTreeDrag([])}
+                  onClick={(event) => {
+                    if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
+                      openFromTree(event.nativeEvent, true);
+                    }
+                  }}
+                  onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") openFromTree(event.nativeEvent, true);
+                  }}
+                  {...props(workbenchStyles.treeTheme, styles.tree)}
+                />
               </div>
-            )}
-            <WorkspaceFileTree
-              model={model}
-              onDragEnd={() => setTreeDrag([])}
-              onClick={(event) => {
-                if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
-                  openFromTree(event.nativeEvent, true);
-                }
-              }}
-              onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") openFromTree(event.nativeEvent, true);
-              }}
-              {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
-            />
-          </div>
-          <div
-            ref={searchRef}
-            {...props(styles.sidebarBody, sidebar !== "search" && styles.hidden)}
-          >
-            {searchOpened && (
-              <WorkspaceSearch
-                active={shown && sidebarVisible && sidebar === "search"}
-                drafts={drafts}
-                onOpen={(location) => fileActions.open(viewKey, location)}
-              />
-            )}
-          </div>
-        </aside>
+              <div
+                ref={searchRef}
+                {...props(styles.sidebarBody, sidebar !== "search" && styles.hidden)}
+              >
+                {searchOpened && (
+                  <WorkspaceSearch
+                    active={shown && sidebar === "search"}
+                    drafts={drafts}
+                    onOpen={(location) => fileActions.open(viewKey, location)}
+                  />
+                )}
+              </div>
+            </aside>
+          </WorkbenchRail>
+        )}
       </div>
       <ConfirmDialog
         open={discardPath !== undefined}
@@ -571,7 +578,7 @@ const breadcrumbStyles = create({
     alignItems: "center",
     flex: 1,
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "clip",
     color: role.contentSecondary,
     fontSize: type.fontBase,
     whiteSpace: "nowrap",

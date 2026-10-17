@@ -1,0 +1,40 @@
+---
+title: Installation
+description: Nyte runs on your Mac as a desktop app, or in a terminal on macOS and Linux.
+---
+
+import { PlatformIcon } from "~/components/mdx/install";
+
+Both run the agent on your machine and keep each session in a local SQLite database, so you can close the app and pick a conversation up later.
+
+## <PlatformIcon name="IconFinderFace" /> macOS [#macos]
+
+<DesktopDownload />
+
+<small>
+  Open the disk image and drag Nyte to Applications. Older versions are on the [releases
+  page](https://github.com/interfaces-lab/nyte/releases).
+</small>
+
+The desktop app includes its own host, so there is nothing else to install.
+
+## <PlatformIcon name="IconConsole" /> Terminal [#terminal]
+
+For macOS and Linux, on arm64 and x64. The installer puts `nyte` on your PATH.
+
+```sh
+curl -fsSL https://nyte.sh/install | sh
+```
+
+Sign in, then start a session:
+
+```sh
+nyte login
+nyte
+```
+
+<small>
+  Run `nyte -p "your prompt"` for a single answer without the interface. The [CLI
+  guide](https://github.com/interfaces-lab/nyte/blob/main/packages/cli/docs/README.md) covers
+  commands and configuration.
+</small>

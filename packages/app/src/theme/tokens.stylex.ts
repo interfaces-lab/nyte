@@ -1,5 +1,5 @@
 import { defineVars } from "@stylexjs/stylex";
-import "@nyte-ai/ui/tokens.stylex";
+import "@nyte-ai/ui/styles/tokens.stylex";
 
 export const windowInput = defineVars({ "--nyte-window-zoom": "1" });
 
@@ -22,21 +22,22 @@ export const layout = defineVars({
   "--nyte-sidebar-meta-width": "40px",
   "--nyte-settings-content-width": "680px",
   "--nyte-settings-content-gutter": "24px",
-  "--nyte-settings-inventory-row-height": { default: "48px", "@media (pointer: coarse)": "60px" },
+  "--nyte-settings-page-padding-block": "48px 80px",
   "--nyte-settings-section-gap": "40px",
   "--nyte-settings-card-gap": "12px",
   "--nyte-settings-row-padding": "16px 20px",
   "--nyte-settings-row-padding-inline": "20px",
-  "--nyte-settings-control-height": "var(--nyte-btn-height-md)",
   "--nyte-settings-control-max-width": "160px",
   "--nyte-settings-page-title-size": "calc(var(--nyte-font-size-base) * 24 / 13)",
-  "--nyte-settings-page-title-line-height": "calc(var(--nyte-font-size-base) * 32 / 13)",
+  "--nyte-settings-page-title-line-height":
+    "round(up, calc(var(--nyte-font-size-base) * 32 / 13), 1px)",
   "--nyte-settings-section-title-size": "var(--nyte-font-size-lg)",
-  "--nyte-settings-section-title-line-height": "calc(var(--nyte-font-size-base) * 23 / 13)",
+  "--nyte-settings-section-title-line-height":
+    "round(up, calc(var(--nyte-font-size-base) * 23 / 13), 1px)",
   "--nyte-suggestion-item-height": "var(--nyte-row-height-md)",
   "--nyte-suggestion-item-gap": "8px",
   "--nyte-conversation-measure": "840px",
-  "--nyte-prose-measure": "840px",
+  "--nyte-prose-measure": "54ch",
   "--nyte-prose-paragraph-gap": "16px",
   "--nyte-conversation-gutter": "16px",
   "--nyte-conversation-header-height": "35px",
@@ -53,21 +54,24 @@ export const layout = defineVars({
   "--nyte-tray-header-height": "36px",
   "--nyte-tray-row-height": "var(--nyte-row-height-md)",
   "--nyte-tray-row-inset": "6px",
-  "--nyte-workbench-rail-width": "210px",
+  "--nyte-workbench-rail-width": "214px",
   "--nyte-workbench-rail-gap": "16px",
-  "--nyte-workbench-row-height": "var(--nyte-row-height-md)",
   "--nyte-workbench-row-gap": "var(--nyte-row-gap)",
   "--nyte-workbench-row-padding-inline": "6px",
   "--nyte-workbench-heading-height": "24px",
   "--nyte-active-workbench-width": "500px",
-  "--nyte-workbench-panel-width": "384px",
+  "--nyte-workbench-panel-width": "300px",
   "--nyte-workbench-header-height": "35px",
   "--nyte-workbench-header-padding-block": { default: "0px", "@media (pointer: coarse)": "4px" },
-  "--nyte-workbench-icon-rail-width": { default: "34px", "@media (pointer: coarse)": "52px" },
+  "--nyte-workbench-icon-rail-width": { default: "40px", "@media (pointer: coarse)": "52px" },
+  "--nyte-workbench-sash-width": {
+    default: "4px",
+    "@media (pointer: coarse)": "var(--nyte-target-min)",
+  },
   "--nyte-workbench-file-list-width": "200px",
   "--nyte-workbench-launcher-card-size": "112px",
   "--nyte-pane-sash-size": { default: "24px", "@media (pointer: coarse)": "44px" },
   "--nyte-pane-divider-gap": "5px",
-  "--nyte-diff-line-height": "calc(var(--nyte-font-size-code) * 20 / 12)",
+  "--nyte-diff-line-height": "round(up, calc(var(--nyte-font-size-code) * 20 / 12), 1px)",
   "--nyte-diff-preview-max-height": "min(480px, 60vh)",
 });

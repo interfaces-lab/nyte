@@ -5,13 +5,15 @@
  */
 import {
   AssetField,
+  getPermissionsAsync,
   MediaType,
-  presentPermissionsPicker,
   Query,
   requestPermissionsAsync,
   type PermissionResponse,
 } from "expo-media-library";
 import { prepareImage, type StagedImage } from "./attachments.ts";
+// oxlint-disable-next-line nyte-code/no-cross-package-relative-imports -- Expo autolinks local modules from modules/, and the app imports them by path
+import { photoAccess } from "../../modules/nyte-photo-access/src/nyte-photo-access.ts";
 
 export type RecentPhoto = { readonly id: string; readonly uri: string };
 
@@ -21,7 +23,7 @@ export type PhotoAccess =
   | { readonly kind: "denied" };
 
 export async function readRecentPhotos(limit: number): Promise<PhotoAccess> {
-  const permission: PermissionResponse = await requestPermissionsAsync();
+  const permission: PermissionResponse = await getPermissionsAsync(false, ["photo"]);
 
   if (!permission.granted) return { kind: "denied" };
 
@@ -40,7 +42,13 @@ export async function readRecentPhotos(limit: number): Promise<PhotoAccess> {
     : { kind: "granted", photos };
 }
 
-export const chooseSharedPhotos = () => presentPermissionsPicker(["photo"]);
+export async function requestPhotoAccess(limit: number): Promise<PhotoAccess> {
+  await requestPermissionsAsync(false, ["photo"]);
+
+  return readRecentPhotos(limit);
+}
+
+export const chooseSharedPhotos = () => photoAccess.presentLimitedPicker();
 
 export const stageRecentPhoto = (photo: RecentPhoto): Promise<StagedImage> =>
   prepareImage(photo.uri);

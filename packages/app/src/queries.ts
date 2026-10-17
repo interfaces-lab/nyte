@@ -1,68 +1,78 @@
-// TanStack Query over the SDK operations. Startup seeds local data before mounting
-// the shell. Watches invalidate settled data; the host pushes the session
-// directory; what has no watch operation yet (jobs, VCS status) polls on a slow interval.
 import {
   QueryClient,
-  queryOptions,
+  skipToken,
   useMutation,
   useMutationState,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
-import { projectPreference } from "./preference-projection.ts";
 import { useMemo, useSyncExternalStore } from "react";
-import { keys } from "./query-keys.ts";
-import { SessionActions } from "./session-actions.ts";
-import {
-  projectSessionConfiguration,
-  sessionConfigurationOptions,
-} from "./session-configuration.ts";
-import type { ConfigureSessionPatch, PendingConfiguration } from "./session-configuration.ts";
-
-export { keys } from "./query-keys.ts";
-
+import { asId, ModelRefType } from "@nyte-ai/schema";
+import { Value } from "typebox/value";
 import { toast } from "@nyte-ai/ui/toast";
-import { sessionMark } from "@nyte-ai/client";
-import { VCS_PATHS_MAX } from "@nyte-ai/protocol";
 import type {
-  OperationInput,
-  PluginCatalog,
-  RunDiff,
+  ChangeSet,
+  CommandInfo,
+  Connection,
+  Cursor,
+  FilesApi,
+  FileVersion,
+  GitApi,
+  GitScope,
+  Json,
+  ModelCatalogView,
+  ModelRef,
+  PatchEntry,
+  PatchSet,
   RunId,
+  SearchFrame,
+  SearchInput,
   SessionId,
   SessionInfo,
+  SessionView,
   SettingInfo,
-  VcsDiff,
-  VcsLog,
-  VcsRefs,
-  VcsSnapshot,
-  WorkspaceFileDocument,
+  WorkspaceId,
   WorkspaceInfo,
-  WorkspaceSearchInput,
-} from "@nyte-ai/protocol";
-import { localSessions } from "./bridge.ts";
+} from "@nyte-ai/sdk";
+import { keys } from "./query-keys.ts";
+import { missingAsNull } from "./route-session.ts";
+import { SessionActions } from "./session-actions.ts";
+import { projectSessionChoice, sessionConfigurationOptions } from "./session-configuration.ts";
+import type { PendingConfiguration } from "./session-configuration.ts";
 import type {
-  DesktopCatalog,
   HostState,
-  PreferenceChange,
-  RemoteAccessState,
-  ServerState,
-  SessionDirectoryChange,
+  SelectedWorkspace,
   UpdateState,
   UsageSnapshot,
   UsageWindow,
-  WorkspaceSessionDirectory,
 } from "./bridge.ts";
-import type { SessionPage } from "./session-directory.ts";
-import { SessionDirectoryFeed } from "./session-directory-feed.ts";
-// The query layer reads sessions through the observer and the observer writes
-// this cache; neither module touches the other while it evaluates.
-import { readSessionSnapshot, sessionSelection } from "./live.ts";
+import { groupDirectory } from "./session-directory.ts";
+import type { WorkspaceSessionDirectory } from "./session-directory.ts";
 import { nyte } from "./nyte.ts";
-import { activateOutbox, useOptimisticSessionIds } from "./use-outbox.ts";
-import { installSnapshotCacheBudget, releaseSessionQueries } from "./snapshot-cache.ts";
+import {
+  childrenWatch,
+  connectHost,
+  connected,
+  currentConnection,
+  directoryWatch,
+  gitStatusWatch,
+  hostWatch,
+  jobsWatch,
+  sessionWatch,
+  useWatch,
+  useWatchSelect,
+} from "./sdk.tsx";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
+import { toDesktopCatalog } from "./catalog.ts";
+import { workspaceName, workspacePath } from "./view-helpers.ts";
+import { mentionFile } from "./conversation/message-references.ts";
+import { subagentActivity } from "./conversation/subagent-status.ts";
+import type { MentionFile } from "./conversation/message-references.ts";
+import type { DesktopCatalog } from "./catalog.ts";
+import { startupReadsReleased } from "./startup.ts";
+
+export { keys } from "./query-keys.ts";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -76,23 +86,13 @@ export const queryClient = new QueryClient({
   },
 });
 
-queryClient.setQueryDefaults(["snapshot"], { structuralSharing: false });
-
-installSnapshotCacheBudget(queryClient);
-
 const sessionActionsByClient = new WeakMap<QueryClient, SessionActions>();
 
 function actionsFor(client: QueryClient): SessionActions {
   const existing = sessionActionsByClient.get(client);
 
   if (existing !== undefined) return existing;
-
-  const actions = new SessionActions({
-    client,
-    sessions: nyte.sessions,
-    releaseResources: (sessionId) => releaseSessionRendererMemory(client, sessionId),
-  });
-
+  const actions = new SessionActions({ client });
   sessionActionsByClient.set(client, actions);
 
   return actions;
@@ -112,99 +112,117 @@ function useSessionProjection() {
   };
 }
 
-export const SNAPSHOT_WARM_MS = 1_000;
-
-const OUTBOX_WARM_MS = 250;
-
 const readHost = () => nyte.host.state();
 
-const readWorkspaces = () => nyte.workspace.list();
+const readWorkspaces = async () => (await connected()).workspaces.list();
 
-function releaseSessionRendererMemory(client: QueryClient, sessionId: SessionId): void {
-  releaseSessionQueries(client, sessionId);
+const readModelCatalog = async () => (await connected()).models.list();
+
+function newestCatalogQuery() {
+  return queryClient
+    .getQueryCache()
+    .findAll({ queryKey: ["catalog", "models"] })
+    .filter((query) => query.state.data !== undefined)
+    .toSorted((left, right) => right.state.dataUpdatedAt - left.state.dataUpdatedAt)
+    .at(0);
 }
+
+/** The newest catalog any generation answered: a live one, or the last run's seed until one does. */
+export function newestModelCatalog(): ModelCatalogView | undefined {
+  const newest = newestCatalogQuery();
+
+  return newest === undefined
+    ? undefined
+    : queryClient.getQueryData<ModelCatalogView>(newest.queryKey);
+}
+
+function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalogView | undefined {
+  return previous ?? newestModelCatalog();
+}
+
+const DEFAULT_MODEL_MUTATION = ["catalog", "default"] as const;
 
 /**
- * What a pushed row changes beside the directory: the session's own row, its
- * parent's child list, and the questions tray when a child's mark moved. Rows
- * arrive only when they changed, so each is worth writing.
+ * The catalog a new chat's start checks its model against, once the host
+ * answers: the newest live answer, or a fresh read when only the last run's
+ * seed is cached. A pick still being saved outranks the host's default.
  */
-function applySessionRows(changes: readonly SessionDirectoryChange[]): void {
-  for (const change of changes) {
-    if (change.kind === "removed") {
-      const removed = queryClient.getQueryData<SessionInfo | null>(keys.session(change.sessionId));
+export async function readStartCatalog(): Promise<DesktopCatalog> {
+  const newest = newestCatalogQuery();
 
-      if (removed?.parent !== undefined) {
-        queryClient.setQueryData<readonly SessionInfo[]>(
-          keys.childSessions(removed.parent.sessionId),
-          (children) => children?.filter((child) => child.sessionId !== change.sessionId),
-        );
-        void queryClient.invalidateQueries({
-          queryKey: keys.children(removed.parent.sessionId),
-          exact: true,
-        });
-      }
+  const live =
+    newest !== undefined && newest.state.dataUpdatedAt > 0
+      ? queryClient.getQueryData<ModelCatalogView>(newest.queryKey)
+      : undefined;
 
-      releaseSessionRendererMemory(queryClient, change.sessionId);
-      continue;
-    }
+  const catalog = toDesktopCatalog(live ?? (await readModelCatalog()));
 
-    if (change.kind !== "upsert") continue;
-    const { session } = change;
-    const previous = queryClient.getQueryData<SessionInfo | null>(keys.session(session.sessionId));
-    queryClient.setQueryData(keys.session(session.sessionId), session);
+  const picked = queryClient
+    .getMutationCache()
+    .findAll({ mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" })
+    .at(-1)?.state.variables;
 
-    if (session.parent === undefined) continue;
-    queryClient.setQueryData<readonly SessionInfo[]>(
-      keys.childSessions(session.parent.sessionId),
-      (children) =>
-        children === undefined
-          ? children
-          : children.some((child) => child.sessionId === session.sessionId)
-            ? children.map((child) => (child.sessionId === session.sessionId ? session : child))
-            : [...children, session],
-    );
-
-    if (previous == null || sessionMark(previous) !== sessionMark(session)) {
-      void queryClient.invalidateQueries({
-        queryKey: keys.children(session.parent.sessionId),
-        exact: true,
-      });
-    }
-  }
+  return Value.Check(ModelRefType, picked)
+    ? { ...catalog, defaults: { model: picked, thinkingLevel: undefined } }
+    : catalog;
 }
 
-const readSessionDirectory = async (): Promise<readonly WorkspaceSessionDirectory[]> =>
-  directoryFeed.snapshot(await nyte.host.sessionDirectory());
-
-const directoryFeed = new SessionDirectoryFeed({
-  directory: (update) =>
-    queryClient.setQueryData<readonly WorkspaceSessionDirectory[]>(keys.sessionDirectory, update),
-  rows: applySessionRows,
-  resync: () =>
-    void queryClient
-      .fetchQuery({ queryKey: keys.sessionDirectory, queryFn: readSessionDirectory, staleTime: 0 })
-      .catch(() => undefined),
-});
-
-/** Subscribe before the startup snapshot is read, so no change between the two is lost. */
-export function connectSessionDirectory(): () => void {
-  return nyte.host.onEvent((event) => {
-    if (event.kind === "session_directory") directoryFeed.receive(event);
-  });
+export function selectedWorkspaceId(): WorkspaceId | undefined {
+  return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
-const readCatalog = () => nyte.host.catalog();
+/** The folder a chat lives in: null for Home, undefined until the directory and folders load. */
+export function sessionFolderPath(sessionId: SessionId): string | null | undefined {
+  const session = directoryWatch("all").value?.find((candidate) => candidate.id === sessionId);
+  const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
 
-const readUsage = (input: UsageWindow) => nyte.host.usage(input);
+  if (session === undefined || workspaces === undefined) return undefined;
+  const workspace = workspaces.find((candidate) => candidate.id === session.workspace);
 
-const readPluginCatalog = (): Promise<PluginCatalog> => nyte.plugins.catalog();
+  return workspace === undefined || workspace.availability.kind === "unavailable"
+    ? null
+    : workspacePath(workspace);
+}
 
-const readSession = async (sessionId: SessionId) =>
-  (await nyte.sessions.get({ sessionId })) ?? null;
+export async function workspaceFiles(): Promise<FilesApi> {
+  const id = selectedWorkspaceId();
+
+  if (id === undefined) throw new Error("Open a workspace to read its files");
+  const capability = await (await connected()).workspace(id).files();
+
+  if (capability.kind !== "available") throw new Error(capability.reason);
+
+  return capability.api;
+}
+
+export async function workspaceGit(): Promise<GitApi> {
+  const id = selectedWorkspaceId();
+
+  if (id === undefined) throw new Error("Open a workspace to read its repository");
+  const capability = await (await connected()).workspace(id).git();
+
+  if (capability.kind !== "available") throw new Error(capability.reason);
+
+  return capability.api;
+}
+
+export const readSession = async (sessionId: SessionId) =>
+  (await connected()).session(sessionId).info();
+
+/**
+ * A window opens on Home, so its host state is known before the host answers.
+ * It never fetches on its own: `loadLocalResources` and workspace events write it.
+ */
+const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
 export function useHostState() {
-  return useQuery({ queryKey: keys.host, queryFn: readHost });
+  const { data } = useQuery({
+    queryKey: keys.host,
+    queryFn: skipToken,
+    initialData: OPENING_HOST_STATE,
+  });
+
+  return { data: data ?? OPENING_HOST_STATE };
 }
 
 export function useUpdateState() {
@@ -221,9 +239,8 @@ export function setUpdateStateForDemo(state: UpdateState): void {
 export function useServerState(active: boolean) {
   return useQuery({
     queryKey: keys.server,
-    queryFn: (): Promise<ServerState> => nyte.host.server.state(),
+    queryFn: () => nyte.host.server.state(),
     staleTime: active ? 0 : Infinity,
-    refetchInterval: active ? 15_000 : false,
     refetchOnWindowFocus: active ? "always" : false,
     refetchOnMount: active ? "always" : false,
   });
@@ -232,7 +249,7 @@ export function useServerState(active: boolean) {
 export function useRemoteAccessState(active: boolean) {
   return useQuery({
     queryKey: keys.remoteAccess,
-    queryFn: (): Promise<RemoteAccessState> => nyte.host.remote.state(),
+    queryFn: () => nyte.host.remote.state(),
     enabled: active,
     staleTime: 0,
     refetchOnWindowFocus: "always",
@@ -240,18 +257,41 @@ export function useRemoteAccessState(active: boolean) {
   });
 }
 
+export interface RailWorkspace extends SelectedWorkspace {
+  readonly available: boolean;
+  /** The folder this worktree was made from and its branch; null for a folder the user added. */
+  readonly worktree: { readonly source: WorkspaceId; readonly branch: string } | null;
+}
+
 export function useWorkspaces() {
-  const pending = useMutationState<MutationState<void, Error, string>>({
+  const pending = useMutationState<MutationState<void, Error, WorkspaceId>>({
     filters: { mutationKey: ["workspace", "forget"], status: "pending" },
   });
 
   return useQuery({
     queryKey: keys.workspaces,
     queryFn: readWorkspaces,
-    select: (workspaces) =>
-      workspaces.filter(
-        (workspace) => !pending.some((mutation) => mutation.variables === workspace.path),
-      ),
+    placeholderData: () =>
+      queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.firstFrameWorkspaces),
+    select: (workspaces): readonly RailWorkspace[] =>
+      workspaces.flatMap((workspace) => {
+        const path = workspacePath(workspace);
+
+        return path === null || pending.some((mutation) => mutation.variables === workspace.id)
+          ? []
+          : [
+              {
+                id: workspace.id,
+                path,
+                name: workspaceName(workspace),
+                available: workspace.availability.kind === "available",
+                worktree:
+                  workspace.isolation === null
+                    ? null
+                    : { source: workspace.isolation.source, branch: workspace.isolation.branch },
+              },
+            ];
+      }),
   });
 }
 
@@ -261,12 +301,15 @@ export function useForgetWorkspace() {
 
   return useMutation({
     mutationKey: ["workspace", "forget"],
-    mutationFn: (path: string) => nyte.workspace.forget({ path }),
-    onSuccess: async (_result, path) => {
+    mutationFn: async (id: WorkspaceId) => {
+      const outcome = await (await connected()).workspaces.forget(id);
+
+      if (outcome.kind === "busy") throw new Error("Chats still use this workspace");
+    },
+    onSuccess: async (_result, id) => {
       await client.cancelQueries({ queryKey: keys.workspaces, exact: true });
-      client.setQueryData<Awaited<ReturnType<typeof readWorkspaces>>>(
-        keys.workspaces,
-        (workspaces) => workspaces?.filter((workspace) => workspace.path !== path),
+      client.setQueryData<readonly WorkspaceInfo[]>(keys.workspaces, (workspaces) =>
+        workspaces?.filter((workspace) => workspace.id !== id),
       );
       toast.add({
         type: "success",
@@ -284,350 +327,296 @@ export function useForgetWorkspace() {
   });
 }
 
-export function useWorkspaceSessionDirectory() {
+/** The live directory's roots; until it arrives, the ones the last run recorded. */
+function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
+  const all = useWatch(directoryWatch("all")).value;
 
-  return useQuery({
-    queryKey: keys.sessionDirectory,
-    queryFn: readSessionDirectory,
-    select: (directories) =>
-      directories.map((directory) => ({
-        ...directory,
-        sessions: projection.list(directory.sessions),
-      })),
-  });
+  const recorded = useQuery<readonly SessionInfo[]>({
+    queryKey: keys.firstFrameRoots,
+    queryFn: skipToken,
+  }).data;
+
+  return useMemo(() => {
+    if (all !== undefined) return projection.list(all.filter((session) => session.parent === null));
+
+    return recorded === undefined ? undefined : projection.list(recorded);
+  }, [all, projection, recorded]);
 }
 
-/** Chats to draw as working whatever their own run says: a submission in the outbox, or a subagent still running. */
+const NO_SESSIONS: ReadonlySet<SessionId> = new Set();
+
 export function useWorkingSessionIds(): ReadonlySet<SessionId> {
-  const optimistic = useOptimisticSessionIds();
-  const directory = useWorkspaceSessionDirectory();
+  const all = useWatch(directoryWatch("all")).value;
+
+  return useMemo(() => {
+    if (all === undefined) return NO_SESSIONS;
+    const parents = new Map(all.map((session) => [session.id, session.parent]));
+    const working = new Set<SessionId>();
+
+    for (const session of all) {
+      if (session.heads.every((head) => head.execution.kind === "idle")) continue;
+
+      for (let parent = session.parent; parent !== null; parent = parents.get(parent) ?? null) {
+        if (working.has(parent)) break;
+        working.add(parent);
+      }
+    }
+
+    return working;
+  }, [all]);
+}
+
+export function useWorkspaceSessionDirectory(): {
+  readonly data: readonly WorkspaceSessionDirectory[] | undefined;
+} {
+  const roots = useRootSessions();
+  const workspaces = useWorkspaces();
 
   return useMemo(
-    () => new Set([...optimistic, ...(directory.data ?? []).flatMap((entry) => entry.delegating)]),
-    [directory.data, optimistic],
+    () => ({
+      data: roots === undefined ? undefined : groupDirectory(roots, workspaces.data ?? []),
+    }),
+    [roots, workspaces.data],
   );
-}
-
-/** The directory a session lives in: a local store (`null` is Home) or the configured server. */
-export type SessionLocation =
-  | { readonly environment: "local"; readonly workspacePath: string | null }
-  | { readonly environment: "cloud"; readonly available: boolean };
-
-const locateSession = (
-  directories: readonly WorkspaceSessionDirectory[],
-  sessionId: SessionId,
-): SessionLocation | null => {
-  const directory = directories.find((candidate) =>
-    candidate.sessions.some((session) => session.sessionId === sessionId),
-  );
-
-  if (directory === undefined) return null;
-
-  return directory.environment === "cloud"
-    ? { environment: "cloud", available: directory.availability.kind === "ready" }
-    : { environment: "local", workspacePath: directory.workspacePath };
-};
-
-export function useSessionLocation(sessionId: SessionId): SessionLocation | undefined {
-  const location = useQuery({
-    queryKey: keys.sessionDirectory,
-    queryFn: readSessionDirectory,
-    select: (directories) => locateSession(directories, sessionId),
-  });
-
-  return location.data ?? undefined;
 }
 
 export function useSessionSearch(search: string, enabled = true) {
-  const projection = useSessionProjection();
-  const normalized = search.trim();
+  const roots = useRootSessions();
+  const needle = search.trim().toLocaleLowerCase();
 
-  return useQuery({
-    queryKey: keys.sessionSearch(normalized),
-    queryFn: () => nyte.sessions.list({ search: normalized, parent: null, limit: 50 }),
-    select: (page) => ({
-      ...page,
-      items: projection.list(page.items).filter((session) => !session.archived),
+  return useMemo(
+    () => ({
+      data:
+        !enabled || needle === "" || roots === undefined
+          ? undefined
+          : {
+              items: roots.filter(
+                (session) =>
+                  !session.archived && (session.name ?? "").toLocaleLowerCase().includes(needle),
+              ),
+            },
     }),
-    enabled: enabled && normalized !== "",
-  });
+    [enabled, needle, roots],
+  );
 }
 
-export function useSession(sessionId: SessionId) {
+/** A chat's info: its session directory row, or a host read once the directory has answered without it. */
+export function useSession(sessionId: SessionId | undefined) {
   const projection = useSessionProjection();
+  const directory = useWatch(directoryWatch("all"));
+  const listed = directory.value?.find((session) => session.id === sessionId);
 
-  return useQuery({
-    queryKey: keys.session(sessionId),
-    queryFn: () => readSession(sessionId),
-    select: (session) => (session === null ? null : projection.session(session)),
+  const read = useQuery({
+    queryKey: keys.session(sessionId ?? asId<"session">("")),
+    queryFn: () => (sessionId === undefined ? null : readSession(sessionId).catch(missingAsNull)),
+    enabled:
+      (directory.value !== undefined || directory.error !== undefined) &&
+      listed === undefined &&
+      sessionId !== undefined,
   });
+
+  const row = listed ?? read.data;
+
+  return {
+    ...read,
+    data: row === undefined || row === null ? row : projection.session(row),
+  };
 }
 
-export function useSessionSnapshot(sessionId: SessionId) {
-  const projection = useSessionProjection();
+/** The session's live view with the watch's failure and a retry. */
+export function useSessionState(sessionId: SessionId | undefined) {
+  return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId));
+}
+
+export function useSessionView(sessionId: SessionId | undefined): SessionView | undefined {
+  return useSessionState(sessionId).value;
+}
+
+/** What a running session is doing now, in words; re-renders only when the words change. */
+export function useSessionActivity(
+  sessionId: SessionId | undefined,
+  cwd: string | undefined,
+): string | undefined {
+  return useWatchSelect(sessionId === undefined ? undefined : sessionWatch(sessionId), (state) =>
+    subagentActivity(state.value, cwd),
+  );
+}
+
+export function useSessionChoice(sessionId: SessionId) {
+  const configuration = useWatchSelect(
+    sessionWatch(sessionId),
+    (state) => state.value?.configuration,
+  );
 
   const pending = useMutationState<PendingConfiguration>({
     filters: { mutationKey: ["session", sessionId, "configure"], status: "pending" },
   });
 
-  // Every mount reads through the observer: its state when the session is
-  // already open, else the fresh coherent read its watch starts from, so a
-  // reopened view never trusts a cache that predates a hidden interval. Cached
-  // content paints meanwhile; the read never gates navigation.
-  return useQuery({
-    queryKey: keys.snapshot(sessionId),
-    queryFn: ({ signal }) => readSessionSnapshot(sessionId, signal),
-    select: (snapshot) => ({
-      ...snapshot,
-      session: projectSessionConfiguration(
-        projection.session(snapshot.session) ?? snapshot.session,
-        pending,
-      ),
-    }),
-    refetchOnMount: "always",
-    // Reopening a chat costs a full session read, and the five-minute default
-    // drops a transcript between two visits in the same sitting. Only a chat
-    // that was opened keeps this: a hover warm writes the same key through
-    // `prefetchQuery`, which keeps the default, so a transcript the reader
-    // only passed over still expires while the ones they move between stay.
-    gcTime: 60 * 60 * 1_000,
-  });
-}
-
-/** The child sessions one chat delegated to. Parent commits invalidate this; the host pushes each child's row. */
-export function childSessionsOptions(sessionId: SessionId | undefined) {
-  return queryOptions({
-    queryKey: keys.childSessions(sessionId),
-    queryFn: async (): Promise<readonly SessionInfo[]> => {
-      if (sessionId === undefined) return [];
-      const first = await nyte.sessions.list({ parent: sessionId });
-      const children = [...first.items];
-      let cursor = first.next;
-
-      while (cursor !== undefined) {
-        const page = await nyte.sessions.list({ parent: sessionId, cursor });
-        children.push(...page.items);
-        cursor = page.next;
-      }
-
-      for (const child of children) queryClient.setQueryData(keys.session(child.sessionId), child);
-
-      return children;
-    },
-    enabled: sessionId !== undefined,
-    staleTime: SNAPSHOT_WARM_MS,
-  });
+  return configuration === undefined ? undefined : projectSessionChoice({ configuration }, pending);
 }
 
 export function useChildSessions(sessionId: SessionId | undefined) {
-  return useQuery(childSessionsOptions(sessionId));
+  const children = useWatch(sessionId === undefined ? undefined : childrenWatch(sessionId)).value;
+
+  return { data: children };
 }
 
-export function backgroundJobsOptions(sessionId: SessionId) {
-  return queryOptions({
-    queryKey: keys.jobs(sessionId),
-    queryFn: () => nyte.jobs.list({ sessionId }),
-    staleTime: SNAPSHOT_WARM_MS,
+export function useWorkspaceJobs(workspace: WorkspaceId | undefined) {
+  return useWatch(workspace === undefined ? undefined : jobsWatch(workspace)).value;
+}
+
+export function useVcsChanges(
+  scope: GitScope | undefined,
+  ignoreWhitespace: boolean,
+  revision: string | undefined,
+  enabled: boolean,
+) {
+  const host = useHostState();
+  const workspace = host.data.workspace?.id;
+
+  return useQuery<ChangeSet>({
+    queryKey: keys.gitChanges(workspace, scope, ignoreWhitespace, revision),
+    queryFn: async () => {
+      if (scope === undefined) throw new Error("Choose what to compare");
+
+      return (await workspaceGit()).changes(scope, { ignoreWhitespace });
+    },
+    enabled: enabled && scope !== undefined && workspace !== undefined,
+    placeholderData: (previous) => previous,
   });
 }
 
-const WORKSPACE_TARGET = { kind: "workspace" } as const;
+export function useVcsLog(
+  input: { readonly limit: number; readonly cursor?: Cursor | undefined },
+  enabled: boolean,
+) {
+  const host = useHostState();
+  const workspace = host.data.workspace?.id;
 
-const readVcsSnapshot = () => nyte.workspace.vcs.snapshot({ target: WORKSPACE_TARGET });
-
-export function refreshVcsSnapshot(): Promise<VcsSnapshot> {
-  return queryClient.fetchQuery({
-    queryKey: keys.vcsSnapshot,
-    queryFn: readVcsSnapshot,
+  return useQuery({
+    queryKey: keys.gitLog(workspace, input.limit, input.cursor),
+    queryFn: async () =>
+      (await workspaceGit()).log({
+        limit: input.limit,
+        ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+      }),
+    enabled: enabled && workspace !== undefined,
     staleTime: 0,
   });
 }
 
-export function useVcsSnapshot(enabled: boolean) {
-  return useQuery<VcsSnapshot>({
-    queryKey: keys.vcsSnapshot,
-    queryFn: readVcsSnapshot,
-    enabled,
-    staleTime: 5_000,
-    refetchOnMount: true,
-    refetchInterval: enabled ? 5_000 : false,
-  });
-}
-
-/**
- * Scope-aware VCS keys. They nest under the `["vcs"]` prefix `refreshVcs`
- * invalidates, so a run or a save refreshes history and refs with the status.
- */
-const vcsKeys = {
-  diff: (
-    root: string,
-    revision: string,
-    scopeKey: string,
-    pathsKey: string,
-    ignoreWhitespace: boolean,
-  ) => ["vcs", "diffs", root, revision, scopeKey, pathsKey, ignoreWhitespace] as const,
-  log: (limit: number, before: string | null) => ["vcs", "log", limit, before] as const,
-  refs: ["vcs", "refs"] as const,
-  runDiff: (sessionId: SessionId, runId: RunId, live: boolean) =>
-    ["vcs", "run-diff", sessionId, runId, live ? "live" : "settled"] as const,
-};
-
-/**
- * One run's file diff, exact from its recorded trees. A settled run diffs two
- * recorded trees, so its answer can never change: `static` keeps it out of
- * every refetch and invalidation. Only the live run still moves.
- */
-export function useRunDiff(input: {
-  readonly sessionId: SessionId | undefined;
+export function useRunChanges(input: {
+  readonly workspace: WorkspaceId | undefined;
   readonly runId: RunId | undefined;
   readonly live: boolean;
   readonly enabled?: boolean;
 }) {
-  const { sessionId, runId, live, enabled = true } = input;
+  const { workspace, runId, live, enabled = true } = input;
 
-  return useQuery<RunDiff>({
-    queryKey:
-      sessionId === undefined || runId === undefined
-        ? (["vcs", "run-diff", "unavailable"] as const)
-        : vcsKeys.runDiff(sessionId, runId, live),
+  return useQuery<ChangeSet>({
+    queryKey: keys.runChanges(workspace, runId, live),
     queryFn: async () => {
-      if (sessionId === undefined || runId === undefined) return { kind: "not_found" };
-      const [result] = await nyte.runs.diff({ sessionId, runs: [runId] });
+      if (workspace === undefined || runId === undefined) throw new Error("No run to compare");
 
-      return result?.diff ?? { kind: "not_found" };
+      return (await connected()).workspace(workspace).changes(runId);
     },
-    enabled: enabled && sessionId !== undefined && runId !== undefined,
+    enabled: enabled && workspace !== undefined && runId !== undefined,
     staleTime: live ? 0 : "static",
   });
 }
 
-export type VcsDiffRequest = Parameters<typeof nyte.workspace.vcs.diff>[0];
+async function firstPatches(
+  stream: AsyncIterable<PatchSet>,
+  paths: readonly string[],
+): Promise<readonly PatchEntry[]> {
+  for await (const set of stream) {
+    const entries = paths.flatMap((path) => {
+      const entry = set.entries.get(path);
 
-export interface VcsDiffRead {
-  readonly root: string;
-  readonly revision: string;
-  readonly request: VcsDiffRequest;
-}
+      return entry === undefined || !entry.fresh ? [] : [entry];
+    });
 
-function scopeKey(scope: VcsDiffRequest["scope"]): string {
-  switch (scope.kind) {
-    case "worktree":
-    case "staged":
-    case "unstaged":
-      return scope.kind;
-    case "commit":
-      return `commit:${scope.oid}`;
-    case "branch":
-      return `branch:${scope.base}`;
-    default: {
-      const _exhaustive: never = scope;
-
-      return _exhaustive;
-    }
+    if (entries.length === paths.length) return entries;
   }
+
+  return [];
+}
+
+export async function readGitPatches(
+  scope: GitScope,
+  paths: readonly string[],
+  ignoreWhitespace: boolean,
+): Promise<readonly PatchEntry[]> {
+  return firstPatches((await workspaceGit()).patches(scope, paths, { ignoreWhitespace }), paths);
+}
+
+export async function readRunPatches(
+  workspace: WorkspaceId,
+  run: RunId,
+  paths: readonly string[],
+  ignoreWhitespace: boolean,
+): Promise<readonly PatchEntry[]> {
+  const current = await connected();
+
+  return firstPatches(
+    current.workspace(workspace).patches(run, paths, { ignoreWhitespace }),
+    paths,
+  );
+}
+
+async function scanFiles(): Promise<readonly MentionFile[]> {
+  await startupReadsReleased();
+  const root = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
+  const files = await workspaceFiles();
+  const entries: MentionFile[] = [];
+
+  if (root === undefined) return entries;
+
+  for await (const frame of files.scan({ ignored: "exclude" })) {
+    if (frame.kind === "entries")
+      entries.push(...frame.entries.map((entry) => mentionFile(root, entry)));
+  }
+
+  return entries;
 }
 
 /**
- * Every revision is its own key, so a working tree that keeps moving would
- * otherwise drop to "pending" on each refresh and the stack would rebuild every
- * file twice. The last answer for the same checkout and comparison stands in
- * until the next one lands; only patches that changed then re-render.
+ * Rereads the repository and the files under it: the git status watch reopens,
+ * which makes the host read status afresh, and every git query (changes, log,
+ * refs, run changes), the file list and open file documents refetch. Resolves
+ * once the active queries have refetched.
  */
-export function useVcsDiff(read: VcsDiffRead | undefined, enabled: boolean) {
-  const request = read?.request;
-  const diffScopeKey = request === undefined ? undefined : scopeKey(request.scope);
-  const pathsKey = request?.paths === undefined ? "" : [...request.paths].toSorted().join("\0");
+export async function refreshVcs(): Promise<void> {
+  const workspace = selectedWorkspaceId();
 
-  return useQuery<readonly VcsDiff[]>({
-    placeholderData: (previous, previousQuery) =>
-      read !== undefined &&
-      previousQuery?.queryKey[2] === read.root &&
-      previousQuery.queryKey[4] === diffScopeKey
-        ? previous
-        : undefined,
-    queryKey:
-      read === undefined
-        ? vcsKeys.diff("unavailable", "unavailable", "", "", false)
-        : vcsKeys.diff(
-            read.root,
-            read.request.scope.kind === "commit" ? read.request.scope.oid : read.revision,
-            diffScopeKey ?? "",
-            pathsKey,
-            read.request.ignoreWhitespace === true,
-          ),
-    queryFn: async () => {
-      if (request === undefined) return [];
-
-      const { paths } = request;
-
-      if (paths === undefined || paths.length <= VCS_PATHS_MAX)
-        return nyte.workspace.vcs.diff(request);
-
-      const batches: string[][] = [];
-
-      for (let start = 0; start < paths.length; start += VCS_PATHS_MAX)
-        batches.push(paths.slice(start, start + VCS_PATHS_MAX));
-
-      return (
-        await Promise.all(
-          batches.map((batch) => nyte.workspace.vcs.diff({ ...request, paths: batch })),
-        )
-      ).flat();
-    },
-    enabled: enabled && request !== undefined,
-    gcTime: request?.scope.kind === "commit" ? undefined : 0,
-  });
+  if (workspace !== undefined) gitStatusWatch(workspace).retry();
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["git"] }),
+    queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true }),
+    queryClient.invalidateQueries({ queryKey: ["files", "document"] }),
+  ]);
 }
 
-/** A page of history, newest first. `before` continues strictly older than that commit. */
-export function useVcsLog(
-  input: { readonly limit: number; readonly before?: string },
-  enabled: boolean,
-) {
-  return useQuery<VcsLog>({
-    queryKey: vcsKeys.log(input.limit, input.before ?? null),
-    queryFn: () => nyte.workspace.vcs.log({ ...input, target: WORKSPACE_TARGET }),
-    enabled,
-  });
+export function useVcsSnapshot(enabled: boolean) {
+  const host = useHostState();
+  const workspace = host.data.workspace?.id;
+
+  return {
+    data: useWatch(enabled && workspace !== undefined ? gitStatusWatch(workspace) : undefined)
+      .value,
+  };
 }
 
-/** Local and remote short ref names. */
-export function useVcsRefs(enabled: boolean) {
-  return useQuery<VcsRefs>({
-    queryKey: vcsKeys.refs,
-    queryFn: () => nyte.workspace.vcs.refs({ target: WORKSPACE_TARGET }),
-    enabled,
-  });
-}
-
-function vcsNeedsRefresh({ queryKey }: { readonly queryKey: readonly unknown[] }): boolean {
-  // A diff key's scope is always a string; see `vcsKeys.diff`.
-  return queryKey[1] !== "diffs" || String(queryKey[4]).startsWith("branch:");
-}
-
-export function refreshVcs(): void {
-  void queryClient.invalidateQueries({
-    queryKey: ["vcs"],
-    predicate: vcsNeedsRefresh,
-  });
-  void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
-  void queryClient.invalidateQueries({ queryKey: ["files", "document"] });
-}
-
-/**
- * The open workspace's files for `@` mentions. Runs rewrite the tree, so the
- * list is invalidated with the VCS state and refetched when a composer mounts.
- */
 export function mentionFilesOptions(enabled: boolean) {
-  return queryOptions({
+  return {
     queryKey: keys.mentionFiles,
-    queryFn: () => nyte.workspace.files({ target: { kind: "workspace" } }),
+    queryFn: scanFiles,
     enabled,
     staleTime: 10_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-  });
+  } as const;
 }
 
 export function useMentionFiles(enabled: boolean) {
@@ -635,32 +624,44 @@ export function useMentionFiles(enabled: boolean) {
 }
 
 export function useWorkspaceFile(path: string | undefined) {
-  return useQuery<WorkspaceFileDocument>({
+  return useQuery({
     queryKey: keys.workspaceFile(path ?? ""),
-    queryFn: () => {
+    queryFn: async () => {
       if (path === undefined) throw new Error("Select a file to open it");
 
-      return nyte.workspace.read({ target: { kind: "workspace" }, path });
+      return (await workspaceFiles()).read(path);
     },
     enabled: path !== undefined,
     staleTime: 1_000,
   });
 }
 
-export function useWorkspaceSearch(input: WorkspaceSearchInput | undefined, enabled = true) {
+async function searchWorkspace(input: SearchInput) {
+  const matches: Extract<SearchFrame, { readonly kind: "match" }>[] = [];
+  let truncated = false;
+
+  for await (const frame of (await workspaceFiles()).search(input)) {
+    if (frame.kind === "match") matches.push(frame);
+
+    if (frame.kind === "truncated") truncated = true;
+  }
+
+  return { matches, truncated };
+}
+
+export function useWorkspaceSearch(input: SearchInput | undefined, enabled = true) {
   const host = useHostState();
-  const workspacePath = host.data?.workspace?.path;
+  const workspace = host.data.workspace?.id;
 
   return useQuery({
-    queryKey: keys.workspaceSearch(workspacePath ?? "", input),
+    queryKey: keys.workspaceSearch(workspace ?? "", input),
     queryFn: () => {
-      if (input === undefined || workspacePath === undefined)
-        throw new Error("Open a workspace to search");
+      if (input === undefined) throw new Error("Type to search");
 
-      return nyte.workspace.search({ target: { kind: "workspace" }, ...input });
+      return searchWorkspace(input);
     },
-    enabled:
-      enabled && workspacePath !== undefined && input !== undefined && input.query.length > 0,
+    enabled: enabled && workspace !== undefined && input !== undefined && input.query.length > 0,
+    retry: false,
     staleTime: 0,
     refetchOnMount: true,
     gcTime: 0,
@@ -672,84 +673,78 @@ export function useSaveWorkspaceFile() {
 
   return useMutation({
     mutationKey: ["files", "save"],
-    mutationFn: (input: Omit<OperationInput<"workspace.save">, "target">) =>
-      nyte.workspace.save({ target: { kind: "workspace" }, ...input }),
+    mutationFn: async (input: {
+      readonly path: string;
+      readonly contents: string;
+      readonly expect?: FileVersion | "absent";
+    }) =>
+      (await workspaceFiles()).write(
+        input.path,
+        input.contents,
+        input.expect === undefined ? undefined : { expect: input.expect },
+      ),
     onSuccess: (outcome, input) => {
       if (outcome.kind !== "saved") return;
-      client.setQueryData<WorkspaceFileDocument>(
-        keys.workspaceFile(input.path),
-        (): WorkspaceFileDocument => ({
-          kind: "text",
-          path: input.path,
-          contents: input.contents,
-          version: outcome.version,
-        }),
-      );
-      void client.invalidateQueries({
-        queryKey: ["vcs"],
-        predicate: vcsNeedsRefresh,
+      client.setQueryData(keys.workspaceFile(input.path), {
+        kind: "text" as const,
+        path: input.path,
+        contents: input.contents,
+        version: outcome.version,
       });
-      void client.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
-      void client.invalidateQueries({ queryKey: ["files", "search"] });
-      void client.invalidateQueries({ queryKey: ["files", "blame"] });
     },
   });
 }
 
-/** Providers, models, and the defaults a new chat starts with, in one read. */
-export function useCatalog(sessionId?: SessionId) {
-  const pending = useMutationState<MutationState<DesktopCatalog, Error, PreferenceChange>>({
-    filters: { mutationKey: ["catalog", "preference"], status: "pending" },
+/** The SDK's link to the host: connected, reconnecting after a loss, or closed for good. */
+export function useHostLink() {
+  return useWatchSelect(hostWatch("host"), (state) => state.value?.link);
+}
+
+function useCatalogGeneration(): string {
+  return useWatchSelect(hostWatch("host"), (state) => state.value?.catalog) ?? "initial";
+}
+
+export function useCatalog(_sessionId?: SessionId) {
+  const generation = useCatalogGeneration();
+
+  const pending = useMutationState<MutationState<unknown, Error, ModelRef>>({
+    filters: { mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" },
   });
 
   return useQuery({
-    queryKey: sessionId === undefined ? keys.catalog : keys.sessionCatalog(sessionId),
-    queryFn: () => (sessionId === undefined ? readCatalog() : nyte.host.catalog({ sessionId })),
-    staleTime: sessionId === undefined ? Infinity : 15_000,
-    refetchOnMount: sessionId !== undefined,
-    select: (catalog) =>
-      catalog.source === "server"
+    queryKey: keys.modelCatalog(generation),
+    queryFn: readModelCatalog,
+    placeholderData: cachedModelCatalog,
+    select: (view): DesktopCatalog => {
+      const catalog = toDesktopCatalog(view);
+      const model = pending.at(-1)?.variables;
+
+      return model === undefined || catalog.defaults === undefined
         ? catalog
-        : pending.reduce(
-            (current, mutation) =>
-              mutation.variables === undefined
-                ? current
-                : projectPreference(current, mutation.variables),
-            catalog,
-          ),
+        : { ...catalog, defaults: { ...catalog.defaults, model } };
+    },
   });
 }
 
 /**
  * Registered desktop history has no usage watch. Refresh on each visit or
  * manually, not on a timer: the host walks stored commits for every read.
- *
- * The read is unbounded and the range is a view of it. The host walks every
- * stored commit whatever window it is handed, so asking for one window bought
- * nothing and made every range press a fresh multi-second read. One read
- * answers all four ranges, and switching between them touches no I/O.
  */
 export function usageReportOptions(untilDay: string) {
-  return queryOptions({
+  return {
     queryKey: keys.usage(untilDay),
-    queryFn: () => readUsage({ sinceDay: null, untilDay }),
-    // The client never refetches on its own, so Usage opts back in on mount.
-    // What it does not do is re-read unconditionally: reopening the panel cost
-    // seconds for numbers that had not moved. The mount read waits for the same
-    // age at which the page starts offering to re-read, so "current" means one
-    // thing on this page.
+    queryFn: () => {
+      const usage = nyte.host.usage;
+
+      if (usage === undefined) throw new Error("This host keeps no usage history.");
+
+      return usage({ sinceDay: null, untilDay } satisfies UsageWindow);
+    },
     refetchOnMount: true,
     staleTime: USAGE_STALE_AFTER_MS,
-  });
+  } as const;
 }
 
-/**
- * A usage read, flattened to what the page actually branches on.
- *
- * A failed refresh keeps the last good report and reports the error alongside
- * it: totals that were true a minute ago beat an empty screen, and the page
- * says which they are.
- */
 interface UsageQueryView {
   readonly report: UsageSnapshot | undefined;
   readonly error: Error | null;
@@ -773,47 +768,60 @@ export function useUsageReport(untilDay: string): UsageQueryView {
   };
 }
 
-/**
- * Provider-reported subscription windows: the one usage read that leaves the
- * machine. It shares the page's definition of current, so a visit inside that
- * window paints the cached windows and asks nobody.
- */
-export function useAccountLimits() {
-  return useQuery({
-    queryKey: keys.accountLimits,
-    queryFn: () => nyte.host.accountLimits(),
+function accountLimitsOptions(generation: string) {
+  return {
+    queryKey: keys.accountLimits(generation),
+    queryFn: async () => (await connected()).models.usage(),
     refetchOnMount: true,
     staleTime: USAGE_STALE_AFTER_MS,
-  });
+  } as const;
 }
 
-/** Commands and skills available before a chat exists. */
-export function usePluginCatalog() {
-  return useQuery({ queryKey: keys.pluginCatalog, queryFn: readPluginCatalog });
+export function useAccountLimits() {
+  return useQuery(accountLimitsOptions(useCatalogGeneration()));
 }
 
-export function useSessionCommands(sessionId: SessionId) {
-  return useQuery({
-    queryKey: keys.sessionCommands(sessionId),
-    queryFn: () => nyte.plugins.commands.list({ sessionId }),
-    staleTime: SNAPSHOT_WARM_MS,
-    refetchOnMount: true,
-  });
+export const COMPACT_COMMAND = {
+  name: "compact",
+  owner: "",
+  side: "client",
+  title: "Compact",
+  description: "Summarize the chat to free up context",
+  arguments: null,
+} satisfies CommandInfo;
+
+export function usePluginCatalog(sessionId?: SessionId) {
+  const store = sessionId === undefined ? undefined : sessionWatch(sessionId);
+  const catalog = useWatchSelect(store, (state) => state.value?.catalog);
+
+  const failed = useWatchSelect(
+    store,
+    (state) => state.value === undefined && state.error !== undefined,
+  );
+
+  const data = useMemo(
+    () =>
+      catalog === undefined
+        ? undefined
+        : { ...catalog, commands: [...catalog.commands, COMPACT_COMMAND] },
+    [catalog],
+  );
+
+  return { data, isError: failed };
 }
 
-/** Controls show pending choices while the host returns the authoritative catalog. */
 export function useSetPreference() {
   const client = useQueryClient();
 
   return useMutation({
-    mutationKey: ["catalog", "preference"],
-    scope: { id: "catalog-preference" },
-    mutationFn: (change: PreferenceChange) => nyte.host.setPreference(change),
-    onSuccess: async (catalog) => {
-      await client.cancelQueries({ queryKey: keys.catalog, exact: true });
-      client.setQueryData(keys.catalog, catalog);
+    mutationKey: DEFAULT_MODEL_MUTATION,
+    scope: { id: "catalog-default" },
+    mutationFn: async (model: ModelRef) => {
+      const outcome = await (await connected()).models.setDefault(model);
+
+      if (outcome.kind === "unknown-model") throw new Error("That model is no longer available");
     },
-    onSettled: () => client.invalidateQueries({ queryKey: keys.catalog, exact: true }),
+    onSettled: () => client.invalidateQueries({ queryKey: ["catalog"] }),
     onError: () =>
       toast.add({ type: "error", title: "Couldn't save model preferences. Try again." }),
   });
@@ -821,146 +829,77 @@ export function useSetPreference() {
 
 let localLoadVersion = 0;
 
-/**
- * The host has changed folders: the stage rebinds to that folder's panes now,
- * before the caches behind it refill. `outcome.workspace` is the host's own
- * row, so this is the state `loadLocalResources` will commit again.
- */
-export function commitHostWorkspace(workspace: WorkspaceInfo | undefined): void {
-  queryClient.setQueryData<HostState>(keys.host, (host) =>
-    host === undefined ? host : { ...host, workspace },
-  );
+export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): void {
+  queryClient.setQueryData<HostState>(keys.host, (host) => ({ ...host, workspace }));
 }
 
-/** Refill workspace caches after a host transition, committing host state last. */
+let connecting: Promise<Connection> | undefined;
+
+/**
+ * Connect to this window's host once. A failed attempt is forgotten, so the
+ * next call tries again.
+ */
+export function connectLocalHost(): Promise<Connection> {
+  const current = currentConnection();
+
+  if (current !== undefined) return Promise.resolve(current);
+
+  connecting ??= nyte.host
+    .endpoint()
+    .then((endpoint) => connectHost(endpoint, { remember: nyte.host.remember }))
+    .then((opened) => {
+      performance.mark("nyte:sdk-connected");
+
+      return opened;
+    })
+    .catch((cause: unknown) => {
+      connecting = undefined;
+      throw cause;
+    });
+
+  return connecting;
+}
+
+/**
+ * Refill the workspace caches after a host transition. Every read waits for
+ * the connection on its own and runs alongside the others. The workspace
+ * queries are reset after the host state is committed, not removed: a removed
+ * query cancels its fetch silently and strands the components still
+ * observing it on a pending result, while a reset one refetches for its
+ * mounted observers against the new workspace.
+ */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
+  const host = hostWatch("host");
+  const directory = directoryWatch("all");
 
-  const [host, workspaces, catalog, sessionDirectory] = await Promise.all([
+  const [state, workspaces, catalog] = await Promise.all([
     readHost(),
     readWorkspaces(),
-    readCatalog(),
-    readSessionDirectory(),
+    readModelCatalog(),
+    host.value === undefined ? host.next() : undefined,
+    directory.value === undefined
+      ? directory.next().then(() => performance.mark("nyte:directory-ready"))
+      : undefined,
   ]);
 
   if (version !== localLoadVersion) return;
-
-  if (typeof indexedDB !== "undefined") {
-    const activation = activateOutbox(host.workspace?.path).catch(() => undefined);
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, OUTBOX_WARM_MS);
-      void activation.then(() => {
-        clearTimeout(timer);
-        resolve();
-      });
-    });
-  }
-
-  if (version !== localLoadVersion) return;
-
-  const workspaceScopes = new Set(["vcs", "files", "github", "plugins", "customize"]);
-  queryClient.removeQueries({
+  const workspaceScopes = new Set(["git", "files", "github", "customize"]);
+  queryClient.setQueryData(keys.workspaces, workspaces);
+  queryClient.setQueryData(keys.modelCatalog(catalog.generation), catalog);
+  queryClient.setQueryData(keys.host, state);
+  void queryClient.resetQueries({
     predicate: (query) => workspaceScopes.has(String(query.queryKey[0])),
   });
-  queryClient.removeQueries({ queryKey: ["sessions", "search"] });
-  queryClient.setQueryData(keys.workspaces, workspaces);
-  queryClient.setQueryData(keys.catalog, catalog);
-  queryClient.setQueryData(keys.sessionPreview, {
-    items: localSessions(sessionDirectory, host.workspace?.path ?? null) ?? [],
-  } satisfies SessionPage);
-
-  for (const directory of sessionDirectory) {
-    for (const session of directory.sessions)
-      queryClient.setQueryData(keys.session(session.sessionId), session);
-  }
-
-  // Commit host last. Home and projects both find their local session cache filled.
-  queryClient.setQueryData(keys.host, host);
-  // The plugin catalog activates the folder's plugins on first read; that
-  // work fills the composer's suggestions behind the mounted screen rather
-  // than holding it, and one malformed plugin cannot keep the shell from loading.
-  void queryClient
-    .prefetchQuery({ queryKey: keys.pluginCatalog, queryFn: readPluginCatalog })
-    .catch(() => undefined);
-}
-
-/**
- * The observer's own row for an open session. Every list beside it is the
- * host's to write: the directory and child lists arrive pushed, so the same
- * row never has two writers racing.
- */
-export function cacheSessionInfo(session: SessionInfo): void {
-  queryClient.setQueryData(keys.session(session.sessionId), session);
-}
-
-export async function cacheCreatedSession({
-  session,
-  workspacePath,
-}: {
-  readonly session: SessionInfo;
-  readonly workspacePath: string | null;
-}): Promise<void> {
-  await Promise.all([
-    queryClient.cancelQueries({ queryKey: keys.sessionDirectory, exact: true }),
-    queryClient.cancelQueries({ queryKey: keys.sessionPreview, exact: true }),
-  ]);
-
-  const insert = (sessions: readonly SessionInfo[]) => [
-    session,
-    ...sessions.filter((candidate) => candidate.sessionId !== session.sessionId),
-  ];
-
-  queryClient.setQueryData(keys.session(session.sessionId), session);
-  queryClient.setQueryData<SessionPage>(keys.sessionPreview, (preview) => ({
-    ...preview,
-    items: insert(preview?.items ?? []),
-  }));
-  queryClient.setQueryData<readonly WorkspaceSessionDirectory[]>(
-    keys.sessionDirectory,
-    (directories) =>
-      directories?.map((directory) =>
-        directory.environment === "local" && directory.workspacePath === workspacePath
-          ? { ...directory, sessions: insert(directory.sessions) }
-          : directory,
-      ),
-  );
-}
-
-/** Share pending configuration with the draft-to-session handoff. */
-export function configureSession(sessionId: SessionId, patch: ConfigureSessionPatch) {
-  return queryClient
-    .getMutationCache()
-    .build(
-      queryClient,
-      sessionConfigurationOptions({
-        client: queryClient,
-        sessions: nyte.sessions,
-        sessionId,
-        selection: sessionSelection(sessionId),
-      }),
-    )
-    .execute(patch);
 }
 
 export function useConfigureSession(sessionId: SessionId) {
-  return useMutation(
-    sessionConfigurationOptions({
-      client: useQueryClient(),
-      sessions: nyte.sessions,
-      sessionId,
-      selection: sessionSelection(sessionId),
-    }),
-  );
+  return useMutation(sessionConfigurationOptions({ sessionId }));
 }
-
-export type CustomizeInventory = Pick<
-  PluginCatalog,
-  "plugins" | "settings" | "skills" | "commands"
->;
 
 interface ApplyPluginSettingInput {
   readonly id: string;
-  readonly choiceId: string;
+  readonly value: Json;
 }
 
 export function usePluginSettingsProjection(sessionId: SessionId | undefined) {
@@ -975,58 +914,35 @@ export function usePluginSettingsProjection(sessionId: SessionId | undefined) {
       return input === undefined
         ? current
         : current.map((setting) =>
-            setting.id === input.id ? { ...setting, current: input.choiceId } : setting,
+            setting.id === input.id ? { ...setting, value: input.value } : setting,
           );
     }, settings);
 }
 
-export function usePluginSettings(sessionId: SessionId, enabled = true) {
-  const project = usePluginSettingsProjection(sessionId);
-
-  return useQuery({
-    queryKey: keys.pluginSettings(sessionId),
-    queryFn: () => nyte.plugins.settings.list({ sessionId }),
-    select: project,
-    enabled,
-    staleTime: SNAPSHOT_WARM_MS,
-    refetchOnMount: true,
-  });
-}
-
 export function useApplyPluginSetting(sessionId: SessionId | undefined) {
-  const client = useQueryClient();
-
   return useMutation({
     mutationKey: ["plugins", "apply", sessionId],
-    scope: { id: `plugin-settings:${sessionId}` },
-    mutationFn: async ({ id, choiceId }: ApplyPluginSettingInput) => {
-      if (sessionId === undefined) throw new Error("Open a chat to change its settings");
-      const outcome = await nyte.plugins.settings.apply({ sessionId, id, choiceId });
+    networkMode: "always",
+    mutationFn: async ({ id, value }: ApplyPluginSettingInput) => {
+      if (sessionId === undefined) {
+        const outcome = await (await connected()).settings.apply(id, value);
 
-      if (outcome.kind === "not_found") throw new Error("That setting is no longer available");
+        if (outcome.kind === "unknown") throw new Error("That setting is no longer available");
 
-      if (outcome.kind === "invalid_choice") throw new Error("That setting value is not valid");
-    },
-    onSuccess: async (_result, input) => {
-      if (sessionId === undefined) return;
-      await Promise.all([
-        client.cancelQueries({ queryKey: keys.pluginSettings(sessionId), exact: true }),
-        client.cancelQueries({ queryKey: ["customize", sessionId], exact: true }),
-      ]);
+        if (outcome.kind === "invalid") throw new Error("That setting value is not valid");
 
-      const update = (settings: readonly SettingInfo[]) =>
-        settings.map((setting) =>
-          setting.id === input.id ? { ...setting, current: input.choiceId } : setting,
-        );
+        return;
+      }
 
-      client.setQueryData<readonly SettingInfo[]>(keys.pluginSettings(sessionId), (settings) =>
-        settings === undefined ? settings : update(settings),
-      );
-      client.setQueryData<CustomizeInventory>(["customize", sessionId], (inventory) =>
-        inventory === undefined
-          ? inventory
-          : { ...inventory, settings: update(inventory.settings) },
-      );
+      const outcome = await (
+        await connected()
+      )
+        .session(sessionId)
+        .configure({ settings: { [id]: value } });
+
+      if (outcome.kind === "invalid") throw new Error("That setting value is not valid");
+
+      if (outcome.kind !== "configured") throw new Error("That setting is no longer available");
     },
     onError: () =>
       toast.add({
@@ -1034,14 +950,6 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
         title: "Couldn't change that setting. Try again.",
         id: "plugin-setting-error",
       }),
-    onSettled: () => {
-      if (sessionId === undefined) return;
-
-      return Promise.all([
-        client.invalidateQueries({ queryKey: keys.pluginSettings(sessionId), exact: true }),
-        client.invalidateQueries({ queryKey: ["customize", sessionId], exact: true }),
-      ]);
-    },
   });
 }
 

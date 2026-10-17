@@ -1,0 +1,38 @@
+---
+title: Typography
+description: "Whole text styles that scale from one base size"
+---
+
+Every size derives from `--nyte-font-size-base`, which the desktop's appearance settings write.
+At the default 13px the scale is 11, 12, 13, 15, and 19. Each text style pairs a size with its line
+box and tracking, so no component pairs them by hand.
+
+```ts
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { type } from "@nyte-ai/ui/styles/vars.stylex";
+
+<p {...props(text.sm, styles.label)} />;
+```
+
+<TypeScale />
+
+## Weights
+
+<TypeWeights />
+
+## Families
+
+| Handle          | Default                                                                   |
+| --------------- | ------------------------------------------------------------------------- |
+| `type.fontSans` | Inter Variable, then the system UI font                                   |
+| `type.fontMono` | The system monospace; JetBrains Mono when the appearance setting picks it |
+
+## Rules
+
+- Text uses a whole style: `text.*`, or a `type.font*` and its matching `type.leading*` together.
+- Line heights round up to whole pixels at every size.
+- 13px Inter needs at least the 16px line box (`text.baseCompact`). A tighter box clips
+  descenders when text truncates.
+- `lineHeight: 1` is for glyph boxes only, never for text.
+- Weights come from `type.weight*`: 400, 500, and 600. There is no bold.
+- Large text tightens by `-0.016em`; everything else keeps zero tracking.

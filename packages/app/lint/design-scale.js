@@ -1,23 +1,3 @@
-/**
- * Desktop design-scale rules for oxlint's JS plugin runtime.
- *
- * Colour, type, radius, shadow, and motion are themed, so they live in
- * `@nyte-ai/ui/tokens.stylex` behind typed handles, and `no-raw-colors` keeps a literal
- * colour from landing in a component where no appearance can reach it.
- * Spacing and sizing are not themed:
- * a gap is the same 6px in every appearance, and naming it `space.x6` would
- * add indirection without adding meaning. So the scale is enforced here
- * instead of being wrapped in tokens, and only values that carry a structural
- * decision — a traffic-light lane, a row height, a panel width — get a name in
- * `theme/schema.stylex.ts`.
- *
- * Every rule reads `create` and `stylex.create` calls only. `defineConsts` and
- * `defineVars` are where named measurements and palette handles belong,
- * `keyframes` describes motion rather than layout, and a number outside a
- * style object is an index, a duration, or a measurement. None of those sit on
- * a layout grid.
- */
-
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -25,12 +5,51 @@ const stringLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.S
 
 const numberLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.Number() });
 
-/**
- * Steps in px. Skipping 14 and 18 keeps near-duplicates from reappearing. The
- * step stays at 2px through the range a dense row uses, then widens where a
- * 4px difference stops being a decision.
- */
-const SPACING_SCALE = [0, 1, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64, 80];
+const SPACE_STEPS = new Map([
+  [1, "px"],
+  [2, "s0_5"],
+  [4, "s1"],
+  [6, "s1_5"],
+  [8, "s2"],
+  [10, "s2_5"],
+  [12, "s3"],
+  [16, "s4"],
+  [20, "s5"],
+  [24, "s6"],
+  [32, "s8"],
+]);
+
+const BOX_HANDLES = [
+  [14, "glyph.sm"],
+  [15, "glyph.box"],
+  [16, "glyph.md"],
+  [16, "button.height2xs"],
+  [16, "checkbox.sizeMd"],
+  [20, "glyph.lg"],
+  [20, "button.heightXs"],
+  [20, "avatar.xs"],
+  [24, "button.heightSm"],
+  [24, "target.min"],
+  [24, "avatar.sm"],
+  [28, "button.heightMd"],
+  [28, "input.heightMd"],
+  [28, "row.heightMd"],
+  [28, "menu.itemHeight"],
+  [28, "avatar.md"],
+  [32, "button.heightLg"],
+  [32, "input.heightLg"],
+  [32, "row.heightLg"],
+  [36, "button.heightXl"],
+  [36, "input.heightXl"],
+  [36, "avatar.lg"],
+];
+
+const boxHandlesAt = (px) => BOX_HANDLES.flatMap(([size, handle]) => (size === px ? [handle] : []));
+
+const either = (items) =>
+  items.length < 3
+    ? items.join(" or ")
+    : `${items.slice(0, -1).join(", ")}, or ${items[items.length - 1]}`;
 
 const SPACING_PROPERTIES = new Set([
   "padding",
@@ -74,11 +93,53 @@ const SIZE_PROPERTIES = new Set([
 /** A rule, a hairline, and a text caret are strokes rather than boxes. */
 const HAIRLINE_SIZES = new Set([1, 1.5]);
 
-const SCHEMA_PATH = "packages/app/src/theme/schema.stylex.ts";
+const SCHEMA_PATH = "packages/ui/src/styles/schema.stylex.ts";
 
-const VARS_PATH = "packages/ui/src/vars.stylex.ts";
+const DESKTOP_SCHEMA_PATH = "packages/app/src/theme/schema.stylex.ts";
 
-const TOKENS_PATH = "packages/ui/src/tokens.stylex.ts";
+const SCHEMA_MODULE = "@nyte-ai/ui/styles/schema.stylex";
+
+const VARS_MODULE = "@nyte-ai/ui/styles/vars.stylex";
+
+const VARS_PATH = "packages/ui/src/styles/vars.stylex.ts";
+
+const TOKENS_PATH = "packages/ui/src/styles/tokens.stylex.ts";
+
+const ROLES_PATH = "packages/ui/src/styles/roles.stylex.ts";
+
+const DESKTOP_TOKENS_PATH = "packages/app/src/theme/tokens.stylex.ts";
+
+const colorHandles = (property) => {
+  if (property.startsWith("background")) {
+    return "a background role such as role.bgBase, role.bgElevated, or role.bgHover";
+  }
+
+  if (property.startsWith("border") || property.startsWith("outline")) {
+    return "a border role such as role.borderPrimary, role.borderSecondary, or role.borderStrong";
+  }
+
+  if (property === "boxShadow") {
+    return "shadow.shadowSm, shadow.shadowLg, or role.borderPrimary inside an inset ring";
+  }
+
+  return "a content role such as role.contentPrimary, role.contentSecondary, or role.contentTertiary";
+};
+
+const touchHandles = (property) => {
+  if (/gap$/i.test(property)) return ["target.gap", "button.gapMd"];
+
+  if (property.startsWith("padding")) {
+    if (/Block|Top|Bottom/.test(property)) return ["menu.itemPaddingBlock"];
+
+    if (/Inline|Left|Right/.test(property)) return ["button.paddingInlineMd"];
+
+    return ["button.paddingInlineMd", "menu.itemPaddingBlock"];
+  }
+
+  if (property.startsWith("margin")) return ["target.gap"];
+
+  return ["target.min", "button.heightMd", "row.heightMd"];
+};
 
 /**
  * A mask's stops are an opacity ramp written in colour syntax: the black and
@@ -153,11 +214,11 @@ const styleText = (node) => {
   return [];
 };
 
-/** A condition, pseudo-selector, or at-rule key names a state, not a property. */
-const isCondition = (key) =>
-  key === "default" || key.startsWith(":") || key.startsWith("@") || key.startsWith("[");
+/** A key names a property unless it is a condition, pseudo-selector, or at-rule, which name a state. */
+const namesProperty = (key) =>
+  key !== "default" && !key.startsWith(":") && !key.startsWith("@") && !key.startsWith("[");
 
-const isLengthProperty = (key) => SPACING_PROPERTIES.has(key) || SIZE_PROPERTIES.has(key);
+const takesLength = (key) => SPACING_PROPERTIES.has(key) || SIZE_PROPERTIES.has(key);
 
 /**
  * Both call forms are in use: `stylex.create` and a bare `create` from a named
@@ -208,13 +269,8 @@ const keyName = (key, computed) => {
   return null;
 };
 
-/**
- * A shorthand string carries the same lengths as the numeric form, so
- * `padding: "5px 10px"` is read as two values. Anything computed — `calc()`,
- * `min()`, a percentage, a custom property — is a different decision and is
- * left alone.
- */
 const stringLengths = (text) => {
+  if (text.includes("(")) return null;
   const lengths = [];
 
   for (const part of text.trim().split(/\s+/)) {
@@ -225,8 +281,7 @@ const stringLengths = (text) => {
 
     const match = /^(-?\d+(?:\.\d+)?)px$/.exec(part);
 
-    if (!match) return null;
-    lengths.push(Number(match[1]));
+    if (match) lengths.push(Number(match[1]));
   }
 
   return lengths;
@@ -247,28 +302,44 @@ const lengthValues = (node) => {
   return null;
 };
 
-const nearestSteps = (value) => {
-  const below = [...SPACING_SCALE].reverse().find((step) => step < value);
-  const above = SPACING_SCALE.find((step) => step > value);
+const spaceHandle = (px, negative) =>
+  negative ? `calc(\${space.${SPACE_STEPS.get(px)}} * -1)` : `space.${SPACE_STEPS.get(px)}`;
 
-  return [below, above].filter((step) => step !== undefined);
-};
-
-/** Past the top of the scale a step is not the answer; a named token is. */
-const spacingAdvice = (value) => {
+const spacingMessage = (property, value) => {
   const magnitude = Math.abs(value);
-  const steps = nearestSteps(magnitude);
-  const top = SPACING_SCALE[SPACING_SCALE.length - 1];
+  const negative = value < 0;
+  const written = `"${property}: ${value}"`;
 
-  if (steps.length === 0 || magnitude > top) {
-    return `Name it in ${SCHEMA_PATH} and reference that token; the scale stops at ${top}`;
+  if (SPACE_STEPS.has(magnitude)) {
+    return (
+      `${written} is a raw length: the space scale owns spacing. ` +
+      `Use ${spaceHandle(magnitude, negative)} from ${SCHEMA_MODULE}.`
+    );
   }
 
-  const signed = steps.map((step) => (value < 0 ? -step : step));
+  const steps = [...SPACE_STEPS.keys()];
+  const top = steps[steps.length - 1];
+
+  if (magnitude > top) {
+    return (
+      `${written} is past the space scale, which stops at space.s8 (${top}). Use the named ` +
+      `measurement for this layout from ${SCHEMA_MODULE} or ${DESKTOP_SCHEMA_PATH}. Name a ` +
+      `new one in ${SCHEMA_PATH}, or the desktop schema for desktop layout, only if the ` +
+      `design calls for this length.`
+    );
+  }
+
+  const nearest = [
+    steps.findLast((step) => step < magnitude),
+    steps.find((step) => step > magnitude),
+  ].flatMap((step) =>
+    step === undefined ? [] : [`${spaceHandle(step, negative)} (${negative ? -step : step})`],
+  );
 
   return (
-    `Use ${signed.join(" or ")} (scale: ${SPACING_SCALE.join(" ")}). If the value is a ` +
-    `structural decision rather than a step, name it in ${SCHEMA_PATH} and reference that token`
+    `${written} is off the space scale, which owns spacing. Use ${nearest.join(" or ")} ` +
+    `from ${SCHEMA_MODULE}. Name a measurement in ${SCHEMA_PATH}, or ${DESKTOP_SCHEMA_PATH} ` +
+    `for desktop layout, only if the design calls for a structural value rather than a step.`
   );
 };
 
@@ -334,7 +405,7 @@ const eachCreatedStyle = (governs, visit) => {
 const styleValueRule = (description, report) => ({
   meta: { docs: { description } },
   create(context) {
-    return eachCreatedStyle(isLengthProperty, (property, value, member) => {
+    return eachCreatedStyle(takesLength, (property, value, member) => {
       const values = lengthValues(value);
 
       if (values === null) return;
@@ -345,14 +416,12 @@ const styleValueRule = (description, report) => ({
 });
 
 const spacingScale = styleValueRule(
-  "Keep StyleX spacing on the desktop spacing scale.",
+  "Write StyleX padding, margin, and gap with the space handles.",
   (context, property, value, member) => {
-    if (!SPACING_PROPERTIES.has(property)) return;
-
-    if (SPACING_SCALE.includes(Math.abs(value))) return;
+    if (!SPACING_PROPERTIES.has(property) || value === 0) return;
     context.report({
       node: member,
-      message: `"${property}: ${value}" is off the desktop spacing scale. ${spacingAdvice(value)}.`,
+      message: spacingMessage(property, value),
     });
   },
 );
@@ -364,12 +433,14 @@ const sizeGrid = styleValueRule(
     const size = Math.abs(value);
 
     if (HAIRLINE_SIZES.has(size) || size % 2 === 0) return;
+    const named = boxHandlesAt(size).map((handle) => `${handle} (${size}) from ${SCHEMA_MODULE}`);
     context.report({
       node: member,
       message:
-        `"${property}: ${value}" is off the 2px sizing grid. Use ${Math.floor(size / 2) * 2} ` +
-        `or ${Math.ceil(size / 2) * 2}. A row height, panel width, or other named ` +
-        `measurement belongs in ${SCHEMA_PATH}.`,
+        `"${property}: ${value}" is off the 2px sizing grid, so an odd box centres even ` +
+        `content on a half pixel. Use ${either([Math.floor(size / 2) * 2, Math.ceil(size / 2) * 2, ...named])}. ` +
+        `Name an odd size in ${SCHEMA_PATH}, or ${DESKTOP_SCHEMA_PATH} for desktop layout, ` +
+        `only if the design calls for one.`,
     });
   },
 );
@@ -382,39 +453,29 @@ const sizeGrid = styleValueRule(
 const noRawColors = {
   meta: { docs: { description: "Keep literal colors out of StyleX styles." } },
   create(context) {
-    return eachCreatedStyle(
-      (key) => !isCondition(key),
-      (property, value, member) => {
-        if (MASK_PROPERTIES.has(property)) return;
+    return eachCreatedStyle(namesProperty, (property, value, member) => {
+      if (MASK_PROPERTIES.has(property)) return;
 
-        for (const text of styleText(value)) {
-          const color = literalColor(text);
+      for (const text of styleText(value)) {
+        const color = literalColor(text);
 
-          if (color === null) continue;
-          context.report({
-            node: member,
-            message:
-              `"${property}" carries the literal color "${color}", which no appearance can ` +
-              `reach. Use a handle from ${VARS_PATH} — t.contentPrimary, t.bgElevated, ` +
-              `t.borderSecondaryTranslucent, t.bgHover, and the rest of that map. If the ` +
-              `color is new, add a role or component token built from the ramps in ` +
-              `${TOKENS_PATH} and expose a handle in ${VARS_PATH}. ` +
-              `transparent, currentColor, and color-mix() over existing handles are allowed.`,
-          });
+        if (color === null) continue;
+        context.report({
+          node: member,
+          message:
+            `"${property}" uses the literal color "${color}": the roles own color, so dark ` +
+            `mode and appearances never reach a literal. Use ${colorHandles(property)} from ` +
+            `${VARS_MODULE}; transparent, currentColor, and color-mix() over handles also ` +
+            `pass. Add a role to ${ROLES_PATH} with a handle in ${VARS_PATH} only if the ` +
+            `design calls for a new color.`,
+        });
 
-          return;
-        }
-      },
-    );
+        return;
+      }
+    });
   },
 };
 
-/**
- * A box between 14 and 36px is a glyph slot, an avatar, a control, or a row,
- * and each of those already has a size: `glyph`, `avatar`, `button`, `input`,
- * `row`, `menu`, and `target` in `@nyte-ai/ui/schema.stylex`. A literal there
- * is a size that will not follow the component, nor grow for touch.
- */
 const CONTROL_SIZE_MIN = 14;
 
 const CONTROL_SIZE_MAX = 36;
@@ -426,13 +487,24 @@ const controlSize = styleValueRule(
     const size = Math.abs(value);
 
     if (size < CONTROL_SIZE_MIN || size > CONTROL_SIZE_MAX) return;
+    const sizes = [...new Set(BOX_HANDLES.map(([px]) => px))];
+
+    const matches = sizes.includes(size)
+      ? [size]
+      : [sizes.findLast((px) => px < size), sizes.find((px) => px > size)].filter(
+          (px) => px !== undefined,
+        );
+
+    const options = matches.map((px) => `${px} is ${either(boxHandlesAt(px))}`).join("; ");
     context.report({
       node: member,
       message:
-        `"${property}: ${value}" sizes a box by hand. Use glyph.sm|md|lg for a glyph slot, ` +
-        `avatar.* for an avatar, button.* / input.* / row.* / menu.* for a control or the row ` +
-        `that holds one, or target.min for a hit area (all in @nyte-ai/ui/schema.stylex). If ` +
-        `padding and line height already give the height, drop it.`,
+        `"${property}: ${value}" sizes a box by hand: glyph, avatar, control, and row sizes ` +
+        `belong to their tokens, which follow the component and its touch size. Use the ` +
+        `${sizes.includes(size) ? "size that names this box" : "nearest size"} from ` +
+        `${SCHEMA_MODULE}: ${options}. Drop it if padding and line height already give the ` +
+        `size, and add one to ${TOKENS_PATH} and ${SCHEMA_PATH} only if the design calls for ` +
+        `a new size.`,
     });
   },
 );
@@ -445,16 +517,77 @@ const controlSize = styleValueRule(
 const touchInTokens = {
   meta: { docs: { description: "Keep coarse-pointer sizes in the tokens." } },
   create(context) {
-    return eachCreatedStyle(isLengthProperty, (property, _value, member) => {
+    return eachCreatedStyle(takesLength, (property, _value, member) => {
       const condition = keyName(member.key, member.computed);
 
       if (condition === null || !condition.includes("pointer: coarse")) return;
       context.report({
         node: member,
         message:
-          `"${property}" grows for touch by hand. Read target.min, target.gap, or a component ` +
-          `token from @nyte-ai/ui/schema.stylex, which already grow under a coarse pointer; a ` +
-          `layout measurement that must grow belongs in ${SCHEMA_PATH}.`,
+          `"${property}" sets its own "${condition}" value: the tokens own touch sizing and ` +
+          `already grow under a coarse pointer. Use ${either(touchHandles(property))} from ` +
+          `${SCHEMA_MODULE}. Add a coarse value to a token in ${TOKENS_PATH}, or ` +
+          `${DESKTOP_TOKENS_PATH} for desktop layout, only if no handle covers this measurement.`,
+      });
+    });
+  },
+};
+
+const WEIGHT_HANDLES = new Map([
+  [400, "type.weightRegular"],
+  [500, "type.weightMedium"],
+  [600, "type.weightSemibold"],
+]);
+
+const weightValue = (node) => {
+  if (Value.Check(numberLiteral, node)) return node.value;
+
+  if (Value.Check(stringLiteral, node) && /^\d+$/.test(node.value)) return Number(node.value);
+
+  return null;
+};
+
+const noRawFontWeight = {
+  meta: { docs: { description: "Write StyleX font weights with the type.weight* handles." } },
+  create(context) {
+    return eachCreatedStyle(namesProperty, (property, value, member) => {
+      if (property !== "fontWeight") return;
+      const weight = weightValue(value);
+
+      if (weight === null) return;
+      const handle = WEIGHT_HANDLES.get(weight);
+
+      const nearest = [...WEIGHT_HANDLES.keys()].reduce((best, step) =>
+        Math.abs(step - weight) < Math.abs(best - weight) ? step : best,
+      );
+
+      context.report({
+        node: member,
+        message:
+          `"fontWeight: ${weight}" is a raw weight: type.weight* owns weight, so it follows ` +
+          `the UI font. ` +
+          (handle
+            ? `Use ${handle} from ${VARS_MODULE}.`
+            : `Use the nearest, ${WEIGHT_HANDLES.get(nearest)} (${nearest}), from ` +
+              `${VARS_MODULE}. Add a weight to ${TOKENS_PATH} with a handle in ${VARS_PATH} ` +
+              `only if the design calls for one.`),
+      });
+    });
+  },
+};
+
+const noLightDarkOutsideTokens = {
+  meta: { docs: { description: "Keep light-dark() pairs in the token layer." } },
+  create(context) {
+    return eachCreatedStyle(namesProperty, (property, value, member) => {
+      if (!styleText(value).some((text) => /light-dark\(/i.test(text))) return;
+      context.report({
+        node: member,
+        message:
+          `"${property}" writes a light-dark() pair in a component: the roles own dark ` +
+          `mode, and appearances and tinted scopes only retint a role. Use ` +
+          `${colorHandles(property)} from ${VARS_MODULE}. Add the pair to ${ROLES_PATH} with ` +
+          `a handle in ${VARS_PATH} only if no role matches.`,
       });
     });
   },
@@ -466,6 +599,8 @@ export default {
     "spacing-scale": spacingScale,
     "size-grid": sizeGrid,
     "no-raw-colors": noRawColors,
+    "no-raw-font-weight": noRawFontWeight,
+    "no-light-dark-outside-tokens": noLightDarkOutsideTokens,
     "control-size": controlSize,
     "touch-in-tokens": touchInTokens,
   },

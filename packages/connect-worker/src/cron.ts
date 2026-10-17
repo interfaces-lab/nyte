@@ -1,13 +1,11 @@
-/**
- * The scheduled sweep: lapse unconfirmed reservations, retry Clerk session
- * revocation, and drop expired replay and rate rows. Each step runs even if
- * another fails.
- */
 import { CLOCK_TOLERANCE_SECONDS } from "@nyte-ai/connect";
 import { settleSessionRevocation } from "./clerk.ts";
 import type { Context } from "./context.ts";
 import { errorName } from "./log.ts";
-import { expireReservations, pendingSessionRevocations, purge } from "./store.ts";
+import { expireReservations } from "./store/devices.ts";
+import { expireLinkTransactions } from "./store/link-transactions.ts";
+import { pendingSessionRevocations } from "./store/owners.ts";
+import { purge } from "./store/replays.ts";
 
 const BATCH = 20;
 
@@ -15,6 +13,7 @@ export async function sweep(context: Context): Promise<void> {
   const now = context.now();
   const steps: readonly (readonly [string, () => Promise<void>])[] = [
     ["reservations", () => expireReservations(context.db, now - CLOCK_TOLERANCE_SECONDS * 1000)],
+    ["transactions", () => expireLinkTransactions(context.db, now)],
     [
       "sessions",
       async () => {

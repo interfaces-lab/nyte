@@ -32,6 +32,7 @@
         "expo-media-library",
         {
           "photosPermission": "Show your latest photos in the composer so you can attach one.",
+          "preventAutomaticLimitedAccessAlert": true,
           "savePhotosPermission": false,
           "isAccessMediaLocationEnabled": false
         }

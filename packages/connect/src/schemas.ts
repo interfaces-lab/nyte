@@ -15,10 +15,6 @@
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
 
-// ---------------------------------------------------------------------------
-// Lifetimes and limits
-// ---------------------------------------------------------------------------
-
 /** A signed request proof is accepted for this long after `iat`. */
 export const PROOF_LIFETIME_SECONDS = 60;
 
@@ -65,10 +61,6 @@ export const TOKEN_TYPES = {
   lease: "nyte-lease+jwt",
 } as const;
 
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
-
 /**
  * Broker routes, relative to `CONNECT_ORIGIN`. Ids are UUIDs checked before
  * they reach a path. Both `DELETE` routes and `release` answer 204 with no
@@ -106,17 +98,53 @@ export const BROKER_ROUTES = {
     `/v1/environments/${environmentId}/devices/${deviceId}/release`,
   webhook: "/v1/clerk/webhook",
   keys: "/.well-known/jwks.json",
+  /**
+   * Linking a host that has no browser of its own. `POST` with a proof under
+   * the key's thumbprint opens a transaction and answers a human code; a
+   * signed-in browser looks the code up, sees the host's name and key
+   * fingerprint, and approves; the host polls and completes with fresh
+   * proofs. No Clerk credential ever reaches the host.
+   */
+  linkTransactions: "/v1/link-transactions",
+  /** `POST` with a Clerk session JWT: what a code names, before approving. Creates nothing. */
+  linkTransactionLookup: "/v1/link-transactions/lookup",
+  /** `POST` with a Clerk session JWT and the fingerprint seen; binds the owner. */
+  linkTransactionApprove: (transactionId: string) =>
+    `/v1/link-transactions/${transactionId}/approve`,
+  /** `POST` with a Clerk session JWT: the owner refuses the request. */
+  linkTransactionDeny: (transactionId: string) => `/v1/link-transactions/${transactionId}/deny`,
+  /** `POST` with a key proof: the transaction's state. */
+  linkTransactionPoll: (transactionId: string) => `/v1/link-transactions/${transactionId}/poll`,
+  /** `POST` with a key proof after approval: claim the environment, once; the same key may ask again for the same answer. */
+  linkTransactionComplete: (transactionId: string) =>
+    `/v1/link-transactions/${transactionId}/complete`,
+  /** `DELETE` with a key proof: the host gives up. Answers the state that stands, `consumed` when completion won. */
+  linkTransaction: (transactionId: string) => `/v1/link-transactions/${transactionId}`,
 } as const;
+
+/** An approval transaction waits this long for the owner. */
+export const LINK_TRANSACTION_LIFETIME_SECONDS = 300;
+
+/** After approval, the host has this long to complete before the authorization lapses. */
+export const LINK_AUTHORIZATION_LIFETIME_SECONDS = 60;
+
+/** Hosts poll no more often than this. */
+export const LINK_POLL_INTERVAL_SECONDS = 5;
+
+/** Crockford-style base32 without vowels, so a code is never a word. */
+const USER_CODE_ALPHABET = "0123456789BCDFGHJKMNPQRSTVWXZ";
+
+const USER_CODE_LENGTH = 8;
 
 /**
  * Where phones reach a desktop: `<CONNECT_ORIGIN>/r/<environmentId>`, under
- * which the Nyte HTTP client appends `/v1/...` and the phone appends
+ * which a protocol transport appends `/<operation>` and the phone appends
  * `DESKTOP_ROUTES.device`. The broker forwards nothing else under it.
  */
 export const RELAY_PREFIX = "/r/";
 
 /**
- * Desktop routes, outside the Nyte server's `/v1`, reached only through the
+ * Desktop routes, outside the host's operations, reached only through the
  * relay. They run before the server's own auth and grant nothing on their
  * own: enrollment needs a broker signature, and `DELETE device` removes only
  * the device whose bearer token it presents. The public relay never forwards
@@ -131,10 +159,6 @@ export const DESKTOP_ROUTES = {
   enroll: "/_nyte/connect/enroll",
   device: "/_nyte/connect/device",
 } as const;
-
-// ---------------------------------------------------------------------------
-// Primitives
-// ---------------------------------------------------------------------------
 
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
@@ -197,10 +221,6 @@ export const BrokerKeys = Type.Object({
 
 export type BrokerKeys = Static<typeof BrokerKeys>;
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
 export const ERROR_CODES = [
   /** No credential, or one that does not verify. */
   "unauthorized",
@@ -235,10 +255,6 @@ export const ErrorBody = Type.Object({
 
 export type ErrorBody = Static<typeof ErrorBody>;
 
-// ---------------------------------------------------------------------------
-// Desktop ↔ broker (machine-key proofs)
-// ---------------------------------------------------------------------------
-
 /**
  * `POST /v1/environments` with `Authorization: Bearer <Clerk session JWT>` and a
  * proof signed by the key being registered, whose `iss` is that key's RFC 7638
@@ -249,12 +265,89 @@ export const LinkRequest = strict({ publicKey: PublicJwk, name: Name });
 export type LinkRequest = Static<typeof LinkRequest>;
 
 /** Its relay address is not sent: every client derives it with `relayAddress`. */
-export const LinkedEnvironment = Type.Object({
+const LinkedEnvironment = Type.Object({
   id: Uuid,
   name: Name,
 });
 
-export type LinkedEnvironment = Static<typeof LinkedEnvironment>;
+/** `XXXX-XXXX`, as typed; the broker normalizes case and the separator. */
+export const UserCode = Type.String({ pattern: "^[A-Za-z0-9]{4}[- ]?[A-Za-z0-9]{4}$" });
+
+export type UserCode = Static<typeof UserCode>;
+
+/**
+ * What the host opens; the proof's `iss` is the key's thumbprint. The host
+ * mints the code from `USER_CODE_ALPHABET` and sends it here, signed, so a
+ * retry with the same `operationId` and code resumes the same transaction
+ * while the broker stores only the code's hash. Any other input under a
+ * known operation id conflicts.
+ */
+export const LinkTransactionRequest = strict({
+  publicKey: PublicJwk,
+  name: Name,
+  operationId: RandomId,
+  userCode: UserCode,
+});
+
+export type LinkTransactionRequest = Static<typeof LinkTransactionRequest>;
+
+export const LINK_TRANSACTION_STATES = [
+  "pending",
+  "approved",
+  "denied",
+  "expired",
+  "cancelled",
+  "consumed",
+] as const;
+
+export type LinkTransactionState = (typeof LINK_TRANSACTION_STATES)[number];
+
+export const LinkTransactionOpened = Type.Object({
+  transactionId: Uuid,
+  /** Where the owner signs in and enters the code: the web app's link page. */
+  verifyUrl: Type.String({ maxLength: 2048 }),
+  /** Epoch milliseconds. */
+  expiresAt: Type.Integer({ minimum: 0 }),
+  pollIntervalMs: Type.Integer({ minimum: 1000 }),
+  /**
+   * `pending` for a new open. An exact retry of an open the broker already
+   * holds answers that transaction as it stands, ended or not; it is never
+   * reopened, and the host settles it before opening another.
+   */
+  state: Type.Enum(LINK_TRANSACTION_STATES),
+});
+
+export type LinkTransactionOpened = Static<typeof LinkTransactionOpened>;
+
+export const LinkTransactionLookupRequest = strict({ userCode: UserCode });
+
+export type LinkTransactionLookupRequest = Static<typeof LinkTransactionLookupRequest>;
+
+/** What the browser shows before approving. The name is the host's own claim; the fingerprint is what to compare. */
+export const LinkTransactionLookup = Type.Object({
+  transactionId: Uuid,
+  hostName: Name,
+  fingerprint: Type.String({ minLength: 1, maxLength: 64 }),
+  expiresAt: Type.Integer({ minimum: 0 }),
+});
+
+export type LinkTransactionLookup = Static<typeof LinkTransactionLookup>;
+
+/** Approval echoes the fingerprint the owner compared, so it binds to that key. */
+export const LinkTransactionApproveRequest = strict({
+  fingerprint: Type.String({ minLength: 1, maxLength: 64 }),
+});
+
+export type LinkTransactionApproveRequest = Static<typeof LinkTransactionApproveRequest>;
+
+export const LinkTransactionStatus = Type.Object({ state: Type.Enum(LINK_TRANSACTION_STATES) });
+
+export type LinkTransactionStatus = Static<typeof LinkTransactionStatus>;
+
+/** The grant an enrolled device asks for. Absent means `controller`; a host decides whether `owner` is honored. */
+export const DeviceRole = Type.Union([Type.Literal("controller"), Type.Literal("owner")]);
+
+export type DeviceRole = Static<typeof DeviceRole>;
 
 export const LinkResponse = Type.Object({
   environment: LinkedEnvironment,
@@ -267,6 +360,21 @@ export const LinkResponse = Type.Object({
 });
 
 export type LinkResponse = Static<typeof LinkResponse>;
+
+/**
+ * What `complete` answers: the link once the transaction is consumed, by
+ * this call or an earlier one with the same key, else the state that stops
+ * it. A consumed transaction whose environment was since unlinked answers
+ * `revoked` instead, never a stale link.
+ */
+export const LinkTransactionCompletion = Type.Union([
+  Type.Object({ state: Type.Literal("consumed"), link: LinkResponse }),
+  Type.Object({
+    state: Type.Enum(["pending", "approved", "denied", "expired", "cancelled"]),
+  }),
+]);
+
+export type LinkTransactionCompletion = Static<typeof LinkTransactionCompletion>;
 
 /**
  * `POST /v1/environments/:id/lease` with an environment proof and an empty
@@ -331,10 +439,6 @@ export const ProofClaims = Type.Object({
 
 export type ProofClaims = Static<typeof ProofClaims>;
 
-// ---------------------------------------------------------------------------
-// Phone ↔ broker (Clerk session JWT)
-// ---------------------------------------------------------------------------
-
 export const EnvironmentSummary = Type.Object({
   id: Uuid,
   name: Name,
@@ -359,7 +463,12 @@ export type EnvironmentList = Static<typeof EnvironmentList>;
  * later reads the bearer token on every request. An earlier device with the
  * same `clientId` is revoked.
  */
-export const EnrollRequest = strict({ clientId: ClientId, clientName: Name, digest: Base64Url32 });
+export const EnrollRequest = strict({
+  clientId: ClientId,
+  clientName: Name,
+  digest: Base64Url32,
+  role: Type.Optional(DeviceRole),
+});
 
 export type EnrollRequest = Static<typeof EnrollRequest>;
 
@@ -369,10 +478,6 @@ export const EnrollResponse = Type.Object({
 });
 
 export type EnrollResponse = Static<typeof EnrollResponse>;
-
-// ---------------------------------------------------------------------------
-// Broker → desktop (over the relay)
-// ---------------------------------------------------------------------------
 
 /** `POST /_nyte/connect/enroll` body, relayed by the broker itself and never from a phone. */
 export const EnrollEnvelope = strict({ authorization: CompactJws });
@@ -395,6 +500,8 @@ export const EnrollmentClaims = Type.Object({
   clientId: ClientId,
   clientName: Name,
   digest: Base64Url32,
+  /** The role the enrolling browser asked for; the host records it and its own policy decides. */
+  role: Type.Optional(DeviceRole),
 });
 
 export type EnrollmentClaims = Static<typeof EnrollmentClaims>;
@@ -419,3 +526,33 @@ export const ReceiptClaims = Type.Object({
 });
 
 export type ReceiptClaims = Static<typeof ReceiptClaims>;
+
+/**
+ * The human-comparable form of a key thumbprint: four groups of four of its
+ * leading characters. Shown by the host beside its code and by the browser
+ * before approving; the approval echoes it.
+ */
+export function keyFingerprint(thumbprint: string): string {
+  return thumbprint.slice(0, 16).replace(/(.{4})(?=.)/gu, "$1-");
+}
+
+/** A fresh code from the alphabet, `XXXX-XXXX`, minted by the host that opens a transaction. */
+export function randomUserCode(randomBytes: (count: number) => Uint8Array): string {
+  const raw = Array.from(
+    randomBytes(USER_CODE_LENGTH),
+    (byte) => USER_CODE_ALPHABET[byte % USER_CODE_ALPHABET.length],
+  ).join("");
+
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}
+
+const USER_CODE = new RegExp(`^[${USER_CODE_ALPHABET}]{${String(USER_CODE_LENGTH)}}$`, "u");
+
+/** A code as typed, normalized: uppercase, one dash. Undefined when it is not a code at all. */
+export function normalizeUserCode(input: string): string | undefined {
+  const raw = input.toUpperCase().replaceAll("-", "").replaceAll(" ", "");
+
+  if (!USER_CODE.test(raw)) return undefined;
+
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}

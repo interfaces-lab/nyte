@@ -1,12 +1,9 @@
-/**
- * The SDK spec as a document: doc comments read as prose, code stays beside
- * them with its line numbers in `packages/lab/sdk-spec.ts`.
- */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
-import source from "../../sdk-spec.ts?raw";
+import { CodeBlock } from "@nyte-ai/app/conversation/code-block.tsx";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import source from "../../sdk-shape.ts?raw";
 import { parseSpec, type SpecBlock, type SpecLine } from "./spec";
 
 const BLOCKS = parseSpec(source);
@@ -18,8 +15,7 @@ type Run = {
   readonly lines: SpecLine[];
 };
 
-/** Wrapped comment lines join into paragraphs; indented and aligned lines keep their shape. */
-function runsOf(lines: readonly SpecLine[]): Run[] {
+function groupLines(lines: readonly SpecLine[]): Run[] {
   const runs: Run[] = [];
   let open = false;
 
@@ -57,7 +53,7 @@ function runsOf(lines: readonly SpecLine[]): Run[] {
 function Prose({ lines }: { readonly lines: readonly SpecLine[] }): ReactElement {
   return (
     <div {...props(styles.prose)}>
-      {runsOf(lines).map((run) => {
+      {groupLines(lines).map((run) => {
         const key = run.lines[0]?.number;
 
         if (run.kind === "pre") {
@@ -99,22 +95,7 @@ function Prose({ lines }: { readonly lines: readonly SpecLine[] }): ReactElement
   );
 }
 
-function Code({ lines }: { readonly lines: readonly SpecLine[] }): ReactElement {
-  return (
-    <pre {...props(styles.code)}>
-      {lines.map((line) => (
-        <span key={line.number} id={`L${String(line.number)}`} {...props(styles.row)}>
-          <span aria-hidden {...props(styles.number)}>
-            {line.number}
-          </span>
-          {line.text}
-        </span>
-      ))}
-    </pre>
-  );
-}
-
-function rangeOf(lines: readonly SpecLine[]): string {
+function lineRange(lines: readonly SpecLine[]): string {
   const first = lines[0]?.number;
   const last = lines.at(-1)?.number;
 
@@ -123,7 +104,6 @@ function rangeOf(lines: readonly SpecLine[]): string {
   return first === last ? `L${String(first)}` : `L${String(first)}–${String(last)}`;
 }
 
-/** "1. Usage. All consumers…" reads as the title "1. Usage" and its summary. */
 function splitTitle(text: string): { readonly title: string; readonly summary: string } {
   const match = /^((?:Part [IVX]+|\d+)\. [^.]+)\.\s*(.*)$/.exec(text);
 
@@ -134,6 +114,15 @@ function splitTitle(text: string): { readonly title: string; readonly summary: s
 
 function Block({ block }: { readonly block: SpecBlock }): ReactElement {
   switch (block.kind) {
+    case "code":
+      return (
+        <section id={block.id} {...props(styles.block)}>
+          <span id={`L${String(block.code[0]?.number)}`} {...props(styles.range)}>
+            {lineRange(block.code)}
+          </span>
+          <CodeBlock code={block.code.map((line) => line.text).join("\n")} lang="typescript" />
+        </section>
+      );
     case "part": {
       const { title } = splitTitle(block.line.text);
       const [eyebrow, name] = title.split(". ");
@@ -180,137 +169,46 @@ function Block({ block }: { readonly block: SpecBlock }): ReactElement {
         <section id={block.id} {...props(styles.block)}>
           <div {...props(styles.entryHeader)}>
             <h4 {...props(styles.entryTitle)}>{name}</h4>
-            <span {...props(styles.range)}>{rangeOf([...block.doc, ...block.code])}</span>
+            <span {...props(styles.range)}>{lineRange([...block.doc, ...block.code])}</span>
           </div>
           {others.length > 0 && <p {...props(styles.also)}>Also declares {others.join(", ")}</p>}
           {block.doc.length > 0 && <Prose lines={block.doc} />}
-          <Code lines={block.code} />
+          <CodeBlock code={block.code.map((line) => line.text).join("\n")} lang="typescript" />
         </section>
       );
     }
   }
 }
 
-interface TocItem {
-  readonly id: string;
-  readonly label: string;
-  readonly depth: 0 | 1 | 2;
-}
-
-const TOC: readonly TocItem[] = BLOCKS.flatMap((block): TocItem[] => {
-  switch (block.kind) {
-    case "part":
-      return [{ id: block.id, label: block.line.text.replace(/^Part [IVX]+\. /, ""), depth: 0 }];
-    case "section":
-      return [{ id: block.id, label: splitTitle(block.line.text).title, depth: 1 }];
-    case "note":
-      return block.title === undefined ? [] : [{ id: block.id, label: block.title.text, depth: 2 }];
-    case "entry":
-      return [{ id: block.id, label: block.names[0], depth: 2 }];
-  }
-});
-
 export function SdkSpecPage(): ReactElement {
   const [intro, ...rest] = BLOCKS;
 
   return (
-    <div {...props(styles.page)}>
-      <nav aria-label="Contents" {...props(styles.sidebar)}>
-        <a href="#top" {...props(styles.tocHome)}>
-          SDK spec
-        </a>
-        {TOC.map((item) => (
-          <a
-            key={item.id}
-            href={`#${item.id}`}
-            {...props(
-              styles.toc,
-              item.depth === 0 && styles.tocPart,
-              item.depth === 2 && styles.tocLeaf,
-            )}
-          >
-            {item.label}
-          </a>
+    <main {...props(styles.page)}>
+      <article {...props(styles.article)}>
+        <header {...props(styles.header)}>
+          <h1 {...props(styles.title)}>Nyte SDK reference</h1>
+          <p {...props(styles.meta)}>
+            packages/lab/sdk-shape.ts · {LINE_COUNT.toLocaleString()} lines
+          </p>
+        </header>
+        {intro?.kind === "note" ? <Prose lines={intro.lines} /> : intro && <Block block={intro} />}
+        {rest.map((block) => (
+          <Block key={block.id} block={block} />
         ))}
-      </nav>
-      <main {...props(styles.main)}>
-        <article id="top" {...props(styles.article)}>
-          <header {...props(styles.header)}>
-            <h1 {...props(styles.title)}>Nyte SDK spec</h1>
-            <p {...props(styles.meta)}>
-              packages/lab/sdk-spec.ts · {LINE_COUNT.toLocaleString()} lines
-            </p>
-          </header>
-          {intro?.kind === "note" ? (
-            <Prose lines={intro.lines} />
-          ) : (
-            intro && <Block block={intro} />
-          )}
-          {rest.map((block) => (
-            <Block key={block.id} block={block} />
-          ))}
-        </article>
-      </main>
-    </div>
+      </article>
+    </main>
   );
 }
 
 const styles = create({
   page: {
-    display: "grid",
-    gridTemplateColumns: "264px minmax(0, 1fr)",
     blockSize: "100%",
+    overflowY: "auto",
     backgroundColor: role.bgBase,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
     userSelect: "text",
-  },
-  sidebar: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1,
-    overflowY: "auto",
-    paddingBlock: "24px 72px",
-    paddingInline: 12,
-    borderInlineEndWidth: 1,
-    borderInlineEndStyle: "solid",
-    borderInlineEndColor: role.borderSecondary,
-    backgroundColor: role.bgMuted,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-  },
-  tocHome: {
-    paddingBlock: 4,
-    paddingInline: 8,
-    marginBlockEnd: 8,
-    color: role.contentPrimary,
-    fontSize: type.fontBase,
-    fontWeight: 600,
-    textDecoration: "none",
-  },
-  toc: {
-    paddingBlock: 3,
-    paddingInline: 8,
-    borderRadius: radius.control,
-    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
-    textDecoration: "none",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  tocPart: {
-    marginBlockStart: 16,
-    color: role.contentPrimary,
-    fontWeight: 600,
-  },
-  tocLeaf: {
-    paddingInlineStart: 20,
-    color: { default: role.contentTertiary, ":hover": role.contentPrimary },
-  },
-  main: {
-    overflowY: "auto",
-    scrollPaddingBlockStart: 24,
   },
   article: {
     maxInlineSize: 820,
@@ -452,29 +350,5 @@ const styles = create({
   row: {
     display: "block",
     ":target": { backgroundColor: role.bgInteractivePrimaryTranslucent },
-  },
-  code: {
-    margin: 0,
-    paddingBlock: 12,
-    paddingInlineEnd: 16,
-    overflowX: "auto",
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.borderSecondary,
-    backgroundColor: role.bgMuted,
-    color: role.contentPrimary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontCode,
-    lineHeight: type.leadingCode,
-    tabSize: 2,
-  },
-  number: {
-    display: "inline-block",
-    inlineSize: 52,
-    paddingInlineEnd: 16,
-    textAlign: "end",
-    color: role.contentDisabled,
-    userSelect: "none",
   },
 });

@@ -15,8 +15,10 @@
  * nothing it does reaches your checkout.
  */
 import { createHash } from "node:crypto";
-import { definePlugin, toolsFsPlugin, type Plugin, type SessionApi } from "@nyte-ai/core/plugins";
-import { Type } from "typebox";
+import type { ToolDefinition } from "@nyte-ai/core";
+import type { Plugin } from "@nyte-ai/plugin/core";
+import { standard } from "@nyte-ai/schema";
+import { Type, type Static } from "typebox";
 import { GuideSchema, type GuideSection } from "../src/review/wire.ts";
 import type { Repo } from "./git.ts";
 import { canvasPlugin } from "./canvas-plugin.ts";
@@ -51,6 +53,12 @@ When asked a question, answer in short prose with path:line references at the he
 
 /** Sessions named with this prefix code; every other session reviews. */
 export const AUTHOR_PREFIX = "author ";
+
+export const REVIEW_AGENT = "lab-reviewer";
+
+export const AUTHOR_AGENT = "lab-author";
+
+export const CANVAS_AGENT = "lab-canvas";
 
 const AUTHOR_PROMPT = `You are Nyte, a coding agent working on one branch of this repository. Your working directory is a git worktree with only that branch checked out. Someone reviews the branch as a pull request and asks you for work on it.
 
@@ -111,7 +119,7 @@ const covers = (entry: string, path: string): boolean =>
   entry.endsWith("/") ? path.startsWith(entry) : entry === path;
 
 /** Every reason the page could not draw this guide over these changed files. */
-export function guideProblems(
+function guideProblems(
   sections: readonly GuideSection[],
   changed: readonly string[],
 ): readonly string[] {
@@ -172,10 +180,7 @@ function numbered(text: string, offset: number, limit: number): string {
     : shown.join("\n");
 }
 
-function reviewTools(
-  api: SessionApi,
-  deps: { readonly repo: Repo; readonly registry: Registry },
-): void {
+function reviewTools(deps: { readonly repo: Repo; readonly registry: Registry }) {
   const commit = async (revision: string): Promise<string> => {
     const oid = await deps.repo.resolve(revision);
 
@@ -184,11 +189,13 @@ function reviewTools(
     return oid;
   };
 
-  api.tools.add("read_file", {
+  const read: ToolDefinition<Static<typeof readParameters>> = {
+    name: "read_file",
     description: READ_DESCRIPTION,
-    parameters: readParameters,
+    parameters: standard(readParameters),
+    effects: "none",
     replay: "safe",
-    present: (args) => ({ kind: "file_read", path: args.path }),
+    class: (args) => ({ kind: "read", path: args.path }),
     execute: async (input) => {
       const text = await deps.repo.show(await commit(input.revision), input.path);
 
@@ -196,19 +203,19 @@ function reviewTools(
 
       return {
         content: [
-          { type: "text", text: numbered(text, input.offset ?? 1, input.limit ?? READ_LINES) },
+          { kind: "text", text: numbered(text, input.offset ?? 1, input.limit ?? READ_LINES) },
         ],
-        details: undefined,
-        title: input.path,
       };
     },
-  });
+  };
 
-  api.tools.add("diff_file", {
+  const diff: ToolDefinition<Static<typeof diffParameters>> = {
+    name: "diff_file",
     description: DIFF_DESCRIPTION,
-    parameters: diffParameters,
+    parameters: standard(diffParameters),
+    effects: "none",
     replay: "safe",
-    label: "Diff",
+    class: () => ({ kind: "custom", label: "Diff" }),
     execute: async (input) => {
       const patch = await deps.repo.patch(await commit(input.from), await commit(input.to), [
         input.path,
@@ -221,15 +228,17 @@ function reviewTools(
             ? `${patch.slice(0, PATCH_CHARS)}\n… the patch continues for ${patch.length - PATCH_CHARS} more characters; read the new side with read_file.`
             : patch;
 
-      return { content: [{ type: "text", text }], details: undefined, title: input.path };
+      return { content: [{ kind: "text", text }] };
     },
-  });
+  };
 
-  api.tools.add("search", {
+  const search: ToolDefinition<Static<typeof searchParameters>> = {
+    name: "search",
     description: SEARCH_DESCRIPTION,
-    parameters: searchParameters,
+    parameters: standard(searchParameters),
+    effects: "none",
     replay: "safe",
-    label: "Search",
+    class: () => ({ kind: "custom", label: "Search" }),
     execute: async (input) => {
       const lines = await deps.repo.grep(
         await commit(input.revision),
@@ -241,21 +250,22 @@ function reviewTools(
       return {
         content: [
           {
-            type: "text",
+            kind: "text",
             text: lines.length === 0 ? "No matches." : lines.join("\n"),
           },
         ],
-        details: undefined,
-        title: input.pattern,
       };
     },
-  });
+  };
 
-  api.tools.add("publish_guide", {
+  const publish: ToolDefinition<Static<typeof GuideSchema>, Static<typeof GuideSchema>> = {
+    name: "publish_guide",
     description: PUBLISH_DESCRIPTION,
-    parameters: GuideSchema,
+    parameters: standard(GuideSchema),
+    effects: "none",
     replay: "safe",
-    label: "Guide",
+    output: standard(GuideSchema),
+    class: () => ({ kind: "custom", label: "Guide" }),
     execute: async (input) => {
       if (!deps.registry.knows(input.base, input.head))
         throw new Error(
@@ -273,15 +283,16 @@ function reviewTools(
       return {
         content: [
           {
-            type: "text",
+            kind: "text",
             text: `Published ${input.sections.length} sections covering ${changed.length} files.`,
           },
         ],
-        details: input,
-        title: "Guide",
+        output: input,
       };
     },
-  });
+  };
+
+  return [read, diff, search, publish];
 }
 
 export function labPlugins(deps: {
@@ -289,29 +300,32 @@ export function labPlugins(deps: {
   readonly registry: Registry;
 }): readonly Plugin[] {
   return [
-    definePlugin({
+    canvasPlugin({ compile: compileCanvas, store: storeCanvas }),
+    {
       id: "lab-roles",
-      async session(api) {
-        const { name } = await api.session.info();
-
-        if (name?.startsWith("canvas ")) {
-          await toolsFsPlugin().session(api);
-          await canvasPlugin({ compile: compileCanvas, store: storeCanvas }).session(api);
-
-          return;
-        }
-
-        if (name?.startsWith(AUTHOR_PREFIX)) {
-          api.prompt.add((draft) => draft.set("system-prompt", { text: AUTHOR_PROMPT, order: 0 }));
-          await toolsFsPlugin().session(api);
-
-          return;
-        }
-
-        // The section the reviewer's guides were written under: same id, order and text, so their cache holds.
-        api.prompt.add((draft) => draft.set("system-prompt", { text: PROMPT, order: 0 }));
-        reviewTools(api, deps);
+      contribute: {
+        tools: reviewTools(deps),
+        agents: [
+          {
+            id: REVIEW_AGENT,
+            prompt: { kind: "replace", text: PROMPT },
+            tools: ["read_file", "diff_file", "search", "publish_guide"],
+          },
+          {
+            id: AUTHOR_AGENT,
+            prompt: { kind: "replace", text: AUTHOR_PROMPT },
+            tools: ["read", "write", "edit", "list", "bash"],
+          },
+          {
+            id: CANVAS_AGENT,
+            prompt: {
+              kind: "layer",
+              text: "When a chart or diagram explains the answer, call canvas before your final reply. It appears inline above your reply. Keep the reply short and do not restate the visual.",
+            },
+            tools: ["read", "list", "canvas"],
+          },
+        ],
       },
-    }),
+    } satisfies Plugin,
   ];
 }

@@ -2,9 +2,6 @@
  * Building blocks for provider auth definitions: the standard env-var api-key
  * auth with a paste-your-key login, and a lazy OAuth wrapper that defers
  * loading Node-only flow code until first use.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/helpers.ts
- * Synced with pi 7ebf9087e.
  */
 import type { ApiKeyAuth, OAuthAuth } from "./types.ts";
 
@@ -48,11 +45,9 @@ export function envApiKeyAuth(name: string, envVars: readonly string[]): ApiKeyA
 }
 
 /**
- * Wraps a dynamically imported `OAuthAuth` so provider definitions can
- * advertise OAuth without importing the implementation. The flow loads on
- * first `login`/`refresh`/`toAuth` call; callers keep Node-only flow code out
- * of bundles by loading through a bundler-opaque dynamic import (variable
- * specifier, see the bedrock lazy wrapper).
+ * Loads an OAuth flow on first login, refresh, or auth conversion.
+ * Only a successful load is kept: a cached rejection would poison every later
+ * login, refresh, and toAuth call for the life of the process.
  */
 export function lazyOAuth(input: {
   name: string;
@@ -63,8 +58,6 @@ export function lazyOAuth(input: {
   let promise: Promise<OAuthAuth> | undefined;
 
   const loaded = () => {
-    // Memoize only successful loads: a cached rejection would poison every
-    // later login/refresh/toAuth call for the life of the process.
     promise ??= input.load().catch((error) => {
       promise = undefined;
       throw error;

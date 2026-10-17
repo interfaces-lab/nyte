@@ -21,6 +21,14 @@ pnpm --dir packages/desktop package
 
 The package command disables publishing. Platform-specific packaging scripts are listed in [package.json](package.json).
 
+Measure a packaged app's startup from the repository root:
+
+```sh
+pnpm bench:desktop --exe "/path/Nyte.app/Contents/MacOS/Nyte"
+```
+
+The benchmark runs fresh, restored-chat, and heavy-history workspaces in private homes and profiles, with five samples and one warmup per case. It checks restored content and typed composer input, reports the five-second splash limit, and saves every sample as JSON. Use `--scenario`, `--runs`, `--warmup`, `--compare`, or `--out` to select a case, change the sample count, compare packaged executables, or choose the report path. Run `pnpm bench:desktop --help` for usage.
+
 Photon is also listed as a desktop runtime dependency so Electron externalizes core's image processor instead of embedding its WASM in the main entry.
 
 ## Design scale
@@ -53,7 +61,7 @@ After the credential is saved the host applies any account-specific model availa
 
 The main-process side is covered by `src/main/host-login.test.ts`. `packages/app/src/chrome/models-settings-login.electron.test.ts` drives the settings row with real clicks in Electron's Chromium over a recorded bridge; it builds the harness in `packages/app/src/chrome/fixtures/` and needs an environment where Electron can open a window.
 
-Read [AGENTS.md](AGENTS.md) for process boundaries, [UPDATES.md](UPDATES.md) for updates, [PERFORMANCE.md](PERFORMANCE.md) and the [benchmark guide](benchmark/README.md) for performance work, and [build/ICONS.md](build/ICONS.md) for icons.
+Read [AGENTS.md](AGENTS.md) for process boundaries, [UPDATES.md](UPDATES.md) for updates, and [build/ICONS.md](build/ICONS.md) for icons.
 
 ## Testing a deployed server
 
@@ -311,7 +319,7 @@ File and skill chips use the same inline styling in the composer, queue, and tra
 
 ## Composer and read-only messages
 
-The composer, sent user text, and queued text share the Lexical setup and chip rendering in `composer-surface.tsx`. Sent messages convert persisted skill instructions back to the same reference nodes used while editing. Read-only messages omit editing history, completion handling, remove buttons, and the custom caret. Editing uses the same composer without a status banner; Escape or a click outside the composer cancels the edit. Composer controls and their menus or dialogs keep the edit open, and saving or attachment loading prevents dismissal. They render immediately without moving the active selection.
+The composer, sent user text, and queued text share the Tiptap setup and chip rendering in `composer-surface.tsx`. Sent messages convert persisted skill instructions back to the same reference nodes used while editing. Read-only messages omit editing history, completion handling, remove buttons, and the custom caret. Editing uses the same composer without a status banner; Escape or a click outside the composer cancels the edit. Composer controls and their menus or dialogs keep the edit open, and saving or attachment loading prevents dismissal. They render immediately without moving the active selection.
 
 The composer and read-only messages handle these cases:
 

@@ -6,32 +6,28 @@
 
 Nyte is a durable runtime for agent conversations, with terminal and desktop clients.
 
-## Hosts
-
-The terminal and desktop clients embed the host, store sessions in SQLite, and run agents in process. The same kernel runs in a long-lived server (`@nyte-ai/server`, JSON and server-sent events over Web Request/Response, with PostgreSQL storage) and in serverless hosts: a Cloudflare Durable Object (`packages/cloudflare`) and Vercel (`packages/vercel`). A step reads all durable state, so any host can take over a head between two steps.
+The clients embed the host, keep sessions in SQLite, and run agents in process. The same kernel serves remote clients via `host.listen` (`@nyte-ai/host`, PostgreSQL) and runs on Cloudflare Durable Objects and Vercel (`@nyte-ai/host/deploy/*`). Clients connect through `@nyte-ai/sdk`. Each step reads all durable state, so any host can take over between steps.
 
 ## Install
 
 ```sh
 curl -fsSL https://nyte.sh/install | sh
 nyte login
-nyte
+nyte                     # or: nyte -p "your prompt"
 ```
 
-Run one prompt with `nyte -p "your prompt"`. See the [user guide](packages/cli/docs/README.md) for commands and configuration.
+See the [user guide](packages/cli/docs/README.md).
 
 ## Development
 
 ```sh
-mise install
-pnpm install
-pnpm format
-pnpm lint
-pnpm typecheck
+mise install && pnpm install
+pnpm format && pnpm lint && pnpm typecheck
 ```
 
-To run an app first or build your own TUI or editor app, see [Build an agent app](packages/docs/content/docs/build/composition.mdx).
+- [Build an agent app](packages/docs/content/docs/build/composition.mdx)
+- [CONTRIBUTING.md](CONTRIBUTING.md): package map, checks, commits
+- [PACKAGES.md](PACKAGES.md): package distribution and npm publishing
+- [AGENTS.md](AGENTS.md): agent instructions
 
-See [Package distribution](PACKAGES.md) for public and private packages, SDK tarball checks, and npm publishing. Nyte's code uses the [MIT license](LICENSE); upstream licenses remain in [Third-party notices](THIRD-PARTY-NOTICES.md).
-
-Build and test individual packages. See [CONTRIBUTING.md](CONTRIBUTING.md) for the package map, checks, and commit conventions, the [Core guide](packages/lab/src/core/guide.tsx) for architecture, and [AGENTS.md](AGENTS.md) for agent instructions.
+MIT [license](LICENSE); upstream licenses in [Third-party notices](THIRD-PARTY-NOTICES.md).

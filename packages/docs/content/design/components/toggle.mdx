@@ -1,0 +1,55 @@
+---
+title: Toggle
+description: "A button that holds a pressed state"
+---
+
+```ts title="Import"
+import { Toggle } from "@nyte-ai/ui/toggle";
+```
+
+Use it to switch one thing on and off without a form value.
+
+## Usage
+
+- `iconOnly` requires `aria-label`, which also becomes the native `title`.
+- Without `iconOnly`, pass `children` as the label.
+
+## Examples
+
+<Preview>
+  <ToggleDemo />
+</Preview>
+
+```tsx
+const [pinned, setPinned] = useState(true);
+
+<Toggle iconOnly icon="pin" aria-label="Pin" pressed={pinned} onPressedChange={setPinned} />
+<Toggle icon="eye" defaultPressed>
+  Preview
+</Toggle>
+```
+
+## Props
+
+Takes every Base UI `Toggle` prop. `className` and `style` take plain values, not functions of
+state.
+
+| Prop                 | Type                                                           | Default     | Description                       |
+| -------------------- | -------------------------------------------------------------- | ----------- | --------------------------------- |
+| `indicator`          | `"fill" \| "glyph"`                                            | `"fill"`    | `"glyph"` drops the pressed fill. |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`      | See [Button](/design/button).     |
+| `iconOnly`           | `boolean`                                                      | `false`     |                                   |
+| `icon`               | `IconName`                                                     |             |                                   |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"neutral"` |                                   |
+| `xstyle`             | `ButtonLayout`                                                 |             | Placement and width only.         |
+| `className`, `style` | see [Theming](/design/theming)                                 |             |                                   |
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+<include>../../base-ui-reference/toggle/Toggle.md</include>
+
+## Accessibility
+
+- Renders a native `<button>` with `aria-pressed`. Enter and Space flip it.
+- The `aria-label` names the control, not the current state.
+- Keyboard focus shows the [focus ring](/design/focus).

@@ -1,381 +1,175 @@
-/**
- * The question tool from a user's seat: the model asks, the run parks, the
- * client sees one waiting call to render, and the reply channel settles it.
- */
-import assert from "node:assert/strict";
-import { afterEach, test } from "vitest";
-import type { Nyte, SessionId, StreamFn } from "@nyte-ai/core";
-import { definePlugin, ToolWait } from "@nyte-ai/plugin";
-import type { ToolResultMessage } from "@nyte-ai/schema";
-import { Type } from "typebox";
-import { answerFor, questionPlugin, type QuestionInput } from "../examples/question.ts";
-import {
-  eventsSoFar,
-  lastAssistantText,
-  prompt,
-  respond,
-  settledCall,
-  testModel,
-  toolCall,
-  toolParts,
-  toolResultOf,
-  TestWorkspace,
-} from "./host.ts";
+import { isPart, tool } from "@nyte-ai/core";
+import { memoryStore } from "@nyte-ai/core/store";
+import { assert, expect, it } from "vitest";
+import questionPlugin, { question } from "../src/question/question.ts";
+import { openQuestions } from "../src/question/schema.ts";
+import { fakeModels, open, until } from "./fake-models.ts";
 
-const QUESTION: QuestionInput = {
-  question: "Which implementation?",
-  options: [{ label: "Small patch", description: "Change one owner" }, { label: "Broad rewrite" }],
-};
-
-const workspaces: TestWorkspace[] = [];
-afterEach(async () => {
-  for (const workspace of workspaces.splice(0)) await workspace.close();
-});
-
-function isToolResult(message: { role: string }): message is ToolResultMessage {
-  return message.role === "toolResult";
-}
-
-/** A model that asks once, then carries on with whatever the user answered. */
-const askingModel: StreamFn = (model, context) => {
-  const answered = context.messages.findLast(isToolResult);
-  if (answered === undefined) return respond(model, [toolCall("q-1", "question", QUESTION)]);
-  const answer = answered.content.find((part) => part.type === "text")?.text ?? "";
-  return respond(model, [{ type: "text", text: `Proceeding with ${answer}` }]);
-};
-
-async function openParked(): Promise<{
-  sdk: Nyte;
-  sessionId: SessionId;
-  callId: string;
-  waitId: string;
-}> {
-  const world = TestWorkspace.create("nyte-question-");
-  workspaces.push(world);
-  const sdk = await world.open({
-    streamFn: askingModel,
-    plugins: [questionPlugin],
-    model: testModel,
-  });
-  const { sessionId } = world;
-  assert.equal((await prompt(sdk, sessionId, "help me choose")).kind, "waiting");
-  const waiting = (await eventsSoFar(sdk, sessionId)).find(
-    (event) => event.kind === "effect" && event.state === "waiting",
-  );
-  assert.ok(waiting?.kind === "effect", "a client is told which call is waiting");
-  return { sdk, sessionId, callId: waiting.callId, waitId: waiting.waitId };
-}
-
-/** Answer the parked call and return what the transcript shows for it, with the tool's message. */
-async function reply(
-  sdk: Nyte,
-  sessionId: SessionId,
-  callId: string,
-  waitId: string,
-  answer: string,
-) {
-  assert.deepEqual(await sdk.runs.reply({ sessionId, callId, waitId, reply: answer }), {
-    kind: "signalled",
-  });
-  assert.deepEqual(await sdk.runs.wait({ sessionId }), { kind: "idle" });
-  const [part, ...rest] = await toolParts(sdk, sessionId);
-  assert.ok(part !== undefined && rest.length === 0, "one question was asked");
-  return {
-    ...settledCall(part),
-    class: part.class,
-    message: await toolResultOf({ sdk, sessionId, callId }),
-  };
-}
-
-test("asking parks the run; the waiting call carries the question a client renders", async () => {
-  const { sdk, sessionId, callId, waitId } = await openParked();
-  const events = await eventsSoFar(sdk, sessionId);
-  const waiting = events.find((event) => event.kind === "effect" && event.state === "waiting");
-  assert.ok(waiting?.kind === "effect" && waiting.state === "waiting");
-  assert.equal(waiting.tool, "question");
-  assert.deepEqual(waiting.args, QUESTION);
-  // The selection is what a client renders: no tool knowledge, no arg schema.
-  const selection = {
-    title: "Which implementation?",
-    choices: [
-      { id: "1", label: "Small patch", description: "Change one owner" },
-      { id: "2", label: "Broad rewrite" },
+const questions = [
+  {
+    question: "Deploy?",
+    header: "Deployment",
+    options: [
+      { label: "Yes", description: "Deploy now." },
+      { label: "No", description: "Keep reviewing." },
+      { label: "Build only", description: "Prepare the package without deploying." },
+      { label: "Later", description: "Schedule the deployment later." },
     ],
-    other: "Type your own answer",
-  };
-  assert.deepEqual(waiting.selection, selection);
-  // A client that opens the session later answers from the snapshot alone.
-  const snapshot = await sdk.sessions.snapshot({ sessionId });
-  assert.deepEqual(
-    snapshot?.parked?.map((call) => [call.callId, call.waitId, call.selection]),
-    [[callId, waitId, selection]],
-  );
-  assert.equal((await sdk.runs.current({ sessionId }))?.phase.kind, "waiting");
-
-  // A conversation message is not an answer: the call stays parked.
-  await sdk.messages.send({ sessionId, content: "actually, one more thing" });
-  assert.equal((await sdk.runs.wait({ sessionId })).kind, "waiting");
-  assert.equal((await toolParts(sdk, sessionId))[0]?.state.kind, "running");
-
-  const settled = await reply(sdk, sessionId, callId, waitId, "2");
-  assert.equal(settled.output, "Broad rewrite");
-  assert.equal(settled.failed, false);
-  assert.deepEqual(settled.message.details, {
-    question: "Which implementation?",
-    answer: "Broad rewrite",
-  });
-  // Every client's transcript labels the call with the question it asked.
-  assert.deepEqual(settled.class, { kind: "custom", label: "Which implementation?" });
-  assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Broad rewrite");
-});
-
-test("a reply in the user's own words is the answer", async () => {
-  const { sdk, sessionId, callId, waitId } = await openParked();
-  const settled = await reply(sdk, sessionId, callId, waitId, "  Wait for the migration  ");
-  assert.equal(settled.output, "Wait for the migration");
-  assert.equal(settled.failed, false);
-  assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Wait for the migration");
-});
-
-test("walking away is not an answer, and the model carries on", async () => {
-  const { sdk, sessionId, callId, waitId } = await openParked();
-  const settled = await reply(sdk, sessionId, callId, waitId, "   ");
-  assert.equal(settled.failed, false);
-  assert.match(settled.output, /didn't answer/);
-  assert.deepEqual(settled.message.details, { question: "Which implementation?" });
-});
-
-test("a reply selects by number or label; anything else is its own answer", () => {
-  assert.equal(answerFor(QUESTION, "2"), "Broad rewrite");
-  assert.equal(answerFor(QUESTION, "broad rewrite"), "Broad rewrite");
-  assert.equal(answerFor(QUESTION, "  Wait for the migration  "), "Wait for the migration");
-});
-
-test("structured replies reject unknown ids, duplicates, and single-choice combinations", () => {
-  assert.equal(answerFor(QUESTION, { choices: ["2"] }), "Broad rewrite");
-  assert.equal(answerFor(QUESTION, { choices: [], other: "  custom  " }), "custom");
-  assert.equal(answerFor(QUESTION, { choices: ["missing"] }), "");
-  assert.equal(answerFor(QUESTION, { choices: ["1", "1"] }), "");
-  assert.equal(answerFor(QUESTION, { choices: ["1", "2"] }), "");
-  assert.equal(answerFor(QUESTION, { choices: ["1"], other: "custom" }), "");
-});
-
-/** What an untyped JS plugin might park with. Each must fail the call, never the store. */
-const MALFORMED: Record<string, () => unknown> = {
-  "blank title": () => ({ title: "  ", choices: [{ id: "a", label: "A" }] }),
-  "blank label": () => ({ title: "x", choices: [{ id: "a", label: "\t" }] }),
-  "blank description": () => ({
-    title: "x",
-    choices: [{ id: "a", label: "A", description: "\n" }],
-  }),
-  "blank own-answer prompt": () => ({
-    title: "x",
-    choices: [{ id: "a", label: "A" }],
-    other: " ",
-  }),
-  "empty choices": () => JSON.parse('{"title":"x","choices":[]}'),
-  "duplicate ids": () => ({
-    title: "x",
-    choices: [
-      { id: "a", label: "A" },
-      { id: "a", label: "B" },
-    ],
-  }),
-  "empty id": () => ({ title: "x", choices: [{ id: "", label: "A" }] }),
-  // Durable JSON has no getters: a value that could answer the check and the
-  // store differently is refused before either reads it.
-  "a getter for a field": () => ({
-    get title() {
-      return "x";
-    },
-    choices: [{ id: "a", label: "A" }],
-  }),
-};
-
-test.each(Object.entries(MALFORMED))(
-  "a plugin that parks with %s fails its call, not the session",
-  async (_name, build) => {
-    const world = TestWorkspace.create("nyte-question-malformed-");
-    workspaces.push(world);
-    const broken = definePlugin({
-      id: "broken-ask",
-      session(api) {
-        api.tools.add((draft) =>
-          draft.set("broken", {
-            name: "broken",
-            description: "parks with garbage",
-            parameters: Type.Object({}),
-            replay: "never",
-            execute: async () => {
-              throw Object.assign(new ToolWait({ until: Date.now() + 60_000 }), {
-                selection: build(),
-              });
-            },
-          }),
-        );
-      },
-    });
-    const sdk = await world.open({
-      streamFn: (model, context) =>
-        context.messages.findLast(isToolResult) === undefined
-          ? respond(model, [toolCall("b-1", "broken", {})])
-          : respond(model, [{ type: "text", text: "moving on" }]),
-      plugins: [broken],
-      model: testModel,
-    });
-    const { sessionId } = world;
-    assert.equal((await prompt(sdk, sessionId, "go")).kind, "idle");
-    const [part] = await toolParts(sdk, sessionId);
-    assert.equal(part?.state.kind, "error", "the call settled as a tool error");
-    assert.match(part?.output ?? "", /malformed selection/);
-    assert.equal((await sdk.sessions.snapshot({ sessionId }))?.parked, undefined);
-    assert.equal(await lastAssistantText(sdk, sessionId), "moving on");
   },
-);
+  {
+    question: "Which clients?",
+    header: "Clients",
+    options: [
+      { label: "Desktop", description: "The desktop question tray." },
+      { label: "Terminal", description: "The terminal question panel." },
+      { label: "Mobile", description: "The mobile answer form." },
+    ],
+    multiple: true,
+  },
+  {
+    question: "When?",
+    header: "Timing",
+    options: [],
+  },
+];
 
-test("only the selection's own fields reach the ref", async () => {
-  const world = TestWorkspace.create("nyte-question-extra-");
-  workspaces.push(world);
-  const chatty = definePlugin({
-    id: "chatty-ask",
-    session(api) {
-      api.tools.add((draft) =>
-        draft.set("chatty", {
-          name: "chatty",
-          description: "parks with extra fields",
-          parameters: Type.Object({}),
-          replay: "never",
-          execute: async () => {
-            throw Object.assign(new ToolWait({ until: Date.now() + 60_000 }), {
-              selection: {
-                title: "x",
-                choices: [{ id: "a", label: "A", weight: 3 }],
-                theme: "dark",
-              },
-            });
-          },
-        }),
-      );
+it("parks on one grouped modal and resumes with all selected, custom and unanswered answers", async () => {
+  const fake = fakeModels();
+
+  fake.reply(
+    {
+      content: [{ type: "toolCall", id: "ask", name: "question", arguments: { questions } }],
     },
+    { content: [{ type: "text", text: "Deploying." }] },
+  );
+
+  await using host = await open(fake, [questionPlugin]);
+  const { session, receipt } = await host.sessions.start({ content: "Ask me." });
+
+  const asked = await until(async () =>
+    (await session.view()).parts.find((part) => part.partKind === "ask/question"),
+  );
+
+  expect(asked).toMatchObject({
+    placement: { kind: "modal" },
+    state: { questions, answers: null },
   });
-  const sdk = await world.open({
-    streamFn: (model) => respond(model, [toolCall("c-1", "chatty", {})]),
-    plugins: [chatty],
-    model: testModel,
+  expect(openQuestions(await session.view())).toEqual([{ part: asked.id, questions }]);
+  expect(fake.requests).toHaveLength(1);
+  expect(
+    await session
+      .part(asked.id)
+      .act("answer", { answers: [[" No "], ["Terminal", "Desktop"], []] }),
+  ).toEqual({
+    kind: "ok",
+    output: undefined,
   });
-  const { sessionId } = world;
-  assert.equal((await prompt(sdk, sessionId, "go")).kind, "waiting");
-  assert.deepEqual((await sdk.sessions.snapshot({ sessionId }))?.parked?.[0]?.selection, {
-    title: "x",
-    choices: [{ id: "a", label: "A" }],
+
+  const end = await receipt.settled();
+
+  assert(end.kind === "completed");
+  expect(fake.requests).toHaveLength(2);
+  const call = (await session.view()).messages.find((message) => isPart(message, tool));
+
+  assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled");
+  expect(call.state.outcome).toMatchObject({
+    kind: "ok",
+    content: [
+      { kind: "text", text: "Deploy?: No\nWhich clients?: Desktop, Terminal\nWhen?: Unanswered" },
+    ],
+    output: { answers: [["No"], ["Desktop", "Terminal"], []] },
+    parts: [asked.id],
+  });
+  expect(openQuestions(await session.view())).toEqual([]);
+});
+
+it("resumes a grouped request answered by a cold host sharing the durable store", async () => {
+  const store = memoryStore();
+  const fake = fakeModels();
+
+  fake.reply(
+    {
+      content: [{ type: "toolCall", id: "ask", name: "question", arguments: { questions } }],
+    },
+    { content: [{ type: "text", text: "Shipping." }] },
+  );
+
+  await using parked = await open(fake, [questionPlugin], { store, poll: 10 });
+  const { session, receipt } = await parked.sessions.start({
+    content: "Ask me.",
+  });
+
+  const asked = await until(async () =>
+    (await session.view()).parts.find((part) => part.partKind === "ask/question"),
+  );
+
+  await using cold = await open(fakeModels(), [questionPlugin], {
+    store,
+    execution: { kind: "admit-only" },
+  });
+
+  expect(
+    await cold
+      .session(session.id)
+      .part(asked.id)
+      .act("answer", {
+        answers: [["Yes"], ["Mobile"], [" After the review "]],
+      }),
+  ).toEqual({ kind: "ok", output: undefined });
+
+  const end = await receipt.settled();
+
+  assert(end.kind === "completed");
+  const call = (await session.view()).messages.find((message) => isPart(message, tool));
+
+  assert(call !== undefined && isPart(call, tool) && call.state.phase === "settled");
+  expect(call.state.outcome).toMatchObject({
+    kind: "ok",
+    content: [
+      { kind: "text", text: "Deploy?: Yes\nWhich clients?: Mobile\nWhen?: After the review" },
+    ],
+    output: { answers: [["Yes"], ["Mobile"], ["After the review"]] },
   });
 });
 
-test("several answers, and typed text that looks like an id, arrive as one structured reply", async () => {
-  const world = TestWorkspace.create("nyte-question-multi-");
-  workspaces.push(world);
-  const asked: QuestionInput = { ...QUESTION, multiple: true };
-  const sdk = await world.open({
-    streamFn: (model, context) => {
-      const answered = context.messages.findLast(isToolResult);
-      if (answered === undefined) return respond(model, [toolCall("q-1", "question", asked)]);
-      const answer = answered.content.find((part) => part.type === "text")?.text ?? "";
-      return respond(model, [{ type: "text", text: `Proceeding with ${answer}` }]);
-    },
-    plugins: [questionPlugin],
-    model: testModel,
-  });
-  const { sessionId } = world;
-  assert.equal((await prompt(sdk, sessionId, "choose")).kind, "waiting");
-  const parked = (await sdk.sessions.snapshot({ sessionId }))?.parked?.[0];
-  assert.ok(parked);
-  assert.equal(parked.selection?.multiple, true);
-  assert.equal(parked?.until, undefined);
-  assert.deepEqual(
-    await sdk.runs.reply({
-      sessionId,
-      callId: "q-1",
-      waitId: parked.waitId,
-      reply: { choices: ["1", "2"], other: "1" },
-    }),
-    { kind: "signalled" },
-  );
-  assert.deepEqual(await sdk.runs.wait({ sessionId }), { kind: "idle" });
-  assert.equal(
-    await lastAssistantText(sdk, sessionId),
-    "Proceeding with Small patch, Broad rewrite, 1",
-  );
-});
+it("rejects invalid submissions and keeps the first answer across same-set retries", async () => {
+  await using host = await open(fakeModels(), [questionPlugin]);
+  const { session } = await host.sessions.start({ content: "Hi." });
 
-test("the timeout setting gives a question a deadline the runner honours without a client", async () => {
-  const world = TestWorkspace.create("nyte-question-timeout-");
-  workspaces.push(world);
-  const sdk = await world.open({
-    streamFn: askingModel,
-    plugins: [questionPlugin],
-    model: testModel,
+  const part = await session.parts.create(question, {
+    state: { questions, answers: null },
+    placement: { kind: "modal" },
   });
-  const { sessionId } = world;
-  assert.deepEqual(
-    await sdk.plugins.settings.apply({ sessionId, id: "question-timeout", choiceId: "30s" }),
-    { kind: "applied" },
-  );
-  const before = Date.now();
-  assert.equal((await prompt(sdk, sessionId, "help me choose")).kind, "waiting");
-  const parked = (await sdk.sessions.snapshot({ sessionId }))?.parked?.[0];
-  assert.ok(parked?.until !== undefined, "the deadline is on the parked call for clients to show");
-  assert.ok(parked.until >= before + 30_000 && parked.until <= Date.now() + 30_000);
-});
 
-test("a wait past its deadline is woken by the runner, with no reply and no client", async () => {
-  const world = TestWorkspace.create("nyte-question-deadline-");
-  workspaces.push(world);
-  const wakes: { expired: boolean; reply: unknown }[] = [];
-  const brief = definePlugin({
-    id: "brief-wait",
-    session(api) {
-      api.tools.add((draft) =>
-        draft.set("brief", {
-          name: "brief",
-          description: "waits a moment",
-          parameters: Type.Object({}),
-          replay: "never",
-          execute: async () => {
-            throw new ToolWait({ until: Date.now() + 150 });
-          },
-          wake: async (_waiting, context) => {
-            wakes.push({ expired: context.expired, reply: context.reply });
-            return {
-              kind: "success",
-              result: {
-                content: [{ type: "text", text: context.expired ? "expired" : "?" }],
-                details: {},
-              },
-            };
-          },
-        }),
-      );
-    },
-  });
-  const sdk = await world.open({
-    streamFn: (model, context) =>
-      context.messages.findLast(isToolResult) === undefined
-        ? respond(model, [toolCall("b-1", "brief", {})])
-        : respond(model, [{ type: "text", text: "carried on" }]),
-    plugins: [brief],
-    model: testModel,
-  });
-  const { sessionId } = world;
-  const started = Date.now();
-  assert.equal((await prompt(sdk, sessionId, "go")).kind, "waiting");
-  // Nobody replies. The attached host notices the deadline and steps the run.
-  const deadline = Date.now() + 5_000;
-  while ((await sdk.runs.wait({ sessionId })).kind !== "idle") {
-    if (Date.now() > deadline) assert.fail("the deadline never woke the run");
-    await new Promise((resolve) => setTimeout(resolve, 25));
+  for (const answers of [
+    [["Yes"]],
+    [["Yes", "No"], [], []],
+    [[], ["Desktop", " Desktop "], []],
+    [[], [], ["  "]],
+  ]) {
+    expect(await part.act("answer", { answers })).toMatchObject({ kind: "rejected" });
   }
-  assert.ok(Date.now() - started >= 150, "woke no earlier than the deadline");
-  assert.deepEqual(wakes, [{ expired: true, reply: undefined }]);
-  assert.equal((await toolParts(sdk, sessionId))[0]?.output, "expired");
-  assert.equal(await lastAssistantText(sdk, sessionId), "carried on");
+
+  expect(openQuestions(await session.view())).toEqual([{ part: part.id, questions }]);
+  expect(await part.act("answer", { answers: [["Yes"], ["Terminal", "Desktop"], []] })).toEqual({
+    kind: "ok",
+    output: undefined,
+  });
+  expect(await part.act("answer", { answers: [[" Yes "], ["Desktop", " Terminal "], []] })).toEqual(
+    {
+      kind: "ok",
+      output: undefined,
+    },
+  );
+  expect(await part.act("answer", { answers: [["No"], ["Desktop"], []] })).toEqual({
+    kind: "rejected",
+    reason: "These questions were already answered.",
+  });
+  expect((await session.view()).parts.find((candidate) => candidate.id === part.id)?.state).toEqual(
+    {
+      questions,
+      answers: [["Yes"], ["Desktop", "Terminal"], []],
+    },
+  );
+  expect(openQuestions(await session.view())).toEqual([]);
 });

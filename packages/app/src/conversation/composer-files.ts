@@ -4,7 +4,7 @@
  * Every other file is referenced by path with the chip an `@` mention makes:
  * the file is already on disk, so the agent reads it from there.
  */
-import type { ImageContent } from "@nyte-ai/schema";
+import type { ImageContent } from "@nyte-ai/schema/model";
 import { nyte } from "../nyte.ts";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
 import { fileFromUrl } from "./message-references.ts";
@@ -16,8 +16,10 @@ export interface ComposerImageAttachment {
   readonly content: ImageContent;
 }
 
-// BMP is accepted because the agent converts it to PNG before it reaches a
-// provider; Chromium renders it in the attachment preview meanwhile.
+/**
+ * BMP is accepted because the agent converts it to PNG before it reaches a
+ * provider; Chromium renders it in the attachment preview meanwhile.
+ */
 const INLINE_IMAGE_TYPE_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["bmp", "image/bmp"],
   ["gif", "image/gif"],
@@ -87,16 +89,15 @@ function readImageAttachment(args: {
           return;
         }
 
-        const marker = ";base64,";
-        const markerIndex = result.indexOf(marker);
+        const [header = "", ...payload] = result.split(";base64,");
 
-        if (!result.startsWith("data:") || markerIndex === -1) {
+        if (!header.startsWith("data:") || payload.length === 0) {
           reject(new Error(`Could not encode ${file.name}`));
 
           return;
         }
 
-        const data = result.slice(markerIndex + marker.length);
+        const data = payload.join(";base64,");
         resolve({
           id: crypto.randomUUID(),
           name: file.name,

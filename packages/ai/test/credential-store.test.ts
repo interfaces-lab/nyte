@@ -18,6 +18,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { storedAccounts } from "./credential-fixture.ts";
 import { FileCredentialStore } from "../src/auth/store.ts";
 
 const STORE_URL = new URL("../src/auth/store.ts", import.meta.url).href;
@@ -45,7 +46,10 @@ function modifyInChildProcess(providerId: string, holdMs: number): Promise<unkno
       const store = new FileCredentialStore(${JSON.stringify(authPath())});
       await store.modify(${JSON.stringify(providerId)}, async () => {
         await new Promise((resolve) => setTimeout(resolve, ${holdMs}));
-        return { type: "api_key", key: ${JSON.stringify(providerId)} };
+        return {
+          active: "default",
+          accounts: [{ id: "default", label: "Default", credential: { type: "api_key", key: ${JSON.stringify(providerId)} } }],
+        };
       });
     `,
   ]);
@@ -77,14 +81,20 @@ describe("file credential store", () => {
     expect(await store.read("anthropic")).toBeUndefined();
     expect(await store.list()).toEqual([]);
 
-    await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
+    await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" }));
 
-    expect(await store.read("anthropic")).toEqual({ type: "api_key", key: "secret" });
-    expect(await store.list()).toEqual([{ providerId: "anthropic", type: "api_key" }]);
-    expect(await new FileCredentialStore(authPath()).read("anthropic")).toEqual({
-      type: "api_key",
-      key: "secret",
-    });
+    expect(await store.read("anthropic")).toEqual(
+      storedAccounts({ type: "api_key", key: "secret" }),
+    );
+    expect(await store.list()).toEqual([
+      { providerId: "anthropic", type: "api_key", id: "default", label: "Default", active: true },
+    ]);
+    expect(await new FileCredentialStore(authPath()).read("anthropic")).toEqual(
+      storedAccounts({
+        type: "api_key",
+        key: "secret",
+      }),
+    );
     if (process.platform !== "win32") {
       expect(statSync(authPath()).mode & 0o777).toBe(0o600);
     }
@@ -98,40 +108,57 @@ describe("file credential store", () => {
     const store = new FileCredentialStore(authPath());
 
     expect(await store.read("future")).toBeUndefined();
-    expect(await store.list()).toEqual([{ providerId: "openai", type: "api_key" }]);
+    expect(await store.read("openai")).toEqual(storedAccounts({ type: "api_key" }));
+    expect(await store.list()).toEqual([
+      { providerId: "openai", type: "api_key", id: "default", label: "Default", active: true },
+    ]);
 
-    await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
+    await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" }));
     expect(storedJson()["future"]).toEqual({ type: "passkey", handle: "abc" });
   });
 
   test("keeps provider extras on the credential through a refresh", async () => {
     const store = new FileCredentialStore(authPath());
-    await store.modify("openai-codex", async () => ({
-      type: "oauth",
-      access: "old",
-      refresh: "rotating",
-      expires: 1,
-      accountId: "account-1",
-    }));
-
-    await store.modify("openai-codex", async (current) => {
-      expect(current).toEqual({
+    await store.modify("openai-codex", async () =>
+      storedAccounts({
         type: "oauth",
         access: "old",
         refresh: "rotating",
         expires: 1,
         accountId: "account-1",
-      });
-      return current === undefined ? undefined : { ...current, access: "new" };
+      }),
+    );
+
+    await store.modify("openai-codex", async (current) => {
+      expect(current).toEqual(
+        storedAccounts({
+          type: "oauth",
+          access: "old",
+          refresh: "rotating",
+          expires: 1,
+          accountId: "account-1",
+        }),
+      );
+      return current === undefined
+        ? undefined
+        : {
+            ...current,
+            accounts: current.accounts.map((account) => ({
+              ...account,
+              credential: { ...account.credential, access: "new" },
+            })),
+          };
     });
 
-    expect(await store.read("openai-codex")).toEqual({
-      type: "oauth",
-      access: "new",
-      refresh: "rotating",
-      expires: 1,
-      accountId: "account-1",
-    });
+    expect(await store.read("openai-codex")).toEqual(
+      storedAccounts({
+        type: "oauth",
+        access: "new",
+        refresh: "rotating",
+        expires: 1,
+        accountId: "account-1",
+      }),
+    );
   });
 
   test("fails a corrupt file instead of replacing it", async () => {
@@ -141,7 +168,7 @@ describe("file credential store", () => {
     await expect(store.read("anthropic")).rejects.toThrow("is not valid JSON");
     await expect(store.list()).rejects.toThrow("is not valid JSON");
     await expect(
-      store.modify("anthropic", async () => ({ type: "api_key", key: "secret" })),
+      store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" })),
     ).rejects.toThrow("is not valid JSON");
     expect(readFileSync(authPath(), "utf8")).toBe("{ not json");
   });
@@ -156,11 +183,15 @@ describe("file credential store", () => {
 
   test("reads while another process holds the lock", async () => {
     const store = new FileCredentialStore(authPath());
-    await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
+    await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" }));
     writeFileSync(lockPath(), `${process.pid} ${hostname()}`);
 
-    expect(await store.read("anthropic")).toEqual({ type: "api_key", key: "secret" });
-    expect(await store.list()).toEqual([{ providerId: "anthropic", type: "api_key" }]);
+    expect(await store.read("anthropic")).toEqual(
+      storedAccounts({ type: "api_key", key: "secret" }),
+    );
+    expect(await store.list()).toEqual([
+      { providerId: "anthropic", type: "api_key", id: "default", label: "Default", active: true },
+    ]);
   });
 
   test("persists a credential produced before the caller aborted", async () => {
@@ -171,17 +202,19 @@ describe("file credential store", () => {
       "anthropic",
       async () => {
         controller.abort();
-        return { type: "oauth", access: "rotated", refresh: "next", expires: 1 };
+        return storedAccounts({ type: "oauth", access: "rotated", refresh: "next", expires: 1 });
       },
       { signal: controller.signal },
     );
 
-    expect(await store.read("anthropic")).toEqual({
-      type: "oauth",
-      access: "rotated",
-      refresh: "next",
-      expires: 1,
-    });
+    expect(await store.read("anthropic")).toEqual(
+      storedAccounts({
+        type: "oauth",
+        access: "rotated",
+        refresh: "next",
+        expires: 1,
+      }),
+    );
   });
 
   test("keeps every credential when separate processes write at once", async () => {
@@ -212,22 +245,25 @@ describe("file credential store", () => {
     utimesSync(recoveryPath, aged, aged);
     const store = new FileCredentialStore(authPath());
 
-    await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
+    await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" }));
 
-    expect(await store.read("anthropic")).toEqual({ type: "api_key", key: "secret" });
+    expect(await store.read("anthropic")).toEqual(
+      storedAccounts({ type: "api_key", key: "secret" }),
+    );
     expect(readdirSync(home)).toEqual(["auth.json"]);
   });
 
-  test("takes over an aged-out lock whose owner cannot be checked", async () => {
-    // Another machine's pid on a shared home directory, and a pid this machine reused.
+  test("takes over an aged-out lock whose owner cannot be checked: another machine's pid on a shared home, or a pid this machine reused", async () => {
     for (const owner of [`${process.pid} other-host`, `${process.pid} ${hostname()}`]) {
       writeFileSync(lockPath(), owner);
       ageLock(120);
 
-      await new FileCredentialStore(authPath()).modify("anthropic", async () => ({
-        type: "api_key",
-        key: owner,
-      }));
+      await new FileCredentialStore(authPath()).modify("anthropic", async () =>
+        storedAccounts({
+          type: "api_key",
+          key: owner,
+        }),
+      );
 
       expect(readdirSync(home)).toEqual(["auth.json"]);
     }
@@ -238,7 +274,7 @@ describe("file credential store", () => {
     const store = new FileCredentialStore(authPath());
 
     await expect(
-      store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }), {
+      store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" }), {
         signal: AbortSignal.timeout(100),
       }),
     ).rejects.toThrow();
@@ -246,34 +282,33 @@ describe("file credential store", () => {
     expect(readFileSync(lockPath(), "utf8")).toBe(`${process.pid} other-host`);
   });
 
-  test("refuses to write once a second write in this process took over its aged lock", async () => {
+  test("refuses to write once a second write in this process took over its lock, aged as suspend/resume or an untimed refresh ages it", async () => {
     const store = new FileCredentialStore(authPath());
-    await store.modify("openai", async () => ({ type: "api_key", key: "kept" }));
+    await store.modify("openai", async () => storedAccounts({ type: "api_key", key: "kept" }));
     let sibling: Promise<unknown> = Promise.resolve();
 
     const reclaimed = store.modify("anthropic", async () => {
-      // Suspend/resume and a refresh without its own timeout both age a held lock.
       ageLock(300);
       sibling = store.modify("github-copilot", async () => {
         await new Promise((resolve) => setTimeout(resolve, 150));
-        return { type: "api_key", key: "sibling" };
+        return storedAccounts({ type: "api_key", key: "sibling" });
       });
       await new Promise((resolve) => setTimeout(resolve, 100));
-      return { type: "api_key", key: "reclaimed" };
+      return storedAccounts({ type: "api_key", key: "reclaimed" });
     });
 
     await expect(reclaimed).rejects.toThrow("took over");
     await sibling;
     expect(storedJson()).toEqual({
-      openai: { type: "api_key", key: "kept" },
-      "github-copilot": { type: "api_key", key: "sibling" },
+      openai: storedAccounts({ type: "api_key", key: "kept" }),
+      "github-copilot": storedAccounts({ type: "api_key", key: "sibling" }),
     });
   });
 
   test("never publishes a file a reader can catch half-written", async () => {
     const store = new FileCredentialStore(authPath());
     const bulky = "k".repeat(20_000);
-    await store.modify("anthropic", async () => ({ type: "api_key", key: bulky }));
+    await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: bulky }));
     const reader = spawn(process.execPath, [
       "--input-type=module",
       "-e",
@@ -300,7 +335,7 @@ describe("file credential store", () => {
 
     const until = Date.now() + 500;
     while (Date.now() < until) {
-      await store.modify("anthropic", async () => ({ type: "api_key", key: bulky }));
+      await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: bulky }));
     }
     await once(reader, "exit");
 
@@ -315,14 +350,16 @@ describe("file credential store", () => {
       store.modify("anthropic", () => Promise.reject(new Error("refresh failed"))),
     ).rejects.toThrow("refresh failed");
 
-    await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
-    expect(await store.read("anthropic")).toEqual({ type: "api_key", key: "secret" });
+    await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" }));
+    expect(await store.read("anthropic")).toEqual(
+      storedAccounts({ type: "api_key", key: "secret" }),
+    );
     expect(readdirSync(home)).toEqual(["auth.json"]);
   });
 
   test("removes a credential on logout", async () => {
     const store = new FileCredentialStore(authPath());
-    await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
+    await store.modify("anthropic", async () => storedAccounts({ type: "api_key", key: "secret" }));
 
     await store.delete("anthropic");
 

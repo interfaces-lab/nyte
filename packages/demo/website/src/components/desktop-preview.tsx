@@ -1,4 +1,4 @@
-import { role, shadow } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps } from "react";
 import {
@@ -10,7 +10,7 @@ import {
 } from "central-icons";
 import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 
-export type DesktopPreviewScenario = "conversation" | "search" | "details";
+type DesktopPreviewScenario = "conversation" | "search" | "details";
 
 interface DesktopPreviewProps extends Pick<ComponentProps<"div">, "className"> {
   scenario?: DesktopPreviewScenario;

@@ -7,10 +7,10 @@ import type { D1Database } from "./d1.ts";
 import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
 import type { Logger } from "./log.ts";
-import type { RelayStub } from "./relay-stub.ts";
-import { hit } from "./store.ts";
+import type { RelayStub } from "./relay-binding.ts";
+import { hit } from "./store/replays.ts";
 
-export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
+type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface Dependencies {
   /** Outbound requests: the Clerk Backend API only. */
@@ -65,13 +65,17 @@ const RATE_LIMITS = {
   revoke: { windowMs: 60_000, limit: 30 },
   /** Three heartbeats a minute, plus readiness refreshes after enrollments. */
   lease: { windowMs: 60_000, limit: 20 },
+  linkOpen: { windowMs: 600_000, limit: 10 },
+  linkLookup: { windowMs: 60_000, limit: 10 },
+  linkApprove: { windowMs: 60_000, limit: 10 },
+  linkPoll: { windowMs: 60_000, limit: 30 },
   /** Every relayed phone request from one client address, before its bearer is checked. */
   relayAddress: { windowMs: 60_000, limit: 1200 },
   /** Relayed phone requests to one environment, after its bearer is checked. */
   relay: { windowMs: 60_000, limit: 1200 },
 } as const;
 
-export type RateLimit = keyof typeof RATE_LIMITS;
+type RateLimit = keyof typeof RATE_LIMITS;
 
 /** Count one request against `bucket` for `subject`. False once the window is full. */
 export async function allow(

@@ -13,7 +13,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import type { VcsSnapshot } from "@nyte-ai/protocol";
+import type { Cursor, GitStatus } from "@nyte-ai/sdk";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import {
@@ -32,18 +32,16 @@ import {
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { macPlatform } from "../platform.ts";
-import { useVcsDiff, useVcsLog } from "../queries.ts";
-import type { VcsDiffRead } from "../queries.ts";
-import { menu, radius } from "@nyte-ai/ui/schema.stylex";
+import { useVcsLog } from "../queries.ts";
+import { menu, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
-import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { ChangesCommitBar, readsWorkingTree } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,
   commitScopeOptions,
-  diffRequestForScope,
   turnHasChanges,
   visibleTurnOptions,
   workingTreeScopeOptions,
@@ -51,26 +49,22 @@ import {
 import type {
   BranchReadout,
   ChangeScopeRead,
+  ChangesRepository,
   ChangeScopeStats,
   ChangesScopeOption,
   TurnChangeOption,
 } from "./change-scopes.ts";
 import type { ChangesLayout, ChangesViewOptions } from "./changes-view-options.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
+import { nyte } from "../nyte.ts";
 
 /** One page of history, and how deep the menu will page before it stops offering more. */
 const COMMIT_PAGE_SIZE = 20;
 
 const MAX_COMMIT_PAGES = 10;
 
-/** The repository a scope is read against; absent outside a Git working tree. */
-export interface ChangesRepository {
-  readonly root: string;
-  readonly revision: string;
-}
-
 /** The panel's own keyboard bindings, which is all the Changes panel claims. */
-export type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
+type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
 
 type ShortcutEvent = Pick<
   KeyboardEvent,
@@ -109,7 +103,7 @@ export function changesShortcutAction(
   return key === "r" ? "refresh" : undefined;
 }
 
-export function changesShortcutLabel(action: ChangesShortcutAction, mac: boolean): string {
+function changesShortcutLabel(action: ChangesShortcutAction, mac: boolean): string {
   switch (action) {
     case "filter-files":
       return mac ? "⌘F" : "Ctrl+F";
@@ -133,11 +127,11 @@ const styles = create({
   },
   scopeStats: {
     display: "inline-flex",
-    gap: 6,
+    gap: space.s1_5,
     flexShrink: 0,
     color: role.contentSecondary,
     fontSize: type.fontSm,
-    fontWeight: 590,
+    fontWeight: type.weightSemibold,
     fontVariantNumeric: "tabular-nums",
   },
   scopeAdded: { color: role.contentSecondary },
@@ -162,12 +156,10 @@ const styles = create({
   branch: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     minWidth: 0,
-    paddingInline: 6,
+    paddingInline: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   branchLabel: {
     minWidth: 0,
@@ -177,17 +169,15 @@ const styles = create({
   },
   branchTag: {
     flexShrink: 0,
-    paddingInline: 4,
+    paddingInline: space.s1,
     borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
   },
   branchCount: { flexShrink: 0, fontVariantNumeric: "tabular-nums" },
   spacer: { flex: 1, minWidth: 0 },
 });
 
-export function ChangeStats({
+function ChangeStats({
   added,
   removed,
 }: {
@@ -261,6 +251,9 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
           {option.detail !== undefined && (
             <span {...props(styles.scopeDetail)}>{option.detail}</span>
           )}
+          {option.read.kind === "files" && (
+            <ScopeMeta stats={undefined} fileCount={option.read.fileCount} />
+          )}
           {option.read.kind === "ready" && (
             <ScopeMeta stats={option.read.stats} fileCount={option.read.fileCount} />
           )}
@@ -272,61 +265,6 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
   );
 }
 
-function diffRead(
-  repository: ChangesRepository | undefined,
-  scope: WorkbenchChangesScope,
-  ignoreWhitespace: boolean,
-): VcsDiffRead | undefined {
-  const request = diffRequestForScope(scope, { ignoreWhitespace });
-
-  if (repository === undefined || request === undefined) return undefined;
-
-  return { ...repository, request };
-}
-
-/**
- * Uncommitted and the index split, each with its own counts. The reads run
- * only while the menu is open, and the one serving the selected scope is the
- * panel's own read, answered from the cache.
- */
-function WorkingTreeScopeItems({
-  snapshot,
-  repository,
-  ignoreWhitespace,
-}: {
-  readonly snapshot: VcsSnapshot | undefined;
-  readonly repository: ChangesRepository | undefined;
-  readonly ignoreWhitespace: boolean;
-}): ReactElement {
-  const enabled = repository !== undefined;
-
-  const uncommitted = useVcsDiff(
-    diffRead(repository, { kind: "uncommitted" }, ignoreWhitespace),
-    enabled,
-  );
-
-  const staged = useVcsDiff(diffRead(repository, { kind: "staged" }, ignoreWhitespace), enabled);
-
-  const unstaged = useVcsDiff(
-    diffRead(repository, { kind: "unstaged" }, ignoreWhitespace),
-    enabled,
-  );
-
-  const options = workingTreeScopeOptions(snapshot, {
-    uncommitted: uncommitted.data,
-    staged: staged.data,
-    unstaged: unstaged.data,
-  });
-
-  return (
-    <>
-      {options.map((option) => (
-        <ScopeRadioItem key={changesScopeValue(option.scope)} option={option} />
-      ))}
-    </>
-  );
-}
-
 /**
  * One page of history and, on request, the page after it. Each page owns its
  * own read, so paging never refetches the pages already on screen.
@@ -334,24 +272,19 @@ function WorkingTreeScopeItems({
 function CommitScopeItems({
   repository,
   readByOid,
-  before,
+  cursor,
   page,
 }: {
   readonly repository: ChangesRepository | undefined;
   readonly readByOid: ReadonlyMap<string, ChangeScopeRead>;
-  readonly before: string | undefined;
+  readonly cursor: Cursor | undefined;
   readonly page: number;
 }): ReactElement {
   const [showNextPage, setShowNextPage] = useState(false);
-
-  const log = useVcsLog(
-    before === undefined ? { limit: COMMIT_PAGE_SIZE } : { limit: COMMIT_PAGE_SIZE, before },
-    repository !== undefined,
-  );
-
-  const commits = log.data?.commits ?? [];
-  const oldest = commits.at(-1);
-  const hasMore = log.data?.hasMore === true && oldest !== undefined && page < MAX_COMMIT_PAGES;
+  const log = useVcsLog({ limit: COMMIT_PAGE_SIZE, cursor }, repository !== undefined);
+  const commits = log.data?.items ?? [];
+  const next = log.data?.next ?? null;
+  const hasMore = next !== null && page < MAX_COMMIT_PAGES;
 
   return (
     <>
@@ -366,7 +299,7 @@ function CommitScopeItems({
           <CommitScopeItems
             repository={repository}
             readByOid={readByOid}
-            before={oldest.oid}
+            cursor={next}
             page={page + 1}
           />
         ) : (
@@ -415,11 +348,11 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
   const description = branchDescription(branch);
 
   return (
-    <span aria-label={description} title={description} {...props(styles.branch)}>
+    <span aria-label={description} title={description} {...props(text.sm, styles.branch)}>
       <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size={12} />
       <span {...props(styles.branchLabel)}>{branch.label}</span>
-      {branch.kind === "detached" && <span {...props(styles.branchTag)}>detached</span>}
-      {branch.kind === "unborn" && <span {...props(styles.branchTag)}>no commits</span>}
+      {branch.kind === "detached" && <span {...props(text.xs, styles.branchTag)}>detached</span>}
+      {branch.kind === "unborn" && <span {...props(text.xs, styles.branchTag)}>no commits</span>}
       {branch.kind === "attached" && branch.ahead > 0 && (
         <span aria-hidden="true" {...props(styles.branchCount)}>
           ↑{String(branch.ahead)}
@@ -434,14 +367,13 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
   );
 }
 
-export interface ChangesToolbarProps {
+interface ChangesToolbarProps {
   /** The scope the panel is showing, which is not always the stored one. */
   readonly scope: WorkbenchChangesScope;
   readonly scopeLabel: string;
-  /** Counts and file total for the scope on screen; the menu reads the rest itself. */
   readonly scopeStats: ChangeScopeStats | undefined;
   readonly scopeFileCount: number | undefined;
-  readonly snapshot: VcsSnapshot | undefined;
+  readonly snapshot: GitStatus | undefined;
   readonly repository: ChangesRepository | undefined;
   readonly branch: BranchReadout | undefined;
   readonly turnOptions: readonly TurnChangeOption[];
@@ -451,11 +383,14 @@ export interface ChangesToolbarProps {
   readonly onViewOptionsChange: (changes: Partial<ChangesViewOptions>) => void;
   readonly onToggleFileTree: () => void;
   readonly onRefresh: () => void;
+  readonly refreshing: boolean;
   /** Focuses the rail's file filter; the rail owns the only search surface. */
   readonly onFilterFiles: () => void;
   /** Every file in the scope is collapsed, so the command offers to expand instead. */
   readonly allFilesCollapsed: boolean;
   readonly onToggleCollapseAll: () => void;
+  /** Opens a pull request or check page; the system browser when absent. */
+  readonly onOpenLink?: (url: string) => void;
 }
 
 export function ChangesToolbar({
@@ -473,12 +408,14 @@ export function ChangesToolbar({
   onViewOptionsChange,
   onToggleFileTree,
   onRefresh,
+  refreshing,
   onFilterFiles,
   allFilesCollapsed,
   onToggleCollapseAll,
+  onOpenLink,
 }: ChangesToolbarProps): ReactElement {
   const [showAllTurns, setShowAllTurns] = useState(false);
-  const mac = macPlatform(undefined);
+  const mac = nyte.platform === "darwin";
   const scopeKey = changesScopeValue(scope);
   const selectedTurnId = scope.kind === "turn" ? scope.turnId : undefined;
   const visibleTurns = visibleTurnOptions(turnOptions, showAllTurns, selectedTurnId);
@@ -525,11 +462,9 @@ export function ChangesToolbar({
           />
           <MenuContent alignOffset={-4} xstyle={styles.scopeMenu}>
             <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
-              <WorkingTreeScopeItems
-                snapshot={snapshot}
-                repository={repository}
-                ignoreWhitespace={viewOptions.ignoreWhitespace}
-              />
+              {workingTreeScopeOptions(snapshot).map((option) => (
+                <ScopeRadioItem key={changesScopeValue(option.scope)} option={option} />
+              ))}
               {repository !== undefined && (
                 <MenuSub>
                   <MenuSubTrigger
@@ -543,7 +478,7 @@ export function ChangesToolbar({
                       <CommitScopeItems
                         repository={repository}
                         readByOid={commitReads}
-                        before={undefined}
+                        cursor={undefined}
                         page={1}
                       />
                     </MenuRadioGroup>
@@ -578,7 +513,13 @@ export function ChangesToolbar({
         </Menu>
         {branch !== undefined && <BranchReadoutChip branch={branch} />}
         <span {...props(styles.spacer)} />
-        <Button iconOnly icon="refresh" aria-label="Refresh changes" onClick={onRefresh} />
+        <Button
+          iconOnly
+          icon="refresh"
+          aria-label="Refresh changes"
+          loading={refreshing}
+          onClick={onRefresh}
+        />
         <Menu>
           <MenuTrigger
             render={<Button iconOnly icon="more-horizontal" aria-label="More changes options" />}
@@ -658,12 +599,13 @@ export function ChangesToolbar({
           <PanelToggleIcon side="right" visible={fileTreeVisible} />
         </Toggle>
       </div>
-      {repository !== undefined && isWorkingTreeScope(scope) && (
+      {repository !== undefined && readsWorkingTree(scope) && (
         <ChangesCommitBar
           scope={scope}
           branch={branch}
           revision={repository.revision}
           fileCount={scopeFileCount ?? 0}
+          onOpenLink={onOpenLink}
         />
       )}
     </>

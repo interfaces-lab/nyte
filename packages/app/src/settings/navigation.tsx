@@ -9,6 +9,7 @@
  * to beat the gap between two rows.
  */
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Link, useRouter } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
@@ -20,6 +21,12 @@ import { SETTINGS_PAGES, settingsSectionGroups, type SettingsSection } from "./p
 import { closeSettings } from "./return.ts";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
+/**
+ * Typing can shorten the list under the cursor; the last row stays highlighted
+ * rather than the highlight disappearing off the end. Results are one group:
+ * matches spread across the browse gaps would make the arrow keys look like
+ * they skip.
+ */
 export function SettingsNavigation({
   section,
 }: {
@@ -46,11 +53,7 @@ export function SettingsNavigation({
     });
   }, [search, sectionGroups]);
 
-  // Typing can shorten the list under the cursor; the last row stays
-  // highlighted rather than the highlight disappearing off the end.
   const highlighted = results === undefined ? undefined : Math.min(highlight, results.length - 1);
-  // Results are one group: matches spread across the browse gaps would make the
-  // arrow keys look like they skip.
   const groups = results === undefined ? sectionGroups : [results];
 
   const onSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
@@ -145,7 +148,7 @@ export function SettingsNavigation({
           </div>
         ))}
         {results?.length === 0 && (
-          <span {...props(styles.emptyNavigation)}>No matching settings</span>
+          <span {...props(text.sm, styles.emptyNavigation)}>No matching settings</span>
         )}
       </div>
     </div>

@@ -1,19 +1,20 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The `@` and `/` completion popup every composer editor shares: the message
  * composer and the in-transcript message edit. The hook owns the open token,
  * ranking, keyboard navigation, and the preview card; the caller wires it to
  * one `ComposerEditor` and renders `menu` beside it.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { completionTrigger } from "@nyte-ai/client";
-import type { MentionFile } from "@nyte-ai/client";
-import type { CommandInfo, PluginCatalog } from "@nyte-ai/protocol";
-import type { Skill } from "@nyte-ai/schema";
+import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
+import type { MentionFile } from "./message-references.ts";
+import type { CommandInfo } from "@nyte-ai/sdk";
+import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
@@ -22,9 +23,9 @@ import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts
 import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
 import { composerEnterAction } from "./composer-keys.ts";
 import { mentionPreviewRows } from "./mention-preview.ts";
-import { CONVERSATION_MENTION, isFolder, sameReference } from "./message-references.ts";
+import { CONVERSATION_MENTION, mentionsFolder, sameReference } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { composerStyles } from "./composer.stylex.ts";
 
 const NONE: readonly never[] = [];
 
@@ -34,7 +35,7 @@ interface SkillSuggestion {
   readonly label: string;
   readonly description: string;
   readonly icon: "skills";
-  readonly skill: Skill;
+  readonly skill: SkillInfo;
 }
 
 interface PluginCommandSuggestion {
@@ -100,7 +101,9 @@ type ComposerSource<T> =
   | { readonly status: "error" }
   | { readonly status: "ready"; readonly data: T };
 
-export type ComposerSuggestionCatalog = ComposerSource<PluginCatalog>;
+export type ComposerSuggestionCatalog = ComposerSource<
+  Pick<SessionCatalogView, "commands" | "skills">
+>;
 
 export type ComposerMentionFiles = ComposerSource<readonly MentionFile[]>;
 
@@ -110,16 +113,16 @@ export function composerSource<T>(data: T | undefined, failed: boolean): Compose
   return failed ? { status: "error" } : { status: "loading" };
 }
 
-const NYTE_COMMAND_OWNERS = new Set(["", "fast-mode", "rename", "web-search"]);
+const NYTE_COMMAND_OWNERS = new Set(["", "rename", "web-search"]);
 
 /**
  * Scroll the popup's own list so the option is visible. `scrollIntoView` also
  * walks the fixed popup's ancestors and can drag the thread or the window with
- * it; this touches nothing but the list.
+ * it; this touches nothing but the list. The list is positioned, so option
+ * offsets are relative to it.
  */
 function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
   if (list === null) return;
-  // The list is positioned, so offsets are relative to it.
   const top = option.offsetTop;
   const bottom = top + option.offsetHeight;
 
@@ -162,7 +165,7 @@ function suggestionsFor(
   kind: SuggestionMenuState["kind"],
   rawQuery: string,
   commands: readonly CommandInfo[],
-  skills: readonly Skill[],
+  skills: readonly SkillInfo[],
   rankMentions: ReturnType<typeof createMentionSuggestionRanking>,
   hasConversationContext: boolean,
 ): readonly ComposerSuggestion[] {
@@ -232,11 +235,11 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
         ? "Created by Nyte"
         : `Created by ${suggestion.command.owner}`;
     case "skill":
-      return suggestion.skill.filePath;
+      return suggestion.skill.location;
     case "mention":
       return undefined;
     case "file":
-      return isFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
+      return mentionsFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
     default: {
       const _exhaustive: never = suggestion;
 
@@ -265,14 +268,26 @@ function suggestionEmptyText(
   }
 }
 
+/** Where the trimmed query first appears in `text`, ignoring case; undefined when it is blank or absent. */
+function findQuery(
+  text: string,
+  query: string,
+): { readonly start: number; readonly end: number } | undefined {
+  const needle = query.trim().toLocaleLowerCase();
+
+  if (needle === "") return undefined;
+  const [before = "", ...after] = text.toLocaleLowerCase().split(needle);
+
+  if (after.length === 0) return undefined;
+
+  return { start: before.length, end: before.length + needle.length };
+}
+
 function descriptionExcerpt(description: string, query: string): string {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const match = findQuery(description, query);
 
-  if (normalizedQuery === "") return description;
-  const match = description.toLocaleLowerCase().indexOf(normalizedQuery);
-
-  if (match <= 36) return description;
-  const start = Math.max(0, match - 24);
+  if (match === undefined || match.start <= 36) return description;
+  const start = Math.max(0, match.start - 24);
 
   return `${start === 0 ? "" : "…"}${description.slice(start)}`;
 }
@@ -284,19 +299,17 @@ function HighlightedSuggestionText({
   readonly text: string;
   readonly query: string;
 }): ReactElement {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const match = normalizedQuery === "" ? -1 : text.toLocaleLowerCase().indexOf(normalizedQuery);
+  const match = findQuery(text, query);
 
-  if (match === -1) return <>{text}</>;
-  const end = match + normalizedQuery.length;
+  if (match === undefined) return <>{text}</>;
 
   return (
     <>
-      {text.slice(0, match)}
+      {text.slice(0, match.start)}
       <span {...props(intent.primary, composerStyles.suggestionMatch)}>
-        {text.slice(match, end)}
+        {text.slice(match.start, match.end)}
       </span>
-      {text.slice(end)}
+      {text.slice(match.end)}
     </>
   );
 }
@@ -315,6 +328,7 @@ function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElem
         <div
           key={`${String(depth)}:${row.label}`}
           {...props(
+            text.sm,
             composerStyles.suggestionPreviewPathRow,
             composerStyles.suggestionPreviewPathIndent(depth),
             depth === rows.length - 1 && composerStyles.suggestionPreviewPathLeaf,
@@ -343,11 +357,11 @@ function SuggestionPreview({
 
   return (
     <>
-      <div {...props(composerStyles.suggestionPreviewTitle)}>
+      <div {...props(text.base, composerStyles.suggestionPreviewTitle)}>
         {suggestionPreviewTitle(suggestion)}
       </div>
       {attribution !== undefined && (
-        <div {...props(composerStyles.suggestionPreviewAttribution)}>
+        <div {...props(text.sm, composerStyles.suggestionPreviewAttribution)}>
           <span aria-hidden="true" {...props(composerStyles.suggestionPreviewIcon)}>
             <Icon name={suggestion.icon} size={12} />
           </span>
@@ -358,7 +372,7 @@ function SuggestionPreview({
         <MentionPathPreview file={suggestion.file} />
       ) : (
         suggestion.kind !== "mention" && (
-          <div {...props(composerStyles.suggestionPreviewDescription)}>
+          <div {...props(text.base, composerStyles.suggestionPreviewDescription)}>
             {suggestion.description}
           </div>
         )
@@ -370,7 +384,7 @@ function SuggestionPreview({
 function suggestionReference(suggestion: ChipSuggestion): MessageReference {
   switch (suggestion.kind) {
     case "skill":
-      return { kind: "skill", name: suggestion.skill.name, path: suggestion.skill.filePath };
+      return { kind: "skill", name: suggestion.skill.name, path: suggestion.skill.location };
     case "mention":
       return CONVERSATION_MENTION;
     case "file":
@@ -410,6 +424,24 @@ interface ComposerSuggestions {
   readonly menu: ReactElement;
 }
 
+/**
+ * The `@` and `/` completion menu the composer drives.
+ *
+ * - Up to thousands of files rank per keystroke, so ranking stays off the
+ *   render path for renders that changed nothing it reads.
+ * - Inside Enter's key command a command's replacement is a queued nested
+ *   update; it commits before the microtask, so a running command submits the
+ *   command line.
+ * - A pressed row acts as itself or not at all, even when the list has not
+ *   caught up.
+ * - Plain Enter and Tab pick; a modifier keeps its meaning and sends past the
+ *   menu. When the token moved or went away under a stale menu, the key neither
+ *   picks nor sends.
+ * - The highlight belongs to the list on screen; a query the list has not
+ *   caught up with ranks afresh.
+ * - The editor drives the popup: a press or focus move inside the anchor is
+ *   editing, not dismissal, and `select` decides then.
+ */
 export function useComposerSuggestions({
   editorRef,
   anchorRef,
@@ -437,8 +469,6 @@ export function useComposerSuggestions({
   const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
   const kind = menu?.kind;
 
-  // Up to thousands of files rank per keystroke; keep that off the render path
-  // for renders that changed nothing the ranking reads.
   const suggestions = useMemo(
     () =>
       kind === undefined
@@ -497,15 +527,13 @@ export function useComposerSuggestions({
   ): void => {
     if (suggestion.kind === "plugin-command") {
       const runs =
-        suggestion.command.selection === "run" &&
+        suggestion.command.arguments === null &&
         onCommand !== undefined &&
         references.length === 0 &&
         `${text.slice(0, token.start)}${text.slice(token.end)}`.trim() === "";
 
       editorRef.current?.replaceText(token.start, token.end, `/${suggestion.command.name} `);
 
-      // Inside Enter's key command the replacement is a queued nested update;
-      // it commits before the microtask, so the submit reads the command line.
       if (runs) queueMicrotask(onCommand);
     } else {
       addReference(suggestionReference(suggestion), token.start, token.end);
@@ -517,7 +545,6 @@ export function useComposerSuggestions({
   const rankLive = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
     suggestionsFor(token.kind, token.query, commands, skills, rankMentions, hasConversationContext);
 
-  /** A pressed row acts as itself or not at all, even when the list has not caught up. */
   const click = (suggestion: ComposerSuggestion): void => {
     const document = editorRef.current?.readDocument();
 
@@ -581,7 +608,6 @@ export function useComposerSuggestions({
       return true;
     }
 
-    // Plain Enter and Tab pick; the modifier keeps its meaning and sends past the menu.
     const picks =
       composerEnterAction(event) === "submit" || (event.key === "Tab" && !event.shiftKey);
 
@@ -589,7 +615,6 @@ export function useComposerSuggestions({
     const document = editorRef.current?.readDocument();
     const token = document === undefined ? undefined : liveToken(document, menu);
 
-    // The token moved or went away under a stale menu: neither pick nor send.
     if (token === undefined || document === undefined) {
       event.preventDefault();
       show(undefined);
@@ -597,7 +622,6 @@ export function useComposerSuggestions({
       return true;
     }
 
-    // The highlight belongs to the list on screen; a query it has not caught up with ranks afresh.
     const active = token.query === deferredQuery ? suggestions[activeIndex] : rankLive(token)[0];
 
     if (active === undefined) {
@@ -619,8 +643,6 @@ export function useComposerSuggestions({
         modal={false}
         onOpenChange={(open, details) => {
           if (open) return;
-          // The editor drives this popup. A press or focus move inside
-          // the anchor is editing, not dismissal; `select` decides then.
           const target = details.event.target;
 
           if (
@@ -643,7 +665,6 @@ export function useComposerSuggestions({
             align="start"
             sideOffset={8}
             collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-            xstyle={composerStyles.suggestionPositioner}
           >
             <Popover.Popup
               id={popupId}
@@ -667,7 +688,7 @@ export function useComposerSuggestions({
             >
               <div ref={listRef} {...props(composerStyles.suggestionList)}>
                 {suggestions.length === 0 ? (
-                  <div role="status" {...props(composerStyles.suggestionEmpty)}>
+                  <div role="status" {...props(text.base, composerStyles.suggestionEmpty)}>
                     {menu === undefined
                       ? undefined
                       : suggestionEmptyText(
@@ -697,6 +718,7 @@ export function useComposerSuggestions({
                         tabIndex={-1}
                         aria-selected={selected}
                         {...props(
+                          text.base,
                           composerStyles.suggestionItem,
                           startsGroup && composerStyles.suggestionGroupStart,
                         )}
@@ -716,7 +738,7 @@ export function useComposerSuggestions({
                               query={deferredQuery}
                             />
                           </span>
-                          <span {...props(composerStyles.suggestionDescription)}>
+                          <span {...props(text.base, composerStyles.suggestionDescription)}>
                             <HighlightedSuggestionText text={description} query={deferredQuery} />
                           </span>
                         </span>

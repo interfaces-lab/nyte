@@ -1,170 +1,31 @@
-/** Browser panel pages: one `WebContentsView` per surface, plus the guest sessions, holders, and agent control over them. */
-import { createHash } from "node:crypto";
-import { app, session, WebContentsView } from "electron";
-import type { BrowserWindow, Session, WebContents } from "electron";
+/** Browser panel pages: one `WebContentsView` per surface, the holders that keep it, and the bridge over them. */
+import { WebContentsView, webContents } from "electron";
+import { Value } from "typebox/value";
+import type { WebContents } from "electron";
 import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
   BrowserBoundsMessage,
+  BrowserBridge,
+  BrowserElementPick,
+  BrowserFocusMessage,
+  BrowserKey,
   BrowserNavigationAction,
   BrowserSurfaceState,
   HostEvent,
-  BrowserBridge,
 } from "@nyte-ai/app/bridge.ts";
-import type { SessionId } from "@nyte-ai/core";
-import type { HostSettings } from "@nyte-ai/host/settings";
-import { loadBlocker, type Blocker } from "./adblock.ts";
-import {
-  httpsUpgrade,
-  permissionAllowed,
-  plainRetry,
-  surfaceSecurity,
-  webUrl,
-} from "./browser-policy.ts";
-import { sessionSurfaceId } from "./browser-agent.ts";
-import type { BrowserAgent, BrowserHolder, BrowserOwner, BrowserRect } from "./browser-agent.ts";
-import type { HostWindow } from "./host.ts";
-import {
-  createSurfaceRuntime,
-  attachConsoleCapture,
-  takeSnapshot,
-  performClick,
-  performType,
-  performPress,
-  performScroll,
-  performWait,
-  performEvaluate,
-  performCapture,
-} from "./browser-runtime.ts";
-import type { SurfaceRuntime } from "./browser-runtime.ts";
-
-/** A surface stays alive while at least one holder retains it. */
-interface HolderState {
-  readonly holders: Set<BrowserHolder>;
-  lastBounds: BrowserRect;
-}
-
-/** Per-workspace guest session: its own cookie jar and storage. */
-interface GuestSession {
-  readonly session: Session;
-  readonly plainHosts: Set<string>;
-  readonly upgrades: Map<number, string>;
-}
-
-const DEFAULT_BOUNDS: BrowserRect = { x: 0, y: 0, width: 1280, height: 800 };
-
-/** Off-screen bounds preserving the last known size so the page viewport is never 0×0. */
-function offscreenBounds(state: HolderState): BrowserRect {
-  const width = state.lastBounds.width > 0 ? state.lastBounds.width : DEFAULT_BOUNDS.width;
-  const height = state.lastBounds.height > 0 ? state.lastBounds.height : DEFAULT_BOUNDS.height;
-
-  return { x: -10000, y: -10000, width, height };
-}
-
-function hasViewHolder(state: HolderState): boolean {
-  for (const holder of state.holders) {
-    if (holder.startsWith("view:")) return true;
-  }
-
-  return false;
-}
-
-function countSessionHolders(state: HolderState): number {
-  let count = 0;
-
-  for (const holder of state.holders) {
-    if (holder.startsWith("session:")) count += 1;
-  }
-
-  return count;
-}
-
-/** Returns true when the surface now has zero holders and should be destroyed. */
-function release(state: HolderState, holder: BrowserHolder): boolean {
-  state.holders.delete(holder);
-
-  return state.holders.size === 0;
-}
-
-function partitionName(owner: BrowserOwner): string {
-  if (owner.kind === "home") return "persist:nyte-browser";
-  const hash = createHash("sha256").update(owner.path).digest("hex").slice(0, 16);
-
-  return `persist:nyte-browser-${hash}`;
-}
-
-export interface BrowserSurfaces {
-  menu(
-    input: Parameters<BrowserBridge["menu"]>[0],
-    window: HostWindow,
-  ): ReturnType<BrowserBridge["menu"]>;
-  perform(
-    input: Parameters<BrowserBridge["perform"]>[0],
-    window: HostWindow,
-  ): ReturnType<BrowserBridge["perform"]>;
-  /** Opening a page places it in the requesting window. */
-  open(
-    input: {
-      readonly surface: string;
-      readonly url: string;
-      readonly owner?: BrowserOwner;
-    },
-    window: HostWindow,
-  ): BrowserSurfaceState;
-  navigate(input: { readonly surface: string; readonly action: BrowserNavigationAction }): void;
-  close(input: { readonly surface: string }): void;
-  /** The page's current pixels as a data URL, captured without showing the view. */
-  captureFrame(input: { readonly surface: string }): Promise<string | undefined>;
-  /** A visible placement moves the page into the reporting window. */
-  setBounds(message: BrowserBoundsMessage, window: HostWindow): void;
-  /** Retain a surface with a holder. Creates the surface if it does not exist. */
-  retain(input: {
-    readonly surface: string;
-    readonly holder: BrowserHolder;
-    readonly owner?: BrowserOwner;
-  }): void;
-  /** Release a holder from a surface. Destroys the surface when no holders remain. */
-  release(input: { readonly surface: string; readonly holder: BrowserHolder }): void;
-  /** Load the filter engine ahead of the first page so that open is not the slow path. */
-  warm(): Promise<void>;
-  /** The window closed: its panels let go, and pages the agent still holds move elsewhere. */
-  releaseWindow(window: HostWindow): void;
-  /** The BrowserAgent implementation for the tools plugin. */
-  agent: BrowserAgent;
-}
-
-export interface BrowserSurfacesDependencies {
-  /** The open window with this id, or the last focused one when it is gone or unset. */
-  readonly window: (id: HostWindow | undefined) => BrowserWindow | undefined;
-  readonly emit: (event: HostEvent) => void;
-  readonly filterListPath: string;
-  /** Whether the window has been shown at least once. Mouse input is dropped until then. */
-  readonly windowShown: (window: BrowserWindow) => boolean;
-  /** Read per request, so a changed setting applies to the next one. */
-  readonly settings: () => Pick<HostSettings, "blockAds" | "upgradeToHttps">;
-}
-
-interface Surface {
-  readonly id: string;
-  readonly view: WebContentsView;
-  readonly holderState: HolderState;
-  readonly runtime: SurfaceRuntime;
-  readonly guestSession: GuestSession;
-  bounds: BrowserBoundsMessage["bounds"];
-  visible: boolean;
-  /** The window whose panel last showed this page; agent-only pages have none. */
-  home: HostWindow | undefined;
-  /** The window the view is a child of. */
-  attachedTo: BrowserWindow | undefined;
-  /** Set once by destroy. Native events still arrive afterwards and must not touch state. */
-  destroyed: boolean;
-  /** Agent operations in flight. Throttling is off only while this is above zero. */
-  operations: number;
-  /** Tick of the last agent operation, so reclamation drops the longest-idle page first. */
-  lastUse: number;
-  blocked: number;
-  error: BrowserSurfaceState["error"];
-  owner: BrowserOwner;
-}
+import { SurfaceAgent } from "./browser-agent-surface.ts";
+import type { AgentSurfaces } from "./browser-agent-surface.ts";
+import type { BrowserAgent, BrowserHolder, BrowserOwner } from "./browser-agent.ts";
+import { BrowserDownloads } from "./browser-downloads.ts";
+import { GuestSessions } from "./browser-guest-session.ts";
+import { pickElement } from "./browser-picker.ts";
+import { nextZoomFactor, webUrl } from "./browser-policy.ts";
+import { createSurfaceRuntime } from "./browser-runtime.ts";
+import { DEFAULT_BOUNDS, hasViewHolder, placeSurface, surfaceState } from "./browser-surface.ts";
+import type { BrowserSurfacesDependencies, Surface, SurfaceRegistry } from "./browser-surface.ts";
+import { wireSurface } from "./browser-surface-events.ts";
+import { ExpectedHostError } from "./errors.ts";
+import type { HostWindow } from "./host-window.ts";
 
 /**
  * How many idle agent-only hidden pages stay warm. Beyond this the longest-idle one
@@ -173,290 +34,491 @@ interface Surface {
  */
 const WARM_POOL_LIMIT = 6;
 
-const CLOSED = { kind: "failed", failure: { kind: "closed" } } as const;
+/** JPEG quality of the still frame shown under an overlay. */
+const FRAME_QUALITY = 80;
 
-function guestUserAgent(): string {
-  return app.userAgentFallback
-    .split(" ")
-    .filter((token) => !token.startsWith("Electron/") && !token.startsWith(`${app.name}/`))
-    .join(" ");
+function readOwner(path: string | null): BrowserOwner {
+  return path === null ? { kind: "home" } : { kind: "project", path };
 }
 
-export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies): BrowserSurfaces {
-  const surfaces = new Map<string, Surface>();
-  const byWebContents = new Map<number, Surface>();
-  let blocker: Blocker | undefined;
-  let blockerReady: Promise<void> | undefined;
-  let useClock = 0;
+function ownerPath(owner: BrowserOwner): string | null {
+  return owner.kind === "home" ? null : owner.path;
+}
 
-  /** Per-owner guest sessions, keyed by partition name. */
-  const guestSessions = new Map<string, GuestSession>();
+/**
+ * An idle page nobody is looking at: no panel holds it, it is not placed, not
+ * loading, and no agent call is running against it. View-held pages are never
+ * candidates.
+ */
+function reclaimable(surface: Surface): boolean {
+  if (surface.operations > 0 || surface.visible || hasViewHolder(surface)) return false;
 
-  const isWindowShown = (surface: Surface): boolean => {
-    const window = surface.attachedTo;
+  const contents = surface.view.webContents;
 
-    return window !== undefined && !window.isDestroyed() && dependencies.windowShown(window);
-  };
+  return contents.isDestroyed() || !contents.isLoading();
+}
 
-  const ensureBlocker = (): Promise<void> => {
-    blockerReady ??= loadBlocker(dependencies.filterListPath).then((loaded) => {
-      blocker = loaded;
+export class BrowserSurfaces implements SurfaceRegistry, AgentSurfaces {
+  readonly dependencies: BrowserSurfacesDependencies;
+  /** The BrowserAgent implementation for the tools plugin. */
+  readonly agent: BrowserAgent = new SurfaceAgent(this);
+  readonly #surfaces = new Map<string, Surface>();
+  readonly #byWebContents = new Map<number, Surface>();
+  readonly #downloads: BrowserDownloads;
+  readonly #guests: GuestSessions;
+  /** The surface whose browser chrome (address field, find bar) has focus, per window. */
+  readonly #chromeFocus = new Map<HostWindow, string>();
+  #useClock = 0;
+
+  constructor(dependencies: BrowserSurfacesDependencies) {
+    this.dependencies = dependencies;
+    this.#downloads = new BrowserDownloads((surface, event) => this.notify(surface, event));
+    this.#guests = new GuestSessions({
+      dependencies,
+      downloads: this.#downloads,
+      surface: (id) => this.#byWebContents.get(id),
+      publish: (surface) => this.publish(surface),
     });
+    dependencies.history.listen((owner, entries) =>
+      dependencies.emit({ kind: "browser_history_changed", owner, entries }),
+    );
+  }
 
-    return blockerReady;
-  };
+  emit(event: HostEvent): void {
+    this.dependencies.emit(event);
+  }
 
-  const ensureGuestSession = (owner: BrowserOwner): GuestSession => {
-    const partition = partitionName(owner);
-    const existing = guestSessions.get(partition);
+  blocking(url: string): BrowserSurfaceState["blocking"] {
+    return this.#guests.blocking(url);
+  }
 
-    if (existing !== undefined) return existing;
+  blockedStyles(url: string): string {
+    return this.#guests.blockedStyles(url);
+  }
 
-    void ensureBlocker();
+  surface(id: string): Surface | undefined {
+    return this.#surfaces.get(id);
+  }
 
-    const guest = session.fromPartition(partition);
-    const plainHosts = new Set<string>();
-    const upgrades = new Map<number, string>();
+  retain(id: string, holder: BrowserHolder, owner: BrowserOwner): Surface {
+    const surface = this.#surfaces.get(id) ?? this.#create(id, owner);
+    surface.holders.add(holder);
 
-    guest.setUserAgent(guestUserAgent());
-    guest.setSpellCheckerEnabled(false);
+    return surface;
+  }
 
-    guest.setPermissionRequestHandler((_contents, permission, callback) => {
-      callback(permissionAllowed(permission));
-    });
-    guest.setPermissionCheckHandler((_contents, permission) => permissionAllowed(permission));
+  release(id: string, holder: BrowserHolder): void {
+    const surface = this.#surfaces.get(id);
 
-    guest.on("will-download", (event, item, contents) => {
-      event.preventDefault();
-      const surfaceId = byWebContents.get(contents.id)?.id;
+    if (surface === undefined) return;
+    surface.holders.delete(holder);
 
-      if (surfaceId !== undefined) {
-        dependencies.emit({
-          kind: "browser_download_refused",
-          surface: surfaceId,
-          url: item.getURL(),
-        });
-      }
-    });
-
-    guest.webRequest.onBeforeRequest((details, callback) => {
-      if (blocker !== undefined && dependencies.settings().blockAds) {
-        const decision = blocker.decide(details);
-
-        if (decision.kind !== "allow") {
-          if (details.webContentsId !== undefined) {
-            const surface = byWebContents.get(details.webContentsId);
-
-            if (surface !== undefined) surface.blocked += 1;
-          }
-
-          callback(decision.kind === "block" ? { cancel: true } : { redirectURL: decision.url });
-
-          return;
-        }
-      }
-
-      if (details.resourceType !== "mainFrame") {
-        callback({});
-
-        return;
-      }
-
-      const upgraded = dependencies.settings().upgradeToHttps
-        ? httpsUpgrade(details.url, plainHosts)
-        : undefined;
-
-      if (upgraded === undefined) {
-        callback({});
-
-        return;
-      }
-
-      if (details.webContentsId !== undefined) upgrades.set(details.webContentsId, details.url);
-      callback({ redirectURL: upgraded });
-    });
-
-    guest.webRequest.onBeforeSendHeaders((details, callback) => {
-      callback({ requestHeaders: { ...details.requestHeaders, "Sec-GPC": "1" } });
-    });
-
-    const guestSession: GuestSession = { session: guest, plainHosts, upgrades };
-    guestSessions.set(partition, guestSession);
-
-    return guestSession;
-  };
-
-  const stateOf = (surface: Surface): BrowserSurfaceState => {
-    const contents = surface.view.webContents;
-    const agentHolders = countSessionHolders(surface.holderState);
-
-    if (contents.isDestroyed()) {
-      return {
-        url: "",
-        title: "",
-        loading: false,
-        canGoBack: false,
-        canGoForward: false,
-        secure: "none",
-        blocking: blocker !== undefined && dependencies.settings().blockAds,
-        blocked: surface.blocked,
-        error: surface.error,
-        agentHolders,
-      };
-    }
-
-    const url = contents.getURL();
-
-    return {
-      url,
-      title: contents.getTitle(),
-      loading: contents.isLoading(),
-      canGoBack: contents.navigationHistory.canGoBack(),
-      canGoForward: contents.navigationHistory.canGoForward(),
-      secure: surfaceSecurity(url),
-      blocking: blocker !== undefined && dependencies.settings().blockAds,
-      blocked: surface.blocked,
-      error: surface.error,
-      agentHolders,
-    };
-  };
-
-  const publish = (surface: Surface): void => {
-    if (surface.destroyed) return;
-    dependencies.emit({ kind: "browser_changed", surface: surface.id, state: stateOf(surface) });
-  };
-
-  /**
-   * A hidden page keeps keyboard focus unless it is handed back, which leaves a
-   * menu that just opened over the page unable to receive arrow keys.
-   */
-  const hide = (surface: Surface, window: BrowserWindow): void => {
-    const contents = surface.view.webContents;
-    const held = !contents.isDestroyed() && contents.isFocused();
-    surface.view.setVisible(false);
-
-    if (held) window.webContents.focus();
-  };
-
-  const apply = (surface: Surface): void => {
-    if (surface.destroyed) return;
-    const window = dependencies.window(surface.home);
-
-    if (window === undefined || window.isDestroyed()) return;
-
-    if (surface.attachedTo !== window) {
-      if (surface.attachedTo !== undefined && !surface.attachedTo.isDestroyed()) {
-        surface.attachedTo.contentView.removeChildView(surface.view);
-      }
-
-      window.contentView.addChildView(surface.view);
-      surface.attachedTo = window;
-    }
-
-    // A zero-sized view lays the page out at a 0-wide viewport, which changes what is
-    // visible and ruins screenshots, so an unplaced or unmeasured surface is parked
-    // off-screen at a real size instead.
-    const placed =
-      hasViewHolder(surface.holderState) && surface.bounds.width > 0 && surface.bounds.height > 0;
-
-    if (!placed) {
-      hide(surface, window);
-      surface.view.setBounds(offscreenBounds(surface.holderState));
+    if (surface.holders.size === 0) {
+      this.#destroy(surface);
 
       return;
     }
 
-    surface.view.setBounds(surface.bounds);
+    this.place(surface);
+    this.reclaimIdle();
+  }
 
-    if (surface.visible && surface.error === undefined) surface.view.setVisible(true);
-    else hide(surface, window);
-  };
+  /** Lays the surface out in its window; `focus` hands the page keyboard focus if this shows it. */
+  place(surface: Surface, focus = false): void {
+    if (surface.destroyed) return;
+    const window = this.dependencies.window(surface.home);
 
-  const load = (surface: Surface, url: string): void => {
+    if (window === undefined || window.isDestroyed()) return;
+    placeSurface(surface, window, focus);
+  }
+
+  /** A state the surface's window already has is not sent again. */
+  publish(surface: Surface): void {
+    if (surface.destroyed) return;
+    const state = surfaceState(surface, (url) => this.blocking(url));
+    const published = surface.published;
+
+    if (
+      published !== undefined &&
+      published.window === surface.home &&
+      Value.Equal(published.state, state)
+    )
+      return;
+    surface.published = { state, window: surface.home };
+    this.notify(surface, { kind: "browser_changed", surface: surface.id, state });
+  }
+
+  notify(surface: Surface, event: HostEvent): void {
+    this.dependencies.emit(event, surface.home);
+  }
+
+  load(surface: Surface, url: string): void {
     surface.error = undefined;
-    void ensureBlocker().then(() => {
+    void this.#guests.ensureBlocker().then(() => {
       const contents = surface.view.webContents;
 
       if (surface.destroyed || contents.isDestroyed()) return undefined;
 
       return contents.loadURL(url).catch(() => undefined);
     });
-  };
+  }
 
-  const wire = (surface: Surface, contents: WebContents): void => {
-    const guestSession = surface.guestSession;
+  remember(surface: Surface, url: string): void {
+    const page = webUrl(url);
 
-    contents.setWindowOpenHandler(({ url }) => {
-      const target = webUrl(url);
+    if (page === undefined || surface.destroyed || !hasViewHolder(surface)) return;
+    surface.visited = page;
+    void this.dependencies.history.record(surface.owner, { url: page, at: Date.now() });
+  }
 
-      if (target !== undefined) load(surface, target);
+  reclaimIdle(): void {
+    const idle = [...this.#surfaces.values()]
+      .filter(reclaimable)
+      .sort((a, b) => a.lastUse - b.lastUse);
 
-      return { action: "deny" };
-    });
-    contents.on("will-navigate", (event, url) => {
-      if (webUrl(url) === undefined) event.preventDefault();
-    });
-    contents.on("did-start-navigation", (details) => {
-      if (details.isMainFrame && !details.isSameDocument) surface.blocked = 0;
-    });
-    contents.on("did-start-loading", () => {
-      surface.error = undefined;
-      apply(surface);
-      publish(surface);
-    });
-    contents.on("did-stop-loading", () => {
-      publish(surface);
-      reclaimIdle();
-    });
-    contents.on("did-navigate", () => {
-      guestSession.upgrades.delete(contents.id);
-      publish(surface);
-    });
-    contents.on("dom-ready", () => {
-      const styles = dependencies.settings().blockAds
-        ? (blocker?.stylesFor(contents.getURL()) ?? "")
-        : "";
+    for (const surface of idle.slice(0, Math.max(0, idle.length - WARM_POOL_LIMIT))) {
+      this.#destroy(surface);
+    }
+  }
 
-      if (styles !== "")
-        void contents.insertCSS(styles, { cssOrigin: "user" }).catch(() => undefined);
-      publish(surface);
-    });
-    contents.on("did-navigate-in-page", (_event, _url, isMainFrame) => {
-      if (isMainFrame) publish(surface);
-    });
-    contents.on("page-title-updated", () => publish(surface));
-    contents.on(
-      "did-fail-load",
-      (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-        if (!isMainFrame) return;
-        const retry = plainRetry(validatedURL, guestSession.upgrades.get(contents.id), errorCode);
-        guestSession.upgrades.delete(contents.id);
+  touch(surface: Surface): void {
+    surface.lastUse = ++this.#useClock;
+  }
 
-        if (retry !== undefined) {
-          guestSession.plainHosts.add(new URL(retry).host);
-          load(surface, retry);
+  windowShown(surface: Surface): boolean {
+    const window = surface.attachedTo;
 
-          return;
-        }
+    return window !== undefined && !window.isDestroyed() && this.dependencies.windowShown(window);
+  }
 
-        if (errorCode === -3) return;
-        surface.error = { code: errorCode, description: errorDescription };
-        apply(surface);
-        publish(surface);
-      },
+  forwardKey(surface: Surface, contents: WebContents, key: BrowserKey): void {
+    if (surface.destroyed || surface.home === undefined) return;
+    this.dependencies.forwardKey({ surface: surface.id, window: surface.home, contents, key });
+  }
+
+  /**
+   * Opening a page places it in the requesting window. The renderer may have sent this
+   * surface's bounds before the holder existed, and it does not resend an identical
+   * message, so the page is placed here.
+   */
+  open(
+    input: { readonly surface: string; readonly url: string; readonly owner?: BrowserOwner },
+    window: HostWindow,
+  ): BrowserSurfaceState {
+    const target = webUrl(input.url);
+
+    if (target === undefined)
+      throw new ExpectedHostError({
+        code: "invalid",
+        message: "Only web addresses open in the browser panel.",
+      });
+
+    const surface = this.retain(
+      input.surface,
+      `view:${input.surface}`,
+      input.owner ?? { kind: "home" },
     );
-    contents.on("render-process-gone", (_event, details) => {
-      surface.error = { code: 0, description: `The page stopped (${details.reason})` };
-      surface.runtime.error = surface.error;
-      apply(surface);
-      publish(surface);
+
+    surface.home = window;
+
+    const contents = surface.view.webContents;
+
+    if (contents.getURL() !== target || surface.error !== undefined) this.load(surface, target);
+    this.place(surface);
+    const state = surfaceState(surface, (url) => this.blocking(url));
+    surface.published = { state, window };
+
+    return state;
+  }
+
+  navigate(input: { readonly surface: string; readonly action: BrowserNavigationAction }): void {
+    const surface = this.#surfaces.get(input.surface);
+
+    if (surface === undefined) return;
+    const contents = surface.view.webContents;
+
+    if (contents.isDestroyed()) return;
+    const action = input.action;
+
+    switch (action) {
+      case "back":
+        contents.navigationHistory.goBack();
+
+        return;
+      case "forward":
+        contents.navigationHistory.goForward();
+
+        return;
+      case "reload":
+        surface.error = undefined;
+        contents.reload();
+
+        return;
+      case "hard-reload":
+        surface.error = undefined;
+        contents.reloadIgnoringCache();
+
+        return;
+      case "stop":
+        contents.stop();
+
+        return;
+      case "trust-certificate": {
+        const host = surface.untrustedHost;
+
+        if (host === undefined) return;
+        surface.guestSession.trustedCertificateHosts.add(host);
+        surface.untrustedHost = undefined;
+        surface.error = undefined;
+        contents.reload();
+
+        return;
+      }
+
+      case "zoom-in":
+      case "zoom-out":
+        contents.setZoomFactor(
+          nextZoomFactor(contents.getZoomFactor(), action === "zoom-in" ? "in" : "out"),
+        );
+
+        return;
+      case "zoom-reset":
+        contents.setZoomFactor(1);
+
+        return;
+      case "toggle-devtools":
+        if (contents.isDevToolsOpened()) contents.closeDevTools();
+        else contents.openDevTools({ mode: "detach" });
+
+        return;
+
+      default: {
+        const _exhaustive: never = action;
+
+        return _exhaustive;
+      }
+    }
+  }
+
+  async menu(
+    input: Parameters<BrowserBridge["menu"]>[0],
+    window: HostWindow,
+  ): ReturnType<BrowserBridge["menu"]> {
+    const surface = this.#surfaces.get(input.surface);
+    const contents = surface?.view.webContents;
+    const hasPage = contents !== undefined && !contents.isDestroyed() && contents.getURL() !== "";
+
+    return showBrowserMenu({
+      window: this.dependencies.window(window),
+      hasPage,
+      owner: surface?.owner ?? readOwner(input.owner),
+      input,
     });
+  }
 
-    attachConsoleCapture(contents, surface.runtime);
-  };
+  async perform(
+    input: Parameters<BrowserBridge["perform"]>[0],
+    window: HostWindow,
+  ): ReturnType<BrowserBridge["perform"]> {
+    const surface = this.#surfaces.get(input.surface);
+    const owner = surface?.owner ?? readOwner(input.owner);
 
-  const create = (id: string, owner: BrowserOwner): Surface => {
-    const guestSession = ensureGuestSession(owner);
+    if (input.action === "clear-history") {
+      await this.dependencies.history.clear(owner);
+
+      for (const other of this.#surfaces.values()) {
+        const contents = other.view.webContents;
+
+        if (ownerPath(other.owner) !== ownerPath(owner) || contents.isDestroyed()) continue;
+        contents.navigationHistory.clear();
+        other.visited = undefined;
+        this.publish(other);
+      }
+
+      return;
+    }
+
+    return performBrowserAction({
+      action: input.action,
+      contents: surface?.view.webContents,
+      guest: this.#guests.forOwner(owner).session,
+      window: this.dependencies.window(window),
+    });
+  }
+
+  /** The panel let go: its view holder is released, which closes the page unless an agent holds it. */
+  close(input: { readonly surface: string }): void {
+    this.release(input.surface, `view:${input.surface}`);
+  }
+
+  /**
+   * The page's current pixels as a JPEG data URL at the view's size in points, captured without
+   * showing the view. The still frame sits under a scrim while an overlay covers the page, so device
+   * pixels and lossless encoding buy nothing there. `stayHidden` keeps a hidden page from flashing
+   * into view and lets an occluded page answer with its last pixels.
+   */
+  async captureFrame(input: { readonly surface: string }): Promise<string | undefined> {
+    const surface = this.#surfaces.get(input.surface);
+
+    if (surface === undefined) return undefined;
+    const contents = surface.view.webContents;
+
+    if (contents.isDestroyed() || contents.getURL() === "") return undefined;
+
+    try {
+      const image = await contents.capturePage(undefined, { stayHidden: true });
+
+      if (image.isEmpty()) return undefined;
+      const width = Math.min(image.getSize().width, surface.view.getBounds().width);
+      const frame = image.resize({ width, quality: "good" }).toJPEG(FRAME_QUALITY);
+
+      return `data:image/jpeg;base64,${frame.toString("base64")}`;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The page takes the keys while the user points at an element on it. */
+  pickElement(input: { readonly surface: string }): Promise<BrowserElementPick | undefined> {
+    const contents = this.#surfaces.get(input.surface)?.view.webContents;
+
+    if (contents === undefined || contents.isDestroyed() || contents.getURL() === "")
+      return Promise.resolve(undefined);
+    contents.focus();
+
+    return pickElement(contents);
+  }
+
+  find(input: Parameters<BrowserBridge["find"]>[0]): ReturnType<BrowserBridge["find"]> {
+    const surface = this.#surfaces.get(input.surface);
+    const contents = surface?.view.webContents;
+    const none = { active: 0, total: 0 };
+
+    if (surface === undefined || contents === undefined || contents.isDestroyed())
+      return Promise.resolve(none);
+    surface.find?.resolve(none);
+    surface.find = undefined;
+
+    if (input.text === "") {
+      surface.findText = "";
+      contents.stopFindInPage("clearSelection");
+
+      return Promise.resolve(none);
+    }
+
+    return new Promise((resolve) => {
+      const request = contents.findInPage(input.text, {
+        forward: input.direction === "next",
+        findNext: input.text !== surface.findText,
+        matchCase: false,
+      });
+
+      surface.findText = input.text;
+      surface.find = { request, resolve };
+    });
+  }
+
+  cancelDownload(input: { readonly surface: string; readonly id: string }): void {
+    this.#downloads.cancel(input.id);
+  }
+
+  login(input: Parameters<BrowserBridge["login"]>[0]): void {
+    const surface = this.#surfaces.get(input.surface);
+    const answer = surface?.login;
+
+    if (surface === undefined || answer === undefined) return;
+    surface.login = undefined;
+
+    if (input.credentials === undefined) answer();
+    else answer(input.credentials.username, input.credentials.password);
+  }
+
+  history(input: Parameters<BrowserBridge["history"]>[0]): ReturnType<BrowserBridge["history"]> {
+    return this.dependencies.history.entries(readOwner(input.owner));
+  }
+
+  forgetHistory(
+    input: Parameters<BrowserBridge["forgetHistory"]>[0],
+  ): ReturnType<BrowserBridge["forgetHistory"]> {
+    return this.dependencies.history.remove(readOwner(input.owner), input.url);
+  }
+
+  /** A visible placement moves the page into the reporting window, which then needs its state. */
+  setBounds(message: BrowserBoundsMessage, window: HostWindow): void {
+    const surface = this.#surfaces.get(message.surface);
+
+    if (surface === undefined) return;
+    const moved = message.visible && surface.home !== window;
+
+    if (moved) surface.home = window;
+
+    const bounds = {
+      x: Math.round(message.bounds.x),
+      y: Math.round(message.bounds.y),
+      width: Math.round(message.bounds.width),
+      height: Math.round(message.bounds.height),
+    };
+
+    surface.bounds = bounds;
+    surface.visible = message.visible;
+
+    if (bounds.width > 0 && bounds.height > 0) surface.lastBounds = bounds;
+
+    this.place(surface, message.focus);
+
+    if (moved) this.publish(surface);
+  }
+
+  setFocus(message: BrowserFocusMessage, window: HostWindow): void {
+    if (!message.focused) {
+      if (this.#chromeFocus.get(window) === message.surface) this.#chromeFocus.delete(window);
+
+      return;
+    }
+
+    this.#chromeFocus.set(window, message.surface);
+    const host = this.dependencies.window(window);
+
+    if (host !== undefined && !host.isDestroyed() && !host.webContents.isFocused())
+      host.webContents.focus();
+  }
+
+  /** The surface keyboard commands act on: the focused page or its devtools, else the focused chrome. */
+  focused(window: HostWindow | undefined): string | undefined {
+    const focusedContents = webContents.getFocusedWebContents();
+
+    if (focusedContents) {
+      for (const surface of this.#surfaces.values()) {
+        const contents = surface.view.webContents;
+
+        if (contents.isDestroyed()) continue;
+
+        if (contents === focusedContents || contents.devToolsWebContents === focusedContents)
+          return surface.id;
+      }
+    }
+
+    return window === undefined ? undefined : this.#chromeFocus.get(window);
+  }
+
+  settingsChanged(): void {
+    for (const surface of this.#surfaces.values()) this.publish(surface);
+  }
+
+  /** The window closed: its panels let go, and pages the agent still holds move elsewhere. */
+  releaseWindow(window: HostWindow): void {
+    this.#chromeFocus.delete(window);
+
+    for (const surface of this.#surfaces.values()) {
+      if (surface.home !== window) continue;
+      surface.home = undefined;
+      surface.attachedTo = undefined;
+      this.release(surface.id, `view:${surface.id}`);
+    }
+  }
+
+  #create(id: string, owner: BrowserOwner): Surface {
+    const guestSession = this.#guests.forOwner(owner);
 
     const view = new WebContentsView({
       webPreferences: {
@@ -466,14 +528,14 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         nodeIntegration: false,
         webSecurity: true,
         spellcheck: false,
-        devTools: false,
       },
     });
 
     const surface: Surface = {
       id,
       view,
-      holderState: { holders: new Set(), lastBounds: DEFAULT_BOUNDS },
+      holders: new Set(),
+      lastBounds: DEFAULT_BOUNDS,
       runtime: createSurfaceRuntime(),
       guestSession,
       bounds: { x: 0, y: 0, width: 0, height: 0 },
@@ -482,483 +544,63 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       attachedTo: undefined,
       destroyed: false,
       operations: 0,
-      lastUse: ++useClock,
+      lastUse: ++this.#useClock,
       blocked: 0,
       error: undefined,
       owner,
+      fullscreen: false,
+      windowWasWindowed: false,
+      onWindowResize: undefined,
+      find: undefined,
+      findText: "",
+      deniedPermissions: new Set(),
+      login: undefined,
+      untrustedHost: undefined,
+      crashes: [],
+      popup: undefined,
+      visited: undefined,
+      paused: false,
+      pressed: [],
+      published: undefined,
     };
 
-    surfaces.set(id, surface);
-    byWebContents.set(view.webContents.id, surface);
-    wire(surface, view.webContents);
+    this.#surfaces.set(id, surface);
+    this.#byWebContents.set(view.webContents.id, surface);
+    wireSurface(this, surface);
 
     return surface;
-  };
+  }
 
-  const destroy = (surface: Surface): void => {
+  #destroy(surface: Surface): void {
     if (surface.destroyed) return;
     surface.destroyed = true;
-    surfaces.delete(surface.id);
+    this.#surfaces.delete(surface.id);
+
+    for (const [window, id] of this.#chromeFocus) {
+      if (id === surface.id) this.#chromeFocus.delete(window);
+    }
+
     const contents = surface.view.webContents;
-    byWebContents.delete(contents.id);
+    this.#byWebContents.delete(contents.id);
     surface.guestSession.upgrades.delete(contents.id);
+    surface.find?.resolve({ active: 0, total: 0 });
+    surface.find = undefined;
+    surface.login?.();
+    surface.login = undefined;
+
+    if (surface.popup !== undefined && !surface.popup.isDestroyed()) surface.popup.close();
+    surface.popup = undefined;
     const window = surface.attachedTo;
 
     if (window !== undefined && !window.isDestroyed()) {
+      if (surface.onWindowResize !== undefined) window.off("resize", surface.onWindowResize);
+
+      if (surface.windowWasWindowed) window.setFullScreen(false);
       window.contentView.removeChildView(surface.view);
     }
 
     surface.attachedTo = undefined;
 
     if (!contents.isDestroyed()) contents.close();
-  };
-
-  /**
-   * An idle page nobody is looking at: no panel holds it, it is not placed, not
-   * loading, and no agent call is running against it. View-held pages are never
-   * candidates.
-   */
-  const reclaimable = (surface: Surface): boolean => {
-    if (surface.operations > 0 || surface.visible || hasViewHolder(surface.holderState)) {
-      return false;
-    }
-
-    const contents = surface.view.webContents;
-
-    return contents.isDestroyed() || !contents.isLoading();
-  };
-
-  const reclaimIdle = (): void => {
-    const idle = [...surfaces.values()].filter(reclaimable).sort((a, b) => a.lastUse - b.lastUse);
-
-    for (const surface of idle.slice(0, Math.max(0, idle.length - WARM_POOL_LIMIT))) {
-      destroy(surface);
-    }
-  };
-
-  /** Drop a holder; the surface closes when none remain, and idle pages are trimmed. */
-  const dropHolder = (surface: Surface, holder: BrowserHolder): void => {
-    if (release(surface.holderState, holder)) {
-      destroy(surface);
-
-      return;
-    }
-
-    apply(surface);
-    reclaimIdle();
-  };
-
-  /**
-   * Background throttling is off only while an agent call runs against this
-   * surface. Electron never throttles a visible page, so this only changes what a
-   * hidden page does between calls. Calls may overlap; the count, not a lock, owns it.
-   */
-  const operate = async <T>(
-    surface: Surface,
-    run: (contents: WebContents) => Promise<T>,
-  ): Promise<T> => {
-    const contents = surface.view.webContents;
-    surface.operations += 1;
-    surface.lastUse = ++useClock;
-
-    try {
-      if (surface.operations === 1 && !contents.isDestroyed()) {
-        contents.setBackgroundThrottling(false);
-      }
-
-      reclaimIdle();
-
-      return await run(contents);
-    } finally {
-      surface.operations -= 1;
-      surface.lastUse = ++useClock;
-
-      if (surface.operations === 0 && !surface.destroyed && !contents.isDestroyed()) {
-        contents.setBackgroundThrottling(true);
-      }
-
-      reclaimIdle();
-    }
-  };
-
-  /** Resolve a surface for an agent session, or fail. */
-  const surfaceForSession = (sessionId: SessionId): Surface | undefined => {
-    return surfaces.get(sessionSurfaceId(sessionId));
-  };
-
-  const agent: BrowserAgent = {
-    async open(input) {
-      const target = webUrl(input.url);
-
-      if (target === undefined) return CLOSED;
-
-      const surfId = sessionSurfaceId(input.session);
-      const holder: BrowserHolder = `session:${input.session}`;
-      const surface = surfaces.get(surfId) ?? create(surfId, input.owner);
-      surface.holderState.holders.add(holder);
-
-      return operate(surface, async (contents) => {
-        if (contents.isDestroyed()) return CLOSED;
-
-        if (contents.getURL() !== target || surface.error !== undefined) {
-          load(surface, target);
-        }
-
-        apply(surface);
-
-        // Tell the renderer so it can reveal the Browser tab for this surface.
-        dependencies.emit({
-          kind: "browser_agent_opened",
-          surface: surfId,
-          session: input.session,
-          owner: input.owner.kind === "project" ? input.owner.path : null,
-          url: target,
-          state: stateOf(surface),
-        });
-
-        await waitForSettle(contents, input.signal);
-
-        if (contents.isDestroyed()) return CLOSED;
-
-        const state = await takeSnapshot(contents, surface.runtime);
-
-        return { kind: "ok", state };
-      });
-    },
-
-    async snapshot(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return CLOSED;
-
-      return operate(surface, async (contents) => {
-        if (contents.isDestroyed()) return CLOSED;
-        const state = await takeSnapshot(contents, surface.runtime, input.ref);
-
-        return { kind: "ok", state };
-      });
-    },
-
-    async click(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return CLOSED;
-
-      return operate(surface, (contents) =>
-        performClick(
-          contents,
-          surface.runtime,
-          input.ref,
-          input.button ?? "left",
-          input.double ?? false,
-          isWindowShown(surface),
-          input.signal,
-        ),
-      );
-    },
-
-    async type(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return CLOSED;
-
-      return operate(surface, (contents) =>
-        performType(
-          contents,
-          surface.runtime,
-          input.ref,
-          input.text,
-          input.clear ?? false,
-          input.submit ?? false,
-          isWindowShown(surface),
-          input.signal,
-        ),
-      );
-    },
-
-    async press(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return CLOSED;
-
-      return operate(surface, (contents) =>
-        performPress(
-          contents,
-          surface.runtime,
-          input.key,
-          input.ref,
-          isWindowShown(surface),
-          input.signal,
-        ),
-      );
-    },
-
-    async scroll(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return CLOSED;
-
-      return operate(surface, (contents) =>
-        performScroll(contents, surface.runtime, input, isWindowShown(surface), input.signal),
-      );
-    },
-
-    async wait(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return CLOSED;
-
-      return operate(surface, (contents) =>
-        performWait(contents, surface.runtime, input, input.signal),
-      );
-    },
-
-    console(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return [];
-
-      const entries = surface.runtime.consoleBuffer.slice(0, input.limit);
-
-      if (input.clear) {
-        surface.runtime.consoleBuffer.length = 0;
-      }
-
-      return entries;
-    },
-
-    async evaluate(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) {
-        return { kind: "threw", message: "No page is open for this session" };
-      }
-
-      return operate(surface, (contents) =>
-        performEvaluate(contents, surface.runtime, input.expression, input.ref),
-      );
-    },
-
-    async capture(input) {
-      const surface = surfaceForSession(input.session);
-
-      if (surface === undefined) return undefined;
-
-      return operate(surface, performCapture);
-    },
-
-    release(input) {
-      const surface = surfaces.get(sessionSurfaceId(input.session));
-
-      if (surface === undefined) return;
-      dropHolder(surface, `session:${input.session}`);
-    },
-
-    sessionSurfaceId(sessionId) {
-      return sessionSurfaceId(sessionId);
-    },
-  };
-
-  return {
-    open({ surface: id, url, owner }, window) {
-      const target = webUrl(url);
-
-      if (target === undefined) throw new Error("Only web addresses can open in the browser panel");
-      const surfaceOwner = owner ?? { kind: "home" };
-      const surface = surfaces.get(id) ?? create(id, surfaceOwner);
-
-      // Renderer open acts as a view holder retain.
-      surface.holderState.holders.add(`view:${id}`);
-      surface.home = window;
-
-      const contents = surface.view.webContents;
-
-      if (contents.getURL() !== target || surface.error !== undefined) load(surface, target);
-      // The renderer may have sent this surface's bounds before the holder
-      // existed, and it will not resend an identical message, so place it now.
-      apply(surface);
-
-      return stateOf(surface);
-    },
-    navigate({ surface: id, action }) {
-      const surface = surfaces.get(id);
-
-      if (surface === undefined) return;
-      const contents = surface.view.webContents;
-
-      if (contents.isDestroyed()) return;
-
-      switch (action) {
-        case "back":
-          contents.navigationHistory.goBack();
-
-          return;
-        case "forward":
-          contents.navigationHistory.goForward();
-
-          return;
-        case "reload":
-          surface.error = undefined;
-          contents.reload();
-
-          return;
-        case "stop":
-          contents.stop();
-
-          return;
-        default: {
-          const _exhaustive: never = action;
-
-          return _exhaustive;
-        }
-      }
-    },
-    async menu(input, window) {
-      const contents = surfaces.get(input.surface)?.view.webContents;
-      const hasPage = contents !== undefined && !contents.isDestroyed() && contents.getURL() !== "";
-
-      return showBrowserMenu({ window: dependencies.window(window), hasPage, input });
-    },
-    async perform({ surface: id, action }, window) {
-      if (action === "clear-history") {
-        const requestingSurface = surfaces.get(id);
-        const requestingOwner = requestingSurface?.owner;
-
-        for (const surface of surfaces.values()) {
-          // History is per cookie jar, so only the requesting surface's owner is cleared.
-          if (requestingOwner !== undefined) {
-            if (surface.owner.kind !== requestingOwner.kind) continue;
-
-            if (
-              surface.owner.kind === "project" &&
-              requestingOwner.kind === "project" &&
-              surface.owner.path !== requestingOwner.path
-            )
-              continue;
-          }
-
-          const contents = surface.view.webContents;
-
-          if (contents.isDestroyed()) continue;
-          contents.navigationHistory.clear();
-          publish(surface);
-        }
-
-        return;
-      }
-
-      const surface = surfaces.get(id);
-
-      return performBrowserAction({
-        action,
-        contents: surface?.view.webContents,
-        guest: ensureGuestSession(surface?.owner ?? { kind: "home" }).session,
-        window: dependencies.window(window),
-      });
-    },
-    close({ surface: id }) {
-      const surface = surfaces.get(id);
-
-      if (surface === undefined) return;
-      // Renderer close releases the view holder, not an immediate destroy.
-      dropHolder(surface, `view:${id}`);
-    },
-    retain({ surface: id, holder, owner }) {
-      const surfaceOwner = owner ?? { kind: "home" };
-      const surface = surfaces.get(id) ?? create(id, surfaceOwner);
-      surface.holderState.holders.add(holder);
-      apply(surface);
-    },
-    release({ surface: id, holder }) {
-      const surface = surfaces.get(id);
-
-      if (surface === undefined) return;
-      dropHolder(surface, holder);
-    },
-    async captureFrame({ surface: id }) {
-      const surface = surfaces.get(id);
-
-      if (surface === undefined) return undefined;
-      const contents = surface.view.webContents;
-
-      if (contents.isDestroyed() || contents.getURL() === "") return undefined;
-
-      try {
-        // stayHidden keeps an already-hidden page from flashing into view, and
-        // lets an occluded page still answer with its last pixels.
-        const image = await contents.capturePage(undefined, { stayHidden: true });
-
-        return image.isEmpty() ? undefined : image.toDataURL();
-      } catch {
-        return undefined;
-      }
-    },
-    setBounds({ surface: id, bounds, visible }, window) {
-      const surface = surfaces.get(id);
-
-      if (surface === undefined) return;
-
-      if (visible) surface.home = window;
-
-      const roundedBounds = {
-        x: Math.round(bounds.x),
-        y: Math.round(bounds.y),
-        width: Math.round(bounds.width),
-        height: Math.round(bounds.height),
-      };
-
-      surface.bounds = roundedBounds;
-      surface.visible = visible;
-
-      if (roundedBounds.width > 0 && roundedBounds.height > 0) {
-        surface.holderState.lastBounds = roundedBounds;
-      }
-
-      apply(surface);
-    },
-    warm() {
-      return ensureBlocker();
-    },
-    releaseWindow(window) {
-      for (const surface of surfaces.values()) {
-        if (surface.home !== window) continue;
-        surface.home = undefined;
-        surface.attachedTo = undefined;
-        dropHolder(surface, `view:${surface.id}`);
-      }
-    },
-    agent,
-  };
-}
-
-/**
- * Resolve once the page is worth reading. Measured on Electron 44: a response the
- * server never completes fires no event at all, not even `dom-ready`, so the bounded
- * wait is the only exit from it; a view destroyed mid-load fires only `destroyed`.
- * Returning while a page still loads is safe because the state carries `loading`, and
- * the model can wait longer with browser_wait.
- */
-const SETTLE_LIMIT_MS = 10_000;
-
-function waitForSettle(contents: WebContents, signal?: AbortSignal): Promise<void> {
-  if (contents.isDestroyed() || !contents.isLoading()) return Promise.resolve();
-
-  return new Promise<void>((resolve) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const done = () => {
-      if (timer !== undefined) clearTimeout(timer);
-      contents.removeListener("did-stop-loading", done);
-      contents.removeListener("did-fail-load", done);
-      contents.removeListener("destroyed", done);
-      signal?.removeEventListener("abort", done);
-      resolve();
-    };
-
-    timer = setTimeout(done, SETTLE_LIMIT_MS);
-    contents.on("did-stop-loading", done);
-    contents.on("did-fail-load", done);
-    contents.on("destroyed", done);
-    signal?.addEventListener("abort", done, { once: true });
-  });
+  }
 }

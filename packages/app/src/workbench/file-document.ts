@@ -1,12 +1,13 @@
-import type {
-  WorkspaceFileDocument,
-  WorkspaceFileSaveOutcome,
-  WorkspaceFormatInput,
-  WorkspaceFormatResult,
-} from "@nyte-ai/protocol";
+import type { FileDocument, FileVersion, FormatOutcome, WriteOutcome } from "@nyte-ai/sdk";
 import { errorMessage } from "../errors.ts";
 
-type TextFile = Extract<WorkspaceFileDocument, { readonly kind: "text" }>;
+type TextFile = Extract<FileDocument, { readonly kind: "text" }>;
+
+interface FileSaveInput {
+  readonly path: string;
+  readonly contents: string;
+  readonly version: FileVersion;
+}
 
 type FileSaveState =
   | { readonly kind: "idle" }
@@ -18,12 +19,17 @@ type FileSaveState =
 export interface FileDocumentSnapshot {
   readonly contents: string;
   readonly savedContents: string;
-  readonly version: string;
+  readonly version: FileVersion;
   readonly revision: number;
   readonly status: FileSaveState;
 }
 
-/** A save acknowledges only the captured text, never edits made while the write is pending. */
+/**
+ * A save acknowledges only the captured text, never edits made while the write
+ * is pending. Formatting may take seconds, so it does not replace text typed in
+ * the meantime, and a refetch cannot move the save baseline underneath an
+ * unsaved draft.
+ */
 export function createFileDocument(document: TextFile, draft?: string) {
   let snapshot: FileDocumentSnapshot = {
     contents: draft ?? document.contents,
@@ -59,7 +65,6 @@ export function createFileDocument(document: TextFile, draft?: string) {
         status: snapshot.status.kind === "saved" ? { kind: "idle" } : snapshot.status,
       });
     },
-    /** Refetches cannot move the save baseline underneath an unsaved draft. */
     observeDisk(next: TextFile): void {
       if (snapshot.status.kind === "saving" || snapshot.contents !== snapshot.savedContents) return;
 
@@ -83,8 +88,8 @@ export function createFileDocument(document: TextFile, draft?: string) {
       });
     },
     async save(operations: {
-      readonly write: (input: WorkspaceFormatInput) => Promise<WorkspaceFileSaveOutcome>;
-      readonly format?: (input: WorkspaceFormatInput) => Promise<WorkspaceFormatResult>;
+      readonly write: (input: FileSaveInput) => Promise<WriteOutcome>;
+      readonly format?: (input: FileSaveInput) => Promise<FormatOutcome>;
     }): Promise<void> {
       if (snapshot.status.kind === "saving") return;
       const captured = snapshot;
@@ -99,26 +104,19 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
         const formatted = await operations.format?.(input);
 
-        if (formatted !== undefined && formatted.kind !== "formatted") {
-          publish({
-            ...snapshot,
-            status:
-              formatted.kind === "conflict"
-                ? { kind: "conflict" }
-                : { kind: "error", message: formatted.message },
-          });
+        if (formatted?.kind === "unavailable") {
+          publish({ ...snapshot, status: { kind: "error", message: formatted.reason } });
 
           return;
         }
 
-        // Formatting may take seconds. Do not replace text typed in the meantime.
         if (snapshot.revision !== captured.revision) {
           publish({ ...snapshot, status: { kind: "idle" } });
 
           return;
         }
 
-        const contents = formatted?.contents ?? captured.contents;
+        const contents = formatted?.kind === "formatted" ? formatted.contents : captured.contents;
 
         if (contents !== snapshot.contents) {
           publish({ ...snapshot, contents, revision: snapshot.revision + 1 });
@@ -126,8 +124,17 @@ export function createFileDocument(document: TextFile, draft?: string) {
 
         const outcome = await operations.write({ ...input, contents });
 
-        if (outcome.kind === "conflict") {
+        if (outcome.kind === "stale") {
           publish({ ...snapshot, status: { kind: "conflict" } });
+
+          return;
+        }
+
+        if (outcome.kind === "missing-parent") {
+          publish({
+            ...snapshot,
+            status: { kind: "error", message: "The file's folder is gone." },
+          });
 
           return;
         }

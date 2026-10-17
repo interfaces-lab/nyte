@@ -18,6 +18,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
 import { codemodePlugin } from "./codemode-plugin.ts";
+import { BINARY_ENTRYPOINTS } from "./defines.ts";
 
 const packages = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -48,13 +49,7 @@ for (const target of targets) {
   const label = `${target.platform}-${target.arch}${target.libc === undefined ? "" : `-${target.libc}`}`;
 
   const outcome = await Bun.build({
-    entrypoints: [
-      join(packages, "tui/src/binary.ts"),
-      join(packages, "core/src/kernel/store-worker.ts"),
-      join(packages, "host/src/usage-worker.ts"),
-      join(packages, "core/src/tools/support/image-resize-worker.ts"),
-      join(packages, "tui/src/codemode-worker.ts"),
-    ],
+    entrypoints: BINARY_ENTRYPOINTS.map((entry) => join(packages, entry)),
     root: packages,
     target: "bun",
     plugins: [solidPlugin, codemodePlugin],
@@ -73,9 +68,11 @@ for (const target of targets) {
     continue;
   }
 
-  // pnpm installs native modules only for architectures this machine can use, so
-  // a bundle that fails solely on its own target's native module proves nothing
-  // about the source. Anything else is a real break.
+  /**
+   * pnpm installs native modules only for architectures this machine can use, so
+   * a bundle that fails solely on its own target's native module proves nothing
+   * about the source. Anything else is a real break.
+   */
   const unrelated = outcome.split("; ").filter((message) => !message.includes("@opentui/core-"));
 
   if (unrelated.length === 0) {

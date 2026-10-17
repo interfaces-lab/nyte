@@ -1,8 +1,5 @@
 /**
  * Resolves the HTTP(S) proxy URL for a target from the usual proxy environment variables, honoring NO_PROXY.
- *
- * Based on https://github.com/earendil-works/pi/blob/a63fb12c135b27aef26a2aa71d8c72f747e96e99/packages/ai/src/utils/node-http-proxy.ts
- * Synced with pi a63fb12c1.
  */
 import type { ProviderEnv } from "../types.ts";
 import { getProviderEnvValue } from "./provider-env.ts";
@@ -50,26 +47,22 @@ function parseNoProxyEntry(entry: string): { host: string; port: number } | unde
 
   if (!trimmed) return undefined;
 
-  const closingBracket = trimmed.startsWith("[") ? trimmed.indexOf("]") : -1;
+  const bracketed = /^\[([^\]]*)\](.*)$/su.exec(trimmed);
 
-  if (closingBracket !== -1) {
-    const rest = trimmed.slice(closingBracket + 1);
+  if (bracketed) {
+    const [, host, rest] = bracketed;
     const port = rest.startsWith(":") ? Number.parseInt(rest.slice(1), 10) : 0;
 
-    return { host: trimmed.slice(1, closingBracket), port: Number.isNaN(port) ? 0 : port };
+    return { host, port: Number.isNaN(port) ? 0 : port };
   }
 
-  const colonIndex = trimmed.indexOf(":");
+  const parts = trimmed.split(":");
 
-  if (colonIndex === -1 || colonIndex !== trimmed.lastIndexOf(":")) {
-    return { host: trimmed, port: 0 };
-  }
+  if (parts.length !== 2) return { host: trimmed, port: 0 };
+  const [host, portText] = parts;
+  const port = Number.parseInt(portText, 10);
 
-  const port = Number.parseInt(trimmed.slice(colonIndex + 1), 10);
-
-  return Number.isNaN(port)
-    ? { host: trimmed, port: 0 }
-    : { host: trimmed.slice(0, colonIndex), port };
+  return Number.isNaN(port) ? { host: trimmed, port: 0 } : { host, port };
 }
 
 function shouldProxyHostname(hostname: string, port: number, env?: ProviderEnv): boolean {

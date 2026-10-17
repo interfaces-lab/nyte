@@ -1,29 +1,22 @@
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { props } from "@stylexjs/stylex";
-// oxlint-disable-next-line no-restricted-imports -- the shortcut follows the open state
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { Command } from "@nyte-ai/ui/command";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { formatTimeAgo } from "../components/ui.tsx";
 import { StatusGlyph } from "./status-glyph.tsx";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
-import { macPlatform } from "../platform.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 
-import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
+import { amongOptions, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionSearch, useWorkingSessionIds } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
-import {
-  clientActionKeys,
-  clientActions,
-  clientCapabilities,
-  resolveClientAction,
-} from "../client-actions.ts";
+import { clientActionKeys, clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 
 const TABS = ["all", "agents", "actions", "settings"] as const;
@@ -33,8 +26,6 @@ type PaletteTab = (typeof TABS)[number];
 interface SearchPaletteProps {
   readonly trigger: ReactElement;
   readonly open: boolean;
-  readonly platform: NodeJS.Platform | undefined;
-  readonly sessionQueriesAvailable: boolean;
   /** The sidebar's chat rows, in its order. Undefined while they load. */
   readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
@@ -57,7 +48,7 @@ interface PaletteAction {
 }
 
 function sessionTitle(session: SessionInfo): string {
-  return session.name ?? session.preview ?? "New chat";
+  return session.name ?? "New chat";
 }
 
 function matches(action: PaletteAction, query: string): boolean {
@@ -91,8 +82,6 @@ function tabLabel(tab: PaletteTab): string {
 export function SearchPalette({
   trigger,
   open,
-  platform,
-  sessionQueriesAvailable,
   recentSessions,
   onOpenChange,
   onOpenSession,
@@ -105,15 +94,24 @@ export function SearchPalette({
   const workingSessions = useWorkingSessionIds();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
+  const [shownOpen, setShownOpen] = useState(open);
+
+  if (open !== shownOpen) {
+    setShownOpen(open);
+
+    if (open) setTab("all");
+    else setQuery("");
+  }
+
   const includesAgents = tab === "all" || tab === "agents";
   const searchingAgents = includesAgents && query.trim() !== "";
-  const sessionSearch = useSessionSearch(query, open && sessionQueriesAvailable && searchingAgents);
+  const sessionSearch = useSessionSearch(query, open && searchingAgents);
 
   const sessions = searchingAgents
     ? sessionsForNavigation(sessionSearch.data?.items ?? [])
     : (recentSessions ?? []);
 
-  const mac = macPlatform(platform);
+  const mac = nyte.platform === "darwin";
   const settingsSections = settingsSectionGroups().flat();
 
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
@@ -171,45 +169,21 @@ export function SearchPalette({
   );
 
   const rows = [
-    ...(includesAgents ? sessions.map((session) => session.sessionId) : []),
+    ...(includesAgents ? sessions.map((session) => session.id) : []),
     ...(tab === "agents" ? [] : visibleActions.map((action) => action.key)),
   ];
-
-  const changeOpen = (nextOpen: boolean): void => {
-    if (nextOpen) setTab("all");
-    else setQuery("");
-    onOpenChange(nextOpen);
-  };
 
   const run = (action: () => void): void => {
     onOpenChange(false);
     action();
   };
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (
-        resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host))?.id !== "search"
-      )
-        return;
-      event.preventDefault();
-
-      if (open) setQuery("");
-      else setTab("all");
-      onOpenChange(!open);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [mac, open, onOpenChange]);
-
-  const chatsPending = searchingAgents ? sessionSearch.isPending : recentSessions === undefined;
+  const chatsPending = searchingAgents
+    ? sessionSearch.data === undefined
+    : recentSessions === undefined;
 
   const emptyMessage = (): string => {
-    if (includesAgents && (!sessionQueriesAvailable || chatsPending)) return "Loading chats…";
-
-    if (searchingAgents && sessionSearch.isError) return "Couldn’t load chats. Try again.";
+    if (includesAgents && chatsPending) return "Loading chats…";
 
     if (tab === "agents")
       return searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet";
@@ -223,16 +197,16 @@ export function SearchPalette({
     <Command.Group heading={searchingAgents ? "Chats" : "Recent chats"}>
       {sessions.map((session) => (
         <Command.Item
-          key={session.sessionId}
-          value={session.sessionId}
+          key={session.id}
+          value={session.id}
           leading={
             <StatusGlyph
               session={session}
-              mark={sessionActivityMark(session, workingSessions.has(session.sessionId))}
+              mark={sessionActivityMark(session, workingSessions.has(session.id))}
             />
           }
           meta={formatTimeAgo(session.lastActivityAt)}
-          onSelect={() => run(() => onOpenSession(session.sessionId))}
+          onClick={() => run(() => onOpenSession(session.id))}
         >
           {sessionTitle(session)}
         </Command.Item>
@@ -248,7 +222,7 @@ export function SearchPalette({
           value={action.key}
           leading={<Icon name={action.icon} size={16} />}
           meta={action.meta}
-          onSelect={() => run(action.run)}
+          onClick={() => run(action.run)}
         >
           {action.label}
         </Command.Item>
@@ -257,7 +231,7 @@ export function SearchPalette({
   );
 
   return (
-    <Command.Root open={open} onOpenChange={changeOpen}>
+    <Command.Root open={open} onOpenChange={onOpenChange}>
       <Command.Trigger render={trigger} />
       <Command.Popup
         title="Search chats and actions"
@@ -273,8 +247,9 @@ export function SearchPalette({
         <Tabs.Root
           variant="pill"
           value={tab}
+          xstyle={styles.tabsBar}
           onValueChange={(value) => {
-            if (isOption(value, TABS)) setTab(value);
+            if (amongOptions(value, TABS)) setTab(value);
           }}
         >
           <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>

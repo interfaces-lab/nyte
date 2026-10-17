@@ -1,16 +1,6 @@
-/**
- * The Review page's line to the lab's review core (`server/review.ts`) and to
- * real core itself, all through React Query: no effects, no timers.
- *
- * What changes on its own (a brief landing, an answer arriving) comes from one
- * Nyte watch on the review's core session, read through `@nyte-ai/client` as
- * a streamed query that counts the events that matter. That count is part of
- * every dependent query's key, so each event refetches exactly what it can
- * change. A branch that gained commits shows up when the window regains focus,
- * because that is when you come back from committing.
- */
-import { createNyteClient, type NyteClient } from "@nyte-ai/client";
-import type { SessionEvent, SessionId, Turn } from "@nyte-ai/protocol";
+import { conversationTurns, type ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import { asId } from "@nyte-ai/schema";
+import { sdk, type Connection, type SessionView } from "@nyte-ai/sdk";
 import {
   experimental_streamedQuery,
   useMutation,
@@ -71,7 +61,7 @@ async function request<T extends TSchema>(
   throw new ReviewError("This lab build has no review core. Run it with `pnpm dev`.", true);
 }
 
-export const keys = {
+const keys = {
   repo: ["review", "repo"] as const,
   list: ["review", "list"] as const,
   detail: (id: string) => ["review", "detail", id] as const,
@@ -125,7 +115,7 @@ export function useReviews(version: number) {
   });
 }
 
-export function useReview(id: string | undefined, version: number) {
+function useReview(id: string | undefined, version: number) {
   return useQuery({
     queryKey: [...keys.detail(id ?? ""), version],
     queryFn: () => request(ReviewDetailSchema, `/reviews/${encodeURIComponent(id ?? "")}`),
@@ -162,7 +152,7 @@ export function useCreateReview() {
  * streams can start before the review loads. Nyte's session appears with the
  * first change request; that request refetches this.
  */
-export function useSessions(id: string | undefined) {
+function useSessions(id: string | undefined) {
   const { data } = useQuery({
     queryKey: keys.session(id ?? ""),
     queryFn: () => request(SessionSchema, `/reviews/${encodeURIComponent(id ?? "")}/session`),
@@ -209,77 +199,70 @@ export const useApprove = (id: string) =>
 export const useWriteGuide = (id: string) =>
   useDetailMutation<{ readonly head: string }>(id, "guide");
 
-let nyteClient: NyteClient | undefined;
+let nyteConnection: Promise<Connection> | undefined;
 
-function nyte(): NyteClient {
-  nyteClient ??= createNyteClient({
-    baseUrl: new URL("/core/nyte", window.location.origin).href,
+function nyte(): Promise<Connection> {
+  nyteConnection ??= sdk.connect({
+    url: new URL("/core/nyte", window.location.origin).href,
+    credentials: { kind: "custom", headers: () => ({}) },
   });
 
-  return nyteClient;
+  return nyteConnection;
 }
 
-async function* emptyStream(): AsyncIterable<SessionEvent> {}
+async function* emptyStream(): AsyncIterable<SessionView> {}
 
-/** Events that can change a head, its run, or its queue; text and progress cannot. */
-function changesReview(event: SessionEvent): boolean {
-  return (
-    event.kind === "commit" ||
-    event.kind === "run" ||
-    event.kind === "head_moved" ||
-    event.kind === "stack" ||
-    event.kind === "queued" ||
-    event.kind === "landed"
-  );
+async function* sessionViews(session: string): AsyncIterable<SessionView> {
+  const connection = await nyte();
+
+  yield* connection.session(asId<"session">(session)).watch();
 }
 
-/**
- * How many events that change the review core has sent on `session` while
- * this page watched it. The watch is the query: it streams for as long as
- * something observes it, unmounting aborts it, and a dropped stream is
- * retried with the library's backoff. Appending keeps the count rising across
- * reconnects, so no dependent key ever falls back to an older value.
- */
-export function useCoreEvents(session: SessionId | undefined): number {
+interface Seen {
+  readonly mark: string;
+  readonly count: number;
+}
+
+const reviewMark = (view: SessionView): string =>
+  JSON.stringify([view.seq, view.execution.kind, view.heads]);
+
+function useCoreEvents(session: string | undefined): number {
   const { data } = useQuery({
     queryKey: keys.events(session ?? ""),
     queryFn: experimental_streamedQuery({
-      streamFn: (context) =>
-        session === undefined
-          ? emptyStream()
-          : nyte().watch({ sessionId: session, live: true, signal: context.signal }),
+      streamFn: () => (session === undefined ? emptyStream() : sessionViews(session)),
       refetchMode: "append",
-      reducer: (seen: number, event: SessionEvent) => (changesReview(event) ? seen + 1 : seen),
-      initialValue: 0,
+      reducer: (seen: Seen, view: SessionView): Seen => {
+        const mark = reviewMark(view);
+
+        return mark === seen.mark ? seen : { mark, count: seen.count + 1 };
+      },
+      initialValue: { mark: "", count: 0 },
     }),
     enabled: session !== undefined,
     retry: 3,
     ...LIVE,
   });
 
-  return data ?? 0;
+  return data?.count ?? 0;
 }
 
-/** A turn of the conversation itself, as the transcript draws it. */
-export type ConversationTurn = Extract<Turn, { readonly kind: "turn" }>;
-
-const isConversationTurn = (turn: Turn): turn is ConversationTurn => turn.kind === "turn";
-
 async function headTurns(
-  session: SessionId,
+  session: string,
   head: string,
   forkedAt: number | null,
 ): Promise<readonly ConversationTurn[]> {
-  const snapshot = await nyte().sessions.snapshot({ sessionId: session, head });
+  const connection = await nyte();
+  const view = await connection.session(asId<"session">(session)).head(asId<"head">(head)).view();
 
-  return (snapshot?.transcript ?? [])
-    .filter(isConversationTurn)
-    .filter((turn) => forkedAt === null || turn.startedAt > forkedAt);
+  return conversationTurns(view).turns.filter(
+    (turn) => forkedAt === null || turn.info.startedAt > forkedAt,
+  );
 }
 
 /** The turns a core head added after it was cut, read again whenever `version` moves. */
 export function useHeadTurns(
-  session: SessionId | undefined,
+  session: string | undefined,
   head: { readonly name: string; readonly forkedAt: number | null } | undefined,
   version: number,
 ): readonly ConversationTurn[] {
@@ -320,7 +303,7 @@ export function useSideThread(
           : headTurns(author, "main", thread.startedAt),
       ]);
 
-      return turns.flat().toSorted((left, right) => left.startedAt - right.startedAt);
+      return turns.flat().toSorted((left, right) => left.info.startedAt - right.info.startedAt);
     },
     enabled: thread !== undefined,
     placeholderData: (previous) => previous,

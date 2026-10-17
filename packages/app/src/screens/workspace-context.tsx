@@ -10,7 +10,7 @@ import {
   MenuSubContent,
   MenuSubTrigger,
 } from "@nyte-ai/ui/menu";
-import { useGitHubState } from "../chrome/github-account.ts";
+import { useGitHub, useGitHubState } from "../chrome/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import { clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
@@ -21,10 +21,10 @@ import { EnvironmentMenu } from "./environment-menu.tsx";
 
 export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const host = useHostState();
-  const workspace = host.data?.workspace;
+  const workspace = host.data.workspace;
   const workspaces = useWorkspaces();
   const vcs = useVcsSnapshot(workspace !== undefined);
-  const github = useGitHubState(nyte.host.github);
+  const github = useGitHubState(useGitHub());
   const repository = github.data?.repository;
 
   const workspaceName =
@@ -34,14 +34,13 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
         ? workspace.name
         : `${repository.owner}/${repository.name}`;
 
-  const head = vcs.data?.kind === "repository" ? vcs.data.head : undefined;
+  const status = vcs.data?.kind === "repository" ? vcs.data : undefined;
 
   const branch =
-    head === undefined
+    status === undefined
       ? undefined
-      : head.kind === "detached"
-        ? `Detached ${head.oid.slice(0, 7)}`
-        : head.branch;
+      : (status.branch ??
+        (status.head === null ? undefined : `Detached ${status.head.slice(0, 7)}`));
 
   const openFolder = folderPicker();
 
@@ -59,8 +58,6 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
       <span title={candidate.path}>{candidate.name}</span>
     </MenuRadioItem>
   ));
-
-  if (host.data === undefined) return null;
 
   return (
     <div {...props(contextStyles.row)}>

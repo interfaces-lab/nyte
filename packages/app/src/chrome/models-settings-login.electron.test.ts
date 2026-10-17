@@ -17,67 +17,63 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { build } from "vite";
 import { afterAll, beforeAll, beforeEach, test } from "vitest";
+import type { ModelCatalogView, ModelInfo } from "@nyte-ai/sdk";
 import type {
-  DesktopCatalog,
-  DesktopModelOption,
-  HostEvent,
-  LoginOutcome,
-  ProviderStatus,
-} from "../bridge.ts";
-import type { HarnessFailures, RecordedHostCall } from "./fixtures/login-harness-bridge.ts";
+  HarnessFailures,
+  HarnessStep,
+  RecordedHostCall,
+} from "./fixtures/login-harness-bridge.ts";
 
 const fixtures = fileURLToPath(new URL("./fixtures/", import.meta.url));
 
-const gpt: DesktopModelOption = {
-  key: "github-copilot/gpt",
-  provider: "github-copilot",
-  id: "gpt",
-  name: "GPT Fixture",
-  contextWindow: 128_000,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  fastMode: { kind: "unavailable" },
-  thinkingLevels: ["off"],
-  hidden: false,
-  listed: false,
-};
+type Catalog = Omit<ModelCatalogView, "generation">;
 
-const copilot: ProviderStatus = {
+const model = (id: string, name: string): ModelInfo => ({
+  ref: { provider: "github-copilot", id },
+  name,
+  reasoning: false,
+  thinking: ["off"],
+  defaultThinking: "off",
+  fast: null,
+  contextWindow: 128_000,
+  compactAt: 100_000,
+  maxOutput: 8_000,
+  input: ["text"],
+  capabilities: { steer: true },
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+});
+
+const copilot: Catalog["providers"][number] = {
   id: "github-copilot",
   name: "GitHub Copilot",
-  enabled: true,
-  connection: { kind: "disconnected" },
-  signIn: [{ kind: "browser", label: "Sign in with GitHub", subscription: "Copilot" }],
+  credential: "missing",
+  methods: [{ kind: "oauth" }],
+  limits: [],
+  models: [model("gpt", "GPT Fixture")],
 };
 
-const disconnected: DesktopCatalog = {
-  source: "local",
+const disconnected: Catalog = {
+  default: { provider: "github-copilot", id: "gpt" },
   providers: [copilot],
-  models: [gpt],
-  defaults: { model: { provider: "github-copilot", id: "gpt" }, thinkingLevel: "off", fast: false },
 };
 
 /** What the host's catalog looks like once the credential is saved and discovery ran. */
-const connected: DesktopCatalog = {
+const connected: Catalog = {
   ...disconnected,
-  providers: [{ ...copilot, connection: { kind: "oauth" } }],
-  models: [
-    { ...gpt, listed: true },
-    { ...gpt, key: "github-copilot/claude", id: "claude", name: "Claude Fixture", listed: true },
+  providers: [
+    {
+      ...copilot,
+      credential: "verified",
+      models: [model("gpt", "GPT Fixture"), model("claude", "Claude Fixture")],
+    },
   ],
 };
 
-const deviceCode = (attempt: string): HostEvent => ({
-  kind: "login_progress",
-  attempt,
-  provider: "github-copilot",
-  progress: {
-    kind: "device_code",
-    userCode: "ABCD-1234",
-    verificationUri: "https://github.com/login/device",
-    expiresInSeconds: 900,
-    instructions: "GitHub will show OpenCode as the OAuth app.",
-  },
-});
+const deviceCode: HarnessStep = {
+  kind: "open",
+  url: "https://github.com/login/device",
+  code: "ABCD-1234",
+};
 
 /** Playwright waits are bounded per step; the whole flow gets one budget. */
 const TEST_TIMEOUT = 30_000;
@@ -91,6 +87,10 @@ let page: Page;
 
 const pageErrors: string[] = [];
 
+/** Outside Electron the package resolves to the path of its executable. */
+const executablePath = Value.Parse(Type.String(), electronExecutable);
+
+/** The renderer half loads from file://, so its asset links must be relative. */
 async function buildHarness(outDir: string): Promise<void> {
   await build({
     configFile: false,
@@ -113,9 +113,8 @@ async function buildHarness(outDir: string): Promise<void> {
     envDir: false,
     logLevel: "silent",
     root: fixtures,
-    // Loaded from file://, so asset links must be relative.
     base: "./",
-    plugins: [stylex.vite({ devMode: "off", runtimeInjection: false, useCSSLayers: true })],
+    plugins: [stylex.vite({ devMode: "off", useCSSLayers: true })],
     resolve: {
       dedupe: ["react", "react-dom"],
     },
@@ -130,8 +129,6 @@ async function buildHarness(outDir: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  // Outside Electron the package resolves to the path of its executable.
-  const executablePath = Value.Parse(Type.String(), electronExecutable);
   const root = await mkdtemp(join(tmpdir(), "nyte-login-harness-"));
   directory = root;
   await Promise.all(["profile", "session", "home"].map((name) => mkdir(join(root, name))));
@@ -166,23 +163,17 @@ beforeEach(async () => {
   await page.reload();
   await page.locator("#root").waitFor();
   await catalogBecomes(disconnected);
-  await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+    .waitFor();
 });
 
-/** The host's catalog changed; the renderer must re-read it, as after any sign-in. */
-async function catalogBecomes(catalog: DesktopCatalog): Promise<void> {
-  await page.evaluate((next) => {
-    window.nyteLoginHarness.setCatalog(next);
-    window.nyteLoginHarness.emit({ kind: "catalog_changed" });
-  }, catalog);
+async function catalogBecomes(catalog: Catalog): Promise<void> {
+  await page.evaluate((next) => window.nyteLoginHarness.setCatalog(next), catalog);
 }
 
-function emit(event: HostEvent): Promise<void> {
-  return page.evaluate((next) => window.nyteLoginHarness.emit(next), event);
-}
-
-function settleLogin(outcome: LoginOutcome): Promise<void> {
-  return page.evaluate((next) => window.nyteLoginHarness.resolveLogin(next), outcome);
+function step(next: HarnessStep): Promise<void> {
+  return page.evaluate((value) => window.nyteLoginHarness.step(value), next);
 }
 
 function recordedCalls(): Promise<RecordedHostCall[]> {
@@ -193,33 +184,29 @@ function setFailures(failures: Partial<HarnessFailures>): Promise<void> {
   return page.evaluate((next) => window.nyteLoginHarness.setFailures(next), failures);
 }
 
-/** Start a connection and answer with the attempt ID the renderer chose. */
-async function startSignIn(): Promise<string> {
-  await page.getByRole("button", { name: "Connect Provider", exact: true }).click();
+async function startSignIn(): Promise<void> {
+  await page.getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true }).click();
   await page.getByText("Waiting for the browser").waitFor();
   const calls = await recordedCalls();
-  const login = calls.find((call) => call.path === "host.login");
-  assert.ok(login !== undefined, "clicking the button calls host.login");
-  const { attempt, provider, method } = login.input;
-  assert.equal(provider, "github-copilot");
-  assert.deepEqual(method, { kind: "browser" });
-  assert.ok(attempt.length > 0, "host.login carries an attempt ID");
-
-  return attempt;
+  const login = calls.find((call) => call.path === "models.login");
+  assert.ok(login !== undefined, "clicking the button calls models.login");
+  assert.deepEqual(login.input, {
+    provider: "github-copilot",
+    method: { kind: "oauth" },
+    browser: "host",
+  });
 }
 
 test(
-  "signing in shows the emitted code, copies it, opens the link, and lands the connected catalog",
+  "signing in shows the code the flow opens with, copies it, opens the link, and lands the connected catalog",
   async () => {
-    const attempt = await startSignIn();
-    await emit(deviceCode(attempt));
+    await startSignIn();
+    await step(deviceCode);
     const code = page.getByLabel("Device code");
     await code.waitFor();
     assert.equal(await code.textContent(), "ABCD-1234");
     await page.getByText("Waiting for approval").waitFor();
     await page.getByText(/Enter this code on/).waitFor();
-    const instructions = page.getByText("GitHub will show OpenCode as the OAuth app.");
-    await instructions.waitFor();
     assert.equal(await page.getByRole("button", { name: "Cancel" }).count(), 1);
 
     await page.getByRole("button", { name: "Copy Sign-In Code" }).click();
@@ -235,70 +222,32 @@ test(
       [{ url: "https://github.com/login/device" }],
     );
 
-    await emit({
-      kind: "login_progress",
-      attempt,
-      provider: "github-copilot",
-      progress: { kind: "message", message: "Still waiting for GitHub" },
-    });
-    await page.getByText("Still waiting for GitHub").waitFor();
-    assert.equal(await code.textContent(), "ABCD-1234", "a message never hides the code");
-    assert.equal(await instructions.count(), 1, "a message never hides the instructions");
-
-    // Approval: the host saves the credential, refreshes discovery, and emits
-    // catalog_changed before the login call answers.
     await catalogBecomes(connected);
-    await settleLogin({ kind: "connected", catalogRefreshed: true });
+    await step({ kind: "done" });
     await page.getByText("Connected to GitHub Copilot").waitFor();
     await page.getByRole("region", { name: "Connected providers" }).waitFor();
     await code.waitFor({ state: "detached" });
     await page.getByRole("button", { name: "GitHub Copilot: Connected" }).click();
     await page.getByRole("menuitem", { name: "Disconnect Provider" }).waitFor();
     await page.keyboard.press("Escape");
-    const defaultModel = page.getByRole("combobox", { name: "Default model" });
-    await defaultModel.waitFor();
-    assert.equal(await defaultModel.isDisabled(), false, "two listed models make it a choice");
-    assert.match((await defaultModel.textContent()) ?? "", /GPT Fixture/);
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,
 );
 
 test(
-  "a connected sign-in whose discovery failed says so instead of claiming success",
+  "cancelling drops the flow and returns the row to its sign-in button",
   async () => {
-    const attempt = await startSignIn();
-    await emit(deviceCode(attempt));
-    await catalogBecomes({ ...connected, models: [gpt] });
-    await settleLogin({ kind: "connected", catalogRefreshed: false });
-    await page.getByText(/model list couldn't be updated/).waitFor();
-    await page.getByRole("region", { name: "Connected providers" }).waitFor();
-    assert.deepEqual(pageErrors, []);
-  },
-  TEST_TIMEOUT,
-);
-
-test(
-  "cancelling asks the host to stop the attempt and returns the row to its sign-in button",
-  async () => {
-    const attempt = await startSignIn();
-    await emit(deviceCode(attempt));
+    await startSignIn();
+    await step(deviceCode);
     await page.getByLabel("Device code").waitFor();
-    const cancel = page.getByRole("button", { name: "Cancel" });
-    await cancel.click();
-    await page.getByText("Cancelling").waitFor();
-    assert.equal(await cancel.getAttribute("aria-busy"), "true");
-    assert.equal(await cancel.evaluate((button) => button.matches(":disabled")), false);
-    const cancels = (await recordedCalls()).filter((call) => call.path === "host.cancelLogin");
-    assert.deepEqual(
-      cancels.map((call) => call.input),
-      [{ attempt }],
-    );
-
-    await settleLogin({ kind: "cancelled" });
-    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     await page.getByRole("region", { name: "Popular providers" }).waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
+    assert.ok((await recordedCalls()).some((call) => call.path === "models.login.cancel"));
     assert.equal(
       await page.getByRole("region", { name: "Notifications" }).getByRole("listitem").count(),
       0,
@@ -309,18 +258,12 @@ test(
 );
 
 test(
-  "a cancel the host refuses hands the button back, and open or copy failures say what to do",
+  "open or copy failures say what to do",
   async () => {
-    await setFailures({ cancel: true, open: true, clipboard: true });
-    const attempt = await startSignIn();
-    await emit(deviceCode(attempt));
+    await setFailures({ open: true, clipboard: true });
+    await startSignIn();
+    await step(deviceCode);
     await page.getByLabel("Device code").waitFor();
-
-    const cancel = page.getByRole("button", { name: "Cancel" });
-    await cancel.click();
-    await page.getByText(/Couldn't cancel the GitHub Copilot sign-in/).waitFor();
-    await page.getByText("Waiting for approval").waitFor();
-    assert.equal(await cancel.isDisabled(), false, "not stuck on Cancelling");
 
     await page.getByRole("link", { name: "github.com/login/device" }).click();
     await page.getByText(/Couldn't open github\.com/).waitFor();
@@ -331,12 +274,10 @@ test(
       .filter({ hasText: /Couldn’t copy the code/ })
       .waitFor();
     assert.deepEqual(await page.evaluate(() => [...window.nyteLoginHarness.clipboard]), []);
-
-    // The attempt is still alive: a later cancel that succeeds ends it.
-    await setFailures({ cancel: false });
-    await cancel.click();
-    await settleLogin({ kind: "cancelled" });
-    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,
@@ -345,12 +286,77 @@ test(
 test(
   "a failed sign-in reports the failure and offers to try again",
   async () => {
-    const attempt = await startSignIn();
-    await emit(deviceCode(attempt));
-    await page.evaluate(() => window.nyteLoginHarness.rejectLogin());
+    await startSignIn();
+    await step(deviceCode);
+    await step({ kind: "failed", reason: "denied" });
     await page.getByText(/Couldn't sign in to GitHub Copilot/).waitFor();
-    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
+    assert.deepEqual(pageErrors, []);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a browser sign-in takes the default method, opens the page once, and sends the code it ends on",
+  async () => {
+    await startSignIn();
+    await step({
+      kind: "choose",
+      message: "Select login method:",
+      options: [
+        { id: "browser", label: "Browser login" },
+        { id: "copy_code", label: "Copy code login" },
+      ],
+    });
+    await step({ kind: "open", url: "https://claude.ai/oauth/authorize" });
+    await step({ kind: "paste", message: "Paste the code:", secret: false });
+
+    await page.getByRole("textbox", { name: "Code or address" }).fill("code#state");
+    await page.getByRole("button", { name: "Finish Sign-In" }).click();
+    await page.getByText("Finishing sign-in…").waitFor();
+
+    const calls = await recordedCalls();
+    assert.deepEqual(
+      calls.flatMap((call) => (call.path === "login.answer" ? [call.input] : [])),
+      ["browser", "code#state"],
+    );
+    assert.deepEqual(
+      calls.flatMap((call) => (call.path === "host.openExternal" ? [call.input] : [])),
+      [{ url: "https://claude.ai/oauth/authorize" }],
+    );
+    assert.equal(await page.getByText("Select login method:").count(), 0);
+    assert.equal(await page.getByText("Paste the code:").count(), 0);
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
+    assert.deepEqual(pageErrors, []);
+  },
+  TEST_TIMEOUT,
+);
+
+test(
+  "a sign-in through a remote host says the browser is elsewhere",
+  async () => {
+    await page.evaluate(() =>
+      window.nyteLoginHarness.setEndpoint(
+        "https://connect.example/r/5f0c7d2e-3c1a-4b8e-9f6a-2d4e8c1b7a90",
+      ),
+    );
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .click();
+    await page.getByText("Waiting for the browser").waitFor();
+    const login = (await recordedCalls()).find((call) => call.path === "models.login");
+    assert.ok(login !== undefined);
+    assert.equal(login.input.browser, "elsewhere");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page
+      .getByRole("button", { name: "Connect Provider GitHub Copilot", exact: true })
+      .waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,

@@ -3,9 +3,6 @@
  * credential (OAuth refreshed under the store lock with double-checked
  * expiry), then ambient sources. Storage and refresh failures surface as
  * `ModelsError` with a code the caller can branch on.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/resolve.ts
- * Synced with pi 7ebf9087e.
  */
 import type { ProviderEnv } from "../types.ts";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
@@ -15,7 +12,7 @@ import type {
   ApiKeyCredential,
   AuthContext,
   AuthResult,
-  Credential,
+  CredentialAccounts,
   CredentialStore,
   OAuthAuth,
   OAuthCredential,
@@ -78,6 +75,7 @@ export function resolveProviderAuth(
   );
 }
 
+/** Resolves auth from overrides, then stored accounts, then ambient sources (env vars, AWS profiles, ADC files). */
 async function resolveProviderAuthWithSignal(
   provider: { id: string; auth: ProviderAuth },
   credentials: CredentialStore,
@@ -106,37 +104,43 @@ async function resolveProviderAuthWithSignal(
   }
 
   const stored = await readCredential(credentials, provider.id, signal);
+  const account = stored?.accounts.find((entry) => entry.id === stored.active);
 
   if (stored) {
-    if (stored.type === "oauth" && provider.auth.oauth) {
+    if (!account) return undefined;
+    const credential = account.credential;
+
+    if (credential.type === "oauth" && provider.auth.oauth) {
       return resolveStoredOAuth(
         credentials,
         provider.id,
+        account.id,
         provider.auth.oauth,
-        stored,
+        credential,
         signal,
         overrides?.minOAuthValidityMs,
       );
     }
 
-    if (stored.type === "api_key" && provider.auth.apiKey) {
-      const credential = overrides?.env
-        ? { ...stored, env: { ...stored.env, ...overrides.env } }
-        : stored;
+    if (credential.type === "api_key" && provider.auth.apiKey) {
+      const effective = overrides?.env
+        ? { ...credential, env: { ...credential.env, ...overrides.env } }
+        : credential;
 
-      return resolveApiKey(
+      const result = await resolveApiKey(
         requestAuthContext,
         provider.auth.apiKey,
         provider.id,
-        credential,
+        effective,
         signal,
       );
+
+      return result ? { ...result, accountId: account.id } : undefined;
     }
 
     return undefined;
   }
 
-  // Ambient (env vars, AWS profiles, ADC files).
   return provider.auth.apiKey
     ? resolveApiKey(requestAuthContext, provider.auth.apiKey, provider.id, undefined, signal)
     : undefined;
@@ -161,11 +165,15 @@ export const DEFAULT_OAUTH_REFRESH_TIMEOUT_MS = 15_000;
 /**
  * OAuth resolution with double-checked locking: tokens with less than five
  * minutes remaining lock, re-check expiry under the lock, refresh once
- * globally, and persist the rotated credential before release.
+ * globally, and persist the rotated credential before release. The normal
+ * five-minute window triggers a refresh but does not impose a provider contract;
+ * an explicit `minOAuthValidityMs` (such as bearer-token export) must still hold
+ * after the refresh.
  */
 async function resolveStoredOAuth(
   credentials: CredentialStore,
   providerId: string,
+  accountId: string,
   oauth: OAuthAuth,
   stored: OAuthCredential,
   signal: AbortSignal,
@@ -177,26 +185,39 @@ async function resolveStoredOAuth(
     Date.now() + minimumValidityMs >= credential.expires;
 
   let credential = stored;
+  let refreshed: { readonly token: string; readonly credential: OAuthCredential } | undefined;
 
   if (expiresSoon(credential)) {
-    // Optimistic check said expired; the authoritative check runs under the lock.
-    let post: Credential | undefined;
+    let post: CredentialAccounts | undefined;
 
     try {
       post = await credentials.modify(
         providerId,
         async (current) => {
-          if (current?.type !== "oauth") return undefined; // logged out meanwhile
+          const account = current?.accounts.find((entry) => entry.id === accountId);
 
-          if (!expiresSoon(current)) return undefined; // another process/request refreshed
+          if (!current || account?.credential.type !== "oauth") return undefined;
+          const previous = account.credential;
+
+          if (!expiresSoon(previous)) return undefined;
 
           try {
-            const refreshSignal = AbortSignal.any([
-              signal,
-              AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS),
-            ]);
+            if (refreshed?.token !== previous.refresh) {
+              const next = await oauth.refresh(
+                previous,
+                AbortSignal.any([signal, AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS)]),
+              );
+              refreshed = { token: previous.refresh, credential: next };
+            }
 
-            return await oauth.refresh(current, refreshSignal);
+            const next = refreshed.credential;
+
+            return {
+              ...current,
+              accounts: current.accounts.map((entry) =>
+                entry.id === accountId ? { ...entry, credential: next } : entry,
+              ),
+            };
           } catch (error) {
             throw new ModelsError("oauth", `OAuth refresh failed for ${providerId}`, {
               cause: error,
@@ -212,12 +233,11 @@ async function resolveStoredOAuth(
       });
     }
 
-    if (post?.type !== "oauth") return undefined; // logged out meanwhile
-    credential = post;
+    const account = post?.accounts.find((entry) => entry.id === accountId);
 
-    // The normal five-minute window triggers a refresh but does not impose a
-    // provider contract. Explicit callers (such as bearer-token export) do
-    // require the requested minimum after the refresh.
+    if (account?.credential.type !== "oauth") return undefined;
+    credential = account.credential;
+
     if (minOAuthValidityMs !== undefined && expiresSoon(credential)) {
       throw new ModelsError(
         "oauth",
@@ -227,7 +247,7 @@ async function resolveStoredOAuth(
   }
 
   try {
-    return { auth: await oauth.toAuth(credential), source: "OAuth" };
+    return { auth: await oauth.toAuth(credential), source: "OAuth", accountId };
   } catch (error) {
     throw new ModelsError("oauth", `OAuth auth derivation failed for ${providerId}`, {
       cause: error,
@@ -255,7 +275,7 @@ async function readCredential(
   credentials: CredentialStore,
   providerId: string,
   signal: AbortSignal,
-): Promise<Credential | undefined> {
+): Promise<CredentialAccounts | undefined> {
   try {
     return await credentials.read(providerId, { signal });
   } catch (error) {

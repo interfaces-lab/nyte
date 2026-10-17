@@ -1,13 +1,9 @@
-import { loadQuickJSWasm } from "@nyte-ai/plugin/codemode-runtime";
-import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/codemode-runtime";
+import { loadQuickJSWasm } from "@nyte-ai/plugin/core/codemode-runtime";
+import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/core/codemode-runtime";
 import wasmPath from "./codemode-wasm.ts";
+import { compiled } from "./compiled.ts";
 
 export function codemodeRuntimeOptions(): Pick<CodemodeSandboxOptions, "workerUrl" | "wasm"> {
-  const compiled =
-    import.meta.url.includes("$bunfs") ||
-    import.meta.url.includes("~BUN") ||
-    import.meta.url.includes("%7EBUN");
-
   if (!compiled) return {};
 
   return {

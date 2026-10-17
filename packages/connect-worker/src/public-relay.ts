@@ -1,13 +1,6 @@
-/**
- * Phone requests to `<origin>/r/<environmentId>/...`, and the desktop's relay
- * socket upgrade. A phone request is checked in this order before anything
- * reaches the desktop: route, method, browser `Origin`, declared size,
- * address throttle, bearer digest against D1, environment throttle. Every
- * refusal answers in the Nyte server's error envelope; an offline desktop,
- * a full channel table, and a throttle answer `closed`, never an auth error.
- */
 import { DeviceToken } from "@nyte-ai/connect";
 import {
+  PUBLIC_RELAY_BEARER,
   PUBLIC_RELAY_METHODS,
   RELAY_BODY_LIMIT_BYTES,
   publicRelayTarget,
@@ -21,7 +14,7 @@ import type { Context } from "./context.ts";
 import { Refusal } from "./http.ts";
 import { errorName } from "./log.ts";
 import { connectRequest, forwardRequest, resetRelay } from "./relay-stub.ts";
-import { findRelayDevice } from "./store.ts";
+import { findRelayDevice } from "./store/environments.ts";
 
 const BEARER = /^Bearer (\S+)$/u;
 
@@ -45,7 +38,7 @@ async function admit(
   | {
       readonly kind: "admitted";
       readonly environmentId: string;
-      readonly deviceId: string;
+      readonly deviceId: string | undefined;
       readonly path: string;
       readonly method: "GET" | "POST" | "DELETE";
     }
@@ -69,6 +62,18 @@ async function admit(
     return refused("payload_too_large");
 
   if (!(await allow(context, "relayAddress", clientAddress(request)))) return refused("closed");
+  const bearer = PUBLIC_RELAY_BEARER[target.kind];
+
+  if (bearer === "none")
+    return (await allow(context, "relay", target.environmentId))
+      ? {
+          kind: "admitted",
+          environmentId: target.environmentId,
+          deviceId: undefined,
+          path: target.path,
+          method,
+        }
+      : refused("closed");
   const token = BEARER.exec(request.headers.get("authorization") ?? "")?.[1];
 
   if (token === undefined || !Value.Check(DeviceToken, token)) return refused("unauthorized");
@@ -80,8 +85,8 @@ async function admit(
   if (device === undefined) return refused("unauthorized");
   const live = device.environment_state === "active" && device.state !== "revoked";
 
-  if (target.kind === "release" ? !live : !live || device.state !== "active")
-    return refused(target.kind === "release" ? "forbidden" : "unauthorized");
+  if (bearer === "reserved-or-active" ? !live : !live || device.state !== "active")
+    return refused(bearer === "reserved-or-active" ? "forbidden" : "unauthorized");
 
   if (device.owner_status !== "active") return refused("closed");
 

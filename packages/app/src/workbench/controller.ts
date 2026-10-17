@@ -1,15 +1,18 @@
 import { useSyncExternalStore } from "react";
-import type { Oid, SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { TurnId } from "@nyte-ai/sdk";
+import { idSchema } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { clientCapabilities } from "../client-actions.ts";
 import type { ClientCapabilities } from "../client-actions.ts";
+import { loadDeferred, readDeferred } from "../deferred.tsx";
 import { nyte } from "../nyte.ts";
 
-export const WORKBENCH_WIDTH_DEFAULT = 500;
+export const WORKBENCH_WIDTH_DEFAULT = 400;
 
-const WORKBENCH_WIDTH_MIN = 384;
+const WORKBENCH_WIDTH_MIN = 300;
 
 export const WORKBENCH_CENTER_WIDTH_MIN = 424;
 
@@ -25,7 +28,7 @@ export type WorkbenchChangesScope =
   | { readonly kind: "uncommitted" }
   | { readonly kind: "staged" }
   | { readonly kind: "unstaged" }
-  | { readonly kind: "turn"; readonly turnId: Oid }
+  | { readonly kind: "turn"; readonly turnId: TurnId }
   | { readonly kind: "commit"; readonly oid: string };
 
 export type TerminalOwner =
@@ -57,10 +60,33 @@ export type WorkbenchTabInput = WorkbenchTab extends infer Tab
     : never
   : never;
 
-export function sameChangesScope(
-  left: WorkbenchChangesScope,
-  right: WorkbenchChangesScope,
-): boolean {
+export type WorkbenchLayout =
+  | { readonly kind: "split" }
+  | { readonly kind: "maximized"; readonly showing: "workbench" | "chat" };
+
+const SPLIT_LAYOUT = Object.freeze({ kind: "split" }) satisfies WorkbenchLayout;
+
+const MAXIMIZED_WORKBENCH_LAYOUT = Object.freeze({
+  kind: "maximized",
+  showing: "workbench",
+}) satisfies WorkbenchLayout;
+
+const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
+  kind: "maximized",
+  showing: "chat",
+}) satisfies WorkbenchLayout;
+
+export const WORKBENCH_CHAT_TAB = "chat";
+
+export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
+  return layout.kind === "maximized" && layout.showing === "chat";
+}
+
+function revealWorkbench(layout: WorkbenchLayout): WorkbenchLayout {
+  return workbenchShowsChat(layout) ? MAXIMIZED_WORKBENCH_LAYOUT : layout;
+}
+
+function sameChangesScope(left: WorkbenchChangesScope, right: WorkbenchChangesScope): boolean {
   switch (left.kind) {
     case "uncommitted":
     case "staged":
@@ -131,7 +157,7 @@ export function workbenchTabAvailable(
     case "browser":
       return capabilities.browser;
     case "terminal":
-      return capabilities.terminal;
+      return true;
     case "file":
     case "files":
     case "changes":
@@ -153,7 +179,7 @@ export interface WorkbenchViewState {
   readonly active: WorkbenchTabId | null;
   readonly expanded: boolean;
   readonly collapsed: "floating" | "compact";
-  readonly maximized: boolean;
+  readonly layout: WorkbenchLayout;
   readonly width: number;
 }
 
@@ -187,6 +213,17 @@ export type WorkbenchTabUpdate =
       readonly patch: BrowserPatch;
     };
 
+/**
+ * The code every panel but the browser renders with. A panel mounted before
+ * it loads suspends, and React holds the revealed panel back for 300 ms, so
+ * such a tab joins its view only once `load` settles. A failed load opens the
+ * tab anyway, and its panel retries.
+ */
+export interface WorkbenchPanels {
+  readonly ready: () => boolean;
+  readonly load: () => Promise<void>;
+}
+
 export interface WorkbenchPersistence {
   read(): PersistedWorkbenchSnapshot | undefined;
   write(value: PersistedWorkbenchSnapshot): void;
@@ -197,6 +234,7 @@ export interface WorkbenchController {
   readonly getSnapshot: () => WorkbenchSnapshot;
   readonly getView: (key: WorkbenchViewKey) => WorkbenchViewState;
   readonly actions: {
+    /** Answers the tab's id at once; a tab whose panel is still loading joins its view once it settles. */
     readonly openTab: (input: {
       readonly view: WorkbenchViewKey;
       readonly tab: WorkbenchTabInput;
@@ -226,6 +264,7 @@ export interface WorkbenchController {
     readonly toggleCollapsed: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleWorkbench: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleMaximized: (input: { readonly view: WorkbenchViewKey }) => void;
+    readonly showChat: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly setWidth: (input: { readonly view: WorkbenchViewKey; readonly width: number }) => void;
   };
 }
@@ -237,7 +276,7 @@ const DEFAULT_VIEW = Object.freeze({
   active: null,
   expanded: false,
   collapsed: "floating",
-  maximized: false,
+  layout: SPLIT_LAYOUT,
   width: WORKBENCH_WIDTH_DEFAULT,
 }) satisfies WorkbenchViewState;
 
@@ -263,7 +302,7 @@ const persistedChangesTab = Type.Object(
       Type.Object({ kind: Type.Literal("uncommitted") }, strict),
       Type.Object({ kind: Type.Literal("staged") }, strict),
       Type.Object({ kind: Type.Literal("unstaged") }, strict),
-      Type.Object({ kind: Type.Literal("turn"), turnId: nonEmpty }, strict),
+      Type.Object({ kind: Type.Literal("turn"), turnId: idSchema<"turn">() }, strict),
       Type.Object({ kind: Type.Literal("commit"), oid: nonEmpty }, strict),
     ]),
     selectedPath: Type.Union([nonEmpty, Type.Null()]),
@@ -280,11 +319,22 @@ const persistedBrowserTab = Type.Object(
 
 const persistedFilesTab = Type.Object({ id: nonEmpty, kind: Type.Literal("files") }, strict);
 
+/** A user's shell tab; the terminal store keeps its job and output under the same id. */
+const persistedTerminalTab = Type.Object(
+  {
+    id: nonEmpty,
+    kind: Type.Literal("terminal"),
+    owner: Type.Object({ kind: Type.Literal("user") }, strict),
+  },
+  strict,
+);
+
 const persistedTab = Type.Union([
   persistedFileTab,
   persistedChangesTab,
   persistedBrowserTab,
   persistedFilesTab,
+  persistedTerminalTab,
 ]);
 
 const persistedWorkbenchView = Type.Object(
@@ -316,7 +366,9 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
     case "changes":
       return tab;
     case "terminal":
-      return undefined;
+      return tab.owner.kind === "user"
+        ? { id: tab.id, kind: "terminal", owner: { kind: "user" } }
+        : undefined;
     default: {
       const _exhaustive: never = tab;
 
@@ -396,6 +448,10 @@ function clampWorkbenchWidth(width: number): number {
     : WORKBENCH_WIDTH_DEFAULT;
 }
 
+export function workbenchDefaultWidth(availableWidth: number): number {
+  return Math.min(WORKBENCH_WIDTH_DEFAULT, Math.round(availableWidth / 2.5));
+}
+
 export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {
   const width = Math.max(0, Math.floor(availableWidth));
 
@@ -420,7 +476,7 @@ export function clampWorkbenchWidthToBounds(width: number, bounds: WorkbenchWidt
   return Math.min(bounds.max, Math.max(bounds.min, normalized));
 }
 
-export function decodePersistedWorkbenchSnapshot(
+function decodePersistedWorkbenchSnapshot(
   serialized: string,
 ): PersistedWorkbenchSnapshot | undefined {
   try {
@@ -468,7 +524,7 @@ function restoreSnapshot(
         active,
         expanded: stored.expanded,
         collapsed: "floating",
-        maximized: stored.maximized,
+        layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
         width: clampWorkbenchWidth(stored.width),
       }),
     );
@@ -494,7 +550,7 @@ function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
         tabs,
         active,
         expanded: view.expanded,
-        maximized: view.maximized,
+        maximized: view.layout.kind === "maximized",
         width: view.width,
       };
     }),
@@ -580,17 +636,31 @@ function sameTabUpdate(tab: WorkbenchTab, input: WorkbenchTabUpdate): boolean {
   }
 }
 
+/**
+ * Returns a workbench controller that restores the persisted snapshot on its first read, so creating one reads neither storage nor the client's capabilities.
+ * Without `panels`, every tab opens at once; with them, a tab opened before they load waits under the id `openTab` answered with.
+ */
 export function createWorkbenchController(
   capabilities: () => ClientCapabilities,
   persistence?: WorkbenchPersistence,
+  panels?: WorkbenchPanels,
 ): WorkbenchController {
-  let snapshot = restoreSnapshot(persistence?.read(), capabilities);
+  let restored: WorkbenchSnapshot | null = null;
   const listeners = new Set<() => void>();
 
+  const waiting = new Map<
+    WorkbenchTabId,
+    { readonly view: WorkbenchViewKey; readonly tab: WorkbenchTab; activate: boolean }
+  >();
+
+  const read = (): WorkbenchSnapshot =>
+    (restored ??= restoreSnapshot(persistence?.read(), capabilities));
+
   const publish = (key: WorkbenchViewKey, view: WorkbenchViewState): void => {
-    const views = new Map(snapshot.views);
+    const views = new Map(read().views);
     views.set(key, freezeView(view));
-    snapshot = Object.freeze({ views });
+    const snapshot = Object.freeze({ views });
+    restored = snapshot;
     persistence?.write(persistable(snapshot));
 
     for (const listener of listeners) listener();
@@ -600,42 +670,82 @@ export function createWorkbenchController(
     key: WorkbenchViewKey,
     change: (current: WorkbenchViewState) => WorkbenchViewState,
   ): void => {
-    const current = snapshot.views.get(key) ?? DEFAULT_VIEW;
+    const current = read().views.get(key) ?? DEFAULT_VIEW;
     const next = change(current);
 
     if (next !== current) publish(key, next);
   };
 
+  const addTab = (view: WorkbenchViewKey, tab: WorkbenchTab, activate: boolean): void => {
+    const current = read().views.get(view) ?? DEFAULT_VIEW;
+    publish(view, {
+      ...current,
+      tabs: [...current.tabs, tab],
+      active: activate ? tab.id : current.active,
+      expanded: activate ? true : current.expanded,
+      layout: activate ? revealWorkbench(current.layout) : current.layout,
+    });
+  };
+
   const actions: WorkbenchController["actions"] = {
     openTab({ view, tab, activate }) {
-      const current = snapshot.views.get(view) ?? DEFAULT_VIEW;
+      const current = read().views.get(view) ?? DEFAULT_VIEW;
       const existing = current.tabs.find((candidate) => sameTab(candidate, tab));
 
       if (existing !== undefined) {
-        if (activate && (current.active !== existing.id || !current.expanded)) {
-          publish(view, { ...current, active: existing.id, expanded: true });
+        const layout = revealWorkbench(current.layout);
+
+        if (
+          activate &&
+          (current.active !== existing.id || !current.expanded || layout !== current.layout)
+        ) {
+          publish(view, { ...current, active: existing.id, expanded: true, layout });
         }
 
         return existing.id;
       }
 
-      const id = crypto.randomUUID();
-      const next = { id, ...tab } satisfies WorkbenchTab;
-      publish(view, {
-        ...current,
-        tabs: [...current.tabs, next],
-        active: activate ? id : current.active,
-        expanded: activate ? true : current.expanded,
-      });
+      const pending = [...waiting.values()].find(
+        (entry) => entry.view === view && sameTab(entry.tab, tab),
+      );
 
-      return id;
+      if (pending !== undefined) {
+        pending.activate ||= activate;
+
+        return pending.tab.id;
+      }
+
+      const next = { id: crypto.randomUUID(), ...tab } satisfies WorkbenchTab;
+
+      if (tab.kind === "browser" || panels === undefined || panels.ready()) {
+        addTab(view, next, activate);
+
+        return next.id;
+      }
+
+      waiting.set(next.id, { view, tab: next, activate });
+
+      const add = (): void => {
+        const entry = waiting.get(next.id);
+
+        if (entry === undefined) return;
+        waiting.delete(next.id);
+        addTab(entry.view, entry.tab, entry.activate);
+      };
+
+      void panels.load().then(add, add);
+
+      return next.id;
     },
     activateTab({ view, id }) {
-      update(view, (current) =>
-        current.tabs.some((tab) => tab.id === id) && (current.active !== id || !current.expanded)
-          ? { ...current, active: id, expanded: true }
-          : current,
-      );
+      update(view, (current) => {
+        if (!current.tabs.some((tab) => tab.id === id)) return current;
+        const layout = revealWorkbench(current.layout);
+
+        return current.active === id && current.expanded && layout === current.layout
+          ? current
+          : { ...current, active: id, expanded: true, layout };
+      });
     },
     closeTab({ view, id }) {
       update(view, (current) => {
@@ -717,7 +827,11 @@ export function createWorkbenchController(
       });
     },
     toggle({ view }) {
-      update(view, (current) => ({ ...current, expanded: !current.expanded }));
+      update(view, (current) => ({
+        ...current,
+        expanded: !current.expanded,
+        layout: current.expanded ? current.layout : revealWorkbench(current.layout),
+      }));
     },
     toggleCollapsed({ view }) {
       update(view, (current) => ({
@@ -726,7 +840,17 @@ export function createWorkbenchController(
       }));
     },
     toggleMaximized({ view }) {
-      update(view, (current) => ({ ...current, maximized: !current.maximized }));
+      update(view, (current) => ({
+        ...current,
+        layout: current.layout.kind === "maximized" ? SPLIT_LAYOUT : MAXIMIZED_WORKBENCH_LAYOUT,
+      }));
+    },
+    showChat({ view }) {
+      update(view, (current) =>
+        current.layout.kind === "maximized" && !workbenchShowsChat(current.layout)
+          ? { ...current, layout: MAXIMIZED_CHAT_LAYOUT }
+          : current,
+      );
     },
     toggleWorkbench({ view }) {
       actions.toggle({ view });
@@ -745,8 +869,8 @@ export function createWorkbenchController(
 
       return () => listeners.delete(listener);
     },
-    getSnapshot: () => snapshot,
-    getView: (key: WorkbenchViewKey) => snapshot.views.get(key) ?? DEFAULT_VIEW,
+    getSnapshot: read,
+    getView: (key: WorkbenchViewKey) => read().views.get(key) ?? DEFAULT_VIEW,
     actions: Object.freeze(actions),
   });
 }
@@ -754,6 +878,12 @@ export function createWorkbenchController(
 export const workbenchController = createWorkbenchController(
   () => clientCapabilities(nyte.host),
   browserPersistence(),
+  {
+    ready: () => readDeferred("workbench") !== undefined,
+    load: async () => {
+      await loadDeferred("workbench");
+    },
+  },
 );
 
 export function useWorkbenchSnapshot(): WorkbenchSnapshot {

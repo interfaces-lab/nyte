@@ -8,13 +8,16 @@ import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { toast } from "@nyte-ai/ui/toast";
-import type { BrowserSignIn, DeviceCode } from "../bridge.ts";
-import { nyte } from "../nyte.ts";
+import type { DeviceCode } from "../bridge.ts";
+import { answerLogin } from "./login-attempts.ts";
+import type { BrowserSignIn } from "./login-attempts.ts";
+import { openExternal } from "../open-external.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 
 /** The site a verification link points at, for a button that says where it goes. */
 function linkHost(url: string): string | undefined {
@@ -34,13 +37,7 @@ function linkText(url: string): string {
  * to enter it. The flow's messages sit under it so a poll update never hides
  * what the user still has to type.
  */
-export function DeviceCodePanel({
-  deviceCode,
-  message,
-}: {
-  deviceCode: DeviceCode;
-  message: string | undefined;
-}): ReactElement {
+export function DeviceCodePanel({ deviceCode }: { deviceCode: DeviceCode }): ReactElement {
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const { userCode, verificationUri, expiresInSeconds, instructions } = deviceCode;
 
@@ -50,10 +47,10 @@ export function DeviceCodePanel({
   return (
     <div {...props(styles.deviceCodePanel)}>
       <div {...props(styles.deviceCodeBox)}>
-        <code aria-label="Device code" {...props(styles.deviceCode)}>
+        <code aria-label="Device code" {...props(text.lg, styles.deviceCode)}>
           {userCode}
         </code>
-        <span {...props(styles.deviceCodeLead)}>
+        <span {...props(text.base, styles.deviceCodeLead)}>
           Enter this code on{" "}
           <a
             href={verificationUri}
@@ -62,11 +59,9 @@ export function DeviceCodePanel({
             {...props(styles.deviceCodeLink)}
             onClick={(event) => {
               event.preventDefault();
-              void nyte.host.openExternal({ url: verificationUri }).catch(() =>
-                toast.add({
-                  type: "error",
-                  title: `Couldn't open ${linkText(verificationUri)}. Enter the code there yourself.`,
-                }),
+              openExternal(
+                verificationUri,
+                `Couldn't open ${linkText(verificationUri)}. Enter the code there yourself.`,
               );
             }}
           >
@@ -86,20 +81,17 @@ export function DeviceCodePanel({
           }}
         />
       </div>
-      {instructions !== undefined && <span {...props(styles.deviceCodeNote)}>{instructions}</span>}
+      {instructions !== undefined && (
+        <span {...props(text.sm, styles.deviceCodeNote)}>{instructions}</span>
+      )}
       {copyStatus === "copied" && (
         <span role="status" {...props(srOnly)}>
           Sign-in code copied
         </span>
       )}
       {copyStatus === "failed" && (
-        <span role="alert" {...props(styles.deviceCodeNote)}>
+        <span role="alert" {...props(text.sm, styles.deviceCodeNote)}>
           Couldn&rsquo;t copy the code. Select it and copy it yourself.
-        </span>
-      )}
-      {message !== undefined && (
-        <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
-          {message}
         </span>
       )}
     </div>
@@ -117,7 +109,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
 
   if (send.isSuccess) {
     return (
-      <span role="status" {...props(styles.deviceCodeNote)}>
+      <span role="status" {...props(text.sm, styles.deviceCodeNote)}>
         Finishing sign-in…
       </span>
     );
@@ -133,7 +125,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
       }}
     >
       <Input
-        variant="quiet"
+        variant="code"
         aria-label="Code or address"
         autoComplete="off"
         spellCheck={false}
@@ -162,27 +154,22 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
  * to load on the serving machine.
  */
 export function BrowserSignInPanel({
-  attempt,
+  provider,
   browser,
-  message,
 }: {
-  attempt: string;
+  provider: string;
   browser: BrowserSignIn;
-  message: string | undefined;
 }): ReactElement {
   const host = linkHost(browser.url);
-  const answerLogin = browser.acceptsCode ? nyte.host.answerLogin : undefined;
+  const acceptsCode = browser.acceptsCode;
 
   return (
     <div {...props(styles.deviceCodePanel)}>
-      {answerLogin !== undefined && (
-        <span {...props(styles.deviceCodeLead)}>
+      {acceptsCode && (
+        <span {...props(text.base, styles.deviceCodeLead)}>
           Sign in at {host ?? "the provider's page"}, then paste the code it shows or the address it
           ends on.
         </span>
-      )}
-      {browser.instructions !== undefined && (
-        <span {...props(styles.deviceCodeNote)}>{browser.instructions}</span>
       )}
       <div {...props(styles.deviceCodeRow)}>
         <ButtonLink
@@ -193,22 +180,15 @@ export function BrowserSignInPanel({
           tone="primary"
           onClick={(event) => {
             event.preventDefault();
-            void nyte.host
-              .openExternal({ url: browser.url })
-              .catch(() =>
-                toast.add({ type: "error", title: `Couldn't open ${host ?? "the sign-in page"}.` }),
-              );
+            openExternal(browser.url, `Couldn't open ${host ?? "the sign-in page"}.`);
           }}
         >
           {host === undefined ? "Open Sign-In Page" : `Open ${host}`}
         </ButtonLink>
       </div>
-      {answerLogin !== undefined && (
-        <AnswerForm answer={(code) => answerLogin({ attempt, code })} />
-      )}
-      <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
-        {message ??
-          (answerLogin === undefined ? "Nyte connects on its own once you sign in." : undefined)}
+      {acceptsCode && <AnswerForm answer={(code) => answerLogin(provider, code)} />}
+      <span role="status" aria-live="polite" {...props(text.sm, styles.deviceCodeNote)}>
+        {acceptsCode ? undefined : "Nyte connects on its own once you sign in."}
       </span>
     </div>
   );

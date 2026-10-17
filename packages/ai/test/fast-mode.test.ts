@@ -1,5 +1,5 @@
-import { normalizeContext } from "@nyte-ai/schema";
 /** `fast` is the user-facing name; OpenAI receives its existing priority tier. */
+import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { streamSimple as streamCodex } from "../src/api/openai-codex-responses.ts";
@@ -39,7 +39,7 @@ interface CapturedBody {
   service_tier?: unknown;
 }
 
-function isCapturedBody(value: unknown): value is CapturedBody {
+function matchesCapturedBody(value: unknown): value is CapturedBody {
   return typeof value === "object" && value !== null;
 }
 
@@ -69,7 +69,7 @@ describe("OpenAI fast mode", () => {
       fast: true,
       transport: "sse",
     }).result();
-    assert.ok(isCapturedBody(codex.seen.body));
+    assert.ok(matchesCapturedBody(codex.seen.body));
     assert.equal(codex.seen.body.service_tier, "priority");
 
     const openai = capture();
@@ -78,7 +78,7 @@ describe("OpenAI fast mode", () => {
       apiKey: "sk-test",
       fast: true,
     }).result();
-    assert.ok(isCapturedBody(openai.seen.body));
+    assert.ok(matchesCapturedBody(openai.seen.body));
     assert.equal(openai.seen.body.service_tier, "priority");
   });
 });

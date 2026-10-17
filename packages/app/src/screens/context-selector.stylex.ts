@@ -1,12 +1,12 @@
 import { create } from "@stylexjs/stylex";
-import { button, glyph, menu, radius } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { button, menu, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const contextStyles = create({
   row: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     minWidth: 0,
   },
   controlLayout: { minWidth: 0, maxWidth: 280, flexShrink: 1 },
@@ -14,11 +14,11 @@ export const contextStyles = create({
     display: "inline-flex",
     alignItems: "center",
     height: button.heightMd,
-    paddingInline: 4,
+    paddingInline: space.s1,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
     fontSize: type.fontBase,
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
     lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
@@ -37,31 +37,19 @@ export const contextStyles = create({
   hint: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: space.s0_5,
     maxWidth: "min(400px, calc(100vw - 16px))",
-    paddingBlock: 6,
-    paddingInline: 10,
-    borderRadius: radius.control,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2_5,
   },
   hintHeading: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: space.s3,
     color: role.contentPrimary,
     whiteSpace: "nowrap",
   },
-  hintValue: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
-  keys: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
-  key: {
-    minWidth: glyph.md,
-    minHeight: glyph.md,
-    padding: 0,
-    borderRadius: radius.indicator,
-    fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-  },
+  hintValue: { color: role.contentSecondary },
+  keys: { display: "inline-flex", alignItems: "center", gap: space.s0_5, flexShrink: 0 },
 });

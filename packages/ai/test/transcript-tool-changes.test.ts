@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { describe, expect, test } from "vitest";
@@ -162,7 +162,7 @@ function completionsPayload(body: unknown) {
 }
 
 describe("transcript system messages", () => {
-  test("sends Anthropic updates and tool changes in native system messages", async () => {
+  test("sends Anthropic updates and tool changes in native system messages, declaring the placeholder from the first request so its scaffolding caches", async () => {
     const request = await captureRequest(anthropicMessagesApi(), anthropicNativeModel, context);
     const payload = anthropicPayload(request.body);
 
@@ -171,8 +171,6 @@ describe("transcript system messages", () => {
     expect(payload.system?.map((block) => block.text)).toEqual([
       "base prompt\n\n<rules>\nold rules\n</rules>\n\n<docs>\nread docs\n</docs>",
     ]);
-    // Initial tools stay active and carry the cache breakpoint; the placeholder and every
-    // later declaration are deferred; the removed tool stays declared.
     expect(payload.tools).toMatchObject([
       { name: "base_tool", cache_control: { type: "ephemeral" } },
       { name: "__pi_deferred_placeholder__", defer_loading: true },
@@ -197,7 +195,6 @@ describe("transcript system messages", () => {
     );
     expect(updateText).toContain('Removed system prompt section "docs"');
 
-    // The placeholder is declared before any change so its scaffolding is cached from request one.
     const initial = anthropicPayload(
       (
         await captureRequest(anthropicMessagesApi(), anthropicNativeModel, {
@@ -211,36 +208,32 @@ describe("transcript system messages", () => {
     ]);
   });
 
-  test("sends the current Anthropic tool list when native tool changes cannot express the history", async () => {
+  test("sends the current Anthropic tool list when native tool changes cannot express the history: blocks name tools only, and Anthropic rejects an all-deferred list", async () => {
     const redefinedTool = { ...baseTool, description: "changed" };
-    const fallbackContexts: Context[] = [
-      // Same-name redefinition: blocks reference tools by name only.
-      {
-        messages: [
-          { role: "system", content: "base prompt", toolsAdded: [baseTool], timestamp: 0 },
-          {
-            role: "system",
-            content: "updated guidance",
-            toolsRemoved: [{ name: "base_tool" }],
-            toolsAdded: [redefinedTool],
-            timestamp: 2,
-          },
-        ],
-      },
-      // No initial tool: Anthropic rejects an all-deferred tool list.
-      {
-        messages: [
-          { role: "system", content: "base prompt", timestamp: 0 },
-          {
-            role: "system",
-            content: "updated guidance",
-            toolsAdded: [redefinedTool],
-            timestamp: 2,
-          },
-        ],
-      },
-    ];
-    for (const fallbackContext of fallbackContexts) {
+    const sameNameRedefinition: Context = {
+      messages: [
+        { role: "system", content: "base prompt", toolsAdded: [baseTool], timestamp: 0 },
+        {
+          role: "system",
+          content: "updated guidance",
+          toolsRemoved: [{ name: "base_tool" }],
+          toolsAdded: [redefinedTool],
+          timestamp: 2,
+        },
+      ],
+    };
+    const noInitialTool: Context = {
+      messages: [
+        { role: "system", content: "base prompt", timestamp: 0 },
+        {
+          role: "system",
+          content: "updated guidance",
+          toolsAdded: [redefinedTool],
+          timestamp: 2,
+        },
+      ],
+    };
+    for (const fallbackContext of [sameNameRedefinition, noInitialTool]) {
       const request = await captureRequest(
         anthropicMessagesApi(),
         anthropicNativeModel,
@@ -300,7 +293,6 @@ describe("transcript system messages", () => {
     });
     const payload = anthropicPayload(request.body);
 
-    // Native tool changes own every late declaration, so the tool result carries no reference.
     expect(payload.tools?.map((entry) => entry.name)).toEqual([
       "base_tool",
       "loaded_tool",
@@ -322,7 +314,6 @@ describe("transcript system messages", () => {
       api: "anthropic-messages",
       provider: "anthropic",
     };
-    // Tool-change support alone is not native support: native updates need both capabilities.
     const toolChangesOnly: Model<"anthropic-messages"> = {
       ...anthropicNativeModel,
       compat: { supportsMidConvoToolChanges: true },
@@ -435,7 +426,11 @@ describe("transcript system messages", () => {
       name: "Kimi K3",
       api: "openai-completions",
       provider: "moonshotai",
-      compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolAdditions: true },
+      compat: {
+        supportsDeveloperRole: false,
+        supportsMidConvoSystemMessages: true,
+        supportsMidConvoToolAdditions: true,
+      },
     };
     const payload = completionsPayload(
       (await captureRequest(openAICompletionsApi(), model, additionContext)).body,
@@ -461,7 +456,7 @@ describe("transcript system messages", () => {
       name: "Kimi K2.7 Code",
       api: "openai-completions",
       provider: "moonshotai",
-      compat: { supportsMidConvoSystemMessages: true },
+      compat: { supportsDeveloperRole: false, supportsMidConvoSystemMessages: true },
     };
     const payload = completionsPayload(
       (await captureRequest(openAICompletionsApi(), model, additionContext)).body,

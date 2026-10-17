@@ -1,4 +1,4 @@
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { renderMermaidSVG } from "beautiful-mermaid";
 
 const MAX_SOURCE_LENGTH = 8_000;

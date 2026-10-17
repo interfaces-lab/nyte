@@ -1,42 +1,141 @@
-/**
- * `@nyte-ai/core`: the kernel SDK, the small set of
- * host composition types needed to construct it, and `dispatch`, the one
- * table binding every protocol operation to the SDK method it names.
- *
- * Plugin authoring stays under `@nyte-ai/core/plugins`; host storage stays
- * under `@nyte-ai/core/store`. Neither route is folded into one barrel.
- */
-export { createNyte } from "./kernel/sdk/nyte.ts";
+export { ALL_AUTHORITY, LOCAL } from "./contract/host.ts";
 
-export { dispatch } from "./kernel/sdk/dispatch.ts";
-
-export { bindTool } from "./tools/bind-tool.ts";
-
-export * from "./kernel/sdk/types.ts";
-
-export {
-  loadProjectContextFiles,
-  formatContextFilesForPrompt,
-} from "./plugins/builtin/context-files.ts";
-
-/**
- * `Plugin` is a `NyteOptions` field; `PluginInfo` and `SettingInfo` are
- * what the `plugins` namespace returns. Authoring the things behind them is
- * `/plugins`.
- */
-export type { Plugin, PluginInfo, SettingInfo } from "./plugins/types.ts";
-
-/** The remaining `NyteOptions` fields a host names when it composes a `Nyte`. */
-export { isThinkingLevel, type StreamFn, type ThinkingLevel } from "./kernel/loop/types.ts";
-
-export { DEFAULT_COMPACTION_SETTINGS, type CompactionSettings } from "./kernel/compaction.ts";
+export type {
+  ConnectOptions,
+  Connection,
+  ConnectionContext,
+  Host,
+  ListenOptions,
+  Listener,
+  Login,
+  ModelsApi,
+  OpenOptions,
+  PluginFile,
+  PluginStorage,
+  PluginsApi,
+  PrincipalsApi,
+  RequestJournal,
+  SettingsApi,
+} from "./contract/host.ts";
 
 export {
-  CACHE_WARMING_MODES,
-  formatCacheWarmingStatus,
-  formatCacheWarmingUsage,
-  type CacheWarmingAction,
-  type CacheWarmingDecision,
-  type CacheWarmingMode,
-  type CacheWarmingStatus,
-} from "./kernel/cache-warmer.ts";
+  branchSummary,
+  compaction,
+  definePart,
+  isPart,
+  text,
+  thinking,
+  tool,
+} from "./contract/parts.ts";
+
+export type {
+  ActionContext,
+  ActionOutput,
+  ActionSchemas,
+  Part,
+  PartActions,
+  PartDefinition,
+  PartState,
+} from "./contract/parts.ts";
+
+export type {
+  Agent,
+  Available,
+  ClientApi,
+  Command,
+  ContributionTable,
+  Decide,
+  Declared,
+  HookEntry,
+  HookHandler,
+  HookName,
+  HookTable,
+  Keybinding,
+  ModelContextPolicy,
+  Observe,
+  Plugin,
+  PluginApi,
+  PromptSection,
+  Registries,
+  Registry,
+  RegistryDraft,
+  Renderer,
+  Row,
+  RuntimeCall,
+  RuntimeVerdict,
+  Setting,
+  SettingDefinition,
+  Side,
+  SideTable,
+  Skill,
+  Transform,
+} from "./contract/plugin.ts";
+
+export type { Head, Receipt, Run, SendReceipt, Session, Sessions } from "./contract/session.ts";
+
+export type {
+  FoldCheckpoint,
+  FoldCheckpoints,
+  ObjectStore,
+  RefStore,
+  SessionIndex,
+  Store,
+  StoreConnection,
+} from "./contract/store.ts";
+
+export type { Durable, ToolDefinition, ToolInvocation } from "./contract/tools.ts";
+
+export type {
+  BrowserApi,
+  EnvironmentProvider,
+  EnvironmentWrap,
+  ExecutionEnv,
+  FileBatch,
+  FilesApi,
+  GitApi,
+  GitHubAccountApi,
+  GitHubApi,
+  Job,
+  Jobs,
+  McpApi,
+  Page,
+  Resources,
+  SnapshotsApi,
+  Workspace,
+  Workspaces,
+  Worktree,
+  WorktreeProvider,
+  WorktreeRemoval,
+} from "./contract/workspace.ts";
+
+export { processEnvironment } from "./util/process-environment.ts";
+
+export { dev } from "./util/dev-log.ts";
+
+export type { DevRow } from "./util/dev-log.ts";
+
+export {
+  clearSpans,
+  enableTracing,
+  followTrace,
+  followedTrace,
+  readSpans,
+  readTraceparent,
+  SPAN_NAMES,
+  startSpan,
+  traced,
+  traceparent,
+  tracing,
+} from "./util/trace.ts";
+
+export type { EndSpan, Span, SpanDetail, SpanName } from "./util/trace.ts";
+
+export { closable, coalesce, forwarded } from "./util/iterable.ts";
+
+export { matchesOutput } from "./util/json-schema.ts";
+
+export { fitsActionOutput, fitsAnswer, fitsState } from "./api/part-schema.ts";
+
+export { callable } from "./util/callable.ts";
+
+export { lineDiff } from "./util/line-diff.ts";

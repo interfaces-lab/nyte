@@ -1,0 +1,328 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { createWriteStream, type WriteStream } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
+
+export type ShellExecution = {
+  readonly kind: "shell";
+  readonly id: string;
+  readonly command: string;
+  readonly startedAt: number;
+  readonly output: string;
+} & (
+  | { readonly state: "running" }
+  | { readonly state: "exited"; readonly exitCode: number; readonly finishedAt: number }
+  | { readonly state: "cancelled"; readonly finishedAt: number }
+  | { readonly state: "signalled"; readonly signal: string; readonly finishedAt: number }
+  | { readonly state: "failed"; readonly message: string; readonly finishedAt: number }
+);
+
+export interface ShellProcess {
+  readonly snapshot: ShellExecution;
+  readonly done: Promise<Exclude<ShellExecution, { readonly state: "running" }>>;
+  cancel(): void;
+}
+
+function listDescendants(root: number): Promise<number[]> {
+  return new Promise((resolve) => {
+    const listing = spawn("ps", ["-A", "-o", "pid=,ppid="], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let text = "";
+    listing.stdout.setEncoding("utf8").on("data", (chunk: string) => (text += chunk));
+    listing.once("error", () => resolve([]));
+    listing.once("close", () => {
+      const children = new Map<number, number[]>();
+
+      for (const line of text.split("\n")) {
+        const [pid, ppid] = line.trim().split(/\s+/u).map(Number);
+
+        if (!pid || !ppid) continue;
+        children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+      }
+
+      const found: number[] = [];
+      const pending = [root];
+
+      for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
+        for (const child of children.get(parent) ?? []) {
+          found.push(child);
+          pending.push(child);
+        }
+      }
+
+      resolve(found);
+    });
+  });
+}
+
+/**
+ * Runs a `!` command through the local shell, keeping a byte-limited output tail (cut back to the
+ * first whole UTF-8 character) with one decoder per stream, so a partial character on stdout never
+ * takes stderr bytes. Its process group is killed on exit without waiting for close, since
+ * descendants can still hold the pipes open; a cancelled command then destroys its output streams
+ * after 100 ms, since output stays open while any descendant, even one out of reach, holds them.
+ */
+export function startLocalShell(options: {
+  readonly command: string;
+  readonly cwd: string;
+  readonly onUpdate: (snapshot: ShellExecution) => void;
+  readonly signal: AbortSignal;
+}): ShellProcess {
+  let snapshot: ShellExecution = {
+    kind: "shell",
+    id: randomUUID(),
+    command: options.command,
+    startedAt: Date.now(),
+    output: "",
+    state: "running",
+  };
+
+  const completion =
+    Promise.withResolvers<Exclude<ShellExecution, { readonly state: "running" }>>();
+
+  const tail = Buffer.alloc(48 * 1024);
+  let cursor = 0;
+  let length = 0;
+  let logPath: string | undefined;
+  let log: WriteStream | undefined;
+  let logClosed: Promise<void> = Promise.resolve();
+  let notification: ReturnType<typeof setTimeout> | undefined;
+  let child: ChildProcess | undefined;
+  let ownedPid: number | undefined;
+  let cleanup: Promise<void> = Promise.resolve();
+  let cancelled = options.signal.aborted;
+  let exited = false;
+  let failure: string | undefined;
+
+  function output() {
+    const bytes =
+      length < tail.length
+        ? tail.subarray(0, length)
+        : Buffer.concat([tail.subarray(cursor), tail.subarray(0, cursor)]);
+
+    let start = 0;
+
+    while (start < bytes.length && (bytes[start] ?? 0) >> 6 === 2) start++;
+    const text = bytes.toString("utf8", start);
+
+    return logPath ? `[Output truncated. Full output: ${logPath}]\n${text}` : text;
+  }
+
+  function publish() {
+    notification = undefined;
+    snapshot = { ...snapshot, output: output() };
+    options.onUpdate(snapshot);
+  }
+
+  function kill(target: number): void {
+    try {
+      process.kill(target, "SIGKILL");
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
+        failure ??= error instanceof Error ? error.message : String(error);
+        child?.kill("SIGKILL");
+      }
+    }
+  }
+
+  function killOwnedProcesses() {
+    const pid = ownedPid;
+    ownedPid = undefined;
+
+    if (pid === undefined) return;
+
+    if (process.platform === "win32") {
+      cleanup = new Promise((resolve) => {
+        const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+
+        killer.once("error", (error) => {
+          failure ??= error.message;
+          child?.kill("SIGKILL");
+        });
+        killer.once("close", (code) => {
+          if (code !== 0 && !exited) {
+            failure ??= "Could not stop the shell process tree.";
+            child?.kill("SIGKILL");
+          }
+
+          resolve();
+        });
+      });
+
+      return;
+    }
+
+    if (exited) {
+      kill(-pid);
+
+      return;
+    }
+
+    cleanup = listDescendants(pid).then((descendants) => {
+      for (const target of [-pid, ...descendants]) kill(target);
+    });
+  }
+
+  function releaseOutput() {
+    child?.stdout?.destroy();
+    child?.stderr?.destroy();
+  }
+
+  function cancel() {
+    if (snapshot.state !== "running") return;
+
+    if (exited) {
+      releaseOutput();
+
+      return;
+    }
+
+    if (cancelled) return;
+    cancelled = true;
+    killOwnedProcesses();
+  }
+
+  function append(text: string) {
+    if (!text) return;
+    const bytes = Buffer.from(text);
+
+    if (!log && length + bytes.length > tail.length && failure === undefined) {
+      logPath = join(tmpdir(), `nyte-shell-${snapshot.id}.log`);
+      log = createWriteStream(logPath, { flags: "wx", mode: 0o600 });
+      logClosed = new Promise((resolve) => log?.once("close", () => resolve()));
+      log.on("error", (error) => {
+        failure ??= error.message;
+        killOwnedProcesses();
+        child?.stdout?.resume();
+        child?.stderr?.resume();
+      });
+      log.on("drain", () => {
+        child?.stdout?.resume();
+        child?.stderr?.resume();
+      });
+      log.write(Buffer.from(tail.subarray(0, length)));
+    }
+
+    if (log && !log.destroyed && !log.write(bytes)) {
+      child?.stdout?.pause();
+      child?.stderr?.pause();
+    }
+
+    if (bytes.length >= tail.length) {
+      bytes.copy(tail, 0, bytes.length - tail.length);
+      cursor = 0;
+    } else {
+      const first = Math.min(bytes.length, tail.length - cursor);
+      bytes.copy(tail, cursor, 0, first);
+      bytes.copy(tail, 0, first);
+      cursor = (cursor + bytes.length) % tail.length;
+    }
+
+    length = Math.min(tail.length, length + bytes.length);
+    notification ??= setTimeout(publish, 100);
+  }
+
+  async function finish(exitCode: number | null, signal: string | null) {
+    exited = true;
+    options.signal.removeEventListener("abort", cancel);
+
+    if (notification !== undefined) clearTimeout(notification);
+    notification = undefined;
+    log?.end();
+    await Promise.all([cleanup, logClosed]);
+    const terminal = { ...snapshot, output: output(), finishedAt: Date.now() };
+    snapshot =
+      failure !== undefined
+        ? { ...terminal, state: "failed", message: failure }
+        : cancelled
+          ? { ...terminal, state: "cancelled" }
+          : signal !== null
+            ? { ...terminal, state: "signalled", signal }
+            : exitCode !== null
+              ? { ...terminal, state: "exited", exitCode }
+              : { ...terminal, state: "failed", message: "Shell exited without an exit status." };
+    completion.resolve(snapshot);
+    options.onUpdate(snapshot);
+  }
+
+  options.signal.addEventListener("abort", cancel, { once: true });
+  queueMicrotask(() => {
+    if (cancelled) {
+      void finish(null, null);
+
+      return;
+    }
+
+    try {
+      const launched =
+        process.platform === "win32"
+          ? spawn(options.command, {
+              cwd: options.cwd,
+              shell: process.env.ComSpec || "cmd.exe",
+              windowsHide: true,
+              stdio: ["ignore", "pipe", "pipe"],
+            })
+          : spawn(
+              "/bin/sh",
+              [
+                "-c",
+                '(read -r _ <&3) & exec 3<&-; exec /bin/sh -c "$1"',
+                "nyte-shell",
+                options.command,
+              ],
+              {
+                cwd: options.cwd,
+                detached: true,
+                stdio: ["ignore", "pipe", "pipe", "pipe"],
+              },
+            );
+
+      child = launched;
+      ownedPid = launched.pid;
+
+      for (const stream of [launched.stdout, launched.stderr]) {
+        if (!stream) continue;
+        const decoder = new StringDecoder("utf8");
+        stream.on("data", (bytes: Buffer) => append(decoder.write(bytes)));
+        stream.once("end", () => append(decoder.end()));
+        stream.once("error", (error) => {
+          failure ??= error.message;
+          killOwnedProcesses();
+        });
+      }
+
+      launched.once("error", (error) => {
+        failure ??= error.message;
+        exited = true;
+        ownedPid = undefined;
+      });
+      launched.once("exit", () => {
+        exited = true;
+        killOwnedProcesses();
+        launched.stdio[3]?.destroy();
+
+        if (cancelled) setTimeout(releaseOutput, 100);
+      });
+      launched.once("close", (exitCode, signal) => {
+        void finish(exitCode, signal);
+      });
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+      void finish(null, null);
+    }
+  });
+
+  return {
+    get snapshot() {
+      return snapshot;
+    },
+    done: completion.promise,
+    cancel,
+  };
+}

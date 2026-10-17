@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import type { ViewedState } from "./changes-viewed.ts";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
 const PATHS = ["src/alpha.ts", "src/beta.ts", "docs/guide.md", "docs/notes.md"] as const;
@@ -33,8 +33,7 @@ export async function run(): Promise<string> {
     PATHS.map((path) => ({
       path,
       status: path.endsWith(".md") ? "added" : "modified",
-      added,
-      removed: 1,
+      stat: { kind: "text", added, removed: 1 },
       viewed: viewed.get(path) ?? "unviewed",
     }));
 
@@ -43,7 +42,6 @@ export async function run(): Promise<string> {
       root.render(
         <ChangesSidebar
           files={files()}
-          visible
           activePath={activePath}
           onRevealPath={(path) => {
             revealed.push(path);

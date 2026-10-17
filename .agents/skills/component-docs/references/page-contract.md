@@ -37,5 +37,5 @@ could appear unchanged in another project's docs, cut it.
 ## Components
 
 Only `<Preview>`, `<TokenTable>`, `<include>`, and demos registered in
-`packages/docs/src/components/cloud/mdx.tsx`. A demo and the code fence beside it must agree. When
+`packages/docs/src/components/components/mdx.tsx`. A demo and the code fence beside it must agree. When
 they disagree, one of them is lying to the reader, and it is usually the fence.

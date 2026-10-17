@@ -1,12 +1,7 @@
-/**
- * The filter cards at the top of the list: one per way of triaging, each with
- * its own count. Counts come from the loaded page, so a card never claims work
- * the list cannot show.
- */
+import { Pressable, Text, View } from "react-native";
 import { SymbolView } from "expo-symbols";
 import type { SFSymbol } from "expo-symbols";
-import { css, html } from "react-strict-dom";
-import { radii, spacing, textStyles, tokens } from "../theme.ts";
+import { radii, spacing, useTheme } from "../theme.ts";
 
 type FilterCard<Filter extends string> = {
   readonly id: Filter;
@@ -25,6 +20,8 @@ export function FilterGrid<Filter extends string>({
   active: Filter;
   onSelect: (filter: Filter) => void;
 }) {
+  const theme = useTheme();
+
   const rows = cards.reduce<FilterCard<Filter>[][]>((acc, card, index) => {
     if (index % 2 === 0) acc.push([card]);
     else acc[acc.length - 1]?.push(card);
@@ -33,62 +30,55 @@ export function FilterGrid<Filter extends string>({
   }, []);
 
   return (
-    <html.div style={styles.grid}>
+    <View
+      style={{
+        gap: spacing.md,
+        paddingHorizontal: spacing.gutter,
+        paddingTop: spacing.lg,
+        paddingBottom: spacing.xl,
+      }}
+    >
       {rows.map((row, index) => (
-        <html.div key={index} style={styles.row}>
+        <View key={index} style={{ flexDirection: "row", gap: spacing.md }}>
           {row.map((card) => (
-            <html.button
+            <Pressable
               key={card.id}
-              aria-label={
+              accessibilityRole="button"
+              accessibilityLabel={
                 card.count === undefined ? card.label : `${card.label}, ${String(card.count)}`
               }
-              aria-pressed={card.id === active}
-              onClick={() => onSelect(card.id)}
-              style={[styles.card, card.id === active && styles.cardActive]}
+              accessibilityState={{ selected: card.id === active }}
+              onPress={() => onSelect(card.id)}
+              style={({ pressed }) => ({
+                flex: 1,
+                minWidth: 0,
+                minHeight: 104,
+                padding: spacing.lg - (card.id === active ? 1 : 0),
+                justifyContent: "space-between",
+                gap: spacing.md,
+                borderRadius: radii.card,
+                borderCurve: "continuous",
+                borderWidth: card.id === active ? 2 : 1,
+                borderColor: card.id === active ? theme.accent : theme.border,
+                backgroundColor: pressed ? theme.raised : theme.surface,
+              })}
             >
               <SymbolView name={card.icon} size={22} tintColor={card.tint} />
-              <html.div style={styles.caption}>
-                <html.span style={[textStyles.body, styles.label]}>{card.label}</html.span>
+              <Text
+                dynamicTypeRamp="body"
+                style={{ fontSize: 17, lineHeight: 22, color: theme.foreground }}
+              >
+                {card.label}
                 {card.count === undefined ? null : (
-                  <html.span style={[textStyles.body, styles.count]}>
-                    {String(card.count)}
-                  </html.span>
+                  <Text style={{ color: theme.muted, fontVariant: ["tabular-nums"] }}>
+                    {` ${String(card.count)}`}
+                  </Text>
                 )}
-              </html.div>
-            </html.button>
+              </Text>
+            </Pressable>
           ))}
-        </html.div>
+        </View>
       ))}
-    </html.div>
+    </View>
   );
 }
-
-const styles = css.create({
-  grid: {
-    display: "flex",
-    flexDirection: "column",
-    gap: spacing.sm,
-    paddingInline: spacing.gutter,
-    paddingBottom: spacing.md,
-  },
-  row: { display: "flex", flexDirection: "row", gap: spacing.sm },
-  card: {
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    gap: spacing.lg,
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 0,
-    padding: spacing.md,
-    borderRadius: radii.control,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: tokens.border,
-    backgroundColor: { default: "transparent", ":active": tokens.fill },
-  },
-  cardActive: { backgroundColor: tokens.fill, borderColor: tokens.foreground },
-  caption: { display: "flex", flexDirection: "row", alignItems: "baseline", gap: spacing.xs },
-  label: { color: tokens.foreground },
-  count: { color: tokens.muted },
-});

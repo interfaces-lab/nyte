@@ -12,7 +12,8 @@ import { ClerkId } from "./clerk.ts";
 import type { Context } from "./context.ts";
 import { Refusal, noContent, requestText } from "./http.ts";
 import { resetRelay, revokeRelay } from "./relay-stub.ts";
-import { applyOwnerStatus, deleteOwner, ownerEnvironmentIds } from "./store.ts";
+import { ownerEnvironmentIds } from "./store/environments.ts";
+import { applyOwnerStatus, deleteOwner } from "./store/owners.ts";
 
 const WEBHOOK_BODY_LIMIT = 65_536;
 

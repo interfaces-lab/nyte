@@ -1,10 +1,10 @@
 /** Where each window-tab place lives in the route, and back. */
 import type { useRouter } from "@tanstack/react-router";
-import { schemas } from "@nyte-ai/protocol";
+import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sameSelection } from "../layout/pane-layout.ts";
-import { isPage } from "./model.ts";
+import { showsPage } from "./model.ts";
 import type { Page, Place } from "./model.ts";
 
 /** The section a page opens on when it has not been moved. */
@@ -55,16 +55,16 @@ export function locationPlace(router: AppRouter): Place | undefined {
   if (segment === undefined) return pathname === "/" ? { kind: "blank" } : undefined;
   const session = decodeURIComponent(segment);
 
-  return Value.Check(schemas.SessionId, session)
+  return Value.Check(sessionIdSchema, session)
     ? { kind: "session", sessionId: session }
     : undefined;
 }
 
 export function samePlaceAt(place: Place, location: Place): boolean {
-  if (isPage(place) || isPage(location)) {
+  if (showsPage(place) || showsPage(location)) {
     return (
-      isPage(place) &&
-      isPage(location) &&
+      showsPage(place) &&
+      showsPage(location) &&
       place.kind === location.kind &&
       pageSection(place) === pageSection(location)
     );
@@ -73,10 +73,11 @@ export function samePlaceAt(place: Place, location: Place): boolean {
   return sameSelection(place, location);
 }
 
+/** Move the route to a place; each move is a history entry, so the web's Back walks them. */
 export function navigateTo(router: AppRouter, place: Place): void {
   switch (place.kind) {
     case "blank":
-      void router.navigate({ to: "/", search: {}, replace: true });
+      void router.navigate({ to: "/", search: {} });
 
       return;
     case "session":
@@ -84,16 +85,15 @@ export function navigateTo(router: AppRouter, place: Place): void {
         to: "/session/$sessionId",
         params: { sessionId: place.sessionId },
         search: {},
-        replace: true,
       });
 
       return;
     case "customize":
-      void router.navigate({ to: "/", search: { customize: pageSection(place) }, replace: true });
+      void router.navigate({ to: "/", search: { customize: pageSection(place) } });
 
       return;
     case "environments":
-      void router.navigate({ to: "/", search: { environment: pageSection(place) }, replace: true });
+      void router.navigate({ to: "/", search: { environment: pageSection(place) } });
 
       return;
     default: {
@@ -102,11 +102,4 @@ export function navigateTo(router: AppRouter, place: Place): void {
       return _exhaustive;
     }
   }
-}
-
-/** Whether the route already shows `selection`, so a route sync is not a stale one. */
-export function routeShows(router: AppRouter, selection: Place): boolean {
-  const location = locationPlace(router);
-
-  return location !== undefined && samePlaceAt(selection, location);
 }

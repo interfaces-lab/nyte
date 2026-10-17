@@ -1,11 +1,12 @@
 import { Button } from "@nyte-ai/ui/button";
 import { props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import type { ReactElement } from "react";
 import { modifierKeyLabel } from "../conversation/composer-keys.ts";
-import { macPlatform } from "../platform.ts";
 import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";
+import { nyte } from "../nyte.ts";
 
 const STARTUP = [
   { value: "new-chat", label: "New chat" },
@@ -22,6 +23,12 @@ const LINK_TARGET = [
   { value: "external", label: "External browser" },
 ] as const;
 
+const WORKSPACE_TRUST = [
+  { value: "ask", label: "Ask first" },
+  { value: "always", label: "Always load" },
+  { value: "never", label: "Never load" },
+] as const;
+
 function TrustedSitesRow(): ReactElement {
   const hosts = useSetting(preferences.trustedLinkHosts);
 
@@ -30,7 +37,7 @@ function TrustedSitesRow(): ReactElement {
       title="Trusted sites"
       description="Sites you chose Always Open for. They skip the prompt"
     >
-      <span {...props(styles.rowValue)}>
+      <span {...props(text.base, styles.rowValue)}>
         {hosts.length === 1 ? "1 site" : `${String(hosts.length)} sites`}
       </span>
       <Button
@@ -45,7 +52,7 @@ function TrustedSitesRow(): ReactElement {
 }
 
 export function GeneralSettings(): ReactElement {
-  const modifier = modifierKeyLabel(macPlatform(undefined));
+  const modifier = modifierKeyLabel(nyte.platform === "darwin");
 
   return (
     <>
@@ -79,6 +86,14 @@ export function GeneralSettings(): ReactElement {
           description="Confirm before a chat link opens in your default browser"
         />
         <TrustedSitesRow />
+      </SettingsSection>
+      <SettingsSection title="Folders">
+        <SelectRow
+          setting={hostSetting("workspaceTrust")}
+          title="A folder's own plugins and skills"
+          description="Found under .nyte, .agents, or .claude. Loading them runs their code. Never load still lets Nyte work in the folder"
+          options={WORKSPACE_TRUST}
+        />
       </SettingsSection>
       <SettingsSection title="System">
         <SwitchRow

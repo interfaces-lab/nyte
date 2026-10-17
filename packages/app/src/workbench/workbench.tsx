@@ -1,10 +1,8 @@
 import { workbenchStyles } from "./workbench.stylex.ts";
-import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
-import { changesFromTurns } from "@nyte-ai/client";
+import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
+import type { SessionId } from "@nyte-ai/sdk";
 import { clientCapabilities } from "../client-actions.ts";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
@@ -12,8 +10,11 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useHostState, useSessionSnapshot } from "../queries.ts";
+import { useHostState, useVcsSnapshot } from "../queries.ts";
+import { changesRepository, scopeFiles } from "./change-scopes.ts";
+import { BranchRow, ChangesRow, SessionStatusRows } from "./rail-status.tsx";
 import {
   activeWorkbenchTab,
   clampWorkbenchWidthToBounds,
@@ -22,9 +23,11 @@ import {
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_WIDTH_DEFAULT,
   workbenchController,
+  workbenchDefaultWidth,
   workbenchScope,
   workbenchTabAvailable,
   workbenchKindLabel,
+  workbenchShowsChat,
   workbenchTabLabel,
   workbenchTabs,
   workbenchViewKey,
@@ -42,15 +45,16 @@ import type {
 } from "./controller";
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
-import { FilesPanel } from "./files-panel.tsx";
+import { Deferred, loadDeferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
-import { TerminalPanel } from "./terminal-panel";
-import { ChangesPanel } from "./changes-panel";
+import { useMountEffect } from "../use-mount-effect.ts";
 
-// Views visited since launch stay mounted so a dev server terminal or a
-// browser page in another folder survives switching away and back, and a
-// trip through Settings that unmounts the stage.
+/**
+ * Views visited since launch stay mounted so a dev server terminal or a
+ * browser page in another folder survives switching away and back, and a
+ * trip through Settings that unmounts the stage.
+ */
 let visitedViews: readonly WorkbenchViewKey[] = Object.freeze([]);
 
 const visitedListeners = new Set<() => void>();
@@ -91,23 +95,20 @@ function RailRow({
   icon,
   label,
   title,
-  children,
   onClick,
 }: {
   readonly icon: IconName;
   readonly label: string;
   readonly title?: string;
-  readonly children?: ReactNode;
   readonly onClick: () => void;
 }): ReactElement {
   return (
-    <Row interactive xstyle={workbenchStyles.railRow}>
+    <Row interactive xstyle={[text.base, workbenchStyles.railRow]}>
       <Row.Primary title={title} onClick={onClick}>
         <Row.Leading>
           <Icon name={icon} size={14} />
         </Row.Leading>
         <Row.Label xstyle={workbenchStyles.railLabel}>{label}</Row.Label>
-        {children}
       </Row.Primary>
     </Row>
   );
@@ -120,31 +121,6 @@ function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElem
       <span {...props(workbenchStyles.doubleChevronTrail)}>
         <Icon name="chevron-right" size={11} />
       </span>
-    </span>
-  );
-}
-
-function RailChangeStats({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
-  const snapshot = useSessionSnapshot(sessionId);
-
-  const stats = changesFromTurns(snapshot.data?.transcript ?? []).reduce(
-    (total, file) => ({ added: total.added + file.added, removed: total.removed + file.removed }),
-    { added: 0, removed: 0 },
-  );
-
-  if (stats.added === 0 && stats.removed === 0) return null;
-
-  return (
-    <span
-      aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
-      {...props(workbenchStyles.railStats)}
-    >
-      {stats.added > 0 && (
-        <span {...props(intent.success, workbenchStyles.railAdded)}>+{stats.added}</span>
-      )}
-      {stats.removed > 0 && (
-        <span {...props(intent.danger, workbenchStyles.railRemoved)}>-{stats.removed}</span>
-      )}
     </span>
   );
 }
@@ -171,6 +147,37 @@ function openWorkbenchTab({
   if (kind === "terminal") void terminalActions.create({ id, workspacePath });
 }
 
+/**
+ * Once the first frame is up, loads the terminal's wasm and then the panels'
+ * chunk, each when the renderer idles, so a first panel opens without them.
+ * Safari has no idle callbacks and loads them on first open instead.
+ */
+function prefetchWorkbench(): () => void {
+  if (!("requestIdleCallback" in window)) return () => undefined;
+
+  let idle = 0;
+  let stopped = false;
+
+  const loadPanels = (): void => {
+    if (!stopped) idle = requestIdleCallback(() => void loadDeferred("workbench").catch(() => {}));
+  };
+
+  const frame = requestAnimationFrame(() => {
+    idle = requestIdleCallback(() => {
+      void loadDeferred("ghostty")
+        .then(({ loadGhostty }) => loadGhostty())
+        .catch(() => {})
+        .finally(loadPanels);
+    });
+  });
+
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(frame);
+    cancelIdleCallback(idle);
+  };
+}
+
 function FloatingWorkbenchPanel({
   viewKey,
   view,
@@ -190,44 +197,79 @@ function FloatingWorkbenchPanel({
 }): ReactElement {
   const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);
+  const project = scope.kind === "project";
+  const vcs = useVcsSnapshot(project);
+  const snapshot = project ? vcs.data : undefined;
+  const repository = changesRepository(snapshot);
+  const tools = workbenchTabs(scope, capabilities);
+  const head = snapshot?.kind === "repository" ? snapshot : undefined;
+  const changesShown = repository !== undefined && tools.includes("changes");
+  const statusShown = sessionId !== undefined || head !== undefined;
 
   const visibleTabs = view.tabs.filter((tab) =>
     workbenchTabAvailable(scope, tab.kind, capabilities),
   );
 
+  const collapse = (
+    <Button
+      size="sm"
+      iconOnly
+      aria-label="Collapse workbench"
+      xstyle={workbenchStyles.chevronLayout}
+      onClick={() => workbenchController.actions.toggleCollapsed({ view: viewKey })}
+    >
+      <DoubleChevron />
+    </Button>
+  );
+
   return (
     <nav aria-label="Workbench navigation" {...props(workbenchStyles.rail)}>
-      <section {...props(workbenchStyles.railSection)}>
-        <div {...props(workbenchStyles.railHeading)}>
-          <span {...props(workbenchStyles.railHeadingText)}>Open Tabs</span>
-          <Button
-            size="sm"
-            iconOnly
-            aria-label="Collapse workbench"
-            xstyle={workbenchStyles.chevronLayout}
-            onClick={() => workbenchController.actions.toggleCollapsed({ view: viewKey })}
-          >
-            <DoubleChevron />
-          </Button>
-        </div>
-        {visibleTabs.map((tab) => {
-          const file =
-            tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
-
-          const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
-          const label = file?.displayPath ?? terminal?.title ?? workbenchTabLabel(tab);
-
-          return (
-            <RailRow
-              key={tab.id}
-              icon={tabIcons[tab.kind]}
-              label={label}
-              title={file?.displayPath ?? terminal?.cwd}
-              onClick={() => workbenchController.actions.activateTab({ view: viewKey, id: tab.id })}
+      {statusShown && (
+        <section {...props(workbenchStyles.railSection)}>
+          {sessionId !== undefined && (
+            <SessionStatusRows sessionId={sessionId} actions={collapse} />
+          )}
+          {head !== undefined && (
+            <BranchRow head={head} actions={sessionId === undefined ? collapse : undefined} />
+          )}
+          {changesShown && (
+            <ChangesRow
+              files={scopeFiles(snapshot, "uncommitted")?.length ?? 0}
+              onOpen={() =>
+                openWorkbenchTab({ view: viewKey, kind: "changes", workspacePath, capabilities })
+              }
             />
-          );
-        })}
-      </section>
+          )}
+        </section>
+      )}
+
+      {(visibleTabs.length > 0 || !statusShown) && (
+        <section {...props(workbenchStyles.railSection)}>
+          <div {...props(workbenchStyles.railHeading)}>
+            <span {...props(workbenchStyles.railHeadingText)}>Open Tabs</span>
+            {!statusShown && collapse}
+          </div>
+          {visibleTabs.map((tab) => {
+            const file =
+              tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
+
+            const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
+            const label = file?.displayPath ?? terminal?.title ?? workbenchTabLabel(tab);
+
+            return (
+              <RailRow
+                key={tab.id}
+                icon={tabIcons[tab.kind]}
+                label={label}
+                title={file?.displayPath ?? terminal?.cwd}
+                onClick={() =>
+                  workbenchController.actions.activateTab({ view: viewKey, id: tab.id })
+                }
+              />
+            );
+          })}
+        </section>
+      )}
 
       <section {...props(workbenchStyles.railSection)}>
         <div {...props(workbenchStyles.railHeading)}>
@@ -235,18 +277,16 @@ function FloatingWorkbenchPanel({
             {workspaceName === undefined ? "On This Mac" : `On ${workspaceName}`}
           </span>
         </div>
-        {workbenchTabs(scope, capabilities).map((kind) => (
-          <RailRow
-            key={kind}
-            icon={tabIcons[kind]}
-            label={workbenchKindLabel(kind)}
-            onClick={() => openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })}
-          >
-            {kind === "changes" && sessionId !== undefined && (
-              <RailChangeStats sessionId={sessionId} />
-            )}
-          </RailRow>
-        ))}
+        {tools
+          .filter((kind) => !(changesShown && kind === "changes"))
+          .map((kind) => (
+            <RailRow
+              key={kind}
+              icon={tabIcons[kind]}
+              label={workbenchKindLabel(kind)}
+              onClick={() => openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })}
+            />
+          ))}
       </section>
     </nav>
   );
@@ -311,65 +351,83 @@ function PanelContent({
     case "file":
     case "files":
       return (
-        <FilesPanel
-          key={uiFontSize}
-          viewKey={viewKey}
-          visible={visible}
-          workspaceActive={workspaceActive}
-        />
+        <Deferred entry="workbench">
+          {({ FilesPanel }) => (
+            <FilesPanel
+              key={uiFontSize}
+              viewKey={viewKey}
+              visible={visible}
+              workspaceActive={workspaceActive}
+            />
+          )}
+        </Deferred>
       );
     case "changes":
       return (
-        <ChangesPanel
-          visible={visible}
-          sessionId={sessionId}
-          scope={tab.scope}
-          selectedPath={tab.selectedPath ?? undefined}
-          revealPathRevision={tab.pathRevealRevision}
-          scrollTop={tab.scrollTop}
-          fileTreeVisible={sidebarVisible}
-          onScopeChange={(scope) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: {
-                scope,
-                selectedPath: null,
-                pathRevealRevision: tab.pathRevealRevision,
-                scrollTop: 0,
-              },
-            })
-          }
-          onToggleFileTree={onToggleSidebar}
-          onSelectPath={(path) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: { ...tab, selectedPath: path ?? null },
-            })
-          }
-          onRevealPath={(path) =>
-            workbenchController.actions.updateTab({
-              view: viewKey,
-              id: tab.id,
-              kind: "changes",
-              patch: {
-                ...tab,
-                selectedPath: path,
-                pathRevealRevision: tab.pathRevealRevision + 1,
-              },
-            })
-          }
-          onScrollTop={(scrollTop) =>
-            workbenchController.actions.scrollTab({
-              view: viewKey,
-              id: tab.id,
-              scrollTop: Math.max(0, scrollTop),
-            })
-          }
-        />
+        <Deferred entry="workbench">
+          {({ ChangesPanel }) => (
+            <ChangesPanel
+              visible={visible}
+              sessionId={sessionId}
+              scope={tab.scope}
+              selectedPath={tab.selectedPath ?? undefined}
+              revealPathRevision={tab.pathRevealRevision}
+              scrollTop={tab.scrollTop}
+              fileTreeVisible={sidebarVisible}
+              onScopeChange={(scope) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: {
+                    scope,
+                    selectedPath: null,
+                    pathRevealRevision: tab.pathRevealRevision,
+                    scrollTop: 0,
+                  },
+                })
+              }
+              onToggleFileTree={onToggleSidebar}
+              onSelectPath={(path) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: { ...tab, selectedPath: path ?? null },
+                })
+              }
+              onRevealPath={(path) =>
+                workbenchController.actions.updateTab({
+                  view: viewKey,
+                  id: tab.id,
+                  kind: "changes",
+                  patch: {
+                    ...tab,
+                    selectedPath: path,
+                    pathRevealRevision: tab.pathRevealRevision + 1,
+                  },
+                })
+              }
+              onScrollTop={(scrollTop) =>
+                workbenchController.actions.scrollTab({
+                  view: viewKey,
+                  id: tab.id,
+                  scrollTop: Math.max(0, scrollTop),
+                })
+              }
+              onOpenLink={
+                nyte.host.browser === undefined
+                  ? undefined
+                  : (url) =>
+                      workbenchController.actions.openTab({
+                        view: viewKey,
+                        tab: { kind: "browser", url },
+                        activate: true,
+                      })
+              }
+            />
+          )}
+        </Deferred>
       );
     case "browser":
       return (
@@ -377,6 +435,7 @@ function PanelContent({
           surface={tab.id}
           visible={visible}
           historyVisible={sidebarVisible}
+          onToggleHistory={onToggleSidebar}
           url={tab.url}
           onUrlChange={(url) =>
             workbenchController.actions.updateTab({
@@ -401,7 +460,13 @@ function PanelContent({
         />
       );
     case "terminal":
-      return <TerminalPanel tabId={tab.id} workspacePath={workspacePath} visible={visible} />;
+      return (
+        <Deferred entry="workbench">
+          {({ TerminalPanel }) => (
+            <TerminalPanel tabId={tab.id} workspacePath={workspacePath} visible={visible} />
+          )}
+        </Deferred>
+      );
     default: {
       const _exhaustive: never = tab;
 
@@ -437,8 +502,10 @@ function WorkbenchViewHost({
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
   const compact = view.collapsed === "compact" || bounds.kind === "overlay";
-  const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
-  const defaultWidth = clampWorkbenchWidthToBounds(stageWidth / 2, bounds);
+  const maximized = view.layout.kind === "maximized";
+  const chatShowing = workbenchShowsChat(view.layout);
+  const panelWidth = maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
+  const defaultWidth = clampWorkbenchWidthToBounds(workbenchDefaultWidth(stageWidth), bounds);
 
   const resetWidth = useCallback(
     () => workbenchController.actions.setWidth({ view: viewKey, width: defaultWidth }),
@@ -506,10 +573,19 @@ function WorkbenchViewHost({
 
   const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const panelVisible = current && view.expanded;
+  const panelShown = panelVisible && !chatShowing;
+  const panelHidden = !current || (panelVisible && chatShowing);
   useLayoutEffect(() => {
     const panel = panelRef.current;
 
     if (!panelVisible || panel === null) return;
+
+    if (chatShowing) {
+      setActiveWidth(stageWidth);
+
+      return;
+    }
+
     const update = (): void => setActiveWidth(panel.getBoundingClientRect().width);
     update();
     const observer = new ResizeObserver(update);
@@ -520,7 +596,7 @@ function WorkbenchViewHost({
       observer.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [panelVisible, panelWidth]);
+  }, [chatShowing, panelVisible, panelWidth, stageWidth]);
 
   const mountedTabs = view.tabs.filter((tab) =>
     workbenchTabAvailable(scope, tab.kind, capabilities),
@@ -530,7 +606,7 @@ function WorkbenchViewHost({
   const panelTabs = mountedTabs.filter((tab) => tab.kind !== "file" && tab.kind !== "files");
 
   const fileVisible =
-    panelVisible &&
+    panelShown &&
     (activeTab?.kind === "file" || activeTab?.kind === "files") &&
     fileTab !== undefined;
 
@@ -567,17 +643,16 @@ function WorkbenchViewHost({
   return (
     <section
       ref={panelRef}
-      hidden={!current}
-      aria-hidden={!current}
-      inert={!current ? true : undefined}
+      hidden={panelHidden}
+      aria-hidden={panelHidden}
+      inert={panelHidden ? true : undefined}
       {...props(
         workbenchStyles.panel,
+        panelVisible && workbenchStyles.edge,
         panelVisible && workbenchStyles.panelOpen,
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
-        panelVisible &&
-          (view.maximized || bounds.kind === "overlay") &&
-          workbenchStyles.panelOverlay,
-        !current && workbenchStyles.panelHidden,
+        panelVisible && (maximized || bounds.kind === "overlay") && workbenchStyles.panelOverlay,
+        panelHidden && workbenchStyles.panelHidden,
       )}
       style={panelVisible ? { width: panelWidth } : undefined}
     >
@@ -605,7 +680,7 @@ function WorkbenchViewHost({
         hidden={!panelVisible}
         {...props(workbenchStyles.panelBody, !panelVisible && workbenchStyles.panelHidden)}
       >
-        {panelVisible && !view.maximized && (
+        {panelVisible && !maximized && (
           <div
             role="separator"
             tabIndex={0}
@@ -615,7 +690,7 @@ function WorkbenchViewHost({
             aria-valuemax={Math.round((bounds.max / stageWidth) * 100)}
             aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
             aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
-            title="Drag to resize. Double-click for equal panels."
+            title="Drag to resize. Double-click to reset."
             {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
             onKeyDown={resizeWithKeyboard}
             onPointerDown={beginResize}
@@ -626,21 +701,22 @@ function WorkbenchViewHost({
           />
         )}
         {fileTab !== undefined && renderSlot(fileTab, fileVisible, "files")}
-        {panelTabs.map((tab) => renderSlot(tab, panelVisible && activeTab?.id === tab.id, tab.id))}
-        {panelVisible && activeTab === null && (
+        {panelTabs.map((tab) => renderSlot(tab, panelShown && activeTab?.id === tab.id, tab.id))}
+        {panelShown && activeTab === null && (
           <div {...props(workbenchStyles.launcher)}>
             {workbenchTabs(scope, capabilities).map((kind) => (
-              <Row
-                key={kind}
-                variant="nav"
-                xstyle={workbenchStyles.launcherCard}
-                onClick={() =>
-                  openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })
-                }
-              >
-                <Icon name={tabIcons[kind]} size={20} />
-                {workbenchKindLabel(kind)}
-              </Row>
+              <div key={kind} {...props(workbenchStyles.launcherFrame)}>
+                <Row
+                  variant="nav"
+                  xstyle={workbenchStyles.launcherCard}
+                  onClick={() =>
+                    openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })
+                  }
+                >
+                  <Icon name={tabIcons[kind]} size={20} />
+                  {workbenchKindLabel(kind)}
+                </Row>
+              </div>
             ))}
           </div>
         )}
@@ -665,6 +741,8 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
 
   const viewKey = workbenchViewKey(workspacePath);
   const snapshot = useWorkbenchSnapshot();
+
+  useMountEffect(prefetchWorkbench);
 
   const visited = useSyncExternalStore(
     subscribeVisited,
@@ -708,7 +786,7 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
             scope={current ? workbenchScope(viewWorkspacePath) : { kind: "pathless" }}
             sessionId={current ? sessionId : undefined}
             stageWidth={stageWidth}
-            workspaceName={host.data?.workspace?.name}
+            workspaceName={host.data.workspace?.name}
             capabilities={capabilities}
             workspacePath={viewWorkspacePath ?? null}
           />

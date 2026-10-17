@@ -1,18 +1,17 @@
-import { createNyteClient, type NyteClient } from "@nyte-ai/client";
-import { schemas, type SessionId } from "@nyte-ai/protocol";
+import { sdk, type Connection, type SessionId, type SessionView } from "@nyte-ai/sdk";
 import { experimental_streamedQuery, useQuery } from "@tanstack/react-query";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 import { CanvasSnapshotSchema } from "./wire";
 
-const SessionSchema = Type.Object({ sessionId: schemas.SessionId, model: Type.String() });
+const SessionSchema = Type.Object({ sessionId: Type.String(), model: Type.String() });
 
 const ErrorSchema = Type.Object({ error: Type.String() });
 
 export async function canvasRequest<T extends TSchema>(
   schema: T,
   path: string,
-  body?: { readonly title: string; readonly source: string } | Record<string, never>,
+  body?: { readonly title: string; readonly source: string } | { readonly prompt: string },
 ): Promise<Static<T>> {
   const response = await fetch(`/core/canvas${path}`, {
     method: body === undefined ? "GET" : "POST",
@@ -31,44 +30,41 @@ export async function canvasRequest<T extends TSchema>(
 export const compileDemo = (input: { readonly title: string; readonly source: string }) =>
   canvasRequest(CanvasSnapshotSchema, "/compile", input);
 
-export const openCanvasSession = () => canvasRequest(SessionSchema, "/session", {});
+/** Start a live canvas chat with its first message. */
+export const startCanvasSession = (prompt: string) =>
+  canvasRequest(SessionSchema, "/session", { prompt });
 
-let client: NyteClient | undefined;
+let client: Promise<Connection> | undefined;
 
-export function canvasClient(): NyteClient {
-  client ??= createNyteClient({ baseUrl: new URL("/core/nyte", location.origin).href });
+export function canvasClient(): Promise<Connection> {
+  client ??= sdk.connect({
+    url: new URL("/core/nyte", location.origin).href,
+    credentials: { kind: "custom", headers: () => ({}) },
+  });
 
   return client;
 }
 
-async function* emptyStream() {}
+async function* canvasViews(sessionId: SessionId) {
+  const connection = await canvasClient();
+
+  yield* connection.session(sessionId).watch();
+}
 
 export function useCanvasSession(sessionId: SessionId | undefined) {
-  const events = useQuery({
-    queryKey: ["canvas", "events", sessionId],
+  const view = useQuery({
+    queryKey: ["canvas", "session", sessionId],
     queryFn: experimental_streamedQuery({
-      streamFn: ({ signal }) =>
-        sessionId === undefined
-          ? emptyStream()
-          : canvasClient().watch({ sessionId, live: true, signal }),
-      reducer: (version: number) => version + 1,
-      initialValue: 0,
-      refetchMode: "append",
+      streamFn: () => (sessionId === undefined ? emptyStream() : canvasViews(sessionId)),
+      reducer: (_previous: SessionView | undefined, next: SessionView) => next,
+      initialValue: undefined,
+      refetchMode: "replace",
     }),
     enabled: sessionId !== undefined,
     retry: 3,
   });
 
-  const snapshot = useQuery({
-    queryKey: ["canvas", "session", sessionId, events.data ?? 0],
-    queryFn: () =>
-      sessionId === undefined
-        ? Promise.resolve(undefined)
-        : canvasClient().sessions.snapshot({ sessionId }),
-    enabled: sessionId !== undefined,
-    placeholderData: (previous) => previous,
-    staleTime: 0,
-  });
-
-  return { snapshot: snapshot.data, error: events.error ?? snapshot.error };
+  return { view: view.data, error: view.error };
 }
+
+async function* emptyStream(): AsyncGenerator<SessionView> {}

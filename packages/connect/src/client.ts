@@ -7,17 +7,24 @@
  */
 import { Value } from "typebox/value";
 import type { TSchema, Static } from "typebox";
-import { isBrokerOrigin } from "./encoding.ts";
+import { namesBrokerOrigin } from "./encoding.ts";
 import {
   BROKER_ROUTES,
   EnrollResponse,
   EnvironmentList,
   ErrorBody,
+  LinkTransactionLookup,
+  LinkTransactionStatus,
   REQUEST_TIMEOUT_MS,
   RESPONSE_LIMIT_BYTES,
   UUID_PATTERN,
 } from "./schemas.ts";
-import type { EnrollRequest, ErrorCode } from "./schemas.ts";
+import type {
+  EnrollRequest,
+  ErrorCode,
+  LinkTransactionApproveRequest,
+  LinkTransactionLookupRequest,
+} from "./schemas.ts";
 
 export type BrokerFailure =
   /** No signed-in Clerk session to authenticate with. */
@@ -40,7 +47,7 @@ export class BrokerError extends Error {
   }
 }
 
-export interface BrokerClientOptions {
+interface BrokerClientOptions {
   /** `CONNECT_ORIGIN`, a canonical `https://` origin such as `https://connect.example.com`. */
   readonly origin: string;
   /**
@@ -81,6 +88,21 @@ export interface BrokerClient {
     readonly environmentId: string;
     readonly signal?: AbortSignal;
   }): Promise<void>;
+  /** What a link code names: the host's own name and the fingerprint to compare. Creates and binds nothing. */
+  lookupLinkTransaction(input: {
+    readonly userCode: string;
+    readonly signal?: AbortSignal;
+  }): Promise<LinkTransactionLookup>;
+  /** Bind this account to the key whose fingerprint the user compared. */
+  approveLinkTransaction(input: {
+    readonly transactionId: string;
+    readonly fingerprint: string;
+    readonly signal?: AbortSignal;
+  }): Promise<LinkTransactionStatus>;
+  denyLinkTransaction(input: {
+    readonly transactionId: string;
+    readonly signal?: AbortSignal;
+  }): Promise<LinkTransactionStatus>;
 }
 
 const UUID = new RegExp(UUID_PATTERN, "u");
@@ -179,8 +201,16 @@ async function boundedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+/**
+ * A broker client bound to `options.origin`. Each request's time bound starts before the session
+ * token lookup, so a stalled Clerk cannot hold a call past its timeout or its caller's abort, and a
+ * token that arrives as the bound runs out is not sent. The bound uses timers and listeners rather
+ * than `AbortSignal.timeout`/`any`, which Hermes may lack. The request init is built apart from the
+ * call so runtimes whose `RequestInit` lacks `credentials` (Workers) still accept it; phones and
+ * browsers send no cookies with it.
+ */
 export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
-  if (!isBrokerOrigin(options.origin))
+  if (!namesBrokerOrigin(options.origin))
     throw new Error("The connect origin must be a canonical https:// origin.");
   const send = options.fetch ?? fetch;
   const { origin } = options;
@@ -191,9 +221,6 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
     readonly body?: unknown;
     readonly signal?: AbortSignal;
   }): Promise<{ readonly status: number; readonly body: unknown }> => {
-    // The bound starts before the token lookup, so a stalled Clerk cannot hold a
-    // call past its timeout or its caller's abort. Timers and listeners rather
-    // than AbortSignal.timeout/any, which Hermes may lack.
     const controller = new AbortController();
     const abort = () => controller.abort();
     const timer = setTimeout(abort, REQUEST_TIMEOUT_MS);
@@ -213,13 +240,10 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
 
       if (token === null) throw new BrokerError({ kind: "signed_out" });
 
-      // A token that arrived as the bound ran out is not sent.
       if (controller.signal.aborted) throw new BrokerError({ kind: "network" });
       const headers = new Headers({ accept: "application/json", authorization: `Bearer ${token}` });
 
       if (input.body !== undefined) headers.set("content-type", "application/json");
-      // Built apart from the call so runtimes whose `RequestInit` lacks `credentials`
-      // (Workers) still accept it; phones and browsers send no cookies with it.
       const init = {
         method: input.method,
         headers,
@@ -324,6 +348,40 @@ export function createBrokerClient(options: BrokerClientOptions): BrokerClient {
         await request({
           method: "DELETE",
           path: BROKER_ROUTES.environment(id(environmentId)),
+          signal,
+        }),
+      );
+    },
+
+    async lookupLinkTransaction({ userCode, signal }) {
+      const body: LinkTransactionLookupRequest = { userCode };
+
+      return parse(
+        LinkTransactionLookup,
+        await request({ method: "POST", path: BROKER_ROUTES.linkTransactionLookup, body, signal }),
+      );
+    },
+
+    async approveLinkTransaction({ transactionId, fingerprint, signal }) {
+      const body: LinkTransactionApproveRequest = { fingerprint };
+
+      return parse(
+        LinkTransactionStatus,
+        await request({
+          method: "POST",
+          path: BROKER_ROUTES.linkTransactionApprove(id(transactionId)),
+          body,
+          signal,
+        }),
+      );
+    },
+
+    async denyLinkTransaction({ transactionId, signal }) {
+      return parse(
+        LinkTransactionStatus,
+        await request({
+          method: "POST",
+          path: BROKER_ROUTES.linkTransactionDeny(id(transactionId)),
           signal,
         }),
       );

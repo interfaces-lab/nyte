@@ -1,5 +1,3 @@
-"use client";
-
 import { AlertDialog, ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Dialog } from "@nyte-ai/ui/dialog";

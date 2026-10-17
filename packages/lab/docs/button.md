@@ -62,8 +62,7 @@ From `tokens.stylex.ts`; fine pointer, coarse in brackets.
 | `lg` | 32 (44) | 10 | 12 | 8 | 8 | base 13 / 18 | 14 / 16 |
 | `xl` | 36 (48) | 12 | 12 | 10 | 8 | base 13 / 18 | 16 / 18 |
 
-`md` is the settings row control height (`--nyte-settings-control-height`
-already points at it). `sm` is for dense toolbars and tray rows. `xl` is the
+`md` is the settings row control height. `sm` is for dense toolbars and tray rows. `xl` is the
 composer send.
 
 ### `tone`

@@ -18,8 +18,9 @@
  * The host folds days in its own time zone; the renderer shares the machine,
  * so `localDay` here is the same calendar as the one that wrote the report.
  */
-import type { SessionId } from "@nyte-ai/protocol";
-import type { AccountUsage, UsageSnapshot } from "../bridge.ts";
+import type { SessionId } from "@nyte-ai/sdk";
+import type { ProviderUsage } from "@nyte-ai/sdk";
+import type { UsageSnapshot } from "../bridge.ts";
 import type { UsageReport, UsageTotals, UsageWindow } from "../nyte.ts";
 
 /**
@@ -50,32 +51,36 @@ const WEEKLY_ABOVE_DAYS = 120;
 
 type UsageGrain = "day" | "week";
 
-/** One bucket of the trend: when it is, what it cost, and the tokens behind it. */
 export interface UsagePoint {
+  readonly key: string;
   readonly label: string;
-  readonly cost: number;
-  readonly input: number;
-  readonly output: number;
-  readonly cached: number;
+  readonly value: number;
 }
 
-/**
- * One ranked row, formatted. `value` says why there is no amount rather than
- * printing `$0.00`, because a history nobody could read is not free usage.
- */
+const LOW_CACHE_HIT = 0.5;
+
+export interface UsageCache {
+  readonly hit: string;
+  readonly saved: string | undefined;
+  readonly tone: "plain" | "low" | "absent";
+}
+
 export interface UsageRow {
   readonly key: string;
   readonly label: string;
   readonly meta: string;
-  readonly value:
-    | { readonly kind: "cost"; readonly text: string }
-    | { readonly kind: "absent"; readonly text: string };
+  readonly cache: UsageCache;
+  readonly trend: readonly number[] | undefined;
+  readonly value: { readonly text: string; readonly absent: boolean };
   /** Of the window's cost, or of its tokens when nothing in it was priced. */
   readonly share: number;
 }
 
+export type UsageMeasure = "cost" | "tokens";
+
 export interface UsageDerived {
   readonly grain: UsageGrain;
+  readonly measure: UsageMeasure;
   readonly from: string;
   readonly to: string;
   readonly points: readonly UsagePoint[];
@@ -97,7 +102,7 @@ const EMPTY_TOTALS: UsageTotals = {
   reasoning: 0,
   tokens: 0,
   cost: 0,
-  turns: 0,
+  cacheSavings: 0,
 };
 
 function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
@@ -109,13 +114,9 @@ function addTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
     reasoning: left.reasoning + right.reasoning,
     tokens: left.tokens + right.tokens,
     cost: left.cost + right.cost,
-    turns: left.turns + right.turns,
+    cacheSavings: left.cacheSavings + right.cacheSavings,
   };
 }
-
-// ---------------------------------------------------------------------------
-// formatting
-// ---------------------------------------------------------------------------
 
 function group(digits: string): string {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
@@ -142,10 +143,6 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000_000).toFixed(2)}B`;
 }
 
-function formatCount(value: number): string {
-  return group(String(Math.round(value)));
-}
-
 export function formatPercent(fraction: number): string {
   if (fraction <= 0) return "0%";
 
@@ -155,11 +152,11 @@ export function formatPercent(fraction: number): string {
 }
 
 function plural(count: number, noun: string): string {
-  return `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
+  return `${group(String(Math.round(count)))} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 /** `YYYY-MM-DD` for a local day, matching the calendar the host folded with. */
-export function localDay(at: number): string {
+function localDay(at: number): string {
   const date = new Date(at);
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -168,7 +165,7 @@ export function localDay(at: number): string {
 }
 
 /** Local midnight, so the arithmetic below stays on calendar days across a DST shift. */
-export function dayStart(day: string): number {
+function dayStart(day: string): number {
   return new Date(
     Number(day.slice(0, 4)),
     Number(day.slice(5, 7)) - 1,
@@ -176,18 +173,22 @@ export function dayStart(day: string): number {
   ).getTime();
 }
 
-export function shiftDay(day: string, delta: number): string {
+function shiftDay(day: string, delta: number): string {
   const date = new Date(dayStart(day));
   date.setDate(date.getDate() + delta);
 
   return localDay(date.getTime());
 }
 
-export function dayLabel(day: string): string {
+function dayLabel(day: string): string {
   return new Date(dayStart(day)).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
   });
+}
+
+export function spanLabel(from: string, to: string): string {
+  return from === to ? dayLabel(to) : `${dayLabel(from)} – ${dayLabel(to)}`;
 }
 
 /** When a read happened, stated absolutely so the page needs no ticking clock. */
@@ -202,43 +203,59 @@ export function timeLabel(at: number): string {
 export function costChange(
   current: number,
   previous: number | undefined,
+  range: UsageRange,
 ): { readonly direction: "up" | "down" | "flat"; readonly label: string } | undefined {
-  if (previous === undefined) return undefined;
+  if (previous === undefined || range === "all") return undefined;
+  const prior = `prior ${USAGE_RANGE_LABELS[range].toLocaleLowerCase()}`;
 
-  if (previous === 0) return current === 0 ? undefined : { direction: "up", label: "New" };
+  if (previous === 0)
+    return current === 0 ? undefined : { direction: "up", label: `None in the ${prior}` };
   const change = (current - previous) / previous;
 
-  if (Math.abs(change) < 0.005) return { direction: "flat", label: "No change" };
+  if (Math.abs(change) < 0.005) return { direction: "flat", label: `No change vs ${prior}` };
 
   return {
     direction: change > 0 ? "up" : "down",
-    label: `${change > 0 ? "+" : "−"}${formatPercent(Math.abs(change))}`,
+    label: `${change > 0 ? "↑" : "↓"} ${formatPercent(Math.abs(change))} vs ${prior}`,
   };
 }
 
-/** Cache reads as a share of all prompt tokens, including newly written entries. */
-function cacheHitRate(totals: UsageTotals): number {
-  const read = totals.input + totals.cacheRead + totals.cacheWrite;
-
-  return read === 0 ? 0 : totals.cacheRead / read;
+interface CacheCounts {
+  readonly prompt: number;
+  readonly cacheRead: number;
+  readonly savings: number;
+  readonly cost: number;
 }
 
-/** The sentence under a total: what the number is, and what it is made of. */
+const NO_CACHE: UsageCache = { hit: "—", saved: undefined, tone: "absent" };
+
+function promptTokens(tokens: Pick<UsageTotals, "input" | "cacheRead" | "cacheWrite">): number {
+  return tokens.input + tokens.cacheRead + tokens.cacheWrite;
+}
+
+function describeCache(counts: CacheCounts): UsageCache {
+  if (counts.prompt === 0) return NO_CACHE;
+  const hit = counts.cacheRead / counts.prompt;
+
+  return {
+    hit: formatPercent(hit),
+    saved: counts.savings > 0 ? `saved ${formatUsd(counts.savings)}` : undefined,
+    tone: counts.cost > 0 && hit < LOW_CACHE_HIT ? "low" : "plain",
+  };
+}
+
 export function describeTotals(totals: UsageTotals): string {
-  return `API estimate · ${formatTokens(totals.tokens)} tokens · ${plural(totals.turns, "request")} · ${formatPercent(cacheHitRate(totals))} of context from cache`;
-}
+  const cache = describeCache({
+    prompt: promptTokens(totals),
+    cacheRead: totals.cacheRead,
+    savings: totals.cacheSavings,
+    cost: totals.cost,
+  });
 
-function cost(dollars: number): UsageRow["value"] {
-  return { kind: "cost", text: formatUsd(dollars) };
-}
+  if (cache.tone === "absent") return `${formatTokens(totals.tokens)} tokens`;
 
-function absent(text: string): UsageRow["value"] {
-  return { kind: "absent", text };
+  return [`${cache.hit} cache hit`, cache.saved].filter((part) => part !== undefined).join(" · ");
 }
-
-// ---------------------------------------------------------------------------
-// the window
-// ---------------------------------------------------------------------------
 
 /** The window a range asks the host for. `all` cannot name its own start. */
 export function usageWindow(range: UsageRange, now: number): UsageWindow {
@@ -311,25 +328,33 @@ function chatLabel(name: string | undefined): string {
 interface Spend {
   cost: number;
   tokens: number;
+  cacheRead: number;
+  prompt: number;
+  savings: number;
+  readonly costs: number[];
+  readonly tokensBy: number[];
 }
 
-interface ModelSpend extends Spend {
-  readonly model: string;
-  readonly provider: string;
-  turns: number;
+function emptySpend(buckets: number): Spend {
+  return {
+    cost: 0,
+    tokens: 0,
+    cacheRead: 0,
+    prompt: 0,
+    savings: 0,
+    costs: Array.from({ length: buckets }, () => 0),
+    tokensBy: Array.from({ length: buckets }, () => 0),
+  };
 }
 
-interface FolderSpend extends Spend {
-  readonly path: string | null;
-}
-
-function bump<K, V extends Spend>(into: Map<K, V>, key: K, seed: V, totals: UsageTotals): V {
-  const found = into.get(key) ?? seed;
-  found.cost += totals.cost;
-  found.tokens += totals.tokens;
-  into.set(key, found);
-
-  return found;
+function addSpend(spend: Spend, totals: UsageTotals, bucket: number): void {
+  spend.cost += totals.cost;
+  spend.tokens += totals.tokens;
+  spend.cacheRead += totals.cacheRead;
+  spend.prompt += promptTokens(totals);
+  spend.savings += totals.cacheSavings;
+  spend.costs[bucket] = (spend.costs[bucket] ?? 0) + totals.cost;
+  spend.tokensBy[bucket] = (spend.tokensBy[bucket] ?? 0) + totals.tokens;
 }
 
 /**
@@ -339,6 +364,10 @@ function bump<K, V extends Spend>(into: Map<K, V>, key: K, seed: V, totals: Usag
  * read. A window that reaches back before the first recorded day still spans
  * the days it asked for: the range is a question about a period, and an idle
  * stretch inside it is an answer, not an absence to be cropped away.
+ *
+ * Rows rank by cost while anything is priced; a free local model still ranks
+ * by tokens. Two checkouts can end in the same directory name, so a repeated
+ * leaf earns the segment above it; unique names stay short.
  */
 export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDerived {
   const to = window.untilDay;
@@ -346,12 +375,15 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
   const prior = priorWindow(from, to, window.sinceDay !== null);
   const days = daySpan(from, to);
   const grain: UsageGrain = days.length > WEEKLY_ABOVE_DAYS ? "week" : "day";
+  const bucketSize = grain === "day" ? 1 : 7;
+  const bucketCount = Math.ceil(days.length / bucketSize);
+  const bucketOf = new Map(days.map((day, index) => [day, Math.floor(index / bucketSize)]));
 
-  const perDay = new Map<string, UsageTotals>();
-  const perModel = new Map<string, ModelSpend>();
-  const perFolder = new Map<string, FolderSpend>();
+  const whole = emptySpend(bucketCount);
+  const perModel = new Map<string, { provider: string; model: string; spend: Spend }>();
+  const perFolder = new Map<string, { path: string | null; spend: Spend }>();
   const perChat = new Map<SessionId, Spend>();
-  const overhead: Spend = { cost: 0, tokens: 0 };
+  const overhead = emptySpend(bucketCount);
   let totals = EMPTY_TOTALS;
 
   let priorCost = 0;
@@ -363,74 +395,76 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
       priorCost += entry.totals.cost;
     }
 
-    if (entry.day < from || entry.day > to) continue;
+    const bucket = bucketOf.get(entry.day);
+
+    if (bucket === undefined) continue;
 
     totals = addTotals(totals, entry.totals);
-    perDay.set(entry.day, addTotals(perDay.get(entry.day) ?? EMPTY_TOTALS, entry.totals));
-    bump(
-      perFolder,
-      entry.workspacePath ?? "",
-      { path: entry.workspacePath, cost: 0, tokens: 0 },
-      entry.totals,
-    );
-    bump(perChat, entry.sessionId, { cost: 0, tokens: 0 }, entry.totals);
+    addSpend(whole, entry.totals, bucket);
+
+    const folderKey = entry.workspacePath ?? "";
+
+    const folder = perFolder.get(folderKey) ?? {
+      path: entry.workspacePath,
+      spend: emptySpend(bucketCount),
+    };
+
+    addSpend(folder.spend, entry.totals, bucket);
+    perFolder.set(folderKey, folder);
+
+    const chat = perChat.get(entry.sessionId) ?? emptySpend(bucketCount);
+    addSpend(chat, entry.totals, bucket);
+    perChat.set(entry.sessionId, chat);
 
     if (entry.subject.kind === "model") {
-      const seed: ModelSpend = {
-        model: entry.subject.model,
+      const key = JSON.stringify([entry.subject.provider, entry.subject.model]);
+
+      const model = perModel.get(key) ?? {
         provider: entry.subject.provider,
-        cost: 0,
-        tokens: 0,
-        turns: 0,
+        model: entry.subject.model,
+        spend: emptySpend(bucketCount),
       };
 
-      const key = JSON.stringify([entry.subject.provider, entry.subject.model]);
-      bump(perModel, key, seed, entry.totals).turns += entry.totals.turns;
+      addSpend(model.spend, entry.totals, bucket);
+      perModel.set(key, model);
       continue;
     }
 
-    overhead.cost += entry.totals.cost;
-    overhead.tokens += entry.totals.tokens;
+    addSpend(overhead, entry.totals, bucket);
   }
 
-  // Rank by cost while anything is priced; a free local model still ranks by tokens.
-  const byCost = totals.cost > 0;
+  const measure: UsageMeasure = totals.cost > 0 ? "cost" : "tokens";
+  const wholeAmount = measure === "cost" ? totals.cost : totals.tokens;
 
-  const shareOf = (spend: Spend): number => {
-    const whole = byCost ? totals.cost : totals.tokens;
-
-    return whole === 0 ? 0 : (byCost ? spend.cost : spend.tokens) / whole;
-  };
+  const row = (key: string, label: string, meta: string, spend: Spend): UsageRow => ({
+    key,
+    label,
+    meta,
+    cache: describeCache(spend),
+    trend: measure === "cost" && spend.cost > 0 ? spend.costs : spend.tokensBy,
+    value:
+      measure === "tokens"
+        ? { text: `${formatTokens(spend.tokens)} tokens`, absent: false }
+        : spend.cost === 0
+          ? { text: "No price", absent: true }
+          : { text: formatUsd(spend.cost), absent: false },
+    share: wholeAmount === 0 ? 0 : (measure === "cost" ? spend.cost : spend.tokens) / wholeAmount,
+  });
 
   const ranked = (rows: readonly UsageRow[]): readonly UsageRow[] =>
     rows.toSorted((left, right) => right.share - left.share);
 
-  const bucketSize = grain === "day" ? 1 : 7;
-  const points: UsagePoint[] = [];
+  const points = Array.from({ length: bucketCount }, (_slot, index): UsagePoint => {
+    const first = days[index * bucketSize] ?? from;
+    const last = days[Math.min((index + 1) * bucketSize, days.length) - 1] ?? first;
 
-  for (let index = 0; index < days.length; index += bucketSize) {
-    const bucket = days.slice(index, index + bucketSize);
-    const first = bucket[0];
-    const last = bucket.at(-1);
-
-    if (first === undefined || last === undefined) continue;
-
-    const sum = bucket.reduce(
-      (running, day) => addTotals(running, perDay.get(day) ?? EMPTY_TOTALS),
-      EMPTY_TOTALS,
-    );
-
-    points.push({
+    return {
+      key: first,
       label: bucketLabel(first, last, grain),
-      cost: sum.cost,
-      input: sum.input,
-      output: sum.output,
-      cached: sum.cacheRead + sum.cacheWrite,
-    });
-  }
+      value: (measure === "cost" ? whole.costs[index] : whole.tokensBy[index]) ?? 0,
+    };
+  });
 
-  // Two checkouts can end in the same directory name, so a repeated leaf earns
-  // the segment above it. Unique names stay short.
   const leafCounts = new Map<string, number>();
 
   for (const folder of perFolder.values()) {
@@ -438,26 +472,29 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     leafCounts.set(leaf, (leafCounts.get(leaf) ?? 0) + 1);
   }
 
-  const models: UsageRow[] = [...perModel].map(([key, model]) => ({
-    key,
-    label: model.model,
-    meta: `${model.provider} · ${formatTokens(model.tokens)} tokens · ${plural(model.turns, "request")}`,
-    value: cost(model.cost),
-    share: shareOf(model),
-  }));
+  const models = [...perModel].map(([key, model]) =>
+    row(
+      key,
+      model.model,
+      `${model.provider} · ${formatTokens(model.spend.tokens)} tokens`,
+      model.spend,
+    ),
+  );
 
   if (overhead.cost > 0 || overhead.tokens > 0) {
-    models.push({
-      key: "overhead",
-      label: "Compaction and tools",
-      meta: `No model of its own · ${formatTokens(overhead.tokens)} tokens`,
-      value: cost(overhead.cost),
-      share: shareOf(overhead),
-    });
+    models.push(
+      row(
+        "overhead",
+        "Compaction and tools",
+        `No model of its own · ${formatTokens(overhead.tokens)} tokens`,
+        overhead,
+      ),
+    );
   }
 
   return {
     grain,
+    measure,
     from,
     to,
     points,
@@ -469,13 +506,12 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
         const leaf = folderLabel(folder.path);
         const parent = (leafCounts.get(leaf) ?? 0) > 1 ? folderParent(folder.path) : undefined;
 
-        return {
+        return row(
           key,
-          label: parent === undefined ? leaf : `${leaf} in ${parent}`,
-          meta: `${formatTokens(folder.tokens)} tokens`,
-          value: cost(folder.cost),
-          share: shareOf(folder),
-        };
+          parent === undefined ? leaf : `${leaf} in ${parent}`,
+          `${formatTokens(folder.spend.tokens)} tokens`,
+          folder.spend,
+        );
       }),
     ),
     chats: ranked(
@@ -485,13 +521,12 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
         return spent === undefined
           ? []
           : [
-              {
-                key: session.sessionId,
-                label: chatLabel(session.name),
-                meta: `${formatTokens(spent.tokens)} tokens`,
-                value: cost(spent.cost),
-                share: shareOf(spent),
-              },
+              row(
+                session.sessionId,
+                chatLabel(session.name),
+                `${folderLabel(session.workspacePath)} · ${formatTokens(spent.tokens)} tokens`,
+                spent,
+              ),
             ];
       }),
     ),
@@ -535,10 +570,6 @@ export function describeEmptyRange(
   };
 }
 
-// ---------------------------------------------------------------------------
-// the other tools
-// ---------------------------------------------------------------------------
-
 /**
  * The tools whose local history the page reads, in the order their rows sit.
  * Claude Code and Codex fold whole histories with no days, so the comparison
@@ -548,12 +579,9 @@ const USAGE_TOOLS = ["nyte", "claudeCode", "codex"] as const;
 
 type UsageTool = (typeof USAGE_TOOLS)[number];
 
-/** The two tools whose history is a file on this machine rather than Nyte's own. */
-export const LOCAL_TOOLS = ["claudeCode", "codex"] as const;
+type LocalTool = Exclude<UsageTool, "nyte">;
 
-type LocalTool = (typeof LOCAL_TOOLS)[number];
-
-export const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
+const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
   nyte: "Nyte",
   claudeCode: "Claude Code",
   codex: "Codex",
@@ -564,23 +592,6 @@ const USAGE_TOOL_HOMES: Readonly<Record<LocalTool, string>> = {
   claudeCode: "CLAUDE_CONFIG_DIR or ~/.claude",
   codex: "CODEX_HOME or ~/.codex",
 };
-
-/** A total and the rows that make it up. */
-interface UsageBreakdown {
-  readonly amount: string;
-  readonly meta: string;
-  readonly rows: readonly UsageRow[];
-}
-
-/** A history that answered, or the sentence explaining why it did not. */
-type LocalHistoryView =
-  | {
-      readonly kind: "rows";
-      readonly rows: readonly UsageRow[];
-      /** What the read skipped, when it skipped anything. */
-      readonly note: string | undefined;
-    }
-  | { readonly kind: "message"; readonly message: string; readonly failed: boolean };
 
 type LocalHistory = UsageSnapshot["claudeCode"];
 
@@ -593,171 +604,84 @@ function coverageGaps(usage: Extract<LocalHistory, { kind: "ready" }>): readonly
   ].filter((gap) => gap !== false);
 }
 
-/** One tool's models, all time, or the sentence explaining why there are none. */
-export function deriveLocalHistory(tool: LocalTool, usage: LocalHistory): LocalHistoryView {
-  if (usage.kind === "missing") {
+type ToolSpend =
+  | (CacheCounts & { readonly tokens: number; readonly partial: boolean })
+  | { readonly absent: string; readonly meta: string };
+
+function toolSpend(report: UsageSnapshot, tool: UsageTool): ToolSpend {
+  if (tool === "nyte") {
+    if (report.nyteError !== null) return { absent: "Couldn't read", meta: report.nyteError };
+
+    const totals = report.entries.reduce(
+      (sum, entry) => addTotals(sum, entry.totals),
+      EMPTY_TOTALS,
+    );
+
     return {
-      kind: "message",
-      message: `No local history in ${USAGE_TOOL_HOMES[tool]}.`,
-      failed: false,
+      cost: totals.cost,
+      tokens: totals.tokens,
+      prompt: promptTokens(totals),
+      cacheRead: totals.cacheRead,
+      savings: totals.cacheSavings,
+      partial: report.sources.some((source) => source.status === "failed"),
     };
   }
 
-  if (usage.kind === "failed") {
-    return {
-      kind: "message",
-      message: `Couldn't read ${USAGE_TOOL_LABELS[tool]} history. ${usage.message}`,
-      failed: true,
-    };
-  }
+  const history = report[tool];
 
-  const total = usage.summary.total;
-  const gaps = coverageGaps(usage);
-  const priced = total.cost.total > 0;
-  const whole = priced ? total.cost.total : total.totalTokens;
+  if (history.kind === "missing")
+    return { absent: "Not found", meta: `No local history in ${USAGE_TOOL_HOMES[tool]}` };
+
+  if (history.kind === "failed") return { absent: "Couldn't read", meta: history.message };
+
+  const { total, cacheSavings } = history.summary;
 
   return {
-    kind: "rows",
-    note: gaps.length === 0 ? undefined : `Skipped ${gaps.join(", ")}`,
-    rows: usage.summary.models.map((row) => ({
-      key: `${row.provider}/${row.model}`,
-      label: row.model,
-      meta: `${formatTokens(row.usage.totalTokens)} tokens · ${plural(row.turns, "record")}`,
-      value:
-        row.usage.cost.total === 0 && gaps.length > 0
-          ? absent("Unpriced")
-          : cost(row.usage.cost.total),
-      share: whole === 0 ? 0 : (priced ? row.usage.cost.total : row.usage.totalTokens) / whole,
-    })),
+    cost: total.cost.total,
+    tokens: total.total,
+    prompt: promptTokens(total),
+    cacheRead: total.cacheRead,
+    savings: cacheSavings,
+    partial: coverageGaps(history).length > 0,
   };
-}
-
-/** A tool's row, with the spend behind it when the tool answered at all. */
-interface ToolEntry {
-  readonly row: UsageRow;
-  readonly spend: Spend | undefined;
 }
 
 /** Every tool's all-time spend against the sum of them, so a share means one thing. */
-export function deriveTools(report: UsageSnapshot): UsageBreakdown {
-  const entries = USAGE_TOOLS.map((tool): ToolEntry => {
-    const label = USAGE_TOOL_LABELS[tool];
+export function deriveTools(report: UsageSnapshot): readonly UsageRow[] {
+  const spends = USAGE_TOOLS.map((tool) => ({ tool, spend: toolSpend(report, tool) }));
+  const counted = spends.flatMap(({ spend }) => ("absent" in spend ? [] : [spend]));
+  const byCost = counted.some((spend) => spend.cost > 0);
+  const whole = counted.reduce((sum, spend) => sum + (byCost ? spend.cost : spend.tokens), 0);
 
-    if (tool === "nyte") {
-      if (report.nyteError !== null) {
-        return {
-          row: {
-            key: tool,
-            label,
-            meta: report.nyteError,
-            value: absent("Couldn't read"),
-            share: 0,
-          },
-          spend: undefined,
-        };
-      }
+  return spends.map(({ tool, spend }): UsageRow => {
+    const base = { key: tool, label: USAGE_TOOL_LABELS[tool], trend: undefined };
 
-      const spend = report.entries.reduce<Spend>(
-        (sum, entry) => ({
-          cost: sum.cost + entry.totals.cost,
-          tokens: sum.tokens + entry.totals.tokens,
-        }),
-        { cost: 0, tokens: 0 },
-      );
-
-      const partial = report.sources.some((source) => source.status === "failed");
-
+    if ("absent" in spend) {
       return {
-        row: {
-          key: tool,
-          label,
-          meta: `${formatTokens(spend.tokens)} tokens${partial ? " · partial history" : ""}`,
-          value: cost(spend.cost),
-          share: 0,
-        },
-        spend,
+        ...base,
+        meta: spend.meta,
+        cache: NO_CACHE,
+        value: { text: spend.absent, absent: true },
+        share: 0,
       };
     }
-
-    const history = report[tool];
-
-    if (history.kind !== "ready") {
-      return {
-        row: {
-          key: tool,
-          label,
-          meta:
-            history.kind === "missing"
-              ? `No local history in ${USAGE_TOOL_HOMES[tool]}`
-              : history.message,
-          value: absent(history.kind === "missing" ? "Not found" : "Couldn't read"),
-          share: 0,
-        },
-        spend: undefined,
-      };
-    }
-
-    const spend: Spend = {
-      cost: history.summary.total.cost.total,
-      tokens: history.summary.total.totalTokens,
-    };
 
     return {
-      row: {
-        key: tool,
-        label,
-        meta: `${formatTokens(spend.tokens)} tokens${coverageGaps(history).length > 0 ? " · partial history" : ""}`,
-        value: cost(spend.cost),
-        share: 0,
-      },
-      spend,
+      ...base,
+      meta: `${formatTokens(spend.tokens)} tokens${spend.partial ? " · partial history" : ""}`,
+      cache: describeCache(spend),
+      value: byCost
+        ? spend.cost === 0
+          ? { text: "No price", absent: true }
+          : { text: formatUsd(spend.cost), absent: false }
+        : { text: `${formatTokens(spend.tokens)} tokens`, absent: false },
+      share: whole === 0 ? 0 : (byCost ? spend.cost : spend.tokens) / whole,
     };
   });
-
-  const counted = entries.flatMap((entry) => (entry.spend === undefined ? [] : [entry.spend]));
-  const spent = counted.reduce((sum, spend) => sum + spend.cost, 0);
-  const tokens = counted.reduce((sum, spend) => sum + spend.tokens, 0);
-  const byCost = spent > 0;
-  const whole = byCost ? spent : tokens;
-
-  return {
-    amount: counted.length === 0 ? "No history read" : formatUsd(spent),
-    meta: `API estimate · ${formatTokens(tokens)} tokens · ${formatCount(counted.length)} of ${formatCount(USAGE_TOOLS.length)} histories read`,
-    rows: entries.map(({ row, spend }) =>
-      spend === undefined || whole === 0
-        ? row
-        : { ...row, share: (byCost ? spend.cost : spend.tokens) / whole },
-    ),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// subscription windows
-// ---------------------------------------------------------------------------
-
-/** The account behind a subscription window, named the way its provider is. */
-const LIMIT_PROVIDER_LABELS: Readonly<Record<AccountUsage["provider"], string>> = {
-  anthropic: "Claude",
-  "openai-codex": "Codex",
-};
-
-const WEEKLY = "seven_day";
-
-const SCOPED_WEEKLY = `${WEEKLY}_`;
-
-/**
- * Only the weeks are shown. A five-hour window refills before it can be
- * planned around; a week is what a subscription runs out of. A model's own
- * week comes first because it fills first.
- */
-function weeklyRank(id: string): number | undefined {
-  if (id.startsWith(SCOPED_WEEKLY)) return 0;
-
-  return id === WEEKLY ? 1 : undefined;
 }
 
 /** One window's meter: how much is gone, and when it comes back. */
-export interface LimitMeter {
+interface LimitMeter {
   readonly key: string;
   readonly label: string;
   /** Whole percent, which is the precision every provider reports in practice. */
@@ -768,57 +692,43 @@ export interface LimitMeter {
 interface AccountView {
   readonly title: string;
   readonly meters: readonly LimitMeter[];
-  /** Set instead of meters, saying why the provider gave none. */
   readonly message: string | undefined;
   readonly failed: boolean;
 }
 
-/** A provider's own windows, named the way its own dashboard names them. */
-export function deriveAccount(account: AccountUsage): AccountView {
-  const name = LIMIT_PROVIDER_LABELS[account.provider];
+export function deriveAccount(account: ProviderUsage): AccountView | null {
+  const title =
+    account.account === null ? account.name : `${account.name} · ${account.account.label}`;
 
-  if (account.kind === "failed") {
-    return { title: name, meters: [], message: account.message, failed: true };
-  }
+  if (account.state.kind === "unavailable")
+    return account.state.reason === "failed"
+      ? { title, meters: [], message: `${title} · ${account.state.message}`, failed: true }
+      : null;
 
-  if (account.kind === "unavailable") {
-    return {
-      title: name,
-      meters: [],
-      message: `Sign in to ${name} with a subscription in Settings › Providers to see its limits.`,
-      failed: false,
-    };
-  }
-
-  const title = account.limits.plan === undefined ? name : `${name} · ${account.limits.plan}`;
-
-  const meters = account.limits.windows
-    .filter((window) => weeklyRank(window.id) !== undefined)
-    .toSorted((left, right) => (weeklyRank(left.id) ?? 0) - (weeklyRank(right.id) ?? 0))
+  const meters = account.state.limits
     .map((window) => ({
-      key: window.id,
-      label: window.id.startsWith(SCOPED_WEEKLY)
-        ? `Weekly · ${window.id.slice(SCOPED_WEEKLY.length)}`
-        : "Weekly",
-      used: Math.round(window.usedPercent),
+      key: window.label,
+      label: window.label,
+      used: window.limit === 0 ? 0 : Math.round((window.used / window.limit) * 100),
       reset:
-        window.resetsAt === undefined
+        window.resetsAt === null
           ? "Reset time unknown"
           : `Resets ${new Date(window.resetsAt).toLocaleString(undefined, {
               weekday: "short",
               hour: "numeric",
               minute: "2-digit",
             })}`,
-    }));
-
-  if (meters.length === 0) {
-    return { title, meters, message: `${name} reported no weekly limit.`, failed: false };
-  }
+    }))
+    .toSorted((left, right) => right.used - left.used);
 
   return {
     title,
     meters,
-    message: undefined,
+    message: account.state.stale
+      ? `${title} · Cached limits${account.state.error === null ? "" : ` · ${account.state.error}`}`
+      : meters.length === 0
+        ? `${account.name} reported no limit.`
+        : undefined,
     failed: false,
   };
 }

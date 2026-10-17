@@ -12,11 +12,11 @@
  * only that one `auth` frame; anything else, or no proof within
  * `RELAY_AUTH_TIMEOUT_MS`, closes the socket.
  *
- * Phones call `<origin>/r/<id>/...` with their bearer token. The broker
- * forwards only what `publicRelayTarget` accepts, and only for a bearer whose
- * digest it holds for that environment: an active device for `api`, a
- * reserved or active one for `release`. The desktop still checks the digest
- * and its current lease on every request. Only the broker itself relays
+ * Phones call `<origin>/r/<id>/...`. The broker forwards only what
+ * `publicRelayTarget` accepts, with the bearer `PUBLIC_RELAY_BEARER` asks
+ * for: none for `discovery`, else one whose digest it holds for that
+ * environment. The desktop still checks the digest and its current lease on
+ * every request that carries one. Only the broker itself relays
  * `POST /_nyte/connect/enroll`.
  *
  * One HTTP exchange is one channel, and only the relay opens one. The
@@ -69,7 +69,7 @@ export const RELAY_CHUNK_BYTES = 32_768;
 /** Credit each sender starts with, per channel and direction. */
 export const RELAY_WINDOW_BYTES = 262_144;
 
-/** Largest request body relayed, equal to the Nyte server's own limit. */
+/** Largest request body relayed, equal to the host listener's default limit. */
 export const RELAY_BODY_LIMIT_BYTES = 8_388_608;
 
 /** Longest frame text either side parses. */
@@ -117,19 +117,173 @@ export const RelayMethod = Type.Enum(["GET", "POST", "DELETE"]);
 
 export type RelayMethod = Static<typeof RelayMethod>;
 
-const SEGMENT = "/(?!\\.\\.?(?:[/?]|$))[A-Za-z0-9._~-]+";
+/**
+ * The operations a phone may call, each at exactly `POST /<name>`: every row
+ * of protocol's declarations table. The names are spelled out so the Worker
+ * does not bundle protocol; a connect test holds them equal to the table.
+ */
+export const RELAY_OPERATIONS = [
+  "connection.watch",
+  "connection.blob",
+  "models.list",
+  "models.accounts",
+  "models.selectAccount",
+  "models.usage",
+  "models.refresh",
+  "models.setDefault",
+  "models.verify",
+  "models.login",
+  "models.logout",
+  "login.steps",
+  "login.answer",
+  "settings.apply",
+  "workspaces.list",
+  "workspaces.inspect",
+  "workspaces.add",
+  "workspaces.forget",
+  "sessions.watch",
+  "sessions.start",
+  "sessions.list",
+  "session.info",
+  "session.update",
+  "session.remove",
+  "session.stop",
+  "session.command",
+  "head.send",
+  "head.configure",
+  "head.view",
+  "head.watch",
+  "head.history",
+  "head.tree",
+  "head.move",
+  "head.compact",
+  "heads.create",
+  "heads.merge",
+  "heads.remove",
+  "run.stop",
+  "run.settled",
+  "receipt.status",
+  "receipt.settled",
+  "receipt.stop",
+  "receipt.landed",
+  "parts.create",
+  "part.update",
+  "part.act",
+  "part.answer",
+  "part.close",
+  "workspace.info",
+  "workspace.watch",
+  "workspace.commands",
+  "workspace.command",
+  "mcp.watch",
+  "mcp.reconnect",
+  "mcp.setEnabled",
+  "mcp.login",
+  "mcp.logout",
+  "mcp.add",
+  "mcp.remove",
+  "workspace.update",
+  "workspace.reload",
+  "workspace.changes",
+  "workspace.patches",
+  "workspace.files",
+  "workspace.git",
+  "workspace.github",
+  "workspace.browser",
+  "jobs.start",
+  "jobs.recover",
+  "jobs.list",
+  "jobs.watch",
+  "job.write",
+  "job.output",
+  "job.resize",
+  "job.idle",
+  "job.stop",
+  "job.settled",
+  "files.read",
+  "files.bytes",
+  "files.stat",
+  "files.write",
+  "files.remove",
+  "files.batch",
+  "files.format",
+  "files.scan",
+  "files.find",
+  "files.search",
+  "files.watch",
+  "files.upload",
+  "git.status",
+  "git.watch",
+  "git.changes",
+  "git.watchChanges",
+  "git.patches",
+  "git.contents",
+  "git.log",
+  "git.refs",
+  "git.blame",
+  "git.stage",
+  "git.unstage",
+  "git.discard",
+  "git.commit",
+  "git.branch",
+  "git.push",
+  "github.account",
+  "github.signIn",
+  "github.signOut",
+  "github.state",
+  "github.createPullRequest",
+  "browser.open",
+  "browser.adopt",
+  "browser.list",
+  "browser.watch",
+  "page.view",
+  "page.watch",
+  "page.snapshot",
+  "page.navigate",
+  "page.back",
+  "page.forward",
+  "page.reload",
+  "page.stopLoading",
+  "page.click",
+  "page.type",
+  "page.press",
+  "page.scroll",
+  "page.wait",
+  "page.console",
+  "page.capture",
+  "page.evaluate",
+  "page.close",
+  "plugins.replace",
+  "plugins.check",
+  "principals.list",
+  "principals.pair",
+  "principals.revoke",
+] as const;
+
+/** The host's discovery routes, each a `GET`; only `identity` takes a query, its `?nonce=`. */
+const RELAY_DISCOVERY = {
+  identity: "/.nyte/identity",
+  describe: "/.nyte/describe",
+} as const;
+
+export const RELAY_STREAMS = {
+  channel: "/.nyte/streams",
+  cancel: "/.nyte/streams/cancel",
+} as const;
+
+const literal = (text: string) => text.replaceAll(".", "\\.");
+const OPERATION = RELAY_OPERATIONS.map(literal).join("|");
 const QUERY = "\\?(?:[A-Za-z0-9*._~+=&-]|%[0-9A-Fa-f]{2})*";
 
 /**
- * The path and query a relayed request names. An API path is `/v1` and one
- * or more unreserved segments, none of them `.` or `..`, with no percent
- * escape, backslash, or empty segment. Its query uses only the characters
- * `URLSearchParams` writes plus well-formed percent escapes; the schema does
- * not require that exact serialization. The desktop's own routes take no query.
+ * The path and query a relayed request names: `/<operation>` with no query,
+ * `RELAY_DISCOVERY.identity` with an optional query, `RELAY_DISCOVERY.describe`,
+ * or one of the desktop's own routes. A query uses only the characters
+ * `URLSearchParams` writes plus well-formed percent escapes.
  */
 export const RelayPath = Type.String({
   maxLength: 2048,
-  pattern: `^(?:/v1(?:${SEGMENT})+(?:${QUERY})?|${DESKTOP_ROUTES.device}|${DESKTOP_ROUTES.enroll})$`,
+  pattern: `^(?:/(?:${OPERATION})|${literal(RELAY_DISCOVERY.identity)}(?:${QUERY})?|${literal(RELAY_DISCOVERY.describe)}|${literal(RELAY_STREAMS.channel)}|${literal(RELAY_STREAMS.cancel)}|${DESKTOP_ROUTES.device}|${DESKTOP_ROUTES.enroll})$`,
 });
 
 const HEADER_VALUE = "^[\\x20-\\x7e]*$";
@@ -141,6 +295,9 @@ export const RelayRequestHeaders = strict({
   authorization: Type.Optional(HeaderValue),
   "content-type": Type.Optional(HeaderValue),
   accept: Type.Optional(HeaderValue),
+  "x-nyte-input": Type.Optional(HeaderValue),
+  "x-nyte-channel": Type.Optional(HeaderValue),
+  "x-nyte-stream": Type.Optional(HeaderValue),
 });
 
 export type RelayRequestHeaders = Static<typeof RelayRequestHeaders>;
@@ -149,12 +306,17 @@ export type RelayRequestHeaders = Static<typeof RelayRequestHeaders>;
 export const RelayResponseHeaders = strict({
   "content-type": Type.Optional(HeaderValue),
   "cache-control": Type.Optional(HeaderValue),
+  "x-nyte-host": Type.Optional(HeaderValue),
+  "x-nyte-credential": Type.Optional(HeaderValue),
+  "x-nyte-version": Type.Optional(HeaderValue),
+  "x-nyte-mime": Type.Optional(HeaderValue),
+  "x-nyte-channel": Type.Optional(HeaderValue),
 });
 
 export type RelayResponseHeaders = Static<typeof RelayResponseHeaders>;
 
 /** Success or failure only: no informational or redirect status can be relayed. */
-export const RelayStatus = Type.Union([
+const RelayStatus = Type.Union([
   Type.Integer({ minimum: 200, maximum: 299 }),
   Type.Integer({ minimum: 400, maximum: 599 }),
 ]);
@@ -248,8 +410,26 @@ export function hasNullBody(status: number): boolean {
   return status === 204 || status === 205;
 }
 
-const REQUEST_HEADER_NAMES = ["authorization", "content-type", "accept"] as const;
-const RESPONSE_HEADER_NAMES = ["content-type", "cache-control"] as const;
+/** The names `relayRequestHeaders` forwards, lowercase. */
+export const RELAY_REQUEST_HEADER_NAMES = [
+  "authorization",
+  "content-type",
+  "accept",
+  "x-nyte-input",
+  "x-nyte-channel",
+  "x-nyte-stream",
+] as const;
+
+/** The names `relayResponseHeaders` passes back, lowercase. */
+export const RELAY_RESPONSE_HEADER_NAMES = [
+  "content-type",
+  "cache-control",
+  "x-nyte-host",
+  "x-nyte-credential",
+  "x-nyte-version",
+  "x-nyte-mime",
+  "x-nyte-channel",
+] as const;
 const HEADER_TEXT = new RegExp(HEADER_VALUE, "u");
 
 function pick<const N extends string>(
@@ -269,36 +449,52 @@ function pick<const N extends string>(
 
 /** The allowlisted request headers of an incoming phone request. */
 export function relayRequestHeaders(headers: Headers): RelayRequestHeaders {
-  return pick(REQUEST_HEADER_NAMES, headers);
+  return pick(RELAY_REQUEST_HEADER_NAMES, headers);
 }
 
 /** The allowlisted response headers of a desktop answer. */
 export function relayResponseHeaders(headers: Headers): RelayResponseHeaders {
-  return pick(RESPONSE_HEADER_NAMES, headers);
+  return pick(RELAY_RESPONSE_HEADER_NAMES, headers);
 }
 
 /**
- * What a public relay URL may reach. `api` takes `GET` and `POST`; `release`
- * is the phone dropping its own credential and takes `DELETE`.
+ * What a public relay URL may reach. `api` is an operation and takes `POST`;
+ * `discovery` is the host's identity or description and takes `GET`;
+ * `release` is the phone dropping its own credential and takes `DELETE`.
  */
-export interface PublicRelayTarget {
-  readonly kind: "api" | "release";
+interface PublicRelayTarget {
+  readonly kind: "api" | "discovery" | "release";
   readonly environmentId: string;
   /** Path and query as the desktop receives them. */
   readonly path: string;
 }
 
 export const PUBLIC_RELAY_METHODS = {
-  api: ["GET", "POST"],
+  api: ["POST"],
+  discovery: ["GET"],
   release: ["DELETE"],
 } as const satisfies Record<PublicRelayTarget["kind"], readonly RelayMethod[]>;
+
+/**
+ * The device a public relay request's bearer must belong to, by target kind:
+ * an active one for `api`, a reserved or active one for `release`, and none
+ * for `discovery`. The broker forwards `GET /.nyte/identity` and
+ * `/.nyte/describe` without reading a bearer, as the host answers them
+ * unauthenticated, so `verifyIdentity` can check a host before it holds a
+ * credential for it (§51g).
+ */
+export const PUBLIC_RELAY_BEARER = {
+  api: "active",
+  discovery: "none",
+  release: "reserved-or-active",
+} as const satisfies Record<PublicRelayTarget["kind"], "none" | "active" | "reserved-or-active">;
 
 const PUBLIC_URL = new RegExp(`^${RELAY_PREFIX}(${UUID_PATTERN.slice(1, -1)})(/.*)$`, "u");
 
 /**
  * The desktop target a phone's `<origin>/r/<id>/...` URL names, or undefined
- * when the relay must not forward it: anything outside `/v1/...` and
- * `DESKTOP_ROUTES.device`, and always `DESKTOP_ROUTES.enroll`.
+ * when the relay must not forward it: anything `RelayPath` refuses, a query
+ * on `DESKTOP_ROUTES.device`, and always `DESKTOP_ROUTES.enroll`.
  */
 export function publicRelayTarget(url: URL): PublicRelayTarget | undefined {
   const match = PUBLIC_URL.exec(url.pathname);
@@ -307,39 +503,49 @@ export function publicRelayTarget(url: URL): PublicRelayTarget | undefined {
   const [, environmentId = "", route = ""] = match;
   const path = `${route}${url.search}`;
 
-  if (!Value.Check(RelayPath, path)) return undefined;
+  if (!Value.Check(RelayPath, path) || route === DESKTOP_ROUTES.enroll) return undefined;
 
   if (route === DESKTOP_ROUTES.device)
     return url.search === "" ? { kind: "release", environmentId, path } : undefined;
 
-  return route.startsWith("/v1/") ? { kind: "api", environmentId, path } : undefined;
+  return route === RELAY_DISCOVERY.identity || route === RELAY_DISCOVERY.describe
+    ? { kind: "discovery", environmentId, path }
+    : { kind: "api", environmentId, path };
 }
 
 /**
- * Refusals the public relay answers itself, in the Nyte server's error
- * envelope so the phone's HTTP client reads them as wire errors. Only 401
+ * Refusals the public relay answers itself, each as the host's wire error
+ * (`{ code, message, hostId, issues, correlation }`) so a protocol client
+ * rethrows it as the `SdkError` it names. `code` is that wire code; only 401
  * and 403 refuse a credential.
  */
 export const RELAY_REFUSALS = {
-  /** No bearer, or one the broker holds for no usable device of this environment. */
-  unauthorized: { status: 401, message: "The device credential was refused" },
+  /** No bearer where `PUBLIC_RELAY_BEARER` asks for one, or one the broker holds for no usable device of this environment. */
+  unauthorized: {
+    status: 401,
+    code: "unauthenticated",
+    message: "The device credential was refused",
+  },
   /** An unlisted browser `Origin`, or a release for a revoked device. */
-  forbidden: { status: 403, message: "Refused" },
-  not_found: { status: 404, message: "Not found" },
-  method_not_allowed: { status: 405, message: "Method not allowed" },
-  payload_too_large: { status: 413, message: "The request body is too large" },
+  forbidden: { status: 403, code: "denied", message: "Refused" },
+  not_found: { status: 404, code: "unknown", message: "Not found" },
+  method_not_allowed: { status: 405, code: "invalid", message: "Method not allowed" },
+  payload_too_large: { status: 413, code: "invalid", message: "The request body is too large" },
   /** The desktop is not connected, is at its channel limit, or ended the exchange before answering. */
-  closed: { status: 503, message: "This Mac is not connected" },
-  internal: { status: 500, message: "The relay failed" },
+  closed: { status: 503, code: "unavailable", message: "This Mac is not connected" },
+  internal: { status: 500, code: "internal", message: "The relay failed" },
 } as const;
 
 export type RelayRefusalCode = keyof typeof RELAY_REFUSALS;
 
-export function relayRefusal(code: RelayRefusalCode): Response {
-  const { status, message } = RELAY_REFUSALS[code];
+export function relayRefusal(refusal: RelayRefusalCode): Response {
+  const { status, code, message } = RELAY_REFUSALS[refusal];
 
-  return new Response(JSON.stringify({ ok: false, error: { code, message } }), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
-  });
+  return new Response(
+    JSON.stringify({ code, message, hostId: null, issues: [], correlation: null }),
+    {
+      status,
+      headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    },
+  );
 }

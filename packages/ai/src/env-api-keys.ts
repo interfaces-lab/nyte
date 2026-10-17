@@ -3,9 +3,6 @@
  * variables are set (`findEnvKeys`) and resolves the key a request may use
  * (`getEnvApiKey`); ANTHROPIC_AUTH_TOKEN is reported but never returned as an
  * API key because requests must send it as a bearer token.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/env-api-keys.ts
- * Synced with pi 7ebf9087e.
  */
 import type { KnownProvider, ProviderEnv } from "./types.ts";
 import { getProviderEnvValue } from "./utils/provider-env.ts";
@@ -16,15 +13,24 @@ export const ANTHROPIC_OAUTH_TOKEN_ENV = "ANTHROPIC_OAUTH_TOKEN";
 
 export const ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY";
 
+export const ANTHROPIC_FEDERATION_RULE_ID_ENV = "ANTHROPIC_FEDERATION_RULE_ID";
+
+export const ANTHROPIC_ORGANIZATION_ID_ENV = "ANTHROPIC_ORGANIZATION_ID";
+
+export const ANTHROPIC_SERVICE_ACCOUNT_ID_ENV = "ANTHROPIC_SERVICE_ACCOUNT_ID";
+
+export const ANTHROPIC_IDENTITY_TOKEN_FILE_ENV = "ANTHROPIC_IDENTITY_TOKEN_FILE";
+
+export const ANTHROPIC_WORKSPACE_ID_ENV = "ANTHROPIC_WORKSPACE_ID";
+
 export const ANTHROPIC_ENV_KEYS = [
   ANTHROPIC_AUTH_TOKEN_ENV,
   ANTHROPIC_OAUTH_TOKEN_ENV,
   ANTHROPIC_API_KEY_ENV,
 ] as const;
 
+/** ANTHROPIC_AUTH_TOKEN participates in env discovery and status, but getEnvApiKey() skips it because requests must pass it as Authorization: Bearer. */
 function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
-  // ANTHROPIC_AUTH_TOKEN participates in env discovery/status, but
-  // getEnvApiKey() skips it because requests must pass it as Authorization: Bearer.
   if (provider === "anthropic") {
     return ANTHROPIC_ENV_KEYS;
   }

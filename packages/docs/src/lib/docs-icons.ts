@@ -7,6 +7,7 @@ import {
   IconCodeBrackets,
   IconComponents,
   IconConsole,
+  IconFinderFace,
   IconHammer,
   IconLayersThree,
   IconPackage,
@@ -20,7 +21,7 @@ import {
   IconStreaming,
 } from "central-icons";
 
-/*
+/**
  * One glyph per docs page. Names are the Central Icons export, used in
  * frontmatter, meta.json, and <DocCard icon="…" />.
  */
@@ -33,6 +34,7 @@ export const docsIcons = {
   IconCodeBrackets,
   IconComponents,
   IconConsole,
+  IconFinderFace,
   IconHammer,
   IconLayersThree,
   IconPackage,
@@ -48,6 +50,7 @@ export const docsIcons = {
 
 export type DocsIconName = keyof typeof docsIcons;
 
-export function isDocsIconName(name: string): name is DocsIconName {
+/** Whether a name from frontmatter or MDX names one of the docs glyphs. */
+export function hasDocsIcon(name: string): name is DocsIconName {
   return Object.hasOwn(docsIcons, name);
 }

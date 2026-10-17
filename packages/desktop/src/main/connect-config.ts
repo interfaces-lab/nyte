@@ -5,7 +5,7 @@
  * origin or hostname, has no account remote access at all: nothing asks for a
  * session token or a broker answer on its behalf.
  */
-import { isBrokerOrigin } from "@nyte-ai/connect";
+import { namesBrokerOrigin } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { checkedFrontendApiHost } from "../account/policy.ts";
@@ -34,7 +34,7 @@ export function readConnectConfig(
   const publishableKey = env.MAIN_VITE_NYTE_CLERK_PUBLISHABLE_KEY;
   const frontendApiHost = env.MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST;
 
-  if (!isBrokerOrigin(origin)) return undefined;
+  if (!namesBrokerOrigin(origin)) return undefined;
 
   try {
     return {

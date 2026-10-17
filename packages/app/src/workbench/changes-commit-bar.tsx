@@ -11,26 +11,39 @@
  * records of an edit, so the bar is not rendered for those scopes at all.
  */
 import { create, props } from "@stylexjs/stylex";
-import { Fragment, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type {
-  VcsBranchOutcome,
-  VcsCommitOutcome,
-  VcsCommitTarget,
-  VcsPushOutcome,
-} from "@nyte-ai/protocol";
-import type { GitHubPullRequestOutcome } from "../bridge.ts";
+  GitHubAccountState,
+  GitHubPullRequestInput,
+  GitHubPullRequestOutcome,
+  GitHubState,
+  GitOutcome,
+  GitRevision,
+} from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
+import { useGitHub, useGitHubAccountState, useGitHubState } from "../chrome/github-account.ts";
 import { errorMessage } from "../errors.ts";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { nyte } from "../nyte.ts";
-import { keys, queryClient, refreshVcs, refreshVcsSnapshot } from "../queries.ts";
+import { openExternal } from "../open-external.ts";
+import { keys, queryClient, refreshVcs, workspaceGit } from "../queries.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
+import { ChangesPullRequest } from "./changes-pull-request.tsx";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
 /** Every action the split button can run, in the order the menu lists them. */
@@ -45,22 +58,22 @@ export const COMMIT_ACTIONS = [
   "pull-request",
 ] as const;
 
-export type CommitAction = (typeof COMMIT_ACTIONS)[number];
+type CommitAction = (typeof COMMIT_ACTIONS)[number];
 
 /** The default action before the user chooses one from the menu. */
-export const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
+const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
 
 const STORAGE_KEY = "nyte.desktop.changes-commit-action.v1";
 
 /** Which steps one action runs, in order. A pull request always pushes its branch first. */
-export interface CommitActionPlan {
+interface CommitActionPlan {
   readonly branch: boolean;
   readonly commit: boolean;
   readonly push: boolean;
   readonly pullRequest: boolean;
 }
 
-export function commitActionPlan(action: CommitAction): CommitActionPlan {
+function commitActionPlan(action: CommitAction): CommitActionPlan {
   const steps = { branch: false, commit: false, push: false, pullRequest: false };
 
   switch (action) {
@@ -99,7 +112,7 @@ function commitActionGroup(action: CommitAction): "branch" | "commit" | "push" {
   return plan.commit ? "commit" : "push";
 }
 
-export function commitActionLabel(action: CommitAction): string {
+function commitActionLabel(action: CommitAction): string {
   switch (action) {
     case "branch-commit":
       return "Create Branch and Commit Changes…";
@@ -121,16 +134,42 @@ export function commitActionLabel(action: CommitAction): string {
 }
 
 /** The scopes that read the working tree, which is the only place a commit applies. */
-export function isWorkingTreeScope(scope: WorkbenchChangesScope): boolean {
+export function readsWorkingTree(scope: WorkbenchChangesScope): boolean {
   return scope.kind === "uncommitted" || scope.kind === "staged" || scope.kind === "unstaged";
 }
 
-export interface CommitBarState {
+interface CommitBarState {
   readonly scope: WorkbenchChangesScope;
   /** Files in the scope on screen; nothing to commit while this is zero. */
   readonly fileCount: number;
   readonly message: string;
   readonly branch: BranchReadout | undefined;
+  /** The machine's GitHub CLI login; undefined until it answers, null where the host serves none. */
+  readonly account: GitHubAccountState | null | undefined;
+  /** The folder on GitHub as the host last read it; undefined until it answers. */
+  readonly github: GitHubState | undefined;
+}
+
+/** Why GitHub cannot open a pull request yet, read from the login and the folder before anything runs. */
+function pullRequestBlocker(
+  account: GitHubAccountState | null | undefined,
+  github: GitHubState | undefined,
+): string | undefined {
+  switch (account?.kind) {
+    case undefined:
+    case "signing_in":
+      return undefined;
+    case "cli_missing":
+      return "Install the GitHub CLI (gh) to open pull requests";
+    case "signed_out":
+      return "Sign in to the GitHub CLI to open pull requests";
+    case "error":
+      return account.message;
+    case "ready":
+      return github !== undefined && github.repository === undefined
+        ? "This repository has no GitHub remote"
+        : undefined;
+  }
 }
 
 /**
@@ -138,14 +177,18 @@ export interface CommitBarState {
  * creates a branch first leaves a detached or unborn HEAD behind, so those
  * checks apply only to the actions that push or open a pull request as they stand.
  */
-export function commitActionDisabledReason(
+function commitActionDisabledReason(
   action: CommitAction,
   state: CommitBarState,
 ): string | undefined {
   const plan = commitActionPlan(action);
 
-  if (plan.pullRequest && !isWorkingTreeScope(state.scope))
+  if (plan.pullRequest && !readsWorkingTree(state.scope))
     return "Pull requests apply to the working tree";
+
+  const blocker = plan.pullRequest ? pullRequestBlocker(state.account, state.github) : undefined;
+
+  if (blocker !== undefined) return blocker;
 
   if (plan.branch) return undefined;
 
@@ -166,7 +209,7 @@ function commitActionDisabled(action: CommitAction, state: CommitBarState): bool
 }
 
 /** What a step left behind, as the bar reports it. */
-export interface CommitBarResult {
+interface CommitBarResult {
   readonly tone: "success" | "error";
   readonly text: string;
   /** Git's or `gh`'s own words, kept so nothing is lost to paraphrase. */
@@ -176,64 +219,50 @@ export interface CommitBarResult {
   readonly offerPublish?: boolean;
 }
 
-export function createBranchResultMessage(result: VcsBranchOutcome, name: string): CommitBarResult {
+function refusedMessage(
+  result: Exclude<GitOutcome, { readonly kind: "applied" }>,
+  what: string,
+): CommitBarResult {
   switch (result.kind) {
-    case "created":
-      return { tone: "success", text: `Created branch ${name} and switched to it.` };
-    case "exists":
-      return { tone: "error", text: `Branch ${name} already exists. Pick another name.` };
-    case "invalid_name":
-      return {
-        tone: "error",
-        text: `${name} is not a valid branch name. Pick another name.`,
-        detail: result.reason,
-      };
-    case "failed":
-      return { tone: "error", text: "Couldn’t create the branch.", detail: result.reason };
+    case "unchanged":
+      return { tone: "error", text: `${what}: nothing to do.` };
     case "stale":
       return { tone: "error", text: "Changes changed. Review them and try again." };
-  }
-}
-
-export function commitResultMessage(result: VcsCommitOutcome): CommitBarResult {
-  switch (result.kind) {
-    case "committed":
-      return { tone: "success", text: `Committed ${result.oid.slice(0, 7)}: ${result.summary}` };
-    case "nothing_to_commit":
-      return { tone: "error", text: "Nothing to commit." };
-    case "failed":
-      return { tone: "error", text: "The commit didn’t go through.", detail: result.reason };
-    case "stale":
-      return { tone: "error", text: "Changes changed. Review them and try again." };
-  }
-}
-
-export function pushResultMessage(result: VcsPushOutcome): CommitBarResult {
-  switch (result.kind) {
-    case "pushed":
-      return { tone: "success", text: `Pushed ${result.branch} to ${result.remote}.` };
-    case "up_to_date":
-      return { tone: "success", text: "Nothing to push." };
-    case "no_upstream":
-      return {
-        tone: "error",
-        text: `${result.branch} tracks no remote branch yet. Publish it to push.`,
-        offerPublish: true,
-      };
+    case "busy":
+      return { tone: "error", text: "A run is still writing to this workspace." };
     case "rejected":
-      return {
-        tone: "error",
-        text: "The remote has commits this branch doesn’t. Pull them, then push again.",
-        detail: result.reason,
-      };
-    case "failed":
-      return { tone: "error", text: "The push didn’t go through.", detail: result.reason };
-    case "stale":
-      return { tone: "error", text: "Changes changed. Review them and try again." };
+      return { tone: "error", text: `${what} didn’t go through.`, detail: result.reason };
+    default: {
+      const _exhaustive: never = result;
+
+      return _exhaustive;
+    }
   }
 }
 
-export function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarResult {
+function createBranchResultMessage(result: GitOutcome, name: string): CommitBarResult {
+  return result.kind === "applied"
+    ? { tone: "success", text: `Created branch ${name} and switched to it.` }
+    : refusedMessage(result, `Creating ${name}`);
+}
+
+function commitResultMessage(result: GitOutcome): CommitBarResult {
+  return result.kind === "applied"
+    ? { tone: "success", text: "Committed." }
+    : result.kind === "unchanged"
+      ? { tone: "error", text: "Nothing to commit." }
+      : refusedMessage(result, "The commit");
+}
+
+function pushResultMessage(result: GitOutcome): CommitBarResult {
+  return result.kind === "applied"
+    ? { tone: "success", text: "Pushed." }
+    : result.kind === "unchanged"
+      ? { tone: "success", text: "Nothing to push." }
+      : refusedMessage(result, "The push");
+}
+
+function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarResult {
   switch (result.kind) {
     case "created":
       return { tone: "success", text: "Opened a pull request.", url: result.url };
@@ -258,6 +287,11 @@ export function pullRequestResultMessage(result: GitHubPullRequestOutcome): Comm
         tone: "error",
         text: "This repository has no GitHub remote to open a pull request against.",
       };
+    case "detached":
+      return {
+        tone: "error",
+        text: "HEAD is detached, so there is no branch to open a pull request from.",
+      };
     case "failed":
       return { tone: "error", text: "Couldn’t open the pull request.", detail: result.message };
   }
@@ -266,7 +300,7 @@ export function pullRequestResultMessage(result: GitHubPullRequestOutcome): Comm
 /** A trust refusal crosses IPC as a `forbidden` failure, not as an outcome. */
 const trustRefusal = Type.Object({ cause: Type.Object({ code: Type.Literal("forbidden") }) });
 
-export function actionFailureMessage(cause: unknown): CommitBarResult {
+function actionFailureMessage(cause: unknown): CommitBarResult {
   if (Value.Check(trustRefusal, cause))
     return {
       tone: "error",
@@ -280,17 +314,19 @@ export function actionFailureMessage(cause: unknown): CommitBarResult {
  * What a commit covers. The staged scope commits the index as it stands;
  * every other working-tree scope commits each tracked change with it.
  */
-export function commitTargetFor(scope: WorkbenchChangesScope): VcsCommitTarget {
-  return scope.kind === "staged" ? { kind: "staged" } : { kind: "all" };
+function commitTargetFor(scope: WorkbenchChangesScope): "staged" | "all" {
+  return scope.kind === "staged" ? "staged" : "all";
 }
 
-/** A pull request needs a title; the message's first line is it, then the branch. */
-export function pullRequestTitle(message: string, branch: BranchReadout | undefined): string {
-  const firstLine = message.split("\n")[0]?.trim() ?? "";
+/** The message's first line titles the pull request and the rest is its body; without a message `gh` fills both from the commits. */
+function pullRequestInput(message: string): GitHubPullRequestInput {
+  const [first = "", ...rest] = message.split("\n");
+  const title = first.trim();
+  const body = rest.join("\n").trim();
 
-  if (firstLine !== "") return firstLine;
+  if (title === "") return {};
 
-  return branch?.label ?? "";
+  return body === "" ? { title } : { title, body };
 }
 
 function readStoredAction(actions: readonly CommitAction[]): CommitAction {
@@ -304,47 +340,47 @@ function readStoredAction(actions: readonly CommitAction[]): CommitAction {
   }
 }
 
+/** Remembering the last action is a convenience, never a reason to fail one. */
 function storeAction(action: CommitAction): void {
   try {
     if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, action);
-  } catch {
-    // Remembering the last action is a convenience, never a reason to fail one.
-  }
+  } catch {}
 }
 
 const styles = create({
   bar: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: space.s1_5,
     flexShrink: 0,
-    padding: 8,
+    padding: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
   },
-  actions: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
+  actions: { display: "flex", alignItems: "center", gap: space.s2, minWidth: 0 },
   branchField: { flex: 1 },
   primary: { flexGrow: 1, flexShrink: 1, minWidth: 0 },
   result: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: space.s0_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   resultError: { color: role.contentSecondary },
-  resultDetail: { color: role.contentSecondary, fontSize: type.fontXs, lineHeight: type.leadingXs },
-  resultActions: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  resultDetail: { color: role.contentSecondary },
+  blocked: { margin: 0 },
+  resultActions: { display: "flex", alignItems: "center", gap: space.s2, flexWrap: "wrap" },
 });
 
-export interface ChangesCommitBarProps {
+interface ChangesCommitBarProps {
   readonly scope: WorkbenchChangesScope;
   readonly branch: BranchReadout | undefined;
   readonly revision: string;
   readonly fileCount: number;
+  /** Opens a pull request or check page; the system browser when absent. */
+  readonly onOpenLink?: (url: string) => void;
 }
 
 interface RunOptions {
@@ -355,23 +391,44 @@ interface RunOptions {
   readonly skipCommit?: boolean;
 }
 
+/** The branch prompt stays until the branch exists, so a taken or invalid name can be corrected without retyping either field. */
 export function ChangesCommitBar({
   scope,
   branch,
   revision,
   fileCount,
+  onOpenLink = openExternal,
 }: ChangesCommitBarProps): ReactElement {
-  const github = nyte.host.github;
+  const github = useGitHub();
+  const githubState = useGitHubState(github);
+  const account = useGitHubAccountState().data;
   const actions = commitActions(github !== undefined);
   const [message, setMessage] = useState("");
-  const [action, setAction] = useState<CommitAction>(() => readStoredAction(actions));
+  const [chosenAction, setAction] = useState<CommitAction>(() => readStoredAction(COMMIT_ACTIONS));
+  const action = actions.includes(chosenAction) ? chosenAction : DEFAULT_COMMIT_ACTION;
   const [branchName, setBranchName] = useState("");
   const [branchPrompt, setBranchPrompt] = useState<CommitAction | undefined>(undefined);
+  const branchField = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    if (branchPrompt !== undefined) branchField.current?.focus();
+  }, [branchPrompt]);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<CommitBarResult | undefined>(undefined);
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
 
-  const state: CommitBarState = { scope, fileCount, message, branch };
+  const state: CommitBarState = {
+    scope,
+    fileCount,
+    message,
+    branch,
+    account,
+    github: githubState.data,
+  };
+  const pullRequest =
+    githubState.data?.pullRequest.kind === "ready"
+      ? githubState.data.pullRequest.pullRequest
+      : undefined;
 
   const primaryDisabled =
     commitActionDisabled(action, state) || (branchPrompt !== undefined && branchName.trim() === "");
@@ -379,7 +436,7 @@ export function ChangesCommitBar({
   const run = async (chosen: CommitAction, options: RunOptions = {}): Promise<void> => {
     if (running) return;
     const plan = commitActionPlan(chosen);
-    let expect = { revision };
+    let expect: GitRevision = asId<"git-revision">(revision);
     setRunning(true);
     setResult(undefined);
     setInterrupted(undefined);
@@ -397,97 +454,57 @@ export function ChangesCommitBar({
       if (plan.branch && options.skipBranch !== true) {
         const name = options.branchName ?? "";
 
-        const created = await nyte.workspace.vcs.createBranch({
-          target: { kind: "workspace" },
-          name,
-          checkout: true,
-          expect,
-        });
-
+        const created = await (await workspaceGit()).branch({ name, checkout: true }, { expect });
         const outcome = createBranchResultMessage(created, name);
 
-        if (created.kind !== "created") {
-          if (created.kind === "stale") refreshVcs();
+        if (created.kind !== "applied") {
           settle(outcome);
 
           return;
         }
 
-        refreshVcs();
+        expect = created.revision;
 
-        if (plan.commit || plan.push) {
-          const snapshot = await refreshVcsSnapshot();
-
-          if (snapshot.kind !== "repository") {
-            settle({ tone: "error", text: "This workspace is no longer a Git repository." });
-
-            return;
-          }
-
-          expect = { revision: snapshot.revision };
-        }
-
-        // The prompt stays until the branch exists, so a taken or invalid name
-        // can be corrected without retyping either field.
         setBranchPrompt(undefined);
         setBranchName("");
         reported.push(outcome.text);
       }
 
       if (plan.commit && options.skipCommit !== true) {
-        const committed = await nyte.workspace.vcs.commit({
-          target: { kind: "workspace" },
-          message,
-          files: commitTargetFor(scope),
-          expect,
-        });
+        const committed = await (
+          await workspaceGit()
+        ).commit({ message, files: commitTargetFor(scope) }, { expect });
 
         const outcome = commitResultMessage(committed);
 
-        if (committed.kind !== "committed") {
-          if (committed.kind === "stale") refreshVcs();
+        if (committed.kind !== "applied") {
           settle(outcome);
 
           return;
         }
 
-        refreshVcs();
-
-        if (plan.push) {
-          const snapshot = await refreshVcsSnapshot();
-
-          if (snapshot.kind !== "repository") {
-            settle({ tone: "error", text: "This workspace is no longer a Git repository." });
-
-            return;
-          }
-
-          expect = { revision: snapshot.revision };
-        }
+        expect = committed.revision;
 
         setMessage("");
         reported.push(outcome.text);
       }
 
       if (plan.push) {
-        const pushed = await nyte.workspace.vcs.push({
-          target: { kind: "workspace" },
-          setUpstream: options.setUpstream === true,
-          expect,
-        });
+        const pushed = await (
+          await workspaceGit()
+        ).push({ setUpstream: options.setUpstream === true }, { expect });
 
         const outcome = pushResultMessage(pushed);
 
         if (outcome.tone === "error") {
-          if (pushed.kind === "stale") refreshVcs();
-          else setInterrupted(chosen);
+          if (pushed.kind !== "stale") setInterrupted(chosen);
           settle(outcome);
 
           return;
         }
 
-        refreshVcs();
         reported.push(outcome.text);
+        void queryClient.invalidateQueries({ queryKey: keys.github });
       }
 
       if (plan.pullRequest) {
@@ -497,14 +514,12 @@ export function ChangesCommitBar({
           return;
         }
 
-        const opened = await github.createPullRequest({
-          title: pullRequestTitle(message, branch),
-        });
+        const opened = await github.createPullRequest(pullRequestInput(message));
 
         const outcome = pullRequestResultMessage(opened);
 
         if (outcome.tone === "success") {
-          refreshVcs();
+          void refreshVcs();
           void queryClient.invalidateQueries({ queryKey: keys.github });
         }
 
@@ -549,6 +564,9 @@ export function ChangesCommitBar({
     void run(pending, { setUpstream: true, skipBranch: true, skipCommit: true });
   };
 
+  const blocked = commitActionPlan(action).pullRequest
+    ? pullRequestBlocker(account, githubState.data)
+    : undefined;
   const successText = result?.tone === "success" ? result.text.trim() : "";
   const showResult = result !== undefined && (result.tone === "error" || successText !== "");
 
@@ -577,6 +595,7 @@ export function ChangesCommitBar({
       {branchPrompt !== undefined && (
         <div {...props(styles.actions)}>
           <Input
+            ref={branchField}
             type="text"
             aria-label="New branch name"
             placeholder="fix/tab-close"
@@ -616,34 +635,43 @@ export function ChangesCommitBar({
               />
             }
           />
-          <MenuContent align="end">
-            {actions.map((candidate, index) => {
-              const previous = actions[index - 1];
+          <MenuContent align="end" finalFocus={() => branchField.current ?? true}>
+            <MenuRadioGroup value={action}>
+              {actions.map((candidate, index) => {
+                const previous = actions[index - 1];
 
-              return (
-                <Fragment key={candidate}>
-                  {previous !== undefined &&
-                    commitActionGroup(previous) !== commitActionGroup(candidate) && (
-                      <MenuSeparator />
-                    )}
-                  <MenuItem
-                    layout="plain"
-                    disabled={commitActionDisabled(candidate, state)}
-                    selected={candidate === action}
-                    onClick={() => start(candidate)}
-                  >
-                    {commitActionLabel(candidate)}
-                  </MenuItem>
-                </Fragment>
-              );
-            })}
+                return (
+                  <Fragment key={candidate}>
+                    {previous !== undefined &&
+                      commitActionGroup(previous) !== commitActionGroup(candidate) && (
+                        <MenuSeparator />
+                      )}
+                    <MenuRadioItem
+                      value={candidate}
+                      layout="plain"
+                      disabled={commitActionDisabled(candidate, state)}
+                      onClick={() => start(candidate)}
+                    >
+                      {commitActionLabel(candidate)}
+                    </MenuRadioItem>
+                  </Fragment>
+                );
+              })}
+            </MenuRadioGroup>
           </MenuContent>
         </Menu>
       </SplitButton.Root>
+      {blocked !== undefined && !showResult && (
+        <p {...props(text.sm, styles.result, styles.blocked)}>{blocked}</p>
+      )}
+      {pullRequest !== undefined && (
+        <ChangesPullRequest pullRequest={pullRequest} onOpenLink={onOpenLink} />
+      )}
       {showResult && result !== undefined && (
         <div
           role={result.tone === "error" ? "alert" : "status"}
           {...props(
+            text.sm,
             result.tone === "error" && intent.danger,
             styles.result,
             result.tone === "error" && styles.resultError,
@@ -651,7 +679,7 @@ export function ChangesCommitBar({
         >
           <span>{result.text.trim()}</span>
           {result.detail !== undefined && result.detail !== "" && (
-            <span {...props(styles.resultDetail)}>{result.detail}</span>
+            <span {...props(text.xs, styles.resultDetail)}>{result.detail}</span>
           )}
           {(result.url !== undefined || result.offerPublish === true) && (
             <span {...props(styles.resultActions)}>
@@ -664,8 +692,7 @@ export function ChangesCommitBar({
                   onClick={(event) => {
                     event.preventDefault();
 
-                    if (result.url !== undefined)
-                      void nyte.host.openExternal({ url: result.url }).catch(() => undefined);
+                    if (result.url !== undefined) onOpenLink(result.url);
                   }}
                 >
                   {result.url}

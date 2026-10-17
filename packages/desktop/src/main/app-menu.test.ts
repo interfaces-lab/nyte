@@ -1,8 +1,16 @@
 import { expect, test } from "vitest";
 import type { MenuItemConstructorOptions } from "electron";
-import type { AppInfo, AppMenuCommand } from "@nyte-ai/app/bridge.ts";
+import type { AppInfo, AppMenuCommand, BrowserKey } from "@nyte-ai/app/bridge.ts";
 import { clientActions } from "@nyte-ai/app/client-actions.ts";
-import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
+import {
+  acceleratorMatches,
+  applicationMenuTemplate,
+  createMenuCommandDelivery,
+  menuItemForKey,
+  menuItemRepeats,
+  performMenuRole,
+} from "./app-menu.ts";
+import type { MenuRoleTarget } from "./app-menu.ts";
 
 const info = {
   name: "Nyte",
@@ -67,34 +75,222 @@ test("live commands arrive immediately, but reloaded windows wait again", () => 
   expect(received).toEqual([about, about, settings]);
 });
 
-// macOS adds SF Symbol icons, which need Electron's nativeImage; its File items are the same.
-test.each(["linux", "win32"] as const)(
-  "on %s the primary W closes a tab and closing the window takes Shift",
-  (platform) => {
-    const template = applicationMenuTemplate({
-      platform,
-      name: "Nyte",
-      appInfo: () => info,
-      dispatch: () => {},
-      newWindow: () => {},
-    });
+test("off macOS the primary W closes a tab and closing the window takes Shift", () => {
+  const dispatched: AppMenuCommand[] = [];
 
-    const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
-      entries.flatMap((item) => [
-        item,
-        ...(Array.isArray(item.submenu) ? items(item.submenu) : []),
-      ]);
+  const template = applicationMenuTemplate({
+    platform: "linux",
+    name: "Nyte",
+    appInfo: () => info,
+    dispatch: (command) => {
+      dispatched.push(command);
+    },
+    newWindow: () => {},
+    view: () => {},
+    developer: true,
+  });
 
-    const all = items(template);
+  const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
+    entries.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? items(item.submenu) : [])]);
 
-    const labelled = (accelerator: string) =>
-      all.filter((item) => item.accelerator === accelerator).map((item) => item.label ?? item.role);
+  const all = items(template);
+  const primaryW = all.filter((item) => item.accelerator === "CommandOrControl+W");
+  expect(primaryW).toHaveLength(1);
+  const click: ((...args: never[]) => void) | undefined = primaryW[0]?.click;
 
-    expect(labelled("CommandOrControl+W")).toEqual(["Close Tab"]);
-    expect(labelled("CommandOrControl+T")).toEqual(["New Tab"]);
-    expect(labelled("Shift+CommandOrControl+T")).toEqual(["Reopen Closed Tab"]);
-    expect(all.filter((item) => item.role === "close").map((item) => item.accelerator)).toEqual([
-      "Shift+CommandOrControl+W",
-    ]);
-  },
-);
+  if (click === undefined) throw new Error("The primary W item has no click handler");
+  click();
+  expect(dispatched).toEqual([{ kind: "action", action: "close-tab" }]);
+  expect(all.filter((item) => item.role === "close").map((item) => item.accelerator)).toEqual([
+    "Shift+CommandOrControl+W",
+  ]);
+});
+
+test("a key a page forwards runs the menu item a native key equivalent would", () => {
+  const key = (init: Partial<BrowserKey> & Pick<BrowserKey, "key" | "code">): BrowserKey => ({
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: false,
+    repeat: false,
+    ...init,
+  });
+
+  const reload = key({ key: "r", code: "KeyR", metaKey: true });
+  const hardReload = key({ key: "R", code: "KeyR", metaKey: true, shiftKey: true });
+
+  expect(acceleratorMatches("CommandOrControl+R", reload, true)).toBe(true);
+  expect(acceleratorMatches("CommandOrControl+R", reload, false)).toBe(false);
+  expect(acceleratorMatches("CommandOrControl+R", hardReload, true)).toBe(false);
+  expect(acceleratorMatches("Shift+CmdOrCtrl+R", hardReload, true)).toBe(true);
+  expect(
+    acceleratorMatches("CommandOrControl+Q", key({ key: "q", code: "KeyQ", ctrlKey: true }), false),
+  ).toBe(true);
+  expect(
+    acceleratorMatches(
+      "Alt+Command+I",
+      key({ key: "\u02c6", code: "KeyI", metaKey: true, altKey: true }),
+      true,
+    ),
+  ).toBe(true);
+  expect(
+    acceleratorMatches(
+      "Shift+Control+`",
+      key({ key: "~", code: "Backquote", ctrlKey: true, shiftKey: true }),
+      true,
+    ),
+  ).toBe(true);
+});
+
+test("letters follow the layout, falling back to the physical key for another script", () => {
+  const command = (key: string, code: string): BrowserKey => ({
+    key,
+    code,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: true,
+    repeat: false,
+  });
+
+  const dvorakP = command("p", "KeyR");
+  expect(acceleratorMatches("CommandOrControl+R", dvorakP, true)).toBe(false);
+  expect(acceleratorMatches("CommandOrControl+P", dvorakP, true)).toBe(true);
+  expect(acceleratorMatches("CommandOrControl+R", command("r", "KeyO"), true)).toBe(true);
+  expect(acceleratorMatches("CommandOrControl+R", command("\u043a", "KeyR"), true)).toBe(true);
+  expect(acceleratorMatches("CommandOrControl+0", command("\u00e0", "Digit0"), true)).toBe(true);
+});
+
+test("held keys repeat only zoom", () => {
+  const template = applicationMenuTemplate({
+    platform: "linux",
+    name: "Nyte",
+    appInfo: () => info,
+    dispatch: () => {},
+    newWindow: () => {},
+    view: () => {},
+    developer: true,
+  });
+
+  const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
+    entries.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? items(item.submenu) : [])]);
+
+  const repeating = items(template)
+    .filter((item) => menuItemRepeats({ id: item.id ?? "" }))
+    .map((item) => item.label);
+
+  expect(repeating).toEqual(["Zoom In", "Zoom Out"]);
+});
+
+test("a forwarded key performs the native role a click leaves to AppKit", () => {
+  const calls: string[] = [];
+  let fullScreen = false;
+
+  const record = (name: string) => (): void => {
+    calls.push(name);
+  };
+
+  const target: MenuRoleTarget = {
+    app: { quit: record("quit"), hide: record("hide") },
+    window: {
+      minimize: record("minimize"),
+      close: record("close"),
+      isFullScreen: () => fullScreen,
+      setFullScreen: (flag) => {
+        fullScreen = flag;
+        calls.push(`fullscreen ${String(flag)}`);
+      },
+    },
+    contents: {
+      undo: record("undo"),
+      redo: record("redo"),
+      cut: record("cut"),
+      copy: record("copy"),
+      paste: record("paste"),
+      pasteAndMatchStyle: record("pasteAndMatchStyle"),
+      selectAll: record("selectAll"),
+    },
+    sendAction: (action) => calls.push(action),
+  };
+
+  for (const role of [
+    "quit",
+    "hide",
+    "hideothers",
+    "minimize",
+    "close",
+    "togglefullscreen",
+    "togglefullscreen",
+    "pasteandmatchstyle",
+    "selectAll",
+  ])
+    expect(performMenuRole(role, target)).toBe(true);
+
+  expect(performMenuRole("services", target)).toBe(false);
+  expect(performMenuRole("", target)).toBe(false);
+  expect(calls).toEqual([
+    "quit",
+    "hide",
+    "hideOtherApplications:",
+    "minimize",
+    "close",
+    "fullscreen true",
+    "fullscreen false",
+    "pasteAndMatchStyle",
+    "selectAll",
+  ]);
+});
+
+test("a forwarded key finds its item in a menu shaped like Electron's at runtime", () => {
+  interface FakeItem {
+    readonly label: string;
+    readonly enabled: boolean;
+    readonly visible: boolean;
+    readonly accelerator: string | null;
+    readonly registerAccelerator?: boolean;
+    readonly submenu: { readonly items: readonly FakeItem[] } | null;
+  }
+
+  const leaf = (label: string, accelerator: string | null, enabled = true): FakeItem => ({
+    label,
+    enabled,
+    visible: true,
+    accelerator,
+    submenu: null,
+  });
+
+  const branch = (label: string, items: readonly FakeItem[]): FakeItem => ({
+    label,
+    enabled: true,
+    visible: true,
+    accelerator: null,
+    submenu: { items },
+  });
+
+  const menu = {
+    items: [
+      branch("Nyte", [leaf("About Nyte", null), leaf("Quit Nyte", "CommandOrControl+Q")]),
+      branch("View", [
+        leaf("Reload", "CommandOrControl+R"),
+        leaf("Zoom In", "CommandOrControl+Plus", false),
+        { ...leaf("Split Right", "CommandOrControl+D"), registerAccelerator: false },
+      ]),
+    ],
+  };
+
+  const command = (key: string, code: string): BrowserKey => ({
+    key,
+    code,
+    ctrlKey: false,
+    shiftKey: false,
+    altKey: false,
+    metaKey: true,
+    repeat: false,
+  });
+
+  expect(menuItemForKey(menu, command("r", "KeyR"), true)?.label).toBe("Reload");
+  expect(menuItemForKey(menu, command("q", "KeyQ"), true)?.label).toBe("Quit Nyte");
+  expect(menuItemForKey(menu, command("+", "Equal"), true)).toBeUndefined();
+  expect(menuItemForKey(menu, command("k", "KeyK"), true)).toBeUndefined();
+  expect(menuItemForKey(menu, command("d", "KeyD"), true)).toBeUndefined();
+});

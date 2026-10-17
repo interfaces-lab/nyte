@@ -10,8 +10,7 @@ import { describe, expect, it } from "vitest";
 import { transformMessages } from "../src/api/transform-messages.ts";
 import type { Model } from "../src/types.ts";
 
-// Text-only model so the image downgrade path (replaceImagesWithPlaceholder) runs,
-// which was the primary crash site for null tool result content.
+/** Text-only, so the image downgrade path (replaceImagesWithPlaceholder) runs: the primary crash site for null tool result content. */
 const model: Model<"openai-completions"> = {
   id: "test-model",
   name: "Test Model",

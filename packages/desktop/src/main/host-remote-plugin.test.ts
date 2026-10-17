@@ -24,14 +24,11 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterEach, test, vi } from "vitest";
-import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
-import type { MutableModels, Provider } from "@nyte-ai/ai";
-import { createNyteClient } from "@nyte-ai/client";
-import type { Api, Model } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
 import type { HostEvent, RemoteAccessState } from "@nyte-ai/app/bridge.ts";
-import { DesktopHost } from "./host.ts";
-import { unusedBrowserAgent } from "./browser-stub.ts";
+import type { DesktopHost } from "./host.ts";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
+import { testDesktop } from "./fixtures/desktop-host.ts";
 
 const HOSTNAME = "nyte.example.test";
 
@@ -39,41 +36,6 @@ const ORIGIN = `https://${HOSTNAME}`;
 
 /** Written by the stand-in to stderr; it must never reach state, events, or errors. */
 const LEAK = "cloudflared-output-that-must-stay-in-main";
-
-const model: Model<Api> = {
-  id: "echo",
-  name: "Echo",
-  api: "openai-responses",
-  provider: "echo",
-  baseUrl: "https://example.invalid",
-  reasoning: false,
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100_000,
-  maxTokens: 1_000,
-};
-
-const failing: Provider["stream"] = () => {
-  throw new Error("No provider in the tunnel test");
-};
-
-function localModels(): MutableModels {
-  const models = createModels({
-    credentials: new InMemoryCredentialStore(),
-    modelsStore: new InMemoryModelsStore(),
-  });
-
-  models.setProvider({
-    id: model.provider,
-    name: "Echo",
-    auth: { apiKey: { name: "Fixture", resolve: async () => ({ auth: { apiKey: "fixture" } }) } },
-    getModels: () => [model],
-    stream: failing,
-    streamSimple: failing,
-  });
-
-  return models;
-}
 
 const cleanups: (() => Promise<void> | void)[] = [];
 
@@ -192,19 +154,7 @@ setInterval(() => {}, 1000);
 async function desktop(
   setup: Fixture,
 ): Promise<{ readonly host: DesktopHost; readonly events: HostEvent[] }> {
-  vi.stubEnv("NYTE_HOME", setup.state);
-  vi.stubEnv("CLAUDE_CONFIG_DIR", join(setup.root, "claude"));
-  vi.stubEnv("CODEX_HOME", join(setup.root, "codex"));
-  const appRoot = join(setup.root, "web-app");
-  await mkdir(appRoot, { recursive: true });
-  await writeFile(join(appRoot, "index.html"), "<!doctype html>");
-  const events: HostEvent[] = [];
-
-  const host = new DesktopHost({
-    storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
-    createModels: localModels,
-    appVersion: "test",
-    appRoot,
+  const made = await testDesktop({
     remoteAccessPlugins: {
       cloudflare: new CloudflareTunnelPlugin({
         home: setup.state,
@@ -217,35 +167,11 @@ async function desktop(
         },
       }),
     },
-    emitHostEvent: (event) => events.push(event),
-    emitWatchEvent: () => undefined,
-    openExternal: () => undefined,
-    revealPath: () => undefined,
-    showContextMenu: () => Promise.resolve(undefined),
-    confirmExternal: () => Promise.resolve("cancel"),
-    pickFolder: async () => undefined,
-    listFonts: async () => ({ sans: [], monospace: [] }),
-    browser: {
-      menu: async () => undefined,
-      perform: async () => undefined,
-      open: () => {
-        throw new Error("Browser is not used by tunnel tests");
-      },
-      navigate: () => undefined,
-      close: () => undefined,
-      captureFrame: () => Promise.resolve(undefined),
-      setBounds: () => undefined,
-      retain: () => undefined,
-      release: () => undefined,
-      warm: async () => undefined,
-      releaseWindow: () => undefined,
-      agent: unusedBrowserAgent(),
-    },
   });
 
-  cleanups.push(() => host.close());
+  cleanups.push(() => made.close());
 
-  return { host, events };
+  return { host: made.host, events: made.events };
 }
 
 async function configure(
@@ -288,12 +214,14 @@ async function info(
   setup: Fixture,
   headers: Record<string, string> = {},
 ): Promise<{ readonly status: number; readonly code: string | undefined }> {
-  const response = await fetch(`http://127.0.0.1:${String(setup.port)}/v1/info`, { headers });
-  const body: unknown = await response.json();
+  const response = await fetch(`http://127.0.0.1:${String(setup.port)}/sessions.list`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: "{}",
+  });
 
-  const code = Value.Check(Type.Object({ error: Type.Object({ code: Type.String() }) }), body)
-    ? body.error.code
-    : undefined;
+  const body: unknown = await response.json();
+  const code = Value.Check(Type.Object({ code: Type.String() }), body) ? body.code : undefined;
 
   return { status: response.status, code };
 }
@@ -314,39 +242,43 @@ test("only paired devices get in; refusals are what the server answers, and no s
   assert.equal(state.kind === "serving" && state.address, ORIGIN);
 
   const anonymous = await info(setup);
-  assert.deepEqual(anonymous, { status: 401, code: "unauthorized" });
+  assert.deepEqual(anonymous, { status: 401, code: "unauthenticated" });
   const wrong = await info(setup, bearer("x".repeat(43)));
-  assert.deepEqual(wrong, { status: 403, code: "forbidden" });
+  assert.deepEqual(wrong, { status: 403, code: "denied" });
 
   const pairing = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Phone" });
   assert.equal(pairing.address, ORIGIN);
   const changes = () => events.filter((event) => event.kind === "remote_access_changed").length;
   const beforeClaim = changes();
 
-  const fromPage = await fetch(`http://127.0.0.1:${String(setup.port)}/v1/info`, {
-    headers: { ...bearer(pairing.token), origin: ORIGIN },
+  const fromPage = await fetch(`http://127.0.0.1:${String(setup.port)}/sessions.list`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...bearer(pairing.token), origin: ORIGIN },
+    body: "{}",
   });
 
   assert.equal(fromPage.status, 200);
   assert.equal(fromPage.headers.get("access-control-allow-origin"), ORIGIN);
-  // Settings hears the claim; nothing else would tell it the device stopped waiting.
-  assert.equal(changes(), beforeClaim + 1);
+  assert.equal(
+    changes(),
+    beforeClaim + 1,
+    "Settings hears the claim; nothing else would tell it the device stopped waiting",
+  );
 
   const foreign = await info(setup, {
     ...bearer(pairing.token),
     origin: "https://elsewhere.example",
   });
 
-  assert.deepEqual(foreign, { status: 403, code: "forbidden" });
-  assert.equal(
-    (
-      await createNyteClient({
-        baseUrl: `http://127.0.0.1:${String(setup.port)}`,
-        token: pairing.token,
-      }).info()
-    ).version,
-    "test",
-  );
+  assert.deepEqual(foreign, { status: 403, code: "denied" });
+
+  const device = await sdk.connect({
+    url: `http://127.0.0.1:${String(setup.port)}`,
+    credentials: { kind: "token", token: pairing.token },
+  });
+
+  assert.equal(device.hostId, (await host.host()).hostId);
+  await device.close();
 
   const file = await stored(setup);
   assert.equal((await stat(join(setup.state, "cloudflare-tunnel.json"))).mode & 0o777, 0o600);
@@ -366,54 +298,30 @@ test("only paired devices get in; refusals are what the server answers, and no s
     assert.equal(renderer.includes(hidden), false);
 });
 
-test("revoking ends that device's open stream on the same port, and other devices reconnect", async () => {
+test("revoking refuses that device on the same port while other devices keep their access", async () => {
   const setup = await fixture();
   const { host } = await desktop(setup);
   await configure(host, setup);
   await serve(host);
-  const session = await host.call(1, "sessions.create", { name: "shared" });
-  const baseUrl = `http://127.0.0.1:${String(setup.port)}`;
 
   const [first, second] = [
     await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Revoked" }),
     await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Kept" }),
   ];
 
-  const revoked = createNyteClient({ baseUrl, token: first.token });
-  const kept = createNyteClient({ baseUrl, token: second.token });
-
-  const watching = (client: typeof revoked, seen: string[]) =>
-    (async () => {
-      for await (const event of client.watch({ sessionId: session.sessionId, live: true })) {
-        seen.push(event.kind);
-      }
-    })().then(
-      () => "ended",
-      () => "ended",
-    );
-
-  const revokedSeen: string[] = [];
-  const keptSeen: string[] = [];
-  const revokedWatch = watching(revoked, revokedSeen);
-  const keptWatch = watching(kept, keptSeen);
-  await vi.waitFor(() => {
-    assert.ok(revokedSeen.includes("synced"));
-    assert.ok(keptSeen.includes("synced"));
-  });
+  assert.equal((await info(setup, bearer(first.token))).status, 200);
+  assert.equal((await info(setup, bearer(second.token))).status, 200);
   const [connector] = await pids(setup);
 
   await host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: first.deviceId });
 
-  assert.equal(await revokedWatch, "ended");
-  assert.equal(await keptWatch, "ended");
-  assert.deepEqual(await info(setup, bearer(first.token)), { status: 403, code: "forbidden" });
-  assert.equal((await kept.info()).version, "test");
-  const resumed: string[] = [];
-  void watching(kept, resumed);
-  await vi.waitFor(() => assert.ok(resumed.includes("synced")));
-
-  // Same listener, same connector: the port was never released.
-  assert.deepEqual(await pids(setup), [connector]);
+  assert.deepEqual(await info(setup, bearer(first.token)), { status: 403, code: "denied" });
+  assert.equal((await info(setup, bearer(second.token))).status, 200);
+  assert.deepEqual(
+    await pids(setup),
+    [connector],
+    "same listener, same connector: the port was never released",
+  );
   assert.equal(connector !== undefined && alive(connector), true);
 });
 
@@ -429,7 +337,7 @@ test("a waiting code revoked while its first request is in flight stays revoked"
       info(setup, bearer(pairing.token)).catch(() => undefined),
       host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: pairing.deviceId }),
     ]);
-    assert.deepEqual(await info(setup, bearer(pairing.token)), { status: 403, code: "forbidden" });
+    assert.deepEqual(await info(setup, bearer(pairing.token)), { status: 403, code: "denied" });
   }
 
   assert.equal(JSON.parse(await stored(setup)).devices.length, 0);
@@ -500,7 +408,7 @@ test("a port already in use fails the start before any connector runs", async ()
   cleanups.push(() => new Promise<void>((resolve) => squatter.close(() => resolve())));
 
   await assert.rejects(host.call(1, "host.remote.start", { reach: "cloudflare" }), {
-    message: `Port ${String(setup.port)} is in use on this Mac. Free it, or set the tunnel up with another port.`,
+    message: `Port ${String(setup.port)} can't be used on this Mac. Free it, or set the tunnel up with another port.`,
   });
   assert.deepEqual(await pids(setup), []);
   assert.equal((await host.call(1, "host.remote.state", undefined)).kind, "off");
@@ -535,9 +443,16 @@ test("once the settings cannot be written, no token is accepted and remote acces
   const before = await stored(setup);
 
   await chmod(setup.state, 0o500);
-  // The waiting device's claim cannot be written, so it is refused, and so is everyone after it.
-  assert.deepEqual(await info(setup, bearer(waiting.token)), { status: 403, code: "forbidden" });
-  assert.deepEqual(await info(setup, bearer(paired.token)), { status: 403, code: "forbidden" });
+  assert.deepEqual(
+    await info(setup, bearer(waiting.token)),
+    { status: 403, code: "denied" },
+    "the waiting device's claim cannot be written, so it is refused",
+  );
+  assert.deepEqual(
+    await info(setup, bearer(paired.token)),
+    { status: 403, code: "denied" },
+    "and so is everyone after it",
+  );
 
   await assert.rejects(
     host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: paired.deviceId }),

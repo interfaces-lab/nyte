@@ -25,7 +25,7 @@ export function useMessageScrollerProvider({
   const anchorScrollPending = useRef(false);
   const [following, setFollowing] = useState(true);
   const [end, setEnd] = useState(false);
-  const [anchorFrom, setAnchorFrom] = useState<number>();
+  const [anchorId, setAnchorId] = useState<string>();
 
   const { contentInsetEndAdjustment, onComposerLayout } = useKeyboardChatComposerInset(
     listRef,
@@ -41,7 +41,7 @@ export function useMessageScrollerProvider({
     contentInsetEndAdjustment,
     freeze,
     scrollPreviousItemPeek,
-    anchorFrom,
+    anchorId,
     maintainScrollAtEnd:
       autoScroll && following ? { on: { dataChange: true, itemLayout: true } } : false,
     scrollable: { end },
@@ -49,14 +49,13 @@ export function useMessageScrollerProvider({
       setFollowing(true);
       void scrollMessageToEnd({ animated: false, closeKeyboard: false });
     },
-    /** Anchors the first `scrollAnchor` row appended after the call, once `sent` resolves true. */
-    anchorSend: async (sent: Promise<boolean>) => {
-      const from = listRef.current?.getState().data.length ?? 0;
+    anchorSend: async (sent: Promise<boolean>, readKey: () => string | undefined) => {
       const accepted = await sent;
+      const key = readKey();
 
-      if (accepted) {
+      if (accepted && key !== undefined) {
         anchorScrollPending.current = true;
-        setAnchorFrom(from);
+        setAnchorId(`submission:${key}`);
         setFollowing(true);
       }
 
@@ -88,6 +87,7 @@ function useMessageScroller() {
   return scroller;
 }
 
+/** The transcript list. Until a sent row arrives, an anchor index past the end keeps the previous space. */
 export function MessageScroller<T extends MessageScrollerItem>(
   props: { data: readonly T[] } & Pick<
     ComponentProps<typeof KeyboardAwareLegendList<T>>,
@@ -104,16 +104,17 @@ export function MessageScroller<T extends MessageScrollerItem>(
     contentInsetEndAdjustment,
     freeze,
     scrollPreviousItemPeek,
-    anchorFrom,
+    anchorId,
     maintainScrollAtEnd,
     onAnchorReady,
     onScrollBeginDrag,
     onEndVisible,
   } = useMessageScroller();
+
   const anchorIndex =
-    anchorFrom === undefined
+    anchorId === undefined
       ? undefined
-      : props.data.findIndex((item, index) => index >= anchorFrom && item.scrollAnchor);
+      : props.data.findIndex((item) => item.messageId === anchorId);
 
   return (
     <KeyboardAwareLegendList
@@ -125,7 +126,6 @@ export function MessageScroller<T extends MessageScrollerItem>(
         anchorIndex === undefined
           ? undefined
           : {
-              // Until the sent row arrives, an index past the end keeps the previous space.
               anchorIndex: anchorIndex === -1 ? props.data.length : anchorIndex,
               anchorOffset: scrollPreviousItemPeek,
               onReady: onAnchorReady,

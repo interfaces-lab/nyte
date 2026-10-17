@@ -1,10 +1,10 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The Changes tab: the file tree beside one virtualized CodeView stack that
  * wears the same header, reviewed state and selection action as the Guide.
  * Layout and the file tree are the page's to choose; they live in the "⋯" menu
  * on the tab row, not here.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewLineSelection } from "@pierre/diffs";
@@ -17,12 +17,12 @@ import { workbenchStyles } from "@nyte-ai/app/workbench/workbench.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   AddToChat,
   CodeFileHeader,
   pierreHost,
-  referenceOf,
+  formatReference,
   usePierreOptions,
   type ReviewedState,
   type ReviewFile,
@@ -142,32 +142,32 @@ export function DiffStack(componentProps: DiffStackProps): ReactElement {
         </Tooltip>
       </div>
       <div {...props(styles.body)}>
-        <ChangesSidebar
-          files={files.map((file) => ({
-            path: file.path,
-            status: "modified" as const,
-            added: file.added,
-            removed: file.removed,
-            viewed:
-              componentProps.reviewed(file.path) === "reviewed"
-                ? "viewed"
-                : componentProps.reviewed(file.path) === "changed"
-                  ? "changed"
-                  : "unviewed",
-          }))}
-          visible={componentProps.treeVisible}
-          activePath={active}
-          onRevealPath={(path) => {
-            setActive(path);
-            viewer.current?.scrollTo({
-              type: "item",
-              id: path,
-              align: "start",
-              behavior: "instant",
-            });
-          }}
-          onAllViewedChange={componentProps.onReviewed}
-        />
+        {componentProps.treeVisible && (
+          <ChangesSidebar
+            files={files.map((file) => ({
+              path: file.path,
+              status: "modified" as const,
+              stat: { kind: "text" as const, added: file.added, removed: file.removed },
+              viewed:
+                componentProps.reviewed(file.path) === "reviewed"
+                  ? "viewed"
+                  : componentProps.reviewed(file.path) === "changed"
+                    ? "changed"
+                    : "unviewed",
+            }))}
+            activePath={active}
+            onRevealPath={(path) => {
+              setActive(path);
+              viewer.current?.scrollTo({
+                type: "item",
+                id: path,
+                align: "start",
+                behavior: "instant",
+              });
+            }}
+            onAllViewedChange={componentProps.onReviewed}
+          />
+        )}
         <PierreWorkerProvider>
           <CodeView
             ref={(handle) => {
@@ -231,7 +231,7 @@ export function DiffStack(componentProps: DiffStackProps): ReactElement {
                         : { start: line.lineNumber, end: line.lineNumber });
 
                   if (file !== undefined && range !== undefined)
-                    componentProps.onReference(referenceOf(file, range));
+                    componentProps.onReference(formatReference(file, range));
                 }}
               />
             )}

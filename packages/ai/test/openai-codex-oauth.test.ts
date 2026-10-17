@@ -1,7 +1,3 @@
-/**
- * Based on https://github.com/earendil-works/pi/blob/main/packages/ai/test/openai-codex-oauth.test.ts
- * Synced with pi a276dabe5.
- */
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { afterEach, describe, vi, test } from "vitest";
@@ -201,6 +197,27 @@ describe("OpenAI Codex OAuth", () => {
     assert.equal(credentials.expires, startTime + 5000 + 3600 * 1000);
     assert.equal(credentials["accountId"], "account-123");
     assert.deepEqual(pollTimes, [startTime, startTime + 5000]);
+  });
+
+  test("a browser elsewhere starts the device code flow without asking for a method", async () => {
+    const requested: string[] = [];
+    stubFetch(async (input) => {
+      requested.push(String(input));
+      throw new Error("stop");
+    });
+
+    await assert.rejects(
+      openaiCodexOAuth.login({
+        signal: neverAbortedSignal,
+        browser: "elsewhere",
+        prompt: async (prompt) => {
+          throw new Error(`Unexpected prompt: ${prompt.type}`);
+        },
+        notify: () => undefined,
+      }),
+      /stop/,
+    );
+    assert.deepEqual(requested, ["https://auth.openai.com/api/accounts/deviceauth/usercode"]);
   });
 
   test("cancels the OpenAI Codex device code flow while waiting", async () => {
@@ -407,8 +424,7 @@ describe("OpenAI Codex OAuth", () => {
     assert.equal(consoleError.mock.calls.length, 0);
   });
 
-  test("falls back to the pasted redirect URL when the fixed callback port is taken", async () => {
-    // Port 1455 is registered with OpenAI; the Codex CLI may hold it. Occupy it unless it already is.
+  test("falls back to the pasted redirect URL when the fixed callback port, registered with OpenAI and maybe held by the Codex CLI, is taken", async () => {
     const blocker = createServer();
     await new Promise<void>((resolve) => {
       blocker.once("error", () => resolve());

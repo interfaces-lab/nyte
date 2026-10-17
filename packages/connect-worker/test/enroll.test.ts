@@ -2,7 +2,7 @@ import { EnrollResponse, ErrorBody } from "@nyte-ai/connect";
 import { sha256 } from "@nyte-ai/connect/signing";
 import { Value } from "typebox/value";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { activateDevice } from "../src/store.ts";
+import { activateDevice } from "../src/store/devices.ts";
 import { FakeDesktop, createHarness, read } from "./harness.ts";
 import type { DesktopMode, Harness } from "./harness.ts";
 

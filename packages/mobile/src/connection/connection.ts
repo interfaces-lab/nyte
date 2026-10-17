@@ -1,5 +1,5 @@
-import { NyteTransportError, NyteWireError } from "@nyte-ai/client";
 import { relayAddress, Uuid } from "@nyte-ai/connect";
+import { SdkError } from "@nyte-ai/sdk";
 import { SHARE_LOCATION } from "./connect-copy.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -30,7 +30,7 @@ const ManagedConnectionSchema = Type.Object(
   { additionalProperties: false },
 );
 
-export type AccountBinding = Omit<Static<typeof ManagedConnectionSchema>, keyof Connection>;
+type AccountBinding = Omit<Static<typeof ManagedConnectionSchema>, keyof Connection>;
 
 export type SavedConnection =
   | { readonly kind: "manual"; readonly connection: Connection }
@@ -50,7 +50,7 @@ export interface ManagedPolicy {
  * the others: reaching one means the device is already inside an authenticated
  * tailnet, and the host binds that address alone.
  */
-function isPrivateHost(hostname: string): boolean {
+function allowsPlainHttp(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) return true;
 
   if (hostname.endsWith(".ts.net")) return true;
@@ -127,8 +127,8 @@ export function parseConnection(value: Connection): Connection {
     throw new Error("Enter the full address, including http:// or https://.");
   }
 
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isPrivateHost(url.hostname))) {
-    throw new Error("Use HTTPS, or HTTP with your Mac's local or Tailscale address.");
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && allowsPlainHttp(url.hostname))) {
+    throw new Error("Use HTTPS, or HTTP with the computer's local or Tailscale address.");
   }
 
   if (url.username || url.password || url.search || url.hash)
@@ -174,39 +174,25 @@ export function parseConnectionPayload(text: string): Connection {
 }
 
 export function describeHostError(cause: unknown): string {
-  if (cause instanceof NyteWireError) {
-    if (cause.code === "unauthorized" || cause.code === "forbidden")
-      return `Your Mac refused the token. Scan a new code from ${SHARE_LOCATION}.`;
+  if (!(cause instanceof SdkError)) return "Couldn't reach the host. Check that Nyte is running.";
 
-    if (cause.code === "unknown_session") return "This conversation is no longer available.";
+  switch (cause.code) {
+    case "unauthenticated":
+    case "denied":
+      return `The host refused the token. Scan a new code from ${SHARE_LOCATION}, or use the current token from nyte serve.`;
+    case "unknown":
+      return "This conversation is no longer available.";
+    case "unavailable":
+      return "Couldn't reach the host. Check the address and that sharing is on.";
+    case "stale":
+      return "Another device changed this first. Try again.";
+    case "invalid":
+    case "internal":
+      return "The host couldn't complete the request.";
+    default: {
+      const exhaustive: never = cause.code;
 
-    if (cause.code === "closed") return "Nyte is closed on your Mac.";
-
-    // The one error a version difference produces: the app asked for something
-    // this Mac's Nyte does not serve yet.
-    if (cause.code === "unknown_operation")
-      return "Your Mac is running an older Nyte than this app. Update it there.";
-
-    return "Your Mac couldn't complete the request.";
-  }
-
-  if (cause instanceof NyteTransportError) {
-    switch (cause.failure.kind) {
-      case "network":
-        return "Couldn't reach your Mac. Check the address and that sharing is on.";
-      case "disconnected":
-        return "The connection to your Mac dropped.";
-      case "bad_status":
-      case "bad_content_type":
-      case "bad_body":
-        return "That address answered, but not as a Nyte server.";
-      default: {
-        const exhaustive: never = cause.failure;
-
-        return exhaustive;
-      }
+      return exhaustive;
     }
   }
-
-  return "Couldn't reach your Mac. Check that Nyte is running.";
 }

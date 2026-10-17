@@ -2,14 +2,15 @@ import { props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
+import { activityStyles } from "./activity.stylex.ts";
+import { stepGroupStyles } from "./step-group.stylex.ts";
 import { Prose } from "./prose.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
 
 /** Reasoning between tool calls: open while it streams, folded to its title once it settles. */
 export function ThinkingLine({
-  text,
+  text: reasoning,
   streaming,
 }: {
   text: string;
@@ -17,9 +18,11 @@ export function ThinkingLine({
 }): ReactElement | null {
   const [open, setOpen] = useState<boolean | undefined>();
 
-  if (text.trim() === "" && !streaming) return null;
+  if (reasoning.trim() === "" && !streaming) return null;
 
-  const { title, body } = streaming ? { title: undefined, body: text } : reasoningHeading(text);
+  const { title, body } = streaming
+    ? { title: undefined, body: reasoning }
+    : reasoningHeading(reasoning);
 
   const label = (
     <span {...props(stepGroupStyles.verb, streaming && activityStyles.shimmer)}>

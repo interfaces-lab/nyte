@@ -1,22 +1,22 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * What every code surface in the review shares: one Pierre preset, one file
  * header, and one way to turn a line selection into a side-chat reference.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
 import { useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
-import { diffStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
+import { diffStyles } from "@nyte-ai/app/conversation/diff.stylex.ts";
 import { PIERRE_THEME, PIERRE_TOKEN_CSS } from "@nyte-ai/app/pierre-worker-provider.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /** One file of the pull request at its current head. */
 export interface ReviewFile {
@@ -40,7 +40,7 @@ export function parsePatch(patch: string, key: string): FileDiffMetadata | undef
  * removed lines. The side chat forks the brief, which already read the patch,
  * so the place is enough; the lines need not be quoted.
  */
-export function referenceOf(file: ReviewFile, range: SelectedLineRange): string {
+export function formatReference(file: ReviewFile, range: SelectedLineRange): string {
   const start = Math.min(range.start, range.end);
   const end = Math.max(range.start, range.end);
   const lines = start === end ? `${start}` : `${start}-${end}`;
@@ -63,7 +63,7 @@ function readTheme(): "light" | "dark" {
 }
 
 /** The line colours the desktop's receipts use, for every Pierre surface here. */
-export const PIERRE_CSS = `
+const PIERRE_CSS = `
 ${PIERRE_TOKEN_CSS}
 [data-line-type="context"], [data-gutter-buffer] { --diffs-line-bg: var(--diffs-bg); }
 [data-line-type="change-addition"] { --diffs-line-bg: var(--diffs-bg-addition-override); }

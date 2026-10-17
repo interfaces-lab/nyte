@@ -1,12 +1,24 @@
+import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { calculateCost } from "../models.ts";
+import { applyServiceTierPricing } from "../model-pricing.ts";
+import { calculateCost } from "../model-capabilities.ts";
+import { emptyCost } from "./assistant-stream.ts";
 import type { Api, JsonValue, Model, Usage } from "../types.ts";
 
 const tokenCount = Type.Number({ minimum: 0 });
 
 const compactResponse = Type.Object({
   output: Type.Array(Type.Object({ type: Type.String({ minLength: 1 }) }), { minItems: 1 }),
+  service_tier: Type.Optional(
+    Type.Union([
+      Type.Literal("auto"),
+      Type.Literal("default"),
+      Type.Literal("flex"),
+      Type.Literal("priority"),
+      Type.Null(),
+    ]),
+  ),
   usage: Type.Optional(
     Type.Object({
       input_tokens: tokenCount,
@@ -35,6 +47,7 @@ export interface OpenAICompactResult {
 export async function readOpenAICompactResponse(
   response: Response,
   model: Model<Api>,
+  requestedServiceTier?: ResponseCreateParamsStreaming["service_tier"],
 ): Promise<OpenAICompactResult> {
   const decoded: unknown = await response.json();
 
@@ -42,7 +55,6 @@ export async function readOpenAICompactResponse(
     throw new Error("OpenAI compact response did not contain valid output items and usage");
   }
 
-  // Response.json produced these JSON objects; validation establishes their item envelope.
   const data = decoded.output;
 
   if (decoded.usage === undefined) return { data };
@@ -56,10 +68,11 @@ export async function readOpenAICompactResponse(
     cacheWrite: written,
     reasoning: decoded.usage.output_tokens_details?.reasoning_tokens ?? 0,
     totalTokens: decoded.usage.total_tokens,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    cost: emptyCost(),
   };
 
   calculateCost(model, usage);
+  applyServiceTierPricing(usage, decoded.service_tier ?? requestedServiceTier, model);
 
   return { data, usage };
 }

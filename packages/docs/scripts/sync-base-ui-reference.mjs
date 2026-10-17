@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-/*
+/**
  * Vendors Base UI's generated API tables into content/base-ui-reference.
  *
  * Every `@nyte-ai/ui` component built on Base UI gets one
  * markdown file per part, copied word for word (MIT, (c) Material-UI SAS).
- * The hand-written pages under content/docs/components/components pull the parts they
+ * The hand-written pages under content/design/components pull the parts they
  * document in with `<include>`.
  *
  *   node scripts/sync-base-ui-reference.mjs           # rewrite the parts files
@@ -32,10 +32,12 @@ const slugs = [
   "button",
   "checkbox",
   "collapsible",
+  "combobox",
   "context-menu",
   "dialog",
   "input",
   "menu",
+  "meter",
   "number-field",
   "popover",
   "preview-card",
@@ -67,7 +69,7 @@ function reference(typesMd) {
     .trim();
 }
 
-/** Split the reference into `### Part` sections keyed by part name. */
+/** Split the reference into `### Part` sections keyed by part name, skipping `Root.Props`-style type aliases. */
 function parts(typesMd) {
   const result = new Map();
   const sections = reference(typesMd).split(/^(?=### )/m);
@@ -75,7 +77,6 @@ function parts(typesMd) {
     const match = /^### ([A-Za-z.]+)\n/.exec(section);
     if (!match) continue;
     const name = match[1];
-    // "Root.Props", "Root.State" and friends are type aliases, not parts.
     if (name.includes(".")) continue;
     result.set(name, section.replace(/^### [A-Za-z.]+\n/, "").trim());
   }

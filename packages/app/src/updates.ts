@@ -8,8 +8,9 @@ export function updateLabel(state: UpdateState): string {
     case "downloading":
       return "Downloading Update…";
     case "ready":
-    case "blocked":
       return "Restart to Update…";
+    case "installing":
+      return "Restarting…";
     case "failed":
       return "Update Available…";
     default: {

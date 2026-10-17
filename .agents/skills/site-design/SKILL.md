@@ -45,10 +45,10 @@ product itself, a few true sentences, and motion that rewards attention.
 ## Authority
 
 1. The user's explicit goal.
-2. Shipped behaviour: `README.md`, `packages/core/src/kernel/README.md`, package READMEs, and
-   source. `packages/docs/content/kernel/` defines core contracts.
+2. Shipped behaviour: `README.md`, package READMEs, and source. The JSDoc on `@nyte-ai/core`'s
+   exports and `packages/lab/sdk-shape.ts` define core contracts.
 3. This skill and its references.
-4. Components under `packages/docs/src/components/landing` and `src/app/(site)/_layout`.
+4. Components under `packages/docs/src/components/landing` and `src/components/site`.
 5. Outside sites (Poolside, Vercel). Inspiration only; never quote their structure as a rule.
 
 ## Routing
@@ -77,7 +77,7 @@ disagreement goes in coverage-gaps.md for the user to settle.
 
 ## Verify
 
-1. `pnpm --dir packages/docs types:check`, `pnpm lint`, and `pnpm format`.
+1. `pnpm exec turbo typecheck --filter=@nyte-ai/web`, `pnpm lint`, and `pnpm format`.
 2. Ask the user to look; dev servers are theirs.
 3. Name what still needs eyes: light and dark, 375px and 1440px, reduced motion, keyboard focus
    on every hover effect, and the nav state over each surface it scrolls across.

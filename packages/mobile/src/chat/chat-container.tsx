@@ -1,66 +1,51 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Alert, Keyboard } from "react-native";
 import { css, html } from "react-strict-dom";
 import { router } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { SessionId } from "@nyte-ai/protocol";
-import { changesFromTurns, waitingCall } from "@nyte-ai/client";
+import type { HeadName, SessionId } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
+import { useWatch } from "../connection/use-watch.ts";
 import { describeHostError } from "../connection/connection.ts";
 import { navigationMenuAction } from "../ui/navigation-menu.tsx";
 import { toast } from "../ui/toast.tsx";
 import { TranscriptSkeleton } from "../ui/skeleton.tsx";
 import { spacing, textStyles, tokens } from "../theme.ts";
+import { openQuestion } from "../view-helpers.ts";
 import { useRemoteChat } from "./remote-chat.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
 import { ModelPickerSheet } from "./model-selector.tsx";
 import { ChatScreen } from "./chat-screen.tsx";
 import { indexDelegateNames } from "./delegate-names.ts";
+import { useChatDraft } from "./drafts.ts";
 
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const { client } = useHost();
   const insets = useSafeAreaInsets();
-  const chat = useRemoteChat(client, sessionId);
-  const run = chat.state?.run;
+  const [head, setHead] = useState<HeadName>();
+  const chat = useRemoteChat(client, sessionId, head);
 
-  const childSessions = useQuery({
-    queryKey: ["child-sessions", sessionId],
-    queryFn: async () => {
-      const first = await client.sessions.list({ parent: sessionId });
-      const children = [...first.items];
-      let cursor = first.next;
-
-      while (cursor !== undefined) {
-        const page = await client.sessions.list({ parent: sessionId, cursor });
-        children.push(...page.items);
-        cursor = page.next;
-      }
-
-      return children;
-    },
-    refetchInterval: run !== undefined && !isTerminalPhase(run.phase) ? 2_000 : false,
-  });
-
-  const delegateNames = useMemo(
-    () => indexDelegateNames(childSessions.data ?? []),
-    [childSessions.data],
+  const [children] = useWatch(
+    useMemo(
+      () => ({
+        watch: () => client.sessions.watch({ parents: { kind: "children", session: sessionId } }),
+      }),
+      [client, sessionId],
+    ),
   );
 
+  const childSessions = children.kind === "ready" ? children.value : undefined;
+  const delegateNames = useMemo(() => indexDelegateNames(childSessions ?? []), [childSessions]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const [prefill, setPrefill] = useState<{ text: string; nonce: number }>();
-  const finished = run !== undefined && isTerminalPhase(run.phase);
-  const waiting = chat.state === undefined ? undefined : waitingCall(chat.state);
-
-  const changes = useMemo(
-    () => changesFromTurns(chat.state?.transcript.items ?? []),
-    [chat.state?.transcript.items],
-  );
-
+  const [, setDraft] = useChatDraft(sessionId);
+  const execution = chat.state?.execution;
+  const finished = execution?.kind === "idle" && execution.lastRun !== null;
+  const waiting = chat.state === undefined ? undefined : openQuestion(chat.state);
+  const changes = chat.state?.changes ?? [];
   const review = finished && waiting === undefined && changes.length > 0 ? changes : undefined;
-  const info = chat.state?.info;
+  const info = chat.info;
+  const session = client.session(sessionId);
 
   const sendMerge = () => {
     void chat.send(MERGE_PROMPT);
@@ -104,8 +89,9 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
                 const trimmed = entered?.trim();
 
                 if (trimmed === undefined || trimmed === "") return;
-                void client.sessions
-                  .rename({ sessionId, name: trimmed })
+                void session
+                  .update({ name: trimmed })
+                  .then(() => chat.reloadInfo())
                   .catch(report("Couldn't rename"));
               },
               "plain-text",
@@ -118,8 +104,9 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
         <Stack.Toolbar.MenuAction
           icon={info?.pinned === true ? "pin.slash" : "pin"}
           onPress={() => {
-            void client.sessions
-              .setPinned({ sessionId, pinned: info?.pinned !== true })
+            void session
+              .update({ pinned: info?.pinned !== true })
+              .then(() => chat.reloadInfo())
               .catch(report(info?.pinned === true ? "Couldn't unpin" : "Couldn't pin"));
           }}
         >
@@ -135,9 +122,18 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
                 text: "Delete Conversation",
                 style: "destructive",
                 onPress: () => {
-                  void client.sessions
-                    .delete({ sessionId })
-                    .then(() => router.back())
+                  void session
+                    .remove()
+                    .then((outcome) => {
+                      if (outcome.kind === "removed") router.back();
+                      else
+                        toast.error(
+                          "Couldn't delete",
+                          outcome.kind === "busy"
+                            ? "Stop the conversation first."
+                            : "Its subagent conversations are still here.",
+                        );
+                    })
                     .catch(report("Couldn't delete"));
                 },
               },
@@ -153,6 +149,12 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   if (chat.state !== undefined) {
     return (
       <>
+        <Stack.Header
+          transparent
+          blurEffect="none"
+          style={{ backgroundColor: "transparent", shadowColor: "transparent" }}
+          largeStyle={{ backgroundColor: "transparent", shadowColor: "transparent" }}
+        />
         <Stack.Title>{name === "" ? "Conversation" : name}</Stack.Title>
         {overflow}
         <ModelPickerSheet
@@ -167,20 +169,20 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
         <ChatScreen
           {...chat}
           state={chat.state}
+          sessionId={sessionId}
+          workspace={info?.workspace}
+          head={head ?? "main"}
           onSend={chat.send}
           onStop={chat.stop}
           onReply={chat.reply}
+          onReport={chat.report}
+          onChooseHead={setHead}
           delegateNames={delegateNames}
           changes={review}
-          prefill={prefill}
           onAskMerge={() =>
             confirmMergeRequest({
               onSend: sendMerge,
-              onEdit: () =>
-                setPrefill((current) => ({
-                  text: MERGE_PROMPT,
-                  nonce: (current?.nonce ?? 0) + 1,
-                })),
+              onEdit: () => setDraft(MERGE_PROMPT),
             })
           }
         />

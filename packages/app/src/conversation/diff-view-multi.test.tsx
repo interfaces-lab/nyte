@@ -45,9 +45,11 @@ vi.hoisted(() => {
 
 afterAll(() => vi.unstubAllGlobals());
 
-// Bare paths on both sides, the shape `createTwoFilesPatch(path, path, …)` emits.
-// An a/ and b/ prefix without a `diff --git` line makes Pierre read the name as
-// `b/src/a.ts` and call the file a rename.
+/**
+ * Bare paths on both sides, the shape `createTwoFilesPatch(path, path, …)` emits.
+ * An a/ and b/ prefix without a `diff --git` line makes Pierre read the name as
+ * `b/src/a.ts` and call the file a rename.
+ */
 const firstEdit = ["--- src/a.ts", "+++ src/a.ts", "@@ -1 +1,2 @@", " keep", "+one", ""].join("\n");
 
 const secondEdit = ["--- src/a.ts", "+++ src/a.ts", "@@ -2 +2,2 @@", " one", "+two", ""].join("\n");

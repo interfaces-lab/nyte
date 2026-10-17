@@ -1,16 +1,19 @@
 /**
  * Text fields. `raised` sits on panels and in the workbench, `quiet` on the
- * Settings surface. An `InputGroup` draws the same frame around an `Input`
- * and whatever glyphs or controls sit beside it; the input inside turns bare.
+ * Settings surface, and `code` holds a key, token, or port in the code face.
+ * An `InputGroup` draws the same frame around an `Input` and whatever glyphs
+ * or controls sit beside it; the input inside turns bare.
  */
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ComponentProps, type ReactElement } from "react";
 
-import { input, target } from "./schema.stylex.ts";
+import { input, space, target } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
-import { appearance, role, type } from "./vars.stylex.ts";
+import { danger } from "./styles/theme.stylex.ts";
+import { appearance, role, type } from "./styles/vars.stylex.ts";
 
 const field = create({
   base: {
@@ -50,6 +53,7 @@ const variants = create({
     borderColor: {
       default: role.borderPrimaryTranslucent,
       ":focus": appearance.focusColor,
+      ":user-invalid": danger.border,
       "[aria-invalid=true]": role.borderInteractivePrimary,
     },
     backgroundColor: role.bgElevated,
@@ -58,9 +62,21 @@ const variants = create({
     borderColor: {
       default: role.borderSecondaryTranslucent,
       ":focus": appearance.focusColor,
+      ":user-invalid": danger.border,
       "[aria-invalid=true]": role.borderInteractivePrimary,
     },
     backgroundColor: role.bgMutedTranslucent,
+  },
+  code: {
+    borderColor: {
+      default: role.borderSecondaryTranslucent,
+      ":focus": appearance.focusColor,
+      ":user-invalid": danger.border,
+      "[aria-invalid=true]": role.borderInteractivePrimary,
+    },
+    backgroundColor: role.bgBase,
+    fontFamily: type.fontMono,
+    "::placeholder": { fontFamily: type.fontSans },
   },
 });
 
@@ -85,7 +101,7 @@ const group = create({
   base: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     boxSizing: "border-box",
     minWidth: 0,
     borderWidth: 1,
@@ -139,8 +155,11 @@ const framedPadding = create({
 const textarea = create({
   base: {
     display: "block",
+    fieldSizing: "content",
+    minWidth: target.min,
     height: "auto",
     minHeight: "var(--_input-textarea-min-height)",
+    maxHeight: "12lh",
     paddingBlock: "var(--_input-textarea-padding-block)",
     paddingInline: "calc(var(--_input-inset) + 4px) var(--_input-inset)",
     resize: "vertical",
@@ -156,7 +175,7 @@ export function Input({
   className,
   style,
   ...rest
-}: StyledProps<Omit<InputPrimitive.Props, "size">> & {
+}: StyledProps<Omit<InputPrimitive.Props, "size">, Restyle<"Input">> & {
   /** Defaults to `raised`, or to `bare` inside an `InputGroup`. */
   readonly variant?: keyof typeof variants | "bare";
   /** Defaults to `md`, or to the size of the enclosing `InputGroup`. */
@@ -171,15 +190,17 @@ export function Input({
       data-slot="input"
       {...rest}
       {...mergeStyleProps(
-        props(
-          field.base,
-          rest["aria-invalid"] && rest["aria-invalid"] !== "false" && intent.danger,
-          resolvedVariant === "bare"
-            ? field.bare
-            : [field.framed, variants[resolvedVariant], sizes[resolvedSize], framedPadding.base],
-          groupSize !== undefined && field.grouped,
-          xstyle,
-        ),
+        (state: InputPrimitive.State) =>
+          props(
+            field.base,
+            (state.valid === false || (rest["aria-invalid"] && rest["aria-invalid"] !== "false")) &&
+              intent.danger,
+            resolvedVariant === "bare"
+              ? field.bare
+              : [field.framed, variants[resolvedVariant], sizes[resolvedSize], framedPadding.base],
+            groupSize !== undefined && field.grouped,
+            xstyle,
+          ),
         className,
         style,
       )}
@@ -196,7 +217,7 @@ export function InputGroup({
   style,
   children,
   ...rest
-}: StyledProps<ComponentProps<"label">> & {
+}: StyledProps<ComponentProps<"label">, Restyle<"InputGroup">> & {
   readonly variant?: keyof typeof groupVariants;
   readonly size?: keyof typeof sizes;
 }): ReactElement {
@@ -228,7 +249,7 @@ export function Textarea({
   className,
   style,
   ...rest
-}: StyledProps<ComponentProps<"textarea">> & {
+}: StyledProps<ComponentProps<"textarea">, Restyle<"Textarea">> & {
   readonly variant?: keyof typeof groupVariants;
   readonly size?: keyof typeof sizes;
 }): ReactElement {

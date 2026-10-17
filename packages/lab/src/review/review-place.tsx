@@ -18,12 +18,12 @@ import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { useApprove, useLiveReview, useWriteGuide } from "./api";
 import { DiffStack } from "./diff-stack";
 import { count, plural, sectionFiles } from "./files";
@@ -35,9 +35,9 @@ import {
   type GuideWriting,
 } from "./guide";
 import { ReviewOverview } from "./overview";
-import { openerOf, pullRequestNumber } from "./pull-request";
+import { readOpener, pullRequestNumber } from "./pull-request";
 import { useReviewState } from "./review-state";
-import { briefsOf, useReviewFiles } from "./use-review-files";
+import { selectBriefs, useReviewFiles } from "./use-review-files";
 import { SideChat } from "./side-chat";
 import type { ReviewView } from "./window";
 import type { ReviewDetail } from "./wire";
@@ -126,11 +126,11 @@ export function ReviewDiff({
 }
 
 /** Title, who opened it, its state and number, and the branches it joins. */
-export function PullRequestHeader({ review }: { readonly review: ReviewDetail }): ReactElement {
+function PullRequestHeader({ review }: { readonly review: ReviewDetail }): ReactElement {
   const { files } = review;
 
   const draft = review.author?.status === "working";
-  const opener = openerOf(review);
+  const opener = readOpener(review);
   const added = files.reduce((sum, file) => sum + file.added, 0);
   const removed = files.reduce((sum, file) => sum + file.removed, 0);
 
@@ -218,7 +218,7 @@ function ReviewDocument({
   onView,
 }: Navigation & { readonly review: ReviewDetail; readonly version: number }): ReactElement {
   const local = useReviewState(review.id, review.files);
-  const { empty, current, shown } = briefsOf(review);
+  const { empty, current, shown } = selectBriefs(review);
   const write = useWriteGuide(review.id);
   const approve = useApprove(review.id);
   const [inView, setInView] = useState(0);
@@ -229,8 +229,7 @@ function ReviewDocument({
   }>({ path: undefined, count: 0 });
 
   const bands = useRef(new Map<number, HTMLElement>());
-  /** A section the Overview asked for, scrolled to when the guide draws its band. */
-  const opening = useRef<number | undefined>(undefined);
+  const sectionToScroll = useRef<number | undefined>(undefined);
   const approved = review.approvals.at(-1)?.head === review.revision.head;
   const draft = review.author?.status === "working";
   const sections = shown?.guide.sections ?? [];
@@ -261,7 +260,7 @@ function ReviewDocument({
       return;
     }
 
-    opening.current = index;
+    sectionToScroll.current = index;
     onView("guide");
   };
 
@@ -276,9 +275,9 @@ function ReviewDocument({
 
       bands.current.set(index, node);
 
-      if (opening.current !== index) return;
+      if (sectionToScroll.current !== index) return;
 
-      opening.current = undefined;
+      sectionToScroll.current = undefined;
       node.scrollIntoView({ block: "start" });
     },
   };

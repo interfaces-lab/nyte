@@ -34,7 +34,7 @@ const writtenAsCode = (word: string): boolean =>
   word.endsWith("()") || word.includes("_") || /[\w$]{2,}\.[\w$]{2,}/.test(word);
 
 /** camelCase reads as code too, but only counts when the diff holds it: prose has its iPhones. */
-const camel = (word: string): boolean => /[a-z][A-Z]/.test(word);
+const CAMEL = /[a-z][A-Z]/;
 
 function patchLines(file: ReviewFile): readonly PatchLine[] {
   const lines: PatchLine[] = [];
@@ -80,7 +80,7 @@ function patchLines(file: ReviewFile): readonly PatchLine[] {
 }
 
 /** The changed line that holds `name`, else the context line that does. */
-function lineOf(name: string, lines: readonly PatchLine[]): LineTarget | undefined {
+function findLine(name: string, lines: readonly PatchLine[]): LineTarget | undefined {
   const pattern = new RegExp(`(?<![\\w$])${name.replaceAll(/[.$]/g, "\\$&")}(?![\\w$])`);
   const holding = lines.filter((line) => pattern.test(line.text));
   const found = holding.find((line) => line.row !== "context") ?? holding[0];
@@ -98,13 +98,13 @@ export function linkProse(text: string, files: readonly ReviewFile[]): readonly 
   for (const match of text.matchAll(WORD)) {
     const word = match[0];
 
-    if (!writtenAsCode(word) && !camel(word)) continue;
+    if (!writtenAsCode(word) && !CAMEL.test(word)) continue;
 
     const file = FILE.test(word)
       ? files.find((entry) => entry.path === word || entry.path.endsWith(`/${word}`))
       : undefined;
 
-    const target = file === undefined ? lineOf(word.replace(/\(\)$/, ""), lines) : undefined;
+    const target = file === undefined ? findLine(word.replace(/\(\)$/, ""), lines) : undefined;
 
     if (file === undefined && target === undefined && !writtenAsCode(word)) continue;
 

@@ -1,36 +1,12 @@
 # @nyte-ai/core
 
-Core owns durable session state and execution. Hosts compose it with models and plugins; clients consume its SDK and shared client state.
+Core owns durable session state and execution. `composeHost` (`@nyte-ai/core/server`) builds a host from a `Store`, the `@nyte-ai/ai` models, core plugins and a default workspace; [host](../host/README.md)'s `openHost`, which the sdk's Node `sdk.open` is, calls it with what a machine supplies. Clients do not import core: they use `@nyte-ai/sdk`, whose types are core's and schema's.
 
-The [kernel guide](src/kernel/README.md) explains persistence and execution. The [Core guide](../lab/src/core/guide.tsx) describes the wider architecture, and [host](../host/README.md) shows how to compose a runtime.
+The package has four entries: [src/index.ts](src/index.ts) (`.`), the client and plugin contract; [src/store.ts](src/store.ts) (`./store`), the store-backend SPI host's stores implement; [src/server.ts](src/server.ts) (`./server`), composition and the `ServerHost` port a listener serves a composed host through; and [src/testing.ts](src/testing.ts) (`./testing`), the kernel under a composed host, the steps the tests of other packages drive by hand and the scripted-turn harness ([src/harness.ts](src/harness.ts)) core's own tests share, outside the SDK contract. Each export's JSDoc is its contract, and the surface it implements is the baseline in [packages/lab/sdk-shape.ts](../lab/sdk-shape.ts).
 
-Public entrypoints are declared in [package.json](package.json): the SDK, plugin contracts, stores, and workspace files. Keep runtime behavior here when terminal, desktop, and remote clients must agree.
+A store is two primitives: immutable content-addressed objects, written before any publish, and refs, the only mutable state, published as one all-or-nothing `refs.set` batch. `memoryStore` (`./store`) is the in-process one; sqlite, postgres and Durable Object storage live in host. A head's `watch()` folds the session into one `SessionView` per change, and the sdk folds the wire's deltas with the same code, so no client derives what the view carries.
 
-`@nyte-ai/client` contains the shared session observer and event fold without Node runtime imports. Native and browser clients pass its transport to `SessionObserver`; they must not import the root core entrypoint, which loads host code.
-
-## Session observer
-
-`SessionObserver` keeps one head's `SessionState` current and publishes each change to its subscribers. `subscribe(listener)` returns the function that removes the listener; `state` is the same object until an update replaces it, so a renderer can compare by identity. `start()` resolves with the first snapshot and keeps watching until `close()`; failed reads and watches are reported through `onError` and retried by the observer itself.
-
-Ordinary events fold locally: text, reasoning, tool progress, commits, queue moves, run phases. A full snapshot is taken only for structural change or recovery: a commit the transcript cannot append, a head that moved where no commit followed, a parked call that asks something (the snapshot orders concurrent asks), or a failed watch. Session metadata (the session row, selected and effective inputs, and context status) is core's projection, so after commits, run changes, head moves, facts, and a queued (`config_queued`) or cancelled configuration choice the observer re-reads it through `sessions.metadata`, which carries no transcript, coalescing a batch of events into one read that never delays a fold. `refresh()` asks for that read explicitly, for example after core acknowledges a configuration choice; `selectionVersion` and each update's `selectedVersion` let a client apply selected inputs only for the choice it is still showing.
-
-`state.parked` lists the run's parked calls as the snapshot does, complete records in call order, so a client can show a `SessionSnapshot` from it; `waitingCall(state)` picks the newest ask, the one a composer answers. Background waits park and settle from their events; an ask takes a snapshot, which orders concurrent asks.
-
-## Execution rule
-
-User input starts model work. So does a delegate's answer to a request an un-stopped run authorized. The landing consumes that authorization once, and Stop revokes it. A live run continues on its own authority (tools, retries, checkpoints, boundary landings) until it ends; after that, background results, recovery, reconnects, and ref events can wake a runner but never start a run. Completed background work is stored and joins the next user message once. The rule lives in [`src/kernel/admission.ts`](src/kernel/admission.ts) and is described in the kernel guide under "Who starts model work".
-
-## Delegated work
-
-`task` waits up to its `waitMs` and returns the report when the agent finishes in time. Otherwise it returns the agent id while the agent keeps working. Use `await({ agents: [agent], mode: "all", timeoutMs })` when that report becomes necessary. `stop({ agent })` cancels the agent; cancelling an await alone only stops that observation. Aborting a run cancels its parked waits but leaves agents running.
-
-A parked task or await holds the turn until it finishes, times out, or yields to new user input. On a yield, the tool returns while the agent keeps running. Its report later arrives as a completion. A report the wait already carried is not repeated as a completion.
-
-## Images
-
-Every image that enters history passes through [`src/utils/image.ts`](src/utils/image.ts): `read` attachments, images a tool returns (plugins, MCP bridges, screenshot tools), and images a client attaches to a message. Supported images already within bounds are kept unchanged. Anything else is resized to at most 2,000 pixels per side and a 4.5 MiB base64 payload, following Pi's limits: PNG first, then descending JPEG quality, then smaller dimensions. Unsupported formats such as BMP are converted, and re-encoding applies EXIF orientation first. A resized image carries a note with its original size and the factor that maps coordinates back to it.
-
-An image `read` cannot process is omitted with a text explanation, since `read` can be retried. An image a tool or a client supplied is passed through untouched instead, because the producer already chose to send it and the failure may only mean the image backend is unavailable. Processing uses Photon's self-contained WASM build through `@cf-wasm/photon/node`, in-process on the caller's thread.
+Core imports no `node:*` module, so the sdk's browser and React Native entry can load it.
 
 ## Verification
 
@@ -41,32 +17,4 @@ pnpm --dir packages/core test
 pnpm --dir packages/core typecheck
 ```
 
-The test script runs Vitest, then repeats kernel tests with the worker store. Read [AGENTS.md](AGENTS.md) before changing persistence or execution.
-
-## Hosted PostgreSQL storage
-
-`@nyte-ai/core/postgres` provides the same Store contract over shared PostgreSQL. Separate host instances can create, read, and continue the same session. Importing the local SDK or SQLite store does not load the PostgreSQL driver.
-
-```ts
-import { openPostgresStore } from "@nyte-ai/core/postgres";
-
-const store = await openPostgresStore({
-  connectionString: process.env.DATABASE_URL,
-  max: 4,
-  watchPollIntervalMs: 250,
-});
-```
-
-Hosts must validate their connection settings before opening the store. Pool options follow [node-postgres](https://node-postgres.com/apis/pool). The factory initializes the `nyte_*` tables and owns the connection pool. `store.close()` closes its connections and watches; sessions remain in PostgreSQL. Idle connection errors produce a Node warning, or go to the host's `onPoolError` callback when provided.
-
-For platform pool management, create a `pg.Pool`, attach the platform's lifecycle handler, then pass `postgresDatabase(pool)` to `new PostgresStore(...)` and await `store.initialize()`. The host owns idle pool error reporting in this form; closing the store still ends the pool.
-
-Ref CAS, lease checks, and their events commit together under a session row lock. Lease expiry uses the database clock. Event watches page from the durable cursor and poll every 250 ms by default, so writes from other instances appear without sticky routing or a dedicated PostgreSQL notification connection. Polling occurs only while a watch is active. A trimmed cursor requires a snapshot, just as with SQLite.
-
-Storage does not keep a serverless runner alive. A hosted deployment must schedule execution and recovery separately. The [Vercel example](../demo/server/vercel/README.md) composes those concerns.
-
-Schedulers call the host-only `sdk.advance({ sessionId, head?, signal? })` method. Each call performs one leased kernel step without attaching a runner or sleeping through a retry. It returns `continue`, `idle`, `finished`, `fenced`, `waiting` with an optional `until`, `retry` with `at`, or `busy` with the lease expiry in `until`. The scheduler owns subsequent calls and durable wakeups. The result contains no provider response or kernel Run object. The method uses the same activation, workspace, model, and tool guards as the local runner, and watches for remote run cancellation while the step is active. Closing the SDK aborts and drains active steps.
-
-`test/postgres-store.test.ts` uses real embedded PostgreSQL through PGlite to verify shared handles, CAS, rollback, fencing, event replay, corruption checks, and closing and reopening the database. PGlite serializes transactions; a deployment test against PostgreSQL is still needed to verify concurrent network connections and platform lifecycle behavior.
-
-Set `NYTE_TEST_POSTGRES_URL` to a test database and run `pnpm --dir packages/core exec vitest run test/postgres-network.test.ts` to check competing writes through separate network pools and reconnect persistence. This test creates and deletes its own session. It also initializes Nyte's schema if the database is new.
+Read [AGENTS.md](AGENTS.md) before changing persistence or execution.

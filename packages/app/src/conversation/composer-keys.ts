@@ -1,5 +1,6 @@
-import type { Delivery, PendingItem } from "@nyte-ai/protocol";
+import type { Delivery } from "@nyte-ai/sdk";
 
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import type { RunningMessagePreference } from "../preferences/index.ts";
 
 interface DeliveryChoices {
@@ -7,7 +8,7 @@ interface DeliveryChoices {
   readonly queue: Delivery;
 }
 
-export const deliveryChoices: DeliveryChoices = { steer: "steer", queue: "next" };
+export const deliveryChoices: DeliveryChoices = { steer: "steer", queue: "queue" };
 
 interface EnterKeyState {
   readonly key: string;
@@ -49,8 +50,8 @@ export function modifierKeyLabel(mac: boolean): string {
 }
 
 export function nextToSteer(
-  items: readonly PendingItem[],
+  items: readonly UserMessage[],
   choices: DeliveryChoices,
-): PendingItem | undefined {
+): UserMessage | undefined {
   return items.find((item) => item.delivery !== choices.steer);
 }

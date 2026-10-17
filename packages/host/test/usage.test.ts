@@ -14,13 +14,8 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { afterEach, test, vi } from "vitest";
 import type { Models } from "@nyte-ai/ai";
-import { emptyUsageSummary } from "@nyte-ai/client";
-import {
-  createUsageScanCaches,
-  decodeUsageScanCaches,
-  encodeUsageScanCaches,
-  readClaudeCodeUsage,
-} from "@nyte-ai/host/usage";
+import { emptyUsageSummary } from "../src/usage-summary.ts";
+import { createUsageScanCaches, readClaudeCodeUsage } from "../src/usage.ts";
 
 const model: ReturnType<Models["getModels"]>[number] = {
   id: "claude-test-20260101",
@@ -34,7 +29,9 @@ const model: ReturnType<Models["getModels"]>[number] = {
   contextWindow: 200_000,
   maxTokens: 8192,
 };
+
 const models: Pick<Models, "getModels"> = { getModels: () => [model] };
+
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -48,6 +45,7 @@ async function fixture() {
   const configDir = await mkdtemp(join(tmpdir(), "nyte-claude-usage-"));
   directories.push(configDir);
   await mkdir(join(configDir, "projects"));
+
   return configDir;
 }
 
@@ -75,6 +73,7 @@ async function history(configDir: string, path: string, records: readonly unknow
   const file = join(configDir, "projects", path);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, records.map((value) => JSON.stringify(value)).join("\n") + "\n");
+
   return file;
 }
 
@@ -86,6 +85,7 @@ test("reads all projects and nested agents, preserving TTL subsets and current c
   await writeFile(join(configDir, ".credentials.json"), "not json and must not be read");
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.unpricedRecords, 0);
   assert.equal(result.malformedRecords, 0);
@@ -100,31 +100,32 @@ test("reads all projects and nested agents, preserving TTL subsets and current c
   assert.equal(result.summary.total.output, 40);
   assert.equal(result.summary.total.cacheRead, 100);
   assert.equal(result.summary.total.cacheWrite, 80);
-  assert.equal(result.summary.total.cacheWrite1h, 20);
-  assert.equal(result.summary.total.totalTokens, 420);
+  assert.equal(result.summary.total.total, 420);
   assert.ok(Math.abs(result.summary.total.cost.cacheWrite - 0.000345) < 1e-12);
   assert.ok(Math.abs(result.summary.total.cost.total - 0.001575) < 1e-12);
 });
 
 test.each([false, true])(
-  "deduplicates copies and blocks without losing final output, reverse=%s",
+  "deduplicates copies and blocks by their tokens, whatever their timestamps, without losing final output, reverse=%s",
   async (reverse) => {
     const configDir = await fixture();
     const first = record("same", 1);
     const final = record("same", 40);
-    // Invalid timestamps cannot affect selection; token evidence determines the winner.
     first.timestamp = "not a date";
     const blocks = [first, final, { ...final, message: { ...final.message, content: [] } }];
+
     const file = await history(
       configDir,
       "a/session.jsonl",
       reverse ? blocks.toReversed() : blocks,
     );
+
     await mkdir(join(configDir, "projects", "copy"));
     await copyFile(file, join(configDir, "projects", "copy", "session.jsonl"));
     await history(configDir, "b/session.jsonl", [record("different", 40)]);
     const result = await readClaudeCodeUsage({ models, configDir });
     assert.equal(result.kind, "ready");
+
     if (result.kind !== "ready") return;
     assert.equal(result.summary.models[0]?.turns, 2);
     assert.equal(result.summary.total.output, 80);
@@ -144,6 +145,7 @@ test.each([
   await history(configDir, "a.jsonl", [early, later]);
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.summary.total.input, expected.input);
   assert.equal(result.summary.total.output, expected.output);
@@ -152,6 +154,7 @@ test.each([
 
 test.each(["message", "request"])("deduplicates copied %s-only identities", async (identity) => {
   const configDir = await fixture();
+
   const blocks = [record("same", 1), record("same", 40), record("same", 40)].map(
     (value, index) => ({
       ...value,
@@ -162,10 +165,12 @@ test.each(["message", "request"])("deduplicates copied %s-only identities", asyn
       },
     }),
   );
+
   const file = await history(configDir, "a.jsonl", blocks);
   await copyFile(file, join(configDir, "projects", "copy.jsonl"));
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.summary.models[0]?.turns, 1);
   assert.equal(result.summary.total.input, 100);
@@ -186,23 +191,27 @@ test("namespaces partial identities and preserves complete tuples", async () => 
   ]);
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.summary.models[0]?.turns, 7);
-  assert.equal(result.summary.total.totalTokens, 1470);
+  assert.equal(result.summary.total.total, 1470);
 });
 
 test("records without either nonblank identity remain independent", async () => {
   const configDir = await fixture();
   const full = record();
+
   const records = [undefined, "", " \t"].map((id) => ({
     ...full,
     requestId: id,
     message: { ...full.message, id },
   }));
+
   const file = await history(configDir, "a.jsonl", records);
   await copyFile(file, join(configDir, "projects", "copy.jsonl"));
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.summary.models[0]?.turns, 6);
 });
@@ -219,6 +228,7 @@ test("reported nonnegative costs, including zero, override estimates without inv
   ]);
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.summary.total.cost.total, 5);
   assert.equal(result.summary.total.cost.input, 0);
@@ -233,6 +243,7 @@ test.each([-1, "2", null])(
     await history(configDir, "a.jsonl", [{ ...record(), costUSD }]);
     const result = await readClaudeCodeUsage({ models, configDir });
     assert.equal(result.kind, "ready");
+
     if (result.kind !== "ready") return;
     assert.ok(Math.abs(result.summary.total.cost.total - 0.0007875) < 1e-12);
     assert.equal(result.unpricedRecords, 0);
@@ -241,12 +252,16 @@ test.each([-1, "2", null])(
 
 test("unknown, fuzzy, wrong-provider and ambiguous matches retain unpriced tokens", async () => {
   const configDir = await fixture();
+
   const entries = ["unknown", "claude-test", "wrong-provider", model.id].map((id) => {
     const value = record(id);
     value.message.model = id;
+
     return value;
   });
+
   await history(configDir, "a.jsonl", [...entries, entries[0]]);
+
   const result = await readClaudeCodeUsage({
     configDir,
     models: {
@@ -257,10 +272,12 @@ test("unknown, fuzzy, wrong-provider and ambiguous matches retain unpriced token
       ],
     },
   });
+
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.unpricedRecords, 4);
-  assert.equal(result.summary.total.totalTokens, 840);
+  assert.equal(result.summary.total.total, 840);
   assert.equal(result.summary.total.cost.total, 0);
   assert.equal(result.summary.models.length, 4);
 });
@@ -272,10 +289,11 @@ test("an empty catalog retains all tokens and model rows without inventing price
   await history(configDir, "a.jsonl", [record(), record(), unknown]);
   const result = await readClaudeCodeUsage({ models: { getModels: () => [] }, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.unpricedRecords, 2);
   assert.equal(result.summary.models.length, 2);
-  assert.equal(result.summary.total.totalTokens, 420);
+  assert.equal(result.summary.total.total, 420);
   assert.equal(result.summary.total.cost.total, 0);
 });
 
@@ -286,12 +304,15 @@ test("aggregates many turns into model rows and computes totals from those rows"
     "a.jsonl",
     Array.from({ length: 4000 }, (_, index) => {
       const value = record(String(index));
+
       if (index % 2 === 0) value.message.model = "unknown";
+
       return value;
     }),
   );
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.deepEqual(
     result.summary.models.map((row) => [row.model, row.turns]),
@@ -301,23 +322,27 @@ test("aggregates many turns into model rows and computes totals from those rows"
     ],
   );
   assert.equal(result.unpricedRecords, 2000);
-  assert.equal(result.summary.total.totalTokens, 840_000);
+  assert.equal(result.summary.total.total, 840_000);
   assert.ok(Math.abs(result.summary.total.cost.total - 1.575) < 1e-12);
 });
 
 test("zero catalog rates are known prices and catalog tiers use the complete input count", async () => {
   const configDir = await fixture();
   await history(configDir, "a.jsonl", [record()]);
+
   const free = await readClaudeCodeUsage({
     configDir,
     models: {
       getModels: () => [{ ...model, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
     },
   });
+
   assert.equal(free.kind, "ready");
+
   if (free.kind !== "ready") return;
   assert.equal(free.unpricedRecords, 0);
   assert.equal(free.summary.total.cost.total, 0);
+
   const tiered = await readClaudeCodeUsage({
     configDir,
     models: {
@@ -334,7 +359,9 @@ test("zero catalog rates are known prices and catalog tiers use the complete inp
       ],
     },
   });
+
   assert.equal(tiered.kind, "ready");
+
   if (tiered.kind !== "ready") return;
   assert.ok(Math.abs(tiered.summary.total.cost.total - 0.001575) < 1e-12);
 });
@@ -342,10 +369,12 @@ test("zero catalog rates are known prices and catalog tiers use the complete inp
 test("validates numeric usage once and continues after malformed records", async () => {
   const configDir = await fixture();
   const valid = record();
+
   const invalid = [-1, 0.5, "3", null, 1e100].map((input_tokens) => ({
     ...valid,
     message: { ...valid.message, usage: { ...valid.message.usage, input_tokens } },
   }));
+
   const file = await history(configDir, "a.jsonl", [
     { type: "user", message: { content: "ignored" } },
     { type: "progress" },
@@ -360,6 +389,7 @@ test("validates numeric usage once and continues after malformed records", async
     { type: "assistant", message: {} },
     valid,
   ]);
+
   await appendFile(
     file,
     "not json\n" +
@@ -368,6 +398,7 @@ test("validates numeric usage once and continues after malformed records", async
   );
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
   assert.equal(result.malformedRecords, 9);
   assert.equal(result.summary.models[0]?.turns, 1);
@@ -382,16 +413,17 @@ test("streams across chunk boundaries, ignores incomplete tails, and rereads wit
   await appendFile(file, tail.slice(0, -3));
   const partial = await readClaudeCodeUsage({ models, configDir });
   assert.equal(partial.kind, "ready");
+
   if (partial.kind !== "ready") return;
   assert.equal(partial.malformedRecords, 0);
   assert.equal(partial.summary.models[0]?.turns, 1);
-  // A complete JSON object counts even without a final newline.
   await appendFile(file, tail.slice(-3));
   const complete = await readClaudeCodeUsage({ models, configDir });
   assert.equal(complete.kind, "ready");
+
   if (complete.kind !== "ready") return;
   assert.equal(complete.malformedRecords, 0);
-  assert.equal(complete.summary.models[0]?.turns, 2);
+  assert.equal(complete.summary.models[0]?.turns, 2, "a complete object counts without a newline");
 });
 
 test("empty history is ready, absent projects are missing, non-directories fail", async () => {
@@ -437,17 +469,20 @@ test("skips child transcript and directory symlinks without counting copies", as
   const outside = await fixture();
   const target = await history(outside, "a.jsonl", [record("outside")]);
   const full = record();
+
   const local = await history(configDir, "a.jsonl", [
     { ...full, requestId: undefined, message: { ...full.message, id: undefined } },
   ]);
+
   await symlink(target, join(configDir, "projects", "external.jsonl"));
   await symlink(local, join(configDir, "projects", "copy.jsonl"));
   await symlink(join(outside, "projects"), join(configDir, "projects", "linked-project"));
   await symlink(join(configDir, "projects"), join(configDir, "projects", "cycle"));
   const result = await readClaudeCodeUsage({ models, configDir });
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
-  assert.equal(result.summary.total.totalTokens, 210);
+  assert.equal(result.summary.total.total, 210);
   assert.equal(result.summary.models[0]?.turns, 1);
   assert.equal(result.unreadableFiles, 0);
 });
@@ -457,12 +492,14 @@ test.each(["config", "ancestor", "projects"])("follows a linked %s root", async 
   const outside = await fixture();
   const target = linked === "ancestor" ? join(outside, "child") : outside;
   await history(target, "a.jsonl", [record()]);
+
   if (linked === "projects") {
     await rm(join(configDir, "projects"), { recursive: true });
     await symlink(join(outside, "projects"), join(configDir, "projects"));
   } else {
     await symlink(outside, join(configDir, "linked-config"));
   }
+
   const result = await readClaudeCodeUsage({
     models,
     configDir:
@@ -472,9 +509,11 @@ test.each(["config", "ancestor", "projects"])("follows a linked %s root", async 
           ? join(configDir, "linked-config", "child")
           : join(configDir, "linked-config"),
   });
+
   assert.equal(result.kind, "ready");
+
   if (result.kind !== "ready") return;
-  assert.equal(result.summary.total.totalTokens, 210);
+  assert.equal(result.summary.total.total, 210);
   assert.equal(result.unreadableFiles, 0);
 });
 
@@ -488,9 +527,11 @@ test.skipIf(process.getuid?.() === 0)(
     await mkdir(blockedDirectory);
     await chmod(blocked, 0);
     await chmod(blockedDirectory, 0);
+
     try {
       const result = await readClaudeCodeUsage({ models, configDir });
       assert.equal(result.kind, "ready");
+
       if (result.kind !== "ready") return;
       assert.equal(result.unreadableFiles, 2);
       assert.equal(result.summary.models[0]?.turns, 1);
@@ -498,7 +539,9 @@ test.skipIf(process.getuid?.() === 0)(
       await chmod(blocked, 0o600);
       await chmod(blockedDirectory, 0o700);
     }
+
     await chmod(join(configDir, "projects"), 0);
+
     try {
       assert.equal((await readClaudeCodeUsage({ models, configDir })).kind, "failed");
     } finally {
@@ -522,11 +565,13 @@ test("cancellation rejects before and during scans without returning partial tot
   const controller = new AbortController();
   const reading = readClaudeCodeUsage({ models, configDir, signal: controller.signal });
   const timer = setTimeout(() => controller.abort(reason), 10);
+
   try {
     await assert.rejects(reading, (error) => error === reason);
   } finally {
     clearTimeout(timer);
   }
+
   await rm(join(configDir, "projects", "large.jsonl"));
 });
 
@@ -537,30 +582,32 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
   const cache = createUsageScanCaches().claudeCode;
   const cold = await readClaudeCodeUsage({ models, configDir, cache });
   assert.equal(cold.kind, "ready");
+
   if (cold.kind !== "ready") return;
   assert.equal(cold.summary.models[0]?.turns, 2);
   assert.deepEqual([...cache.keys()].toSorted(), [first, second].toSorted());
 
-  // The same read from the cache alone: no file is opened, so an unreadable
-  // one is still counted from what it said before it was locked.
   await chmod(first, 0);
+
   try {
     const warm = await readClaudeCodeUsage({ models, configDir, cache });
     assert.equal(warm.kind, "ready");
+
     if (warm.kind !== "ready") return;
     assert.equal(warm.summary.models[0]?.turns, 2);
-    assert.equal(warm.unreadableFiles, 0);
+    assert.equal(warm.unreadableFiles, 0, "the cache answers for a file it can no longer open");
   } finally {
     await chmod(first, 0o600);
   }
 
-  // Cost is derived from the catalog on each read, never baked into the cache.
   const unpriced = await readClaudeCodeUsage({ models: { getModels: () => [] }, configDir, cache });
   assert.equal(unpriced.kind, "ready");
+
   if (unpriced.kind !== "ready") return;
-  assert.equal(unpriced.unpricedRecords, 2);
+  assert.equal(unpriced.unpricedRecords, 2, "each read prices from the catalog, not the cache");
   const repriced = await readClaudeCodeUsage({ models, configDir, cache });
   assert.equal(repriced.kind, "ready");
+
   if (repriced.kind !== "ready") return;
   assert.equal(repriced.unpricedRecords, 0);
   assert.ok(repriced.summary.total.cost.total > 0);
@@ -569,25 +616,8 @@ test("a cache reuses unchanged files, reparses changed ones, and forgets removed
   await rm(second);
   const changed = await readClaudeCodeUsage({ models, configDir, cache });
   assert.equal(changed.kind, "ready");
+
   if (changed.kind !== "ready") return;
   assert.equal(changed.summary.models[0]?.turns, 2);
   assert.deepEqual([...cache.keys()], [first]);
-});
-
-test("a persisted cache round-trips and a foreign file decodes to a cold cache", async () => {
-  const configDir = await fixture();
-  const full = record("kept");
-  await history(configDir, "a.jsonl", [
-    { ...full, costUSD: 0.5 },
-    { ...full, requestId: undefined, message: { ...full.message, id: undefined } },
-  ]);
-  const caches = createUsageScanCaches();
-  const read = await readClaudeCodeUsage({ models, configDir, cache: caches.claudeCode });
-  assert.equal(read.kind, "ready");
-  const restored = decodeUsageScanCaches(encodeUsageScanCaches(caches));
-  assert.deepEqual(restored, caches);
-  const warm = await readClaudeCodeUsage({ models, configDir, cache: restored.claudeCode });
-  assert.deepEqual(warm, read);
-  assert.deepEqual(decodeUsageScanCaches("not json"), createUsageScanCaches());
-  assert.deepEqual(decodeUsageScanCaches('{"version":0}'), createUsageScanCaches());
 });

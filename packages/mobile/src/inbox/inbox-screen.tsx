@@ -1,17 +1,19 @@
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
+import type { SearchBarCommands } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { css, html } from "react-strict-dom";
-import type { SessionInfo } from "@nyte-ai/protocol";
+import type { SessionInfo } from "@nyte-ai/sdk";
 import { useHost } from "../connection/host-context.tsx";
 import { SessionRow } from "../chat/session-row.tsx";
 import { Composer } from "../chat/composer.tsx";
+import { WorkspacePicker } from "../chat/workspace-menu.tsx";
 import {
   hasFailed,
-  isActive,
+  inProgress,
   needsAttention,
   needsInput,
   useSessionList,
@@ -23,6 +25,7 @@ import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { SessionRowsSkeleton } from "../ui/skeleton.tsx";
 import { FilterGrid } from "./filter-grid.tsx";
+import { AccountButton } from "./account-button.tsx";
 import { useDateSections, useFilterCards, useTwoLinePreview } from "../settings/preferences.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
@@ -33,7 +36,7 @@ type Filter = (typeof filterOrder)[number];
 
 const filterLabels: Record<Filter, string> = {
   all: "All Agents",
-  attention: "Needs you",
+  attention: "Needs attention",
   working: "Working",
   pinned: "Pinned",
 };
@@ -41,7 +44,7 @@ const filterLabels: Record<Filter, string> = {
 /** Typing in the search field must not spend one host request per keystroke. */
 const SEARCH_DEBOUNCE_MS = 250;
 
-function isToday(session: SessionInfo, now: number): boolean {
+function activeToday(session: SessionInfo, now: number): boolean {
   const then = new Date(session.lastActivityAt);
   const date = new Date(now);
 
@@ -70,7 +73,7 @@ function SessionSection({
       {title === undefined ? null : <SectionHeader label={title} first={first} />}
       {sessions.map((session, index) => (
         <SessionRow
-          key={session.sessionId}
+          key={session.id}
           session={session}
           now={now}
           last={index === sessions.length - 1}
@@ -81,16 +84,29 @@ function SessionSection({
   );
 }
 
+/**
+ * The session list with the composer for a new conversation. A pull is the only load that blanks the
+ * rows, so the spinner belongs to it alone; returning to the app reloads in place.
+ *
+ * One table drives the sections, the filter menu, and the empty state, so a row never sits in a section
+ * the filter of the same name hides. Groups with no filter of their own show only in the unfiltered
+ * list. Settled agents split by day only while the date sections are on; otherwise they run together
+ * under no heading. Hiding the filter cards also hides the only way out of a filter, so the list then
+ * shows everything.
+ */
 export function InboxScreen() {
   const theme = useTheme();
-  const { client, connection } = useHost();
+  const { client } = useHost();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const searchBar = useRef<SearchBarCommands>(null);
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { list, busy, error, refresh, reload, more } = useSessionList(client, search);
-  // A pull is the only load that blanks the rows, so the spinner belongs to it
-  // alone; returning to the app reloads in place and never sets loading.
+  const { list, busy, error, refresh, more } = useSessionList(client, search);
   const [pulled, setPulled] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [filterCards] = useFilterCards();
@@ -101,23 +117,18 @@ export function InboxScreen() {
     (session) => !session.archived,
   );
 
-  const working = sessions.filter(isActive);
-  const attention = sessions.filter((session) => needsInput(session) && !isActive(session));
-  const failed = sessions.filter((session) => hasFailed(session) && !isActive(session));
-  const settled = sessions.filter((session) => !isActive(session) && !needsAttention(session));
+  const working = sessions.filter(inProgress);
+  const attention = sessions.filter((session) => needsInput(session) && !inProgress(session));
+  const failed = sessions.filter((session) => hasFailed(session) && !inProgress(session));
+  const settled = sessions.filter((session) => !inProgress(session) && !needsAttention(session));
   const pinned = settled.filter((session) => session.pinned);
   const rest = settled.filter((session) => !session.pinned);
 
-  // One table drives the sections, the filter menu, and the empty state, so a
-  // row can never sit in a section the filter of the same name hides. Groups
-  // with no filter of their own show only in the unfiltered list. Settled
-  // agents split by day only while the date sections are on; otherwise they
-  // run together under no heading at all.
   const settledGroups: readonly { title?: string; sessions: readonly SessionInfo[] }[] =
     dateSections
       ? [
-          { title: "Today", sessions: rest.filter((session) => isToday(session, now)) },
-          { title: "Earlier", sessions: rest.filter((session) => !isToday(session, now)) },
+          { title: "Today", sessions: rest.filter((session) => activeToday(session, now)) },
+          { title: "Earlier", sessions: rest.filter((session) => !activeToday(session, now)) },
         ]
       : [{ sessions: rest }];
 
@@ -133,9 +144,7 @@ export function InboxScreen() {
     ...settledGroups,
   ];
 
-  // Hiding the filter cards also hides the only way back out of a filter, so
-  // the list falls back to showing everything while they are off.
-  const activeFilter = filterCards ? filter : "all";
+  const activeFilter = filterCards && !searchActive ? filter : "all";
 
   const visible = groups.filter(
     (group) =>
@@ -144,39 +153,57 @@ export function InboxScreen() {
 
   useWorkLiveActivitySync(working, attention);
 
-  // Returning to the list rechecks the host without blanking the rows.
   useFocusEffect(
     useCallback(() => {
-      reload();
       setNow(Date.now());
-    }, [reload]),
+    }, []),
   );
 
-  // Relative times age on their own; the query polls for data changes itself.
   useMountEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10_000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(searchTimer.current);
+    };
   });
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack.Toolbar placement="left">
+      <Stack.Screen options={{ title: "Inbox" }} />
+      <AccountButton />
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon="magnifyingglass"
+          accessibilityLabel="Search agents"
+          onPress={() => searchBar.current?.focus()}
+          separateBackground
+        />
         <Stack.Toolbar.View>
-          <GlassButton
-            label={`${connection.name} settings`}
-            systemImage="laptopcomputer"
-            iconOnly
-            href="/settings"
-          />
+          <View style={{ width: controls.touchTarget, height: controls.touchTarget }}>
+            <WorkspacePicker
+              toolbar
+              busy={creating}
+              onSettings={() => router.navigate("/settings")}
+              onWorkspaceChange={() => {
+                setWorkspaceEpoch((epoch) => epoch + 1);
+              }}
+            />
+          </View>
         </Stack.Toolbar.View>
       </Stack.Toolbar>
-      <Stack.Toolbar placement="right"></Stack.Toolbar>
       <Stack.SearchBar
+        ref={searchBar}
         placement="automatic"
         allowToolbarIntegration={false}
         hideWhenScrolling
         placeholder="Search agents"
+        onFocus={() => setSearchActive(true)}
+        onCancelButtonPress={() => {
+          clearTimeout(searchTimer.current);
+          setSearch("");
+          setSearchActive(false);
+        }}
         onChangeText={(event) => {
           const text = event.nativeEvent.text.trim();
           clearTimeout(searchTimer.current);
@@ -188,7 +215,7 @@ export function InboxScreen() {
         contentContainerStyle={{
           flexGrow: 1,
           paddingTop: spacing.xs,
-          paddingBottom: controls.composerBar + insets.bottom + spacing.xl,
+          paddingBottom: (searchActive ? insets.bottom : composerHeight) + spacing.xl,
         }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
@@ -205,14 +232,14 @@ export function InboxScreen() {
           />
         }
       >
-        {list.kind === "ready" && search === "" && filterCards ? (
+        {list.kind === "ready" && !searchActive && search === "" && filterCards ? (
           <FilterGrid
             cards={[
               {
                 id: "all",
                 label: filterLabels.all,
-                icon: "square.stack",
-                tint: theme.muted,
+                icon: "paperplane",
+                tint: theme.agentAccent,
                 count: sessions.length,
               },
               {
@@ -233,7 +260,7 @@ export function InboxScreen() {
                 id: "pinned",
                 label: filterLabels.pinned,
                 icon: "pin",
-                tint: theme.success,
+                tint: theme.pinnedAccent,
                 count: pinned.length,
               },
             ]}
@@ -268,8 +295,8 @@ export function InboxScreen() {
                 search !== ""
                   ? "Try another name."
                   : activeFilter === "all"
-                    ? "Describe a task below. Your Mac runs it and it shows up here."
-                    : "Other agents are hidden by this filter."
+                    ? "Send a message to start a chat."
+                    : undefined
               }
               systemImage="square.stack"
             >
@@ -283,7 +310,7 @@ export function InboxScreen() {
             visible.map((group, index) => (
               <SessionSection
                 key={group.title ?? "settled"}
-                title={group.title}
+                title={group.title ?? "Conversations"}
                 sessions={group.sessions}
                 now={now}
                 first={index === 0}
@@ -310,13 +337,24 @@ export function InboxScreen() {
           </html.p>
         )}
       </ScrollView>
-      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 1 }}>
+      <KeyboardStickyView
+        onLayout={(event) => setComposerHeight(event.nativeEvent.layout.height)}
+        pointerEvents={searchActive ? "none" : "auto"}
+        style={{
+          display: searchActive ? "none" : "flex",
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1,
+        }}
+      >
         <Composer
           target={{ kind: "new" }}
           placeholder="Ask anything"
-          backdrop="background"
           gutters={{ left: insets.left + spacing.gutter, right: insets.right + spacing.gutter }}
-          onWorkspaceChange={reload}
+          workspaceEpoch={workspaceEpoch}
+          onBusyChange={setCreating}
         />
       </KeyboardStickyView>
     </View>

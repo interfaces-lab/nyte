@@ -1,0 +1,243 @@
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import { Value } from "typebox/value";
+import { asId } from "@nyte-ai/schema";
+import { SdkError } from "@nyte-ai/sdk";
+import type { Connection, SessionId, WorkspaceInfo } from "@nyte-ai/sdk";
+import { uploadDraft } from "../media/attachments.ts";
+
+export interface KeyValueStorage {
+  getString(key: string): string | undefined;
+  set(key: string, value: string): void;
+  remove(key: string): boolean;
+}
+
+export function selectionKey(scope: string): string {
+  return JSON.stringify([scope, "workspace"]);
+}
+
+export function startKey(scope: string): string {
+  return JSON.stringify([scope, "start"]);
+}
+
+export function selectedFolder(
+  rows: readonly WorkspaceInfo[],
+  chosenId: string | undefined,
+): WorkspaceInfo | undefined {
+  const ready = rows.filter((row) => row.availability.kind === "available");
+  const chosen = ready.find((row) => row.id === chosenId);
+
+  if (chosen !== undefined) return chosen;
+
+  return ready.length === 1 ? ready[0] : undefined;
+}
+
+const DraftPartSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("text"), text: Type.String() }),
+  Type.Object({ kind: Type.Literal("image"), mime: Type.String(), data: Type.String() }),
+]);
+
+const StartInputSchema = Type.Object(
+  {
+    requestId: Type.String({ minLength: 1 }),
+    workspace: Type.String({ minLength: 1 }),
+    name: Type.String(),
+    content: Type.Array(DraftPartSchema),
+    model: Type.Optional(Type.Object({ provider: Type.String(), id: Type.String() })),
+    thinking: Type.Optional(
+      Type.Union([
+        Type.Literal("off"),
+        Type.Literal("minimal"),
+        Type.Literal("low"),
+        Type.Literal("medium"),
+        Type.Literal("high"),
+        Type.Literal("xhigh"),
+        Type.Literal("max"),
+      ]),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export type StartInput = Static<typeof StartInputSchema>;
+
+const StartReceiptSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("accepted"), sessionId: Type.String() }),
+  Type.Object({ kind: Type.Literal("refused"), message: Type.String() }),
+]);
+
+type StartReceipt = Static<typeof StartReceiptSchema>;
+
+const PendingStartSchema = Type.Object(
+  {
+    input: StartInputSchema,
+    receipt: Type.Optional(StartReceiptSchema),
+  },
+  { additionalProperties: false },
+);
+
+export type PendingStart = Static<typeof PendingStartSchema>;
+
+export function readPendingStart(
+  storage: KeyValueStorage,
+  scope: string,
+): PendingStart | undefined {
+  return parsePendingStart(storage.getString(startKey(scope)));
+}
+
+export function parsePendingStart(text: string | undefined): PendingStart | undefined {
+  if (text === undefined) return undefined;
+
+  try {
+    const value: unknown = JSON.parse(text);
+
+    return Value.Check(PendingStartSchema, value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function recordStart(
+  storage: KeyValueStorage,
+  scope: string,
+  input: StartInput,
+): { kind: "recorded"; pending: PendingStart } | { kind: "waiting"; pending: PendingStart } {
+  const existing = readPendingStart(storage, scope);
+
+  if (existing !== undefined) return { kind: "waiting", pending: existing };
+  const recorded: PendingStart = { input };
+  storage.set(startKey(scope), JSON.stringify(recorded));
+
+  return { kind: "recorded", pending: recorded };
+}
+
+export function removeStart(storage: KeyValueStorage, scope: string, requestId: string): void {
+  if (readPendingStart(storage, scope)?.input.requestId === requestId)
+    storage.remove(startKey(scope));
+}
+
+export type StartOutcome =
+  | { kind: "accepted"; sessionId: SessionId }
+  | { kind: "refused"; message: string }
+  | { kind: "unanswered"; cause: unknown }
+  | { kind: "asking" };
+
+const asking = new Set<string>();
+
+const listeners = new Set<() => void>();
+
+function flightKey(scope: string, requestId: string): string {
+  return JSON.stringify([scope, requestId]);
+}
+
+function setAsking(flight: string, active: boolean): void {
+  if (active) asking.add(flight);
+  else asking.delete(flight);
+
+  for (const listener of listeners) listener();
+}
+
+export function subscribeAsking(listener: () => void): () => void {
+  listeners.add(listener);
+
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function readAsking(scope: string, requestId: string): boolean {
+  return asking.has(flightKey(scope, requestId));
+}
+
+async function start(client: Connection, input: StartInput): Promise<StartReceipt> {
+  const workspace = (await client.workspaces.list()).find((row) => row.id === input.workspace);
+
+  if (workspace === undefined)
+    return { kind: "refused", message: "This folder is no longer on the host." };
+
+  const sessionId = asId<"session">(input.requestId);
+
+  try {
+    await client.sessions.start({
+      id: sessionId,
+      workspace: workspace.id,
+      name: input.name,
+      configuration: { model: input.model, thinking: input.thinking },
+      content: await uploadDraft(client.workspace(workspace.id), input.content),
+    });
+  } catch (cause) {
+    if (!(cause instanceof SdkError) || (cause.code !== "unknown" && cause.code !== "invalid"))
+      throw cause;
+
+    return {
+      kind: "refused",
+      message: cause.code === "unknown" ? "This folder is no longer on the host." : cause.message,
+    };
+  }
+
+  return { kind: "accepted", sessionId };
+}
+
+export async function askStart({
+  client,
+  storage,
+  scope,
+  input,
+}: {
+  client: Connection;
+  storage: KeyValueStorage;
+  scope: string;
+  input: StartInput;
+}): Promise<StartOutcome> {
+  const flight = flightKey(scope, input.requestId);
+
+  if (asking.has(flight)) return { kind: "asking" };
+  setAsking(flight, true);
+
+  try {
+    let receipt: StartReceipt;
+
+    try {
+      receipt = await start(client, input);
+    } catch (cause: unknown) {
+      return { kind: "unanswered", cause };
+    }
+
+    const stored = readPendingStart(storage, scope);
+
+    if (stored?.input.requestId === input.requestId)
+      storage.set(startKey(scope), JSON.stringify({ ...stored, receipt }));
+
+    return receipt.kind === "accepted"
+      ? { kind: "accepted", sessionId: asId<"session">(receipt.sessionId) }
+      : { kind: "refused", message: receipt.message };
+  } finally {
+    setAsking(flight, false);
+  }
+}
+
+export function canRetry(pending: PendingStart): boolean {
+  return pending.receipt?.kind !== "accepted";
+}
+
+export function canEdit(pending: PendingStart): boolean {
+  return pending.receipt?.kind !== "accepted";
+}
+
+export function refusalMessage(receipt: Extract<StartReceipt, { kind: "refused" }>): string {
+  return receipt.message;
+}
+
+export function startText(input: StartInput): string {
+  const first = input.content[0];
+
+  return first?.kind === "text" ? first.text : "";
+}
+
+export function startPreview(input: StartInput): string {
+  const line = startText(input).trim().split("\n", 1)[0] ?? "";
+
+  if (line !== "") return line.length > 60 ? `${line.slice(0, 59)}…` : line;
+
+  return input.content.some((part) => part.kind === "image") ? "Photo" : "Message";
+}

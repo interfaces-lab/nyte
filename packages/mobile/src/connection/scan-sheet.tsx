@@ -17,8 +17,7 @@ import { media, overCamera, radii, spacing, textStyles } from "../theme.ts";
 import { parseConnectionPayload, type Connection } from "./connection.ts";
 import { SHARE_LOCATION } from "./connect-copy.ts";
 
-// Hoisted: `useObjectOutput` memoizes on this array, so an inline literal would
-// rebuild the camera output on every render.
+/** Hoisted: `useObjectOutput` memoizes on this array, so an inline literal would rebuild the camera output on every render. */
 const SCANNED_TYPES: ScannedObjectType[] = ["qr"];
 
 type ScanSheetProps = {
@@ -40,13 +39,16 @@ export function ScanSheet({ visible, onClose, onScan }: ScanSheetProps) {
   );
 }
 
+/**
+ * The live camera session. A code stays in frame for many callbacks; a ref latches before React commits,
+ * so a second callback in the same frame cannot connect twice. The session is an external system that
+ * stays mounted while only its activity follows the app's foreground.
+ */
 function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
   const insets = useSafeAreaInsets();
   const device = useCameraDevice("back");
   const { hasPermission, canRequestPermission } = useCameraPermission();
   const [foreground, setForeground] = useState(AppState.currentState === "active");
-  // A code stays in frame for many callbacks. The ref latches before React
-  // commits, so a second callback in the same frame cannot connect twice.
   const settled = useRef(false);
   const [found, setFound] = useState(false);
   const [error, setError] = useState<string>();
@@ -77,7 +79,6 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
 
   const output = useObjectOutput({ types: SCANNED_TYPES, onObjectsScanned });
 
-  // The camera session is an external system: it follows the app's foreground.
   useMountEffect(() => {
     const subscription = AppState.addEventListener("change", (state) =>
       setForeground(state === "active"),
@@ -95,7 +96,6 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
           style={StyleSheet.absoluteFill}
           device={device}
           outputs={[output]}
-          // The session stays mounted; only its activity follows the app.
           isActive={foreground && !found}
           onError={(cause) => setError(cause.message)}
         />

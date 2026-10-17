@@ -9,14 +9,14 @@
 /** Folders that keep a row of their own; the ones above them share the first. */
 const MAX_FOLDER_ROWS = 4;
 
-export interface MentionPreviewRow {
+interface MentionPreviewRow {
   readonly kind: "folder" | "file";
   readonly label: string;
 }
 
+/** The mention itself always keeps its own row; only the folders above it collapse. */
 export function mentionPreviewRows(displayPath: string): readonly MentionPreviewRow[] {
   const segments = displayPath.split("/").filter((segment) => segment !== "");
-  // The mention itself always keeps its own row; only the folders above it collapse.
   const collapsed = Math.max(0, segments.length - 1 - MAX_FOLDER_ROWS);
 
   const shown =
@@ -24,10 +24,10 @@ export function mentionPreviewRows(displayPath: string): readonly MentionPreview
       ? segments
       : [segments.slice(0, collapsed).join("/"), ...segments.slice(collapsed)];
 
-  const isFolder = displayPath.endsWith("/");
+  const mentionsFolder = displayPath.endsWith("/");
 
   return shown.map((label, index) => ({
-    kind: index === shown.length - 1 && !isFolder ? "file" : "folder",
+    kind: index === shown.length - 1 && !mentionsFolder ? "file" : "folder",
     label,
   }));
 }

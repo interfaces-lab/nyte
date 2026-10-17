@@ -1,16 +1,8 @@
-/**
- * The turn the model is producing right now: in-flight reasoning and tool
- * calls, then streaming prose. Settled turns come from the transcript; this
- * only draws what has not committed yet.
- */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
-import { livePartKey } from "../live.ts";
-import type { LiveSnapshot } from "../live.ts";
 import { conversation } from "../theme/schema.stylex.ts";
-import { motion } from "@nyte-ai/ui/vars.stylex";
-import { preferences, useSetting } from "../preferences/index.ts";
-import { Prose } from "./prose.tsx";
+import { motion } from "@nyte-ai/ui/styles/vars.stylex";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { StepGroupView } from "./step-group.tsx";
 
 /** Dimmed while core still holds the message behind a live run; full weight once it lands. */
@@ -45,50 +37,21 @@ export const liveTurnStyles = create({
 });
 
 export function LiveTurn({
-  live,
   working,
   settledWork,
   cwd,
+  density,
 }: {
-  live: LiveSnapshot;
   working: boolean;
   settledWork: boolean;
   cwd: string | undefined;
+  density: ToolCallDensity;
 }): ReactElement | null {
-  const toolCalls = useSetting(preferences.toolCalls);
-  const textParts = live.order.filter((ref) => ref.kind === "text");
-  const hasText = textParts.length > 0;
-
-  const hasLiveWork =
-    live.order.some((ref) => ref.kind === "thinking") ||
-    live.tools.size > 0 ||
-    (!hasText && working);
-
-  if (!hasText && !hasLiveWork && !working) return null;
+  if (!working || settledWork) return null;
 
   return (
     <div {...props(liveTurnStyles.root)}>
-      {!settledWork && hasLiveWork && (
-        <StepGroupView
-          parts={[]}
-          run={{ kind: "none" }}
-          live={live}
-          liveTools={live.tools}
-          cwd={cwd}
-          added={0}
-          removed={0}
-          running={working}
-          density={toolCalls}
-        />
-      )}
-      {textParts.map((ref) => {
-        const key = livePartKey(ref.runId, ref.attempt, ref.index);
-        const text = live.text.get(key) ?? "";
-
-        return text === "" ? null : (
-          <Prose key={`text:${key}`} markdown={text} streaming={live.runState !== "stopping"} />
-        );
-      })}
+      <StepGroupView messages={[]} cwd={cwd} added={0} removed={0} running density={density} />
     </div>
   );
 }

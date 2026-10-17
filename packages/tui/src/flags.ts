@@ -1,7 +1,7 @@
 import process from "node:process";
 import { parseArgs } from "node:util";
-import type { SessionId, ThinkingLevel } from "@nyte-ai/core";
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
+import type { SessionId, Thinking } from "@nyte-ai/sdk";
+import { THINKING_LEVELS } from "./lib/constants.ts";
 
 export type ResumeTarget =
   | { readonly kind: "new" }
@@ -15,7 +15,7 @@ export interface RunFlags {
   readonly quiet: boolean;
   readonly provider?: string;
   readonly model?: string;
-  readonly effort?: ThinkingLevel;
+  readonly effort?: Thinking;
   readonly rest: readonly string[];
 }
 
@@ -51,10 +51,10 @@ export function parseFlags(args: readonly string[]): RunFlags {
   }
 
   if (values.session === "") throw new Error("--session requires a non-empty session ID.");
-  const effort = MODEL_THINKING_LEVELS.find((level) => level === values.effort);
+  const effort = THINKING_LEVELS.find((level) => level === values.effort);
 
   if (values.effort !== undefined && effort === undefined) {
-    throw new Error(`--effort must be one of: ${MODEL_THINKING_LEVELS.join(", ")}.`);
+    throw new Error(`--effort must be one of: ${THINKING_LEVELS.join(", ")}.`);
   }
 
   let flags: RunFlags = {
@@ -79,10 +79,8 @@ export function parseFlags(args: readonly string[]): RunFlags {
   return flags;
 }
 
-/** Open the durable session in a terminal without admitting the original prompt again. */
+/** Open the durable session in a terminal without admitting the original prompt again. The id rides as an inline option value, so one starting with a dash still parses, and the command POSIX-quotes it, so shell syntax and single quotes in it stay literal. */
 export function sessionRecovery(id: SessionId) {
-  // An inline option value also handles IDs starting with a dash. POSIX quoting
-  // keeps shell syntax in an ID literal, including embedded single quotes.
   const argv = ["nyte", `--session=${id}`];
 
   return {
@@ -135,6 +133,25 @@ export async function readStdin(signal?: AbortSignal): Promise<string> {
   }
 
   return Buffer.concat(chunks).toString("utf8").replace(/\n$/u, "");
+}
+
+export function parseServeArgs(args: readonly string[]): {
+  readonly port: number;
+  readonly token?: string;
+} {
+  const { values } = parseArgs({
+    args: [...args],
+    strict: true,
+    options: { port: { type: "string" }, token: { type: "string" } },
+  });
+
+  const port = Number(values.port ?? "0");
+
+  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+    throw new Error("--port must be a port number. Run `nyte serve --help`.");
+  }
+
+  return values.token === undefined ? { port } : { port, token: values.token };
 }
 
 export function parseUpdateArgs(

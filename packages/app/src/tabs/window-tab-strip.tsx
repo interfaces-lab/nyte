@@ -25,7 +25,6 @@ export interface WindowTabItem {
   readonly title: string;
   /** Hover text: the title, or both pane titles of a split. */
   readonly tooltip: string;
-  /** Status mark or place icon; undefined shows none. */
   readonly glyph: ReactNode;
   /** A chat in this background tab finished since it was last seen. */
   readonly unread: boolean;
@@ -40,7 +39,6 @@ export interface WindowTabStripProps {
   readonly onActivate: (tabId: string) => void;
   readonly onClose: (tabId: string) => void;
   readonly onNewTab: () => void;
-  /** The full new order of every tab id. */
   readonly onReorder: (tabIds: readonly string[]) => void;
   readonly onDuplicate: (tabId: string) => void;
   readonly onCloseOthers: (tabId: string) => void;
@@ -84,6 +82,7 @@ function useHeldKeys(): HeldKeys {
   return held;
 }
 
+/** Middle-click closes, and the browser's autoscroll must not start first. */
 function TabItem({
   tab,
   position,
@@ -119,7 +118,6 @@ function TabItem({
               active && stripStyles.tabActive,
             )}
             onMouseDown={(event) => {
-              // Middle-click closes; stop the browser's autoscroll from starting first.
               if (event.button === 1) event.preventDefault();
             }}
             onAuxClick={(event) => {
@@ -132,6 +130,7 @@ function TabItem({
           <TooltipTrigger
             render={
               <Tabs.Tab
+                variant="bare"
                 value={tab.id}
                 aria-label={tab.unread ? `${tab.tooltip}, unread` : tab.tooltip}
                 xstyle={[stripStyles.tabButton, !closable && stripStyles.tabButtonUnclosable]}
@@ -152,14 +151,8 @@ function TabItem({
               {tab.tooltip}
               {digit !== undefined && (
                 <span {...props(stripStyles.keys)}>
-                  <Kbd
-                    keys={[strip.mac ? "⌘" : "Ctrl"]}
-                    xstyle={[stripStyles.key, modifierHeld && stripStyles.held]}
-                  />
-                  <Kbd
-                    keys={[digit]}
-                    xstyle={[stripStyles.key, held.digit === digit && stripStyles.held]}
-                  />
+                  <Kbd keys={[strip.mac ? "⌘" : "Ctrl"]} held={modifierHeld} />
+                  <Kbd keys={[digit]} held={held.digit === digit} />
                 </span>
               )}
             </span>

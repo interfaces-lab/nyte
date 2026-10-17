@@ -1,22 +1,24 @@
 import { ClerkFailed, ClerkLoading, ClerkProvider, SignIn, useAuth, useClerk } from "@clerk/react";
 import { createBrokerClient } from "@nyte-ai/connect";
-import type { EnvironmentSummary } from "@nyte-ai/connect";
+import type { DeviceRole, EnvironmentSummary } from "@nyte-ai/connect";
 import type { AccountConfig } from "@nyte-ai/connect/account-config";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { AccountScope, accountAppearance } from "../account/appearance.tsx";
-import { serverConnectionProblem } from "../server-connection.ts";
+import { connectionProblem, hostChanged } from "../sdk.tsx";
 import type { Connection } from "./bridge.ts";
 import {
+  accountRoute,
   connectAccountEnvironment,
   releaseAccountDevice,
   revokeAccountDevice,
@@ -32,13 +34,14 @@ import type { AccountDevice } from "./account-device.ts";
 import { ConnectScreen } from "./connect-screen.tsx";
 import { forgetConnection } from "./connection.ts";
 import { webBridge } from "./install.ts";
+import { connectPinned } from "./pins.ts";
 import { WebPage } from "./web-page.tsx";
 
 const styles = create({
   list: {
     display: "flex",
     flexDirection: "column",
-    padding: 4,
+    padding: space.s1,
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
@@ -55,16 +58,14 @@ const styles = create({
   bar: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    paddingBlock: 4,
-    paddingInline: 12,
+    gap: space.s2,
+    paddingBlock: space.s1,
+    paddingInline: space.s3,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
     backgroundColor: role.bgBase,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   barName: {
     flex: 1,
@@ -75,7 +76,7 @@ const styles = create({
   shell: { flex: 1, minHeight: 0, position: "relative" },
 });
 
-export function DesktopList({
+function DesktopList({
   environments,
   connecting,
   disabled,
@@ -84,8 +85,10 @@ export function DesktopList({
   readonly environments: readonly EnvironmentSummary[];
   readonly connecting: string | undefined;
   readonly disabled: boolean;
-  readonly onPick: (environment: EnvironmentSummary) => void;
+  readonly onPick: (environment: EnvironmentSummary, role: DeviceRole) => void;
 }): ReactElement {
+  const labelId = useId();
+
   return (
     <div {...props(styles.list)}>
       {environments.map((environment) => (
@@ -97,13 +100,15 @@ export function DesktopList({
         >
           <Row.Primary
             disabled={!environment.online || disabled}
-            onClick={() => onPick(environment)}
+            onClick={() => onPick(environment, "controller")}
           >
             <Row.Leading xstyle={environment.online && styles.leading}>
               <Icon name="laptop" size={16} />
             </Row.Leading>
             <Row.Body>
-              <Row.Label xstyle={styles.wrap}>{environment.name}</Row.Label>
+              <Row.Label id={`${labelId}-${environment.id}`} xstyle={styles.wrap}>
+                {environment.name}
+              </Row.Label>
               <Row.Description>{environment.online ? "Online" : "Offline"}</Row.Description>
             </Row.Body>
           </Row.Primary>
@@ -111,7 +116,16 @@ export function DesktopList({
             {connecting === environment.id ? (
               <Spinner />
             ) : (
-              environment.online && <Icon name="chevron-right" size={12} />
+              environment.online && (
+                <Button
+                  size="xs"
+                  disabled={disabled}
+                  aria-describedby={`${labelId}-${environment.id}`}
+                  onClick={() => onPick(environment, "owner")}
+                >
+                  Connect as Admin
+                </Button>
+              )
             )}
           </Row.Meta>
         </Row>
@@ -120,7 +134,7 @@ export function DesktopList({
   );
 }
 
-export interface AccountScreenProps {
+interface AccountScreenProps {
   readonly config: AccountConfig;
   readonly onConnected: (connection: Connection, mount: (shell: ReactNode) => void) => void;
 }
@@ -149,27 +163,42 @@ function AccountFlow({
   const [manual, setManual] = useState(false);
   const [environments, setEnvironments] = useState<readonly EnvironmentSummary[]>();
   const [problem, setProblem] = useState<string>();
+  const [changed, setChanged] = useState<{ environment: EnvironmentSummary; role: DeviceRole }>();
+  const [signOutFailed, setSignOutFailed] = useState(false);
   const [progress, setProgress] = useState<string>();
   const [connecting, setConnecting] = useState<string>();
   const [shell, setShell] = useState<ReactNode>();
   const [name, setName] = useState("Manual connection");
   const active = useRef<AccountDevice | undefined>(undefined);
+  const adopted = useRef(false);
   const work = useRef<AbortController | undefined>(undefined);
   const busy = useRef(false);
 
-  const refresh = async (signal: AbortSignal): Promise<void> => {
+  const adopt = (connection: Connection, signal?: AbortSignal): void => {
+    adopted.current = true;
+    onConnected(connection, (node) => {
+      if (signal?.aborted !== true) setShell(node);
+    });
+  };
+
+  const refresh = async (
+    signal: AbortSignal,
+  ): Promise<readonly EnvironmentSummary[] | undefined> => {
     setProblem(undefined);
     setProgress("Loading desktops…");
+    let listed: readonly EnvironmentSummary[] | undefined;
 
     try {
-      const list = await broker.listEnvironments({ signal });
+      listed = (await broker.listEnvironments({ signal })).environments;
 
-      if (!signal.aborted) setEnvironments(list.environments);
+      if (!signal.aborted) setEnvironments(listed);
     } catch (cause) {
       if (!signal.aborted) setProblem(accountProblem(cause));
     }
 
     if (!signal.aborted) setProgress(undefined);
+
+    return listed;
   };
 
   useMountEffect(() => {
@@ -192,19 +221,40 @@ function AccountFlow({
 
         try {
           const connection = accountConnection(saved);
-          await webBridge.connect(connection, {
-            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
-            relay: true,
+          await connectPinned({
+            bridge: webBridge,
+            storage: localStorage,
+            route: accountRoute(saved),
+            connection,
+            repair: false,
+            options: {
+              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
+              relay: true,
+            },
           });
 
-          if (!controller.signal.aborted)
-            onConnected(connection, (node) => {
-              if (!controller.signal.aborted) setShell(node);
-            });
+          if (!controller.signal.aborted) adopt(connection, controller.signal);
         } catch (cause) {
           if (controller.signal.aborted) return;
 
-          if (serverConnectionProblem(cause).kind === "authentication") {
+          if (hostChanged(cause)) {
+            forgetAccountDevice(sessionStorage);
+            active.current = undefined;
+            void releaseAccountDevice(saved);
+            const listed = await refresh(controller.signal);
+
+            if (controller.signal.aborted) return;
+
+            const environment = listed?.find(
+              (candidate) => candidate.id === saved.environmentId,
+            ) ?? { id: saved.environmentId, name: saved.name, online: true, lastSeenAt: null };
+
+            setChanged({ environment, role: saved.role });
+
+            return;
+          }
+
+          if (connectionProblem(cause).kind === "authentication") {
             forgetAccountDevice(sessionStorage);
             active.current = undefined;
             void releaseAccountDevice(saved);
@@ -234,18 +284,28 @@ function AccountFlow({
       if (device !== undefined) {
         forgetAccountDevice(sessionStorage);
         void releaseAccountDevice(device);
-        location.replace("/");
       }
+
+      if (device !== undefined || adopted.current) location.replace("/");
     };
   });
 
-  const pick = async (environment: EnvironmentSummary): Promise<void> => {
+  const pick = async ({
+    environment,
+    role,
+    repair,
+  }: {
+    readonly environment: EnvironmentSummary;
+    readonly role: DeviceRole;
+    readonly repair: boolean;
+  }): Promise<void> => {
     if (busy.current || ownerId === undefined) return;
     busy.current = true;
     const controller = new AbortController();
     work.current?.abort();
     work.current = controller;
     setProblem(undefined);
+    setChanged(undefined);
     setConnecting(environment.id);
     setProgress(`Connecting to ${environment.name}…`);
 
@@ -261,6 +321,8 @@ function AccountFlow({
         config,
         ownerId,
         environment,
+        role,
+        repair,
         signal: controller.signal,
       });
 
@@ -268,12 +330,13 @@ function AccountFlow({
         active.current = device;
         setName(device.name);
         forgetConnection();
-        onConnected(accountConnection(device), (node) => {
-          if (!controller.signal.aborted) setShell(node);
-        });
+        adopt(accountConnection(device), controller.signal);
       }
     } catch (cause) {
-      if (!controller.signal.aborted) setProblem(accountProblem(cause));
+      if (controller.signal.aborted) return;
+
+      if (hostChanged(cause)) setChanged({ environment, role });
+      else setProblem(accountProblem(cause));
     }
 
     busy.current = false;
@@ -292,24 +355,29 @@ function AccountFlow({
     const device = active.current;
     active.current = undefined;
     forgetAccountDevice(sessionStorage);
-    forgetConnection();
 
-    if (signOut) forgetClientId(sessionStorage);
+    if (device !== undefined) {
+      if (signOut) await revokeAccountDevice(device, broker);
+      else await releaseAccountDevice(device);
+    }
 
-    try {
-      if (device !== undefined) {
-        if (signOut) await revokeAccountDevice(device, broker);
-        else await releaseAccountDevice(device);
+    if (signOut) {
+      try {
+        await clerk.signOut();
+      } catch {
+        busy.current = false;
+        setShell(undefined);
+        setProgress(undefined);
+        setSignOutFailed(true);
+
+        return;
       }
 
-      if (signOut) await clerk.signOut();
-      location.replace("/");
-    } catch {
-      busy.current = false;
-      setShell(undefined);
-      setProgress(undefined);
-      setProblem("Couldn't sign out. Try again.");
+      forgetClientId(sessionStorage);
     }
+
+    forgetConnection();
+    location.replace("/");
   };
 
   const openManual = (): void => {
@@ -327,10 +395,23 @@ function AccountFlow({
     </Button>
   );
 
+  if (signOutFailed) {
+    return (
+      <WebPage title="Couldn't Sign Out" busy={progress !== undefined} status={progress}>
+        <p role="alert" {...props(styles.status)}>
+          Check your connection and try again.
+        </p>
+        <Button variant="solid" disabled={progress !== undefined} onClick={() => void leave(true)}>
+          Try Again
+        </Button>
+      </WebPage>
+    );
+  }
+
   if (shell !== undefined) {
     return (
       <div {...props(styles.frame)}>
-        <div {...props(styles.bar)}>
+        <div {...props(text.sm, styles.bar)}>
           <Icon name="laptop" size={14} />
           <span {...props(styles.barName)}>{name}</span>
           <Button size="xs" disabled={progress !== undefined} onClick={() => void leave(false)}>
@@ -349,7 +430,7 @@ function AccountFlow({
     return (
       <ConnectScreen
         onBack={() => setManual(false)}
-        onConnected={(connection) => onConnected(connection, setShell)}
+        onConnected={(connection) => adopt(connection)}
       />
     );
   }
@@ -408,8 +489,23 @@ function AccountFlow({
           environments={environments}
           connecting={connecting}
           disabled={progress !== undefined}
-          onPick={(environment) => void pick(environment)}
+          onPick={(environment, role) => void pick({ environment, role, repair: false })}
         />
+      )}
+      {changed !== undefined && (
+        <div role="alert" {...props(styles.status)}>
+          <p>
+            {changed.environment.name} answers with a different host identity than the one you
+            paired with. Pair again only if you replaced or reinstalled that host.
+          </p>
+          <Button
+            size="sm"
+            disabled={progress !== undefined}
+            onClick={() => void pick({ ...changed, repair: true })}
+          >
+            Pair as New Host
+          </Button>
+        </div>
       )}
       {problem !== undefined && (
         <p role="alert" {...props(styles.status)}>

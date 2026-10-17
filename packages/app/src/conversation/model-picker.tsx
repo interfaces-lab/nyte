@@ -14,10 +14,11 @@ import {
   AutocompleteList,
 } from "@nyte-ai/ui/autocomplete";
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { ModelThinkingLevel } from "@nyte-ai/schema";
+import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { Icon } from "@nyte-ai/ui/icon";
 import {
   Menu,
@@ -34,11 +35,10 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { menu } from "@nyte-ai/ui/schema.stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
-import { nyte, type DesktopCatalog, type DesktopModelOption } from "../nyte.ts";
-import { isSettingsSection } from "../settings/index.ts";
-import { shellActions } from "../chrome/shell-state.ts";
+import { menu, space } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
+import { showsSettingsSection } from "../settings/index.ts";
 import {
   modelTriggerLabel,
   pickerGroups,
@@ -54,11 +54,7 @@ export type ModelPickerChange =
       readonly thinkingLevel: ModelThinkingLevel;
     }
   | { readonly kind: "thinking"; readonly thinkingLevel: ModelThinkingLevel }
-  | {
-      readonly kind: "fast";
-      readonly settingId: string;
-      readonly enabled: boolean;
-    };
+  | { readonly kind: "fast"; readonly enabled: boolean };
 
 const styles = create({
   trigger: { maxWidth: "100%", flexShrink: 1 },
@@ -68,32 +64,32 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  triggerDetail: { flexShrink: 0, color: role.contentSecondary, whiteSpace: "nowrap" },
+  triggerDetail: {
+    display: "var(--_model-detail-display, inline)",
+    flexShrink: 0,
+    color: role.contentSecondary,
+    whiteSpace: "nowrap",
+  },
   palette: {
     width: `min(${menu.modelWidth}, var(--available-width))`,
     maxWidth: "var(--available-width)",
     maxHeight: `min(${menu.maxHeight}, var(--available-height))`,
-    borderRadius: menu.radius,
   },
   parameterPalette: {
     width: `min(${menu.parameterWidth}, var(--available-width))`,
     minWidth: `min(${menu.parameterWidth}, var(--available-width))`,
     maxWidth: `min(${menu.parameterWidth}, var(--available-width))`,
   },
-  modelPopup: { overflowY: "hidden" },
+  modelPopup: { overflowY: "clip" },
   empty: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
-    padding: "10px 8px",
+    gap: space.s0_5,
+    padding: `${space.s2_5} ${space.s2}`,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   emptyTitle: {
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
 });
 
@@ -101,28 +97,33 @@ interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
   thinkingLevel: ModelThinkingLevel | undefined;
-  /** Setting ids whose current choice is on. */
-  fastEnabled: ReadonlySet<string>;
+  fast: boolean;
   disabled?: boolean;
   loading?: boolean;
+  /** Whether the menu is open, for a parent that opens it from elsewhere; the picker keeps its own otherwise. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onChange: (change: ModelPickerChange) => void;
 }
 
+/** A model is an Autocomplete item inside a submenu, so its press must close the outer menu. */
 function ModelPickerView({
   catalog,
   current,
   thinkingLevel,
-  fastEnabled,
+  fast,
   disabled = false,
   loading = false,
+  open: openProp,
+  onOpenChange,
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
-  // A model is an Autocomplete item inside a submenu, so its press must close the outer menu.
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = openProp ?? ownOpen;
+  const setOpen = onOpenChange ?? setOwnOpen;
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const currentOptionRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(
     () => (catalog === undefined ? [] : pickerGroups(catalog, current, search)),
@@ -130,29 +131,26 @@ function ModelPickerView({
   );
 
   const connected =
-    catalog?.providers.some((provider) => provider.connection.kind !== "disconnected") ?? false;
+    catalog?.providers.some(
+      (provider) => provider.credential !== "missing" && provider.credential !== "unknown",
+    ) ?? false;
 
-  // A server's models are the server's to change; the desktop manages that connection in Environments.
-  const manage =
-    catalog?.source === "server"
-      ? nyte.clientSurface === "desktop"
-        ? { label: "Environments…", open: () => shellActions.openEnvironments() }
-        : undefined
-      : isSettingsSection("providers")
-        ? {
-            label: connected ? "Manage Providers…" : "Connect a Provider…",
-            href: "/settings/providers",
-            open: () =>
-              void navigate({ to: "/settings/$section", params: { section: "providers" } }),
-          }
-        : undefined;
+  const unknown = catalog?.providers.some((provider) => provider.credential === "unknown") ?? false;
+
+  const manage = showsSettingsSection("providers")
+    ? {
+        label: connected || unknown ? "Manage Providers…" : "Connect a Provider…",
+        href: "/settings/providers",
+        open: () => void navigate({ to: "/settings/$section", params: { section: "providers" } }),
+      }
+    : undefined;
 
   const levels = thinkingLevelsFor(current);
   const level = supportedThinkingLevel(current, thinkingLevel);
-  const fast = current?.fastMode;
-  const fastOn = fast?.kind === "available" && fastEnabled.has(fast.settingId);
+  const fastAvailable = current?.fastMode.kind === "available";
+  const fastOn = fastAvailable && fast;
   const label = modelTriggerLabel(current, thinkingLevel === undefined ? undefined : level, fastOn);
-  const hasParameters = fast?.kind === "available" || levels.length > 1;
+  const hasParameters = fastAvailable || levels.length > 1;
 
   return (
     <Menu
@@ -184,13 +182,11 @@ function ModelPickerView({
         }
       />
       <MenuContent xstyle={styles.palette}>
-        {fast?.kind === "available" && (
+        {fastAvailable && (
           <MenuSwitchItem
             layout="plain"
             checked={fastOn}
-            onCheckedChange={(enabled) =>
-              onChange({ kind: "fast", settingId: fast.settingId, enabled })
-            }
+            onCheckedChange={(enabled) => onChange({ kind: "fast", enabled })}
           >
             Fast
           </MenuSwitchItem>
@@ -231,7 +227,6 @@ function ModelPickerView({
             }
 
             window.requestAnimationFrame(() => {
-              currentOptionRef.current?.scrollIntoView({ block: "nearest" });
               searchRef.current?.focus({ preventScroll: true });
             });
           }}
@@ -243,12 +238,25 @@ function ModelPickerView({
             <Autocomplete
               inline
               open
-              mode="none"
               autoHighlight
               items={groups.flatMap((group) => group.options)}
-              value={search}
-              itemToStringValue={(option) => option.name}
-              onValueChange={setSearch}
+              filter={null}
+              value={current ?? null}
+              inputValue={search}
+              itemToStringLabel={(option) => option.name}
+              isItemEqualToValue={(option, value) => option.key === value.key}
+              onValueChange={(option) => {
+                if (option === null) return;
+                onChange({
+                  kind: "model",
+                  option,
+                  thinkingLevel: supportedThinkingLevel(option, level),
+                });
+                setOpen(false);
+              }}
+              onInputValueChange={(next, { reason }) => {
+                if (reason !== "item-press") setSearch(next);
+              }}
             >
               <AutocompleteInput
                 variant="inline"
@@ -259,22 +267,21 @@ function ModelPickerView({
               <MenuSeparator />
               <AutocompleteList variant="inline" data-nyte-scrollport>
                 {groups.length === 0 && (
-                  <div {...props(styles.empty)}>
+                  <div {...props(text.sm, styles.empty)}>
                     {search.trim() !== "" ? (
-                      <span {...props(styles.emptyTitle)}>No models match "{search.trim()}"</span>
-                    ) : catalog?.source === "server" ? (
-                      <>
-                        <span {...props(styles.emptyTitle)}>No server models available</span>
-                        <span>Configure provider credentials on the server.</span>
-                      </>
+                      <span {...props(text.base, styles.emptyTitle)}>
+                        No models match "{search.trim()}"
+                      </span>
+                    ) : unknown ? (
+                      <span {...props(text.base, styles.emptyTitle)}>No models available</span>
                     ) : connected ? (
                       <>
-                        <span {...props(styles.emptyTitle)}>Every model is hidden</span>
+                        <span {...props(text.base, styles.emptyTitle)}>Every model is hidden</span>
                         <span>Enable models in Settings › Providers.</span>
                       </>
                     ) : (
                       <>
-                        <span {...props(styles.emptyTitle)}>No providers connected</span>
+                        <span {...props(text.base, styles.emptyTitle)}>No providers connected</span>
                         <span>Connect a provider in Settings › Providers.</span>
                       </>
                     )}
@@ -284,28 +291,12 @@ function ModelPickerView({
                   <AutocompleteGroup key={group.provider.id}>
                     <AutocompleteGroupLabel variant="inline">
                       <span>{group.provider.name}</span>
-                      {!group.provider.enabled ? (
-                        <span>· Off</span>
-                      ) : group.provider.connection.kind === "disconnected" ? (
+                      {group.provider.credential === "missing" ? (
                         <span>· Not connected</span>
                       ) : null}
                     </AutocompleteGroupLabel>
                     {group.options.map((option) => (
-                      <AutocompleteItem
-                        variant="inline"
-                        key={option.key}
-                        ref={option.key === current?.key ? currentOptionRef : undefined}
-                        value={option}
-                        selected={option.key === current?.key}
-                        onClick={() => {
-                          onChange({
-                            kind: "model",
-                            option,
-                            thinkingLevel: supportedThinkingLevel(option, level),
-                          });
-                          setOpen(false);
-                        }}
-                      >
+                      <AutocompleteItem variant="inline" key={option.key} value={option}>
                         {option.name}
                       </AutocompleteItem>
                     ))}

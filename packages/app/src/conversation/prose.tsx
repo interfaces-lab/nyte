@@ -1,9 +1,9 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * LobeHub Streamdown renders Markdown with raw HTML disabled. Nyte supplies the
  * semantic components so links still cross the desktop host boundary and
  * fenced code paints immediately and highlights in a worker.
  */
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { props } from "@stylexjs/stylex";
@@ -14,6 +14,7 @@ import {
   isValidElement,
   memo,
   use,
+  useState,
   useSyncExternalStore,
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -24,7 +25,8 @@ import remarkGfm from "remark-gfm";
 import remend from "remend";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./external-link.ts";
-import { useMentionFiles } from "../queries.ts";
+import { useQuery } from "@tanstack/react-query";
+import { mentionFilesOptions } from "../queries.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -32,14 +34,14 @@ import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import {
   fileFromUrl,
   inlineCodeReference,
-  isFolder,
+  mentionsFolder,
   referenceTitle,
 } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import type { MentionFile } from "@nyte-ai/client";
-import { sessionId } from "@nyte-ai/protocol";
+import type { MentionFile } from "./message-references.ts";
+import { asId } from "@nyte-ai/schema";
 import { useReferenceOpener } from "./reference-opener.tsx";
-import { proseStyles } from "./styles.stylex.ts";
+import { proseStyles } from "./prose.stylex.ts";
 import { SubagentCitation } from "./subagent-call.tsx";
 
 const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);
@@ -54,10 +56,26 @@ function nodeText(node: ReactNode): string {
   return "";
 }
 
-/** The scheme of a link the model writes to name an agent it created. */
 const AGENT_LINK = "agent:";
 
 const InsideLink = createContext(false);
+
+/** True while the message the markdown belongs to is still streaming. */
+const ProseStreaming = createContext(false);
+
+/**
+ * The workspace's file list as conversation content reads it to resolve
+ * citations. It is the composer's query, observed without refetching: spans
+ * and canvases mount and remount as the transcript scrolls, and each mount
+ * must not walk the workspace again. The composer and thread keep it fresh.
+ */
+export function useCitableFiles(enabled: boolean) {
+  return useQuery({
+    ...mentionFilesOptions(enabled),
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+}
 
 /**
  * A file the prose names draws the way Cursor cites one: an inline link led
@@ -89,7 +107,7 @@ function FileCitation({
           <a
             {...elementProps}
             href={reference.file.url}
-            data-citation={isFolder(reference.file) ? "folder" : "file"}
+            data-citation={mentionsFolder(reference.file) ? "folder" : "file"}
             {...props(intent.primary, proseStyles.link)}
             onClick={(event) => {
               event.preventDefault();
@@ -99,7 +117,7 @@ function FileCitation({
           >
             <span {...props(proseStyles.linkLead)}>
               <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
-                {isFolder(reference.file) ? (
+                {mentionsFolder(reference.file) ? (
                   <Icon name="folder" size={12} />
                 ) : (
                   <FileTypeIcon path={reference.file.path} />
@@ -126,9 +144,9 @@ function FileCitation({
 
 /**
  * Inline code the workspace can resolve becomes a file citation, so a path the
- * model names opens where a path the reader typed opens. The file list is the
- * composer's own query; a surface with no opener never asks for it and every
- * span stays literal.
+ * model names opens where a path the reader typed opens. The file list is
+ * `useCitableFiles`; a surface with no opener never asks for it and every span
+ * stays literal.
  */
 function MarkdownCode({
   node: _node,
@@ -138,7 +156,7 @@ function MarkdownCode({
   const insideLink = use(InsideLink);
   const referenceOpener = useReferenceOpener();
   const opener = insideLink ? undefined : referenceOpener;
-  const files = useMentionFiles(opener !== undefined);
+  const files = useCitableFiles(opener !== undefined);
 
   const text = nodeText(elementProps.children);
   const reference = opener === undefined ? undefined : inlineCodeReference(text, files.data ?? []);
@@ -152,8 +170,16 @@ function MarkdownCode({
   return <FileCitation reference={reference} open={open} label={text} code />;
 }
 
-function linkReference(href: string, files: readonly MentionFile[]): MessageReference | undefined {
-  if (/^[a-z][a-z\d+.-]*:/iu.test(href) && !href.startsWith("file:")) return undefined;
+/**
+ * The workspace file a link names: a `file:` URL, an absolute path, or a
+ * path relative to the workspace with an optional `:12` or `#L12` suffix.
+ * A scheme has no dot, so `ci.ts:42` is a path and `mailto:` is not.
+ */
+export function linkReference(
+  href: string,
+  files: readonly MentionFile[],
+): MessageReference | undefined {
+  if (/^[a-z][a-z\d+-]*:/iu.test(href) && !href.startsWith("file:")) return undefined;
 
   if (href.startsWith("file:")) {
     const file = fileFromUrl(href);
@@ -190,7 +216,7 @@ function MarkdownLink({
   ...elementProps
 }: ComponentProps<"a"> & ExtraProps): ReactElement {
   const opener = useReferenceOpener();
-  const files = useMentionFiles(opener !== undefined && href !== undefined);
+  const files = useCitableFiles(opener !== undefined && href !== undefined);
 
   if (href?.startsWith(AGENT_LINK) === true) {
     const agent = href.slice(AGENT_LINK.length);
@@ -198,7 +224,7 @@ function MarkdownLink({
     return agent === "" ? (
       <>{children}</>
     ) : (
-      <SubagentCitation session={sessionId(agent)} label={nodeText(children)} />
+      <SubagentCitation session={asId<"session">(agent)} label={nodeText(children)} />
     );
   }
 
@@ -228,7 +254,7 @@ function MarkdownLink({
           <a
             {...elementProps}
             href={href}
-            {...props(intent.primary, proseStyles.link)}
+            {...props(intent.primary, proseStyles.link, proseStyles.webLink)}
             onClick={(event) => {
               if (href === undefined) return;
               event.preventDefault();
@@ -250,6 +276,7 @@ function MarkdownPre({
   node: _node,
   ...elementProps
 }: ComponentProps<"pre"> & ExtraProps): ReactElement {
+  const streaming = use(ProseStreaming);
   const child = Children.toArray(children)[0];
 
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
@@ -262,7 +289,8 @@ function MarkdownPre({
         .find((name) => name.startsWith("language-"))
         ?.slice("language-".length) ?? "";
 
-    if (language.toLocaleLowerCase() === "mermaid") return <MermaidDiagram source={code} />;
+    if (!streaming && language.toLocaleLowerCase() === "mermaid")
+      return <MermaidDiagram source={code} />;
 
     return <CodeBlock code={code} lang={language} />;
   }
@@ -335,7 +363,6 @@ const markdownComponents = {
 
 const remarkPlugins = [remarkGfm];
 
-/** Keeps `agent:` links, which name a child session; every other URL gets the default scrub. */
 const urlTransform: UrlTransform = (url) =>
   url.startsWith(AGENT_LINK) ? url : defaultUrlTransform(url);
 
@@ -347,6 +374,19 @@ function subscribeReducedMotion(onChange: () => void): () => void {
   return () => reducedMotionQuery.removeEventListener("change", onChange);
 }
 
+/** Reference definitions and footnotes resolve across blocks, so only a whole-document parse draws them. */
+const CROSS_BLOCK = /^ {0,3}\[[^\]\n]+\]:/mu;
+
+/**
+ * A message's markdown. While it streams, Streamdown parses block by block, so
+ * a delta reparses only the open block; a whole-document parse per frame
+ * costs 11 ms at 13 K characters and 92 ms at 51 K. A message that streamed in
+ * this mount keeps that renderer when it settles, so nothing under it
+ * remounts: selection, code-block scroll and diagrams stay put. Only a message
+ * whose reference links or footnotes span blocks switches to the
+ * whole-document parse at settle, and a settled mount or reduced motion uses
+ * that parse from the start.
+ */
 export const Prose = memo(function Prose({
   markdown,
   streaming = false,
@@ -360,27 +400,32 @@ export const Prose = memo(function Prose({
     () => true,
   );
 
+  const [streamedHere] = useState(streaming);
+
+  const blockwise = !reducedMotion && (streaming || (streamedHere && !CROSS_BLOCK.test(markdown)));
+
   return (
-    <div {...props(proseStyles.root)}>
-      {streaming && !reducedMotion ? (
-        <Streamdown
-          content={markdown}
-          components={markdownComponents}
-          remarkPlugins={remarkPlugins}
-          urlTransform={urlTransform}
-          skipHtml
-        />
-      ) : (
-        // Whole-document parsing preserves reference links and footnotes in saved turns.
-        <CachedMarkdown
-          components={markdownComponents}
-          remarkPlugins={remarkPlugins}
-          urlTransform={urlTransform}
-          skipHtml
-        >
-          {streaming ? remend(markdown) : markdown}
-        </CachedMarkdown>
-      )}
-    </div>
+    <ProseStreaming value={streaming}>
+      <div {...props(proseStyles.root)}>
+        {blockwise ? (
+          <Streamdown
+            content={markdown}
+            components={markdownComponents}
+            remarkPlugins={remarkPlugins}
+            urlTransform={urlTransform}
+            skipHtml
+          />
+        ) : (
+          <CachedMarkdown
+            components={markdownComponents}
+            remarkPlugins={remarkPlugins}
+            urlTransform={urlTransform}
+            skipHtml
+          >
+            {streaming ? remend(markdown) : markdown}
+          </CachedMarkdown>
+        )}
+      </div>
+    </ProseStreaming>
   );
 });

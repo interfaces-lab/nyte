@@ -1,0 +1,26 @@
+---
+title: Radius
+description: "Five named corners and the component radii built from them"
+---
+
+Radius names say what a shape is, not how big it is. Five names cover containers; controls take
+their radius from their own size handle.
+
+```ts
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
+```
+
+<RadiusScale />
+
+## Rules
+
+- Rounded containers use a `radius` name. A control reads its radius from its size handle
+  (`button.radiusMd`, `input.radiusLg`), so size and corner change together.
+- Nested corners stay concentric. The menu's 14px radius is its items' 8px plus its 6px
+  padding.
+- Under a coarse pointer, control radii grow with the control. Never branch on touch by hand.
+- `radius.pill` is for shapes whose ends are always round, whatever their length.
+
+## Component radii
+
+<ComponentRadii />

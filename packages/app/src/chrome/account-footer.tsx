@@ -19,9 +19,10 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import type { ConnectBridge, GitHubBridge } from "../bridge.ts";
+import type { ConnectBridge } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
-import { useHostState, useUpdateState } from "../queries.ts";
+import { openExternal } from "../open-external.ts";
+import { useUpdateState } from "../queries.ts";
 import { updateLabel } from "../updates.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";
 import { useGitHubAccount } from "./github-account.ts";
@@ -31,11 +32,10 @@ const FEEDBACK_URL = "https://github.com/interfaces-lab/nyte/issues/new/choose";
 
 const INSTALL_GITHUB_CLI_URL = "https://cli.github.com";
 
-function openExternal(url: string): void {
-  void nyte.host.openExternal({ url }).catch(() => undefined);
-}
-
-/** The GitHub CLI's item: who is signed in, or the one step that gets there. */
+/**
+ * The GitHub CLI's item: who is signed in, or the one step that gets there.
+ * Signing in opens Profile, which shows the device code the sign-in waits on.
+ */
 function GitHubGroup({
   account: { query, auth, busy },
   onOpenProfile,
@@ -46,7 +46,7 @@ function GitHubGroup({
   const state = query.data;
 
   const item = (label: string, onClick: () => void) => (
-    <MenuItem icon="github" disabled={busy} xstyle={styles.accountMenuItem} onClick={onClick}>
+    <MenuItem icon="github" disabled={busy} variant="quiet" onClick={onClick}>
       {label}
     </MenuItem>
   );
@@ -58,7 +58,6 @@ function GitHubGroup({
         ? item(state.account.login, onOpenProfile)
         : state?.kind === "signed_out"
           ? item("Sign In to GitHub…", () => {
-              // Profile shows the device code the sign-in waits on.
               auth.mutate("signIn");
               onOpenProfile();
             })
@@ -91,14 +90,14 @@ function NyteGroup({
     <MenuGroup>
       <MenuGroupLabel>Nyte account</MenuGroupLabel>
       {account.kind === "signed_in" ? (
-        <MenuItem icon="user" xstyle={styles.accountMenuItem} onClick={onOpenProfile}>
+        <MenuItem icon="user" variant="quiet" onClick={onOpenProfile}>
           {account.label}
         </MenuItem>
       ) : (
         <MenuItem
           icon="user"
           disabled={signIn.isPending}
-          xstyle={styles.accountMenuItem}
+          variant="quiet"
           onClick={() => signIn.mutate()}
         >
           Sign In to Nyte…
@@ -108,23 +107,20 @@ function NyteGroup({
   );
 }
 
+/** The machine's GitHub login labels the row; a refetch keeps the last answer meanwhile. */
 export function AccountFooterMenu({
-  github,
   connect,
   anchor,
   onOpenProfile,
 }: {
-  readonly github: GitHubBridge;
   readonly connect: ConnectBridge;
   readonly anchor: RefObject<HTMLDivElement | null>;
   readonly onOpenProfile: () => void;
 }): ReactElement {
-  const host = useHostState();
-  const account = useGitHubAccount(github);
+  const account = useGitHubAccount();
   const update = useUpdateState().data ?? { kind: "idle" };
-  // Downloading asks nothing of the user; the dot is for a restart or a retry.
-  const attention = update.kind !== "idle" && update.kind !== "downloading";
-  // A workspace switch reads GitHub afresh; the label keeps the last answer meanwhile.
+  const busy = update.kind === "downloading" || update.kind === "installing";
+  const attention = update.kind !== "idle" && !busy;
   const [last, setLast] = useState(account.query.data);
 
   if (account.query.data !== undefined && account.query.data !== last) setLast(account.query.data);
@@ -150,7 +146,7 @@ export function AccountFooterMenu({
             </Row.Leading>
             <Row.Label xstyle={styles.accountLabel}>
               <span {...props(styles.accountName)}>
-                {signedIn?.login ?? host.data?.machineName ?? "Profile"}
+                {signedIn?.login ?? nyte.machineName ?? "Profile"}
               </span>
               {attention && (
                 <span
@@ -167,9 +163,8 @@ export function AccountFooterMenu({
           <>
             <MenuItem
               layout="plain"
-              disabled={update.kind === "downloading"}
-              variant={update.kind === "failed" ? "danger" : "default"}
-              xstyle={styles.accountMenuItem}
+              disabled={busy}
+              variant={update.kind === "failed" ? "danger" : "quiet"}
               onClick={() => void nyte.host.updates?.check().catch(() => undefined)}
             >
               {updateLabel(update)}
@@ -180,11 +175,7 @@ export function AccountFooterMenu({
         <GitHubGroup account={account} onOpenProfile={onOpenProfile} />
         <NyteGroup connect={connect} onOpenProfile={onOpenProfile} />
         <MenuSeparator inset />
-        <MenuItem
-          icon="bubble-heart"
-          xstyle={styles.accountMenuItem}
-          onClick={() => openExternal(FEEDBACK_URL)}
-        >
+        <MenuItem icon="bubble-heart" variant="quiet" onClick={() => openExternal(FEEDBACK_URL)}>
           Give Feedback
         </MenuItem>
       </MenuContent>

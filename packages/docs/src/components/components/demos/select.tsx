@@ -1,5 +1,3 @@
-"use client";
-
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { useState } from "react";
 

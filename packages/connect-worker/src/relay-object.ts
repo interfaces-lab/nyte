@@ -42,7 +42,7 @@ import { consoleLogger, errorName } from "./log.ts";
 import { verifyRelayProof } from "./proof.ts";
 import { RelayChannel } from "./relay-channel.ts";
 import { RELAY_HEADERS, RELAY_INTERNAL_ORIGIN, RELAY_OPERATIONS } from "./relay-stub.ts";
-import { attachRelay, detachRelay } from "./store.ts";
+import { attachRelay, detachRelay } from "./store/environments.ts";
 
 const Attachment = Type.Union([
   Type.Object({
@@ -77,18 +77,24 @@ function sendableCode(code: number): number {
     : 1000;
 }
 
-function attachmentOf(socket: WebSocket): Attachment | undefined {
+function readAttachment(socket: WebSocket): Attachment | undefined {
   const value: unknown = socket.deserializeAttachment();
 
   return Value.Check(Attachment, value) ? value : undefined;
 }
 
+/** Send `frame` unless the socket is closing; its close handler ends what is left. */
 function send(socket: WebSocket, frame: RelayFrame): void {
   try {
     socket.send(JSON.stringify(frame));
-  } catch {
-    // The socket is closing; its close handler ends what is left.
-  }
+  } catch {}
+}
+
+/** Close `socket`, which either side may already have closed. */
+function closeSocket(socket: WebSocket, code: number, reason: string): void {
+  try {
+    socket.close(code, reason);
+  } catch {}
 }
 
 export class EnvironmentRelay extends DurableObject<Env> {
@@ -152,7 +158,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
   }
 
   override async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    const attachment = attachmentOf(socket);
+    const attachment = readAttachment(socket);
     const frame = parseDesktopFrame(message);
 
     if (attachment === undefined || frame === undefined) {
@@ -167,12 +173,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
 
   /** Finish the closing handshake the desktop started, then end what the socket carried. */
   override async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
-    try {
-      socket.close(sendableCode(code), reason.slice(0, 120));
-    } catch {
-      // This side already closed it.
-    }
-
+    closeSocket(socket, sendableCode(code), reason.slice(0, 120));
     this.#end(socket);
   }
 
@@ -182,7 +183,7 @@ export class EnvironmentRelay extends DurableObject<Env> {
 
   #sockets(): Socket[] {
     return this.ctx.getWebSockets().flatMap((socket) => {
-      const attachment = attachmentOf(socket);
+      const attachment = readAttachment(socket);
 
       return attachment === undefined || socket.readyState !== OPEN ? [] : [{ socket, attachment }];
     });
@@ -429,18 +430,13 @@ export class EnvironmentRelay extends DurableObject<Env> {
 
   /** Close a socket with a contract code and end everything it carried. */
   #close(socket: WebSocket, reason: CloseReason): void {
-    try {
-      socket.close(RELAY_CLOSE[reason], reason);
-    } catch {
-      // Already closed.
-    }
-
+    closeSocket(socket, RELAY_CLOSE[reason], reason);
     this.#end(socket);
   }
 
   /** End a socket's channels and, for the authenticated one, its D1 session. */
   #end(socket: WebSocket): void {
-    const attachment = attachmentOf(socket);
+    const attachment = readAttachment(socket);
 
     if (attachment === undefined) return;
 

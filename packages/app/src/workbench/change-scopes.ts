@@ -1,15 +1,15 @@
-import { changesFromTurns, worktreeFiles } from "@nyte-ai/client";
-import type {
-  FileChange,
-  Turn,
-  TurnRun,
-  VcsCommitInfo,
-  VcsDiff,
-  VcsFile,
-  VcsSnapshot,
-} from "@nyte-ai/protocol";
-import type { VcsDiffRequest } from "../queries.ts";
+import type { GitScope, GitStatus, RunId } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
+import { showsTool } from "@nyte-ai/plugin/client/presentation";
+import { worktreeFiles } from "../view-helpers.ts";
+import type { ConversationTurn, WorktreeFile } from "../view-helpers.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
+
+interface CommitInfo {
+  readonly id: string;
+  readonly subject: string;
+  readonly author: string;
+}
 
 type TurnChangesScope = Extract<WorkbenchChangesScope, { kind: "turn" }>;
 
@@ -20,6 +20,7 @@ export interface ChangeScopeStats {
 
 export type ChangeScopeRead =
   | { readonly kind: "pending" }
+  | { readonly kind: "files"; readonly fileCount: number }
   | {
       readonly kind: "ready";
       readonly stats: ChangeScopeStats;
@@ -36,59 +37,31 @@ export interface ChangesScopeOption {
 
 export interface TurnChangeOption {
   readonly scope: TurnChangesScope;
-  readonly run: TurnRun;
+  readonly run: RunId | null;
   readonly label: string;
   readonly stats: { readonly added: number; readonly removed: number };
-  readonly files: readonly { readonly change: FileChange; readonly patch: string }[];
+  readonly files: readonly string[];
 }
 
-/** Newest first; each file carries the exact patches that produced its counts, in order. */
-export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOption[] {
-  const turnCount = turns.reduce((count, turn) => (turn.kind === "turn" ? count + 1 : count), 0);
-  const options: TurnChangeOption[] = [];
-  let ordinal = 0;
+export function turnChangeOptions(turns: readonly ConversationTurn[]): readonly TurnChangeOption[] {
+  return turns
+    .map((turn, index): TurnChangeOption => {
+      const files = new Set<string>();
 
-  for (const turn of turns) {
-    if (turn.kind !== "turn") continue;
-    ordinal += 1;
-    const patches = new Map<string, string[]>();
-    const folded = new Set<string>();
+      for (const message of turn.messages) {
+        if (showsTool(message) && message.state.phase === "settled")
+          for (const path of message.state.changes?.paths ?? []) files.add(path);
+      }
 
-    for (const part of turn.parts) {
-      if (part.kind !== "tool" || part.class.kind !== "file_patch") continue;
-
-      if (part.state.kind !== "success" || part.state.commit === null) continue;
-
-      if (folded.has(part.state.commit)) continue;
-      folded.add(part.state.commit);
-      const { path, patch } = part.class;
-      const previous = patches.get(path);
-
-      if (previous === undefined) patches.set(path, [patch]);
-      else previous.push(patch);
-    }
-
-    const files = changesFromTurns([turn]).map((change) => ({
-      change,
-      patch: (patches.get(change.path) ?? []).join("\n"),
-    }));
-
-    options.push({
-      scope: { kind: "turn", turnId: turn.id },
-      run: turn.run,
-      label: ordinal === turnCount ? "Latest" : `Turn ${String(ordinal)}`,
-      stats: files.reduce(
-        (total, file) => ({
-          added: total.added + file.change.added,
-          removed: total.removed + file.change.removed,
-        }),
-        { added: 0, removed: 0 },
-      ),
-      files,
-    });
-  }
-
-  return options.reverse();
+      return {
+        scope: { kind: "turn", turnId: turn.info.id },
+        run: turn.info.run,
+        label: index === turns.length - 1 ? "Latest" : `Turn ${String(index + 1)}`,
+        stats: { added: turn.info.summary.added, removed: turn.info.summary.removed },
+        files: [...files],
+      };
+    })
+    .reverse();
 }
 
 export function turnHasChanges(option: TurnChangeOption): boolean {
@@ -126,30 +99,16 @@ export function changesScopeValue(scope: WorkbenchChangesScope): string {
   }
 }
 
-/**
- * Which diff read answers a scope. A turn's changes are folded from the
- * transcript the panel already holds, so no VCS read serves it.
- */
-export function diffRequestForScope(
-  scope: WorkbenchChangesScope,
-  options?: { readonly paths?: readonly string[]; readonly ignoreWhitespace?: boolean },
-): VcsDiffRequest | undefined {
-  const base = {
-    target: { kind: "workspace" } as const,
-    ignoreWhitespace: options?.ignoreWhitespace ?? false,
-  };
-
-  const narrowing = options?.paths === undefined ? base : { ...base, paths: [...options.paths] };
-
+export function vcsRequestForScope(scope: WorkbenchChangesScope): GitScope | undefined {
   switch (scope.kind) {
     case "uncommitted":
-      return { scope: { kind: "worktree" }, ...narrowing };
+      return { kind: "worktree" };
     case "staged":
-      return { scope: { kind: "staged" }, ...narrowing };
+      return { kind: "staged" };
     case "unstaged":
-      return { scope: { kind: "unstaged" }, ...narrowing };
+      return { kind: "unstaged" };
     case "commit":
-      return { scope: { kind: "commit", oid: scope.oid }, ...narrowing };
+      return { kind: "commit", commit: asId<"git-commit">(scope.oid) };
     case "turn":
       return undefined;
     default: {
@@ -160,29 +119,33 @@ export function diffRequestForScope(
   }
 }
 
-export function diffScopeStats(diffs: readonly VcsDiff[]): ChangeScopeStats {
-  return diffs.reduce<ChangeScopeStats>(
-    (total, diff) => ({
-      added: total.added + (diff.kind === "text" ? diff.added : 0),
-      removed: total.removed + (diff.kind === "text" ? diff.removed : 0),
-    }),
-    { added: 0, removed: 0 },
-  );
+export interface ChangesRepository {
+  readonly root: string;
+  readonly revision: string;
+}
+
+export function changesRepository(snapshot: GitStatus | undefined): ChangesRepository | undefined {
+  return snapshot?.kind === "repository"
+    ? { root: snapshot.root, revision: snapshot.revision }
+    : undefined;
 }
 
 export function scopeFiles(
-  snapshot: VcsSnapshot | undefined,
+  snapshot: GitStatus | undefined,
   scope: "uncommitted" | "staged" | "unstaged",
-): readonly VcsFile[] | undefined {
+): readonly WorktreeFile[] | undefined {
   if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
 
   switch (scope) {
     case "uncommitted":
       return worktreeFiles(snapshot);
     case "staged":
-      return snapshot.staged;
+      return snapshot.staged.map((file) => ({ path: file.path, kind: file.status }));
     case "unstaged":
-      return snapshot.unstaged;
+      return [
+        ...snapshot.unstaged.map((file) => ({ path: file.path, kind: file.status })),
+        ...snapshot.untracked.map((path) => ({ path, kind: "untracked" as const })),
+      ];
     default: {
       const _exhaustive: never = scope;
 
@@ -191,48 +154,26 @@ export function scopeFiles(
   }
 }
 
-/** Diffs already read for the working-tree scopes; each is absent until read. */
-export interface WorkingTreeDiffs {
-  readonly uncommitted?: readonly VcsDiff[];
-  readonly staged?: readonly VcsDiff[];
-  readonly unstaged?: readonly VcsDiff[];
-}
-
 function workingTreeOption(
   scope: WorkbenchChangesScope,
   label: string,
-  files: readonly VcsFile[] | undefined,
-  diffs: readonly VcsDiff[] | undefined,
+  files: readonly WorktreeFile[] | undefined,
 ): ChangesScopeOption {
   return {
     scope,
     label,
     detail: undefined,
-    read:
-      files === undefined || diffs === undefined
-        ? { kind: "pending" }
-        : { kind: "ready", stats: diffScopeStats(diffs), fileCount: files.length },
+    read: files === undefined ? { kind: "pending" } : { kind: "files", fileCount: files.length },
   };
 }
 
 export function workingTreeScopeOptions(
-  snapshot: VcsSnapshot | undefined,
-  diffs: WorkingTreeDiffs = {},
+  snapshot: GitStatus | undefined,
 ): readonly ChangesScopeOption[] {
   return [
-    workingTreeOption(
-      { kind: "uncommitted" },
-      "Uncommitted",
-      scopeFiles(snapshot, "uncommitted"),
-      diffs.uncommitted,
-    ),
-    workingTreeOption({ kind: "staged" }, "Staged", scopeFiles(snapshot, "staged"), diffs.staged),
-    workingTreeOption(
-      { kind: "unstaged" },
-      "Unstaged",
-      scopeFiles(snapshot, "unstaged"),
-      diffs.unstaged,
-    ),
+    workingTreeOption({ kind: "uncommitted" }, "Uncommitted", scopeFiles(snapshot, "uncommitted")),
+    workingTreeOption({ kind: "staged" }, "Staged", scopeFiles(snapshot, "staged")),
+    workingTreeOption({ kind: "unstaged" }, "Unstaged", scopeFiles(snapshot, "unstaged")),
   ];
 }
 
@@ -241,14 +182,14 @@ export function workingTreeScopeOptions(
  * `statsByOid` carries only the commits already read.
  */
 export function commitScopeOptions(
-  commits: readonly VcsCommitInfo[],
+  commits: readonly CommitInfo[],
   readByOid: ReadonlyMap<string, ChangeScopeRead> = new Map(),
 ): readonly ChangesScopeOption[] {
   return commits.map((commit) => ({
-    scope: { kind: "commit", oid: commit.oid },
+    scope: { kind: "commit", oid: commit.id },
     label: commit.subject,
-    detail: `${commit.oid.slice(0, 7)} · ${commit.author}`,
-    read: readByOid.get(commit.oid) ?? { kind: "pending" },
+    detail: `${commit.id.slice(0, 7)} · ${commit.author}`,
+    read: readByOid.get(commit.id) ?? { kind: "pending" },
   }));
 }
 
@@ -301,27 +242,19 @@ export type BranchReadout =
       readonly behind: number;
     };
 
-export function branchReadout(snapshot: VcsSnapshot | undefined): BranchReadout | undefined {
+export function branchReadout(snapshot: GitStatus | undefined): BranchReadout | undefined {
   if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
-  const head = snapshot.head;
 
-  switch (head.kind) {
-    case "detached":
-      return { kind: head.kind, label: head.oid.slice(0, 7) };
-    case "unborn":
-      return { kind: head.kind, label: head.branch };
-    case "attached":
-      return {
-        kind: head.kind,
-        label: head.branch,
-        upstream: head.upstream?.name ?? null,
-        ahead: head.upstream?.ahead ?? 0,
-        behind: head.upstream?.behind ?? 0,
-      };
-    default: {
-      const _exhaustive: never = head;
+  if (snapshot.branch === null)
+    return { kind: "detached", label: snapshot.head === null ? "HEAD" : snapshot.head.slice(0, 7) };
 
-      return _exhaustive;
-    }
-  }
+  if (snapshot.head === null) return { kind: "unborn", label: snapshot.branch };
+
+  return {
+    kind: "attached",
+    label: snapshot.branch,
+    upstream: snapshot.upstream?.name ?? null,
+    ahead: snapshot.upstream?.ahead ?? 0,
+    behind: snapshot.upstream?.behind ?? 0,
+  };
 }

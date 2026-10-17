@@ -82,8 +82,7 @@ const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "
 
 const ANSI = control("[0-9;?]*[A-Za-z]");
 
-// Splits a child's chunks into complete lines, dropping colors and
-// carriage-return progress rewrites.
+/** Splits a child's chunks into complete lines, dropping colors and carriage-return progress rewrites. */
 function lineReader(onLine) {
   let partial = "";
 
@@ -108,8 +107,10 @@ function lineReader(onLine) {
 
 const fit = (line, reserve) => line.slice(0, (process.stdout.columns || 100) - reserve);
 
-// Spinner, elapsed time, and the last `max` lines of a child's output, redrawn
-// in place. `stop` erases it; `output` holds everything for failure reports.
+/**
+ * Spinner, elapsed time, and the last `max` lines of a child's output, redrawn
+ * in place. `stop` erases it; `output` holds everything for failure reports.
+ */
 export function livePanel({ max = 6 } = {}) {
   const started = performance.now();
   const lines = [];
@@ -164,8 +165,10 @@ export function livePanel({ max = 6 } = {}) {
   };
 }
 
-// The same tail for hosts that prefix every line and ignore cursor movement,
-// such as Turbo's stream output: the latest line, at most one per `every` ms.
+/**
+ * The same tail for hosts that prefix every line and ignore cursor movement,
+ * such as Turbo's stream output: the latest line, at most one per `every` ms.
+ */
 export function lineLog({ every = 750 } = {}) {
   const started = performance.now();
   let output = "";

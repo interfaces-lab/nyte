@@ -5,13 +5,21 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { GitHubBridge } from "../bridge.ts";
+import { SdkError } from "@nyte-ai/sdk";
+import type { GitHubAccountState, GitHubApi } from "@nyte-ai/sdk";
 import { keys, useHostState } from "../queries.ts";
 import { nyte } from "../nyte.ts";
+import { connected } from "../sdk.tsx";
+import { startupReadsReleased } from "../startup.ts";
 
 const SIGNING_IN_POLL_MS = 2_000;
 
+/** Checks on a pull request finish on GitHub, which nothing here hears, so pending ones poll. */
+const CHECKS_POLL_MS = 15_000;
+
 const AUTH_KEY = ["github-auth"];
+
+const ACCOUNT_KEY = [...keys.github, "account"];
 
 /** What signing out removes, said where the user decides. */
 export function signOutDescription(login: string): string {
@@ -27,44 +35,100 @@ function usePendingAuth() {
   });
 }
 
-/** The account and repository behind the selected workspace. Nothing is read where the host has no GitHub. */
-export function useGitHubState(github: GitHubBridge | undefined) {
+/**
+ * GitHub on the host for the selected folder; absent with no folder selected,
+ * until the host answers, and where it serves no GitHub. The api is bound to
+ * this connection, so it lives under the keys a host change clears.
+ */
+export function useGitHub(): GitHubApi | undefined {
+  const workspace = useHostState().data.workspace?.id;
+
+  const capability = useQuery({
+    queryKey: [...keys.github, "capability", workspace],
+    queryFn:
+      workspace === undefined
+        ? skipToken
+        : async () => {
+            const found = await (await connected()).workspace(workspace).github();
+
+            return found.kind === "available" ? found.api : null;
+          },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+  return capability.data ?? undefined;
+}
+
+/** The selected workspace's repository and branch pull request. Running checks finish on GitHub, which nothing here hears, so they poll. */
+export function useGitHubState(github: GitHubApi | undefined) {
   const host = useHostState();
+
+  return useQuery({
+    queryKey: [...keys.github, host.data.workspace?.path ?? null],
+    queryFn:
+      github === undefined
+        ? skipToken
+        : async () => {
+            await startupReadsReleased();
+
+            return github.state();
+          },
+    staleTime: 30_000,
+    refetchOnMount: true,
+    refetchInterval: (current): number | false => {
+      const pullRequest = current.state.data?.pullRequest;
+
+      return pullRequest?.kind === "ready" &&
+        pullRequest.pullRequest.checks.some((check) => check.state === "pending")
+        ? CHECKS_POLL_MS
+        : false;
+    },
+  });
+}
+
+/** The machine's GitHub CLI login, or null where the host serves none. A sign-in ends when the code is entered on GitHub, which nothing here hears, so a pending one polls. */
+export function useGitHubAccountState() {
   const pending = usePendingAuth();
 
   return useQuery({
-    queryKey: [...keys.github, host.data?.workspace?.path ?? null],
-    queryFn: github === undefined ? skipToken : () => github.state(),
+    queryKey: ACCOUNT_KEY,
+    queryFn: async (): Promise<GitHubAccountState | null> => {
+      try {
+        return await (await connected()).github.account();
+      } catch (error) {
+        if (error instanceof SdkError && error.code === "unavailable") return null;
+
+        throw error;
+      }
+    },
     staleTime: 30_000,
     refetchOnMount: true,
     refetchOnWindowFocus: pending.length === 0,
-    // A sign-in ends when the code is entered on GitHub, which nothing here hears.
     refetchInterval: (current) =>
       current.state.data?.kind === "signing_in" ? SIGNING_IN_POLL_MS : false,
   });
 }
 
-/** Account credentials are shared; repository details follow the selected workspace. */
-export function useGitHubAccount(github: GitHubBridge) {
+/** The machine's GitHub CLI login with signing in and out; one for every folder, so it reads no workspace. */
+export function useGitHubAccount() {
   const client = useQueryClient();
 
   const auth = useMutation({
     mutationKey: AUTH_KEY,
     scope: { id: "github-auth" },
-    mutationFn: async (operation: "signIn" | "signOut") => {
-      const state = await github[operation]();
+    mutationFn: async (operation: "signIn" | "signOut"): Promise<GitHubAccountState> => {
+      const state = await (await connected()).github[operation]();
 
       if (state.kind === "error") throw new Error(state.message);
 
       return state;
     },
     onMutate: () => client.cancelQueries({ queryKey: keys.github }),
-    // Auth may finish after a workspace switch. Re-read the current target instead of caching its result.
     onSettled: () => client.invalidateQueries({ queryKey: keys.github }),
   });
 
   const pending = usePendingAuth();
-  const query = useGitHubState(github);
+  const query = useGitHubAccountState();
 
   return { query, auth, busy: pending.length > 0, connecting: pending.includes("signIn") };
 }

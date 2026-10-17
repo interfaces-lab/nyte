@@ -1,0 +1,27 @@
+---
+title: Spacing
+description: "One 4px unit, Tailwind's steps, and named structural measurements"
+---
+
+Spacing counts 4px units the way Tailwind does: `s2` is two units, `s1_5` is one and a half.
+`space.px` is a hairline.
+
+```ts
+import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
+```
+
+<SpaceScale />
+
+## Rules
+
+- Padding, margin, gap, and inset use `space.*`.
+- A structural measurement, such as a sidebar width or a menu width, gets a name in a schema
+  file instead of a literal.
+- Controls and rows take their height from `button`, `input`, `row`, `menu`, or `target`.
+- Visual size and hit area are separate. A control stays at least `target.min` to hit: 24px, or
+  44px under a coarse pointer. Independent controls sit `target.gap` apart: 2px, or 8px.
+- Use logical properties: `paddingInline`, `marginBlockStart`, `insetInlineEnd`.
+
+## Targets
+
+<TargetRows />

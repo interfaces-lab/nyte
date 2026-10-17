@@ -1,7 +1,7 @@
 import { MessageScroller } from "@shadcn/react/message-scroller";
 import { props } from "@stylexjs/stylex";
 import type { ComponentProps } from "react";
-import { srOnly } from "./a11y.stylex.ts";
+import { srOnly } from "./styles/a11y.stylex.ts";
 import { ChatButton } from "./chat-button.tsx";
 import { Icon } from "./icon.tsx";
 

@@ -20,8 +20,6 @@ them.
 | `src/providers/nyte-catalog.ts` | The provider list and default models each client starts from |
 | `scripts/` | Hosted catalog generation and R2 publishing (`pnpm models:generate`, `pnpm models:publish`) |
 
-Most flows are ports from pi; each file names its upstream source and the revision it was synced with.
-
 ## Providers
 
 | Provider | Auth | Catalog |
@@ -74,7 +72,7 @@ lookup without another device login. A failed lookup does not persist a partial 
 Credential reads validate both tokens, expiry, and account model IDs through one schema. Incomplete
 or old direct-token credentials require a fresh sign-in.
 
-Client identity follows Pi's public Copilot OAuth client, `Iv1.b507a08c87ecfe98`, and its Copilot
+Client identity is GitHub's Copilot OAuth client, `Iv1.b507a08c87ecfe98`, with Copilot's
 editor headers. This is not Nyte's OAuth app, and the device-code instructions say so. The
 `clientId` option or `NYTE_GITHUB_COPILOT_CLIENT_ID` can select a host's own client, but that client
 must be permitted to use Copilot's token exchange. A successful GitHub device grant alone does
@@ -156,9 +154,9 @@ pnpm --dir packages/ai test
 pnpm --dir packages/ai typecheck
 ```
 
-`pnpm --dir packages/ai test` runs the catalog data check first, then Vitest. All tests live in
+`pnpm --dir packages/ai test` runs Vitest. All tests live in
 `test/`, including cases ported from Pi. There is no separate upstream suite. Package typecheck
-includes every test and fixture recursively.
+includes every test and fixture recursively and rejects unused locals and parameters.
 
 Transport tests inject HTTP or WebSocket fixtures at the network boundary and exercise the real
 adapters. They run without provider credentials or live API calls.
@@ -168,6 +166,6 @@ adapters. They run without provider credentials or live API calls.
 The Claude and Codex account-limit fetchers normalize percentages used and reset
 timestamps separately from token consumption. Claude supports the named 5-hour
 and weekly buckets plus model-specific `weekly_scoped` entries in the response's
-`limits` array, including Fable. Scoped windows use `seven_day_<display_name>` ids.
+`limits` array, including Fable. Scoped windows use `seven_day_<display_name>` ids and `<display_name> weekly` labels.
 Missing or malformed windows are omitted; a missing reset stays unknown.
 Requests remain cancellable through response-body reading.

@@ -1,4 +1,4 @@
-export const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
+const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
 
 export function clampOpenAIPromptCacheKey(key: string | undefined): string | undefined {
   if (key === undefined) return undefined;

@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { ComposerEditor } from "./composer-editor.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
@@ -70,8 +70,9 @@ export async function run(): Promise<string> {
     await paint();
     const handle = ref.current;
 
-    if (handle === null || handle.element === null) throw new Error("editor did not mount");
-    const area = handle.element;
+    const area = handle?.readElement() ?? null;
+
+    if (handle === null || area === null) throw new Error("editor did not mount");
     area.style.cssText =
       "width: 600px; max-height: 150px; overflow: auto; font: 16px/24px sans-serif";
     check(handle.readDocument().text === text, "restored long draft survives chip conversion");
@@ -150,6 +151,19 @@ export async function run(): Promise<string> {
     flushSync(() => handle.insertReference({ kind: "file", file }));
     await paint();
     check(references.length === 1, "insertion reports new reference");
+    flushSync(() => handle.replaceText(0, 0, ""));
+
+    for (const [key, keyCode, offset] of [
+      ["ArrowRight", 39, `@${file.url}`.length],
+      ["ArrowLeft", 37, 0],
+    ] as const) {
+      area.dispatchEvent(new KeyboardEvent("keydown", { key, keyCode, bubbles: true }));
+      const stepped = handle.readDocument();
+      check(
+        stepped.selectionStart === offset && stepped.selectionEnd === offset,
+        "arrows step the caret over a chip as one unit in both directions",
+      );
+    }
 
     const outside = document.createElement("button");
     document.body.append(outside);

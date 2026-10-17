@@ -23,7 +23,7 @@ export type SideThread =
   | { readonly kind: "demo"; readonly exchanges: readonly DemoExchange[] }
   | { readonly kind: "live"; readonly id: string; readonly startedAt: number };
 
-const draftOf = (text: string): ComposerDocumentState => ({
+const createDraft = (text: string): ComposerDocumentState => ({
   text,
   selectionStart: text.length,
   selectionEnd: text.length,
@@ -62,7 +62,7 @@ function readMarks(reviewId: string): Readonly<Record<string, string>> {
 const fresh = (reviewId: string): Local => ({
   side: false,
   thread: { kind: "demo", exchanges: [] },
-  draft: draftOf(""),
+  draft: createDraft(""),
   opened: new Map(),
   marks: readMarks(reviewId),
   focus: 0,
@@ -93,28 +93,54 @@ interface Marked {
   readonly blobs: string;
 }
 
-export function useReviewState(reviewId: string, files: readonly Marked[]) {
+/** One review's local state and the changes a surface can make to it. */
+interface ReviewState {
+  readonly side: boolean;
+  readonly thread: SideThread;
+  readonly setSide: (side: boolean) => void;
+  /** Drop the thread on screen for an empty one; the next live question forks the guide afresh. */
+  readonly startThread: (kind: SideThread["kind"]) => void;
+  /** Change a demo thread's scripted exchanges; a live thread has none. */
+  readonly updateDemo: (
+    change: (exchanges: readonly DemoExchange[]) => readonly DemoExchange[],
+  ) => void;
+  readonly draft: ComposerDocumentState;
+  /** Bumped to ask the side chat's composer for focus. */
+  readonly focus: number;
+  readonly reviewed: (path: string) => ReviewedState;
+  readonly reviewedCount: number;
+  readonly setReviewed: (paths: readonly string[], next: boolean) => void;
+  readonly collapsed: (path: string, fallback: boolean) => boolean;
+  readonly toggle: (path: string, fallback: boolean) => void;
+  readonly setAllOpen: (open: boolean) => void;
+  readonly setDraft: (draft: ComposerDocumentState) => void;
+  /** Name selected lines in the side chat's draft and open it. */
+  readonly addReference: (reference: string) => void;
+  /** Open the side chat with `draft` in its composer, focused. */
+  readonly compose: (draft: string) => void;
+}
+
+export function useReviewState(reviewId: string, files: readonly Marked[]): ReviewState {
   const store = use(ReviewStore);
 
   if (store === undefined) throw new Error("useReviewState needs a ReviewStateProvider");
 
   const local = store.states.get(reviewId) ?? fresh(reviewId);
   const update = (change: (local: Local) => Local): void => store.update(reviewId, change);
-  const blobsOf = (path: string): string => files.find((file) => file.path === path)?.blobs ?? "";
+  const findBlobs = (path: string): string => files.find((file) => file.path === path)?.blobs ?? "";
 
   const reviewed = (path: string): ReviewedState => {
     const seen = local.marks[path];
 
     if (seen === undefined) return "unreviewed";
 
-    return seen === blobsOf(path) ? "reviewed" : "changed";
+    return seen === findBlobs(path) ? "reviewed" : "changed";
   };
 
   return {
     side: local.side,
     thread: local.thread,
     setSide: (side: boolean): void => update((current) => ({ ...current, side })),
-    /** Drop the thread on screen for an empty one; the next live question forks the guide afresh. */
     startThread: (kind: SideThread["kind"]): void =>
       update((current) => ({
         ...current,
@@ -127,7 +153,6 @@ export function useReviewState(reviewId: string, files: readonly Marked[]) {
                 startedAt: Date.now(),
               },
       })),
-    /** Change a demo thread's scripted exchanges; a live thread has none. */
     updateDemo: (change: (exchanges: readonly DemoExchange[]) => readonly DemoExchange[]): void =>
       update((current) =>
         current.thread.kind === "demo"
@@ -146,7 +171,7 @@ export function useReviewState(reviewId: string, files: readonly Marked[]) {
         const marks = { ...current.marks };
 
         for (const path of paths) {
-          if (next) marks[path] = blobsOf(path);
+          if (next) marks[path] = findBlobs(path);
           else delete marks[path];
         }
 
@@ -164,7 +189,6 @@ export function useReviewState(reviewId: string, files: readonly Marked[]) {
         opened: new Map(files.map((file) => [file.path, open])),
       })),
     setDraft: (draft: ComposerDocumentState): void => update((current) => ({ ...current, draft })),
-    /** Name selected lines in the side chat's draft and open it. */
     addReference: (reference: string): void =>
       update((current) => {
         const text = current.draft.text;
@@ -172,16 +196,15 @@ export function useReviewState(reviewId: string, files: readonly Marked[]) {
         return {
           ...current,
           side: true,
-          draft: draftOf(`${text}${text === "" || text.endsWith(" ") ? "" : " "}${reference} `),
+          draft: createDraft(`${text}${text === "" || text.endsWith(" ") ? "" : " "}${reference} `),
           focus: current.focus + 1,
         };
       }),
-    /** Open the side chat with `draft` in its composer, focused. */
     compose: (draft: string): void =>
       update((current) => ({
         ...current,
         side: true,
-        draft: draftOf(draft),
+        draft: createDraft(draft),
         focus: current.focus + 1,
       })),
   };

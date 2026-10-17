@@ -1,37 +1,21 @@
-/**
- * `@nyte-ai/protocol`: the wire contract between a Nyte host and a client in
- * another process. Types the SDK already defines as plain data, the runtime
- * schemas that check them, the operation table, the JSON and SSE envelopes.
- *
- * Depends on `@nyte-ai/schema` and `typebox` only. Never on core, never on
- * Node: a browser bundle and a server share this module unchanged.
- */
-export { HEAD_NAME_PATTERN, isHeadName, validateHeadName } from "./names.ts";
+export * from "./client.ts";
 
-export * from "./kernel.ts";
+export * from "./codec.ts";
 
-export * from "./ui.ts";
+export * from "./declarations.ts";
 
-export * from "./views.ts";
-
-export type { ToolOutcome, ToolReason, ToolState } from "./tool-state.ts";
-
-export * from "./plugins.ts";
-
-export * from "./workspace.ts";
-
-export * from "./sdk.ts";
-
-export * from "./remote.ts";
-
-export * from "./operations.ts";
-
-export * from "./environment.ts";
+export * from "./stream-channel.ts";
 
 export * from "./wire.ts";
 
-export * from "./parse.ts";
+export * from "./view-frames.ts";
 
-export * from "./sse.ts";
+export { parseJson } from "./json.ts";
 
-export * as schemas from "./schemas.ts";
+export { streamBuffer } from "./stream-buffer.ts";
+
+export { createStreamClient } from "./stream-client.ts";
+
+export { abortable, mapped } from "./streams.ts";
+
+export { operationsDigest } from "./digest.ts";

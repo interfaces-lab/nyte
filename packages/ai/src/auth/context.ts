@@ -2,9 +2,6 @@
  * Default `AuthContext`: env vars from `process.env` and file existence via
  * node:fs, both loaded through `process.getBuiltinModule` so browser bundlers do
  * not try to resolve node builtins (where they simply report nothing).
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/context.ts
- * Synced with pi 7ebf9087e.
  */
 import type { AuthContext } from "./types.ts";
 

@@ -2,14 +2,13 @@
  * The catalog every Nyte client composes: the same providers over the same
  * `~/.nyte` credential and model stores, so a login made in one client is a
  * login in all of them.
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/model-resolver.ts
  */
-import type { ProviderId } from "@nyte-ai/schema";
+import type { ProviderId } from "@nyte-ai/schema/model";
 import { defaultProviderAuthContext } from "../auth/context.ts";
 import { FileCredentialStore } from "../auth/store.ts";
 import { FileModelsStore } from "../file-models-store.ts";
-import { createModels, type MutableModels, type Provider } from "../models.ts";
+import { createModels } from "../models.ts";
+import type { MutableModels, Provider } from "../models-types.ts";
 import { anthropicProvider } from "./anthropic.ts";
 import { githubCopilotProvider } from "./github-copilot.ts";
 import { openaiCodexProvider } from "./openai-codex.ts";
@@ -49,7 +48,12 @@ export function createNyteModels(): MutableModels {
     catalog: { url: process.env.NYTE_MODELS_URL },
   });
 
-  for (const provider of NYTE_PROVIDERS) models.setProvider(provider());
+  for (const provider of nyteProviders()) models.setProvider(provider);
 
   return models;
+}
+
+/** Returns a fresh instance of every provider a Nyte client composes, in fallback order: what `createNyteModels` registers, for a host that builds its own `Models` over other stores. */
+export function nyteProviders(): readonly Provider[] {
+  return NYTE_PROVIDERS.map((provider) => provider());
 }

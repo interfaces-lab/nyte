@@ -1,7 +1,7 @@
 import { createContext, use, useRef } from "react";
 import type { ReactNode } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ClerkProvider, useAuth, useClerk, useUser } from "@clerk/expo";
+import { ClerkProvider, isClerkAPIResponseError, useAuth, useClerk, useUser } from "@clerk/expo";
 import { releaseCopy } from "./account-copy.ts";
 import { useHostedAuth } from "@clerk/expo/hosted-auth";
 import { tokenCache } from "@clerk/expo/token-cache";
@@ -9,7 +9,7 @@ import { fetch } from "expo/fetch";
 import { BrokerError, createBrokerClient } from "@nyte-ai/connect";
 import type { BrokerClient, EnvironmentSummary } from "@nyte-ai/connect";
 import type { ManagedConnection } from "../connection/connection.ts";
-import { connectionStore } from "../connection/host.ts";
+import { connectionStore, verifyHost } from "../connection/host.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { readAccountConfig, type AccountConfig } from "./account-config.ts";
 import { CLIENT_NAME, deviceCrypto, forgetClientId, readClientId } from "./device.ts";
@@ -22,13 +22,14 @@ import {
 } from "./revocation.ts";
 import { toast } from "../ui/toast.tsx";
 
-export type AccountStatus =
+type AccountStatus =
   | { readonly kind: "loading" }
   | { readonly kind: "signedOut" }
   | {
       readonly kind: "signedIn";
       readonly ownerId: string;
       readonly label: string;
+      readonly avatarUrl: string | undefined;
       /** Signs every call with the owner's own session, or reports `signed_out`. */
       readonly broker: BrokerClient;
     };
@@ -38,6 +39,7 @@ export type SignInEnding =
   | { readonly kind: "cancelled" }
   /** Clerk has not loaded, usually because this phone is offline. */
   | { readonly kind: "unavailable" }
+  | { readonly kind: "unregisteredApp" }
   | { readonly kind: "failed" };
 
 /** The Mac this account let go on the way out, and what it and the broker confirmed. */
@@ -65,14 +67,10 @@ export interface Account {
    */
   readonly renew: () => Promise<SignInEnding>;
   readonly signOut: () => Promise<SignOutEnding>;
-  /**
-   * Enroll with one of `ownerId`'s Macs. Refused unless that owner is still
-   * the one signed in, so a list drawn for one account never enrolls under
-   * another.
-   */
   readonly connect: (input: {
     readonly ownerId: string;
     readonly environment: EnvironmentSummary;
+    readonly repair: boolean;
     readonly signal: AbortSignal;
   }) => Promise<ConnectEnding>;
 }
@@ -123,6 +121,21 @@ async function linked<T>(
 /** The account this phone acts for, and the signal that ends everything started for it. */
 type Epoch = { readonly ownerId: string | null; readonly controller: AbortController };
 
+/**
+ * Bridges Clerk to the app's account contract, one epoch per owner. A new owner (or none) aborts
+ * whatever the last one started and drops its cached Macs, so nothing late lands under the wrong
+ * account. A signed-in owner also forgets any other account's Mac, however Clerk got there: a sign-in,
+ * a switch, or a session restored at launch. The gate already refuses to serve that Mac; forgetting it
+ * releases its bearer on the Mac alone, because the broker cannot be asked without that owner's
+ * session. Signing out alone keeps the saved Mac, whose bearer outlives the session.
+ *
+ * Broker calls read the live Clerk session at call time and never send a token for anyone but their
+ * owner. Sign-in is ephemeral, so Safari keeps no portal session that could sign the previous account
+ * back in. Sign-out forgets the client id (a stale one is harmless: the next account checks its owner
+ * and makes its own) and re-enters the owner when Clerk fails to sign out, so its work may start
+ * again. `connect` enters its owner itself, since the Clerk listener may not have run yet, and ends on
+ * the user's cancel or any account change, whichever comes first.
+ */
 function AccountBridge({ config, children }: { config: AccountConfig; children: ReactNode }) {
   const clerk = useClerk();
   const auth = useAuth();
@@ -131,13 +144,6 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
   const queryClient = useQueryClient();
   const epoch = useRef<Epoch>(undefined);
 
-  /**
-   * A new owner (or none) aborts whatever the last one started and drops its
-   * cached Macs, so nothing late can land under the wrong account. A signed-in
-   * owner also lets go of any other account's Mac, however Clerk got there:
-   * a sign-in, a switch, or a session restored at launch. Signing out alone
-   * keeps the saved Mac, whose bearer outlives the session.
-   */
   function enter(ownerId: string | null) {
     if (epoch.current?.ownerId === ownerId) return;
     epoch.current?.controller.abort();
@@ -150,11 +156,6 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
     if (ownerId !== null) void isolate(ownerId);
   }
 
-  /**
-   * The gate already refuses to serve another owner's Mac; this removes it and
-   * releases its bearer on that Mac. Without that owner's session the broker
-   * cannot be asked, so the release is the Mac's weak one.
-   */
   async function isolate(ownerId: string) {
     try {
       const removed = await connectionStore.remove({
@@ -183,7 +184,6 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
     }),
   );
 
-  // The live session, read at call time: a token for anyone but `ownerId` is never sent.
   const brokerFor = (ownerId: string) =>
     createBrokerClient({
       origin: config.origin,
@@ -213,6 +213,7 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
             user?.username ??
             user?.fullName ??
             "Nyte account",
+          avatarUrl: user?.imageUrl,
           broker: brokerFor(auth.userId),
         };
 
@@ -220,15 +221,19 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
     let created: string | null;
 
     try {
-      // Ephemeral, so Safari keeps no portal session that could sign the
-      // previous account back in after it signed out.
       created = (
         await startHostedAuth({
           mode: "sign-in",
           authSessionOptions: { preferEphemeralSession: true },
         })
       ).createdSessionId;
-    } catch {
+    } catch (cause) {
+      if (
+        isClerkAPIResponseError(cause) &&
+        cause.errors.some((error) => error.code === "resource_missmatch")
+      )
+        return { kind: "unregisteredApp" };
+
       return { kind: "failed" };
     }
 
@@ -280,13 +285,11 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
       return { kind: "notRemoved" };
     }
 
-    // A stale id is harmless: the next account checks its owner and makes its own.
     await forgetClientId().catch(() => undefined);
 
     try {
       await clerk.signOut();
     } catch {
-      // Still signed in, so the account's own work may start again.
       enter(clerk.user?.id ?? null);
 
       return { kind: "clerkFailed", released };
@@ -298,16 +301,15 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
   async function connect({
     ownerId,
     environment,
+    repair,
     signal,
   }: Parameters<Account["connect"]>[0]): Promise<ConnectEnding> {
     if (clerk.user?.id !== ownerId) return { kind: "broker", failure: { kind: "signed_out" } };
-    // The listener may not have run yet; entering the same owner again is a no-op.
     enter(ownerId);
     const current = epoch.current;
 
     if (current === undefined) return { kind: "broker", failure: { kind: "signed_out" } };
 
-    // Ends on the user's cancel or on any account change, whichever comes first.
     return linked([signal, current.controller.signal], async (both) => {
       try {
         return await connectEnvironment({
@@ -319,6 +321,7 @@ function AccountBridge({ config, children }: { config: AccountConfig; children: 
           clientName: CLIENT_NAME,
           crypto: deviceCrypto,
           fetch,
+          verify: (saved, verifying) => verifyHost({ saved, repair, signal: verifying }),
           save: connectionStore.save,
           signal: both,
         });

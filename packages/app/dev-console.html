@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Nyte dev console</title>
+    <meta name="color-scheme" content="light dark" />
+    <style>
+      :root {
+        font:
+          12px/1.4 ui-monospace,
+          "JetBrains Mono",
+          Menlo,
+          monospace;
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        height: 100vh;
+      }
+      header {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+        position: sticky;
+        top: 0;
+        background: Canvas;
+      }
+      header input,
+      header select,
+      header button {
+        font: inherit;
+        padding: 3px 6px;
+      }
+      header input[type="search"] {
+        flex: 1;
+        min-width: 10em;
+      }
+      header .count {
+        opacity: 0.6;
+        min-width: 7em;
+        text-align: right;
+      }
+      main {
+        overflow: auto;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 2px 8px;
+        vertical-align: top;
+        border-bottom: 1px solid color-mix(in srgb, CanvasText 8%, transparent);
+        white-space: nowrap;
+      }
+      th {
+        position: sticky;
+        top: 0;
+        background: Canvas;
+        font-weight: 600;
+      }
+      td.data {
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-width: 60vw;
+        opacity: 0.8;
+      }
+      tr.warn td {
+        background: color-mix(in srgb, orange 12%, transparent);
+      }
+      tr.error td,
+      tr.uncaught td {
+        background: color-mix(in srgb, red 12%, transparent);
+      }
+      td.source,
+      td.area {
+        cursor: pointer;
+      }
+      td.ts {
+        opacity: 0.6;
+      }
+      .source-app {
+        color: #2a8;
+      }
+      .source-cli {
+        color: #58f;
+      }
+      .source-desktop {
+        color: #c7a;
+      }
+      .source-host {
+        color: #d84;
+      }
+      .source-tui {
+        color: #a9c;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <input
+        id="query"
+        type="search"
+        placeholder="filter (area, message, data) — prefix ! to exclude"
+        autofocus
+      />
+      <select id="source">
+        <option value="">all sources</option>
+      </select>
+      <select id="area">
+        <option value="">all areas</option>
+      </select>
+      <label><input id="follow" type="checkbox" checked /> follow</label>
+      <button id="pause">pause</button>
+      <button id="clear">clear</button>
+      <span class="count" id="count"></span>
+    </header>
+    <main>
+      <table>
+        <thead>
+          <tr>
+            <th>time</th>
+            <th>source</th>
+            <th>area</th>
+            <th>message</th>
+            <th>data</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </main>
+    <script type="module">
+      const rows = [];
+      const sources = new Set();
+      const areas = new Set();
+      let paused = false;
+      let pending = [];
+
+      const query = document.getElementById("query");
+      const sourceSelect = document.getElementById("source");
+      const areaSelect = document.getElementById("area");
+      const follow = document.getElementById("follow");
+      const body = document.getElementById("rows");
+      const count = document.getElementById("count");
+      const main = document.querySelector("main");
+
+      const time = (ts) => {
+        const date = new Date(ts);
+        return `${date.toLocaleTimeString("en-GB")}.${String(date.getMilliseconds()).padStart(3, "0")}`;
+      };
+
+      const pretty = (data) => {
+        try {
+          const value = JSON.parse(data);
+          const flat = JSON.stringify(value);
+          return flat.length > 160 ? JSON.stringify(value, null, 2) : flat;
+        } catch {
+          return data;
+        }
+      };
+
+      const matches = (row) => {
+        if (sourceSelect.value && row.source !== sourceSelect.value) return false;
+        if (areaSelect.value && row.area !== areaSelect.value) return false;
+        const terms = query.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        if (terms.length === 0) return true;
+        const haystack = `${row.area} ${row.message} ${row.data}`.toLowerCase();
+        return terms.every((term) =>
+          term.startsWith("!") ? !haystack.includes(term.slice(1)) : haystack.includes(term),
+        );
+      };
+
+      const option = (select, value) => {
+        const element = document.createElement("option");
+        element.value = value;
+        element.textContent = value;
+        select.append(element);
+      };
+
+      const register = (row) => {
+        if (!sources.has(row.source)) {
+          sources.add(row.source);
+          option(sourceSelect, row.source);
+        }
+        if (!areas.has(row.area)) {
+          areas.add(row.area);
+          option(areaSelect, row.area);
+        }
+      };
+
+      const render = (row) => {
+        const tr = document.createElement("tr");
+        tr.className =
+          row.message === "uncaught" ? "uncaught" : row.area === "console" ? row.message : "";
+        const cells = [
+          ["ts", time(row.ts)],
+          ["source", row.source],
+          ["area", row.area],
+          ["message", row.message],
+          ["data", pretty(row.data)],
+        ];
+        for (const [kind, text] of cells) {
+          const td = document.createElement("td");
+          td.className = kind === "source" ? `source source-${row.source}` : kind;
+          td.textContent = text;
+          tr.append(td);
+        }
+        tr.querySelector(".source").onclick = () => {
+          sourceSelect.value = sourceSelect.value === row.source ? "" : row.source;
+          redraw();
+        };
+        tr.querySelector(".area").onclick = () => {
+          areaSelect.value = areaSelect.value === row.area ? "" : row.area;
+          redraw();
+        };
+        return tr;
+      };
+
+      const redraw = () => {
+        const shown = rows.filter(matches);
+        body.replaceChildren(...shown.map(render));
+        count.textContent = `${shown.length} / ${rows.length}`;
+        if (follow.checked) main.scrollTop = main.scrollHeight;
+      };
+
+      const append = (row) => {
+        rows.push(row);
+        register(row);
+        if (!matches(row)) {
+          count.textContent = `${body.children.length} / ${rows.length}`;
+          return;
+        }
+        body.append(render(row));
+        count.textContent = `${body.children.length} / ${rows.length}`;
+        if (follow.checked) main.scrollTop = main.scrollHeight;
+      };
+
+      for (const element of [query, sourceSelect, areaSelect]) element.oninput = redraw;
+
+      document.getElementById("pause").onclick = (event) => {
+        paused = !paused;
+        event.target.textContent = paused ? "resume" : "pause";
+        if (!paused) {
+          for (const row of pending) append(row);
+          pending = [];
+        }
+      };
+
+      document.getElementById("clear").onclick = () => {
+        rows.length = 0;
+        pending = [];
+        void fetch("/__dev/clear", { method: "POST" });
+        redraw();
+      };
+
+      main.onscroll = () => {
+        const atBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 4;
+        if (!atBottom && follow.checked && rows.length > 0) follow.checked = false;
+      };
+
+      const initial = await (await fetch("/__dev/rows")).json();
+      for (const row of initial) append(row);
+
+      const stream = new EventSource("/__dev/stream");
+      stream.onmessage = (event) => {
+        const row = JSON.parse(event.data);
+        if (paused) pending.push(row);
+        else append(row);
+      };
+    </script>
+  </body>
+</html>

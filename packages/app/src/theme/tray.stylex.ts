@@ -1,6 +1,7 @@
 import { create } from "@stylexjs/stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { tray } from "./schema.stylex.ts";
-import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 /** Shared frame for the queue, background agents, and terminal trays. */
 export const trayStyles = create({
@@ -11,11 +12,13 @@ export const trayStyles = create({
     flexDirection: "column",
     width: "100%",
     minWidth: 0,
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: tray.radius,
     backgroundColor: role.bgElevated,
-    // The shadow alone disappears on a dark page; the outline's hairline is
-    // what draws the tray's edge, as it does for tooltips and toasts.
+    /**
+     * The shadow alone disappears on a dark page; the outline's hairline is
+     * what draws the tray's edge, as it does for tooltips and toasts.
+     */
     boxShadow: shadow.shadowMdOutline,
     color: role.contentSecondary,
     fontSize: type.fontBase,
@@ -24,9 +27,9 @@ export const trayStyles = create({
   header: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
+    gap: space.s3,
     minHeight: tray.headerHeight,
-    paddingBlock: 8,
+    paddingBlock: space.s2,
     paddingInline: tray.paddingInline,
     flexShrink: 0,
   },
@@ -37,18 +40,18 @@ export const trayStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
     fontSize: type.fontBase,
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
     lineHeight: type.leadingBase,
     color: role.contentSecondary,
   },
   list: {
     display: "flex",
     flexDirection: "column",
-    gap: 1,
+    gap: space.px,
     minWidth: 0,
     minHeight: 0,
-    paddingTop: 4,
-    paddingBottom: 6,
+    paddingTop: space.s1,
+    paddingBottom: space.s1_5,
     paddingInline: tray.rowInset,
     overflowY: "auto",
     overscrollBehavior: "contain",

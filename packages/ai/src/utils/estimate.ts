@@ -1,8 +1,5 @@
 /**
  * Context size estimation. Uses the most recent applicable assistant usage block as the anchor and estimates only the messages after it, so the number tracks the provider's count instead of a chars-per-token guess over the whole history.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/estimate.ts
- * Synced with pi 7ebf9087e.
  */
 import type {
   Context,
@@ -14,8 +11,8 @@ import type {
   ToolReference,
   TranscriptContext,
   Usage,
-} from "@nyte-ai/schema";
-import { getSystemMessageText } from "@nyte-ai/schema";
+} from "@nyte-ai/schema/model";
+import { getSystemMessageText } from "@nyte-ai/schema/model";
 
 export interface ContextUsageEstimate {
   /** Estimated total context tokens. */
@@ -97,6 +94,7 @@ export function estimateMessageTokens(message: Message): number {
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
+/** Finds the last assistant usage that still describes the current prefix: a prefix message inserted after a response (for example, a compaction summary) invalidates its usage. */
 function getLastAssistantUsageInfo(
   messages: readonly Message[],
 ): { usage: Usage; index: number } | undefined {
@@ -107,8 +105,6 @@ function getLastAssistantUsageInfo(
     const message = messages[i];
 
     if (message.role === "assistant") {
-      // A newer prefix message was inserted after this response (for example, a
-      // compaction summary), so its usage cannot describe the current prefix.
       const usageAppliesToPrefix = message.timestamp >= latestPrefixTimestamp;
 
       if (
@@ -159,20 +155,14 @@ function estimateToolsTokens(tools: readonly (Tool | ToolReference)[] | undefine
   return estimateTextTokens(safeJsonStringify(tools));
 }
 
-function isMessageArray(
-  value: Context | TranscriptContext | readonly Message[],
-): value is readonly Message[] {
-  return Array.isArray(value);
-}
-
+/** Estimates a context's tokens. A transcript carries its prompt and tools in system messages, so only a legacy context adds them separately. */
 export function estimateContextTokens(
   context: Context | TranscriptContext | readonly Message[],
 ): ContextUsageEstimate {
-  if (isMessageArray(context)) return estimateMessages(context);
+  if (!("messages" in context)) return estimateMessages(context);
 
   const estimate = estimateMessages(context.messages);
 
-  // A transcript carries its prompt and tools in system messages, counted above.
   if (!("systemPrompt" in context) && !("tools" in context)) return estimate;
 
   if (estimate.lastUsageIndex !== null) {

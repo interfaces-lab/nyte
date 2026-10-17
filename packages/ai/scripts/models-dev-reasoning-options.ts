@@ -1,19 +1,26 @@
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
+import { Type, type Static } from "typebox";
 import type { ThinkingLevelMap } from "../src/types.ts";
 
-export type ModelsDevReasoningOption =
-  | { type: "toggle" }
-  | {
-      type: "effort";
-      values: Array<
-        "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "default" | null
-      >;
-    }
-  | { type: "budget_tokens"; min?: number; max?: number };
+/** A models.dev reasoning control: an on/off toggle, named effort values, or a token budget range. */
+export const ModelsDevReasoningOptionSchema = Type.Union([
+  Type.Object({ type: Type.Literal("toggle") }),
+  Type.Object({
+    type: Type.Literal("effort"),
+    values: Type.Array(Type.Union([Type.String(), Type.Null()])),
+  }),
+  Type.Object({
+    type: Type.Literal("budget_tokens"),
+    min: Type.Optional(Type.Number()),
+    max: Type.Optional(Type.Number()),
+  }),
+]);
+
+export type ModelsDevReasoningOption = Static<typeof ModelsDevReasoningOptionSchema>;
 
 /**
- * Converts models.dev verified effort values into Pi's selectable thinking levels.
- * Values without a Pi equivalent (`default` and JSON `null`) are intentionally
+ * Converts models.dev verified effort values into selectable thinking levels.
+ * Values without an equivalent (`default` and JSON `null`) are intentionally
  * omitted.
  */
 export function getEffortThinkingLevelMap(

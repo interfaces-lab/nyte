@@ -1,109 +1,149 @@
-/**
- * Running provider sign-ins, keyed by provider. The renderer chooses each
- * attempt's ID before calling the host, so progress that arrives for an older
- * or cancelled attempt has no entry to land in and is dropped.
- */
 import { useSyncExternalStore } from "react";
-import type { BrowserSignIn, DeviceCode, HostEvent, LoginProgress } from "../bridge.ts";
+import type { DeviceCode } from "../bridge.ts";
+import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
+import { connection } from "../sdk.tsx";
+
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+export interface BrowserSignIn {
+  readonly url: string;
+  readonly acceptsCode: boolean;
+}
 
 interface LoginAttemptView {
   readonly attempt: string;
   readonly method: "browser" | "api_key";
   /** Stays for the attempt's whole life; a later message never replaces it. */
   readonly deviceCode: DeviceCode | undefined;
-  /** The page to finish on, when the host cannot open it itself. */
   readonly browser: BrowserSignIn | undefined;
-  /** The flow's latest word, if it said anything. */
-  readonly message: string | undefined;
   readonly cancelling: boolean;
 }
 
-let attempts: ReadonlyMap<string, LoginAttemptView> = new Map();
+type LoginOutcome = { readonly kind: "connected" } | { readonly kind: "cancelled" };
+
+interface Running {
+  readonly view: LoginAttemptView;
+  readonly answer: (code: string) => Promise<void>;
+  readonly cancel: () => void;
+}
+
+let attempts: ReadonlyMap<string, Running> = new Map();
 
 const listeners = new Set<() => void>();
 
-function set(provider: string, view: LoginAttemptView | undefined): void {
+function set(provider: string, running: Running | undefined): void {
   const next = new Map(attempts);
 
-  if (view === undefined) next.delete(provider);
-  else next.set(provider, Object.freeze(view));
+  if (running === undefined) next.delete(provider);
+  else next.set(provider, running);
   attempts = next;
 
   for (const listener of listeners) listener();
 }
 
-export function newLoginAttemptId(): string {
-  return crypto.randomUUID();
-}
-
-export function beginLoginAttempt(input: {
-  provider: string;
-  attempt: string;
-  method: "browser" | "api_key";
-}): void {
-  set(input.provider, {
-    attempt: input.attempt,
-    method: input.method,
-    deviceCode: undefined,
-    browser: undefined,
-    message: undefined,
-    cancelling: false,
-  });
-}
-
-export function setLoginAttemptCancelling(
-  provider: string,
-  attempt: string,
-  cancelling: boolean,
-): void {
+function patch(provider: string, attempt: string, change: Partial<LoginAttemptView>): void {
   const current = attempts.get(provider);
 
-  if (current?.attempt === attempt && current.cancelling !== cancelling)
-    set(provider, { ...current, cancelling });
+  if (current?.view.attempt === attempt)
+    set(provider, { ...current, view: { ...current.view, ...change } });
 }
 
-/** Forget the attempt once its call settles; a different attempt for the provider stays. */
-export function endLoginAttempt(provider: string, attempt: string): void {
-  if (attempts.get(provider)?.attempt === attempt) set(provider, undefined);
-}
+export async function startLogin(
+  provider: string,
+  method: { readonly kind: "browser" } | { readonly kind: "api_key"; readonly key: string },
+): Promise<LoginOutcome> {
+  const endpoint = new URL((await nyte.host.endpoint()).url);
+  attempts.get(provider)?.cancel();
+  const attempt = crypto.randomUUID();
 
-function apply(current: LoginAttemptView, progress: LoginProgress): LoginAttemptView {
-  switch (progress.kind) {
-    case "device_code":
-      return {
-        ...current,
-        deviceCode: {
-          userCode: progress.userCode,
-          verificationUri: progress.verificationUri,
-          expiresInSeconds: progress.expiresInSeconds,
-          instructions: progress.instructions,
-        },
-        message: undefined,
-      };
-    case "browser":
-      return {
-        ...current,
-        browser: {
-          url: progress.url,
-          instructions: progress.instructions,
-          acceptsCode: progress.acceptsCode,
-        },
-      };
-    case "message":
-      return { ...current, message: progress.message };
-    default: {
-      const _exhaustive: never = progress;
+  const login = connection().models.login({
+    provider,
+    method: method.kind === "browser" ? { kind: "oauth" } : { kind: "key" },
+    browser: LOOPBACK.has(endpoint.hostname) ? "host" : "elsewhere",
+  });
 
-      return _exhaustive;
+  const steps = login.steps()[Symbol.asyncIterator]();
+  const cancelled = Promise.withResolvers<"cancelled">();
+
+  set(provider, {
+    view: {
+      attempt,
+      method: method.kind,
+      deviceCode: undefined,
+      browser: undefined,
+      cancelling: false,
+    },
+    answer: (code) => login.answer(code),
+    cancel: () => {
+      patch(provider, attempt, { cancelling: true });
+      cancelled.resolve("cancelled");
+      void steps.return?.();
+    },
+  });
+
+  try {
+    for (;;) {
+      const next = await Promise.race([steps.next(), cancelled.promise]);
+
+      if (next === "cancelled" || next.done === true) return { kind: "cancelled" };
+      const step = next.value;
+
+      switch (step.kind) {
+        case "open":
+          if (step.code === undefined) {
+            patch(provider, attempt, { browser: { url: step.url, acceptsCode: false } });
+            openExternal(
+              step.url,
+              "Couldn't open the sign-in page. Use Open Sign-In Page instead.",
+            );
+          } else {
+            patch(provider, attempt, {
+              deviceCode: { userCode: step.code, verificationUri: step.url },
+            });
+          }
+
+          break;
+        case "paste":
+          if (method.kind === "api_key") await login.answer(method.key);
+          else {
+            const browser = attempts.get(provider)?.view.browser;
+
+            if (browser !== undefined)
+              patch(provider, attempt, { browser: { ...browser, acceptsCode: true } });
+          }
+
+          break;
+        case "choose":
+          if (step.options[0] !== undefined) await login.answer(step.options[0].id);
+
+          break;
+        case "waiting":
+          break;
+        case "done":
+          return { kind: "connected" };
+        case "failed":
+          throw new Error(step.reason);
+        default: {
+          const exhaustive: never = step;
+
+          return exhaustive;
+        }
+      }
     }
+  } finally {
+    if (attempts.get(provider)?.view.attempt === attempt) set(provider, undefined);
   }
 }
 
-export function applyLoginEvent(event: Extract<HostEvent, { kind: "login_progress" }>): void {
-  const current = attempts.get(event.provider);
+export function cancelLogin(provider: string): void {
+  attempts.get(provider)?.cancel();
+}
 
-  if (current === undefined || current.attempt !== event.attempt) return;
-  set(event.provider, apply(current, event.progress));
+export function answerLogin(provider: string, code: string): Promise<void> {
+  const running = attempts.get(provider);
+
+  return running === undefined ? Promise.resolve() : running.answer(code);
 }
 
 function subscribe(listener: () => void): () => void {
@@ -113,7 +153,7 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useLoginAttempt(provider: string): LoginAttemptView | undefined {
-  const read = (): LoginAttemptView | undefined => attempts.get(provider);
+  const read = (): LoginAttemptView | undefined => attempts.get(provider)?.view;
 
   return useSyncExternalStore(subscribe, read, read);
 }

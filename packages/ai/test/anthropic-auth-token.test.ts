@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { arch, platform, release } from "node:os";
 import { beforeEach, describe, expect, it } from "vitest";
 import { stream } from "../src/api/anthropic-messages.ts";
@@ -109,6 +109,7 @@ describe("Anthropic auth token env", () => {
         windows: [
           {
             id: "five_hour",
+            label: "5-hour",
             usedPercent: 42,
             windowMinutes: 300,
             resetsAt: 2_000_000_000_000,

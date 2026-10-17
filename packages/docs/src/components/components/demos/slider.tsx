@@ -1,5 +1,3 @@
-"use client";
-
 import { Slider } from "@nyte-ai/ui/slider";
 
 export function SliderDemo() {

@@ -1,0 +1,61 @@
+---
+title: Colors
+description: "Colour roles, hue scopes, and intents"
+---
+
+Colour comes in three layers. Ramps hold twenty steps per hue. A theme maps one hue onto the
+steps for a scope. Roles read the theme as `light-dark()` pairs, so a component names what a
+colour is for and the scheme picks the value.
+
+```ts
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+```
+
+## Rules
+
+- Components read a role. They never write a hex, `rgb()`, `oklch()`, or `light-dark()`.
+- A new colour need is a new role in `roles.stylex.ts` with a handle in `vars.stylex.ts`.
+- Readable text uses `contentPrimary` or `contentSecondary`. `contentTertiary` is for
+  placeholders, disabled hints, and decoration.
+- Glyphs use `contentInteractiveTertiary` or a stronger role.
+- Meaning picks a hue through an intent; a category picks one through a scope. Both reuse the
+  same role names.
+- Nothing paints a page background in the desktop app; the window's material shows through.
+
+## Content
+
+<RoleTable group="content" />
+
+## Border
+
+<RoleTable group="border" />
+
+## Surface
+
+<RoleTable group="surface" />
+
+## Interactive
+
+<RoleTable group="interactive" />
+
+## Control
+
+<RoleTable group="control" />
+
+## Hue scopes
+
+Pass a scope to `props()` and every role inside reads that hue. `custom` takes its hue from
+`--nyte-custom-hue`.
+
+<HueScopes />
+
+```tsx
+<span {...props(surfaceTheme.green, styles.badge)}>Added</span>
+```
+
+## Intents
+
+<IntentTable />
+
+The focus ring ignores scopes. It reads `appearance.focusRing`, a fixed blue.

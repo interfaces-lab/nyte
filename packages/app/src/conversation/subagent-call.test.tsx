@@ -2,15 +2,12 @@ import "../../test/web-bridge.ts";
 import { afterAll, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
-import { sessionId } from "@nyte-ai/protocol";
-import type { SessionInfo } from "@nyte-ai/protocol";
+import type { SessionInfo } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { SubagentCallView } from "./subagent-call.tsx";
-import { SubagentTray } from "./tray/agents.tsx";
-import type { SubagentTrayView } from "./tray/agents.tsx";
-import type { SubagentSession } from "./subagent-sessions.ts";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
-import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
+import { endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -36,76 +33,35 @@ vi.hoisted(() => {
 
 afterAll(() => vi.unstubAllGlobals());
 
-const parent = sessionId("chat");
+const parent = asId<"session">("chat");
 
-const child = sessionId("child");
+const create = settledTool(
+  "task",
+  { kind: "delegate", child: null, role: "create", title: "Map the workbench" },
+  "Started subagent child.",
+);
 
-const childSession: SessionInfo = {
-  sessionId: child,
-  activation: { kind: "active" },
-  workspace: { kind: "local", id: "fixture", cwd: "/" },
+const childSession: SessionInfo = sessionRow("child", {
   name: "Map the workbench",
-  createdAt: 1,
-  lastActivityAt: 2,
-  pinned: false,
-  archived: false,
-  heads: [
-    {
-      head: "main",
-      tip: null,
-      run: {
-        runId: "child-run",
-        head: "main",
-        origin: { kind: "user" },
-        root: "child-run",
-        phase: { kind: "done" },
-        startedAt: 1,
-        attempts: 1,
-        config: {},
-      },
-    },
-  ],
-  config: {},
-  parent: { sessionId: parent, runId: "run", callId: "task", depth: 1 },
-};
+  parent,
+  call: create.state.call,
+});
 
-const turn: RenderedTurn = {
-  kind: "turn",
-  id: "turn",
-  run: { kind: "none" },
-  startedAt: 1,
-  durationMs: 0,
-  parts: [
-    {
-      kind: "tool",
-      callId: "task",
-      at: 1,
-      class: {
-        kind: "delegate",
-        role: "create",
-        title: "Map the workbench",
-        target: { kind: "one", session: child },
-      },
-      state: { kind: "success", commit: "created" },
-      output: "Started Map the workbench",
-    },
-  ],
-};
+const turn = endedTurn([create]);
 
-test("a create draws one agent card", () => {
+test("a create call finds its child by the call that made it", () => {
   const client = new QueryClient();
   client.setQueryData(["sessions", "children", parent], [childSession]);
 
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <SubagentSessionsProvider
-        value={{ children: new Map([[child, childSession]]), open: () => {} }}
-      >
+      <SubagentSessionsProvider value={{ children: [childSession], open: () => {} }}>
         <TurnView
           turn={turn}
           continuations={[]}
-          liveTools={new Map()}
+          density="compact"
           cwd={undefined}
+          changes={[]}
           onOpenChanges={() => {}}
           running={false}
         />
@@ -117,52 +73,26 @@ test("a create draws one agent card", () => {
   expect(html.match(/>Completed</g)?.length).toBe(1);
 });
 
-for (const kind of ["list", "detail"] as const) {
-  test(`a provisional agent is starting and has no stop action in ${kind}`, () => {
-    const client = new QueryClient();
+test("a running create call whose child is not listed yet is starting up", () => {
+  const client = new QueryClient();
 
-    const provisional: SubagentSession = {
-      kind: "provisional",
-      sessionId: child,
-      title: "Map the workbench",
-      startedAt: 1,
-    };
+  const html = renderToStaticMarkup(
+    <QueryClientProvider client={client}>
+      <SubagentSessionsProvider value={{ children: [], open: () => {} }}>
+        <SubagentCallView
+          title="Map the workbench"
+          message={{
+            ...create,
+            state: { ...create.state, phase: "running", progress: null },
+            status: { kind: "live", run: null },
+          }}
+          cwd={undefined}
+        />
+      </SubagentSessionsProvider>
+    </QueryClientProvider>,
+  );
 
-    const view: SubagentTrayView =
-      kind === "list"
-        ? { kind: "list", retainedSessionId: child }
-        : { kind: "detail", sessionId: child };
-
-    const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <SubagentSessionsProvider
-          value={{ children: new Map([[child, provisional]]), open: () => {} }}
-        >
-          <SubagentCallView
-            session={child}
-            title={provisional.title}
-            state={{ kind: "running" }}
-            cwd={undefined}
-          />
-          <SubagentTray
-            parentSessionId={parent}
-            agents={[provisional]}
-            view={view}
-            onViewChange={() => {}}
-            onExpand={() => {}}
-            onRelease={() => {}}
-            viewport={null}
-            detail={null}
-          />
-        </SubagentSessionsProvider>
-      </QueryClientProvider>,
-    );
-
-    client.clear();
-    expect(html.match(/>Starting up</g)?.length).toBe(1);
-    expect(html.match(/>Starting</g)?.length ?? 0).toBe(kind === "list" ? 1 : 0);
-    expect(html).not.toContain(">Planning next moves<");
-    expect(html).not.toContain(">Stop<");
-    expect(html).not.toContain(">Stop all<");
-  });
-}
+  client.clear();
+  expect(html.match(/>Starting up</g)?.length).toBe(1);
+  expect(html).not.toContain(">Completed<");
+});

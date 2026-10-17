@@ -3,12 +3,11 @@
  * paint, and again whenever one changes in any window. Keeping it in the boot
  * entry avoids an inline script that the CSP would block.
  */
+import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { nyte } from "../nyte.ts";
 import { preferences } from "../preferences/index.ts";
 import {
-  applyDisplayMode,
   applyPointerCursors,
-  applyTint,
   applyTransparency,
   subscribeSystemTransparency,
   systemReducesTransparency,
@@ -48,7 +47,6 @@ function apply(): void {
   root.style.setProperty("--nyte-custom-hue", String(preferences.tintHue.get()));
   root.style.setProperty("--nyte-custom-chroma-scale", String(intensity / 100));
   nyte.host.setThemePreference(theme);
-  // @nyte-ai/ui/tokens.stylex derives the whole type scale from these four.
   root.style.setProperty("--nyte-font-family-sans", uiFontFamily(uiFont));
   root.style.setProperty("--nyte-font-family-mono", codeFontFamily(preferences.codeFont.get()));
   root.style.setProperty(

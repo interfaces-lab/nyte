@@ -12,7 +12,20 @@ import { build, defaultClientConditions } from "vite";
 
 const execute = promisify(execFile);
 
-/** Run a fixture's exported run() in an isolated, styled Electron renderer. */
+declare global {
+  interface Window {
+    /** Writes the test window as `<name>.png` into `captures`, then dispatches `renderer-captured`. */
+    readonly rendererCapture: (name: string) => void;
+  }
+}
+
+/**
+ * Electron's Chromium, as the app build targets. Older targets make
+ * lightningcss polyfill the tokens' light-dark() with variables only its own
+ * color-scheme rules define.
+ */
+const ELECTRON_CHROMIUM = 152 << 16;
+
 export async function testRenderer(
   entry: URL,
   setup = "",
@@ -20,13 +33,15 @@ export async function testRenderer(
     pointer = "fine",
     forcePseudoClasses = [],
     forcePseudoSelector = "button",
-    runtimeInjection = false,
+    studio = false,
+    captures,
   }: {
     pointer?: "fine" | "coarse";
-    /** Inject rules from the bundle at runtime, as the development server does. */
-    runtimeInjection?: boolean;
     forcePseudoClasses?: readonly string[];
     forcePseudoSelector?: string;
+    studio?: boolean;
+    /** A directory where `window.rendererCapture(name)` writes the window as `<name>.png`, then dispatches `renderer-captured`. */
+    captures?: string;
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
@@ -35,6 +50,7 @@ export async function testRenderer(
     await mkdir(join(directory, "profile"));
     await build({
       configFile: false,
+      base: "./",
       resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
       logLevel: "silent",
       esbuild: { jsxDev: false },
@@ -42,11 +58,7 @@ export async function testRenderer(
       plugins: [
         stylex.rollup({
           devMode: "css-only",
-          runtimeInjection,
-          // Electron's Chromium, as the app build targets. Older targets make
-          // lightningcss polyfill the tokens' light-dark() with variables only
-          // its own color-scheme rules define.
-          lightningcssOptions: { targets: { chrome: 152 << 16 } },
+          lightningcssOptions: { targets: { chrome: ELECTRON_CHROMIUM } },
         }),
       ],
       build: {
@@ -80,9 +92,17 @@ const { app, BrowserWindow } = require("electron");
 const { writeFileSync } = require("node:fs");
 app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } });
+  const window = new BrowserWindow({ show: ${JSON.stringify(studio)},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });
   try {
     await window.loadFile(${JSON.stringify(join(directory, "index.html"))});
+    if (${JSON.stringify(studio)}) {
+      window.on("closed", () => {
+        writeFileSync(${JSON.stringify(join(directory, "result.txt"))}, "passed");
+        app.exit(0);
+      });
+      await window.webContents.executeJavaScript("RendererTest.studio()");
+      return;
+    }
     window.webContents.debugger.attach("1.3");
     // Hidden test windows need focus emulation to dispatch native focus/blur events.
     await window.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
@@ -106,7 +126,23 @@ app.whenReady().then(async () => {
         await window.webContents.debugger.sendCommand("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: ${JSON.stringify(forcePseudoClasses)} });
       }
     }
-    const result = await window.webContents.executeJavaScript('(async () => { try { if (window.fixtureFailure) return window.fixtureFailure; return await RendererTest.run(); } catch (error) { return error instanceof Error ? error.stack ?? error.message : String(error); } })()');
+    await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererMouseClick" });
+    await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererCapture" });
+    window.webContents.debugger.on("message", async (_event, method, params) => {
+      if (method !== "Runtime.bindingCalled" || params.name !== "rendererCapture") return;
+      const image = await window.webContents.capturePage();
+      writeFileSync(${JSON.stringify(join(captures ?? directory, "/"))} + params.payload + ".png", image.toPNG());
+      await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-captured"))');
+    });
+    window.webContents.debugger.on("message", async (_event, method, params) => {
+      if (method !== "Runtime.bindingCalled" || params.name !== "rendererMouseClick") return;
+      const { x, y, shift } = JSON.parse(params.payload);
+      const point = { x, y, button: "left", clickCount: 1, modifiers: shift ? 8 : 0 };
+      await window.webContents.debugger.sendCommand("Input.dispatchMouseEvent", { ...point, type: "mousePressed" });
+      await window.webContents.debugger.sendCommand("Input.dispatchMouseEvent", { ...point, type: "mouseReleased" });
+      await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-mouse-clicked"))');
+    });
+    const result = await window.webContents.executeJavaScript('(async () => { try { if (window.fixtureFailure) return window.fixtureFailure; const outcome = await RendererTest.run(); return window.fixtureFailure ?? outcome; } catch (error) { return error instanceof Error ? error.stack ?? error.message : String(error); } })()');
     writeFileSync(${JSON.stringify(join(directory, "result.txt"))}, result);
     app.exit(0);
   } catch (error) {
@@ -120,7 +156,7 @@ app.whenReady().then(async () => {
       throw new Error("Expected the Electron executable path");
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    await execute(electron, [join(directory, "main.cjs")], { env, timeout: 40_000 });
+    await execute(electron, [join(directory, "main.cjs")], { env, timeout: studio ? 0 : 40_000 });
 
     return await readFile(join(directory, "result.txt"), "utf8");
   } finally {

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   Autocomplete,
   AutocompleteCollection,
@@ -14,6 +12,7 @@ import {
   AutocompleteTrigger,
 } from "@nyte-ai/ui/autocomplete";
 import { useState } from "react";
+import { modelId } from "~/lib/shared";
 
 interface ModelGroup {
   readonly label: string;
@@ -22,7 +21,7 @@ interface ModelGroup {
 
 const groups: readonly ModelGroup[] = [
   { label: "Anthropic", items: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"] },
-  { label: "OpenAI", items: ["gpt-5.2"] },
+  { label: "OpenAI", items: [modelId] },
   { label: "Google", items: ["gemini-3-pro"] },
 ];
 
@@ -33,12 +32,13 @@ export function AutocompleteDemo() {
   return (
     <Autocomplete
       items={groups}
-      value={search}
-      autoHighlight
-      onValueChange={setSearch}
-      onOpenChange={(open) => {
-        if (!open) setSearch("");
+      value={model}
+      onValueChange={(next) => {
+        if (next !== null) setModel(next);
       }}
+      inputValue={search}
+      onInputValueChange={setSearch}
+      autoHighlight
     >
       <AutocompleteTrigger aria-label="Model">{model}</AutocompleteTrigger>
       <AutocompleteContent>
@@ -50,12 +50,7 @@ export function AutocompleteDemo() {
               <AutocompleteGroupLabel>{group.label}</AutocompleteGroupLabel>
               <AutocompleteCollection>
                 {(item: string) => (
-                  <AutocompleteItem
-                    key={item}
-                    value={item}
-                    selected={item === model}
-                    onClick={() => setModel(item)}
-                  >
+                  <AutocompleteItem key={item} value={item}>
                     {item}
                   </AutocompleteItem>
                 )}

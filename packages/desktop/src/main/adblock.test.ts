@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { createBlocker, parseFilterLists } from "./adblock.ts";
+import { createBlocker, parseFilterLists, shieldPaused } from "./adblock.ts";
 
 const blocker = createBlocker(
   parseFilterLists(
@@ -37,5 +37,14 @@ describe("filter engine", () => {
     assert.match(blocker.stylesFor("https://news.example/story"), /\.promo/);
     assert.equal(blocker.stylesFor("https://other.example/"), "");
     assert.equal(blocker.stylesFor("not a url"), "");
+  });
+
+  test("a paused host covers its subdomains and nothing else", () => {
+    const paused = ["news.example"];
+    assert.equal(shieldPaused("https://news.example/story", paused), true);
+    assert.equal(shieldPaused("https://m.news.example/", paused), true);
+    assert.equal(shieldPaused("https://fakenews.example/", paused), false);
+    assert.equal(shieldPaused("https://other.example/", paused), false);
+    assert.equal(shieldPaused("not a url", paused), false);
   });
 });

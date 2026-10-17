@@ -1,121 +1,41 @@
 import { props } from "@stylexjs/stylex";
-import type { SessionId, UserTurnPart } from "@nyte-ai/protocol";
-import { memo, useCallback } from "react";
+import type { SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
+import { useCallback } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { useSessionLive } from "../live.ts";
-import type { LiveToolProgress } from "../live-fold.ts";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
+import { SubagentReportLine } from "./subagent-call.tsx";
 import { TranscriptContent } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { TurnView, UserMessageView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker, TurnChangesTarget } from "./turn-view.tsx";
 import { estimateRowSize } from "./transcript-rows.ts";
-import type { ConversationTurn, RenderedTurn, TranscriptRow } from "./transcript-rows.ts";
-
-const NO_LIVE_TOOLS: ReadonlyMap<string, LiveToolProgress> = new Map();
+import type { TranscriptRow } from "./transcript-rows.ts";
 
 type EditUserMessage = (
-  part: UserTurnPart,
-  content: UserTurnPart["content"],
+  message: UserMessage,
+  content: UserContent,
   choice: BranchModelChoice,
 ) => Promise<void>;
 
-const SettledTurnView = memo(function SettledTurnView({
-  turn,
-  continuations,
-  cwd,
-  onEditUser,
-  branchModel,
-  onOpenChanges,
-}: {
-  turn: RenderedTurn;
-  continuations: readonly ConversationTurn[];
-  cwd: string | undefined;
-  onEditUser: EditUserMessage;
-  branchModel: BranchModelPicker;
-  onOpenChanges: (target: TurnChangesTarget) => void;
-}): ReactElement | null {
-  return (
-    <TurnView
-      turn={turn}
-      continuations={continuations}
-      liveTools={NO_LIVE_TOOLS}
-      cwd={cwd}
-      onEditUser={onEditUser}
-      branchModel={branchModel}
-      onOpenChanges={onOpenChanges}
-      running={false}
-    />
-  );
-});
-
-const TrailingTurnView = memo(function TrailingTurnView({
-  sessionId,
-  turn,
-  continuations,
-  cwd,
-  onEditUser,
-  branchModel,
-  onOpenChanges,
-}: {
-  sessionId: SessionId;
-  turn: RenderedTurn;
-  continuations: readonly ConversationTurn[];
-  cwd: string | undefined;
-  onEditUser: EditUserMessage;
-  branchModel: BranchModelPicker;
-  onOpenChanges: (target: TurnChangesTarget) => void;
-}): ReactElement | null {
-  const live = useSessionLive(sessionId);
-
-  return (
-    <TurnView
-      turn={turn}
-      continuations={continuations}
-      liveTools={live.tools}
-      live={live}
-      cwd={cwd}
-      onEditUser={onEditUser}
-      branchModel={branchModel}
-      onOpenChanges={onOpenChanges}
-      running={true}
-    />
-  );
-});
-
-const SessionLiveTurn = memo(function SessionLiveTurn({
-  sessionId,
-  working,
-  settledWork,
-  cwd,
-}: {
-  sessionId: SessionId;
-  working: boolean;
-  settledWork: boolean;
-  cwd: string | undefined;
-}): ReactElement | null {
-  const live = useSessionLive(sessionId);
-
-  return <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />;
-});
-
 /** The session's rows mapped onto the scroller's items and the row surfaces. */
 export function Timeline({
-  sessionId,
   ready,
   rows,
   working,
   settledWork,
   cwd,
+  changes,
   branchModel,
   onEditUser,
   onOpenChanges,
   onRetry,
 }: {
   readonly sessionId: SessionId;
+  readonly changes: SessionView["changes"];
   readonly ready: boolean;
   readonly rows: readonly TranscriptRow[];
   readonly working: boolean;
@@ -152,42 +72,47 @@ export function Timeline({
               </Button>
             </StatusMarker>
           );
-        case "turn": {
-          if (row.trailing && working) {
-            return (
-              <TrailingTurnView
-                sessionId={sessionId}
-                turn={row.turn}
-                continuations={row.continuations}
-                cwd={cwd}
-                onEditUser={onEditUser}
-                branchModel={branchModel}
-                onOpenChanges={onOpenChanges}
-              />
-            );
-          }
-
+        case "turn":
           return (
-            <SettledTurnView
+            <TurnView
               turn={row.turn}
               continuations={row.continuations}
+              density={density}
               cwd={cwd}
+              changes={changes}
               onEditUser={onEditUser}
               branchModel={branchModel}
               onOpenChanges={onOpenChanges}
+              running={row.trailing && working}
             />
           );
-        }
 
-        case "landing":
+        case "landing": {
+          const { source } = row.message;
+
+          if (source.kind === "child" || source.kind === "job")
+            return (
+              <div {...props(liveTurnStyles.root)}>
+                <SubagentReportLine source={source} content={row.message.content} held={row.held} />
+              </div>
+            );
+
           return (
             <div
               title={row.pending ? "Lands at the next response" : undefined}
               {...props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}
             >
-              <UserMessageView content={row.content} />
+              <UserMessageView
+                content={
+                  row.message.source.kind === "action"
+                    ? row.message.source.label
+                    : row.message.content
+                }
+              />
             </div>
           );
+        }
+
         case "retry":
           return (
             <StatusMarker role="status" variant="retrying" title={row.message}>
@@ -196,12 +121,7 @@ export function Timeline({
           );
         case "live":
           return (
-            <SessionLiveTurn
-              sessionId={sessionId}
-              working={working}
-              settledWork={settledWork}
-              cwd={cwd}
-            />
+            <LiveTurn working={working} settledWork={settledWork} density={density} cwd={cwd} />
           );
         default: {
           const _exhaustive: never = row;
@@ -210,14 +130,24 @@ export function Timeline({
         }
       }
     },
-    [branchModel, cwd, onEditUser, onOpenChanges, onRetry, rows, sessionId, settledWork, working],
+    [
+      branchModel,
+      changes,
+      cwd,
+      density,
+      onEditUser,
+      onOpenChanges,
+      onRetry,
+      rows,
+      settledWork,
+      working,
+    ],
   );
 
   return (
     <TranscriptContent
       items={rows}
       ready={ready}
-      density={density}
       estimateSize={estimateSize}
       renderItem={renderItem}
     />

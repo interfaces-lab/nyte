@@ -45,14 +45,45 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## pi-claude-code (`earendil-works/pi-claude-code`)
+
+- Repository: https://github.com/earendil-works/pi-claude-code
+- What: the Claude Code CLI provider, single-turn relay, transcript replay,
+  process reuse, and billing guards in `packages/plugin/examples/claude-code`
+  are adapted from commit `70abb65186592ca788b29b3db22c3160d629c41f`.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) 2026 Armin Ronacher
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## pi (`earendil-works/pi`)
 
 - Repository: https://github.com/earendil-works/pi
 - What: the agent loop, provider adapters, auth and OAuth flows, schema types,
   and assorted runtime utilities across `packages/ai`, `packages/core`,
-  `packages/schema`, `packages/telemetry`, `packages/tui`, and
-  `packages/plugin` are ported from pi and tracked against it. This is the
-  large majority of the `Based on` headers in this repository.
+  `packages/schema`, `packages/tui`, and `packages/plugin` are ported from pi.
 - Packages: `@earendil-works/pi-mcp` 1.0.0 and
   `@earendil-works/pi-codemode` 1.0.0 supply the MCP client and QuickJS
   executor. Tool discovery and code-mode integration are adapted from commit
@@ -125,7 +156,7 @@ THE SOFTWARE.
   diff renderer.
 - What: the desktop app uses `@pierre/diffs` as a lazy leaf renderer for
   unified patches and uses `@pierre/trees` only for its complete file-icon
-  resolver and sprite. The TUI's palettes (`packages/tui/src/theme.ts`) take
+  resolver and sprite. The TUI's palettes (`packages/tui/src/lib/theme.ts`) take
   their colors from `@pierre/theme`'s roles and their diff row fills from
   `@pierre/diffs`' stylesheet. Nyte core remains the source of change, VCS,
   file, and session identity; Pierre does not own application state or the
@@ -254,6 +285,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Agent Client Protocol (`agentclientprotocol/typescript-sdk`, `agentclientprotocol/registry`)
+
+- Repositories: https://github.com/agentclientprotocol/typescript-sdk and
+  https://github.com/agentclientprotocol/registry
+- Package: `@agentclientprotocol/sdk` 1.9.0
+- What: the ACP model API in `packages/plugin/src/acp/` talks to agents through
+  the SDK's client connection and schema types.
+  `packages/plugin/src/acp/registry-seed.json` is a trimmed snapshot of the
+  registry's agent list (ids, names and launch commands), used until the first
+  registry fetch.
+
+License: Apache License 2.0, reproduced in the appendix below. Copyright 2025
+Zed Industries, Inc. and contributors. Neither project ships a `NOTICE` file, so
+no additional attribution text is carried.
+
 ## OpenAI Codex (`openai/codex`)
 
 - Repository: https://github.com/openai/codex
@@ -273,17 +319,18 @@ Copyright 2025 OpenAI
 ## OpenCode (`anomalyco/opencode`)
 
 - Repository: https://github.com/anomalyco/opencode
-- What: the TUI slash-command autocomplete (`packages/tui/src/slash.ts`), the
-  keymap wiring (`packages/tui/src/keymap.ts`), the queued-prompt panel in
-  `packages/tui/src/interactive.ts`, Up/Down over a wrapped draft
-  (`packages/tui/src/prompt-history.ts`), and patch-hunk splitting in
-  `packages/tui/src/format.ts` are ported from OpenCode. The SDK admission
+- What: the TUI slash-command autocomplete (`packages/tui/src/lib/slash.ts`,
+  `packages/tui/src/model/completion.ts`), the keymap wiring
+  (`packages/tui/src/app/keymap.ts`), the queued-prompt rows
+  (`packages/tui/src/ui/composer/queue.tsx`), Up/Down over a wrapped draft
+  (`packages/tui/src/model/history.ts`), and patch-hunk splitting in
+  `packages/tui/src/lib/output-diff.ts` are ported from OpenCode. The SDK admission
   vocabulary (`steer`/`queue`, `wait`, opaque cursors) follows OpenCode's v2
   design, as does re-delivery: `messages.redeliver`
   (`packages/core/src/kernel/queue.ts`) follows OpenCode v2's inbox
   `steer`/`queue`/`cancel` trio, and enter on an empty composer sending the
-  front of the queue (`packages/tui/src/pending-gutter.ts`,
-  `packages/tui/src/interactive.ts`) is its `onEmptySubmit`. The rename
+  front of the queue (`packages/tui/src/model/interactions.ts`) is its
+  `onEmptySubmit`. The rename
   plugin's context construction, prompt, model fallback, and output cleanup
   (`packages/plugin/examples/rename.ts`) port OpenCode v2. The web-search
   plugin set (`packages/plugin/examples/web-search/`) ports its Exa, Firecrawl,
@@ -365,6 +412,9 @@ SOFTWARE.
 ## T3 Code (`pingdotgg/t3code`)
 
 - Repository: https://github.com/pingdotgg/t3code
+- The SQLite reader and checkpoint workers, large-parameter statement cache
+  bypass, and connection tuning in `packages/host/src/sqlite*.ts` are adapted
+  from `bf8ffe81a63c82d3de5fbaa9991fd5f30034a452`.
 - Homepage: https://t3.codes
 - What: the demo desktop app (`packages/demo/desktop`) follows T3 Code's
   control-surface shape — agents in a sidebar, a conversation workspace, a
@@ -399,14 +449,14 @@ SOFTWARE.
 ## Grok Build (`xai-org/grok-build`)
 
 - Repository: https://github.com/xai-org/grok-build
-- What: the TUI's startup appearance detection (`packages/tui/src/theme.ts`)
+- What: the TUI's startup appearance detection (`packages/tui/src/lib/theme.ts`)
   ports the `env_appearance` module of `xai-grok-pager-render`; the spinner and
-  status glyphs (`packages/tui/src/constants.ts`) port its `glyphs`. The slash
+  status glyphs (`packages/tui/src/lib/constants.ts`) port its `glyphs`. The slash
   dropdown's layout and selection behavior
-  (`packages/tui/src/slash-autocomplete.ts`, `packages/tui/src/menu-list.ts`,
-  `packages/tui/src/picker.ts`) and the slash command model
-  (`packages/tui/src/slash.ts`) port `xai-grok-pager`. The demo CLI
-  (`packages/demo/cli/src/tui.ts`) uses a reduced dark palette.
+  (`packages/tui/src/ui/composer/completion.tsx`,
+  `packages/tui/src/model/dialogs/list.ts`, `packages/tui/src/ui/dialogs/list.tsx`)
+  and the slash command model (`packages/tui/src/lib/slash.ts`) port
+  `xai-grok-pager`.
 - All of the above are adaptations rather than copies: they are rewritten in
   TypeScript against OpenTUI, and the semantic roles, detection order, and
   fallbacks differ from upstream where Nyte's structure differs.

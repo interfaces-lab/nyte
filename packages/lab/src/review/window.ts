@@ -42,20 +42,16 @@ export type WindowAction =
   | { readonly kind: "forward" };
 
 /** The pull request a place is about, if it is about one. */
-export function reviewOf(place: Place): string | undefined {
+function readReviewId(place: Place): string | undefined {
   return place.kind === "review" ? place.reviewId : undefined;
 }
 
 /** How a click asks to open a place: ⌘ or a middle click for a background tab. */
-export function targetOf(event: MouseEvent): OpenTarget {
+export function readOpenTarget(event: MouseEvent): OpenTarget {
   return event.metaKey || event.ctrlKey || event.button === 1 ? "background" : "here";
 }
 
-export function samePlace(left: Place, right: Place): boolean {
-  return left.kind === right.kind && reviewOf(left) === reviewOf(right);
-}
-
-export const placeOf = (tab: Tab): Place => tab.entries[tab.index] ?? { kind: "new-chat" };
+export const readPlace = (tab: Tab): Place => tab.entries[tab.index] ?? { kind: "new-chat" };
 
 export function activeTab(state: WindowState): Tab | undefined {
   return state.tabs.find((tab) => tab.id === state.active);
@@ -65,14 +61,14 @@ export function activeTab(state: WindowState): Tab | undefined {
 export function focusedPlace(state: WindowState): Place | undefined {
   const tab = activeTab(state);
 
-  return tab === undefined ? undefined : placeOf(tab);
+  return tab === undefined ? undefined : readPlace(tab);
 }
 
 /** The pull request the active tab shows, if it shows one. */
 export function focusedReview(state: WindowState): string | undefined {
   const place = focusedPlace(state);
 
-  return place === undefined ? undefined : reviewOf(place);
+  return place === undefined ? undefined : readReviewId(place);
 }
 
 const newTab = (serial: number, place: Place): Tab => ({
@@ -101,6 +97,12 @@ function insertAfterActive(state: WindowState, tab: Tab): readonly Tab[] {
   return [...state.tabs.slice(0, at + 1), tab, ...state.tabs.slice(at + 1)];
 }
 
+/**
+ * The window's tabs after one action. Opening a place pushes it, dropping
+ * anything forward of where the tab stands. There is no overview behind the
+ * strip, so closing the last tab leaves a new chat; closing the active tab
+ * hands over to the tab on its right, then the one on its left.
+ */
 export function reduce(state: WindowState, action: WindowAction): WindowState {
   switch (action.kind) {
     case "open": {
@@ -114,16 +116,18 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
         };
       }
 
-      // Push, dropping anything forward of where the tab stands.
-      return updateActive(state, (tab) =>
-        samePlace(placeOf(tab), action.place)
+      return updateActive(state, (tab) => {
+        const shown = readPlace(tab);
+
+        return shown.kind === action.place.kind &&
+          readReviewId(shown) === readReviewId(action.place)
           ? tab
           : {
               ...tab,
               entries: [...tab.entries.slice(0, tab.index + 1), action.place],
               index: tab.index + 1,
-            },
-      );
+            };
+      });
     }
 
     case "replace":
@@ -145,7 +149,6 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
       const at = state.tabs.findIndex((tab) => tab.id === action.tabId);
       const rest = state.tabs.filter((tab) => tab.id !== action.tabId);
 
-      // No overview behind the strip: closing the last tab leaves a new chat.
       if (rest.length === 0) {
         const tab = newTab(state.serial, { kind: "new-chat" });
 
@@ -154,7 +157,6 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
 
       if (action.tabId !== state.active) return { ...state, tabs: rest };
 
-      // The tab to the right takes over, then the one to the left.
       const next = rest[Math.min(at, rest.length - 1)];
 
       return { ...state, tabs: rest, active: next?.id ?? state.active };

@@ -5,7 +5,8 @@ import type { ReactElement, ReactNode } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent, type Tint } from "./surface-theme.ts";
-import { role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { role } from "./styles/vars.stylex.ts";
 import { Button } from "./button.tsx";
 import { Dialog } from "./dialog.tsx";
 
@@ -13,8 +14,6 @@ const styles = create({
   text: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
   },
 });
 
@@ -69,7 +68,15 @@ export function ConfirmDialog({
     <alertDialogParts.Root
       open={open}
       onOpenChange={(nextOpen, eventDetails) => {
-        if (!nextOpen && !pending) onOpenChange(false, eventDetails);
+        if (nextOpen) return;
+
+        if (pending) {
+          eventDetails.cancel();
+
+          return;
+        }
+
+        onOpenChange(false, eventDetails);
       }}
     >
       <alertDialogParts.Popup
@@ -83,12 +90,12 @@ export function ConfirmDialog({
           <alertDialogParts.Description>{description}</alertDialogParts.Description>
         </alertDialogParts.Header>
         {error !== undefined && (
-          <p role="alert" {...props(intent.danger, styles.text)}>
+          <p role="alert" {...props(text.base, intent.danger, styles.text)}>
             {error}
           </p>
         )}
         {pending && pendingLabel !== undefined && (
-          <p role="status" {...props(styles.text)}>
+          <p role="status" {...props(text.base, styles.text)}>
             {pendingLabel}
           </p>
         )}

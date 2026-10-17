@@ -3,10 +3,11 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
-import { role } from "./vars.stylex.ts";
+import type { Restyle } from "./styles/contracts.ts";
+import { role } from "./styles/vars.stylex.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 import { ControlGlyphs } from "./icon.tsx";
-import { glyph, target } from "./schema.stylex.ts";
+import { glyph, space, target } from "./styles/schema.stylex.ts";
 
 const styles = create({
   row: {
@@ -19,8 +20,8 @@ const styles = create({
     flexShrink: 0,
     width: { default: 1, '[data-orientation="horizontal"]': glyph.md },
     height: { default: glyph.md, '[data-orientation="horizontal"]': 1 },
-    marginInline: { default: 4, '[data-orientation="horizontal"]': 0 },
-    marginBlock: { default: 0, '[data-orientation="horizontal"]': 4 },
+    marginInline: { default: space.s1, '[data-orientation="horizontal"]': 0 },
+    marginBlock: { default: 0, '[data-orientation="horizontal"]': space.s1 },
     backgroundColor: role.borderSecondaryTranslucent,
   },
 });
@@ -30,7 +31,7 @@ function ToolbarRoot({
   className,
   style,
   ...rest
-}: StyledProps<ToolbarPrimitive.Root.Props>): ReactElement {
+}: StyledProps<ToolbarPrimitive.Root.Props, Restyle<"Toolbar.Root">>): ReactElement {
   return (
     <ToolbarPrimitive.Root
       {...rest}
@@ -44,7 +45,7 @@ function ToolbarGroup({
   className,
   style,
   ...rest
-}: StyledProps<ToolbarPrimitive.Group.Props>): ReactElement {
+}: StyledProps<ToolbarPrimitive.Group.Props, Restyle<"Toolbar.Group">>): ReactElement {
   return (
     <ToolbarPrimitive.Group
       {...rest}
@@ -58,7 +59,7 @@ function ToolbarSeparator({
   className,
   style,
   ...rest
-}: StyledProps<ToolbarPrimitive.Separator.Props>): ReactElement {
+}: StyledProps<ToolbarPrimitive.Separator.Props, Restyle<"Toolbar.Separator">>): ReactElement {
   return (
     <ToolbarPrimitive.Separator
       {...rest}
@@ -85,9 +86,8 @@ function ToolbarButton(
 
   return (
     <ToolbarPrimitive.Button
-      disabled={buttonProps.disabled && !buttonProps.loading}
-      focusableWhenDisabled={buttonProps.disabledReason !== undefined}
-      render={<Button {...buttonProps} />}
+      disabled={buttonProps.disabled}
+      render={<Button focusableWhenDisabled {...buttonProps} />}
     />
   );
 }

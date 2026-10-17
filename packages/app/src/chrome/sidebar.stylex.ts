@@ -1,11 +1,11 @@
-import { glyph, input, radius, target } from "@nyte-ai/ui/schema.stylex";
 /**
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
+import { glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
 export const sidebarStyles = create({
   rail: {
@@ -29,7 +29,7 @@ export const sidebarStyles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   contentLayer: {
     position: "absolute",
@@ -45,7 +45,7 @@ export const sidebarStyles = create({
     flexDirection: "column",
     gap: sidebar.listGap,
     paddingInline: sidebar.gutter,
-    paddingBlockStart: 6,
+    paddingBlockStart: space.s1_5,
   },
   /**
    * A `Row` that is itself the button, shared with the settings rail. The row
@@ -58,12 +58,12 @@ export const sidebarStyles = create({
     "--_row-padding-inline": sidebar.rowPaddingInline,
     "--_shortcut-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
     },
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
   },
   navLeading: { width: sidebar.iconSlot },
   navRowActive: { "--_shortcut-opacity": "1" },
@@ -100,35 +100,36 @@ export const sidebarStyles = create({
   sectionHeader: {
     "--_section-chevron-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-within": "1",
     },
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     width: "100%",
     height: sidebar.rowHeight,
     paddingInlineEnd: sidebar.rowPaddingInline,
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
-    fontWeight: 400,
+    fontWeight: type.weightRegular,
     flexShrink: 0,
   },
   sectionToggle: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     minWidth: 0,
     height: "100%",
     paddingInlineStart: sidebar.rowPaddingInline,
-    paddingInlineEnd: 4,
+    paddingInlineEnd: space.s1,
     flex: 1,
     borderRadius: radius.control,
     color: "inherit",
   },
   sectionChevron: {
     opacity: "var(--_section-chevron-opacity)",
+    transitionProperty: "transform, opacity",
     transitionTimingFunction: motion.easeOut,
   },
   sectionLabel: {
@@ -161,12 +162,12 @@ export const sidebarStyles = create({
   workspaceRow: {
     "--_workspace-folder-display": {
       default: "inline-flex",
-      ":hover": "none",
+      ":hover": { [media.hover]: "none" },
       ":focus-within": "none",
     },
     "--_workspace-chevron-display": {
       default: "none",
-      ":hover": "inline-flex",
+      ":hover": { [media.hover]: "inline-flex" },
       ":focus-within": "inline-flex",
     },
     cursor: appearance.cursorInteractive,
@@ -180,7 +181,7 @@ export const sidebarStyles = create({
     "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
       default: "transparent",
-      ":hover": role.bgHover,
+      ":hover": { [media.hover]: role.bgHover },
       ":focus-within": role.bgHover,
     },
     cursor: appearance.cursorInteractive,
@@ -209,7 +210,7 @@ export const sidebarStyles = create({
   sessionRowAsk: {
     minHeight: sidebar.askRowHeight,
     alignItems: "flex-start",
-    paddingBlock: 4,
+    paddingBlock: space.s1,
   },
   /** The time rides the title line, so the second line runs the row's full width. */
   sessionTitleLine: {
@@ -223,23 +224,13 @@ export const sidebarStyles = create({
     top: 4,
     height: type.leadingBase,
   },
-  rowIconAsk: { alignSelf: "flex-start", paddingBlockStart: 2 },
+  rowIconAsk: { alignSelf: "flex-start", paddingBlockStart: space.s0_5 },
   sessionAsk: { color: role.contentSecondary },
   /** Replaces the row's title while renaming; same footprint, so the list does not jump. */
   sessionRenameRow: {
     "--_row-fill": role.bgInteractiveSecondaryTranslucent,
   },
-  sessionRenameInput: {
-    // The label is a plain box, not a flex line, so the field fills it by width.
-    width: "100%",
-    height: input.heightMd,
-    borderRadius: radius.indicator,
-    borderColor: role.borderSecondaryTranslucent,
-    outlineStyle: { default: "none", ":focus-visible": "solid" },
-    outlineWidth: 1,
-    outlineColor: appearance.focusRing,
-    outlineOffset: -1,
-  },
+  sessionRenameInput: { width: "100%" },
   /** The layer `Row.Backdrop` positions behind the row; only the tone is ours. */
   sessionSelection: {
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
@@ -253,28 +244,8 @@ export const sidebarStyles = create({
   },
   draftRow: { color: role.contentSecondary },
   /** The status glyph's box, so a badge can sit on its corner without moving the label. */
-  sessionBadgeHost: {
-    position: "relative",
-    display: "grid",
-    placeItems: "center",
-    width: "100%",
-    height: "100%",
-  },
-  /** Where a chat runs, when that is not this machine. The sidebar fill rings it off the glyph. */
-  sessionBadge: {
-    position: "absolute",
-    insetInlineEnd: -4,
-    insetBlockEnd: -3,
-    display: "grid",
-    placeItems: "center",
-    width: 12,
-    height: 12,
-    borderRadius: radius.pill,
-    backgroundColor: role.sidebarMaterial,
-    color: role.contentSecondary,
-  },
   /**
-   * A chat whose machine can't be reached keeps its place at half weight. The
+   * A chat whose folder can't be reached keeps its place at half weight. The
    * content fades, not the row, so a selected row keeps a solid selection.
    */
   sessionUnreachable: { opacity: 0.5 },
@@ -338,7 +309,6 @@ export const sidebarStyles = create({
   actionGlyphArchive: {
     display: "grid",
     placeItems: "center",
-    lineHeight: 0,
     transform: "translateY(-1px)",
   },
   rowDragging: {
@@ -357,13 +327,10 @@ export const sidebarStyles = create({
     minHeight: sidebar.rowHeight,
     paddingInlineStart: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     paddingInlineEnd: sidebar.rowPaddingInline,
-    paddingBlock: 4,
+    paddingBlock: space.s1,
     color: role.contentSecondary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
     userSelect: "none",
   },
-  /** A folded shelf's header shares the row's geometry, so its label sits on the row labels' edge. */
   shelf: {
     display: "flex",
     alignItems: "center",
@@ -372,13 +339,14 @@ export const sidebarStyles = create({
     minHeight: sidebar.rowHeight,
     paddingInline: sidebar.rowPaddingInline,
     borderRadius: radius.control,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { [media.hover]: role.bgHover },
+    },
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     "--_shelf-chevron-opacity": {
       default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-visible": "1",
     },
   },
@@ -386,11 +354,13 @@ export const sidebarStyles = create({
   shelfLabel: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   shelfCount: {
     color: role.contentTertiary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
     fontVariantNumeric: "tabular-nums",
   },
-  shelfChevron: { marginInlineStart: "auto", opacity: "var(--_shelf-chevron-opacity)" },
+  shelfChevron: {
+    marginInlineStart: "auto",
+    opacity: "var(--_shelf-chevron-opacity)",
+    transitionProperty: "transform, opacity",
+  },
   shelfPanel: {
     display: { default: "flex", "[hidden]": "none" },
     flexDirection: "column",
@@ -403,16 +373,17 @@ export const sidebarStyles = create({
     paddingInline: sidebar.rowPaddingInline,
     paddingBlock: 0,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     flexShrink: 0,
   },
   sessionQuiet: {
     paddingInlineStart: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
   },
   showMore: {
-    "--_row-fill": { default: "transparent", ":hover": role.bgHover },
-    paddingInline: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
+    "--_row-fill": {
+      default: "transparent",
+      ":hover": { [media.hover]: role.bgHover },
+    },
+    "--_row-padding-inline": `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     borderRadius: radius.control,
     color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
     fontSize: type.fontBase,
@@ -425,39 +396,28 @@ export const sidebarStyles = create({
     paddingBlock: sidebar.gutter,
     flexShrink: 0,
   },
-  footerRow: { display: "flex", alignItems: "center", gap: 2, minWidth: 0 },
-  // The footer is the one row that is always on screen. It answers the pointer
-  // with its label and glyph alone, so a resting rail never carries a lit row.
+  footerRow: { display: "flex", alignItems: "center", gap: space.s0_5, minWidth: 0 },
+  /**
+   * The footer is the one row that is always on screen. It answers the pointer
+   * with its label and glyph alone, so a resting rail never carries a lit row.
+   */
   accountButton: {
     "--_row-fill": "transparent",
     width: "auto",
     minWidth: 0,
     flex: 1,
   },
-  avatarSlot: {
-    width: sidebar.iconSlot,
-    height: sidebar.iconSlot,
+  avatarSlot: { width: sidebar.iconSlot, height: sidebar.iconSlot },
+  avatar: {
+    display: "block",
+    width: "100%",
+    height: "100%",
     borderRadius: radius.indicator,
-    overflow: "hidden",
+    objectFit: "cover",
   },
-  avatar: { display: "block", width: "100%", height: "100%", objectFit: "cover" },
-  /**
-   * Pointing is not selecting: with the menu's hover highlight off, the label
-   * brightens under the pointer and the fill stays the keyboard cursor's, so a
-   * filled row always means "Enter opens this". The danger item keeps its own
-   * colour, which already reads as a state.
-   */
-  accountMenuItem: {
-    color: {
-      default: role.contentSecondary,
-      ":hover": role.contentPrimary,
-      ":is([data-highlighted])": role.contentPrimary,
-      ":is([data-disabled])": role.contentDisabled,
-    },
-  },
-  accountLabel: { display: "flex", alignItems: "center", gap: 6 },
+  accountLabel: { display: "flex", alignItems: "center", gap: space.s1_5 },
   accountName: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
-  /* Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
+  /** Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
   updateDot: {
     flexShrink: 0,
     width: 6,
@@ -465,37 +425,24 @@ export const sidebarStyles = create({
     borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimary,
   },
-  preview: {
-    display: "flex",
-    flexDirection: "column",
-    width: "max-content",
-    maxWidth: "min(260px, var(--available-width))",
-    padding: 8,
-    color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    whiteSpace: "normal",
-  },
   previewTitle: {
     overflow: "hidden",
-    fontWeight: 500,
+    fontWeight: type.weightMedium,
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
   },
   previewDetails: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
-    marginBlockStart: 6,
+    gap: space.s1,
+    marginBlockStart: space.s1_5,
   },
   previewDetail: {
     display: "grid",
     gridTemplateColumns: "14px minmax(0, 1fr)",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   previewDetailIcon: {
     display: "grid",

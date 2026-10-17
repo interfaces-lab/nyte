@@ -6,9 +6,13 @@ import { RequestsPage } from "./requests/page";
 import { ProjectsPage } from "./projects/page";
 import { ReviewPage } from "./review/page";
 import { SettingsPage } from "./settings/page";
-import { SidebarPage } from "./sidebar/page";
+import { TabsPage } from "./tabs/page";
 import { CanvasPage } from "./canvas/page";
+import { ChangesPage } from "./changes/page";
 import { SdkSpecPage } from "./sdk/page";
+import { MessagesPage } from "./messages/page";
+import { ProfilePage } from "./profile/page";
+import { UsagePage } from "./usage/page";
 import { rootRoute } from "./routes/__root";
 
 const ReviewSearch = Type.Object({ id: Type.Optional(Type.String()) });
@@ -23,7 +27,7 @@ const reviewRoute = createRoute({
 });
 
 function ReviewRoute(): ReactElement {
-  return <ReviewPage initialReview={reviewRoute.useSearch().id} />;
+  return <ReviewPage initialReview={reviewRoute.useSearch<typeof router>().id} />;
 }
 
 const routeTree = rootRoute.addChildren([
@@ -31,7 +35,7 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: "/",
     beforeLoad: () => {
-      throw redirect({ to: "/requests" });
+      throw redirect({ href: "/requests" });
     },
   }),
   createRoute({
@@ -49,9 +53,9 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({
     getParentRoute: () => rootRoute,
-    path: "/sidebar",
-    component: SidebarPage,
-    head: () => ({ meta: [{ title: "Lab · Sidebar" }] }),
+    path: "/tabs",
+    component: TabsPage,
+    head: () => ({ meta: [{ title: "Lab · Tabs" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,
@@ -61,9 +65,33 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({
     getParentRoute: () => rootRoute,
+    path: "/changes",
+    component: ChangesPage,
+    head: () => ({ meta: [{ title: "Lab · Changes" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/messages",
+    component: MessagesPage,
+    head: () => ({ meta: [{ title: "Lab · Messages" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/profile",
+    component: ProfilePage,
+    head: () => ({ meta: [{ title: "Lab · Profile" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/usage",
+    component: UsagePage,
+    head: () => ({ meta: [{ title: "Lab · Usage" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
     path: "/sdk",
     component: SdkSpecPage,
-    head: () => ({ meta: [{ title: "Lab · SDK spec" }] }),
+    head: () => ({ meta: [{ title: "Lab · SDK reference" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

@@ -1,28 +1,27 @@
 import assert from "node:assert/strict";
+import { asId } from "@nyte-ai/schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, test } from "vitest";
-import type { ConnectView, GitHubProviderState, HostState, NyteBridge } from "../bridge.ts";
+import type { GitHubAccountState, GitHubApi, GitHubState } from "@nyte-ai/sdk";
+import type { ConnectView, HostState, NyteBridge } from "../bridge.ts";
 import { installBridge } from "../nyte.ts";
 import { keys } from "../query-keys.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { ProfileSettings } from "./profile-settings.tsx";
 import { settingsSectionGroups } from "../settings/index.ts";
 
-const web = createWebBridge().bridge;
+const web: NyteBridge = { ...createWebBridge().bridge, machineName: "Studio Mac" };
 
 const pending = (): Promise<never> => new Promise<never>(() => undefined);
 
-const github = { state: pending, signIn: pending, signOut: pending, createPullRequest: pending };
-
-const withEnvironment: NyteBridge = { ...web, environment: true, host: { ...web.host, github } };
+const github: GitHubApi = { state: pending, createPullRequest: pending };
 
 const desktop: NyteBridge = {
   ...web,
   clientSurface: "desktop",
   host: {
     ...web.host,
-    github,
     connect: {
       state: pending,
       link: pending,
@@ -36,14 +35,14 @@ const desktop: NyteBridge = {
   },
 };
 
-installBridge(withEnvironment);
+installBridge(web);
 
 const clients = new Set<QueryClient>();
 
 afterEach(() => {
   for (const client of clients) client.clear();
   clients.clear();
-  installBridge(withEnvironment);
+  installBridge(web);
 });
 
 const repository = {
@@ -57,12 +56,12 @@ const GITHUB = {
   ready: {
     kind: "ready",
     account: { login: "octocat", name: "The Octocat", avatarUrl: undefined },
-    repository,
-    pullRequest: { kind: "none" },
   },
-  signedOut: { kind: "signed_out", repository },
-  missing: { kind: "cli_missing", repository },
-} satisfies Record<string, GitHubProviderState>;
+  signedOut: { kind: "signed_out" },
+  missing: { kind: "cli_missing" },
+} satisfies Record<string, GitHubAccountState>;
+
+const folder: GitHubState = { repository, pullRequest: { kind: "none" } };
 
 const environment = { id: "env-1", name: "Studio Mac", address: "https://connect.test/r/env-1" };
 
@@ -91,15 +90,15 @@ const NYTE = {
   },
 } satisfies Record<string, ConnectView>;
 
-function render(github: GitHubProviderState, connect: ConnectView | undefined): string {
+function render(state: GitHubAccountState, connect: ConnectView | undefined): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.add(client);
   client.setQueryData(keys.host, {
-    platform: "darwin",
-    workspace: { path: "/srv/repo", name: "repo", lastOpenedAt: 1 },
-    machineName: "Studio Mac",
+    workspace: { id: asId<"workspace">("repo"), path: "/srv/repo", name: "repo" },
   } satisfies HostState);
-  client.setQueryData([...keys.github, "/srv/repo"], github);
+  client.setQueryData([...keys.github, "capability", asId<"workspace">("repo")], github);
+  client.setQueryData([...keys.github, "account"], state);
+  client.setQueryData([...keys.github, "/srv/repo"], folder);
 
   if (connect !== undefined) client.setQueryData(keys.connect, connect);
 
@@ -116,7 +115,7 @@ function groups(markup: string): Map<string, string> {
     markup
       .split('<section aria-label="')
       .slice(1)
-      .map((part) => [part.slice(0, part.indexOf('"')), part]),
+      .map((part) => [part.split('"', 1)[0] ?? "", part]),
   );
 }
 
@@ -156,15 +155,15 @@ test("the GitHub CLI, the Nyte account, and this Mac each change only their own 
   assert.match(signedIn.get("Nyte account") ?? "", /owner@example\.test/);
   assert.doesNotMatch(signedIn.get("Nyte account") ?? "", /The Octocat|octocat/);
 
-  // Signing out of Nyte leaves the Mac linked and reachable.
-  const linked = groups(render(GITHUB.ready, NYTE.signedOutLinked));
-  assert.match(linked.get("Nyte account") ?? "", /Sign In…/);
-  assert.match(linked.get("This Mac") ?? "", /Reachable/);
-  assert.match(linked.get("GitHub") ?? "", /octocat/);
-  assert.doesNotMatch(linked.get("GitHub") ?? "", /The Octocat/);
+  const signedOutLinked = groups(render(GITHUB.ready, NYTE.signedOutLinked));
+  assert.match(signedOutLinked.get("Nyte account") ?? "", /Sign In…/);
+  assert.match(signedOutLinked.get("This Mac") ?? "", /Reachable/, "signing out unlinked the Mac");
+  assert.match(signedOutLinked.get("GitHub") ?? "", /octocat/);
+  assert.doesNotMatch(signedOutLinked.get("GitHub") ?? "", /The Octocat/);
 });
 
-test("the web app lists Profile only when its server has an environment", () => {
+test("Profile is listed on the desktop, which owns its environment, and not in the web app", () => {
+  installBridge(desktop);
   assert.ok(settingsSectionGroups().flat().includes("profile"));
 
   installBridge(web);

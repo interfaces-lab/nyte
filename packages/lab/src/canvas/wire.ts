@@ -8,6 +8,12 @@ export const CanvasInputSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** A live canvas chat's first message, which starts its session. */
+export const CanvasStartSchema = Type.Object(
+  { prompt: Type.String({ minLength: 1 }) },
+  { additionalProperties: false },
+);
+
 export const CanvasSnapshotSchema = Type.Object({
   id: Type.String({ pattern: "^[a-f0-9]{64}$" }),
   title: Type.String(),

@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import {
   activePane,
   activeSelection,
@@ -19,6 +19,7 @@ import type {
   SplitDirection,
 } from "./pane-layout.ts";
 import { SessionViewStateStore } from "./session-view-state.ts";
+import type { ComposerViewState } from "./session-view-state.ts";
 
 interface LayoutStorage {
   getItem(key: string): string | null;
@@ -35,10 +36,6 @@ export interface PaneControllerSnapshot {
  * change and adopts whichever layout the tab settles on.
  */
 type LayoutRoute = (current: PaneLayout, next: PaneLayout, action: PaneLayoutAction) => PaneLayout;
-
-function actionRequestsFocus(action: PaneLayoutAction): boolean {
-  return action.kind !== "resize" && action.kind !== "remove-session";
-}
 
 function selectedSession(action: PaneLayoutAction): SessionId | undefined {
   if (action.kind === "select" || action.kind === "select-in-pane") {
@@ -98,6 +95,7 @@ export class PaneController {
     return this.#viewState;
   }
 
+  /** A denied or full local store must not break pane navigation. */
   dispatch(action: PaneLayoutAction): PaneLayout {
     const current = this.#snapshot.layout;
     this.#rememberLayout(current);
@@ -125,21 +123,20 @@ export class PaneController {
 
     this.#rememberLayout(layout);
 
-    const focusRequest = actionRequestsFocus(action)
-      ? {
-          paneId: activePane(layout).id,
-          revision: this.#snapshot.focusRequest.revision + 1,
-        }
-      : this.#snapshot.focusRequest;
+    const focusRequest =
+      action.kind !== "resize" && action.kind !== "remove-session"
+        ? {
+            paneId: activePane(layout).id,
+            revision: this.#snapshot.focusRequest.revision + 1,
+          }
+        : this.#snapshot.focusRequest;
 
     this.#snapshot = { layout, focusRequest };
 
     try {
       if (this.#route === undefined)
         this.#storage?.setItem(this.#storageKey, serializePaneLayout(layout));
-    } catch {
-      // A denied or full local store must not break pane navigation.
-    }
+    } catch {}
 
     for (const listener of this.#listeners) listener();
 
@@ -195,10 +192,7 @@ export class PaneController {
   selectDraft(draftId: string): PaneLayout {
     const before = this.#snapshot.layout;
 
-    const visible = orderedPanes(before).find(
-      (pane) =>
-        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
-    );
+    const visible = this.#paneShowingDraft(draftId);
 
     if (visible !== undefined) {
       const layout = this.focus(visible.id);
@@ -220,17 +214,38 @@ export class PaneController {
 
   removeDraft(draftId: string): PaneLayout {
     const layout = this.#snapshot.layout;
-
-    const visible = orderedPanes(layout).find(
-      (pane) =>
-        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
-    );
+    const visible = this.#paneShowingDraft(draftId);
 
     if (!this.#viewState.removeDraft(draftId)) return layout;
 
     if (visible !== undefined) this.#requestFocus(visible.id);
 
     return layout;
+  }
+
+  /**
+   * The draft started chat `sessionId`: the pane showing the draft opens the
+   * chat, wherever the draft moved meanwhile, and a pane showing anything
+   * else stays put. `composer` waits in the chat's composer when the start
+   * handed the message back.
+   */
+  openDraftChat(draftId: string, sessionId: SessionId, composer?: ComposerViewState): void {
+    const visible = this.#paneShowingDraft(draftId);
+
+    if (composer !== undefined) {
+      const paneId = visible?.id ?? activePane(this.#snapshot.layout).id;
+      this.#viewState.updateSession(sessionId, paneId, (state) => ({ ...state, composer }));
+    }
+
+    if (visible !== undefined) this.selectSessionInPane(visible.id, sessionId);
+    this.#viewState.removeDraft(draftId);
+  }
+
+  #paneShowingDraft(draftId: string) {
+    return orderedPanes(this.#snapshot.layout).find(
+      (pane) =>
+        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
+    );
   }
 
   split(direction: SplitDirection): PaneLayout {

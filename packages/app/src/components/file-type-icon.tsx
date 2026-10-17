@@ -8,8 +8,8 @@
 import { create, props } from "@stylexjs/stylex";
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import type { ReactElement } from "react";
-import { glyph } from "@nyte-ai/ui/schema.stylex";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { glyph } from "@nyte-ai/ui/styles/schema.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 
 type FileIconTone =
@@ -45,7 +45,7 @@ const styles = create({
     position: "absolute",
     width: 0,
     height: 0,
-    overflow: "hidden",
+    overflow: "clip",
     pointerEvents: "none",
   },
 });
@@ -62,65 +62,62 @@ const TONE_THEME = {
   magenta: surfaceTheme.pink,
 };
 
-const TOKEN_TONE = {
-  astro: "purple",
-  babel: "yellow",
-  bash: "green",
-  biome: "blue",
-  bootstrap: "purple",
-  browserslist: "yellow",
-  bun: "magenta",
-  c: "blue",
-  claude: "orange",
-  cpp: "blue",
-  css: "purple",
-  database: "purple",
-  docker: "blue",
-  eslint: "purple",
-  git: "orange",
-  go: "cyan",
-  graphql: "magenta",
-  html: "orange",
-  image: "magenta",
-  javascript: "yellow",
-  json: "orange",
-  markdown: "green",
-  mcp: "cyan",
-  npm: "red",
-  oxc: "cyan",
-  postcss: "red",
-  prettier: "cyan",
-  python: "blue",
-  react: "cyan",
-  ruby: "red",
-  rust: "orange",
-  sass: "magenta",
-  svelte: "red",
-  svg: "orange",
-  svgo: "green",
-  swift: "orange",
-  table: "cyan",
-  tailwind: "cyan",
-  terraform: "purple",
-  typescript: "blue",
-  vite: "purple",
-  vscode: "blue",
-  vue: "green",
-  wasm: "purple",
-  webpack: "blue",
-  yml: "red",
-  zig: "orange",
-  zip: "orange",
-} satisfies Readonly<Record<string, FileIconTone>>;
-
-function isFileIconToken(token: string): token is keyof typeof TOKEN_TONE {
-  return Object.hasOwn(TOKEN_TONE, token);
-}
+const TOKEN_TONE = new Map<string, FileIconTone>(
+  Object.entries({
+    astro: "purple",
+    babel: "yellow",
+    bash: "green",
+    biome: "blue",
+    bootstrap: "purple",
+    browserslist: "yellow",
+    bun: "magenta",
+    c: "blue",
+    claude: "orange",
+    cpp: "blue",
+    css: "purple",
+    database: "purple",
+    docker: "blue",
+    eslint: "purple",
+    git: "orange",
+    go: "cyan",
+    graphql: "magenta",
+    html: "orange",
+    image: "magenta",
+    javascript: "yellow",
+    json: "orange",
+    markdown: "green",
+    mcp: "cyan",
+    npm: "red",
+    oxc: "cyan",
+    postcss: "red",
+    prettier: "cyan",
+    python: "blue",
+    react: "cyan",
+    ruby: "red",
+    rust: "orange",
+    sass: "magenta",
+    svelte: "red",
+    svg: "orange",
+    svgo: "green",
+    swift: "orange",
+    table: "cyan",
+    tailwind: "cyan",
+    terraform: "purple",
+    typescript: "blue",
+    vite: "purple",
+    vscode: "blue",
+    vue: "green",
+    wasm: "purple",
+    webpack: "blue",
+    yml: "red",
+    zig: "orange",
+    zip: "orange",
+  }),
+);
 
 export function FileTypeIcon({ path }: { readonly path: string }): ReactElement {
   const icon = resolver.resolveIcon("file-tree-icon-file", path.replaceAll("\\", "/"));
-  const token = icon.token ?? "";
-  const tone = isFileIconToken(token) ? TOKEN_TONE[token] : "gray";
+  const tone = TOKEN_TONE.get(icon.token ?? "") ?? "gray";
   const width = icon.width ?? 16;
   const height = icon.height ?? 16;
 

@@ -13,17 +13,11 @@ import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { layer } from "@nyte-ai/ui/schema.stylex";
-import { motion, role } from "@nyte-ai/ui/vars.stylex";
+import { layer, media } from "@nyte-ai/ui/styles/schema.stylex";
+import { motion, role } from "@nyte-ai/ui/styles/vars.stylex";
+import { preferences, SIDEBAR_WIDTH, useSetting } from "../preferences/index.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
-import {
-  clampSidebarWidth,
-  SIDEBAR_WIDTH_MAX,
-  SIDEBAR_WIDTH_MIN,
-  SIDEBAR_WIDTH_STEP,
-  shellActions,
-  useShellState,
-} from "./shell-state.ts";
+import { applySidebarWidth, clampSidebarWidth, shellActions } from "./shell-state.ts";
 
 const styles = create({
   seat: {
@@ -33,7 +27,7 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     flexShrink: 0,
-    overflow: "hidden",
+    overflow: "clip",
   },
   seatHidden: {
     width: 0,
@@ -70,7 +64,11 @@ const styles = create({
       transitionDuration: motion.durationFast,
       transitionTimingFunction: motion.easeOut,
     },
-    ":hover::after": { backgroundColor: role.borderPrimaryTranslucent },
+    ":hover::after": {
+      backgroundColor: {
+        [media.hover]: role.borderPrimaryTranslucent,
+      },
+    },
     ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
   },
   /** Without window tabs the content is flush with the rail; the handle draws their edge. */
@@ -85,12 +83,9 @@ interface ResizeState {
   nextWidth: number;
 }
 
-function applyWidth(width: number): void {
-  document.documentElement.style.setProperty("--nyte-sidebar-width", `${String(width)}px`);
-}
-
 export function SidebarPane({ children }: { readonly children: ReactNode }): ReactElement {
-  const { sidebarVisible, sidebarWidth } = useShellState();
+  const sidebarVisible = useSetting(preferences.sidebarVisible);
+  const sidebarWidth = useSetting(preferences.sidebarWidth);
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
   const visible = sidebarVisible || settings !== undefined;
   const [resizing, setResizing] = useState(false);
@@ -114,7 +109,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
     resize.nextWidth = clampSidebarWidth(resize.startWidth + event.clientX - resize.startX);
-    applyWidth(resize.nextWidth);
+    applySidebarWidth(resize.nextWidth);
   };
 
   const endResize = (event: PointerEvent<HTMLDivElement>): void => {
@@ -136,18 +131,18 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
     resizeRef.current = undefined;
-    applyWidth(resize.startWidth);
+    applySidebarWidth(resize.startWidth);
     setResizing(false);
   };
 
   const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
     let width: number | undefined;
-    const step = event.shiftKey ? SIDEBAR_WIDTH_STEP * 4 : SIDEBAR_WIDTH_STEP;
+    const step = event.shiftKey ? SIDEBAR_WIDTH.step * 4 : SIDEBAR_WIDTH.step;
 
     if (event.key === "ArrowLeft") width = sidebarWidth - step;
     else if (event.key === "ArrowRight") width = sidebarWidth + step;
-    else if (event.key === "Home") width = SIDEBAR_WIDTH_MIN;
-    else if (event.key === "End") width = SIDEBAR_WIDTH_MAX;
+    else if (event.key === "Home") width = SIDEBAR_WIDTH.min;
+    else if (event.key === "End") width = SIDEBAR_WIDTH.max;
 
     if (width === undefined) return;
     event.preventDefault();
@@ -169,12 +164,12 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           tabIndex={0}
           aria-label="Resize sidebar"
           aria-orientation="vertical"
-          aria-valuemin={SIDEBAR_WIDTH_MIN}
-          aria-valuemax={SIDEBAR_WIDTH_MAX}
+          aria-valuemin={SIDEBAR_WIDTH.min}
+          aria-valuemax={SIDEBAR_WIDTH.max}
           aria-valuenow={sidebarWidth}
           {...props(
             styles.handle,
-            !windowTabs.enabled && styles.handleEdge,
+            !windowTabs.strip && styles.handleEdge,
             resizing && styles.handleActive,
           )}
           onKeyDown={resizeWithKeyboard}

@@ -1,14 +1,14 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * The transcript's shape while a session's snapshot is still on its way:
  * a user card, a work row, and a prose block at the transcript's row gaps so
  * the real rows land in place without a shift. Local sessions resolve in a
  * frame or two and never show it; cloud sessions do.
  */
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 
 const pulse = keyframes({
   "0%": { opacity: 0.55 },
@@ -33,7 +33,7 @@ const styles = create({
   card: {
     boxSizing: "border-box",
     height: 58,
-    marginTop: 10,
+    marginTop: space.s2_5,
     borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
@@ -43,7 +43,7 @@ const styles = create({
     borderRadius: radius.pill,
     backgroundColor: role.bgMutedTranslucent,
   }),
-  row: { display: "flex", flexDirection: "column", gap: 10, paddingBlock: 6 },
+  row: { display: "flex", flexDirection: "column", gap: space.s2_5, paddingBlock: space.s1_5 },
 });
 
 /** Placeholder rows; the caller supplies the transcript's measure and gutter. */

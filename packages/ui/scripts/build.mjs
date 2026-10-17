@@ -2,7 +2,7 @@ import { glob, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import stylex from "@stylexjs/unplugin";
+import { stylex } from "../stylex.mjs";
 import { context } from "esbuild";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -13,10 +13,12 @@ const watch = process.argv.includes("--watch");
 
 const entryPoints = await Array.fromAsync(glob(["src/*.ts", "src/*.tsx"], { cwd: packageRoot }));
 
-// StyleX's esbuild hook writes every collected rule to `dist/stylex.css`. The
-// sheet ships as `dist/ui.css` inside one `nyte-ui` layer, so a consumer that
-// orders the layer below its own StyleX and Tailwind utilities can override
-// any component rule, including the token defaults.
+/**
+ * StyleX's esbuild hook writes every collected rule to `dist/stylex.css`. The
+ * sheet ships as `dist/ui.css` inside one `nyte-ui` layer, so a consumer that
+ * orders the layer below its own StyleX and Tailwind utilities can override
+ * any component rule, including the token defaults.
+ */
 const layerStylesheet = {
   name: "nyte-ui-layer",
   setup(build) {
@@ -31,7 +33,9 @@ const layerStylesheet = {
       for (const entry of entryPoints) {
         if (
           entry.endsWith(".stylex.ts") ||
-          ["style.ts", "surface-theme.ts", "platform-colors.ts"].includes(basename(entry))
+          ["style.ts", "surface-theme.ts", "appearance.ts", "platform-colors.ts"].includes(
+            basename(entry),
+          )
         )
           continue;
         const compiled = join(outdir, `${basename(entry).replace(/\.tsx?$/, "")}.js`);
@@ -62,9 +66,11 @@ const buildContext = await context({
       dev: false,
       runtimeInjection: false,
       treeshakeCompensation: true,
-      // An app's StyleX emits `x…` classes into its own layers. A shared name
-      // there would re-declare a component rule above `nyte-ui` and reorder
-      // shorthands against longhands, so library classes get their own prefix.
+      /**
+       * An app's StyleX emits `x…` classes into its own layers. A shared name
+       * there would re-declare a component rule above `nyte-ui` and reorder
+       * shorthands against longhands, so library classes get their own prefix.
+       */
       classNamePrefix: "nyte",
       useCSSLayers: true,
       // A key StyleX cannot compile, like `border`, fails the build instead of vanishing.
@@ -79,7 +85,6 @@ const buildContext = await context({
   ],
 });
 
-// Watch mode keeps the declarations from the last full build.
 if (watch) {
   await buildContext.watch();
 } else {

@@ -2,11 +2,13 @@ import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { layer, radius } from "./schema.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { layer, radius, space } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { motion, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { motion, role } from "./styles/vars.stylex.ts";
 
 const styles = create({
   positioner: { zIndex: layer.menu, outline: "none" },
@@ -15,13 +17,11 @@ const styles = create({
     flexDirection: "column",
     width: "max-content",
     maxWidth: "min(260px, var(--available-width))",
-    padding: 8,
+    padding: space.s2,
     borderStyle: "none",
     borderRadius: radius.control,
     outline: "none",
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     transformOrigin: "var(--transform-origin)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     scale: {
@@ -45,8 +45,8 @@ export const PreviewCardTrigger = PreviewCardPrimitive.Trigger;
 
 export function PreviewCardContent({
   anchor,
-  side = "bottom",
-  align = "center",
+  side,
+  align,
   sideOffset = 4,
   alignOffset,
   collisionAvoidance,
@@ -55,7 +55,7 @@ export function PreviewCardContent({
   className,
   style,
   ...rest
-}: StyledProps<PreviewCardPrimitive.Popup.Props> &
+}: StyledProps<PreviewCardPrimitive.Popup.Props, Restyle<"PreviewCardContent">> &
   Pick<
     PreviewCardPrimitive.Positioner.Props,
     "anchor" | "side" | "align" | "sideOffset" | "alignOffset" | "collisionAvoidance"
@@ -80,6 +80,7 @@ export function PreviewCardContent({
           data-slot="preview-card-content"
           {...mergeStyleProps(
             props(
+              text.base,
               tint !== undefined && surfaceTheme[tint],
               floatingSurfaceStyles.popup,
               styles.popup,

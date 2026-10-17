@@ -1,3 +1,8 @@
+/**
+ * The macOS dev bundle's icon, URL scheme and cache. The preparer is imported only in a plain Node
+ * subprocess; Electron and Vite never start. `codesign --verify` proves the icon and plist were
+ * written before signing, since resource verification fails on a later change.
+ */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
@@ -19,7 +24,6 @@ import { fileURLToPath } from "node:url";
 import electronPath from "electron";
 import { ACCOUNT_SCHEMES } from "../src/account/scheme.ts";
 
-// Only import the preparer in a plain Node subprocess. Never start Electron or Vite.
 await test(
   "macOS dev bundle icon and cache",
   { skip: process.platform !== "darwin" },
@@ -91,7 +95,6 @@ await test(
         readFileSync(join(bundle, "Contents/Resources", plist.CFBundleIconFile)),
         readFileSync(icon),
       );
-      // Resource verification fails if the icon or plist was changed after signing.
       execFileSync("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle]);
       assert.deepEqual(readFileSync(originalPlist), originalPlistContents);
       assert.deepEqual(readFileSync(originalIcon), originalIconContents);

@@ -72,7 +72,7 @@ const UUID = new RegExp(UUID_PATTERN, "u");
  * configuration before it asks for a session token, so a bad build cannot
  * send a Clerk JWT somewhere unintended.
  */
-export function isBrokerOrigin(origin: string): boolean {
+export function namesBrokerOrigin(origin: string): boolean {
   let url: URL;
 
   try {
@@ -87,11 +87,11 @@ export function isBrokerOrigin(origin: string): boolean {
 }
 
 /**
- * Where phones reach a desktop: `<origin>/r/<environmentId>`. The Nyte HTTP
- * client keeps this path prefix and appends `/v1/...` to it.
+ * Where phones reach a desktop: `<origin>/r/<environmentId>`. A protocol
+ * transport keeps this path prefix and appends `/<operation>` to it.
  */
 export function relayAddress(origin: string, environmentId: string): string {
-  if (!isBrokerOrigin(origin))
+  if (!namesBrokerOrigin(origin))
     throw new Error("The connect origin must be a canonical https:// origin.");
 
   if (!UUID.test(environmentId)) throw new Error("An environment id is a lowercase v4 UUID.");
@@ -100,8 +100,8 @@ export function relayAddress(origin: string, environmentId: string): string {
 }
 
 /** True when `address` is exactly `relayAddress(origin, id)` for some environment id. */
-export function isRelayAddress(address: string, origin: string): boolean {
-  if (!isBrokerOrigin(origin) || !address.startsWith(`${origin}/r/`)) return false;
+export function namesRelayAddress(address: string, origin: string): boolean {
+  if (!namesBrokerOrigin(origin) || !address.startsWith(`${origin}/r/`)) return false;
 
   return UUID.test(address.slice(origin.length + 3));
 }

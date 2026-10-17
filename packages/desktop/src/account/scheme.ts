@@ -7,6 +7,8 @@
  */
 export const ACCOUNT_HOST = "account";
 
+export const CANVAS_HOST = "canvas";
+
 export const ACCOUNT_SCHEMES = {
   production: "nyte-desktop",
   updateTest: "nyte-desktop-test",

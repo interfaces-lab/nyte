@@ -1,0 +1,21 @@
+---
+title: Motion
+description: "Four durations, three curves, and when to use none"
+---
+
+```ts
+import { motion } from "@nyte-ai/ui/styles/vars.stylex";
+```
+
+Hover a row to run it.
+
+<MotionScale />
+
+## Rules
+
+- Transitions read a duration and a curve from `motion` instead of writing milliseconds.
+- Every transition has a reduced-motion path that ends in the same state without the travel.
+- Hover is an enhancement: guard it with `@media (hover: hover) and (pointer: fine)`, and keep
+  every action reachable by keyboard and touch.
+- CSS owns what CSS can resolve. Entry animations use `@starting-style` and
+  `transitionBehavior: allow-discrete`, not React state and `requestAnimationFrame`.

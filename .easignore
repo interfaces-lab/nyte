@@ -19,11 +19,31 @@ dist/
 __pycache__/
 *.pyc
 .uji/
+scratch/
+share/
+/*.html
+/tmp/
+.next/
+/packages/ai/catalog/
+/packages/app/e2e/test-results/
+/packages/app/e2e/playwright-report/
+/packages/desktop/e2e/test-results/
+/packages/desktop/e2e/playwright-report/
+
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+.output/
+
+packages/lab/audits/
+packages/lab/references/
+packages/lab/research_notes/
+packages/lab/reports/
 
 # packages/desktop
 packages/desktop/out/
 packages/desktop/resources/adblock.bin
-packages/desktop/benchmark/results/
 *.log*
 
 # packages/docs
@@ -48,7 +68,7 @@ output/
 # Repository tooling with no role in a Metro bundle or a native build.
 .github/
 .pnpm-store/
-docs/
+/docs/
 licenses/
 
 # The presence of this file switches EAS off the `git archive` path and onto a

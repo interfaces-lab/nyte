@@ -1,39 +1,24 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { expect, onTestFinished, test } from "vitest";
-import { createAssistantMessageEventStream } from "@nyte-ai/ai";
-import { createNyte } from "@nyte-ai/core";
-import type { SessionId, StreamFn } from "@nyte-ai/core";
-import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
-import { SqliteStore } from "@nyte-ai/core/store";
-
-import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
-import { browserToolsPlugin } from "./browser-tools.ts";
-import { BrowserAccessStore } from "./browser-access.ts";
+import { afterEach, test } from "vitest";
+import { isPart, tool } from "@nyte-ai/plugin/core";
+import type { SessionView } from "@nyte-ai/sdk";
 import type {
   BrowserActionResult,
   BrowserAgent,
-  BrowserConsoleEntry,
-  BrowserEvaluateResult,
+  BrowserOwner,
   BrowserPageState,
 } from "./browser-agent.ts";
+import { unusedBrowserAgent } from "./browser-stub.ts";
+import { testDesktop } from "./fixtures/desktop-host.ts";
+import type { TestDesktop } from "./fixtures/desktop-host.ts";
 
-const model: Model<Api> = {
-  id: "script",
-  name: "Script",
-  provider: "fixture",
-  api: "openai-responses",
-  baseUrl: "https://example.invalid",
-  reasoning: false,
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100_000,
-  maxTokens: 1_000,
-};
+const opened: TestDesktop[] = [];
 
-function pageState(overrides: Partial<BrowserPageState> = {}): BrowserPageState {
+afterEach(async () => {
+  for (const desktop of opened.splice(0)) await desktop.close();
+});
+
+function page(overrides: Partial<BrowserPageState> = {}): BrowserPageState {
   return {
     url: "https://example.test/",
     title: "Example",
@@ -45,360 +30,100 @@ function pageState(overrides: Partial<BrowserPageState> = {}): BrowserPageState 
       {
         ref: "s1e1",
         role: "button",
-        name: "Sign in",
+        name: "Sign\nin",
         tag: "button",
         rect: { x: 0, y: 0, width: 10, height: 10 },
       },
     ],
     totalNodes: 1,
-    text: "Hello from the page.",
+    text: "",
     blocked: 0,
     error: undefined,
     ...overrides,
   };
 }
 
-interface FakeAgent extends BrowserAgent {
-  readonly calls: string[];
-}
+function recordingAgent() {
+  const calls: { verb: string; input: unknown }[] = [];
+  const ok = (state = page()): BrowserActionResult => ({ kind: "ok", state });
 
-function fakeAgent(state: BrowserPageState = pageState()): FakeAgent {
-  const calls: string[] = [];
+  const agent: BrowserAgent = {
+    ...unusedBrowserAgent(),
+    open: async (input) => {
+      calls.push({ verb: "open", input });
 
-  const ok = (name: string): Promise<BrowserActionResult> => {
-    calls.push(name);
-
-    return Promise.resolve({ kind: "ok", state });
-  };
-
-  return {
-    calls,
-    open: () => ok("open"),
-    snapshot: () => ok("snapshot"),
-    click: () => ok("click"),
-    type: () => ok("type"),
-    press: () => ok("press"),
-    scroll: () => ok("scroll"),
-    wait: () => ok("wait"),
-    console: (): readonly BrowserConsoleEntry[] => {
-      calls.push("console");
-
-      return [{ level: "error", message: "boom", source: "page", at: 0 }];
+      return ok();
     },
-    evaluate: (): Promise<BrowserEvaluateResult> => {
-      calls.push("evaluate");
+    snapshot: async (input) => {
+      calls.push({ verb: "snapshot", input });
 
-      return Promise.resolve({ kind: "value", json: "1" });
+      return ok(page({ snapshot: 2 }));
     },
-    capture: () => Promise.resolve(undefined),
-    release: () => {},
-    sessionSurfaceId: (session: SessionId) => `stage:session:${session}`,
+    click: async (input) => {
+      calls.push({ verb: "click", input });
+
+      return {
+        kind: "failed",
+        failure: { kind: "occluded", ref: input.ref, by: { role: "dialog", name: "Cookies" } },
+      };
+    },
+    sessionSurfaceId: (session) => `stage:session:${session}`,
   };
+
+  return { agent, calls };
 }
 
-const USAGE = {
-  input: 1,
-  output: 1,
-  cacheRead: 0,
-  cacheWrite: 0,
-  totalTokens: 2,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
+function toolResults(view: SessionView): { readonly name: string; readonly text: string }[] {
+  return view.messages.flatMap((message) => {
+    if (!isPart(message, tool) || message.state.phase !== "settled") return [];
 
-type Step =
-  | { readonly tool: "browser_open"; readonly args: { readonly url: string } }
-  | {
-      readonly tool: "browser_click";
-      readonly args: { readonly ref: string; readonly element: string };
-    };
-
-/** Calls one tool per user turn, following `steps` in order, then answers in plain text. */
-function calls(...steps: readonly Step[]): StreamFn {
-  return (_model, context) => {
-    const turn = context.messages.filter((message) => message.role === "user").length;
-    const step = steps[turn - 1] ?? steps.at(-1);
-    const latest = context.messages.findLast((message) => message.role !== "system");
-    const pending = latest?.role === "user" && step !== undefined;
-    const reason = pending ? "toolUse" : "stop";
-
-    const message: AssistantMessage = {
-      role: "assistant",
-      content: pending
-        ? [{ type: "toolCall", id: `call-${String(turn)}`, name: step.tool, arguments: step.args }]
-        : [{ type: "text", text: "done" }],
-      api: model.api,
-      provider: model.provider,
-      model: model.id,
-      stopReason: reason,
-      timestamp: Date.now(),
-      usage: USAGE,
-    };
-
-    const stream = createAssistantMessageEventStream();
-    queueMicrotask(() => stream.push({ type: "done", reason, message }));
-
-    return stream;
-  };
+    return [{ name: message.state.name, text: JSON.stringify(message.state.outcome) }];
+  });
 }
 
-/** An SDK holding one browser session, torn down when the test ends. */
-async function browserSession(agent: BrowserAgent, streamFn: StreamFn, folder?: string) {
-  // Reopening a folder keeps its remembered answer; its first session removes it.
-  const directory = folder ?? (await mkdtemp(join(tmpdir(), "nyte-browser-tools-")));
-  const store = new SqliteStore(join(directory, "sessions.db"));
+test("the browser tools drive the session's page through the desktop agent", async () => {
+  const { agent, calls } = recordingAgent();
+  const made = await testDesktop({ agent });
+  opened.push(made);
+  const host = await made.host.host();
 
-  const sdk = await createNyte({
-    store,
-    model,
-    streamFn,
-    defaultWorkspace: { kind: "local", id: "test", cwd: directory },
-    models: { getModels: () => [model], getAvailable: async () => [model], getModel: () => model },
-    plugins: [
-      localEnvironmentPlugin({ id: "test" }),
-      browserToolsPlugin({
-        agent,
-        access: new BrowserAccessStore(join(directory, "browser-access.json")),
-      }),
-    ],
+  made.fake.reply(
+    {
+      content: [
+        {
+          type: "toolCall",
+          id: "call-1",
+          name: "browser_open",
+          arguments: { url: "https://example.test/" },
+        },
+      ],
+      stopReason: "toolUse",
+    },
+    {
+      content: [
+        { type: "toolCall", id: "call-2", name: "browser_click", arguments: { ref: "s1e1" } },
+      ],
+      stopReason: "toolUse",
+    },
+    { content: [{ type: "text", text: "done" }] },
+  );
+
+  const { session, receipt } = await host.sessions.start({
+    name: "browse",
+    content: "Open the page and sign in",
   });
 
-  sdk.attach();
-  onTestFinished(async () => {
-    await sdk.close();
-    await store.close();
+  await receipt.settled();
+  const results = toolResults(await session.view());
 
-    if (folder === undefined) await rm(directory, { recursive: true, force: true });
+  const owner: BrowserOwner = { kind: "home" };
+  assert.deepEqual(calls[0], {
+    verb: "open",
+    input: { session: session.sessionId, owner, url: "https://example.test/" },
   });
-  const session = (await sdk.sessions.create()).sessionId;
-
-  const transcript = async () =>
-    JSON.stringify(await sdk.sessions.snapshot({ sessionId: session }));
-
-  const parked = async () => {
-    const snapshot = await sdk.sessions.snapshot({ sessionId: session });
-
-    return snapshot?.parked?.find((call) => call.selection !== undefined);
-  };
-
-  return {
-    /** The folder this session runs in, so a later session can reopen it. */
-    directory,
-    /** Send a user turn, which makes the scripted model call its next tool. */
-    async say(content: string) {
-      await sdk.messages.send({ sessionId: session, content });
-    },
-    /** The access prompt the parked tool call is waiting on. */
-    async accessPrompt() {
-      await expect.poll(async () => (await parked()) !== undefined).toBe(true);
-      const call = await parked();
-      assert.ok(call);
-
-      return call;
-    },
-    /** Answer the access prompt, releasing the parked call. */
-    async answer(choice: "full" | "read" | "off") {
-      const call = await this.accessPrompt();
-      await sdk.runs.reply({
-        sessionId: session,
-        runId: call.runId,
-        callId: call.callId,
-        waitId: call.waitId,
-        reply: { choices: [choice] },
-      });
-    },
-    /** Wait until the session transcript contains `pattern`. */
-    async reports(pattern: RegExp) {
-      await expect.poll(async () => pattern.test(await transcript())).toBe(true);
-    },
-  };
-}
-
-test("the first browser call asks for access before anything reaches the page", async () => {
-  const agent = fakeAgent();
-
-  const page = await browserSession(
-    agent,
-    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
-  );
-
-  await page.say("Open the page");
-
-  const prompt = await page.accessPrompt();
-  assert.equal(prompt.selection?.title, "Allow browser access for this folder?");
-  assert.deepEqual(
-    prompt.selection?.choices.map((choice) => choice.id),
-    ["full", "read", "off"],
-  );
-  assert.equal(agent.calls.length, 0, "nothing may reach the browser before consent");
-
-  await page.answer("read");
-  await page.reports(/Hello from the page/);
-  assert.ok(agent.calls.includes("open"));
-});
-
-test("a write tool under read-only access is refused without asking again", async () => {
-  const agent = fakeAgent();
-
-  const page = await browserSession(
-    agent,
-    calls({ tool: "browser_click", args: { ref: "s1e1", element: "Sign in" } }),
-  );
-
-  await page.say("Click sign in");
-  await page.answer("read");
-
-  await page.reports(/read-only for this folder/);
-  assert.equal(agent.calls.length, 0, "a read-only session may not click");
-});
-
-test("turning access off refuses the call", async () => {
-  const agent = fakeAgent();
-
-  const page = await browserSession(
-    agent,
-    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
-  );
-
-  await page.say("Open the page");
-  await page.answer("off");
-
-  await page.reports(/Browser access is off for this folder/);
-  assert.equal(agent.calls.length, 0, "a refused session may not reach the browser");
-});
-
-test("a later session in the same folder opens on the remembered answer", async () => {
-  const first = await browserSession(
-    fakeAgent(),
-    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
-  );
-
-  await first.say("Open the page");
-  await first.answer("read");
-  await first.reports(/Hello from the page/);
-
-  const agent = fakeAgent();
-
-  const later = await browserSession(
-    agent,
-    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
-    first.directory,
-  );
-
-  await later.say("Open it again");
-
-  await later.reports(/Hello from the page/);
-  assert.ok(agent.calls.includes("open"), "the remembered answer must not be asked for again");
-});
-
-test("a folder that answered read-only still refuses write tools in a later session", async () => {
-  const first = await browserSession(
-    fakeAgent(),
-    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
-  );
-
-  await first.say("Open the page");
-  await first.answer("read");
-  await first.reports(/Hello from the page/);
-
-  const agent = fakeAgent();
-
-  const later = await browserSession(
-    agent,
-    calls({ tool: "browser_click", args: { ref: "s1e1", element: "Sign in" } }),
-    first.directory,
-  );
-
-  await later.say("Click sign in");
-
-  await later.reports(/read-only for this folder/);
-  assert.equal(agent.calls.length, 0, "a read-only folder may not click");
-});
-
-test("a ref whose name is not what the model described is refused", async () => {
-  const agent = fakeAgent();
-
-  const page = await browserSession(
-    agent,
-    calls(
-      { tool: "browser_open", args: { url: "https://example.test/" } },
-      { tool: "browser_click", args: { ref: "s1e1", element: "Delete account" } },
-    ),
-  );
-
-  await page.say("Open it");
-  await page.answer("full");
-  await page.reports(/Hello from the page/);
-
-  await page.say("Click it");
-
-  await page.reports(/Element name mismatch/);
-  assert.ok(!agent.calls.includes("click"), "the click must never reach the page");
-});
-
-test("a description that adds a role word still matches the element", async () => {
-  const agent = fakeAgent();
-
-  const page = await browserSession(
-    agent,
-    calls(
-      { tool: "browser_open", args: { url: "https://example.test/" } },
-      { tool: "browser_click", args: { ref: "s1e1", element: "Sign in button" } },
-    ),
-  );
-
-  await page.say("Open it");
-  await page.answer("full");
-  await page.reports(/Hello from the page/);
-
-  await page.say("Click it");
-
-  await expect.poll(() => agent.calls.includes("click")).toBe(true);
-});
-
-test("a ref the model never saw in a snapshot is refused", async () => {
-  const agent = fakeAgent();
-
-  const page = await browserSession(
-    agent,
-    calls({ tool: "browser_click", args: { ref: "s9e9", element: "Sign in" } }),
-  );
-
-  await page.say("Click it");
-  await page.answer("full");
-
-  await page.reports(/not in the snapshot you were last shown/);
-  assert.ok(!agent.calls.includes("click"), "an invented ref must never reach the page");
-});
-
-test("an element with no accessible name is not silently accepted", async () => {
-  const unnamedButton = pageState({
-    nodes: [
-      {
-        ref: "s1e1",
-        role: "button",
-        name: "   ",
-        tag: "button",
-        rect: { x: 0, y: 0, width: 10, height: 10 },
-      },
-    ],
-  });
-
-  const agent = fakeAgent(unnamedButton);
-
-  const page = await browserSession(
-    agent,
-    calls(
-      { tool: "browser_open", args: { url: "https://example.test/" } },
-      { tool: "browser_click", args: { ref: "s1e1", element: "Sign in" } },
-    ),
-  );
-
-  await page.say("Open it");
-  await page.answer("full");
-  await page.reports(/Hello from the page/);
-
-  await page.say("Click it");
-
-  await page.reports(/has no accessible name/);
-  assert.ok(!agent.calls.includes("click"), "the click must never reach the page");
+  assert.ok(calls.some((call) => call.verb === "click"));
+  assert.equal(results.length, 2);
+  assert.match(results[0]?.text ?? "", /Example/);
+  assert.match(results[0]?.text ?? "", /\[s1e1\] button \\"Signin\\"/);
+  assert.match(results[1]?.text ?? "", /occluded/);
 });

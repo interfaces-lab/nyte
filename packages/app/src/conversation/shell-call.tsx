@@ -1,24 +1,30 @@
-import { formatToolDuration, toolStatus } from "@nyte-ai/client";
-import type { ShellFacts } from "@nyte-ai/client";
 import { create, props } from "@stylexjs/stylex";
-import type { ToolClass, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import type { ToolClass } from "@nyte-ai/sdk";
+import {
+  condensedCommand,
+  formatDuration,
+  toolOutput,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { ToolCallDensity } from "../preferences/index.ts";
-import { activityStyles } from "./styles.stylex.ts";
+import { activityStyles } from "./activity.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
-import { condensedCommand, toolVerbs } from "./tool-copy.ts";
 import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
-export type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
+type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
 type ShellTokenType =
   | "whitespace"
@@ -40,13 +46,12 @@ const PREVIEW_LINES = 5;
 
 const PREVIEW_CHARS = 2000;
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
 const MONO = {
   margin: 0,
   fontFamily: type.fontMono,
   fontSize: type.fontCode,
   lineHeight: type.leadingSm,
+  letterSpacing: "normal",
   color: role.contentSecondary,
   whiteSpace: "pre-wrap",
   overflowWrap: "break-word",
@@ -54,10 +59,10 @@ const MONO = {
 } as const;
 
 const styles = create({
-  panel: { paddingTop: 4 },
+  panel: { paddingTop: space.s1 },
   body: {
     position: "relative",
-    overflow: "hidden",
+    overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
@@ -68,18 +73,25 @@ const styles = create({
   scroll: { overflowY: "auto", overscrollBehavior: "auto" },
   scrollLine: { maxHeight: 200 },
   scrollCard: { maxHeight: "min(480px, 60vh)" },
-  command: { ...MONO, display: "block", paddingBlock: 6, paddingInline: 10 },
-  commandWithMenu: { paddingRight: "calc(4px + 28px)" },
+  command: { ...MONO, display: "block", paddingBlock: space.s1_5, paddingInline: space.s2_5 },
+  commandWithMenu: { paddingRight: `calc(${space.s1} + 28px)` },
   prompt: { userSelect: "none" },
-  output: { ...MONO, display: "block", paddingTop: 0, paddingInline: 8, paddingBottom: 6 },
+  output: {
+    ...MONO,
+    display: "block",
+    paddingTop: 0,
+    paddingInline: space.s2,
+    paddingBottom: space.s1_5,
+  },
   facts: {
     display: "block",
-    paddingInline: 8,
-    paddingBottom: 6,
-    color: role.contentTertiary,
+    paddingInline: space.s2,
+    paddingBottom: space.s1_5,
+    color: role.contentSecondary,
     fontFamily: type.fontMono,
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
+    letterSpacing: "normal",
     fontVariantNumeric: "tabular-nums",
     userSelect: "text",
   },
@@ -88,31 +100,39 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
-    marginBlock: 2,
+    marginBlock: space.s0_5,
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
-    "--_icon-default": { default: "inline-flex", ":hover": { [HOVER]: "none" } },
-    "--_icon-hover": { default: "none", ":hover": { [HOVER]: "inline-flex" } },
-    "--_actions": { default: 0, ":hover": 1, ":focus-within": 1 },
+    "--_icon-default": {
+      default: "inline-flex",
+      ":hover": { [media.hover]: "none" },
+    },
+    "--_icon-hover": {
+      default: "none",
+      ":hover": { [media.hover]: "inline-flex" },
+    },
+    "--_actions": {
+      default: 0,
+      ":hover": { [media.hover]: 1 },
+      ":focus-within": 1,
+    },
   },
   headerRow: { position: "relative", display: "flex", minWidth: 0 },
   header: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     flexGrow: 1,
     minWidth: 0,
-    paddingBlock: 6,
-    paddingInlineStart: 8,
-    paddingInlineEnd: 32,
+    paddingBlock: space.s1_5,
+    paddingInlineStart: space.s2,
+    paddingInlineEnd: space.s8,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
     userSelect: "none",
   },
@@ -144,8 +164,8 @@ const styles = create({
     flexDirection: "column-reverse",
     width: "100%",
     maxHeight: `calc(${String(PREVIEW_LINES)} * ${type.leadingSm} + 6px)`,
-    paddingTop: 6,
-    overflow: "hidden",
+    paddingTop: space.s1_5,
+    overflow: "clip",
     cursor: appearance.cursorInteractive,
     maskImage: {
       default: null,
@@ -224,8 +244,8 @@ function outputTail(text: string) {
 }
 
 /** How long core measured the command took; a cut output already says so in its own last line. */
-function Facts({ facts }: { readonly facts: ShellFacts }): ReactElement {
-  return <span {...props(styles.facts)}>{formatToolDuration(facts.durationMs)}</span>;
+function Facts({ durationMs }: { readonly durationMs: number }): ReactElement {
+  return <span {...props(styles.facts)}>{formatDuration(durationMs)}</span>;
 }
 
 function CommandCode({
@@ -358,22 +378,30 @@ function OutputPreview({ output }: { readonly output: string }): ReactElement {
  * body is the output's last five lines.
  */
 export const ShellCallView = memo(function ShellCallView({
-  part,
+  message,
   toolClass,
-  progress,
   cwd,
   density,
 }: {
-  readonly part: ToolTurnPart;
+  readonly message: ToolMessage;
   readonly toolClass: ShellToolClass;
-  readonly progress: ToolProgress | undefined;
   readonly cwd: string | undefined;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const status = toolStatus(part.state);
+  const status = toolStatus(message);
   const running = status.tense === "running";
   const [open, setOpen] = useState(false);
-  const raw = part.output ?? (running ? (progress?.text ?? "") : "");
+  const { state } = message;
+
+  const raw = running
+    ? state.phase === "running"
+      ? (state.progress?.text ?? "")
+      : ""
+    : toolOutput(state);
+
+  const durationMs =
+    message.status.kind === "settled" ? message.status.endedAt - message.at : undefined;
+
   const output = useMemo(() => terminalText(raw).trim(), [raw]);
   const tokens = useMemo(() => shellTokens(toolClass.command), [toolClass.command]);
   const description = toolClass.description?.trim() ?? "";
@@ -383,7 +411,8 @@ export const ShellCallView = memo(function ShellCallView({
       ? condensedCommand(toolClass.command, cwd)
       : `${description.charAt(0).toUpperCase()}${description.slice(1)}`;
 
-  const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
+  const verb =
+    status.tense === "none" || description !== "" ? undefined : toolVerbs(toolClass)[status.tense];
   const heading = verb === undefined ? label : `${verb} ${label}`;
   const follow = running ? output : undefined;
 
@@ -391,7 +420,7 @@ export const ShellCallView = memo(function ShellCallView({
     <>
       <CommandCode tokens={tokens} withMenu={withMenu} />
       {output !== "" && <pre {...props(styles.output)}>{output}</pre>}
-      {toolClass.facts !== undefined && <Facts facts={toolClass.facts} />}
+      {durationMs !== undefined && <Facts durationMs={durationMs} />}
     </>
   );
 
@@ -402,6 +431,7 @@ export const ShellCallView = memo(function ShellCallView({
           <Collapsible.Trigger
             variant="plain"
             xstyle={[
+              text.base,
               styles.header,
               status.tone === "stopped" && toolLineStyles.dimmedText,
               focus.ringInset,

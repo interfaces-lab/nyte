@@ -1,3 +1,3 @@
-import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/codemode-runtime";
+import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/core/codemode-runtime";
 
 export default resolveQuickJSWasmPath();

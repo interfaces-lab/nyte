@@ -1,4 +1,4 @@
-import { radius, target } from "@nyte-ai/ui/schema.stylex";
+import { space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -17,20 +17,21 @@ import {
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { workbench } from "../theme/schema.stylex.ts";
-import { intent } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
 import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
+import type { LineStat } from "@nyte-ai/sdk";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
+import { WorkbenchRail } from "./workbench-rail.tsx";
 
 export interface ChangesSidebarFile {
   readonly path: string;
   readonly status?: ChangeStatus;
-  readonly added: number;
-  readonly removed: number;
+  readonly stat: LineStat;
   readonly viewed: ViewedState;
 }
 
@@ -51,29 +52,16 @@ const VIEWED_FILTERS: readonly { readonly value: ViewedFilterMode; readonly labe
 ];
 
 const styles = create({
-  rail: {
-    order: 1,
-    display: "flex",
-    flexDirection: "column",
-    width: workbench.fileListWidth,
-    flexShrink: 0,
-    minHeight: 0,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
-    backgroundColor: role.bgBase,
-  },
-  railHidden: { display: "none" },
   // The stack's file header sits beside this row, so both take the workbench header height.
   search: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     boxSizing: "border-box",
     minHeight: workbench.headerHeight,
     paddingBlock: workbench.headerPaddingBlock,
     flexShrink: 0,
-    paddingInline: 4,
+    paddingInline: space.s1,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
@@ -84,27 +72,20 @@ const styles = create({
   overviewTitle: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     minHeight: target.min,
-    paddingInline: 6,
+    paddingInline: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    fontWeight: 590,
+    fontWeight: type.weightSemibold,
   },
-  overviewLabel: { flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
-  checkbox: { marginInlineStart: 4 },
-  checkboxChanged: {
-    borderColor: role.contentInteractiveTertiary,
-    color: role.contentInteractiveTertiary,
-    "::after": {
-      content: "''",
-      width: 6,
-      height: 6,
-      borderRadius: radius.pill,
-      backgroundColor: "currentColor",
-    },
+  overviewLabel: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "clip",
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
   },
+  checkbox: { marginInlineStart: space.s1 },
   tree: {
     display: "block",
     flex: 1,
@@ -115,7 +96,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: 20,
+    padding: space.s5,
     color: role.contentSecondary,
     fontSize: type.fontSm,
     textAlign: "center",
@@ -123,8 +104,7 @@ const styles = create({
   },
 });
 
-/** `"changed"` is a viewed mark the patch has outrun: a check would claim too much. */
-export type ReviewCheckboxState = "unviewed" | "viewed" | "changed" | "mixed";
+type ReviewCheckboxState = "unviewed" | "viewed" | "changed" | "unknown" | "mixed";
 
 export function ReviewCheckbox({
   state,
@@ -142,33 +122,29 @@ export function ReviewCheckbox({
       aria-label={label}
       title={label}
       data-viewed-state={state}
-      xstyle={[
-        styles.checkbox,
-        state === "changed" && intent.warning,
-        state === "changed" && styles.checkboxChanged,
-      ]}
+      attention={state === "changed"}
+      xstyle={styles.checkbox}
       onClick={(event) => event.stopPropagation()}
       onCheckedChange={onChange}
     />
   );
 }
 
-export function sidebarCountLabel(total: number, shown: number, filtered: boolean): string {
+function sidebarCountLabel(total: number, shown: number, filtered: boolean): string {
   if (!filtered || shown === total) return filesChangedLabel(total);
 
   return `${String(shown)} of ${filesChangedLabel(total)}`;
 }
 
+/** The filter sits outside the tree: focus inside it makes the tree pull focus back to a row as the rows change. */
 export const ChangesSidebar = memo(function ChangesSidebar({
   files,
-  visible,
   activePath,
   filterInputRef,
   onRevealPath,
   onAllViewedChange,
 }: {
   readonly files: readonly ChangesSidebarFile[];
-  readonly visible: boolean;
   readonly activePath: string | undefined;
   readonly filterInputRef?: RefObject<HTMLInputElement | null>;
   readonly onRevealPath: (path: string) => void;
@@ -204,10 +180,11 @@ export const ChangesSidebar = memo(function ChangesSidebar({
     renderRowDecoration: ({ item }) => {
       const file = current.current.fileByPath.get(item.path);
 
-      if (file === undefined) return null;
+      if (file?.stat.kind !== "text") return null;
+      const { added, removed } = file.stat;
 
       return {
-        text: [file.added > 0 ? `+${file.added}` : "", file.removed > 0 ? `-${file.removed}` : ""]
+        text: [added > 0 ? `+${added}` : "", removed > 0 ? `-${removed}` : ""]
           .filter(Boolean)
           .join(" "),
       };
@@ -271,11 +248,14 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   useLayoutEffect(() => {
     model.setGitStatus(
       files.map((file) => {
+        const added = file.stat.kind === "text" ? file.stat.added : 0;
+        const removed = file.stat.kind === "text" ? file.stat.removed : 0;
+
         const status =
           file.status ??
-          (file.added > 0 && file.removed === 0
+          (added > 0 && removed === 0
             ? "added"
-            : file.removed > 0 && file.added === 0
+            : removed > 0 && added === 0
               ? "deleted"
               : "modified");
 
@@ -290,8 +270,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   );
 
   return (
-    <div {...props(styles.rail, !visible && styles.railHidden)}>
-      {/* Outside the tree: focus inside it makes the tree pull focus back to a row as the rows change. */}
+    <WorkbenchRail>
       <div {...props(styles.search)}>
         <Input
           ref={filterInputRef}
@@ -352,7 +331,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
           </MenuContent>
         </Menu>
       </div>
-      <div {...props(styles.overviewTitle)}>
+      <div {...props(text.sm, styles.overviewTitle)}>
         <span {...props(styles.overviewLabel)}>
           {sidebarCountLabel(files.length, shownPaths.length, filtering)}
         </span>
@@ -372,6 +351,6 @@ export const ChangesSidebar = memo(function ChangesSidebar({
         aria-label="Changed files"
         {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
       />
-    </div>
+    </WorkbenchRail>
   );
 });

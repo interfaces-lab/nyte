@@ -6,9 +6,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build, defaultClientConditions } from "vite";
-import { stylex } from "@nyte-ai/app/vite";
-import { deferredClerk } from "../../account.vite.ts";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { deferredChunks, stylex } from "@nyte-ai/app/vite";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
+import { defaultSecrets, openSecret, sealSecret } from "@nyte-ai/host";
+import type { SecretsSource } from "@nyte-ai/host";
 import { AccountOperations } from "../account/operations.ts";
 import {
   rendererContentSecurityPolicy,
@@ -16,10 +17,13 @@ import {
   accountAnswer,
   accountReport,
   resolveRendererFile,
+  shellContentSecurityPolicy,
 } from "../account/policy.ts";
-import { ACCOUNT_SCHEMES, accountScheme } from "../account/scheme.ts";
+import { accountScheme } from "../account/scheme.ts";
+import { createSignInKeeper } from "./account-keeper.ts";
 import { AccountCancelled } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
+import type { SecretSealer } from "./account-store.ts";
 
 const HOST = "clerk.example.com";
 
@@ -39,7 +43,6 @@ describe("account scheme", () => {
     expect(accountScheme({ packaged: false, updateTest: true })).toBe("nyte-desktop-dev");
     expect(accountScheme({ packaged: true, updateTest: false })).toBe("nyte-desktop");
     expect(accountScheme({ packaged: true, updateTest: true })).toBe("nyte-desktop-test");
-    expect(ACCOUNT_SCHEMES.production).not.toBe(ACCOUNT_SCHEMES.updateTest);
   });
 });
 
@@ -64,27 +67,39 @@ describe("account configuration", () => {
     const policy = rendererContentSecurityPolicy({
       frontendApiHost: HOST,
       developmentOrigin: undefined,
+      canvasOrigin: "nyte-desktop://canvas",
     });
 
     expect(policy).toContain(
       `script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://${HOST} `,
     );
+    expect(policy).toContain("frame-src 'self' nyte-desktop://canvas ");
     expect(policy).toContain(`connect-src 'self' https://${HOST} `);
     expect(policy).toContain("object-src 'none'");
     expect(policy).toContain("frame-ancestors 'none'");
     expect(policy).not.toContain("'unsafe-eval'");
     expect(policy).not.toContain("telemetry");
-    expect(policy).not.toContain("127.0.0.1");
+    expect(policy).not.toContain("ws://");
+    expect(policy).toContain(" http://127.0.0.1:*");
   });
 
   test("the development policy adds the dev server's socket and eval", () => {
     const policy = rendererContentSecurityPolicy({
       frontendApiHost: HOST,
       developmentOrigin: "http://127.0.0.1:5174",
+      canvasOrigin: "nyte-desktop-dev://canvas",
     });
 
     expect(policy).toContain("'unsafe-eval'");
     expect(policy).toContain("ws://127.0.0.1:5174");
+  });
+
+  test("the shell policy allows its own assets, blob modules and the renderer as its only ancestor", () => {
+    const policy = shellContentSecurityPolicy({ frameAncestor: "nyte-desktop://account" });
+
+    expect(policy).toBe(
+      "default-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; frame-ancestors nyte-desktop://account; base-uri 'none'; form-action 'none'",
+    );
   });
 });
 
@@ -100,28 +115,75 @@ describe("packaged renderer files", () => {
   });
 
   test("serves the page at its root and the built assets", () => {
-    expect(resolveRendererFile(root, "nyte-desktop://account/")).toEqual({
+    const roots = { account: root, canvas: join(root, "shell") };
+
+    expect(resolveRendererFile(roots, "nyte-desktop://account/")).toEqual({
       kind: "file",
+      host: "account",
       path: join(root, "index.html"),
       html: true,
     });
-    expect(resolveRendererFile(root, "nyte-desktop://account/assets/account-1.js")).toEqual({
+    expect(resolveRendererFile(roots, "nyte-desktop://account/assets/account-1.js")).toEqual({
       kind: "file",
+      host: "account",
       path: join(root, "assets", "account-1.js"),
       html: false,
     });
   });
 
+  test("serves the canvas shell from its own root, in development too", () => {
+    const roots = { account: undefined, canvas: join(root, "shell") };
+
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/index.html")).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "index.html"),
+      html: true,
+    });
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/assets/main-1.js")).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "assets", "main-1.js"),
+      html: false,
+    });
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://canvas/libraries/three.js")).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "libraries", "three.js"),
+      html: false,
+    });
+    expect(
+      resolveRendererFile(roots, "nyte-desktop-dev://canvas/libraries/chunks/range-1.js"),
+    ).toEqual({
+      kind: "file",
+      host: "canvas",
+      path: join(root, "shell", "libraries", "chunks", "range-1.js"),
+      html: false,
+    });
+    expect(resolveRendererFile(roots, "nyte-desktop-dev://account/")).toEqual({
+      kind: "refused",
+      status: 404,
+    });
+  });
+
   test("refuses unknown pages, other hosts, and paths out of assets", () => {
-    const refused = (url: string) => resolveRendererFile(root, url);
+    const refused = (url: string) =>
+      resolveRendererFile({ account: root, canvas: join(root, "shell") }, url);
 
     expect(refused("nyte-desktop://account/account.html")).toEqual({
       kind: "refused",
       status: 404,
     });
     expect(refused("nyte-desktop://renderer/")).toEqual({ kind: "refused", status: 404 });
+    expect(refused("nyte-desktop://account/libraries/three.js")).toEqual({
+      kind: "refused",
+      status: 404,
+    });
+    expect(refused("nyte-desktop://canvas/libraries/..%2f..%2fpackage.json")).toEqual({
+      kind: "refused",
+      status: 403,
+    });
     expect(refused("nyte-desktop://account/assets/")).toEqual({ kind: "refused", status: 403 });
-    // The URL parser already folds percent-encoded dot segments, which leaves the main page.
     expect(refused("nyte-desktop://account/assets/%2e%2e/account.html")).toEqual({
       kind: "refused",
       status: 404,
@@ -234,30 +296,111 @@ describe("account operations", () => {
 
 const execute = promisify(execFile);
 
-test("a keychain that will not seal leaves no sign-in on disk", async () => {
+function sealerFor(secrets: SecretsSource): SecretSealer {
+  return {
+    seal: (plain) => sealSecret(secrets, plain),
+    open: (sealed) => openSecret(secrets, sealed),
+  };
+}
+
+test("a secrets key that cannot be read keeps the saved sign-in", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
   const path = join(directory, "account.json");
-  const sealed: string[] = [];
 
   const store = new AccountStore({
     path,
-    cipher: {
-      available: async () => false,
-      seal: async (plain) => {
-        sealed.push(plain);
-
-        return plain;
+    sealer: sealerFor({
+      key: async () => {
+        throw new Error("No key.");
       },
-      open: async (text) => text,
-    },
+    }),
   });
 
   try {
-    await writeFile(path, JSON.stringify({ sealed: "older", label: "ada@example.com" }));
-    await store.save({ token: "client.one", label: "ada@example.com" });
-    await expect(readFile(path, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    expect(sealed).toEqual([]);
-    expect(await store.open("older")).toBeUndefined();
+    const saved = JSON.stringify({ sealed: "older", label: "ada@example.com" });
+    await writeFile(path, saved);
+    await expect(store.save({ token: "client.one", label: "ada@example.com" })).rejects.toThrow(
+      "No key.",
+    );
+    expect(await readFile(path, "utf8")).toBe(saved);
+    await expect(store.open("older")).rejects.toThrow();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a saved sign-in the keychain cannot open stays until this run signs in or out", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
+  const path = join(directory, "account.json");
+  const saves: Array<Parameters<AccountStore["save"]>[0]> = [];
+
+  class RecordingStore extends AccountStore {
+    override save(signIn: Parameters<AccountStore["save"]>[0]): Promise<void> {
+      saves.push(signIn);
+
+      return super.save(signIn);
+    }
+  }
+
+  const store = new RecordingStore({ path, sealer: sealerFor(defaultSecrets(directory)) });
+  const saved = JSON.stringify({ sealed: "unopenable", label: "ada@example.com" });
+
+  try {
+    await writeFile(path, saved);
+    const signIn = createSignInKeeper(store, () => undefined);
+
+    expect(await signIn.readToken()).toBeNull();
+    expect(signIn.state()).toEqual({ kind: "signed_out" });
+    signIn.writeToken("client.fresh");
+    signIn.writeToken(null);
+    signIn.writeToken("client.fresh");
+    expect(saves).toEqual([]);
+    expect(await readFile(path, "utf8")).toBe(saved);
+
+    signIn.report({ kind: "signed_in", label: "grace@example.com" });
+    await vi.waitFor(async () => {
+      const kept = await store.load();
+
+      expect(kept?.label).toBe("grace@example.com");
+      expect(await store.open(kept?.sealed ?? "")).toBe("client.fresh");
+    });
+
+    signIn.signOut();
+    await vi.waitFor(async () => expect(await store.load()).toBeUndefined());
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a saved sign-in loads at boot without the secrets key, which is read when the token is opened", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
+  const path = join(directory, "account.json");
+  const file = defaultSecrets(directory);
+  let reads = 0;
+
+  const store = () =>
+    new AccountStore({
+      path,
+      sealer: sealerFor({
+        key: () => {
+          reads += 1;
+
+          return file.key();
+        },
+      }),
+    });
+
+  try {
+    await store().save({ token: "client.one", label: "ada@example.com" });
+    expect(await readFile(path, "utf8")).not.toContain("client.one");
+    reads = 0;
+    const booted = store();
+    const saved = await booted.load();
+
+    expect(saved?.label).toBe("ada@example.com");
+    expect(reads).toBe(0);
+    expect(await booted.open(saved?.sealed ?? "")).toBe("client.one");
+    expect(reads).toBe(1);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -268,6 +411,11 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
 
   try {
     await Promise.all(["profile", "session", "home"].map((name) => mkdir(join(directory, name))));
+    const sealed = await sealSecret({ key: async () => new Uint8Array(32).fill(7) }, "client.zero");
+    await writeFile(
+      join(directory, "profile", "account.json"),
+      JSON.stringify({ sealed, label: "grace@example.com" }),
+    );
 
     for (const entry of [
       { source: "./fixtures/account-main.ts", output: "main.cjs", outDir: directory },
@@ -308,7 +456,15 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
       configFile: false,
       envDir: false,
       logLevel: "silent",
-      plugins: [deferredClerk(), stylex.rollup({ devMode: "css-only", runtimeInjection: false })],
+      plugins: [
+        deferredChunks({
+          account: {
+            module: new URL("../account/clerk.tsx", import.meta.url).href,
+            packages: ["@clerk/"],
+          },
+        }),
+        stylex.rollup({ devMode: "css-only" }),
+      ],
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       oxc: { jsx: { development: false } },
       resolve: { conditions: ["nyte-source", ...defaultClientConditions] },

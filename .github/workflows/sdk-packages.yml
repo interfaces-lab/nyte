@@ -37,7 +37,7 @@ jobs:
       - run: pnpm sdk:check
       - run: pnpm sdk:pack
       - run: pnpm sdk:verify
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: sdk-packages
           path: dist/sdk/

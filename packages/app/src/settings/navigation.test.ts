@@ -2,21 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { installBridge } from "../nyte.ts";
 import { createWebBridge } from "../web/bridge.ts";
-import { isSettingsSection } from "./pages.ts";
+import { showsSettingsSection } from "./pages.ts";
 
 const web = createWebBridge().bridge;
 
 test("only sections this host can show are settings sections", () => {
   installBridge(web);
-  assert.ok(isSettingsSection("general"));
-  assert.equal(isSettingsSection("providers"), false);
-  assert.equal(isSettingsSection("nope"), false);
+  assert.ok(showsSettingsSection("general"));
+  assert.equal(showsSettingsSection("providers"), false);
+  assert.equal(showsSettingsSection("nope"), false);
 
   installBridge({ ...web, clientSurface: "desktop" });
-  assert.ok(isSettingsSection("providers"));
+  assert.ok(showsSettingsSection("providers"));
 
-  installBridge({ ...web, environment: true, relay: true });
-  assert.ok(isSettingsSection("usage"));
-  assert.equal(isSettingsSection("providers"), false);
-  assert.equal(isSettingsSection("profile"), false);
+  installBridge({ ...web, relay: true });
+  assert.equal(showsSettingsSection("usage"), false);
+  assert.equal(showsSettingsSection("providers"), false);
+  assert.equal(showsSettingsSection("profile"), false);
 });

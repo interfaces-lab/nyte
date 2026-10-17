@@ -1,8 +1,5 @@
 /**
  * AbortSignal helpers: an interruptible sleep, an operation-local signal for optional-signal APIs, and racing a promise against a signal while still observing the abandoned promise.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/abort.ts
- * Synced with pi 7fbbd5f4a.
  */
 function abortReason(signal: AbortSignal): unknown {
   if (signal.reason !== undefined) return signal.reason;

@@ -1,9 +1,0 @@
-dist/
-.vercel/
-.env*
-.nyte-token.local
-.nitro/
-.output/
-.workflow-data/
-/.swc
-.fixtures/

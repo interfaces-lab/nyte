@@ -18,7 +18,6 @@ const changesViewOptionsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/** Only what the repository picked; the rest follows the Settings defaults. */
 const scopedOptionsSchema = Type.Object(
   {
     options: Type.Partial(changesViewOptionsSchema, { additionalProperties: false }),
@@ -33,19 +32,19 @@ export type ChangesLayout = Static<typeof changesViewOptionsSchema>["layout"];
 
 export type ChangesViewOptions = Static<typeof changesViewOptionsSchema>;
 
-export type StoredChangesViewOptions = Static<typeof storedOptionsSchema>;
+type StoredChangesViewOptions = Static<typeof storedOptionsSchema>;
 
-export const EMPTY_CHANGES_VIEW_OPTIONS: StoredChangesViewOptions = {};
+const EMPTY_CHANGES_VIEW_OPTIONS: StoredChangesViewOptions = {};
 
 type OptionsStorage = Pick<Storage, "getItem" | "setItem">;
 
-export interface ChangesViewOptionsStoreOptions {
+interface ChangesViewOptionsStoreOptions {
   readonly storage?: OptionsStorage;
   readonly now?: () => number;
   readonly maxScopes?: number;
 }
 
-export function decodeChangesViewOptions(serialized: string | null): StoredChangesViewOptions {
+function decodeChangesViewOptions(serialized: string | null): StoredChangesViewOptions {
   if (serialized === null) return EMPTY_CHANGES_VIEW_OPTIONS;
 
   try {
@@ -61,13 +60,14 @@ export function decodeChangesViewOptions(serialized: string | null): StoredChang
  * Changes overflow-menu options per workspace or repository. A repository reviewed in
  * split mode keeps that view without forcing it on every other workspace.
  */
-export class ChangesViewOptionsStore {
+class ChangesViewOptionsStore {
   readonly #storage: OptionsStorage | undefined;
   readonly #now: () => number;
   readonly #maxScopes: number;
   readonly #listeners = new Set<() => void>();
   #stored: StoredChangesViewOptions = EMPTY_CHANGES_VIEW_OPTIONS;
 
+  /** A corrupt preference must not prevent opening the Changes tab. */
   constructor(options: ChangesViewOptionsStoreOptions = {}) {
     this.#storage = options.storage;
     this.#now = options.now ?? Date.now;
@@ -75,9 +75,7 @@ export class ChangesViewOptionsStore {
 
     try {
       this.#stored = decodeChangesViewOptions(this.#storage?.getItem(STORAGE_KEY) ?? null);
-    } catch {
-      // A corrupt preference must not prevent opening the Changes tab.
-    }
+    } catch {}
   }
 
   getSnapshot = (): StoredChangesViewOptions => this.#stored;
@@ -111,14 +109,13 @@ export class ChangesViewOptionsStore {
     this.#commit(next);
   }
 
+  /** The chosen view holds for this window even when persistence is unavailable. */
   #commit(stored: StoredChangesViewOptions): void {
     this.#stored = this.#evictOldest(stored);
 
     try {
       this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#stored));
-    } catch {
-      // Keep the chosen view for this window even when persistence is unavailable.
-    }
+    } catch {}
 
     for (const listener of this.#listeners) listener();
   }
@@ -146,7 +143,6 @@ function browserStorage(): OptionsStorage | undefined {
 
 export const changesViewOptions = new ChangesViewOptionsStore({ storage: browserStorage() });
 
-/** What a repository shows: its own picks over the Settings defaults. */
 export function useChangesViewOptions(scopeId: string): ChangesViewOptions {
   const stored = useSyncExternalStore(
     changesViewOptions.subscribe,

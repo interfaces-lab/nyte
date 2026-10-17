@@ -5,16 +5,20 @@ import type { router } from "../router";
 const PAGES = [
   ["/requests", "Requests"],
   ["/review", "Review"],
-  ["/sidebar", "Sidebar"],
   ["/projects", "Projects"],
+  ["/tabs", "Tabs"],
   ["/canvas", "Canvas"],
+  ["/changes", "Changes"],
+  ["/messages", "Messages"],
+  ["/profile", "Profile"],
+  ["/usage", "Usage"],
   ["/sdk", "SDK"],
   ["/settings", "Settings"],
 ] as const;
 
 type Path = (typeof PAGES)[number][0];
 
-/* Painted from literals: each page loads a different palette, and this sits on all of them. */
+/** Painted from literals: each page loads a different palette, and this sits on all of them. */
 const styles = create({
   nav: {
     position: "fixed",
@@ -23,6 +27,8 @@ const styles = create({
     zIndex: 2147483647,
     display: "flex",
     gap: 2,
+    maxInlineSize: "calc(100vw - 24px)",
+    overflowX: "auto",
     padding: 3,
     borderRadius: 10,
     backgroundColor: "rgb(20 20 20 / 0.86)",
@@ -33,6 +39,7 @@ const styles = create({
     lineHeight: "16px",
   },
   link: {
+    flexShrink: 0,
     paddingBlock: 5,
     paddingInline: 10,
     borderRadius: 7,

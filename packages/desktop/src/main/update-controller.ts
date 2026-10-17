@@ -1,88 +1,175 @@
 import type { UpdateState } from "@nyte-ai/app/bridge.ts";
+import type { MessageBoxOptions } from "electron";
 import type { AppUpdater } from "electron-updater";
 import type { DesktopUpdateActivity } from "./host.ts";
 
+const RELAUNCH_CLEANUP_TIMEOUT_MS = 10_000;
+
+export type UpdateLogDetails = Readonly<Record<string, boolean | number | string>>;
+
 interface UpdateDependencies {
   updater: Pick<AppUpdater, "checkForUpdates" | "downloadUpdate" | "quitAndInstall">;
+  currentVersion: string;
   activity: () => Promise<DesktopUpdateActivity>;
+  beforeInstall: () => Promise<void>;
+  cleanupTimeoutMs?: number;
   publish: (state: UpdateState) => void;
-  logError: (message: string) => void;
+  message: (options: MessageBoxOptions) => Promise<{ readonly response: number }>;
+  log: (event: string, details?: UpdateLogDetails) => void;
 }
 
-/** Running work turns the first restart into `blocked`; restarting from `blocked` installs anyway. */
-export async function requestRestart({
-  state,
-  activity,
-  publish,
-  install,
-}: {
-  readonly state: UpdateState;
-  readonly activity: () => Promise<DesktopUpdateActivity>;
-  readonly publish: (state: UpdateState) => void;
-  readonly install: () => void;
-}): Promise<void> {
-  if (state.kind === "ready") {
-    const current = await activity();
-
-    if (current.kind === "busy")
-      return publish({ ...current, kind: "blocked", version: state.version });
-  } else if (state.kind !== "blocked") return;
-  install();
-}
+type Outcome =
+  | { readonly kind: "current" }
+  | { readonly kind: "ready"; readonly version: string }
+  | { readonly kind: "failed"; readonly title: string; readonly detail: string };
 
 export function createUpdateController({
   updater,
+  currentVersion,
   activity,
+  beforeInstall,
+  cleanupTimeoutMs = RELAUNCH_CLEANUP_TIMEOUT_MS,
   publish,
-  logError,
+  message,
+  log,
 }: UpdateDependencies) {
   let state: UpdateState = { kind: "idle" };
+  let pending: Promise<Outcome> | undefined;
 
   const set = (next: UpdateState): void => {
     state = next;
     publish(next);
   };
 
-  const download = async (version: string): Promise<void> => {
+  const run = async (): Promise<Outcome> => {
+    if (state.kind === "ready") return { kind: "ready", version: state.version };
+    let version: string;
+
+    try {
+      log("check-started");
+      const result = await updater.checkForUpdates();
+
+      if (result?.isUpdateAvailable !== true) {
+        log("update-not-available");
+
+        return { kind: "current" };
+      }
+
+      version = result.updateInfo.version;
+    } catch (cause) {
+      return { kind: "failed", title: "Couldn't check for updates", detail: errorMessage(cause) };
+    }
+
+    log("update-available", { targetVersion: version });
     set({ kind: "downloading", version, percent: 0 });
 
     try {
       await updater.downloadUpdate();
-      set({ kind: "ready", version });
     } catch (cause) {
-      const message = errorMessage(cause);
-      logError(message);
-      set({ kind: "failed", version, message });
+      const detail = errorMessage(cause);
+      set({ kind: "failed", version, message: detail });
+
+      return { kind: "failed", title: `Couldn't download Nyte ${version}`, detail };
     }
+
+    log("update-downloaded", { targetVersion: version });
+    set({ kind: "ready", version });
+
+    return { kind: "ready", version };
+  };
+
+  const find = (): Promise<Outcome> =>
+    (pending ??= run().finally(() => {
+      pending = undefined;
+    }));
+
+  const restart = async (version: string): Promise<void> => {
+    const current = await activity();
+    const running = current.kind === "busy" ? runningWork(current) : undefined;
+
+    const { response } = await message({
+      type: running === undefined ? "info" : "warning",
+      message: `Nyte ${version} is ready to install`,
+      detail: running === undefined ? undefined : `Restarting stops ${running}.`,
+      buttons: ["Restart to Update", "Later"],
+      defaultId: running === undefined ? 0 : 1,
+      cancelId: 1,
+      noLink: true,
+    });
+
+    if (response !== 0 || state.kind !== "ready") return;
+    set({ kind: "installing", version });
+    log("relaunch-requested", { fromVersion: currentVersion, targetVersion: version });
+    let timeout: NodeJS.Timeout | undefined;
+
+    const cleanup = await Promise.race<{ event: string; details: UpdateLogDetails }>([
+      beforeInstall().then(
+        () => ({ event: "relaunch-cleanup-completed", details: {} }),
+        (cause: unknown) => ({
+          event: "relaunch-cleanup-failed",
+          details: { message: errorMessage(cause) },
+        }),
+      ),
+      new Promise((resolve) => {
+        timeout = setTimeout(
+          () => resolve({ event: "relaunch-cleanup-timed-out", details: {} }),
+          cleanupTimeoutMs,
+        );
+      }),
+    ]);
+
+    clearTimeout(timeout);
+    log(cleanup.event, cleanup.details);
+    updater.quitAndInstall(false, true);
   };
 
   return {
     state: () => state,
-    async check(): Promise<void> {
-      if (state.kind !== "idle" && state.kind !== "failed") return;
+    check: async (): Promise<void> => {
+      await find();
+    },
+    click: async (): Promise<void> => {
+      if (state.kind === "installing") return;
+      const outcome = await find();
 
-      try {
-        const result = await updater.checkForUpdates();
+      switch (outcome.kind) {
+        case "current":
+          await message({
+            type: "info",
+            message: `Nyte ${currentVersion} is up to date`,
+            buttons: ["OK"],
+          });
 
-        if (result?.isUpdateAvailable === true) await download(result.updateInfo.version);
-      } catch (cause) {
-        // Offline, or no release published yet: the next check tries again.
-        logError(errorMessage(cause));
+          return;
+        case "failed":
+          await message({
+            type: "error",
+            message: outcome.title,
+            detail: outcome.detail,
+            buttons: ["OK"],
+          });
+
+          return;
+        case "ready":
+          return restart(outcome.version);
       }
     },
-    progress(percent: number): void {
+    progress: (percent: number): void => {
       if (state.kind === "downloading") set({ ...state, percent });
     },
-    restart: () =>
-      requestRestart({
-        state,
-        activity,
-        publish: set,
-        install: () => updater.quitAndInstall(false, true),
-      }),
   };
 }
 
-export function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+function runningWork(activity: Extract<DesktopUpdateActivity, { readonly kind: "busy" }>): string {
+  const count = (total: number, noun: string): string[] =>
+    total === 0 ? [] : [`${total} ${noun}${total === 1 ? "" : "s"}`];
+
+  return [
+    ...count(activity.taskCount, "running task"),
+    ...count(activity.terminalCommandCount, "terminal command"),
+  ].join(" and ");
+}
+
+function errorMessage(cause: unknown): string {
+  return (cause instanceof Error ? cause.message : String(cause)).split("\n", 1)[0] ?? "";
 }

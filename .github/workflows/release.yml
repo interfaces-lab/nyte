@@ -53,9 +53,8 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER CSC_KEY_PASSWORD CSC_LINK SPARKLE_PRIVATE_KEY; do
+          for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER CSC_KEY_PASSWORD CSC_LINK; do
             if [[ -z "${!name}" ]]; then
               echo "Required release secret $name is not configured." >&2
               exit 1
@@ -85,6 +84,8 @@ jobs:
             target: linux-arm64
     runs-on: ${{ matrix.runner }}
     continue-on-error: ${{ matrix.target != 'darwin-arm64' }}
+    env:
+      NYTE_CONNECT_ORIGIN: ${{ vars.NYTE_CONNECT_ORIGIN }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -239,52 +240,3 @@ jobs:
           else
             npm publish
           fi
-
-  appcast:
-    needs: publish
-    if: ${{ always() && !cancelled() && needs.publish.result == 'success' }}
-    runs-on: blacksmith-6vcpu-macos-15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 26
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v8
-        continue-on-error: true
-        with:
-          name: desktop-mac-arm64
-          path: packages/desktop/dist
-      - name: Generate signed appcast
-        shell: bash
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          zip="packages/desktop/dist/Nyte-${GITHUB_REF_NAME#v}-mac-arm64.zip"
-          if [[ ! -f "$zip" ]]; then
-            echo "No macOS desktop archive; skipping appcast."
-            exit 0
-          fi
-          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
-            echo "SPARKLE_PRIVATE_KEY is not configured." >&2
-            exit 1
-          fi
-          key="$RUNNER_TEMP/sparkle-private-key"
-          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key"
-          chmod 600 "$key"
-          pnpm --dir packages/desktop update:appcast "dist/Nyte-${GITHUB_REF_NAME#v}-mac-arm64.zip" --key-file "$key"
-      - name: Publish desktop update feed
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [[ ! -f packages/desktop/dist/appcast.xml ]]; then
-            echo "No appcast.xml; skipping desktop update feed."
-            exit 0
-          fi
-          if ! gh release view desktop-updates --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create desktop-updates --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Desktop update feed" --notes "Stable Sparkle update feed for Nyte desktop."
-          fi
-          gh release upload desktop-updates packages/desktop/dist/appcast.xml --repo "$GITHUB_REPOSITORY" --clobber

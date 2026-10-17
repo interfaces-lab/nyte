@@ -6,13 +6,13 @@
  */
 import { contextStyles } from "@nyte-ai/app/screens/context-selector.stylex.ts";
 import { threadStyles } from "@nyte-ai/app/screens/thread.stylex.ts";
-import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
+import { composerStyles } from "@nyte-ai/app/conversation/composer.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewError, useRepo, useStartTask } from "./api";
 import type { Repo } from "./wire";
 

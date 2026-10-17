@@ -1,11 +1,6 @@
 import { css, html } from "react-strict-dom";
 import { list, textStyles, tokens } from "../theme.ts";
 
-/**
- * Sentence-case section label, inset to the list gutter. It names the group
- * below without competing with it, so it stays at caption size in grey.
- * `danger` tints the label red for sections whose rows are all destructive.
- */
 export function SectionHeader({
   label,
   first = false,
@@ -17,9 +12,9 @@ export function SectionHeader({
 }) {
   return (
     <html.div style={[styles.header, !first && styles.following]}>
-      <html.span style={[textStyles.caption, tone === "danger" && styles.danger]}>
+      <html.h2 style={[textStyles.secondary, styles.label, tone === "danger" && styles.danger]}>
         {label}
-      </html.span>
+      </html.h2>
     </html.div>
   );
 }
@@ -30,5 +25,6 @@ const styles = css.create({
     paddingBottom: list.headerGap,
   },
   following: { paddingTop: list.sectionGap },
+  label: { margin: 0, fontWeight: 500 },
   danger: { color: tokens.danger },
 });

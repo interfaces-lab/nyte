@@ -1,12 +1,16 @@
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import { Field } from "@base-ui/react/field";
 import { create, props } from "@stylexjs/stylex";
 import { useId, type ComponentProps, type ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { checkbox, row, radius, target } from "./schema.stylex.ts";
+import { focus } from "./styles/a11y.stylex.ts";
+import { checkbox, media, radius, row, space, target } from "./styles/schema.stylex.ts";
+import { selectionWithin } from "./selection.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent } from "./surface-theme.ts";
-import { appearance, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, role, type } from "./styles/vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -21,15 +25,13 @@ const styles = create({
   field: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     width: "100%",
     minHeight: row.heightMd,
     color: role.contentPrimary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     cursor: appearance.cursorInteractive,
   },
-  copy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  copy: { display: "flex", flexDirection: "column", gap: space.s0_5, minWidth: 0 },
   description: { color: role.contentSecondary, fontSize: type.fontSm },
   box: {
     position: "relative",
@@ -62,8 +64,12 @@ const styles = create({
     backgroundColor: {
       default: role.bgControlSelected,
       "[data-unchecked]": "transparent",
-      ":hover:not([data-disabled])": role.bgControlSelectedHover,
-      ":hover:is([data-unchecked]):not([data-disabled])": role.bgHover,
+      ":hover:not([data-disabled])": {
+        [media.hover]: role.bgControlSelectedHover,
+      },
+      ":hover:is([data-unchecked]):not([data-disabled])": {
+        [media.hover]: role.bgHover,
+      },
       ":active:not([data-disabled])": role.bgControlSelectedPressed,
       ":active:is([data-unchecked]):not([data-disabled])": role.bgPressed,
     },
@@ -80,28 +86,48 @@ const styles = create({
     borderRadius: radius.pill,
     backgroundColor: "currentColor",
   },
+  attention: {
+    borderColor: role.contentInteractiveTertiary,
+    color: role.contentInteractiveTertiary,
+    "::after": {
+      content: "''",
+      width: 6,
+      height: 6,
+      borderRadius: radius.pill,
+      backgroundColor: "currentColor",
+    },
+  },
 });
 
 /**
  * A box that is ticked, empty, or mixed. `indeterminate` draws the dash, for a
  * master box over a list that is partly ticked. It paints inside the primary
- * intent, whose selected control is blue.
+ * intent, whose selected control is blue. `attention` dots an empty box in the
+ * warning hue, for an item that wants another look.
  */
 export function Checkbox({
   size = "md",
+  attention = false,
   xstyle,
   className,
   style,
   ...rest
-}: StyledProps<Omit<CheckboxPrimitive.Root.Props, "children">> & {
+}: StyledProps<Omit<CheckboxPrimitive.Root.Props, "children">, Restyle<"Checkbox">> & {
   readonly size?: "md" | "lg";
+  readonly attention?: boolean;
 }): ReactElement {
   return (
     <span {...props(styles.target, styles[size])}>
       <CheckboxPrimitive.Root
         {...rest}
         {...mergeStyleProps(
-          props(intent.primary, styles.box, focus.ring, xstyle),
+          props(
+            intent.primary,
+            styles.box,
+            attention && [intent.warning, styles.attention],
+            focus.ring,
+            xstyle,
+          ),
           className,
           style,
         )}
@@ -131,45 +157,53 @@ export function CheckboxField({
   className,
   style,
   ...rest
-}: Omit<ComponentProps<typeof Checkbox>, "aria-label" | "aria-labelledby" | "nativeButton"> & {
-  readonly label: string;
-  readonly description?: string;
-}): ReactElement {
+}: Omit<
+  ComponentProps<typeof Checkbox>,
+  "aria-label" | "aria-labelledby" | "nativeButton" | "className" | "style" | "xstyle"
+> &
+  Pick<
+    StyledProps<Field.Root.Props, Restyle<"CheckboxField">>,
+    "className" | "style" | "xstyle"
+  > & {
+    readonly label: string;
+    readonly description?: string;
+  }): ReactElement {
   const generatedId = useId();
   const controlId = id ?? generatedId;
   const labelId = `${controlId}-label`;
-  const descriptionId = description === undefined ? undefined : `${controlId}-description`;
 
   return (
-    <label
-      htmlFor={controlId}
-      onClickCapture={(event) => {
-        if (
-          event.shiftKey ||
-          event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
-      {...mergeStyleProps(props(styles.field, xstyle), className, style)}
+    <Field.Root
+      {...mergeStyleProps(props(text.base, styles.field, xstyle), className, style)}
+      render={
+        <label
+          htmlFor={controlId}
+          onClickCapture={(event) => {
+            const { target, currentTarget } = event;
+
+            if (
+              target instanceof Element &&
+              (target === currentTarget.control || target.closest('[role="checkbox"]'))
+            )
+              return;
+
+            if (event.shiftKey || selectionWithin(currentTarget)) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          }}
+        />
+      }
     >
-      <Checkbox
-        {...rest}
-        id={controlId}
-        aria-labelledby={labelId}
-        aria-describedby={
-          [rest["aria-describedby"], descriptionId].filter(Boolean).join(" ") || undefined
-        }
-      />
+      <Checkbox {...rest} id={controlId} aria-labelledby={labelId} />
       <span {...props(styles.copy)}>
         <span id={labelId}>{label}</span>
         {description !== undefined && (
-          <span id={descriptionId} {...props(styles.description)}>
+          <Field.Description render={<span />} {...props(styles.description)}>
             {description}
-          </span>
+          </Field.Description>
         )}
       </span>
-    </label>
+    </Field.Root>
   );
 }

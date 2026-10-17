@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/anthropic-messages.ts";
@@ -124,7 +124,6 @@ describe("Anthropic strict tool schemas", () => {
     });
   });
 
-  // https://github.com/earendil-works/pi/issues/9953
   it("sends prefer tools non-strict when they use keywords Anthropic strict mode rejects", async () => {
     const unsupportedParameters: Tool["parameters"][] = [
       Type.Object({ timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 300000 })) }),

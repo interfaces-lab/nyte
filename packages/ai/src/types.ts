@@ -1,12 +1,9 @@
 /**
  * Request option and adapter contract types for @nyte-ai/ai. The neutral message,
  * model, and tool types live in @nyte-ai/schema and are re-exported here so
- * callers that follow pi's layout can import everything from one place; this
+ * callers can import everything from one place; this
  * file adds only what a provider request needs on top of them: transport and
- * auth options, the stream function contract, and the per-API option map.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/types.ts
- * Synced with pi 7ebf9087e.
+ * auth options, and the stream function contract.
  */
 import type {
   Api,
@@ -15,13 +12,7 @@ import type {
   Model,
   ThinkingLevel,
   TranscriptContext,
-} from "@nyte-ai/schema";
-import type { TelemetryContext } from "@nyte-ai/telemetry";
-import type { AnthropicOptions } from "./api/anthropic-messages.ts";
-import type { GoogleOptions } from "./api/google-generative-ai.ts";
-import type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
-import type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
-import type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
+} from "@nyte-ai/schema/model";
 import type { AssistantMessageEventStream } from "./utils/event-stream.ts";
 
 export type { AssistantMessageEventStream } from "./utils/event-stream.ts";
@@ -76,7 +67,7 @@ export type {
   TranscriptContext,
   Usage,
   UserMessage,
-} from "@nyte-ai/schema";
+} from "@nyte-ai/schema/model";
 
 export type ToolChoice = "auto" | "none";
 
@@ -113,6 +104,8 @@ export interface ProviderResponse {
 export interface AccountLimitWindow {
   /** Stable provider-owned bucket id, for example `five_hour` or `seven_day`. */
   id: string;
+  /** Display name, for example `5-hour`, `Weekly`, or `Opus weekly`. */
+  label: string;
   usedPercent: number;
   /** Unix timestamp in milliseconds. */
   resetsAt?: number;
@@ -128,11 +121,34 @@ export interface AccountLimits {
   observedAt: number;
 }
 
+/** Account windows from a cached refresh, retaining the last reading on failure. */
+export type AccountLimitsResult =
+  | {
+      readonly kind: "ready";
+      readonly limits: AccountLimits;
+      readonly stale: boolean;
+      readonly error: string | null;
+    }
+  | {
+      readonly kind: "unavailable";
+      readonly reason: "unsupported" | "unconfigured" | "failed";
+      readonly message: string;
+    };
+
+/** Account endpoint metadata, independent of a provider's model catalog. */
+export type AccountLimitsTarget = Pick<Model<Api>, "provider" | "baseUrl" | "headers">;
+
+/** Auth and transport for a provider's non-generating account usage request. */
+export type AccountLimitsFetchOptions = Pick<
+  ProviderRequestOptions,
+  "apiKey" | "headers" | "fetch" | "signal" | "timeoutMs"
+>;
+
 /** Authentication, HTTP transport, and lifecycle callbacks shared by provider requests. */
 export interface ProviderRequestOptions<TModel = Model<Api>> {
   signal?: AbortSignal;
-  /** Explicit parent context for telemetry produced by this logical request. */
-  telemetryContext?: TelemetryContext;
+  /** Request the model's advertised fast inference mode; each API maps it to its own field. */
+  fast?: boolean;
   apiKey?: string;
   /**
    * Optional fetch implementation for provider HTTP requests.
@@ -146,15 +162,8 @@ export interface ProviderRequestOptions<TModel = Model<Api>> {
    * proxy variables.
    */
   env?: ProviderEnv;
-  /**
-   * Optional callback for inspecting or replacing provider payloads before sending.
-   * Return undefined to keep the payload unchanged.
-   */
-  onPayload?: (
-    payload: unknown,
-    model: TModel,
-    // oxlint-disable-next-line no-redundant-type-constituents -- pi's signature: the union documents that undefined means keep the payload, whose shape is the provider's own request body
-  ) => unknown | undefined | Promise<unknown | undefined>;
+  /** Inspects the provider request body just before it is sent. */
+  onPayload?: (payload: unknown, model: TModel) => void | Promise<void>;
   /**
    * Optional callback invoked after an HTTP response is received.
    */
@@ -246,26 +255,6 @@ export interface DeferredFetchOptions extends ProviderRequestOptions<Model<Api>>
 export type DeferredCancelOptions = ProviderRequestOptions<Model<Api>>;
 
 /**
- * Maps known APIs to their full provider-specific stream option types.
- * Type-only imports from API implementation modules are erased at emit, so
- * this is tree-shake safe.
- */
-export interface ApiOptionsMap {
-  "anthropic-messages": AnthropicOptions;
-  "google-generative-ai": GoogleOptions;
-  "openai-completions": OpenAICompletionsOptions;
-  "openai-responses": OpenAIResponsesOptions;
-  "openai-codex-responses": OpenAICodexResponsesOptions;
-}
-
-/**
- * Full stream options for an API. Known APIs resolve to their concrete option
- * type; custom API strings fall back to the generic shape.
- */
-export type ApiStreamOptions<TApi extends Api> = StreamOptions &
-  (TApi extends keyof ApiOptionsMap ? ApiOptionsMap[TApi] : Record<string, unknown>);
-
-/**
  * The uniform stream contract of an API implementation module: every module
  * under `src/api/` exports `stream` and `streamSimple`; capable modules may also
  * export deferred-response methods. Lazy wrappers (`lazyApi()`) and provider
@@ -301,24 +290,24 @@ export interface SimpleStreamOptions extends StreamOptions {
   /** Provider-neutral tool selection for simple requests. Default: "auto". */
   toolChoice?: ToolChoice;
   reasoning?: ThinkingLevel;
-  /** Request the selected model's advertised fast inference mode. */
-  fast?: boolean;
   /** Ask a capable provider to return a durable handle and continue the request asynchronously. */
   deferred?: boolean | { window?: "15m" | "1h" | "24h" };
   /** Custom token budgets for thinking levels (token-based providers only) */
   thinkingBudgets?: ThinkingBudgets;
 }
 
-// Generic StreamFunction with typed options.
-//
-// Contract:
-// - Receives a normalized transcript: the system prompt and tools live in the
-//   leading system message, never on the context itself.
-// - Must return an AssistantMessageEventStream.
-// - Once invoked, request/model/runtime failures should be encoded in the
-//   returned stream, not thrown.
-// - Error termination must produce an AssistantMessage with stopReason
-//   "error" or "aborted" and errorMessage, emitted via the stream protocol.
+/**
+ * Generic StreamFunction with typed options.
+ *
+ * Contract:
+ * - Receives a normalized transcript: the system prompt and tools live in the
+ *   leading system message, never on the context itself.
+ * - Must return an AssistantMessageEventStream.
+ * - Once invoked, request/model/runtime failures should be encoded in the
+ *   returned stream, not thrown.
+ * - Error termination must produce an AssistantMessage with stopReason
+ *   "error" or "aborted" and errorMessage, emitted via the stream protocol.
+ */
 export type StreamFunction<
   TApi extends Api = Api,
   TOptions extends StreamOptions = StreamOptions,

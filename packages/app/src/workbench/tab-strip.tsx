@@ -2,6 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
+import type { SessionId } from "@nyte-ai/sdk";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
@@ -19,18 +20,20 @@ import {
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
-import { nyte } from "../nyte.ts";
-import { button, glyph, radius, target } from "@nyte-ai/ui/schema.stylex";
+import { useSession } from "../queries.ts";
+import { button, glyph, media, radius, space, target } from "@nyte-ai/ui/styles/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
   workbenchController,
   workbenchTabAvailable,
   workbenchKindLabel,
+  workbenchShowsChat,
   workbenchTabLabel,
   workbenchTabs,
+  WORKBENCH_CHAT_TAB,
 } from "./controller.ts";
 import type {
   WorkbenchScope,
@@ -39,8 +42,8 @@ import type {
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "./controller.ts";
-import { copyTerminal, clearTerminal } from "./terminal-runtime.ts";
-import { isJobTerminal, terminalActions, useTerminalRuntime } from "./terminal-store.ts";
+import { readDeferred } from "../deferred.tsx";
+import { terminalActions, useTerminalRuntime } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 
@@ -51,31 +54,31 @@ const styles = create({
   root: {
     display: "flex",
     alignItems: "center",
-    gap: 1,
+    gap: space.px,
     flex: 1,
     minWidth: 0,
     WebkitAppRegion: "drag",
   },
   control: { WebkitAppRegion: "no-drag" },
   tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
-  list: { display: "flex", alignItems: "center", gap: 1, minWidth: 0 },
+  list: { display: "flex", alignItems: "center", gap: space.px, minWidth: 0 },
   slot: { display: "flex", flexShrink: 0 },
   item: {
     "--_tab-close-opacity": {
       default: "0",
-      ":hover": "1",
+      ":hover": { [media.hover]: "1" },
       ":has(:focus-visible)": "1",
       "@media (hover: none)": "1",
     },
     "--_tab-close-pointer-events": {
       default: "none",
-      ":hover": "auto",
+      ":hover": { [media.hover]: "auto" },
       ":has(:focus-visible)": "auto",
       "@media (hover: none)": "auto",
     },
     "--_tab-content-mask": {
       default: "none",
-      ":hover": TAB_CONTENT_FADE,
+      ":hover": { [media.hover]: TAB_CONTENT_FADE },
       ":has(:focus-visible)": TAB_CONTENT_FADE,
       "@media (hover: none)": TAB_CONTENT_FADE,
     },
@@ -88,30 +91,36 @@ const styles = create({
     minHeight: target.min,
     WebkitAppRegion: "no-drag",
     borderRadius: radius.control,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { [media.hover]: role.bgHover },
+    },
     color: role.contentInteractiveSecondary,
   },
   active: { backgroundColor: role.bgInteractiveSecondaryTranslucent, color: role.contentPrimary },
+  chatItem: { "--_tab-content-mask": "none" },
   tab: {
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: "center",
     flexShrink: 1,
     minWidth: 0,
     height: "100%",
-    paddingInlineStart: 4,
-    paddingInlineEnd: 6,
-    borderStyle: "none",
+    paddingBlock: space.s0_5,
+    paddingInlineStart: space.s1,
+    paddingInlineEnd: space.s1_5,
     borderRadius: radius.control,
-    backgroundColor: "transparent",
-    color: "inherit",
+    fontFamily: type.fontSans,
     fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
     cursor: appearance.cursorInteractive,
     whiteSpace: "nowrap",
   },
   content: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     minWidth: 0,
     WebkitMaskImage: "var(--_tab-content-mask)",
     maskImage: "var(--_tab-content-mask)",
@@ -119,7 +128,7 @@ const styles = create({
   agentTerminal: {
     color: {
       default: role.contentSecondary,
-      ":hover": role.contentPrimary,
+      ":hover": { [media.hover]: role.contentPrimary },
       ":focus-within": role.contentPrimary,
     },
   },
@@ -143,7 +152,7 @@ const styles = create({
   close: {
     position: "absolute",
     insetBlock: 0,
-    insetInlineEnd: 4,
+    insetInlineEnd: space.s1,
     zIndex: 1,
     display: "flex",
     alignItems: "center",
@@ -174,8 +183,6 @@ type TerminalCloseState =
   | { readonly kind: "closing"; readonly tab: WorkbenchTab; readonly terminal: TerminalTab };
 
 function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void {
-  if (nyte.host.terminal === undefined) return;
-
   const id = workbenchController.actions.openTab({
     view,
     tab: { kind: "terminal", owner: { kind: "user" } },
@@ -185,18 +192,26 @@ function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void
   void terminalActions.create({ id, workspacePath });
 }
 
+function ChatTabLabel({ sessionId }: { readonly sessionId: SessionId }): ReactElement {
+  const session = useSession(sessionId);
+
+  return <>{session.data?.name ?? "New chat"}</>;
+}
+
 export function WorkbenchTabStrip({
   viewKey,
   view,
   scope,
   capabilities,
   workspacePath,
+  sessionId,
 }: {
   readonly viewKey: WorkbenchViewKey;
   readonly view: WorkbenchViewState;
   readonly scope: WorkbenchScope;
   readonly capabilities: ClientCapabilities;
   readonly workspacePath: string | null;
+  readonly sessionId?: SessionId;
 }): ReactElement {
   const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);
@@ -207,7 +222,11 @@ export function WorkbenchTabStrip({
   const fileCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
   const tabs = view.tabs.filter((tab) => workbenchTabAvailable(scope, tab.kind, capabilities));
-  const activeValue = activeWorkbenchTab(view, scope, capabilities)?.id ?? null;
+  const chatShowing = workbenchShowsChat(view.layout);
+
+  const activeValue = chatShowing
+    ? WORKBENCH_CHAT_TAB
+    : (activeWorkbenchTab(view, scope, capabilities)?.id ?? null);
 
   const focusSelectedTab = (): void => {
     requestAnimationFrame(() => {
@@ -232,19 +251,15 @@ export function WorkbenchTabStrip({
   };
 
   const requestTerminalClose = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
-    if (isJobTerminal(terminal)) {
+    if (terminal.kind === "job") {
       await closeTerminal(tab, terminal);
 
       return;
     }
 
-    const terminalBridge = nyte.host.terminal;
-
-    if (terminalBridge === undefined) return;
-
     const idle =
       terminal.state.kind === "running"
-        ? await terminalBridge.idle({ id: terminal.id }).catch(() => false)
+        ? await terminalActions.idle(terminal.id).catch(() => false)
         : true;
 
     if (idle) await closeTerminal(tab, terminal);
@@ -281,15 +296,45 @@ export function WorkbenchTabStrip({
         ref={listRef}
         value={activeValue}
         xstyle={styles.tabs}
-        onValueChange={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
+        onValueChange={(id) =>
+          id === WORKBENCH_CHAT_TAB
+            ? workbenchController.actions.showChat({ view: viewKey })
+            : workbenchController.actions.activateTab({ view: viewKey, id })
+        }
       >
         <Tabs.List aria-label="Workbench tabs" xstyle={styles.list}>
+          {view.layout.kind === "maximized" && (
+            <div
+              role="presentation"
+              {...props(styles.item, styles.chatItem, chatShowing && styles.active)}
+            >
+              <Tabs.Tab
+                variant="bare"
+                id={`${viewKey}-tab-${WORKBENCH_CHAT_TAB}`}
+                value={WORKBENCH_CHAT_TAB}
+                aria-controls={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
+                xstyle={styles.tab}
+                onFocus={(event) =>
+                  event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
+                }
+              >
+                <span {...props(styles.content)}>
+                  <span {...props(styles.tabIcon)}>
+                    <Icon name="imac" size={16} />
+                  </span>
+                  <span {...props(styles.label)}>
+                    {sessionId === undefined ? "New chat" : <ChatTabLabel sessionId={sessionId} />}
+                  </span>
+                </span>
+              </Tabs.Tab>
+            </div>
+          )}
           <SortableList
             ids={tabs.map((tab) => tab.id)}
             listRef={listRef}
             onPick={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
             onReorder={(order, id) => {
-              const after = order[order.indexOf(id) + 1];
+              const after = order[order.findIndex((entry) => entry === id) + 1];
 
               workbenchController.actions.moveTab({
                 view: viewKey,
@@ -308,7 +353,7 @@ export function WorkbenchTabStrip({
               const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
               const label = terminal?.title ?? workbenchTabLabel(tab);
 
-              const agentTerminal = terminal !== undefined && isJobTerminal(terminal);
+              const agentTerminal = terminal !== undefined && terminal.kind === "job";
               const running = agentTerminal && terminal.state.kind === "running";
 
               const trigger = (
@@ -328,6 +373,7 @@ export function WorkbenchTabStrip({
                   }}
                 >
                   <Tabs.Tab
+                    variant="bare"
                     id={`${viewKey}-tab-${tab.id}`}
                     value={tab.id}
                     title={
@@ -420,18 +466,28 @@ export function WorkbenchTabStrip({
                     <ContextMenu>
                       <ContextMenuTrigger render={trigger} />
                       <ContextMenuContent aria-label={`${label} actions`}>
-                        {capabilities.terminal && (
-                          <ContextMenuItem
-                            icon="console"
-                            onClick={() => newTerminal(viewKey, workspacePath)}
-                          >
-                            New Terminal
-                          </ContextMenuItem>
-                        )}
-                        <ContextMenuItem icon="copy" onClick={() => copyTerminal(terminal.id)}>
+                        <ContextMenuItem
+                          icon="console"
+                          onClick={() => newTerminal(viewKey, workspacePath)}
+                        >
+                          New Terminal
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          icon="copy"
+                          onClick={() => readDeferred("workbench")?.copyTerminal(terminal.id)}
+                        >
                           Copy Selection
                         </ContextMenuItem>
-                        <ContextMenuItem icon="refresh" onClick={() => clearTerminal(terminal.id)}>
+                        <ContextMenuItem
+                          icon="paperclip"
+                          onClick={() => readDeferred("workbench")?.addTerminalToChat(terminal.id)}
+                        >
+                          Add Selection to Chat
+                        </ContextMenuItem>
+                        <ContextMenuItem
+                          icon="refresh"
+                          onClick={() => readDeferred("workbench")?.clearTerminal(terminal.id)}
+                        >
                           Clear Terminal
                         </ContextMenuItem>
                         <ContextMenuSeparator />

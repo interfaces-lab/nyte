@@ -1,8 +1,14 @@
 import { PROOF_HEADER } from "@nyte-ai/connect";
-import { relayRefusal } from "@nyte-ai/connect/relay";
+import {
+  RELAY_REQUEST_HEADER_NAMES,
+  RELAY_RESPONSE_HEADER_NAMES,
+  relayRefusal,
+} from "@nyte-ai/connect/relay";
 import { refusal } from "./http.ts";
 
-const REQUEST_HEADERS = ["authorization", "content-type"];
+const REQUEST_HEADERS: readonly string[] = ["authorization", "content-type"];
+
+const EXPOSED_HEADERS = ["retry-after", "allow"];
 
 export function browserResponse(input: {
   readonly request: Request;
@@ -26,14 +32,15 @@ export function browserResponse(input: {
     .filter((name) => name.length > 0);
 
   if (method === null || !methods.includes(method)) return denied();
+  const allowed: readonly string[] = publicRelay ? RELAY_REQUEST_HEADER_NAMES : REQUEST_HEADERS;
 
-  if (headers.some((name) => !REQUEST_HEADERS.includes(name))) return denied();
+  if (headers.some((name) => !allowed.includes(name))) return denied();
 
   return new Response(null, {
     status: 204,
     headers: {
       "access-control-allow-methods": methods.join(", "),
-      "access-control-allow-headers": REQUEST_HEADERS.join(", "),
+      "access-control-allow-headers": allowed.join(", "),
       "access-control-max-age": "600",
     },
   });
@@ -44,8 +51,9 @@ export function withBrowserCors(input: {
   readonly request: Request;
   readonly origins: readonly string[];
   readonly methods: readonly string[];
+  readonly publicRelay: boolean;
 }): Response {
-  const { response, request, origins, methods } = input;
+  const { response, request, origins, methods, publicRelay } = input;
   const origin = request.headers.get("origin");
 
   if (
@@ -59,7 +67,12 @@ export function withBrowserCors(input: {
     return response;
   const headers = new Headers(response.headers);
   headers.set("access-control-allow-origin", origin);
-  headers.set("access-control-expose-headers", "retry-after, allow");
+  headers.set(
+    "access-control-expose-headers",
+    (publicRelay ? [...EXPOSED_HEADERS, ...RELAY_RESPONSE_HEADER_NAMES] : EXPOSED_HEADERS).join(
+      ", ",
+    ),
+  );
   headers.append("vary", "Origin");
 
   return new Response(response.body, { status: response.status, headers });

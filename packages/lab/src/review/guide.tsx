@@ -17,25 +17,28 @@ import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import { PierreWorkerProvider } from "@nyte-ai/app/pierre-worker-provider.tsx";
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { glyph, radius, row } from "@nyte-ai/ui/schema.stylex";
+import { glyph, media, radius, row } from "@nyte-ai/ui/styles/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   AddToChat,
   CodeFileHeader,
   Counts,
   pierreHost,
-  referenceOf,
+  formatReference,
   usePierreOptions,
   type ReviewedState,
   type ReviewFile,
 } from "./code";
 import { workspace } from "../shell/host-stub";
-import { useHeadTurns, type ConversationTurn } from "./api";
+import { useHeadTurns } from "./api";
 import { plural, sectionFiles } from "./files";
 import { linkProse, type LineTarget, type ProseSegment } from "./prose-links";
 import type { Brief, Guide, ReviewDetail } from "./wire";
@@ -46,7 +49,7 @@ const OPEN_FILES = 3;
 /** Past this many changed lines a file starts folded; its header still counts them. */
 const LONG_DIFF = 240;
 
-const NO_LIVE_TOOLS = new Map();
+const NO_TURNS: readonly ConversationTurn[] = [];
 
 export interface GuideFiles {
   readonly files: readonly ReviewFile[];
@@ -71,15 +74,11 @@ export interface GuideNavigation {
 export const sectionNumber = (index: number): string => String(index + 1).padStart(2, "0");
 
 function lastStep(turns: readonly ConversationTurn[]): string | undefined {
-  const part = turns
-    .flatMap((turn) => turn.parts)
-    .findLast((candidate) => candidate.kind === "tool");
+  const step = turns.flatMap((turn) => turn.messages).findLast(showsTool)?.state.class;
 
-  if (part?.kind !== "tool") return undefined;
+  if (step?.kind === "read") return `Reading ${step.path}`;
 
-  if (part.class.kind === "file_read") return `Reading ${part.class.path}`;
-
-  return part.class.kind === "custom" ? part.class.label : undefined;
+  return step?.kind === "custom" ? step.label : undefined;
 }
 
 /** Writing the guide: the page's one way to spend on it, and whether that request is in flight. */
@@ -88,7 +87,11 @@ export interface GuideWriting {
   readonly requesting: boolean;
 }
 
-export function StatusLine({
+/**
+ * The line above the guide: progress, a failure, or, with no guide yet, the
+ * page's one action under the words that explain it, where the eye already is.
+ */
+function StatusLine({
   review,
   current,
   shown,
@@ -103,6 +106,7 @@ export function StatusLine({
 }): ReactElement {
   const writing = current?.status === "running" || (current === undefined && request.requesting);
   const turns = useHeadTurns(review.sessionId, writing ? current : undefined, version);
+  const density = useSetting(preferences.toolCalls);
   const step = lastStep(turns);
 
   const behind =
@@ -137,7 +141,6 @@ export function StatusLine({
       </div>
     );
 
-  // No guide yet: the page's one action, under the words that explain it, where the eye already is.
   if (current === undefined && !writing && shown === undefined)
     return (
       <div {...props(styles.empty)}>
@@ -186,11 +189,16 @@ export function StatusLine({
       </div>
       {shown === undefined &&
         turns.map((turn) => (
-          <div key={turn.id} {...props(styles.steps)}>
+          <div key={turn.info.id} {...props(styles.steps)}>
             <TurnView
-              turn={{ ...turn, parts: turn.parts.filter((part) => part.kind !== "user") }}
-              liveTools={NO_LIVE_TOOLS}
+              turn={{
+                ...turn,
+                messages: turn.messages.filter((message) => message.kind !== "user"),
+              }}
+              continuations={NO_TURNS}
+              density={density}
               cwd={workspace.path}
+              changes={[]}
               onOpenChanges={() => {}}
               running
             />
@@ -199,13 +207,6 @@ export function StatusLine({
     </div>
   );
 }
-
-const startsFolded = (file: ReviewFile, open: boolean, reviewed: boolean): boolean =>
-  !open ||
-  reviewed ||
-  file.metadata === undefined ||
-  file.metadata.type === "deleted" ||
-  file.added + file.removed > LONG_DIFF;
 
 /** Pierre draws each file in a shadow root; its rows carry the line number and the row type. */
 function lineRow(card: HTMLElement | undefined, target: LineTarget): Element | undefined {
@@ -279,7 +280,7 @@ function FileCard({
                       ? null
                       : { start: line.lineNumber, end: line.lineNumber, side: line.side });
 
-                  if (range !== null) input.onReference(referenceOf(file, range));
+                  if (range !== null) input.onReference(formatReference(file, range));
                 }}
               />
             )}
@@ -345,6 +346,13 @@ function Segment({
   );
 }
 
+/**
+ * The guide beside its files. Only the guide scrolls: a row's own
+ * scrollIntoView would also slide Pierre's code sideways under its sticky
+ * gutter. A line in a folded or still-drawing file waits for Pierre's next
+ * draw to scroll to it. The section in view is the last band whose top has
+ * passed the upper third.
+ */
 export function ReviewGuide({
   review,
   current,
@@ -387,7 +395,11 @@ export function ReviewGuide({
     sections.flatMap(({ files }) =>
       files.map((file, position): [string, boolean] => [
         file.path,
-        startsFolded(file, position < OPEN_FILES, input.reviewed(file.path) === "reviewed"),
+        position >= OPEN_FILES ||
+          input.reviewed(file.path) === "reviewed" ||
+          file.metadata === undefined ||
+          file.metadata.type === "deleted" ||
+          file.added + file.removed > LONG_DIFF,
       ]),
     ),
   );
@@ -402,7 +414,6 @@ export function ReviewGuide({
     return true;
   };
 
-  // Only the guide scrolls: a row's own scrollIntoView would also slide Pierre's code sideways under its sticky gutter.
   const center = (row: Element): void => {
     const box = scroller.current?.getBoundingClientRect();
 
@@ -429,7 +440,6 @@ export function ReviewGuide({
       return;
     }
 
-    // Folded or still drawing: Pierre's next draw scrolls to it.
     waiting.current = target;
     cards.current.get(target.path)?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
@@ -447,7 +457,6 @@ export function ReviewGuide({
     center(found);
   };
 
-  /** The section in view is the last band whose top has passed the upper third. */
   const follow = (scroller: HTMLElement): void => {
     const box = scroller.getBoundingClientRect();
     const line = box.top + box.height / 3;
@@ -709,7 +718,7 @@ const styles = create({
     borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
       ":focus-visible": role.bgHover,
     },
     color: "inherit",
@@ -746,7 +755,7 @@ const styles = create({
     borderRadius: radius.control,
     backgroundColor: {
       default: role.bgMutedTranslucent,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":hover": { [media.hover]: role.bgHover },
     },
     color: role.contentPrimary,
     font: "inherit",

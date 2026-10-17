@@ -52,7 +52,7 @@ interface Exchange {
   reset: boolean;
 }
 
-function textOf(data: RawData): string {
+function decodeFrame(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
 
   return Buffer.isBuffer(data) ? data.toString("utf8") : Buffer.from(data).toString("utf8");
@@ -67,7 +67,7 @@ function waitOn(exchange: Exchange): Promise<void> {
   return new Promise((resolve) => exchange.waiters.add(resolve));
 }
 
-export interface RelayServerOptions {
+interface RelayServerOptions {
   /** The broker origin the desktop was built with. */
   readonly origin: string;
   /** Undefined accepts the socket; a number closes it with that code. */
@@ -224,10 +224,10 @@ export class RelayServer {
     let state: "pending" | "verifying" | "ready" = "pending";
 
     socket.on("message", (data, isBinary) => {
-      const frame = isBinary ? undefined : parseDesktopFrame(textOf(data));
+      const frame = isBinary ? undefined : parseDesktopFrame(decodeFrame(data));
 
       if (frame === undefined) {
-        this.violation(socket, isBinary ? "binary" : textOf(data).slice(0, 200));
+        this.violation(socket, isBinary ? "binary" : decodeFrame(data).slice(0, 200));
 
         return;
       }
@@ -237,8 +237,9 @@ export class RelayServer {
         void this.options.authenticate({ environmentId, proof: frame.proof }).then((code) => {
           this.auths += 1;
 
-          // The desktop gave up on this socket while it was being checked.
-          if (socket.readyState !== socket.OPEN) return;
+          const desktopGaveUp = socket.readyState !== socket.OPEN;
+
+          if (desktopGaveUp) return;
 
           if (code !== undefined) {
             socket.close(code);

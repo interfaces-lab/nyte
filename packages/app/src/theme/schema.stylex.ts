@@ -18,6 +18,12 @@ export const shell = defineConsts({
 
 export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
+  /**
+   * Running prose (paragraphs, lists, headings, quotes) wraps near 72
+   * characters a line; tables, code, and canvases keep the full `measure`.
+   * In `ch` so it follows the font size; Inter's `0` is wider than its average
+   * letter, so 54ch is what lands a line at about 72 characters.
+   */
   proseMeasure: "var(--nyte-prose-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
   gutter: "var(--nyte-conversation-gutter)",
@@ -63,12 +69,11 @@ export const sidebar = defineConsts({
 export const settings = defineConsts({
   contentWidth: "var(--nyte-settings-content-width)",
   contentGutter: "var(--nyte-settings-content-gutter)",
-  inventoryRowHeight: "var(--nyte-settings-inventory-row-height)",
+  pagePaddingBlock: "var(--nyte-settings-page-padding-block)",
   sectionGap: "var(--nyte-settings-section-gap)",
   cardGap: "var(--nyte-settings-card-gap)",
   rowPadding: "var(--nyte-settings-row-padding)",
   rowPaddingInline: "var(--nyte-settings-row-padding-inline)",
-  controlHeight: "var(--nyte-settings-control-height)",
   controlMaxWidth: "var(--nyte-settings-control-max-width)",
   pageTitleSize: "var(--nyte-settings-page-title-size)",
   pageTitleLineHeight: "var(--nyte-settings-page-title-line-height)",
@@ -80,7 +85,6 @@ export const workbench = defineConsts({
   activeWidth: "var(--nyte-active-workbench-width)",
   railWidth: "var(--nyte-workbench-rail-width)",
   railGap: "var(--nyte-workbench-rail-gap)",
-  rowHeight: "var(--nyte-workbench-row-height)",
   rowGap: "var(--nyte-workbench-row-gap)",
   rowPaddingInline: "var(--nyte-workbench-row-padding-inline)",
   headingHeight: "var(--nyte-workbench-heading-height)",
@@ -88,6 +92,7 @@ export const workbench = defineConsts({
   headerHeight: "var(--nyte-workbench-header-height)",
   headerPaddingBlock: "var(--nyte-workbench-header-padding-block)",
   iconRailWidth: "var(--nyte-workbench-icon-rail-width)",
+  sashWidth: "var(--nyte-workbench-sash-width)",
   fileListWidth: "var(--nyte-workbench-file-list-width)",
   launcherCardSize: "var(--nyte-workbench-launcher-card-size)",
 });

@@ -1,0 +1,13 @@
+diff --git a/dist/components/CodeView.js b/dist/components/CodeView.js
+index f0d18c5e841aee507113f936a346e1606764c827..dd68c333213554596e0956a67d416f3b57532813 100644
+--- a/dist/components/CodeView.js
++++ b/dist/components/CodeView.js
+@@ -1831,7 +1831,7 @@ var CodeView = class CodeView {
+ 			this.heightDirty = true;
+ 			shouldRender = true;
+ 		}
+-		if (shouldRender) this.render(true);
++		if (shouldRender) this.render();
+ 	};
+ 	/**
+ 	* Figure out scrollTop accounting for sticky header if enabled and

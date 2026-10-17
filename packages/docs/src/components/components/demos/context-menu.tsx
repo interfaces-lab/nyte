@@ -1,5 +1,4 @@
-"use client";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 
 import {
   ContextMenu,
@@ -8,7 +7,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@nyte-ai/ui/context-menu";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 
 const styles = create({

@@ -11,12 +11,13 @@
  * device, returned once, and stored only as a digest. An unused token expires;
  * the first request that presents it claims it.
  */
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
-import { randomToken } from "@nyte-ai/serve";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { AuthDecision } from "@nyte-ai/server";
+import { bearerToken, tokenDigest } from "@nyte-ai/connect/host";
+import { asId } from "@nyte-ai/schema";
+import type { Authority, ListenOptions, PrincipalId } from "@nyte-ai/sdk";
 import type {
   CloudflareTunnelSettings,
   CloudflareTunnelView,
@@ -40,6 +41,12 @@ const PENDING_LIMIT = 5;
 
 const PAIRING_WINDOW_MS = 10 * 60 * 1_000;
 
+const DEVICE_AUTHORITY: ReadonlySet<Authority> = new Set(["participant", "owner"]);
+
+type AuthDecision = Awaited<
+  ReturnType<Extract<ListenOptions["auth"], { readonly kind: "custom" }>["authorize"]>
+>;
+
 const HOSTNAME =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/u;
 
@@ -59,7 +66,7 @@ function storeFailed(): ExpectedHostError {
   });
 }
 
-export interface CloudflareTunnelOptions {
+interface CloudflareTunnelOptions {
   /** Holds the settings file and cloudflared's private home. */
   readonly home: string;
   /** The cloudflared executable. Absent, the usual install paths are searched. */
@@ -78,22 +85,6 @@ interface Exposed {
   readonly changed: () => void;
 }
 
-function digest(token: string): Buffer {
-  return createHash("sha256").update(token).digest();
-}
-
-/** `Authorization: Bearer <token>`, read the way `@nyte-ai/server` reads its own token. */
-function bearer(request: Request): string | undefined {
-  const header = request.headers.get("authorization");
-
-  if (header === null) return undefined;
-  const space = header.indexOf(" ");
-
-  if (space === -1 || header.slice(0, space).toLowerCase() !== "bearer") return undefined;
-
-  return header.slice(space + 1).trim();
-}
-
 /** Padded standard base64 that re-encodes to itself, as Go's `StdEncoding` reads it. */
 function standardBase64(text: string): Buffer | undefined {
   if (text === "" || text.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(text))
@@ -109,7 +100,7 @@ function standardBase64(text: string): Buffer | undefined {
  * 2026.8.3 refuses anything else (`ParseToken`), so it is checked before
  * saving rather than discovered as a connector that never starts.
  */
-function isTunnelToken(token: string): boolean {
+function cloudflaredAccepts(token: string): boolean {
   const decoded = standardBase64(token);
 
   if (decoded === undefined) return false;
@@ -126,11 +117,25 @@ function isTunnelToken(token: string): boolean {
 }
 
 function invalid(message: string): ExpectedHostError {
-  return new ExpectedHostError({ code: "invalid_input", message, issues: [] });
+  return new ExpectedHostError({ code: "invalid", message });
 }
 
-function isLive(device: StoredDevice, now: number): boolean {
+/** Paired, or pending with time left to claim it. */
+function unexpired(device: StoredDevice, now: number): boolean {
   return device.state.kind === "paired" || device.state.expiresAt > now;
+}
+
+/** The device whose digest is `wanted`, compared against every digest so the time taken does not say which one matched. */
+function findDevice(devices: readonly StoredDevice[], wanted: Buffer): StoredDevice | undefined {
+  let match: StoredDevice | undefined;
+
+  for (const device of devices) {
+    const stored = Buffer.from(device.digest, "base64url");
+
+    if (stored.length === wanted.length && timingSafeEqual(stored, wanted)) match = device;
+  }
+
+  return match;
 }
 
 function deviceView(device: StoredDevice): RemoteDevice {
@@ -165,10 +170,11 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
       port: loaded.file.port,
       cloudflaredInstalled,
       connection: this.exposed?.connector.status() ?? { kind: "stopped" },
-      devices: loaded.file.devices.filter((device) => isLive(device, now)).map(deviceView),
+      devices: loaded.file.devices.filter((device) => unexpired(device, now)).map(deviceView),
     };
   }
 
+  /** Save the tunnel. A new hostname drops every device, since each saved the old one and could not reach the new. */
   async configure(settings: CloudflareTunnelSettings): Promise<void> {
     this.refuseWhileExposed();
     const hostname = settings.hostname.trim().toLowerCase();
@@ -180,7 +186,7 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     if (!Number.isInteger(settings.port) || settings.port < 1024 || settings.port > 65_535)
       throw invalid("Choose a port from 1024 to 65535.");
 
-    if (!isTunnelToken(tunnelToken))
+    if (!cloudflaredAccepts(tunnelToken))
       throw invalid(
         "That isn't a tunnel token. Copy it again from the tunnel's page in Cloudflare.",
       );
@@ -190,7 +196,6 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
         hostname,
         port: settings.port,
         tunnelToken,
-        // Devices saved the old hostname, so none of them could reach the new one.
         devices: file?.hostname === hostname ? file.devices : [],
       },
       result: undefined,
@@ -202,20 +207,23 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     await this.change(() => ({ file: undefined, result: undefined }));
   }
 
+  /**
+   * Mint a device token, only while the tunnel is connected: a code shown while it is down could not
+   * be used, and would still be a live credential.
+   */
   async pair(input: { readonly name: string }): Promise<RemotePairing> {
     const exposed = this.exposed;
 
     if (exposed === undefined) {
       throw new ExpectedHostError({
-        code: "forbidden",
+        code: "denied",
         message: "Start remote access over Cloudflare before adding a device.",
       });
     }
 
-    // A code shown while the tunnel is down could not be used, and would still be a live credential.
     if (exposed.connector.status().kind !== "connected") {
       throw new ExpectedHostError({
-        code: "forbidden",
+        code: "denied",
         message: "Wait until the tunnel is connected, then add the device.",
       });
     }
@@ -224,21 +232,21 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
 
     if (name === "" || name.length > DEVICE_NAME_LIMIT)
       throw invalid(`Name the device in 1 to ${String(DEVICE_NAME_LIMIT)} characters.`);
-    const token = randomToken();
+    const token = randomBytes(32).toString("base64url");
     const now = Date.now();
     const expiresAt = now + (this.options.pairingWindowMs ?? PAIRING_WINDOW_MS);
 
     const device: StoredDevice = {
       id: randomUUID(),
       name,
-      digest: digest(token).toString("base64url"),
+      digest: tokenDigest(token).toString("base64url"),
       createdAt: now,
       state: { kind: "pending", expiresAt },
     };
 
     const added = await this.change((file) => {
       if (file === undefined || file.hostname !== exposed.hostname) return { file, result: false };
-      const live = file.devices.filter((entry) => isLive(entry, now));
+      const live = file.devices.filter((entry) => unexpired(entry, now));
 
       if (
         live.length >= DEVICE_LIMIT ||
@@ -252,7 +260,7 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
 
     if (!added) {
       throw new ExpectedHostError({
-        code: "forbidden",
+        code: "denied",
         message: `Remove a device first. Up to ${String(DEVICE_LIMIT)} devices can be paired, and ${String(PENDING_LIMIT)} can wait to connect.`,
       });
     }
@@ -272,6 +280,11 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     });
   }
 
+  /**
+   * Claim the exposure. Nothing awaits between the last `refuseWhileExposed` and the claim, and the
+   * exposure stays claimed until its connector is gone, so nothing reconfigures or pairs during
+   * shutdown.
+   */
   async expose(changed: () => void): Promise<RemoteExposure> {
     this.refuseWhileExposed();
     const loaded = await this.store.read();
@@ -280,7 +293,7 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
 
     if (loaded.file === undefined) {
       throw new ExpectedHostError({
-        code: "not_found",
+        code: "unknown",
         message: "Set up the Cloudflare tunnel first.",
       });
     }
@@ -289,7 +302,7 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
 
     if (executable === undefined) {
       throw new ExpectedHostError({
-        code: "not_found",
+        code: "unknown",
         message: "cloudflared isn't installed on this Mac. Install it, then try again.",
       });
     }
@@ -297,7 +310,6 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
     const { hostname, port, tunnelToken } = loaded.file;
     const directory = join(this.options.home, "cloudflared");
     await prepareConnectorDirectory(directory);
-    // Nothing awaits between this check and claiming the exposure below.
     this.refuseWhileExposed();
 
     const connector = new CloudflaredConnector({
@@ -322,7 +334,6 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
       connect: () => {
         if (this.exposed?.exposure === exposure) connector.start();
       },
-      // Exposed until the connector is gone, so nothing reconfigures or pairs during shutdown.
       disconnect: async () => {
         await connector.stop();
 
@@ -337,32 +348,25 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
 
   /**
    * Missing credential: unauthorized. Anything else that is not a live device
-   * token, or any token once the store has failed: forbidden.
+   * token, or any token once the store has failed: forbidden. A pending token's
+   * claim queues behind any earlier revoke, so a revoked token never comes back,
+   * and a claim tells Settings, which shows the device as waiting until then.
    */
   private async authorize(request: Request): Promise<AuthDecision> {
-    const presented = bearer(request);
+    const presented = bearerToken(request);
 
-    if (presented === undefined) return { kind: "deny", reason: "unauthorized" };
+    if (presented === undefined) return { deny: "unauthorized" };
     const loaded = await this.store.read();
 
-    if (loaded.kind === "failed" || loaded.file === undefined)
-      return { kind: "deny", reason: "forbidden" };
-    const wanted = digest(presented);
-    let match: StoredDevice | undefined;
+    if (loaded.kind === "failed" || loaded.file === undefined) return { deny: "forbidden" };
+    const match = findDevice(loaded.file.devices, tokenDigest(presented));
 
-    // Compare against every digest so the time taken does not say which one matched.
-    for (const device of loaded.file.devices) {
-      const stored = Buffer.from(device.digest, "base64url");
-
-      if (stored.length === wanted.length && timingSafeEqual(stored, wanted)) match = device;
-    }
-
-    if (match === undefined) return { kind: "deny", reason: "forbidden" };
-
-    if (match.state.kind === "paired") return { kind: "allow" };
+    if (match === undefined) return { deny: "forbidden" };
     const id = match.id;
+    const principal: PrincipalId = asId(`cloudflare:${id}`);
 
-    // The claim runs after any revoke queued before it, so a revoked token never comes back.
+    if (match.state.kind === "paired") return { principal, authority: DEVICE_AUTHORITY };
+
     const claim = await this.store
       .update<DeviceClaim>((file) => {
         const now = Date.now();
@@ -385,10 +389,9 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
       })
       .catch(() => "refused" as const);
 
-    // Settings shows the device as waiting until it hears this.
     if (claim === "claimed") this.exposed?.changed();
 
-    return claim === "refused" ? { kind: "deny", reason: "forbidden" } : { kind: "allow" };
+    return claim === "refused" ? { deny: "forbidden" } : { principal, authority: DEVICE_AUTHORITY };
   }
 
   private executable(): Promise<string | undefined> {
@@ -400,7 +403,7 @@ export class CloudflareTunnelPlugin implements RemoteAccessPlugin<
   private refuseWhileExposed(): void {
     if (this.exposed === undefined) return;
     throw new ExpectedHostError({
-      code: "forbidden",
+      code: "denied",
       message: "Stop remote access over Cloudflare first.",
     });
   }

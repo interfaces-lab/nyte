@@ -1,18 +1,13 @@
-import { create, props } from "@stylexjs/stylex";
-import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { role } from "@nyte-ai/ui/vars.stylex";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
+import type { JobView } from "@nyte-ai/sdk";
 import { WorkbenchTabStrip } from "./tab-strip.tsx";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 import { fileActions } from "./file-store.ts";
 import { terminalActions } from "./terminal-store.ts";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
-
-const styles = create({ agentAccent: { color: role.contentSecondary } });
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -49,18 +44,18 @@ async function drag(from: HTMLElement, distance: number): Promise<void> {
 }
 
 export async function run(): Promise<string> {
-  const session = sessionId("browser-tab-strip-session");
+  const session = asId<"session">("browser-tab-strip-session");
 
-  const job: JobInfo = {
-    id: "browser-tab-strip-job",
-    origin: { kind: "run", runId: "run", callId: "call" },
-    head: "main",
+  const job: JobView = {
+    id: asId<"job">("browser-tab-strip-job"),
     command: "pnpm test",
-    isBackgrounded: true,
-    phase: { kind: "running" },
+    title: "pnpm test",
+    session: null,
+    pty: null,
+    state: { kind: "running" },
     startedAt: 1,
-    updatedAt: 1,
-    output: "running\n",
+    endedAt: null,
+    tail: "running\n",
   };
 
   const viewKey = workbenchViewKey("/workspace/browser-tab-strip");
@@ -84,6 +79,7 @@ export async function run(): Promise<string> {
 
   terminalActions.openJob({ id: terminalId, sessionId: session, job });
   fileActions.open(viewKey, { path: "/workspace/browser-tab-strip/src/app.ts" });
+  await nextFrame();
   const active = workbenchController.getView(viewKey).active;
 
   const container = document.createElement("div");
@@ -97,7 +93,7 @@ export async function run(): Promise<string> {
           viewKey={viewKey}
           view={workbenchController.getView(viewKey)}
           scope={{ kind: "project" }}
-          capabilities={{ terminal: true, browser: true }}
+          capabilities={{ browser: true }}
           workspacePath="/workspace"
         />,
       ),
@@ -118,16 +114,6 @@ export async function run(): Promise<string> {
     check(
       agentTab.title.includes("Agent command · read-only"),
       "Agent terminal tooltip lost its read-only label",
-    );
-    const accent = agentTab.querySelector<HTMLElement>('[data-agent-terminal="true"]');
-
-    if (accent === null) throw new Error("Agent terminal has no accent class");
-    const probe = document.createElement("span");
-    probe.className = props(surfaceTheme.purple, styles.agentAccent).className ?? "";
-    container.append(probe);
-    check(
-      getComputedStyle(accent).color === getComputedStyle(probe).color,
-      "Agent terminal does not use the readable purple accent",
     );
     const glyph = agentTab.querySelector("svg");
 

@@ -1,6 +1,6 @@
 {
   "groups": {
-    "ui/src/theme.stylex.ts blue": [
+    "ui/src/styles/theme.stylex.ts blue": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -42,7 +42,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts brown": [
+    "ui/src/styles/theme.stylex.ts brown": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -84,7 +84,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts custom": [
+    "ui/src/styles/theme.stylex.ts custom": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -126,7 +126,8 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts gray": [
+    "ui/src/styles/theme.stylex.ts danger": ["border"],
+    "ui/src/styles/theme.stylex.ts gray": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -168,7 +169,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts green": [
+    "ui/src/styles/theme.stylex.ts green": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -210,7 +211,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts orange": [
+    "ui/src/styles/theme.stylex.ts orange": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -252,7 +253,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts pink": [
+    "ui/src/styles/theme.stylex.ts pink": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -294,7 +295,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts purple": [
+    "ui/src/styles/theme.stylex.ts purple": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -336,7 +337,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts red": [
+    "ui/src/styles/theme.stylex.ts red": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -378,7 +379,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts teal": [
+    "ui/src/styles/theme.stylex.ts teal": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -420,7 +421,7 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts theme": [
+    "ui/src/styles/theme.stylex.ts theme": [
       "--nyte-neutral-0",
       "--nyte-neutral-100",
       "--nyte-neutral-80",
@@ -468,8 +469,8 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/theme.stylex.ts tint": ["--nyte-custom-chroma-scale", "--nyte-custom-hue"],
-    "ui/src/theme.stylex.ts yellow": [
+    "ui/src/styles/theme.stylex.ts tint": ["--nyte-custom-chroma-scale", "--nyte-custom-hue"],
+    "ui/src/styles/theme.stylex.ts yellow": [
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",
@@ -511,11 +512,9 @@
       "--nyte-theme-translucent-80",
       "--nyte-theme-translucent-90"
     ],
-    "ui/src/roles.stylex.ts roles": [
+    "ui/src/styles/roles.stylex.ts roles": [
       "--nyte-bg-base",
-      "--nyte-bg-base-translucent",
       "--nyte-bg-chrome",
-      "--nyte-bg-chrome-translucent",
       "--nyte-bg-control",
       "--nyte-bg-control-hover",
       "--nyte-bg-control-pressed",
@@ -525,21 +524,13 @@
       "--nyte-bg-elevated",
       "--nyte-bg-hover",
       "--nyte-bg-interactive-primary",
-      "--nyte-bg-interactive-primary-hover",
       "--nyte-bg-interactive-primary-pressed",
       "--nyte-bg-interactive-primary-translucent",
-      "--nyte-bg-interactive-primary-translucent-hover",
-      "--nyte-bg-interactive-primary-translucent-pressed",
       "--nyte-bg-interactive-secondary",
       "--nyte-bg-interactive-secondary-hover",
       "--nyte-bg-interactive-secondary-pressed",
       "--nyte-bg-interactive-secondary-translucent",
-      "--nyte-bg-interactive-secondary-translucent-hover",
-      "--nyte-bg-interactive-secondary-translucent-pressed",
       "--nyte-bg-interactive-strong",
-      "--nyte-bg-interactive-strong-hover",
-      "--nyte-bg-interactive-strong-pressed",
-      "--nyte-bg-inverse",
       "--nyte-bg-muted",
       "--nyte-bg-muted-translucent",
       "--nyte-bg-pressed",
@@ -548,7 +539,6 @@
       "--nyte-border-control",
       "--nyte-border-control-translucent",
       "--nyte-border-interactive-primary",
-      "--nyte-border-interactive-primary-translucent",
       "--nyte-border-primary",
       "--nyte-border-primary-translucent",
       "--nyte-border-secondary",
@@ -558,9 +548,9 @@
       "--nyte-button-fill",
       "--nyte-button-fill-hover",
       "--nyte-button-fill-pressed",
+      "--nyte-chart-series",
       "--nyte-content-chrome",
       "--nyte-content-disabled",
-      "--nyte-content-disabled-translucent",
       "--nyte-content-interactive-primary",
       "--nyte-content-interactive-secondary",
       "--nyte-content-interactive-tertiary",
@@ -577,11 +567,9 @@
       "--nyte-shadow-md-outline",
       "--nyte-sidebar-material"
     ],
-    "ui/src/roles.stylex.ts tinted": [
+    "ui/src/styles/roles.stylex.ts tinted": [
       "--nyte-bg-control-selected",
       "--nyte-bg-interactive-strong",
-      "--nyte-bg-interactive-strong-hover",
-      "--nyte-bg-interactive-strong-pressed",
       "--nyte-bg-scrim-translucent",
       "--nyte-border-primary",
       "--nyte-content-interactive-primary",
@@ -591,7 +579,7 @@
       "--nyte-content-tertiary",
       "--nyte-scrollbar-thumb"
     ],
-    "ui/src/tokens.stylex.ts components": [
+    "ui/src/styles/tokens.stylex.ts components": [
       "--nyte-avatar-lg",
       "--nyte-avatar-md",
       "--nyte-avatar-sm",
@@ -680,7 +668,6 @@
       "--nyte-shape-control",
       "--nyte-shape-indicator",
       "--nyte-shape-pill",
-      "--nyte-shape-square",
       "--nyte-shape-surface",
       "--nyte-slider-thumb",
       "--nyte-switch-height-md",
@@ -692,16 +679,15 @@
       "--nyte-toast-close-gutter",
       "--nyte-toast-min-height"
     ],
-    "ui/src/tokens.stylex.ts displayMode": ["--nyte-popup-material-filter"],
-    "ui/src/tokens.stylex.ts elevation": [
+    "ui/src/styles/tokens.stylex.ts displayMode": ["--nyte-popup-material-filter"],
+    "ui/src/styles/tokens.stylex.ts elevation": [
       "--nyte-shadow-lg",
-      "--nyte-shadow-md",
       "--nyte-shadow-sm",
       "--nyte-shadow-workbench",
       "--nyte-shadow-xl"
     ],
-    "ui/src/tokens.stylex.ts focusModality": ["--nyte-focus-color", "--nyte-focus-ring"],
-    "ui/src/tokens.stylex.ts motion": [
+    "ui/src/styles/tokens.stylex.ts focusModality": ["--nyte-focus-color", "--nyte-focus-ring"],
+    "ui/src/styles/tokens.stylex.ts motion": [
       "--nyte-duration-fast",
       "--nyte-duration-instant",
       "--nyte-duration-normal",
@@ -710,9 +696,10 @@
       "--nyte-easing-out",
       "--nyte-easing-out-quint"
     ],
-    "ui/src/tokens.stylex.ts pointerCursor": ["--nyte-cursor-interactive"],
-    "ui/src/tokens.stylex.ts transparency": ["--nyte-reduce-transparency"],
-    "ui/src/tokens.stylex.ts typography": [
+    "ui/src/styles/tokens.stylex.ts pointerCursor": ["--nyte-cursor-interactive"],
+    "ui/src/styles/tokens.stylex.ts spacing": ["--nyte-space-unit"],
+    "ui/src/styles/tokens.stylex.ts transparency": ["--nyte-reduce-transparency"],
+    "ui/src/styles/tokens.stylex.ts typography": [
       "--nyte-code-font-jetbrains-mono",
       "--nyte-code-font-system",
       "--nyte-font-family-mono",
@@ -723,6 +710,9 @@
       "--nyte-font-size-lg",
       "--nyte-font-size-sm",
       "--nyte-font-size-xs",
+      "--nyte-font-weight-medium",
+      "--nyte-font-weight-regular",
+      "--nyte-font-weight-semibold",
       "--nyte-letter-spacing-base",
       "--nyte-letter-spacing-lg",
       "--nyte-line-height-base",
@@ -754,9 +744,8 @@
       "--nyte-settings-card-gap",
       "--nyte-settings-content-gutter",
       "--nyte-settings-content-width",
-      "--nyte-settings-control-height",
       "--nyte-settings-control-max-width",
-      "--nyte-settings-inventory-row-height",
+      "--nyte-settings-page-padding-block",
       "--nyte-settings-page-title-line-height",
       "--nyte-settings-page-title-size",
       "--nyte-settings-row-padding",
@@ -798,19 +787,19 @@
       "--nyte-workbench-rail-gap",
       "--nyte-workbench-rail-width",
       "--nyte-workbench-row-gap",
-      "--nyte-workbench-row-height",
-      "--nyte-workbench-row-padding-inline"
+      "--nyte-workbench-row-padding-inline",
+      "--nyte-workbench-sash-width"
     ],
     "app/src/theme/tokens.stylex.ts windowInput": ["--nyte-window-zoom"]
   },
   "handles": {
-    "ui/src/vars.stylex.ts appearance": [
+    "ui/src/styles/vars.stylex.ts appearance": [
       "cursorInteractive",
       "focusColor",
       "focusRing",
       "popupMaterialFilter"
     ],
-    "ui/src/vars.stylex.ts motion": [
+    "ui/src/styles/vars.stylex.ts motion": [
       "durationFast",
       "durationInstant",
       "durationNormal",
@@ -819,11 +808,9 @@
       "easeOut",
       "easeOutQuint"
     ],
-    "ui/src/vars.stylex.ts role": [
+    "ui/src/styles/vars.stylex.ts role": [
       "bgBase",
-      "bgBaseTranslucent",
       "bgChrome",
-      "bgChromeTranslucent",
       "bgControl",
       "bgControlHover",
       "bgControlPressed",
@@ -833,21 +820,13 @@
       "bgElevated",
       "bgHover",
       "bgInteractivePrimary",
-      "bgInteractivePrimaryHover",
       "bgInteractivePrimaryPressed",
       "bgInteractivePrimaryTranslucent",
-      "bgInteractivePrimaryTranslucentHover",
-      "bgInteractivePrimaryTranslucentPressed",
       "bgInteractiveSecondary",
       "bgInteractiveSecondaryHover",
       "bgInteractiveSecondaryPressed",
       "bgInteractiveSecondaryTranslucent",
-      "bgInteractiveSecondaryTranslucentHover",
-      "bgInteractiveSecondaryTranslucentPressed",
       "bgInteractiveStrong",
-      "bgInteractiveStrongHover",
-      "bgInteractiveStrongPressed",
-      "bgInverse",
       "bgMuted",
       "bgMutedTranslucent",
       "bgPressed",
@@ -856,7 +835,6 @@
       "borderControl",
       "borderControlTranslucent",
       "borderInteractivePrimary",
-      "borderInteractivePrimaryTranslucent",
       "borderPrimary",
       "borderPrimaryTranslucent",
       "borderSecondary",
@@ -866,9 +844,9 @@
       "buttonFill",
       "buttonFillHover",
       "buttonFillPressed",
+      "chartSeries",
       "contentChrome",
       "contentDisabled",
-      "contentDisabledTranslucent",
       "contentInteractivePrimary",
       "contentInteractiveSecondary",
       "contentInteractiveTertiary",
@@ -884,15 +862,14 @@
       "scrollbarThumb",
       "sidebarMaterial"
     ],
-    "ui/src/vars.stylex.ts shadow": [
+    "ui/src/styles/vars.stylex.ts shadow": [
       "shadowLg",
-      "shadowMd",
       "shadowMdOutline",
       "shadowSm",
       "shadowWorkbench",
       "shadowXl"
     ],
-    "ui/src/vars.stylex.ts type": [
+    "ui/src/styles/vars.stylex.ts type": [
       "codeFontJetbrainsMono",
       "codeFontSystem",
       "font2xl",
@@ -911,10 +888,13 @@
       "letterBase",
       "letterLg",
       "uiFontInter",
-      "uiFontSystem"
+      "uiFontSystem",
+      "weightMedium",
+      "weightRegular",
+      "weightSemibold"
     ],
-    "ui/src/schema.stylex.ts avatar": ["lg", "md", "sm", "xs"],
-    "ui/src/schema.stylex.ts button": [
+    "ui/src/styles/schema.stylex.ts avatar": ["lg", "md", "sm", "xs"],
+    "ui/src/styles/schema.stylex.ts button": [
       "gap2xs",
       "gapLg",
       "gapMd",
@@ -947,11 +927,11 @@
       "radiusXl",
       "radiusXs"
     ],
-    "ui/src/schema.stylex.ts checkbox": ["radius", "sizeLg", "sizeMd"],
-    "ui/src/schema.stylex.ts clipboardPreview": ["maxHeight", "maxWidth"],
-    "ui/src/schema.stylex.ts dialog": ["gap", "padding", "radius", "width"],
-    "ui/src/schema.stylex.ts glyph": ["box", "lg", "md", "sm"],
-    "ui/src/schema.stylex.ts input": [
+    "ui/src/styles/schema.stylex.ts checkbox": ["radius", "sizeLg", "sizeMd"],
+    "ui/src/styles/schema.stylex.ts clipboardPreview": ["maxHeight", "maxWidth"],
+    "ui/src/styles/schema.stylex.ts dialog": ["gap", "padding", "radius", "width"],
+    "ui/src/styles/schema.stylex.ts glyph": ["box", "lg", "md", "sm"],
+    "ui/src/styles/schema.stylex.ts input": [
       "heightLg",
       "heightMd",
       "heightXl",
@@ -971,7 +951,7 @@
       "textareaPaddingBlockMd",
       "textareaPaddingBlockXl"
     ],
-    "ui/src/schema.stylex.ts layer": [
+    "ui/src/styles/schema.stylex.ts layer": [
       "chrome",
       "command",
       "commandBackdrop",
@@ -986,7 +966,8 @@
       "tooltip",
       "workbench"
     ],
-    "ui/src/schema.stylex.ts menu": [
+    "ui/src/styles/schema.stylex.ts media": ["hover"],
+    "ui/src/styles/schema.stylex.ts menu": [
       "itemGap",
       "itemHeight",
       "itemPaddingBlock",
@@ -1000,8 +981,8 @@
       "radius",
       "width"
     ],
-    "ui/src/schema.stylex.ts radius": ["card", "control", "indicator", "pill", "square", "surface"],
-    "ui/src/schema.stylex.ts row": [
+    "ui/src/styles/schema.stylex.ts radius": ["card", "control", "indicator", "pill", "surface"],
+    "ui/src/styles/schema.stylex.ts row": [
       "gap",
       "heightLg",
       "heightMd",
@@ -1009,10 +990,23 @@
       "paddingInlineMd",
       "radius"
     ],
-    "ui/src/schema.stylex.ts slider": ["thumb"],
-    "ui/src/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
-    "ui/src/schema.stylex.ts target": ["gap", "min"],
-    "ui/src/schema.stylex.ts toast": ["closeGutter", "minHeight"],
+    "ui/src/styles/schema.stylex.ts slider": ["thumb"],
+    "ui/src/styles/schema.stylex.ts space": [
+      "px",
+      "s0_5",
+      "s1",
+      "s1_5",
+      "s2",
+      "s2_5",
+      "s3",
+      "s4",
+      "s5",
+      "s6",
+      "s8"
+    ],
+    "ui/src/styles/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
+    "ui/src/styles/schema.stylex.ts target": ["gap", "min"],
+    "ui/src/styles/schema.stylex.ts toast": ["closeGutter", "minHeight"],
     "app/src/theme/schema.stylex.ts conversation": [
       "composerExpandedRadius",
       "composerInset",
@@ -1033,9 +1027,8 @@
       "cardGap",
       "contentGutter",
       "contentWidth",
-      "controlHeight",
       "controlMaxWidth",
-      "inventoryRowHeight",
+      "pagePaddingBlock",
       "pageTitleLineHeight",
       "pageTitleSize",
       "rowPadding",
@@ -1080,8 +1073,8 @@
       "railGap",
       "railWidth",
       "rowGap",
-      "rowHeight",
-      "rowPaddingInline"
+      "rowPaddingInline",
+      "sashWidth"
     ]
   }
 }

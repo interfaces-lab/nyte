@@ -1,0 +1,12 @@
+{
+  "name": "nyte-host",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "NYTE_HOST", "class_name": "NyteHost" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NyteHost"] }],
+  "secrets": { "required": ["NYTE_TOKEN"] },
+  "observability": { "enabled": true },
+}

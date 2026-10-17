@@ -1,1 +1,1 @@
-export {} from "@nyte-ai/plugin/codemode-worker";
+export {} from "@nyte-ai/plugin/core/codemode-worker";

@@ -1,0 +1,26 @@
+@layer base, priority1, priority2, priority3, priority4, priority5, priority6;
+
+@import "@nyte-ai/ui/styles/base.css";
+
+@layer base {
+  html {
+    background: transparent;
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar {
+    display: none;
+  }
+
+  a {
+    color: var(--nyte-content-interactive-primary);
+    text-decoration-line: underline;
+    text-decoration-color: var(--nyte-border-strong);
+    text-underline-offset: 2px;
+  }
+
+  :where(:focus-visible) {
+    outline: 2px solid var(--nyte-focus-ring);
+    outline-offset: -2px;
+  }
+}

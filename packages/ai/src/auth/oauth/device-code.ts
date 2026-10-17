@@ -2,9 +2,6 @@
  * RFC 8628 device-code polling shared by OAuth flows: immediate first poll,
  * interval back-off on `slow_down`, deadline handling, and cancellation via
  * the login signal.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/device-code.ts
- * Synced with pi 7ebf9087e.
  */
 import { sleep } from "../../utils/abort.ts";
 
@@ -48,6 +45,12 @@ export function abortableSleep(
   return sleep(ms, signal, () => new Error(cancelMessage));
 }
 
+/**
+ * Polls a device-code grant until it completes, fails, or expires. On `slow_down` it uses the
+ * server-provided interval when given (GitHub reports the new required minimum in `interval`);
+ * trusting only a client-tracked value risks polling early forever under WSL/VM clock drift.
+ * Otherwise it applies RFC 8628 section 3.5 and adds 5 seconds.
+ */
 export async function pollOAuthDeviceCodeFlow<T>(
   options: OAuthDeviceCodePollOptions<T>,
 ): Promise<T> {
@@ -88,9 +91,6 @@ export async function pollOAuthDeviceCodeFlow<T>(
 
     if (result.status === "slow_down") {
       slowDownResponses += 1;
-      // Use the server-provided interval when given (GitHub reports the new required minimum
-      // in `interval`); trusting only a client-tracked value risks polling early forever under
-      // WSL/VM clock drift. Otherwise apply RFC 8628 section 3.5: increase by 5 seconds.
       intervalMs =
         result.intervalSeconds !== undefined &&
         Number.isFinite(result.intervalSeconds) &&

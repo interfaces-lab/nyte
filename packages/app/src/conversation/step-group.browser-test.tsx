@@ -2,16 +2,15 @@ import "../../test/window-bridge.ts";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ReactNode } from "react";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { StepGroupView } from "./step-group.tsx";
-import { IDLE } from "../live-fold.ts";
-import type { LiveSnapshot } from "../live-fold.ts";
-import type { StepTurnPart } from "./transcript-presentation.ts";
+import type { StepMessage } from "./transcript-presentation.ts";
 import { FOLLOW_RESUME_MS } from "./step-group-follow.ts";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
+import { PaneController } from "../layout/pane-controller.ts";
 import { TranscriptProvider } from "./transcript.tsx";
 
 function check(condition: boolean, message: string): void {
@@ -26,14 +25,27 @@ async function settle() {
   for (let index = 0; index < 4; index += 1) await frame();
 }
 
-function thoughts(count: number): StepTurnPart[] {
-  return Array.from({ length: count }, (_, index) => ({
-    kind: "thinking",
-    commit: String(index),
-    contentIndex: 0,
-    text: `Work ${String(index)}`,
-    at: index,
-  }));
+function thought(id: string, text: string, at: number, live = false): StepMessage {
+  return {
+    id: asId<"message">(id),
+    turn: asId<"turn">("turn"),
+    at,
+    kind: "part",
+    part: asId<"part">(id),
+    partKind: "thinking",
+    role: "step",
+    version: 1,
+    state: { markdown: text, merged: 1, signature: null },
+    status: live
+      ? { kind: "live", run: asId<"run">("run") }
+      : { kind: "settled", commit: asId<"commit">(id), endedAt: at },
+  };
+}
+
+function thoughts(count: number): StepMessage[] {
+  return Array.from({ length: count }, (_, index) =>
+    thought(String(index), `Work ${String(index)}`, index),
+  );
 }
 
 export async function run() {
@@ -42,13 +54,11 @@ export async function run() {
   document.body.append(outer);
   const root = createRoot(outer);
 
-  const render = (parts: readonly StepTurnPart[], running: boolean) =>
+  const render = (messages: readonly StepMessage[], running: boolean) =>
     flushSync(() =>
       root.render(
         <StepGroupView
-          parts={parts}
-          run={{ kind: "none" }}
-          liveTools={new Map()}
+          messages={messages}
           cwd={undefined}
           added={0}
           removed={0}
@@ -153,48 +163,23 @@ export async function run() {
       "Revealing earlier steps keeps focus in the group",
     );
 
-    const firstThought: StepTurnPart = {
-      kind: "thinking",
-      commit: "thought-0",
-      contentIndex: 0,
-      text: "First thought",
-      at: 0,
-    };
+    const firstThought = thought("thought-0", "First thought", 0);
+    const streamingThought = thought("thought-1", "Streaming thought", 1, true);
+    const settledThought = thought("thought-1", "Streaming thought", 1);
 
-    const settledThought: StepTurnPart = {
-      kind: "thinking",
-      commit: "thought-1",
-      contentIndex: 0,
-      text: "Streaming thought",
-      at: 1,
-    };
-
-    const liveKey = "run:2:0";
-
-    const streaming = {
-      parts: IDLE.parts,
-      runState: "working",
-      text: IDLE.text,
-      thinking: new Map([[liveKey, settledThought.text]]),
-      tools: IDLE.tools,
-      order: [{ kind: "thinking", runId: "run", attempt: 2, index: 0 }],
-    } satisfies LiveSnapshot;
+    const group = (messages: readonly StepMessage[], running: boolean) => (
+      <StepGroupView
+        messages={messages}
+        cwd={undefined}
+        added={0}
+        removed={0}
+        running={running}
+        density="detailed"
+      />
+    );
 
     flushSync(() => root.render(null));
-    flushSync(() =>
-      root.render(
-        <StepGroupView
-          parts={[firstThought]}
-          run={{ kind: "run", id: "run" }}
-          liveTools={new Map()}
-          cwd={undefined}
-          added={0}
-          removed={0}
-          running={false}
-          density="detailed"
-        />,
-      ),
-    );
+    flushSync(() => root.render(group([firstThought], false)));
     await settle();
     const thoughtToggle = outer.querySelector("button");
 
@@ -202,92 +187,50 @@ export async function run() {
       throw new Error("Missing thought disclosure");
     thoughtToggle.click();
     await settle();
-    flushSync(() =>
-      root.render(
-        <StepGroupView
-          parts={[firstThought]}
-          run={{ kind: "run", id: "run" }}
-          live={streaming}
-          liveTools={streaming.tools}
-          cwd={undefined}
-          added={0}
-          removed={0}
-          running
-          density="detailed"
-        />,
-      ),
-    );
+    flushSync(() => root.render(group([firstThought, streamingThought], true)));
     await settle();
 
     const firstParagraph = Array.from(outer.querySelectorAll("p")).find(
-      (node) => node.textContent === firstThought.text,
+      (node) => node.textContent === "First thought",
     );
 
     const streamedParagraph = Array.from(outer.querySelectorAll("p")).find(
-      (node) => node.textContent === settledThought.text,
+      (node) => node.textContent === "Streaming thought",
     );
 
     check(firstParagraph !== undefined, "Earlier settled thought is visible");
     check(streamedParagraph !== undefined, "Streaming thought is visible");
-    flushSync(() =>
-      root.render(
-        <StepGroupView
-          parts={[firstThought, settledThought]}
-          run={{ kind: "run", id: "run" }}
-          liveTools={new Map()}
-          cwd={undefined}
-          added={0}
-          removed={0}
-          running={false}
-          density="detailed"
-        />,
-      ),
-    );
+    flushSync(() => root.render(group([firstThought, settledThought], false)));
     await settle();
     check(
       Array.from(outer.querySelectorAll("p")).find(
-        (node) => node.textContent === firstThought.text,
+        (node) => node.textContent === "First thought",
       ) === firstParagraph,
-      "A reused content index does not remount older reasoning",
+      "Settling does not remount older reasoning",
     );
     check(
       Array.from(outer.querySelectorAll("p")).find(
-        (node) => node.textContent === settledThought.text,
+        (node) => node.textContent === "Streaming thought",
       ) === streamedParagraph,
       "Settling a streamed thought preserves its row",
     );
 
-    const live = (index: number) =>
-      ({
-        ...streaming,
-        thinking: new Map([[`run:1:${String(index)}`, "Live thought"]]),
-        order: [{ kind: "thinking", runId: "run", attempt: 1, index }],
-      }) satisfies LiveSnapshot;
-
-    const transcript = (group: ReactNode) =>
+    const panes = new PaneController({ storageKey: "step-group-test" });
+    const transcript = (node: ReactNode) =>
       flushSync(() =>
         root.render(
-          <PaneControllerProvider workspaceKey="step-group-test">
-            <TranscriptProvider
-              paneId="primary"
-              sessionId={sessionId("step-group-test")}
-              ready
-              autoScroll
-              scrollEdgeThreshold={60}
-            >
-              {group}
+          <PaneControllerProvider controller={panes}>
+            <TranscriptProvider paneId="primary" sessionId={asId<"session">("step-group-test")}>
+              {node}
             </TranscriptProvider>
           </PaneControllerProvider>,
         ),
       );
 
-    const liveOnly = (index: number) => (
+    const compact = (key: string, message: StepMessage) => (
       <StepGroupView
-        key={`live:${String(index)}`}
-        parts={[]}
-        run={{ kind: "none" }}
-        live={live(index)}
-        liveTools={new Map()}
+        key={key}
+        messages={[message]}
         cwd={undefined}
         added={0}
         removed={0}
@@ -298,29 +241,15 @@ export async function run() {
 
     const expandedState = () => outer.querySelector("button")?.getAttribute("aria-expanded");
 
-    transcript(liveOnly(3));
+    transcript(compact("live", thought("live-3", "Live thought", 0, true)));
     await settle();
     outer.querySelector("button")?.click();
     await settle();
-    check(expandedState() === "true", "A live-only group opens");
-    transcript(
-      <StepGroupView
-        key="durable"
-        parts={[
-          { kind: "thinking", commit: "landed", contentIndex: 3, text: "Live thought", at: 0 },
-        ]}
-        run={{ kind: "run", id: "run" }}
-        liveTools={new Map()}
-        cwd={undefined}
-        added={0}
-        removed={0}
-        running
-        density="compact"
-      />,
-    );
+    check(expandedState() === "true", "A live group opens");
+    transcript(compact("durable", thought("live-3", "Live thought", 0)));
     await settle();
-    check(expandedState() === "true", "The landed group keeps the live group open");
-    transcript(liveOnly(3));
+    check(expandedState() === "true", "The settled group keeps the live group open");
+    transcript(compact("later", thought("live-4", "Live thought", 0, true)));
     await settle();
     check(expandedState() === "false", "A later live group starts from its density default");
 

@@ -1,5 +1,5 @@
 import { parentPort } from "node:worker_threads";
-import { UsageScanner } from "./store-usage.ts";
+import { UsageScanner } from "./usage-service.ts";
 import type { UsageWorkerReply, UsageWorkerRequest } from "./usage-scan.ts";
 
 const port = parentPort;

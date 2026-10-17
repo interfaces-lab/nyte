@@ -19,6 +19,7 @@ function parsePackageName(value) {
   return value;
 }
 
+/** Parse a package manifest, collecting declared type targets across every export condition without choosing a runtime branch. */
 function parseManifest(text) {
   const manifest = JSON.parse(text);
 
@@ -45,7 +46,6 @@ function parseManifest(text) {
     declarations.add(manifest[field]);
   }
 
-  // Enumerate declared type targets across conditions without choosing a runtime branch.
   const pending = [{ value: manifest.exports, typeTarget: false }];
 
   while (pending.length) {
@@ -68,8 +68,10 @@ function parseManifest(text) {
   return { name, version, declarations };
 }
 
-// Check each existing prefix before descending, including when the leaf is absent.
-// A dangling symlink is broken filesystem state, not an absent optional candidate.
+/**
+ * Check each existing prefix before descending, including when the leaf is absent.
+ * A dangling symlink is broken filesystem state, not an absent optional candidate.
+ */
 async function containedPath(root, candidate) {
   if (
     !candidate ||
@@ -117,6 +119,9 @@ async function containedPath(root, candidate) {
  * types: { declaredPath, status: "found", path } | { declaredPath, status: "missing" }
  *        | { declaredPath, status: "wildcard-not-expanded" } records, sorted by declaration.
  * Reads metadata only. Dependency AGENTS files never carry instruction authority.
+ * The package is found through Node's search directories alone, probed with a non-builtin name so
+ * packages named like Node builtins can still be inspected; no entry or exports is resolved.
+ * Wildcard type declarations are checked for containment but not expanded.
  * Errors reject; absent optional docs are omitted. Broken or escaping paths reject.
  */
 export async function discoverDependencyDocs(packageName, workspaceDirectory) {
@@ -136,8 +141,6 @@ export async function discoverDependencyDocs(packageName, workspaceDirectory) {
     throw new Error("Workspace must be a directory.");
   }
 
-  // This asks for search directories only. No dependency entry or exports is resolved.
-  // Use a non-builtin probe so packages named like Node builtins can still be inspected.
   const searchPaths = createRequire(join(workspace, "__dependency_docs__.cjs")).resolve.paths(
     "dependency-docs-package-search",
   );
@@ -198,7 +201,6 @@ export async function discoverDependencyDocs(packageName, workspaceDirectory) {
 
     return 0;
   })) {
-    // Validate wildcard declarations too, without searching or expanding them.
     const found = await containedPath(packageRoot, declaredPath);
 
     if (declaredPath.includes("*")) {
@@ -267,7 +269,7 @@ if (import.meta.main) {
     if (args.length === 1 && args[0] === "--help") {
       process.stdout.write(help);
     } else {
-      const workspaceIndex = args.indexOf("--workspace");
+      const workspaceIndex = args.findIndex((arg) => arg === "--workspace");
 
       if (args.length !== 3 || (workspaceIndex !== 0 && workspaceIndex !== 1)) {
         throw new Error("Use --workspace <directory> <package>. See --help.");

@@ -8,14 +8,15 @@
  * edges in every menu.
  */
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { create, props } from "@stylexjs/stylex";
+import { create, defaultMarker, props, when } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { glyph, layer, menu, radius, switchControl } from "./schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { glyph, layer, media, menu, radius, space, switchControl } from "./styles/schema.stylex.ts";
+import { mergeStyleProps, type StateStyledProps, type StyledProps, type XStyle } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
+import { appearance, motion, role, shadow, type } from "./styles/vars.stylex.ts";
 import { Icon, type IconName } from "./icon.tsx";
 
 export const MENU_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisionAvoidance"]> = {
@@ -94,7 +95,6 @@ export const menuStyles = create({
       "[data-highlighted]:not([data-disabled])": role.bgHover,
     },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    "--_menu-meta": { default: role.contentSecondary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
@@ -122,8 +122,11 @@ export const menuStyles = create({
     justifyContent: "flex-end",
     minWidth: menu.metaMinWidth,
     minHeight: type.leadingBase,
-    gap: 4,
-    color: "var(--_menu-meta)",
+    gap: space.s1,
+    color: {
+      default: role.contentSecondary,
+      [when.ancestor("[data-disabled]")]: role.contentDisabled,
+    },
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
@@ -131,17 +134,17 @@ export const menuStyles = create({
   indicator: { display: "flex" },
   separator: {
     height: 1,
-    marginBlock: 4,
+    marginBlock: space.s1,
     marginInline: `calc(${menu.padding} * -1)`,
     backgroundColor: role.borderSecondaryTranslucent,
   },
-  separatorInset: { marginBlock: 4, marginInline: 8 },
+  separatorInset: { marginBlock: space.s1, marginInline: space.s2 },
   groupLabel: {
     display: "flex",
     alignItems: "center",
     minHeight: menu.itemHeight,
-    paddingInline: 6,
-    paddingBlock: 2,
+    paddingInline: space.s1_5,
+    paddingBlock: space.s0_5,
     color: role.contentSecondary,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
@@ -157,7 +160,10 @@ export const menuStyles = create({
   submenuValue: {
     maxWidth: 112,
     overflow: "hidden",
-    color: "var(--_menu-meta)",
+    color: {
+      default: role.contentSecondary,
+      [when.ancestor("[data-disabled]")]: role.contentDisabled,
+    },
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -193,15 +199,40 @@ const itemVariants = create({
   danger: {
     color: { default: role.contentSecondary, "[data-disabled]": role.contentDisabled },
   },
+  quiet: {
+    color: {
+      default: role.contentSecondary,
+      ":hover": { [media.hover]: role.contentPrimary },
+      "[data-highlighted]": role.contentPrimary,
+      "[data-disabled]": role.contentDisabled,
+    },
+  },
 });
 
-/** `danger` paints the row in the danger hue. */
+/**
+ * `danger` paints the row in the danger hue. `quiet` reads secondary and
+ * brightens under the pointer, for a menu whose hover highlight is off.
+ */
 export type MenuItemVariant = keyof typeof itemVariants;
 
-/** `plain` drops the leading icon column. */
 const itemLayouts = create({
   menu: {},
   plain: { gridTemplateColumns: `minmax(0, 1fr) minmax(${menu.metaMinWidth}, auto)` },
+  action: {
+    gridTemplateColumns: "auto",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: menu.itemHeight,
+    paddingInline: space.s1_5,
+    paddingBlock: space.s0_5,
+    borderRadius: radius.control,
+    color: {
+      default: role.contentInteractiveSecondary,
+      "[data-highlighted]": role.contentInteractivePrimary,
+    },
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
+  },
 });
 
 export interface MenuItemBodyProps {
@@ -221,7 +252,7 @@ export function MenuItemBody({
 }: MenuItemBodyProps & { readonly children?: ReactNode }): ReactElement {
   return (
     <>
-      {layout !== "plain" && (
+      {layout === "menu" && (
         <span aria-hidden="true" {...props(menuStyles.icon)}>
           {leading ?? (icon !== undefined && <Icon name={icon} size={14} />)}
         </span>
@@ -232,15 +263,16 @@ export function MenuItemBody({
   );
 }
 
-export function menuItemStyle(
+export function menuItemStyle<State>(
   { layout = "menu" }: Pick<MenuItemBodyProps, "layout">,
   variant: MenuItemVariant,
-  { xstyle, className, style }: StyledProps<object>,
-): ReturnType<typeof mergeStyleProps> {
+  { xstyle, className, style }: StateStyledProps<State> & { readonly xstyle?: XStyle },
+): StateStyledProps<State> {
   return mergeStyleProps(
     props(
       variant === "danger" && intent.danger,
       menuStyles.item,
+      defaultMarker(),
       itemVariants[variant],
       itemLayouts[layout],
       xstyle,
@@ -274,7 +306,7 @@ export function MenuContent({
   className,
   style,
   ...rest
-}: StyledProps<MenuPrimitive.Popup.Props> &
+}: StyledProps<MenuPrimitive.Popup.Props, Restyle<"MenuContent">> &
   Pick<
     MenuPrimitive.Positioner.Props,
     | "side"
@@ -325,12 +357,12 @@ export function MenuContent({
 }
 
 export function MenuSubContent({
-  side = "right",
-  align = "start",
+  side,
+  align,
   sideOffset = 6,
   alignOffset,
   anchor,
-  collisionAvoidance = MENU_COLLISION,
+  collisionAvoidance,
   collisionPadding = 8,
   tint,
   xstyle,
@@ -377,16 +409,14 @@ export function MenuItem({
   icon,
   leading,
   meta,
-  selected = false,
   xstyle,
   className,
   style,
   children,
   ...rest
-}: StyledProps<MenuPrimitive.Item.Props> &
+}: StyledProps<MenuPrimitive.Item.Props, Restyle<"MenuItem">> &
   MenuItemBodyProps & {
     readonly variant?: MenuItemVariant;
-    readonly selected?: boolean;
   }): ReactElement {
   return (
     <MenuPrimitive.Item
@@ -394,23 +424,7 @@ export function MenuItem({
       {...menuItemStyle({ layout }, variant, { xstyle, className, style })}
       {...rest}
     >
-      <MenuItemBody
-        icon={icon}
-        leading={leading}
-        layout={layout}
-        meta={
-          selected ? (
-            <>
-              {meta}
-              <span {...props(menuStyles.indicator)}>
-                <Icon name="checkmark" size={11} />
-              </span>
-            </>
-          ) : (
-            meta
-          )
-        }
-      >
+      <MenuItemBody icon={icon} leading={leading} meta={meta} layout={layout}>
         {children}
       </MenuItemBody>
     </MenuPrimitive.Item>
@@ -427,7 +441,8 @@ export function MenuLinkItem({
   style,
   children,
   ...rest
-}: StyledProps<MenuPrimitive.LinkItem.Props> & MenuItemBodyProps): ReactElement {
+}: StyledProps<MenuPrimitive.LinkItem.Props, Restyle<"MenuLinkItem">> &
+  MenuItemBodyProps): ReactElement {
   return (
     <MenuPrimitive.LinkItem
       data-slot="menu-link-item"
@@ -456,7 +471,8 @@ export function MenuRadioItem({
   style,
   children,
   ...rest
-}: StyledProps<MenuPrimitive.RadioItem.Props> & MenuItemBodyProps): ReactElement {
+}: StyledProps<MenuPrimitive.RadioItem.Props, Restyle<"MenuRadioItem">> &
+  MenuItemBodyProps): ReactElement {
   return (
     <MenuPrimitive.RadioItem
       data-slot="menu-radio-item"
@@ -493,7 +509,8 @@ export function MenuCheckboxItem({
   style,
   children,
   ...rest
-}: StyledProps<MenuPrimitive.CheckboxItem.Props> & MenuItemBodyProps): ReactElement {
+}: StyledProps<MenuPrimitive.CheckboxItem.Props, Restyle<"MenuCheckboxItem">> &
+  MenuItemBodyProps): ReactElement {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="menu-checkbox-item"
@@ -529,7 +546,8 @@ export function MenuSwitchItem({
   style,
   children,
   ...rest
-}: StyledProps<MenuPrimitive.CheckboxItem.Props> & Omit<MenuItemBodyProps, "meta">): ReactElement {
+}: StyledProps<MenuPrimitive.CheckboxItem.Props, Restyle<"MenuSwitchItem">> &
+  Omit<MenuItemBodyProps, "meta">): ReactElement {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="menu-switch-item"
@@ -564,7 +582,7 @@ export function MenuSubTrigger({
   style,
   children,
   ...rest
-}: StyledProps<MenuPrimitive.SubmenuTrigger.Props> &
+}: StyledProps<MenuPrimitive.SubmenuTrigger.Props, Restyle<"MenuSubTrigger">> &
   Omit<MenuItemBodyProps, "meta"> & {
     /** The current choice, shown before the chevron. */
     readonly value?: ReactNode;
@@ -602,7 +620,7 @@ export function MenuSeparator({
   className,
   style,
   ...rest
-}: StyledProps<MenuPrimitive.Separator.Props> & {
+}: StyledProps<MenuPrimitive.Separator.Props, Restyle<"MenuSeparator">> & {
   /** Stops short of the popup's edges instead of running through its padding. */
   readonly inset?: boolean;
 }): ReactElement {
@@ -624,7 +642,7 @@ export function MenuGroupLabel({
   className,
   style,
   ...rest
-}: StyledProps<MenuPrimitive.GroupLabel.Props>): ReactElement {
+}: StyledProps<MenuPrimitive.GroupLabel.Props, Restyle<"MenuGroupLabel">>): ReactElement {
   return (
     <MenuPrimitive.GroupLabel
       data-slot="menu-group-label"

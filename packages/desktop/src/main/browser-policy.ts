@@ -1,5 +1,5 @@
 /** Browser panel decisions that need no Electron; `browser.ts` applies them. */
-import type { BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
+import type { BrowserKey, BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
 
 const NET_ERROR_ABORTED = -3;
 
@@ -21,7 +21,7 @@ export function webUrl(input: string): string | undefined {
 }
 
 /** Dev servers rarely speak TLS, so local and intranet hosts stay plain. */
-export function isLocalHost(hostname: string): boolean {
+export function onLocalNetwork(hostname: string): boolean {
   const host = hostname.toLowerCase();
 
   if (host === "localhost" || host.endsWith(".localhost")) return true;
@@ -46,7 +46,7 @@ export function httpsUpgrade(url: string, plainHosts: ReadonlySet<string>): stri
 
   if (parsed.protocol !== "http:") return undefined;
 
-  if (isLocalHost(parsed.hostname) || plainHosts.has(parsed.host)) return undefined;
+  if (onLocalNetwork(parsed.hostname) || plainHosts.has(parsed.host)) return undefined;
   parsed.protocol = "https:";
 
   if (parsed.port === "80") parsed.port = "";
@@ -74,4 +74,62 @@ export function surfaceSecurity(url: string): BrowserSurfaceState["secure"] {
   if (url.startsWith("http:")) return "http";
 
   return "none";
+}
+
+export function uniqueDownloadName(filename: string, taken: (name: string) => boolean): string {
+  const safe = filename.replaceAll(/[/\\:\0]/g, "_").trim() || "download";
+
+  if (!taken(safe)) return safe;
+  const dot = safe.lastIndexOf(".");
+  const [stem, extension] = dot > 0 ? [safe.slice(0, dot), safe.slice(dot)] : [safe, ""];
+
+  for (let index = 1; ; index += 1) {
+    const candidate = `${stem} (${String(index)})${extension}`;
+
+    if (!taken(candidate)) return candidate;
+  }
+}
+
+const CRASH_WINDOW_MS = 30_000;
+
+const ZOOM_FACTORS = [
+  0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,
+];
+
+export function nextZoomFactor(current: number, direction: "in" | "out"): number {
+  if (direction === "in") return ZOOM_FACTORS.find((factor) => factor > current + 0.01) ?? current;
+
+  return ZOOM_FACTORS.findLast((factor) => factor < current - 0.01) ?? current;
+}
+
+const CRASH_RETRY_LIMIT = 3;
+
+export function crashRetryDelay(crashes: readonly number[], now: number): number | undefined {
+  const recent = crashes.filter((at) => now - at < CRASH_WINDOW_MS).length;
+
+  return recent > CRASH_RETRY_LIMIT ? undefined : 250 * 2 ** (recent - 1);
+}
+
+const PRESSED_LIMIT = 8;
+
+export function rememberPressedKey(pressed: BrowserKey[], key: BrowserKey): void {
+  if (["Control", "Shift", "Alt", "Meta"].includes(key.key)) return;
+  pressed.push(key);
+  pressed.splice(0, pressed.length - PRESSED_LIMIT);
+}
+
+export function takePressedKey(pressed: BrowserKey[], key: BrowserKey): boolean {
+  const index = pressed.findIndex(
+    (candidate) =>
+      candidate.code === key.code &&
+      candidate.ctrlKey === key.ctrlKey &&
+      candidate.shiftKey === key.shiftKey &&
+      candidate.altKey === key.altKey &&
+      candidate.metaKey === key.metaKey,
+  );
+
+  if (index === -1) return false;
+  pressed.splice(0, index + 1);
+
+  return true;
 }

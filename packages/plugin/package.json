@@ -15,20 +15,37 @@
   ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./openai-compaction": "./src/openai-compaction.ts",
-    "./openai-astra-context": "./src/openai-astra-context.ts",
-    "./mcp": "./src/mcp.ts",
-    "./codemode": "./src/codemode.ts",
-    "./codemode-runtime": "./src/codemode-runtime.ts",
-    "./codemode-worker": "./src/codemode-worker.ts",
-    "./provider": "./src/provider.ts",
-    "./examples/bash-description": "./examples/bash-description.ts",
-    "./examples/fast-mode": "./examples/fast-mode.ts",
-    "./examples/notifications": "./examples/notifications.ts",
-    "./examples/question": "./examples/question.ts",
-    "./examples/rename": "./examples/rename.ts",
-    "./examples/web-search": "./examples/web-search/index.ts"
+    "./core": "./src/core.ts",
+    "./core/approvals": "./src/approvals/approvals.ts",
+    "./core/acp": "./src/acp/index.ts",
+    "./core/bash-description": "./src/bash-description.ts",
+    "./core/browser-tools": "./src/browser-tools.ts",
+    "./core/canvas": "./src/canvas/canvas.ts",
+    "./core/canvas-compile": "./src/canvas/canvas-compile.ts",
+    "./core/canvas-preview": "./src/canvas/canvas-preview.ts",
+    "./core/claude-code": "./examples/claude-code/index.ts",
+    "./core/claude-code-sdk": "./src/claude-code-sdk/index.ts",
+    "./core/codemode": "./src/codemode.ts",
+    "./core/codemode-runtime": "./src/codemode-runtime.ts",
+    "./core/codemode-worker": "./src/codemode-worker.ts",
+    "./core/openai-astra-context": "./src/openai-astra-context.ts",
+    "./core/openai-compaction": "./src/openai-compaction.ts",
+    "./core/question": "./src/question/question.ts",
+    "./core/rename": "./src/rename.ts",
+    "./core/telemetry": "./src/telemetry.ts",
+    "./core/web-search": "./src/web-search.ts",
+    "./client": "./src/client.ts",
+    "./client/mount": "./src/client/mount.ts",
+    "./client/notifications": "./src/client/notifications.ts",
+    "./client/presentation": "./src/client/presentation.ts",
+    "./client/questions": "./src/question/client/questions.tsx",
+    "./client/questions-tui": "./src/question/client/questions-tui.ts",
+    "./client/transcript": "./src/client/transcript.tsx",
+    "./client/transcript-tui": "./src/client/transcript-tui.ts",
+    "./approvals/schema": "./src/approvals/schema.ts",
+    "./canvas/protocol": "./src/canvas/canvas-protocol.ts",
+    "./canvas/schema": "./src/canvas/schema.ts",
+    "./question/schema": "./src/question/schema.ts"
   },
   "publishConfig": {
     "access": "public"
@@ -36,26 +53,45 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build:package": "bun ../../scripts/sdk-packages.mjs build plugin"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "1.9.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.296",
     "@earendil-works/pi-codemode": "1.0.0",
-    "@earendil-works/pi-mcp": "1.0.0",
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "@opentui/core": "^0.5.12",
-    "typebox": "1.3.34"
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/resources": "^2.12.0",
+    "@opentelemetry/sdk-trace": "^2.12.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "es-module-lexer": "2.3.2",
+    "sucrase": "3.35.1",
+    "typebox": "1.3.36",
+    "zod": "4.5.4"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
-    "@nyte-ai/client": "workspace:*",
-    "@nyte-ai/protocol": "workspace:*",
-    "@types/node": "^26.6.3",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.2",
-    "zod": "4.5.4"
+    "@opentui/core": "^0.6.5",
+    "@types/node": "^26.6.5",
+    "@types/react": "19.3.0",
+    "react": "19.3.0",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.4"
+  },
+  "peerDependencies": {
+    "@opentui/core": "^0.6.5",
+    "react": "^19.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/core": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=26.4.0"

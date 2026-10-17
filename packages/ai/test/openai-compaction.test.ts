@@ -1,11 +1,10 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { text } from "node:stream/consumers";
 import { afterEach, test } from "vitest";
 import { compactOpenAIResponsesContext } from "../src/api/openai-responses.ts";
-import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
+import { convertResponsesMessages } from "../src/api/openai-responses-convert.ts";
 import type { Model } from "../src/types.ts";
 
 const servers: Server[] = [];
@@ -22,10 +21,6 @@ interface CapturedRequest {
   readonly path: string | undefined;
   readonly headers: IncomingHttpHeaders;
   readonly body: string;
-}
-
-function isTcpAddress(address: ReturnType<Server["address"]>): address is AddressInfo {
-  return address !== null && typeof address === "object";
 }
 
 async function endpoint(payload: string, status = 200) {
@@ -50,7 +45,7 @@ async function endpoint(payload: string, status = 200) {
   });
   servers.push(server);
   const address = server.address();
-  assert.ok(isTcpAddress(address));
+  assert.ok(address !== null && typeof address === "object");
   const model: Model<"openai-responses"> = {
     id: "test-model",
     name: "Test model",
@@ -98,7 +93,7 @@ test("Responses compaction uses API auth and preserves the complete opaque windo
   assert.equal(compacted.usage?.output, 20);
   assert.equal(compacted.usage?.reasoning, 10);
   assert.equal(compacted.usage?.totalTokens, 120);
-  assert.ok((compacted.usage?.cost.total ?? 0) > 0);
+  assert.equal(compacted.usage?.cost.total, 0.00033);
   assert.equal(requests.length, 1);
   const request = requests[0];
   assert.ok(request);

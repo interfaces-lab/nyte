@@ -1,15 +1,13 @@
-import { titlebarStyles } from "./titlebar.stylex.ts";
 /**
  * Permanent window chrome. The sidebar toggle stays on the rail side; chat
  * actions and the stage-level workbench entry stay at the trailing edge.
  */
+import { titlebarStyles } from "./titlebar.stylex.ts";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { props } from "@stylexjs/stylex";
-import { createLink, useCanGoBack, useMatch, useRouter } from "@tanstack/react-router";
-import { closeSettings } from "../settings/index.ts";
-// oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
-import { useCallback, useEffect } from "react";
+import { createLink, useMatch } from "@tanstack/react-router";
 import type { ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/sdk";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
@@ -22,25 +20,20 @@ import {
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { nyte } from "../nyte.ts";
-import { macPlatform } from "../platform.ts";
-import { useHostState, useSession, useSessionLocation, useWorkspaces } from "../queries.ts";
+import { useHostState, useSession, useWorkspaces } from "../queries.ts";
 import {
-  activeWorkbenchTab,
-  defaultWorkbenchTab,
   workbenchController,
   workbenchScope,
   workbenchViewKey,
   useWorkbenchSnapshot,
 } from "../workbench/controller.ts";
-import { terminalActions } from "../workbench/terminal-store.ts";
-import { folderPicker } from "./open-workspace.tsx";
-import { shellActions, useShellState } from "./shell-state.ts";
+import { shellActions, useStagePage } from "./shell-state.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import {
   clientActionAriaShortcut,
   clientActionShortcut,
   clientActions,
   clientCapabilities,
-  resolveClientAction,
 } from "../client-actions.ts";
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
@@ -52,36 +45,41 @@ import { windowTabs } from "../tabs/window-tabs.ts";
 
 /**
  * Where the open chat runs, ahead of its title: the machine when it is not
- * this one, then the folder. A Home chat on this machine names nothing.
+ * this one, then the folder, then the branch of a chat in a worktree. A Home
+ * chat on this machine names nothing.
  */
 function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement | null {
-  const location = useSessionLocation(sessionId);
+  const session = useSession(sessionId);
   const workspaces = useWorkspaces();
+  const workspace = workspaces.data?.find((candidate) => candidate.id === session.data?.workspace);
 
-  if (location === undefined) return null;
+  if (workspace === undefined) return null;
+  const { worktree } = workspace;
 
-  if (location.environment === "cloud")
-    return (
-      <>
-        <span {...props(titlebarStyles.sessionCrumb)}>
-          <Icon name="cloud" size={12} />
-          {location.available ? "Cloud" : "Cloud · unavailable"}
-        </span>
-        <span {...props(titlebarStyles.sessionCrumbDivider)}>/</span>
-      </>
-    );
-
-  const path = location.workspacePath;
-
-  if (path === null) return null;
+  const folder =
+    worktree === null
+      ? workspace
+      : workspaces.data?.find((candidate) => candidate.id === worktree.source);
 
   return (
     <>
-      <span title={path} {...props(titlebarStyles.sessionCrumb)}>
-        {workspaces.data?.find((workspace) => workspace.path === path)?.name ??
-          path.split("/").at(-1)}
-      </span>
-      <span {...props(titlebarStyles.sessionCrumbDivider)}>/</span>
+      {folder !== undefined && (
+        <>
+          <span title={folder.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
+            {folder.name}
+          </span>
+          <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
+        </>
+      )}
+      {worktree !== null && (
+        <>
+          <span title={workspace.path} {...props(text.sm, titlebarStyles.sessionCrumb)}>
+            <Icon name="git-branch" size={12} />
+            {worktree.branch}
+          </span>
+          <span {...props(text.sm, titlebarStyles.sessionCrumbDivider)}>/</span>
+        </>
+      )}
     </>
   );
 }
@@ -91,8 +89,8 @@ const SessionLink = createLink(ButtonLink);
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const session = useSession(sessionId);
   const panes = usePaneActions();
-  const parentSessionId = session.data?.parent?.sessionId;
-  const title = session.data?.name ?? session.data?.preview ?? "New chat";
+  const parentSessionId = session.data?.parent ?? undefined;
+  const title = session.data?.name ?? "New chat";
 
   return (
     <span {...props(titlebarStyles.sessionTitleGroup)}>
@@ -104,6 +102,7 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
             aria-label="Back to parent chat"
             to="/session/$sessionId"
             params={{ sessionId: parentSessionId }}
+            preload={false}
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
@@ -113,7 +112,7 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
         </span>
       )}
       <SessionLocation sessionId={sessionId} />
-      <span title={title} {...props(titlebarStyles.sessionTitle)}>
+      <span title={title} {...props(text.sm, titlebarStyles.sessionTitle)}>
         {title}
       </span>
     </span>
@@ -139,159 +138,35 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
 }
 
 export function Titlebar(): ReactElement {
-  const shellRouter = useRouter();
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
   const workbench = useWorkbenchSnapshot();
-  const { sidebarVisible, stage } = useShellState();
-  const mac = macPlatform(host.data?.platform);
+  const sidebarVisible = useSetting(preferences.sidebarVisible);
+  const page = useStagePage();
+  const mac = nyte.platform === "darwin";
   const capabilities = clientCapabilities(nyte.host);
   const selection = activePane(layout).selection;
-  const workspacePath = host.data?.workspace?.path;
+  const workspacePath = host.data.workspace?.path;
   const viewKey = workbenchViewKey(workspacePath);
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
 
-  const userTerminals = view.tabs.filter(
-    (tab) => tab.kind === "terminal" && tab.owner.kind === "user",
-  );
-
   const terminalWorkspacePath = workspacePath ?? null;
   const scope = workbenchScope(workspacePath);
-  const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const settingsMatch = useMatch({ from: "/settings/$section", shouldThrow: false });
   const settingsOpen = settingsMatch !== undefined;
-  const workspaceVisible = !settingsOpen && stage.kind === "workspace";
+  const workspaceVisible = !settingsOpen && page === undefined;
   const workbenchOpen = workspaceVisible && view.expanded;
-  const historyCanGoBack = useCanGoBack();
-  const tabbed = windowTabs.enabled;
+  const maximized = view.layout.kind === "maximized";
+  const strip = windowTabs.strip;
   const tabs = useWindowTabsState();
-
-  const canGoBack = tabbed
-    ? canTravel(tabs, -1)
-    : stage.kind !== "workspace" || settingsOpen || historyCanGoBack;
-
-  const openTerminal = useCallback((): void => {
-    if (nyte.host.terminal === undefined) return;
-
-    const id = workbenchController.actions.openTab({
-      view: viewKey,
-      tab: { kind: "terminal", owner: { kind: "user" } },
-      activate: true,
-    });
-
-    void terminalActions.create({ id, workspacePath: terminalWorkspacePath });
-  }, [terminalWorkspacePath, viewKey]);
-
-  useEffect(() => {
-    const showWorkspace = (): void => {
-      if (settingsOpen) closeSettings(shellRouter);
-      shellActions.showWorkspace();
-    };
-
-    return nyte.host.onMenuCommand((command) => {
-      if (command.kind === "about") {
-        shellActions.showAbout(command.info);
-
-        return;
-      }
-
-      shellActions.showAbout(undefined);
-
-      switch (command.action) {
-        case clientActions.newChat.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          panes.newChat();
-
-          return;
-        case clientActions.newTab.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          windowTabs.dispatch({ kind: "new-tab" });
-
-          return;
-        case clientActions.reopenTab.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          windowTabs.dispatch({ kind: "reopen-tab" });
-
-          return;
-        case clientActions.closeTab.id:
-          if (settingsOpen) closeSettings(shellRouter);
-          else
-            windowTabs.dispatch({ kind: "close-tab", tabId: windowTabs.getSnapshot().activeTabId });
-
-          return;
-        case clientActions.openFolder.id:
-          folderPicker()?.();
-
-          return;
-        case clientActions.newTerminal.id:
-          if (nyte.host.terminal === undefined) return;
-          showWorkspace();
-          openTerminal();
-
-          return;
-        case clientActions.newBrowser.id:
-          if (nyte.host.browser === undefined) return;
-          showWorkspace();
-          workbenchController.actions.openTab({
-            view: viewKey,
-            tab: defaultWorkbenchTab("browser"),
-            activate: true,
-          });
-
-          return;
-        case clientActions.settings.id:
-          if (settingsOpen) return;
-          void shellRouter.navigate({
-            to: "/settings/$section",
-            params: { section: "general" },
-          });
-
-          return;
-        default: {
-          const _exhaustive: never = command.action;
-
-          return _exhaustive;
-        }
-      }
-    });
-  }, [openTerminal, panes, settingsOpen, shellRouter, viewKey]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (!workspaceVisible) return;
-      const action = resolveClientAction(event, mac, "workspace", clientCapabilities(nyte.host));
-
-      if (action?.id === "terminal" || action?.id === "new-terminal") {
-        event.preventDefault();
-
-        if (action.id === "terminal" && workbenchOpen && activeTab?.kind === "terminal") {
-          workbenchController.actions.toggle({ view: viewKey });
-        } else if (action.id === "terminal" && userTerminals[0] !== undefined) {
-          workbenchController.actions.activateTab({ view: viewKey, id: userTerminals[0].id });
-        } else {
-          openTerminal();
-        }
-
-        return;
-      }
-
-      if (action?.id !== "workbench") return;
-      event.preventDefault();
-      workbenchController.actions.toggleWorkbench({ view: viewKey });
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTab, mac, openTerminal, userTerminals, viewKey, workbenchOpen, workspaceVisible]);
 
   if (settingsOpen) {
     return (
       <header {...props(titlebarStyles.bar)}>
         <span {...props(titlebarStyles.sidebarSlot)} />
-        <div {...props(titlebarStyles.contentArea, tabbed && titlebarStyles.contentAreaTabbed)} />
+        <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)} />
       </header>
     );
   }
@@ -329,23 +204,9 @@ export function Titlebar(): ReactElement {
                   iconOnly
                   icon="arrow-left"
                   aria-label="Go back"
-                  disabled={!canGoBack}
+                  disabled={!canTravel(tabs, -1)}
                   aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
-                  onClick={() => {
-                    if (tabbed) {
-                      windowTabs.dispatch({ kind: "travel", step: -1 });
-
-                      return;
-                    }
-
-                    if (stage.kind !== "workspace" && !shellRouter.history.canGoBack()) {
-                      shellActions.showWorkspace();
-
-                      return;
-                    }
-
-                    shellRouter.history.back();
-                  }}
+                  onClick={() => windowTabs.dispatch({ kind: "travel", step: -1 })}
                   title={undefined}
                 />
               }
@@ -362,12 +223,8 @@ export function Titlebar(): ReactElement {
                   icon="arrow-right"
                   aria-label="Go forward"
                   aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
-                  disabled={tabbed && !canTravel(tabs, 1)}
-                  onClick={() =>
-                    tabbed
-                      ? windowTabs.dispatch({ kind: "travel", step: 1 })
-                      : shellRouter.history.forward()
-                  }
+                  disabled={!canTravel(tabs, 1)}
+                  onClick={() => windowTabs.dispatch({ kind: "travel", step: 1 })}
                   title={undefined}
                 />
               }
@@ -376,9 +233,9 @@ export function Titlebar(): ReactElement {
           </Tooltip>
         </span>
       </span>
-      <div {...props(titlebarStyles.contentArea, tabbed && titlebarStyles.contentAreaTabbed)}>
+      <div {...props(titlebarStyles.contentArea, strip && titlebarStyles.contentAreaTabbed)}>
         <span {...props(titlebarStyles.center, !workspaceVisible && titlebarStyles.centerTrailing)}>
-          {tabbed ? (
+          {strip ? (
             <TitlebarTabStrip state={tabs} mac={mac} />
           ) : (
             <span {...props(titlebarStyles.titleSlot)}>
@@ -387,9 +244,9 @@ export function Titlebar(): ReactElement {
               )}
             </span>
           )}
-          {(workspaceVisible || tabbed) &&
+          {(workspaceVisible || strip) &&
             layout.kind === "single" &&
-            !(workbenchOpen && view.maximized) && (
+            !(workbenchOpen && maximized) && (
               <span {...props(titlebarStyles.actionTrack)}>
                 <Menu>
                   <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
@@ -420,7 +277,7 @@ export function Titlebar(): ReactElement {
             {...props(
               titlebarStyles.workbenchSlot,
               workbenchOpen && titlebarStyles.workbenchSlotOpen,
-              workbenchOpen && tabbed && titlebarStyles.workbenchSlotOpenTabbed,
+              workbenchOpen && strip && titlebarStyles.workbenchSlotOpenTabbed,
             )}
           >
             {workbenchOpen && (
@@ -432,6 +289,7 @@ export function Titlebar(): ReactElement {
                   scope={scope}
                   capabilities={capabilities}
                   workspacePath={terminalWorkspacePath}
+                  sessionId={selection.kind === "session" ? selection.sessionId : undefined}
                 />
                 <span {...props(titlebarStyles.control)}>
                   <Tooltip>
@@ -439,10 +297,8 @@ export function Titlebar(): ReactElement {
                       render={
                         <Button
                           iconOnly
-                          icon={view.maximized ? "minimize" : "expand"}
-                          aria-label={
-                            view.maximized ? "Restore workbench width" : "Expand workbench"
-                          }
+                          icon={maximized ? "minimize" : "expand"}
+                          aria-label={maximized ? "Restore split view" : "Expand workbench"}
                           onClick={() =>
                             workbenchController.actions.toggleMaximized({ view: viewKey })
                           }
@@ -451,7 +307,7 @@ export function Titlebar(): ReactElement {
                       }
                     />
                     <TooltipContent>
-                      {view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
+                      {maximized ? "Restore Split View" : "Expand Workbench"}
                     </TooltipContent>
                   </Tooltip>
                 </span>

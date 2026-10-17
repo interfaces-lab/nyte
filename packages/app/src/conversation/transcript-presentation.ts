@@ -1,142 +1,88 @@
-import type { TurnPart } from "@nyte-ai/protocol";
-import { messageParts } from "./message-references.ts";
+import type { Message } from "@nyte-ai/sdk";
+import { showsText, showsThinking, showsTool } from "@nyte-ai/plugin/client/presentation";
+import type {
+  TextMessage,
+  ThinkingMessage,
+  ToolMessage,
+} from "@nyte-ai/plugin/client/presentation";
+import { messageParts, referenceLabel } from "./message-references.ts";
 
-type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
-
-export type StepTurnPart = Extract<TurnPart, { readonly kind: "thinking" | "tool" }>;
+export type StepMessage = ThinkingMessage | ToolMessage;
 
 type TranscriptDisplayPart =
-  | { readonly kind: "part"; readonly part: TurnPart }
-  | { readonly kind: "step"; readonly parts: readonly StepTurnPart[] }
-  | { readonly kind: "response"; readonly parts: readonly AssistantTurnPart[] };
+  | { readonly kind: "part"; readonly message: Message }
+  | { readonly kind: "step"; readonly messages: readonly StepMessage[] }
+  | { readonly kind: "agents"; readonly messages: readonly ToolMessage[] }
+  | { readonly kind: "response"; readonly messages: readonly TextMessage[] };
 
-function isStepPart(part: TurnPart): part is StepTurnPart {
-  // A create owns a child session and outlives the call, so it is not a step
-  // inside someone else's episode; the bookkeeping on that child is.
-  if (part.kind === "tool") return part.class.kind !== "delegate" || part.class.role !== "create";
-
-  return part.kind === "thinking";
-}
-
-/**
- * Reasoning and tool calls form one work episode. A subagent's create stands
- * on its own row instead, splitting the episode around it: it is a delegation
- * with its own session and status, not a step inside someone else's work.
- *
- * Assistant text is never part of an episode. It is the only content the reader
- * is actually reading, and a turn streams, so any rule that placed it by length,
- * markdown, position, or run state would move it under the reader when the next
- * part arrived. Placement follows `kind` alone, which never changes, so a part
- * drawn as prose stays prose. Text closes the open episode; work that follows
- * opens the next one.
- */
-export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDisplayPart[] {
+export function displayTranscriptParts(messages: readonly Message[]): TranscriptDisplayPart[] {
   const display: TranscriptDisplayPart[] = [];
-  let step: StepTurnPart[] = [];
-  let response: AssistantTurnPart[] = [];
+  let step: StepMessage[] = [];
+  let response: TextMessage[] = [];
+  let agents: ToolMessage[] = [];
+
+  const flushAgents = (): void => {
+    const [only] = agents;
+
+    if (only !== undefined && agents.length === 1) display.push({ kind: "part", message: only });
+    else if (only !== undefined) display.push({ kind: "agents", messages: agents });
+    agents = [];
+  };
 
   const flushStep = (): void => {
-    if (step.length > 0) display.push({ kind: "step", parts: step });
+    if (step.length > 0) display.push({ kind: "step", messages: step });
     step = [];
   };
 
   const flushResponse = (): void => {
-    if (response.length > 0) display.push({ kind: "response", parts: response });
+    if (response.length > 0) display.push({ kind: "response", messages: response });
     response = [];
   };
 
-  for (const part of parts) {
-    if (part.kind === "assistant") {
-      if (part.text.trim() === "") continue;
+  for (const message of messages) {
+    if (showsTool(message) && message.state.class.kind === "delegate") {
+      const { role } = message.state.class;
+
+      if (role === "await") continue;
+
+      if (role === "task" || role === "create") {
+        flushStep();
+        flushResponse();
+        agents.push(message);
+        continue;
+      }
+    }
+
+    flushAgents();
+
+    if (showsText(message)) {
+      if (message.state.markdown.trim() === "") continue;
       flushStep();
-      response.push(part);
+      response.push(message);
       continue;
     }
 
-    if (isStepPart(part)) {
+    if (showsTool(message) || showsThinking(message)) {
       flushResponse();
-      step.push(part);
+      step.push(message);
       continue;
     }
 
     flushStep();
     flushResponse();
-    display.push({ kind: "part", part });
+    display.push({ kind: "part", message });
   }
 
+  flushAgents();
   flushStep();
   flushResponse();
 
   return display;
 }
 
-type UserTextSegment =
-  | { readonly kind: "text"; readonly text: string }
-  | { readonly kind: "reference"; readonly label: string; readonly target: string };
-
-/** Hide persisted skill plumbing while keeping its compact label available to assistive text. */
-export function userTextSegments(source: string): readonly UserTextSegment[] {
-  const text = source.replaceAll(/\n{3,}/gu, "\n\n");
-  const parts = messageParts(text, { form: "message" });
-  const segments: UserTextSegment[] = [];
-
-  const appendText = (value: string): void => {
-    if (value === "") return;
-    const previous = segments.at(-1);
-
-    if (previous?.kind === "text") {
-      segments[segments.length - 1] = { kind: "text", text: previous.text + value };
-
-      return;
-    }
-
-    segments.push({ kind: "text", text: value });
-  };
-
-  for (const [index, part] of parts.entries()) {
-    if (part.kind === "text") {
-      appendText(part.text);
-      continue;
-    }
-
-    if (part.reference.kind !== "skill") {
-      appendText(part.source);
-      continue;
-    }
-
-    segments.push({
-      kind: "reference",
-      label: `/${part.reference.name}`,
-      target: part.reference.path,
-    });
-
-    if (!part.source.endsWith("\n\n")) continue;
-    const next = parts[index + 1];
-    const separator = next?.kind === "text" ? "\n" : next?.kind === "reference" ? " " : "";
-    appendText(separator);
-  }
-
-  return segments.length === 0 ? [{ kind: "text", text }] : segments;
-}
-
+/** A sent message's draft text with each chip as its label, for assistive text. */
 export function userDisplayText(source: string): string {
-  return userTextSegments(source)
-    .map((segment) => (segment.kind === "text" ? segment.text : segment.label))
+  return messageParts(source.replaceAll(/\n{3,}/gu, "\n\n"), { complete: true })
+    .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
     .join("");
-}
-
-export function formatRunDuration(durationMs: number): string | undefined {
-  const totalSeconds = Math.max(0, Math.round(durationMs / 1_000));
-
-  if (totalSeconds === 0) return undefined;
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (hours > 0) return minutes > 0 ? `${String(hours)}h ${String(minutes)}m` : `${String(hours)}h`;
-
-  if (minutes > 0)
-    return seconds > 0 ? `${String(minutes)}m ${String(seconds)}s` : `${String(minutes)}m`;
-
-  return `${String(seconds)}s`;
 }

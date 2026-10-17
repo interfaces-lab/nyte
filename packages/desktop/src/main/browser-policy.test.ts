@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import {
+  crashRetryDelay,
   httpsUpgrade,
-  isLocalHost,
+  onLocalNetwork,
   permissionAllowed,
   plainRetry,
+  rememberPressedKey,
+  takePressedKey,
+  uniqueDownloadName,
   webUrl,
 } from "./browser-policy.ts";
+import type { BrowserKey } from "@nyte-ai/app/bridge.ts";
 
 describe("browser policy", () => {
   test("accepts only web addresses", () => {
@@ -18,14 +23,14 @@ describe("browser policy", () => {
   });
 
   test("keeps local and intranet hosts plain", () => {
-    assert.equal(isLocalHost("localhost"), true);
-    assert.equal(isLocalHost("app.localhost"), true);
-    assert.equal(isLocalHost("127.0.0.1"), true);
-    assert.equal(isLocalHost("192.168.1.4"), true);
-    assert.equal(isLocalHost("172.20.0.1"), true);
-    assert.equal(isLocalHost("172.40.0.1"), false);
-    assert.equal(isLocalHost("intranet"), true);
-    assert.equal(isLocalHost("example.com"), false);
+    assert.equal(onLocalNetwork("localhost"), true);
+    assert.equal(onLocalNetwork("app.localhost"), true);
+    assert.equal(onLocalNetwork("127.0.0.1"), true);
+    assert.equal(onLocalNetwork("192.168.1.4"), true);
+    assert.equal(onLocalNetwork("172.20.0.1"), true);
+    assert.equal(onLocalNetwork("172.40.0.1"), false);
+    assert.equal(onLocalNetwork("intranet"), true);
+    assert.equal(onLocalNetwork("example.com"), false);
   });
 
   test("upgrades plain main-frame addresses once per host", () => {
@@ -54,5 +59,57 @@ describe("browser policy", () => {
     assert.equal(permissionAllowed("notifications"), false);
     assert.equal(permissionAllowed("geolocation"), false);
     assert.equal(permissionAllowed("openExternal"), false);
+  });
+
+  test("numbers a download whose name is taken, keeping the extension", () => {
+    const taken = new Set(["report.pdf", "report (1).pdf", "notes"]);
+    const exists = (name: string) => taken.has(name);
+    assert.equal(uniqueDownloadName("report.pdf", exists), "report (2).pdf");
+    assert.equal(uniqueDownloadName("notes", exists), "notes (1)");
+    assert.equal(uniqueDownloadName("fresh.zip", exists), "fresh.zip");
+    assert.equal(uniqueDownloadName("../etc/passwd", exists), ".._etc_passwd");
+    assert.equal(uniqueDownloadName("", exists), "download");
+  });
+
+  test("reloads a crashed page with backoff, then gives up for a while", () => {
+    const now = 100_000;
+    assert.equal(crashRetryDelay([now], now), 250);
+    assert.equal(crashRetryDelay([now - 1000, now], now), 500);
+    assert.equal(crashRetryDelay([now - 2000, now - 1000, now], now), 1000);
+    assert.equal(crashRetryDelay([now - 3000, now - 2000, now - 1000, now], now), undefined);
+    assert.equal(crashRetryDelay([now - 60_000, now - 50_000, now - 40_000, now], now), 250);
+  });
+
+  test("forwards a page key only for a keydown the user pressed", () => {
+    const key = (code: string, init: Partial<BrowserKey> = {}): BrowserKey => ({
+      key: code.slice(3).toLowerCase(),
+      code,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      metaKey: true,
+      repeat: false,
+      ...init,
+    });
+
+    const pressed: BrowserKey[] = [];
+    rememberPressedKey(pressed, key("MetaLeft", { key: "Meta" }));
+    rememberPressedKey(pressed, key("KeyK"));
+    rememberPressedKey(pressed, key("KeyL"));
+    rememberPressedKey(pressed, key("KeyR"));
+    assert.equal(pressed.length, 3);
+
+    assert.equal(takePressedKey(pressed, key("KeyL")), true);
+    assert.deepEqual(
+      pressed.map((entry) => entry.code),
+      ["KeyR"],
+    );
+    assert.equal(takePressedKey(pressed, key("KeyL")), false);
+    assert.equal(takePressedKey(pressed, key("KeyR", { shiftKey: true })), false);
+    assert.equal(takePressedKey(pressed, key("KeyR")), true);
+    assert.equal(takePressedKey(pressed, key("KeyR")), false);
+
+    for (let index = 0; index < 20; index += 1) rememberPressedKey(pressed, key("KeyG"));
+    assert.equal(pressed.length, 8);
   });
 });

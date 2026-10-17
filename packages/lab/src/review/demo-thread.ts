@@ -4,14 +4,15 @@
  * tried without a model call. The turn is built whole when the message is
  * sent; playing it reveals one part at a time.
  */
-import type { ToolTurnPart, Turn, TurnPart } from "@nyte-ai/protocol";
-
-type ConversationTurn = Extract<Turn, { readonly kind: "turn" }>;
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import { showsTool } from "@nyte-ai/plugin/client/presentation";
+import { lineDiff } from "@nyte-ai/core";
+import { asId, writePatch } from "@nyte-ai/schema";
+import type { Json, Message, PatchEntry, ToolClass, TurnInfo } from "@nyte-ai/sdk";
 
 /** Who answers: a fork of the guide, which only reads, or Nyte, which edits the branch. */
 export type Recipient = "reviewer" | "nyte";
 
-/** A scripted turn and how many of its parts have played. */
 export interface DemoExchange {
   readonly turn: ConversationTurn;
   readonly shown: number;
@@ -20,33 +21,61 @@ export interface DemoExchange {
 /** How long each part shows before the next lands. */
 export const PART_MS = 700;
 
-export const playing = ({ turn, shown }: DemoExchange): boolean => shown < turn.parts.length;
+export const playing = ({ turn, shown }: DemoExchange): boolean => shown < turn.messages.length;
 
-function cut({ turn, shown }: DemoExchange, last: ToolTurnPart["state"]): ConversationTurn {
-  const parts = turn.parts
-    .slice(0, shown)
-    .map((part, index) =>
-      part.kind === "tool" && index === shown - 1 ? { ...part, state: last } : part,
-    );
+function cut(
+  { turn, shown }: DemoExchange,
+  state: TurnInfo["state"],
+  last: "running" | "stopped",
+): ConversationTurn {
+  const messages = turn.messages.slice(0, shown).map((message, index): Message => {
+    if (index !== shown - 1 || !showsTool(message)) return message;
+    const { call, name, args } = message.state;
+    const base = { call, name, args, class: message.state.class };
 
-  return { ...turn, parts };
+    return last === "running"
+      ? {
+          ...message,
+          state: { ...base, phase: "running", progress: null },
+          status: { kind: "live", run: null },
+        }
+      : {
+          ...message,
+          state: { ...base, phase: "settled", outcome: { kind: "stopped" }, changes: null },
+        };
+  });
+
+  return { info: { ...turn.info, state }, messages };
 }
 
 /** What has played so far; the newest call runs until the next part lands. */
 export function shownTurn(exchange: DemoExchange): ConversationTurn {
-  return playing(exchange) ? cut(exchange, { kind: "running" }) : exchange.turn;
+  return playing(exchange)
+    ? cut(exchange, { kind: "working", activity: null }, "running")
+    : exchange.turn;
 }
 
 /** Cut the turn where it stands; a call it was in reads as stopped. */
 export function stop(exchange: DemoExchange): DemoExchange {
-  const turn = cut(exchange, { kind: "error", reason: { kind: "cancelled" }, commit: null });
+  const turn = cut(exchange, { kind: "ended", end: { kind: "stopped" } }, "stopped");
 
-  return { turn, shown: turn.parts.length };
+  return { turn, shown: turn.messages.length };
 }
 
 type Step =
   | { readonly kind: "thinking" | "assistant"; readonly text: string }
-  | { readonly kind: "tool"; readonly class: ToolTurnPart["class"]; readonly output?: string };
+  | {
+      readonly kind: "tool";
+      readonly class: ToolClass;
+      readonly args?: Json;
+      readonly changes?: {
+        readonly added: number;
+        readonly removed: number;
+        readonly paths: readonly string[];
+      };
+      readonly output?: string;
+      readonly patch?: PatchEntry;
+    };
 
 function script(recipient: Recipient, text: string, paths: readonly string[]): readonly Step[] {
   const [first = "README.md", second = first] = paths;
@@ -62,13 +91,13 @@ function script(recipient: Recipient, text: string, paths: readonly string[]): r
         kind: "thinking",
         text: "**Starting from the guide**\n\nThe brief already read the patch, so only the files the question touches need another look.",
       },
-      { kind: "tool", class: { kind: "file_read", path: first } },
+      { kind: "tool", class: { kind: "read", path: first } },
       {
         kind: "tool",
         class: { kind: "shell", command: `rg -n "${word}" ${folder}` },
         output: `${first}:42:  ${word}`,
       },
-      { kind: "tool", class: { kind: "file_read", path: second } },
+      { kind: "tool", class: { kind: "read", path: second } },
       {
         kind: "assistant",
         text: `It starts in \`${first}\`. The change moves the work there, and \`${second}\` only reads the result, so that is where to look.`,
@@ -78,32 +107,29 @@ function script(recipient: Recipient, text: string, paths: readonly string[]): r
         text: "This reply is scripted. Turn Demo off to ask a fork of the guide: it starts from everything the guide read, so only the question is new.",
       },
     ];
+  const oldText = `  ${word}`;
+  const newText = `  // ${text.split("\n")[0]?.slice(0, 60) ?? ""}\n  ${word}\n`;
+  const diffed = lineDiff(oldText, newText);
 
   return [
     {
       kind: "thinking",
       text: "**Planning the change**\n\nOne file takes the edit, and its tests cover it.",
     },
-    { kind: "tool", class: { kind: "file_read", path: second } },
+    { kind: "tool", class: { kind: "read", path: second } },
     {
       kind: "tool",
-      class: {
-        kind: "file_patch",
-        op: "edit",
+      class: { kind: "edit", path: first },
+      args: { path: first, edits: [{ oldText, newText }] },
+      changes: { added: 3, removed: 1, paths: [first] },
+      patch: {
         path: first,
-        added: 3,
-        removed: 1,
-        patch: [
-          `--- a/${first}`,
-          `+++ b/${first}`,
-          "@@ -40,3 +40,5 @@",
-          " ",
-          `-  ${word}`,
-          `+  // ${text.split("\n")[0]?.slice(0, 60) ?? ""}`,
-          `+  ${word}`,
-          "+",
-          " ",
-        ].join("\n"),
+        status: "modified",
+        digest: first,
+        kind: "text",
+        added: diffed.added,
+        removed: diffed.removed,
+        patch: writePatch(first, "modified", diffed.hunks),
       },
     },
     {
@@ -133,34 +159,143 @@ export function demoTurn({
   readonly paths: readonly string[];
 }): DemoExchange {
   const id = crypto.randomUUID();
+  const turn = asId<"turn">(id);
+  const prompt = asId<"message">(`${id}:user`);
   const at = Date.now();
   const steps = script(recipient, text, paths);
 
-  const parts = steps.map((step, index): TurnPart => {
-    const commit = `${id}:${index}`;
+  const settled = (key: string, when: number) =>
+    ({ kind: "settled", commit: asId<"commit">(key), endedAt: when }) as const;
+
+  const parts = steps.map((step, index): Message => {
+    const key = `${id}:${index}`;
     const when = at + (index + 1) * PART_MS;
+
+    const common = {
+      kind: "part",
+      id: asId<"message">(key),
+      turn,
+      at: when,
+      part: asId<"part">(key),
+      version: 1,
+      status: settled(key, when),
+    } as const;
 
     if (step.kind === "tool")
       return {
-        kind: "tool",
-        callId: commit,
-        at: when,
-        class: step.class,
-        state: { kind: "success", commit },
-        output: step.output,
+        ...common,
+        partKind: "tool",
+        role: "step",
+        state: {
+          call: asId<"call">(key),
+          name: step.class.kind,
+          args: step.args ?? null,
+          class: step.class,
+          phase: "settled",
+          outcome: {
+            kind: "ok",
+            content: step.output === undefined ? [] : [{ kind: "text", text: step.output }],
+            output: step.patch ?? null,
+            parts: [],
+          },
+          changes: step.changes ?? null,
+        },
       };
 
-    return { kind: step.kind, commit, contentIndex: index, text: step.text, at: when };
+    if (step.kind === "thinking")
+      return {
+        ...common,
+        partKind: "thinking",
+        role: "step",
+        state: { markdown: step.text, merged: 1, signature: null },
+      };
+
+    return {
+      ...common,
+      partKind: "text",
+      role: "answer",
+      state: { markdown: step.text, signature: null },
+    };
   });
+
+  const tools = steps.flatMap((step) => (step.kind === "tool" ? [step.class] : []));
+
+  const tally = (kind: ToolClass["kind"]) => {
+    const matched = tools.filter((entry) => entry.kind === kind);
+
+    return {
+      count: matched.length,
+      paths: matched.flatMap((entry) => ("path" in entry ? [entry.path] : [])),
+    };
+  };
+
+  const byClass = {
+    read: tally("read"),
+    list: tally("list"),
+    edit: tally("edit"),
+    shell: tally("shell"),
+    delegate: tally("delegate"),
+    custom: tally("custom"),
+  };
 
   return {
     turn: {
-      kind: "turn",
-      id,
-      run: { kind: "none" },
-      parts: [{ kind: "user", commit: `${id}:user`, parent: null, content: text, at }, ...parts],
-      startedAt: at,
-      durationMs: parts.length * PART_MS,
+      info: {
+        id: turn,
+        run: null,
+        prompt,
+        state: {
+          kind: "ended",
+          end: {
+            kind: "completed",
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              reasoning: null,
+              total: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+          },
+        },
+        startedAt: at,
+        endedAt: at + parts.length * PART_MS,
+        steps: steps.filter((step) => step.kind !== "assistant").length,
+        thinkingOnly: false,
+        summary: {
+          byClass,
+          failed: 0,
+          stopped: 0,
+          added: steps.reduce(
+            (sum, step) => sum + (step.kind === "tool" ? (step.changes?.added ?? 0) : 0),
+            0,
+          ),
+          removed: steps.reduce(
+            (sum, step) => sum + (step.kind === "tool" ? (step.changes?.removed ?? 0) : 0),
+            0,
+          ),
+        },
+      },
+      messages: [
+        {
+          kind: "user",
+          id: prompt,
+          turn,
+          at,
+          content: text,
+          source: { kind: "user" },
+          delivery: "queue",
+          status: {
+            kind: "landed",
+            commit: asId<"commit">(`${id}:user`),
+            run: null,
+            replaced: null,
+          },
+          siblings: { index: 0, count: 1, ids: [] },
+        },
+        ...parts,
+      ],
     },
     shown: 1,
   };

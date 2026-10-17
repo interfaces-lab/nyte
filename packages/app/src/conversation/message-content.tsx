@@ -1,6 +1,8 @@
 import type { ReactElement } from "react";
-import type { ImageContent, UserMessage } from "@nyte-ai/schema";
+import type { UserContent } from "@nyte-ai/sdk";
 import { ComposerReadOnly } from "./composer-surface.tsx";
+
+export type MessageFile = Extract<Exclude<UserContent, string>[number], { readonly kind: "file" }>;
 
 /**
  * A sent or queued message, drawn with the chips its text stands for. The
@@ -14,15 +16,16 @@ export function UserMessageText({ text }: { readonly text: string }): ReactEleme
   );
 }
 
-/** The text parts of a message, as the composer would send them again. */
-export function userMessageText(content: UserMessage["content"]): string {
-  if (!Array.isArray(content)) return content;
+export function messageImages(content: UserContent): readonly MessageFile[] {
+  if (typeof content === "string") return [];
 
-  return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+  return content.flatMap((part) =>
+    part.kind === "file" && part.mime.startsWith("image/") ? [part] : [],
+  );
 }
 
-export function messageImages(content: UserMessage["content"]): readonly ImageContent[] {
-  if (!Array.isArray(content)) return [];
+export function messageFiles(content: UserContent): readonly MessageFile[] {
+  if (typeof content === "string") return [];
 
-  return content.flatMap((part) => (part.type === "image" ? [part] : []));
+  return content.flatMap((part) => (part.kind === "file" ? [part] : []));
 }

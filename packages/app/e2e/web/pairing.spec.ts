@@ -73,7 +73,7 @@ test("a wrong token in the form is rejected and nothing is stored", async ({ pag
   await expect(page.getByRole("button", { name: "Connect" })).toBeEnabled();
   expect(await storedConnection(page)).toBeNull();
   expect(errors.pageErrors).toEqual([]);
-  expect(errors.consoleErrors).toEqual([expect.stringContaining("403")]);
+  expect(errors.consoleErrors).toEqual([expect.stringContaining("401")]);
 });
 
 test("a pairing link with a wrong token asks for a new token at the same address", async ({
@@ -89,5 +89,5 @@ test("a pairing link with a wrong token asks for a new token at the same address
   await expect(page).toHaveURL(`${E2E_ORIGIN}/`);
   expect(await storedConnection(page)).toBeNull();
   expect(errors.pageErrors).toEqual([]);
-  expect(errors.consoleErrors).toEqual([expect.stringContaining("403")]);
+  expect(errors.consoleErrors).toEqual([expect.stringContaining("401")]);
 });

@@ -17,22 +17,22 @@ A claim ships only if a source below backs it. Add a row when you verify a new o
 
 | Claim                                              | Source                                                   |
 | -------------------------------------------------- | -------------------------------------------------------- |
-| Built like git: content-addressed objects          | `packages/core/src/kernel/README.md`                     |
-| Refs move by compare-and-swap                      | `packages/core/src/kernel/README.md`                     |
-| Local sessions in SQLite                           | `packages/core/src/kernel/sqlite.ts`                     |
-| Hosted storage in PostgreSQL                       | `@nyte-ai/core/postgres`, kernel README                  |
-| Runs on a Cloudflare Durable Object                | `packages/cloudflare/src/index.ts`                       |
-| Serves the SDK over Web Request/Response, JSON and SSE | `packages/server/package.json`                        |
+| Built like git: content-addressed objects          | `packages/core/README.md`, `packages/core/src/content.ts` |
+| Refs move by compare-and-swap                      | `packages/core/src/store.ts` (`RefStore.set`)            |
+| Local sessions in SQLite                           | `packages/host/src/sqlite.ts`                            |
+| Hosted storage in PostgreSQL                       | `packages/host/src/postgres.ts`                          |
+| Runs on a Cloudflare Durable Object                | `packages/host/src/deploy/cloudflare/worker.ts`          |
+| Serves the SDK over Web Request/Response, JSON and SSE | `packages/protocol/README.md`, `packages/host/README.md` |
 | Terminal and desktop clients embed the host        | `README.md`                                              |
-| Runs on Vercel                                     | `packages/vercel`, `README.md`                           |
-| Desktop app is Apple Silicon only                  | `src/lib/releases.ts` picks `-mac-arm64.dmg`            |
+| Runs on Vercel                                     | `packages/host/src/deploy/vercel`, `README.md`           |
+| Desktop app is Apple Silicon only                  | `packages/docs/src/lib/releases.ts` picks `-mac-arm64.dmg` |
 | CLI installs on macOS and Linux, arm64 and x64     | `public/install`                                         |
 | Mobile is a companion for a remote Mac host        | `packages/mobile/package.json`                           |
-| A session survives the process that started it     | `README.md`, the Design contract in the core guide       |
+| A session survives the process that started it     | `README.md`, `packages/core/README.md`                   |
 
 ## Claims to handle with care
 
-- **"At the edge."** Backed by the Cloudflare and Vercel packages and by `README.md`. Nyte still
+- **"At the edge."** Backed by `packages/host/src/deploy` and by `README.md`. Nyte still
   does not run a hosted service of its own; say the kernel runs there, not that we host it.
 - **"Written by hand."** Removed from the hero; nothing in the repo backs it. Do not reintroduce.
 - **Mobile.** It is a companion to a Mac host, not a standalone host. Do not say "runs on your

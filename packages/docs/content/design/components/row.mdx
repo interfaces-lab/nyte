@@ -1,0 +1,222 @@
+---
+title: Row
+description: "One row of a list with a leading lane, a body, and an action lane"
+---
+
+```ts title="Import"
+import { Row } from "@nyte-ai/ui/row";
+```
+
+A list or navigation row where the painted row is one target and actions sit beside it.
+
+## Usage
+
+- The row inherits its typography.
+- Clicking anywhere on the painted row activates `Row.Primary`, including padding and sibling
+  `Row.Meta`. Child controls keep their own actions. Text selection and Shift-click do not activate
+  the row.
+- Omit `Row.Body` when there is no `Row.Description`.
+
+## Anatomy
+
+```tsx
+<Row>
+  <Row.Backdrop />
+  <Row.Primary>
+    <Row.Leading />
+    <Row.Body>
+      <Row.Label />
+      <Row.Description />
+    </Row.Body>
+    <Row.Meta />
+  </Row.Primary>
+  <Row.Actions />
+</Row>
+```
+
+## Examples
+
+### A clickable row
+
+<Preview>
+  <RowDemo />
+</Preview>
+
+```tsx
+<Row interactive selected={id === currentId}>
+  <Row.Primary
+    aria-current={id === currentId ? "page" : undefined}
+    onClick={() => setCurrentId(id)}
+  >
+    <Row.Leading>
+      <Icon name="new-chat" size={14} />
+    </Row.Leading>
+    <Row.Label>{title}</Row.Label>
+    <Row.Meta>{updatedAt}</Row.Meta>
+  </Row.Primary>
+</Row>
+```
+
+### A settings row
+
+<Preview>
+  <RowLargeDemo />
+</Preview>
+
+```tsx
+<Row size="lg">
+  <Row.Body>
+    <Row.Label>Claude Sonnet</Row.Label>
+    <Row.Description>200K context · $3 / $15</Row.Description>
+  </Row.Body>
+  <Row.Actions>
+    <Button variant="outline">Hide</Button>
+  </Row.Actions>
+</Row>
+```
+
+### A navigation row
+
+<Preview>
+  <RowNavDemo />
+</Preview>
+
+```tsx
+<Row
+  variant="nav"
+  selected={section === "general"}
+  aria-current={section === "general" ? "page" : undefined}
+  onClick={() => setSection("general")}
+>
+  <Row.Leading>
+    <Icon name="settings" size={14} />
+  </Row.Leading>
+  <Row.Label>General</Row.Label>
+</Row>
+```
+
+### A link or another trigger
+
+```tsx
+<Row interactive>
+  <Row.Primary render={<a href={session.url} />}>
+    <Row.Label>{session.title}</Row.Label>
+  </Row.Primary>
+</Row>
+```
+
+### Actions on hover
+
+```tsx
+<Row interactive revealActions>
+  <Row.Primary onClick={open}>
+    <Row.Label xstyle={styles.label}>{title}</Row.Label>
+  </Row.Primary>
+  <Row.Actions placement="overlay">
+    <Button size="2xs" iconOnly icon="x" aria-label={`Stop ${title}`} onClick={stop} />
+  </Row.Actions>
+</Row>
+```
+
+```ts
+import { create } from "@stylexjs/stylex";
+
+const styles = create({
+  label: { marginInlineEnd: "calc(var(--_row-actions-opacity, 0) * 44px)" },
+});
+```
+
+### A selection layer the surface animates
+
+```tsx
+<Row selected={selected}>
+  <Row.Backdrop render={<motion.span layoutId="selection" />} xstyle={styles.selection} />
+  <Row.Primary onClick={open}>
+    <Row.Label>{title}</Row.Label>
+  </Row.Primary>
+</Row>
+```
+
+### Local geometry
+
+```ts
+import { create } from "@stylexjs/stylex";
+import { glyph, row } from "@nyte-ai/ui/styles/schema.stylex";
+
+const styles = create({
+  row: { minHeight: row.heightMd, gap: row.gap },
+  leading: { width: glyph.box },
+});
+```
+
+```tsx
+<Row xstyle={styles.row}>
+  <Row.Primary onClick={open}>
+    <Row.Leading xstyle={styles.leading}>
+      <Icon name="new-chat" size={14} />
+    </Row.Leading>
+    <Row.Label>{title}</Row.Label>
+  </Row.Primary>
+</Row>
+```
+
+## Props
+
+### Row
+
+Renders a `<div>`, or a `<button>` with `variant="nav"`, and takes that element's props plus:
+
+| Prop                           | Type                                                   | Default  | Description                                            |
+| ------------------------------ | ------------------------------------------------------ | -------- | ------------------------------------------------------ |
+| `variant`                      | `"list" \| "nav"`                                      | `"list"` | `nav` is itself the button and takes no `Row.Primary`. |
+| `size`                         | `"md" \| "lg"`                                         | `"md"`   | 28px or 32px, 44px on a coarse pointer.                |
+| `interactive`                  | `boolean`                                              | `false`  | Paints hover, focus, and selected states.              |
+| `selected`                     | `boolean`                                              | `false`  | Sets `data-selected`.                                  |
+| `revealActions`                | `boolean`                                              | `false`  | Hides actions until hover or focus.                    |
+| `render`                       | `ReactElement \| ((props: HTMLProps) => ReactElement)` |          |                                                        |
+| `className`, `style`, `xstyle` | see [Theming](/design/theming)                         |          |                                                        |
+
+### Row.Primary
+
+`type="button"` applies unless `render` replaces the element.
+
+### Row.Actions
+
+| Prop        | Type                    | Default    | Description                                               |
+| ----------- | ----------------------- | ---------- | --------------------------------------------------------- |
+| `placement` | `"inline" \| "overlay"` | `"inline"` | Takes space in the row, or floats over its trailing edge. |
+
+### Parts
+
+Every part takes `render`, `className`, `style`, `xstyle`, and the props of the element it renders.
+
+| Part              | Renders    | Data slot         | Description                         |
+| ----------------- | ---------- | ----------------- | ----------------------------------- |
+| `Row.Backdrop`    | `<span>`   | `row-backdrop`    | Selection layer behind the content. |
+| `Row.Primary`     | `<button>` | `row-primary`     | Primary action for the painted row. |
+| `Row.Leading`     | `<span>`   | `row-leading`     | Fixed-width lane.                   |
+| `Row.Body`        | `<span>`   | `row-body`        | Label and description stack.        |
+| `Row.Label`       | `<span>`   | `row-label`       | Ellipsized title.                   |
+| `Row.Description` | `<span>`   | `row-description` | Smaller, ellipsized second line.    |
+| `Row.Meta`        | `<span>`   | `row-meta`        | Trailing text with tabular figures. |
+| `Row.Actions`     | `<span>`   | `row-actions`     | Action lane next to `Row.Primary`.  |
+
+### Row state and layout
+
+| Variable                | Default                                        | Description                                                 |
+| ----------------------- | ---------------------------------------------- | ----------------------------------------------------------- |
+| `--_row-padding-inline` | `row.paddingInlineMd` or `row.paddingInlineLg` | Inline padding and overlay action inset.                    |
+| `--_row-fill`           | `transparent`                                  | Background. Leave `interactive` off when owning its states. |
+| `--_row-meta-color`     | `role.contentSecondary`                        | Metadata color.                                             |
+
+`revealActions` sets `--_row-actions-display` to `none` when hidden and `inline-flex` when
+visible, and `--_row-actions-opacity` to `0` or `1`. Both are visible without hover support.
+
+## Accessibility
+
+- A `list` row is a `<div>` with no role.
+- `Row.Primary` draws the focus ring on keyboard focus.
+- `Row.Backdrop` is `aria-hidden`.
+- `selected` adds no ARIA. Add `aria-current` or `aria-selected` on `Row.Primary`.
+- An icon-only button inside `Row.Actions` needs `aria-label`. `revealActions` hides the lane with
+  `display: none`, so hidden actions leave the tab order. Focus on the primary reveals them.

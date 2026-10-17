@@ -1,5 +1,3 @@
-"use client";
-
 import { Button, SplitButton } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 

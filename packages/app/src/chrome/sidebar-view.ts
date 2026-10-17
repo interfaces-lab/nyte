@@ -1,7 +1,6 @@
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { sessionActivityMark } from "../session-activity.ts";
-import { EMPTY_READ_SESSIONS, sessionHasUnreadCompletion } from "../session-read-state.ts";
-import type { ReadSessions } from "../session-read-state.ts";
+import { sessionHasUnreadCompletion } from "../session-read-state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -56,8 +55,6 @@ export interface SessionViewGroup {
 }
 
 export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
-  // One flat list across every workspace, with what needs you on top and the
-  // rest folded; folders and other groupings are opt-in from the filter menu.
   grouping: "inbox",
   sortByStatus: true,
   show: ["updated", "environment", "pr"] as const,
@@ -67,21 +64,18 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
-/** Untitled chats with no preview are drafts; a name or preview is a finished row. */
-export function sessionIsDraft(session: SessionInfo): boolean {
-  return session.name === undefined && session.preview === undefined;
-}
-
-export function statusOf(
+/**
+ * `sessionMark` reports `waiting` only for a run parked on a reply; one parked
+ * on background work arrives here as `working`. A session is never a draft:
+ * `draft` is the client's chats that have not started.
+ */
+function deriveSessionStatus(
   session: SessionInfo,
-  read: ReadSessions,
   working: ReadonlySet<SessionId>,
-): SessionStatus {
-  const mark = sessionActivityMark(session, working.has(session.sessionId));
+): Exclude<SessionStatus, "draft"> {
+  const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
-    // `sessionMark` reports `waiting` only for a run parked on a reply; one
-    // parked on background work arrives here as `working`.
     case "waiting":
     case "failed":
       return "needs-attention";
@@ -89,11 +83,7 @@ export function statusOf(
     case "working":
       return "working";
     case "idle":
-      if (sessionHasUnreadCompletion(session, read)) return "unread";
-
-      if (sessionIsDraft(session)) return "draft";
-
-      return "done";
+      return sessionHasUnreadCompletion(session) ? "unread" : "done";
     default: {
       const _exhaustive: never = mark;
 
@@ -102,31 +92,27 @@ export function statusOf(
   }
 }
 
-/** The open chat and the shelf it was opened from, so reading or replying never moves its row. */
 export interface ShelfHold {
   readonly sessionId: SessionId;
   readonly shelf: SessionShelf;
 }
 
-/** Archiving beats the hold, and so does restoring: the row leaves or returns at once. */
-export function shelfOf(
+export function deriveShelf(
   session: SessionInfo,
-  read: ReadSessions,
   working: ReadonlySet<SessionId>,
   hold: ShelfHold | undefined,
 ): SessionShelf {
   if (session.archived) return "archived";
 
-  if (hold?.sessionId === session.sessionId && hold.shelf !== "archived") return hold.shelf;
+  if (hold?.sessionId === session.id && hold.shelf !== "archived") return hold.shelf;
 
   if (session.pinned) return "inbox";
 
-  const status = statusOf(session, read, working);
+  const status = deriveSessionStatus(session, working);
 
   switch (status) {
     case "needs-attention":
     case "unread":
-    case "draft":
       return "inbox";
     case "working":
       return "working";
@@ -144,17 +130,17 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
   return (
     Number(right.pinned) - Number(left.pinned) ||
     right.lastActivityAt - left.lastActivityAt ||
-    left.sessionId.localeCompare(right.sessionId)
+    left.id.localeCompare(right.id)
   );
 }
 
 /**
- * Needs a decision, then running, then finished and waiting on a look, then
- * drafts. Read state takes no part: opening a chat never moves it. A chat
- * leaves the ranking only when it is archived.
+ * Needs a decision, then running, then finished and waiting on a look. Read
+ * state takes no part: opening a chat never moves it. A chat leaves the
+ * ranking only when it is archived.
  */
 function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): number {
-  const mark = sessionActivityMark(session, working.has(session.sessionId));
+  const mark = sessionActivityMark(session, working.has(session.id));
 
   switch (mark) {
     case "waiting":
@@ -164,7 +150,7 @@ function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): numbe
     case "working":
       return 1;
     case "idle":
-      return sessionIsDraft(session) ? 3 : 2;
+      return 2;
     default: {
       const _exhaustive: never = mark;
 
@@ -191,7 +177,6 @@ function groupSessions(
   grouping: SessionGrouping,
   environment: SessionEnvironment,
   now: number,
-  read: ReadSessions,
   working: ReadonlySet<SessionId>,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
@@ -213,7 +198,9 @@ function groupSessions(
       };
 
       return STATUSES.flatMap((status) => {
-        const members = sessions.filter((session) => statusOf(session, read, working) === status);
+        const members = sessions.filter(
+          (session) => deriveSessionStatus(session, working) === status,
+        );
 
         return members.length === 0
           ? []
@@ -254,7 +241,7 @@ export function sessionsForNavigation(
   includeArchived = false,
 ): readonly SessionInfo[] {
   return sessions.filter(
-    (session) => session.parent === undefined && (includeArchived || !session.archived),
+    (session) => session.parent === null && (includeArchived || !session.archived),
   );
 }
 
@@ -264,7 +251,6 @@ export function sessionsForView(
   settings: SessionViewSettings,
   environment: SessionEnvironment = "local",
   now = Date.now(),
-  read: ReadSessions = EMPTY_READ_SESSIONS,
   working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
 ): readonly SessionViewGroup[] {
   if (
@@ -276,12 +262,12 @@ export function sessionsForView(
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
       settings.statuses.length === 0 ||
-      settings.statuses.includes(statusOf(session, read, working)),
+      settings.statuses.includes(deriveSessionStatus(session, working)),
   );
 
   const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, working));
 
-  return groupSessions(ordered, settings.grouping, environment, now, read, working);
+  return groupSessions(ordered, settings.grouping, environment, now, working);
 }
 
 export function hasSessionFilters(settings: SessionViewSettings): boolean {
@@ -304,7 +290,7 @@ export function clearSessionFilters(settings: SessionViewSettings): SessionViewS
   };
 }
 
-export function isOption<T extends string>(value: unknown, options: readonly T[]): value is T {
+export function amongOptions<T extends string>(value: unknown, options: readonly T[]): value is T {
   return options.some((option) => option === value);
 }
 

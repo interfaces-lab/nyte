@@ -3,31 +3,32 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { patchDigest } from "./changes-viewed.ts";
+import { parsePatchFiles } from "@pierre/diffs";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
-function patchOf(path: string, prefix: string): string {
+function buildPatch(path: string, prefix: string): string {
   const added = Array.from({ length: 16 }, (_, index) => `+${prefix} ${String(index)}`);
 
   return [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,17 @@", " keep", ...added, ""].join("\n");
 }
 
-const ITEMS = [
-  {
+function buildItem(path: string, prefix: string): ChangesStackItem {
+  const patch = buildPatch(path, prefix);
+  const digest = patchDigest(patch);
+
+  return {
     kind: "diff",
-    path: "src/alpha.ts",
-    patch: patchOf("src/alpha.ts", "alpha"),
-    added: 16,
-    removed: 0,
-  },
-  {
-    kind: "diff",
-    path: "src/beta.ts",
-    patch: patchOf("src/beta.ts", "beta"),
-    added: 16,
-    removed: 0,
-  },
-] satisfies readonly ChangesStackItem[];
+    path,
+    patch,
+    digest,
+    files: parsePatchFiles(patch, digest).flatMap((parsed) => parsed.files),
+    stat: { kind: "text", added: 16, removed: 0 },
+  };
+}
+
+const ITEMS = [buildItem("src/alpha.ts", "alpha"), buildItem("src/beta.ts", "beta")];
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -96,6 +97,13 @@ export async function run(): Promise<string> {
     render();
     await settle();
     render();
+    const deadline = performance.now() + 10_000;
+
+    while (container.querySelector('[data-change-path="src/beta.ts"]') === null) {
+      if (performance.now() > deadline) throw new Error("Timed out waiting for the headers");
+      await settle();
+    }
+
     await settle();
     const expandedHeight = height();
 
@@ -105,10 +113,31 @@ export async function run(): Promise<string> {
     check(header("src/beta.ts").getAttribute("aria-expanded") === "true", "Beta stays expanded");
     check(height() < expandedHeight, "Collapsing alpha removes its body from the stack");
 
+    container.style.width = "520px";
+    await settle();
+    check(
+      header("src/alpha.ts").getAttribute("aria-expanded") === "false",
+      "Resize keeps alpha collapsed",
+    );
+    check(
+      header("src/beta.ts").getAttribute("aria-expanded") === "true",
+      "Resize keeps beta expanded",
+    );
+    check(
+      container.querySelector("[data-nyte-scrollport]")?.getBoundingClientRect().width === 520,
+      "The diff follows its container width",
+    );
+
     header("src/alpha.ts").click();
     await settle();
     check(header("src/alpha.ts").getAttribute("aria-expanded") === "true", "Alpha expands again");
     check(Math.abs(height() - expandedHeight) < 8, "Expanding alpha restores its body");
+    container.style.width = "760px";
+    await settle();
+    check(
+      container.querySelector("[data-nyte-scrollport]")?.getBoundingClientRect().width === 760,
+      "The diff follows the restored container width",
+    );
 
     return "passed";
   } finally {

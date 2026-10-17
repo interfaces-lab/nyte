@@ -1,33 +1,53 @@
 /** The settled step header counts what the calls did, read from their typed state, never from the class alone. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { ToolState, TurnToolClass } from "@nyte-ai/protocol";
+import type { PartStatus, ToolClass, ToolPartState } from "@nyte-ai/sdk";
+import { asId } from "@nyte-ai/schema";
 import { durableStepGroupPresentation } from "./step-group-presentation.ts";
-import type { StepTurnPart } from "./transcript-presentation.ts";
+import type { StepMessage } from "./transcript-presentation.ts";
 
-const settled = { commit: "c" } as const;
+type Outcome = Extract<ToolPartState, { readonly phase: "settled" }>["outcome"] | "running";
 
-const SUCCESS: ToolState = { kind: "success", ...settled };
+const SUCCESS: Outcome = { kind: "ok", content: [], output: null, parts: [] };
 
-const EXIT: ToolState = { kind: "error", reason: { kind: "exit", code: 1 }, ...settled };
+const EXIT: Outcome = { kind: "failed", message: "exit 1" };
 
-const DENIED: ToolState = { kind: "error", reason: { kind: "denied" }, ...settled };
+const DENIED: Outcome = { kind: "rejected", reason: "denied" };
 
-const STOPPED: ToolState = { kind: "error", reason: { kind: "cancelled" }, ...settled };
+const STOPPED: Outcome = { kind: "stopped" };
+
+const SETTLED: PartStatus = { kind: "settled", commit: asId<"commit">("c"), endedAt: 1 };
 
 let calls = 0;
 
-function call(toolClass: TurnToolClass, state: ToolState): StepTurnPart {
+function call(toolClass: ToolClass, outcome: Outcome): StepMessage {
   calls += 1;
+  const id = `call-${String(calls)}`;
+  const base = { call: asId<"call">(id), name: toolClass.kind, args: null, class: toolClass };
 
-  return { kind: "tool", callId: `call-${String(calls)}`, at: calls, class: toolClass, state };
+  return {
+    id: asId<"message">(id),
+    turn: asId<"turn">("turn"),
+    at: calls,
+    kind: "part",
+    part: asId<"part">(id),
+    partKind: "tool",
+    role: "step",
+    version: 1,
+    ...(outcome === "running"
+      ? {
+          state: { ...base, phase: "running", progress: null },
+          status: { kind: "live", run: asId<"run">("run") },
+        }
+      : { state: { ...base, phase: "settled", outcome, changes: null }, status: SETTLED }),
+  };
 }
 
-const shell = (command: string, state: ToolState) => call({ kind: "shell", command }, state);
+const shell = (command: string, outcome: Outcome) => call({ kind: "shell", command }, outcome);
 
-function summary(parts: readonly StepTurnPart[]) {
+function summary(messages: readonly StepMessage[]) {
   const presentation = durableStepGroupPresentation({
-    parts,
+    messages,
     durationMs: 0,
     added: 0,
     removed: 0,
@@ -56,7 +76,7 @@ test("a step that lost a call tallies each outcome instead of claiming a verb", 
   );
 
   const mixed = summary([
-    call({ kind: "file_read", path: "/w/a.ts" }, SUCCESS),
+    call({ kind: "read", path: "/w/a.ts" }, SUCCESS),
     shell("pnpm test", EXIT),
     shell("pnpm build", STOPPED),
     shell("sleep 1", STOPPED),
@@ -74,7 +94,7 @@ test("a step whose every call failed or stopped never merges the two", () => {
 
 test("a running step lists only the calls still open", () => {
   const presentation = durableStepGroupPresentation({
-    parts: [shell("pnpm test", SUCCESS), shell("pnpm lint", { kind: "running" })],
+    messages: [shell("pnpm test", SUCCESS), shell("pnpm lint", "running")],
     durationMs: 0,
     added: 0,
     removed: 0,

@@ -1,13 +1,13 @@
-import clerkEntryUrl from "virtual:nyte-clerk-entry";
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { CatchBoundary } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { loadDeferred } from "@nyte-ai/app/deferred.tsx";
 import type { ReactElement, ReactNode } from "react";
 import type { accountRuntime } from "./clerk.tsx";
 import type { AccountBridge, AccountCommand } from "./protocol.ts";
@@ -15,7 +15,12 @@ import type { AccountBridge, AccountCommand } from "./protocol.ts";
 declare global {
   interface Window {
     readonly nyteAccount: AccountBridge;
-    nyteAccountRuntime?: typeof accountRuntime;
+  }
+}
+
+declare module "@nyte-ai/app/deferred-entries.ts" {
+  interface DeferredRuntimes {
+    account: typeof accountRuntime;
   }
 }
 
@@ -29,48 +34,8 @@ type RuntimeState =
 
 const bridge = window.nyteAccount;
 
-let runtimeLoad: Promise<typeof accountRuntime> | undefined;
-
-let runtimeAttempt = 0;
-
-function loadRuntime(): Promise<typeof accountRuntime> {
-  if (window.nyteAccountRuntime !== undefined) return Promise.resolve(window.nyteAccountRuntime);
-
-  if (runtimeLoad !== undefined) return runtimeLoad;
-
-  const script = document.createElement("script");
-
-  const url = new URL(clerkEntryUrl, window.location.href);
-
-  if (runtimeAttempt > 0) url.searchParams.set("attempt", String(runtimeAttempt));
-  runtimeAttempt += 1;
-  script.type = "module";
-  script.src = url.href;
-  runtimeLoad = new Promise<typeof accountRuntime>((resolve, reject) => {
-    const fail = () => reject(new Error("Account runtime did not load"));
-    const timeout = window.setTimeout(fail, 15_000);
-
-    script.onload = () => {
-      window.clearTimeout(timeout);
-
-      if (window.nyteAccountRuntime === undefined) fail();
-      else resolve(window.nyteAccountRuntime);
-    };
-
-    script.onerror = () => {
-      window.clearTimeout(timeout);
-      fail();
-    };
-
-    document.head.append(script);
-  }).catch(() => {
-    runtimeLoad = undefined;
-    script.remove();
-    throw new Error("Account runtime did not load");
-  });
-
-  return runtimeLoad;
-}
+/** Clerk shows its own error in the form when the callback fails, so "Finishing" stops covering it. */
+const FINISHING_COVER_MS = 15_000;
 
 const styles = create({
   panel: {
@@ -136,8 +101,7 @@ function AccountLoader(): ReactElement {
     const stop = bridge.onReturn(() => {
       window.clearTimeout(timer);
       setReturned(command.current?.id);
-      // Clerk shows its own error in the form when the callback fails; stop covering it.
-      timer = window.setTimeout(() => setReturned(undefined), 15_000);
+      timer = window.setTimeout(() => setReturned(undefined), FINISHING_COVER_MS);
     });
 
     return () => {
@@ -171,7 +135,7 @@ function AccountLoader(): ReactElement {
           }
 
           if (config === undefined) throw new Error("Accounts are not configured");
-          const runtime = await loadRuntime();
+          const runtime = await loadDeferred("account");
 
           if (disposed) return;
           requested = false;
@@ -253,7 +217,9 @@ function AccountDialog({
       }}
     >
       <Dialog.Popup>
-        <Dialog.Title xstyle={srOnly}>Sign In to Nyte</Dialog.Title>
+        <div {...props(srOnly)}>
+          <Dialog.Title>Sign In to Nyte</Dialog.Title>
+        </div>
         {children}
         <Dialog.Close
           render={

@@ -1,10 +1,7 @@
 /**
  * Splits the current tool list into the definitions sent up front and those the transcript loaded later (marked by `addedToolNames` on a tool result), for providers with native deferred tool loading.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/deferred-tools.ts
- * Synced with pi 7ebf9087e.
  */
-import type { Context, Tool } from "@nyte-ai/schema";
+import type { Context, Tool } from "@nyte-ai/schema/model";
 
 type ToolNameNormalizer = (name: string) => string;
 

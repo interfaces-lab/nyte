@@ -1,103 +1,102 @@
-/**
- * Real core for the lab: the host composition the terminal and `nyte serve`
- * use, with the caller's plugins only, signed in with `~/.nyte`'s credentials
- * and the user's default model. History lives in one SQLite file under the
- * lab's cache, so a guide written once survives a restart.
- */
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createNyteModels, type MutableModels } from "@nyte-ai/ai";
-import { isThinkingLevel, type Nyte, type Plugin } from "@nyte-ai/core";
-import type { RunConfig } from "@nyte-ai/protocol";
-import { SqliteStore } from "@nyte-ai/core/store";
-import { createHost, resolveModel } from "@nyte-ai/host";
-import { createModelPreferencesStore, readCatalog } from "@nyte-ai/host/catalog";
+import { createNyteModels } from "@nyte-ai/ai";
+import type { Host, Plugin, Store } from "@nyte-ai/core";
+import { sqliteStore } from "@nyte-ai/host";
+import type { ConfigurationPatch, ModelRef } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
 
-/** Where the lab keeps what outlives a dev server: the core store and the review registry. */
 export const CACHE_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "../node_modules/.cache/nyte-lab",
 );
 
-const STORE_PATH = join(CACHE_DIR, "review.db");
-
 export interface ReviewHost {
-  readonly sdk: Nyte;
-  readonly store: SqliteStore;
-  readonly models: MutableModels;
-  /** What a new brief pins; every fork then pins what its parent ran. */
-  readonly config: RunConfig;
+  readonly sdk: Host;
+  readonly store: Store;
+  readonly config: ConfigurationPatch;
   close(): Promise<void>;
 }
 
-/** The default a new chat would start with, or `NYTE_LAB_MODEL` as `provider/id`. */
-async function chooseModel(models: MutableModels) {
-  const requested = process.env["NYTE_LAB_MODEL"];
+export async function findModel(host: Host, requested?: string): Promise<ModelRef> {
+  const catalog = await host.models.list();
 
-  if (requested !== undefined && requested !== "") return resolveModel(models, requested);
-
-  const signedIn = (
-    await Promise.all(
-      models
-        .getProviders()
-        .map(async (provider) =>
-          (await models.checkAuth(provider.id)) === undefined ? [] : [provider.id],
-        ),
-    )
-  ).flat();
-
-  await models.refresh({ providers: signedIn });
-  const { defaultModel } = await readCatalog(models, await createModelPreferencesStore().read());
-
-  if (defaultModel === undefined)
+  if (requested === undefined || requested === "") {
+    if (catalog.default !== null) return catalog.default;
     throw new Error("No signed-in model. Sign in with `nyte`, or set NYTE_LAB_MODEL.");
+  }
 
-  return defaultModel;
+  const model = catalog.providers
+    .flatMap((provider) => provider.models)
+    .find(
+      (entry) =>
+        `${entry.ref.provider}/${entry.ref.id}` === requested ||
+        (entry.fast !== null && `${entry.fast.provider}/${entry.fast.id}` === requested),
+    );
+
+  if (model === undefined) throw new Error(`No model ${requested} is available.`);
+
+  return model.fast !== null && `${model.fast.provider}/${model.fast.id}` === requested
+    ? model.fast
+    : model.ref;
 }
 
 export async function openReviewHost(options: {
-  readonly plugins: readonly Plugin[];
-  readonly onDiagnostic: (message: string) => void;
+  readonly plugins: readonly Plugin<"core">[];
 }): Promise<ReviewHost> {
+  mkdirSync(CACHE_DIR, { recursive: true });
+  const store = sqliteStore({ path: join(CACHE_DIR, "review.db") });
   const models = createNyteModels();
-  const model = await chooseModel(models);
-  const effort = process.env["NYTE_LAB_EFFORT"];
-  const preferences = await createModelPreferencesStore().read();
-
-  const thinkingLevel =
-    effort !== undefined && isThinkingLevel(effort) ? effort : preferences.defaults.thinkingLevel;
-
-  mkdirSync(dirname(STORE_PATH), { recursive: true });
-  const store = new SqliteStore(STORE_PATH);
-  let sdk: Nyte;
+  let host: Host | undefined;
 
   try {
-    sdk = await createHost({
+    const signedIn = (
+      await Promise.all(
+        models
+          .getProviders()
+          .map(async (provider) =>
+            (await models.checkAuth(provider.id)) === undefined ? [] : [provider.id],
+          ),
+      )
+    ).flat();
+
+    await models.refresh({ providers: signedIn });
+    host = await sdk.open({
       store,
       models,
-      model,
-      thinkingLevel,
-      onDiagnostic: (diagnostic) =>
-        options.onDiagnostic(`${diagnostic.operation} failed: ${String(diagnostic.cause)}`),
-      plugins: { kind: "custom", cwd: process.cwd(), plugins: options.plugins },
+      workspace: { kind: "local", path: process.cwd() },
+      plugins: options.plugins,
     });
+    const model = await findModel(host, process.env["NYTE_LAB_MODEL"]);
+    const effort = process.env["NYTE_LAB_EFFORT"];
+
+    const thinking = (["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const).find(
+      (level) => level === effort,
+    );
+
+    const opened = host;
+    const config: ConfigurationPatch = thinking === undefined ? { model } : { model, thinking };
+
+    return {
+      sdk: opened,
+      store,
+      config,
+      async close() {
+        try {
+          await opened.close();
+        } finally {
+          await store.close();
+        }
+      },
+    };
   } catch (cause) {
-    await store.close().catch(() => undefined);
+    try {
+      await host?.close();
+    } finally {
+      await store.close();
+    }
+
     throw cause;
   }
-
-  const detach = sdk.attach();
-
-  return {
-    sdk,
-    store,
-    models,
-    config: { model: { provider: model.provider, id: model.id }, thinkingLevel },
-    async close() {
-      detach();
-      await sdk.close();
-      await store.close();
-    },
-  };
 }

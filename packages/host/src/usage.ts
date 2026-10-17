@@ -7,39 +7,18 @@ import process from "node:process";
 import { StringDecoder } from "node:string_decoder";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import {
-  calculateCost,
-  fetchAnthropicAccountLimits,
-  fetchOpenAICodexAccountLimits,
-  hasApi,
-  type AccountLimits,
-  type Models,
-} from "@nyte-ai/ai";
-import {
-  emptyUsageSummary,
-  mergeUsageSummaries,
-  type ModelUsage,
-  type UsageSummary,
-} from "@nyte-ai/client";
-import type { Usage } from "@nyte-ai/schema";
+import { calculateCost, type Models } from "@nyte-ai/ai";
+import { summarizeModels, emptyModelUsage, recordedUsage } from "./usage-summary.ts";
+import type { LocalHistoryUsage, ModelUsage } from "./usage-types.ts";
+import type { Usage } from "@nyte-ai/schema/model";
 
 export interface ClaudeCodeUsageOptions {
   readonly models: Pick<Models, "getModels">;
   readonly configDir?: string;
   readonly signal?: AbortSignal;
-  /** Parsed files from earlier reads; unchanged files are reused, gone files dropped. */
   readonly cache?: UsageScanCache<ClaudeCodeFileScan>;
 }
 
-/**
- * Transcripts are append-only, so a file that still has the size and mtime it
- * had when it was last parsed cannot yield different usage. Readers key their
- * per-file results on that pair and only parse what changed; a warm read of
- * a gigabyte of history is then dominated by stat calls, not JSON.
- *
- * Deduplication that crosses files is left to the read, over the small set of
- * cached records, so a cache hit and a cold parse reconcile identically.
- */
 export type UsageScanCache<T> = Map<string, FileScan<T>>;
 
 export interface FileScan<T> {
@@ -48,25 +27,11 @@ export interface FileScan<T> {
   readonly scan: T;
 }
 
-/** One Claude Code transcript, deduplicated within itself. */
 export interface ClaudeCodeFileScan {
-  /** Best snapshot per message or request identity. */
   readonly keyed: readonly (readonly [string, Snapshot])[];
-  /** Snapshots with no identity at all, which never merge with anything. */
   readonly anonymous: readonly Snapshot[];
   readonly malformedRecords: number;
 }
-
-export type LocalHistoryUsage =
-  | { readonly kind: "missing" }
-  | { readonly kind: "failed"; readonly message: string }
-  | {
-      readonly kind: "ready";
-      readonly summary: UsageSummary;
-      readonly unpricedRecords: number;
-      readonly malformedRecords: number;
-      readonly unreadableFiles: number;
-    };
 
 export type ClaudeCodeUsage = LocalHistoryUsage;
 
@@ -104,10 +69,6 @@ export interface Snapshot {
   readonly costUSD: number | undefined;
 }
 
-/**
- * Content blocks and copied histories repeat snapshots. Keep one whole largest
- * snapshot regardless of timestamps, not field-wise maxima that invent a response.
- */
 function betterSnapshot(previous: Snapshot | undefined, next: Snapshot): boolean {
   if (previous === undefined) return true;
   const usage = next.usage;
@@ -122,7 +83,7 @@ function betterSnapshot(previous: Snapshot | undefined, next: Snapshot): boolean
   );
 }
 
-/** Parse one transcript in full. Throws when the file cannot be read. */
+/** Reads one Claude Code transcript's usage snapshots. An unparsable last line without its newline is not counted malformed: a writer may still be appending it. */
 async function scanClaudeCodeFile(
   path: string,
   signal: AbortSignal | undefined,
@@ -140,7 +101,6 @@ async function scanClaudeCodeFile(
     try {
       value = JSON.parse(line.text);
     } catch {
-      // A writer may still be appending the last JSON object.
       if (line.terminated) malformedRecords++;
       continue;
     }
@@ -167,7 +127,7 @@ async function scanClaudeCodeFile(
     }
 
     const usage: Usage = {
-      ...emptyUsageSummary().total,
+      ...emptyModelUsage(),
       input: raw.input_tokens,
       output: raw.output_tokens,
       cacheRead: raw.cache_read_input_tokens ?? 0,
@@ -200,11 +160,6 @@ async function scanClaudeCodeFile(
   return { keyed: [...keyed], anonymous, malformedRecords };
 }
 
-/**
- * Parse a file, or reuse the parse from a cache entry that still matches the
- * file on disk. `seen` collects the paths of this read so the cache can drop
- * files that no longer exist once the walk completes.
- */
 async function scanCached<T>(
   path: string,
   cache: UsageScanCache<T> | undefined,
@@ -226,14 +181,19 @@ async function scanCached<T>(
   return scan;
 }
 
-/** After a complete walk, whatever the walk did not visit is gone. */
 function pruneCache<T>(cache: UsageScanCache<T> | undefined, seen: Set<string>): void {
   if (cache === undefined) return;
 
   for (const path of cache.keys()) if (!seen.has(path)) cache.delete(path);
 }
 
-/** Local history across all projects, separate from Nyte usage. Aborts reject with signal.reason. */
+/**
+ * Reads Claude Code's local usage under `<configDir>/projects`. The configured root may be a
+ * symlink (as may a system ancestor such as macOS `/tmp`), but links below it are skipped, to
+ * avoid loops and duplicate history. Every read prices cached snapshots again on a copy, since
+ * the catalog can change between reads while a transcript does not; a snapshot that records its
+ * own cost keeps that total, with no invented breakdown.
+ */
 export async function readClaudeCodeUsage(
   options: ClaudeCodeUsageOptions,
 ): Promise<ClaudeCodeUsage> {
@@ -249,7 +209,6 @@ export async function readClaudeCodeUsage(
   if (!existsSync(projects)) return { kind: "missing" };
 
   try {
-    // Configured roots may be symlinks, as may system ancestors such as macOS /tmp.
     const root = await stat(projects);
     options.signal?.throwIfAborted();
 
@@ -274,7 +233,6 @@ export async function readClaudeCodeUsage(
       options.signal?.throwIfAborted();
 
       try {
-        // Follow the configured root, but skip child links to avoid loops and duplicate history.
         if (directory !== projects && (await lstat(directory)).isSymbolicLink()) continue;
         const entries = await opendir(directory);
 
@@ -325,12 +283,9 @@ export async function readClaudeCodeUsage(
 
     for (const snapshot of [...keyed.values(), ...anonymous]) {
       options.signal?.throwIfAborted();
-      // Cached usage is priced on every read, since the catalog can change
-      // between reads while the transcript does not. Copy before writing.
       const usage: Usage = { ...snapshot.usage, cost: { ...snapshot.usage.cost } };
 
       if (snapshot.costUSD !== undefined) {
-        // History reports a total, not a cost breakdown. Do not invent allocations.
         usage.cost.total = snapshot.costUSD;
       } else {
         const matches = catalog.filter((model) => model.id === snapshot.model);
@@ -340,14 +295,19 @@ export async function readClaudeCodeUsage(
         else unpricedRecords++;
       }
 
-      rows.push({ provider: "anthropic", model: snapshot.model, turns: 1, usage });
+      rows.push({
+        provider: "anthropic",
+        model: snapshot.model,
+        turns: 1,
+        usage: recordedUsage(usage),
+      });
     }
 
     options.signal?.throwIfAborted();
 
     return {
       kind: "ready",
-      summary: mergeUsageSummaries(emptyUsageSummary(), { ...emptyUsageSummary(), models: rows }),
+      summary: summarizeModels(rows),
       unpricedRecords,
       malformedRecords,
       unreadableFiles,
@@ -359,33 +319,15 @@ export async function readClaudeCodeUsage(
   }
 }
 
-/**
- * Codex local history, read from the rollout files the CLI writes per session.
- *
- * Two on-disk formats are in play. Current rollouts carry a `token_usage_record`
- * per model response, whose `usage` is already the delta and whose `response_id`
- * is unique across every file, so counting them is a set union and needs no
- * heuristics. Archived rollouts predate that record and only carry the
- * `token_count` event, whose `last_token_usage` is re-emitted unchanged on some
- * stream boundaries and, in a forked or subagent rollout, is preceded by the
- * parent's whole history re-stamped to the fork instant. Both have to be
- * dropped there or the archive reads about a tenth high.
- *
- * A file is read one way or the other, never both: the modern record wins
- * whenever the file has any, because the legacy event is still written
- * alongside it and would double every response that has both.
- */
 export type CodexUsage = LocalHistoryUsage;
 
 export interface CodexUsageOptions {
   readonly models: Pick<Models, "getModels">;
   readonly homeDir?: string;
   readonly signal?: AbortSignal;
-  /** Parsed rollouts from earlier reads; unchanged files are reused, gone files dropped. */
   readonly cache?: UsageScanCache<CodexFileScan>;
 }
 
-/** What one rollout file contributed, before the two formats are reconciled. */
 export interface CodexFileScan {
   readonly modern: readonly (readonly [string, CodexRow])[];
   readonly legacy: readonly CodexRow[];
@@ -438,11 +380,6 @@ const tokenCount = Type.Object({
 
 type CodexTokens = Static<typeof codexTokens>;
 
-/**
- * Codex reports `input_tokens` inclusive of the cached and freshly written
- * portions, so the uncached remainder is what is left after removing them.
- * Reasoning is reported inside `output_tokens` and is not added again.
- */
 function codexUsage(raw: CodexTokens): Usage {
   const input = raw.input_tokens ?? 0;
   const cacheRead = raw.cached_input_tokens ?? 0;
@@ -451,7 +388,7 @@ function codexUsage(raw: CodexTokens): Usage {
   const uncached = Math.max(0, input - cacheRead - cacheWrite);
 
   return {
-    ...emptyUsageSummary().total,
+    ...emptyModelUsage(),
     input: uncached,
     output,
     cacheRead,
@@ -461,11 +398,6 @@ function codexUsage(raw: CodexTokens): Usage {
   };
 }
 
-/**
- * A forked rollout's copied prologue is written in one synchronous burst, while
- * the child's own first response only lands after a real model turn. A second
- * of separation splits them; `ccusage` draws the line in the same place.
- */
 const FORK_COPY_MAX_GAP_MS = 1000;
 
 function parseMs(value: string | undefined): number | undefined {
@@ -475,6 +407,13 @@ function parseMs(value: string | undefined): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+/**
+ * Reads Codex's local usage from `sessions` and `archived_sessions` (where the legacy format
+ * lives). A `response_id` is unique across files, so one map dedups a forked rollout's repeated
+ * parent responses as well as repeats within a file; a file with modern records counts only
+ * those, since the legacy event is written beside them. Rows are priced on a copy against the
+ * `openai-codex` catalog, the ChatGPT-backend model ids Codex writes.
+ */
 export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexUsage> {
   options.signal?.throwIfAborted();
 
@@ -482,7 +421,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
     options.homeDir ?? (process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")),
   );
 
-  // Archived rollouts are history too, and they are where the legacy format lives.
   const roots = [join(home, "sessions"), join(home, "archived_sessions")];
   const present: string[] = [];
 
@@ -500,8 +438,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
   if (present.length === 0) return { kind: "missing" };
 
-  // `response_id` is unique across files, so a forked rollout that repeats its
-  // parent's responses is deduplicated by the same map that dedups within one.
   const responses = new Map<string, CodexRow>();
   const legacy: CodexRow[] = [];
   const seen = new Set<string>();
@@ -518,8 +454,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
           malformedRecords += scan.malformedRecords;
 
-          // The legacy event is still written beside the modern record, so a
-          // file that has both must be counted only once.
           if (scan.modern.length > 0) {
             for (const [id, row] of scan.modern) if (!responses.has(id)) responses.set(id, row);
           } else {
@@ -535,8 +469,6 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
     options.signal?.throwIfAborted();
     pruneCache(options.cache, seen);
 
-    // Codex writes the ChatGPT-backend model ids, which is the `openai-codex`
-    // provider's catalog, not the API provider's.
     const catalog = options.models
       .getModels("openai-codex")
       .filter((model) => model.provider === "openai-codex");
@@ -546,19 +478,23 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
     for (const row of [...responses.values(), ...legacy]) {
       options.signal?.throwIfAborted();
-      // Priced on a copy: the cached usage outlives this read and this catalog.
       const usage: Usage = { ...row.usage, cost: { ...row.usage.cost } };
       const matches = catalog.filter((model) => model.id === row.model);
       const model = matches.length === 1 ? matches[0] : undefined;
 
       if (model) calculateCost(model, usage);
       else unpricedRecords++;
-      rows.push({ provider: "openai-codex", model: row.model, turns: 1, usage });
+      rows.push({
+        provider: "openai-codex",
+        model: row.model,
+        turns: 1,
+        usage: recordedUsage(usage),
+      });
     }
 
     return {
       kind: "ready",
-      summary: mergeUsageSummaries(emptyUsageSummary(), { ...emptyUsageSummary(), models: rows }),
+      summary: summarizeModels(rows),
       unpricedRecords,
       malformedRecords,
       unreadableFiles,
@@ -570,7 +506,12 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
   }
 }
 
-/** One rollout, read once, yielding whichever format it turns out to carry. */
+/**
+ * Reads one Codex rollout. A `token_count` names no model, so the last `turn_context` does; only
+ * the file's first session meta counts, since a fork repeats its ancestors' metas straight after
+ * and would move the fork anchor; and a `token_count` equal to the one before is a re-emission
+ * at a stream boundary, not new usage.
+ */
 async function scanCodexRollout(
   path: string,
   signal: AbortSignal | undefined,
@@ -578,7 +519,6 @@ async function scanCodexRollout(
   const modern = new Map<string, CodexRow>();
   const legacy: CodexRow[] = [];
   let malformedRecords = 0;
-  // `token_count` carries no model of its own; the last `turn_context` names it.
   let model = "";
   let sawMeta = false;
   let signature: string | undefined;
@@ -608,8 +548,6 @@ async function scanCodexRollout(
     }
 
     if (Value.Check(sessionMeta, value)) {
-      // Only the first meta describes this file. A fork repeats its ancestors'
-      // metas straight after, and letting those through would move the anchor.
       if (sawMeta) continue;
       sawMeta = true;
 
@@ -634,7 +572,6 @@ async function scanCodexRollout(
     const last = value.payload.info.last_token_usage;
 
     if (last === undefined || model === "") continue;
-    // Codex re-emits an unchanged token_count on some stream boundaries.
     const next = JSON.stringify(last);
 
     if (next === signature) continue;
@@ -659,7 +596,6 @@ async function scanCodexRollout(
   return { modern: [...modern], legacy, malformedRecords };
 }
 
-/** Every `.jsonl` under a root, following the root but not links beneath it. */
 async function* jsonlFiles(root: string, signal: AbortSignal | undefined): AsyncGenerator<string> {
   const directories = [root];
 
@@ -682,7 +618,7 @@ async function* jsonlFiles(root: string, signal: AbortSignal | undefined): Async
   }
 }
 
-/** Bounded reads preserve UTF-8 and distinguish an unfinished tail from complete JSONL lines. */
+/** Yields a history file's lines up to the size it had when opened, though its writer may keep appending; the last line is `terminated: false` without its newline. */
 async function* historyLines(path: string, signal: AbortSignal | undefined) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 
@@ -695,7 +631,6 @@ async function* historyLines(path: string, signal: AbortSignal | undefined) {
     let pending = "";
     let position = 0;
 
-    // Stop at the size observed on open, even if Claude keeps appending.
     while (position < stat.size) {
       signal?.throwIfAborted();
 
@@ -708,15 +643,10 @@ async function* historyLines(path: string, signal: AbortSignal | undefined) {
 
       if (bytesRead === 0) break;
       position += bytesRead;
-      pending += decoder.write(buffer.subarray(0, bytesRead));
-      let start = 0;
+      const lines = `${pending}${decoder.write(buffer.subarray(0, bytesRead))}`.split("\n");
+      pending = lines.pop() ?? "";
 
-      for (let end = pending.indexOf("\n"); end !== -1; end = pending.indexOf("\n", start)) {
-        yield { text: pending.slice(start, end), terminated: true };
-        start = end + 1;
-      }
-
-      pending = pending.slice(start);
+      for (const text of lines) yield { text, terminated: true };
     }
 
     pending += decoder.end();
@@ -727,11 +657,6 @@ async function* historyLines(path: string, signal: AbortSignal | undefined) {
   }
 }
 
-/**
- * Both readers' caches, persisted together so a restart pays stat calls
- * instead of a cold parse. Rows are positional: an all-time cache holds one
- * row per model response, and objects with keys would triple the file.
- */
 export interface UsageScanCaches {
   readonly claudeCode: UsageScanCache<ClaudeCodeFileScan>;
   readonly codex: UsageScanCache<CodexFileScan>;
@@ -741,185 +666,11 @@ export function createUsageScanCaches(): UsageScanCaches {
   return { claudeCode: new Map(), codex: new Map() };
 }
 
-// v1: first persisted shape.
-const USAGE_SCAN_CACHE_VERSION = 1;
-
-const cachedTokens = Type.Number({ minimum: 0 });
-
-const nullableTokens = Type.Union([cachedTokens, Type.Null()]);
-
-/** model, input, output, cacheRead, cacheWrite, cacheWrite1h, reasoning, costUSD. */
-const usageRow = Type.Tuple([
-  Type.String(),
-  cachedTokens,
-  cachedTokens,
-  cachedTokens,
-  cachedTokens,
-  nullableTokens,
-  nullableTokens,
-  Type.Union([reportedCost, Type.Null()]),
-]);
-
-const fileScan = <T extends ReturnType<typeof Type.Object>>(scan: T) =>
-  Type.Object({ size: cachedTokens, mtimeMs: Type.Number(), scan });
-
-const scanCacheFile = Type.Object({
-  version: Type.Literal(USAGE_SCAN_CACHE_VERSION),
-  claudeCode: Type.Record(
-    Type.String(),
-    fileScan(
-      Type.Object({
-        keyed: Type.Array(Type.Tuple([Type.String(), usageRow])),
-        anonymous: Type.Array(usageRow),
-        malformedRecords: cachedTokens,
-      }),
-    ),
-  ),
-  codex: Type.Record(
-    Type.String(),
-    fileScan(
-      Type.Object({
-        modern: Type.Array(Type.Tuple([Type.String(), usageRow])),
-        legacy: Type.Array(usageRow),
-        malformedRecords: cachedTokens,
-      }),
-    ),
-  ),
-});
-
-type UsageRow = Static<typeof usageRow>;
-
-function encodeRow(model: string, usage: Usage, costUSD: number | undefined): UsageRow {
-  return [
-    model,
-    usage.input,
-    usage.output,
-    usage.cacheRead,
-    usage.cacheWrite,
-    usage.cacheWrite1h ?? null,
-    usage.reasoning ?? null,
-    costUSD ?? null,
-  ];
-}
-
-function decodeRow(row: UsageRow): Snapshot {
-  const [model, input, output, cacheRead, cacheWrite, cacheWrite1h, reasoning, costUSD] = row;
-
-  const usage: Usage = {
-    ...emptyUsageSummary().total,
-    input,
-    output,
-    cacheRead,
-    cacheWrite,
-    totalTokens: input + output + cacheRead + cacheWrite,
-  };
-
-  if (cacheWrite1h !== null) usage.cacheWrite1h = cacheWrite1h;
-
-  if (reasoning !== null) usage.reasoning = reasoning;
-
-  return { model, usage, costUSD: costUSD ?? undefined };
-}
-
-export function encodeUsageScanCaches(caches: UsageScanCaches): string {
-  const claudeCode: Record<string, Static<typeof scanCacheFile>["claudeCode"][string]> = {};
-
-  for (const [path, entry] of caches.claudeCode) {
-    claudeCode[path] = {
-      size: entry.size,
-      mtimeMs: entry.mtimeMs,
-      scan: {
-        keyed: entry.scan.keyed.map(([identity, snapshot]) => [
-          identity,
-          encodeRow(snapshot.model, snapshot.usage, snapshot.costUSD),
-        ]),
-        anonymous: entry.scan.anonymous.map((snapshot) =>
-          encodeRow(snapshot.model, snapshot.usage, snapshot.costUSD),
-        ),
-        malformedRecords: entry.scan.malformedRecords,
-      },
-    };
-  }
-
-  const codex: Record<string, Static<typeof scanCacheFile>["codex"][string]> = {};
-
-  for (const [path, entry] of caches.codex) {
-    codex[path] = {
-      size: entry.size,
-      mtimeMs: entry.mtimeMs,
-      scan: {
-        modern: entry.scan.modern.map(([id, row]) => [
-          id,
-          encodeRow(row.model, row.usage, undefined),
-        ]),
-        legacy: entry.scan.legacy.map((row) => encodeRow(row.model, row.usage, undefined)),
-        malformedRecords: entry.scan.malformedRecords,
-      },
-    };
-  }
-
-  return JSON.stringify({
-    version: USAGE_SCAN_CACHE_VERSION,
-    claudeCode,
-    codex,
-  } satisfies Static<typeof scanCacheFile>);
-}
-
-/** Anything but a whole, current cache decodes to empty: a cold read, never a wrong one. */
-export function decodeUsageScanCaches(text: string): UsageScanCaches {
-  const caches = createUsageScanCaches();
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return caches;
-  }
-
-  if (!Value.Check(scanCacheFile, parsed)) return caches;
-
-  for (const [path, entry] of Object.entries(parsed.claudeCode)) {
-    caches.claudeCode.set(path, {
-      size: entry.size,
-      mtimeMs: entry.mtimeMs,
-      scan: {
-        keyed: entry.scan.keyed.map(([identity, row]) => [identity, decodeRow(row)]),
-        anonymous: entry.scan.anonymous.map(decodeRow),
-        malformedRecords: entry.scan.malformedRecords,
-      },
-    });
-  }
-
-  for (const [path, entry] of Object.entries(parsed.codex)) {
-    caches.codex.set(path, {
-      size: entry.size,
-      mtimeMs: entry.mtimeMs,
-      scan: {
-        modern: entry.scan.modern.map(([id, row]) => {
-          const { model, usage } = decodeRow(row);
-
-          return [id, { model, usage }];
-        }),
-        legacy: entry.scan.legacy.map((row) => {
-          const { model, usage } = decodeRow(row);
-
-          return { model, usage };
-        }),
-        malformedRecords: entry.scan.malformedRecords,
-      },
-    });
-  }
-
-  return caches;
-}
-
-/** Both local tools use the same result shape and remain separate from Nyte totals. */
 export interface LocalUsage {
   readonly claudeCode: LocalHistoryUsage;
   readonly codex: LocalHistoryUsage;
 }
 
-/** Read recorded consumption only; a failed tool does not hide the other tool's history. */
 export async function readLocalUsage(options: {
   readonly models: Pick<Models, "getModels">;
   readonly signal?: AbortSignal;
@@ -947,81 +698,4 @@ export async function readLocalUsage(options: {
   options.signal?.throwIfAborted();
 
   return { claudeCode, codex };
-}
-
-/** Account windows are separate from measured tokens and estimated API cost. */
-export type AccountUsage = {
-  readonly provider: "anthropic" | "openai-codex";
-} & (
-  | { readonly kind: "ready"; readonly limits: AccountLimits }
-  | { readonly kind: "unavailable" }
-  | { readonly kind: "failed"; readonly message: string }
-);
-
-/**
- * What the provider reported on the last turn, for a page that paints before
- * the usage endpoint answers or when it does not answer at all.
- */
-export function observedAccountUsage(
-  models: Pick<Models, "getAccountLimits">,
-  provider: AccountUsage["provider"],
-): AccountUsage | undefined {
-  const limits = models.getAccountLimits(provider);
-
-  return limits === undefined ? undefined : { provider, kind: "ready", limits };
-}
-
-/** Read the account signed into Nyte using the existing provider authentication. */
-export async function readAccountUsage(options: {
-  readonly models: Models;
-  readonly provider: AccountUsage["provider"];
-  readonly signal: AbortSignal;
-}): Promise<AccountUsage> {
-  const { models, provider, signal } = options;
-
-  try {
-    const model = models
-      .getModels(provider)
-      .find((candidate) =>
-        provider === "anthropic"
-          ? hasApi(candidate, "anthropic-messages")
-          : hasApi(candidate, "openai-codex-responses"),
-      );
-
-    if (model === undefined) return { provider, kind: "unavailable" };
-    const auth = await models.getAuth(model, { signal });
-    const apiKey = auth?.auth.apiKey;
-
-    if (apiKey === undefined || (provider === "anthropic" && !apiKey.includes("sk-ant-oat"))) {
-      return { provider, kind: "unavailable" };
-    }
-
-    const request = { apiKey, headers: auth?.auth.headers, signal, timeoutMs: 10_000 };
-    const selected = { ...model, baseUrl: auth?.auth.baseUrl ?? model.baseUrl };
-
-    const limits = hasApi(selected, "anthropic-messages")
-      ? await fetchAnthropicAccountLimits(selected, request)
-      : hasApi(selected, "openai-codex-responses")
-        ? await fetchOpenAICodexAccountLimits(selected, request)
-        : undefined;
-
-    return limits === undefined || limits.windows.length === 0
-      ? { provider, kind: "unavailable" }
-      : { provider, kind: "ready", limits };
-  } catch {
-    if (
-      signal.aborted &&
-      !(signal.reason instanceof DOMException && signal.reason.name === "TimeoutError")
-    ) {
-      signal.throwIfAborted();
-    }
-
-    return (
-      observedAccountUsage(models, provider) ?? {
-        provider,
-        kind: "failed",
-        message: "Could not read account limits. Try again.",
-      }
-    );
-  }
 }

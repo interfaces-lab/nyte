@@ -1,5 +1,5 @@
 /** Font selections: bundled stacks, the system stack, or one installed family the host listed. */
-import { type } from "@nyte-ai/ui/vars.stylex";
+import { type } from "@nyte-ai/ui/styles/vars.stylex";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -21,8 +21,10 @@ function usableFontFamily(family: string): boolean {
 }
 
 const LocalFontSelection = Type.Refine(
-  Type.TemplateLiteral([Type.Literal(LOCAL_FONT_PREFIX), Type.String()]),
-  (selection) => usableFontFamily(selection.slice(LOCAL_FONT_PREFIX.length)),
+  Type.String(),
+  (selection) =>
+    selection.startsWith(LOCAL_FONT_PREFIX) &&
+    usableFontFamily(selection.slice(LOCAL_FONT_PREFIX.length)),
 );
 
 type LocalFontSelection = Static<typeof LocalFontSelection>;
@@ -46,7 +48,7 @@ export function localFontSelection(family: string): LocalFontSelection {
   return `${LOCAL_FONT_PREFIX}${normalized}`;
 }
 
-export function localFontFamily(selection: UiFont | CodeFont): string | undefined {
+export function localFontFamily(selection: string): string | undefined {
   return Value.Check(LocalFontSelection, selection)
     ? selection.slice(LOCAL_FONT_PREFIX.length)
     : undefined;

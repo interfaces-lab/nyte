@@ -1,8 +1,12 @@
 import { clientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
+import { openExternal } from "../open-external.ts";
+import { toast } from "@nyte-ai/ui/toast";
+import { errorMessage } from "../errors.ts";
 import { preferences } from "../preferences/index.ts";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 
+/** Ask about a link whose host isn't trusted, then open, copy, or trust it as answered. */
 async function confirmAndOpen(url: URL): Promise<void> {
   const trusted = preferences.trustedLinkHosts.get();
 
@@ -16,15 +20,21 @@ async function confirmAndOpen(url: URL): Promise<void> {
     if (choice === "trust") preferences.trustedLinkHosts.set([...trusted, url.host]);
   }
 
-  return nyte.host.openExternal({ url: url.href });
+  openExternal(url.href);
 }
 
 /** Opens a link in the system browser, asking first unless its host was trusted. */
-export function openExternalLink(href: string): void {
+function openExternalLink(href: string): void {
   const url = URL.parse(href);
 
   if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) return;
-  void confirmAndOpen(url).catch(() => undefined);
+  void confirmAndOpen(url).catch((cause: unknown) =>
+    toast.add({
+      type: "error",
+      title: "Couldn't open the link.",
+      description: errorMessage(cause),
+    }),
+  );
 }
 
 /** Opens a link from conversation content where the user chose: the workbench browser, or the system browser. */

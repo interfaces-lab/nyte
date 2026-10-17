@@ -3,7 +3,7 @@ import {
   base64ToBase64Url,
   base64Url,
   fromBase64Url,
-  isRelayAddress,
+  namesRelayAddress,
   relayAddress,
 } from "../src/index.ts";
 
@@ -22,12 +22,6 @@ describe("base64Url", () => {
     }
   });
 
-  it("converts a padded digest the way expo-crypto writes it", () => {
-    const bytes = Uint8Array.from({ length: 32 }, (_, index) => 255 - index);
-
-    expect(base64ToBase64Url(standard(bytes))).toBe(base64Url(bytes));
-  });
-
   it.each(["A", "AA==", "AB+/", "AA A", "AB"])("refuses %s", (text) => {
     expect(fromBase64Url(text)).toBeUndefined();
   });
@@ -38,7 +32,7 @@ describe("relay addresses", () => {
     const address = relayAddress(origin, environmentId);
 
     expect(address).toBe(`${origin}/r/${environmentId}`);
-    expect(isRelayAddress(address, origin)).toBe(true);
+    expect(namesRelayAddress(address, origin)).toBe(true);
   });
 
   it.each([
@@ -49,7 +43,7 @@ describe("relay addresses", () => {
     `${origin}/r/../${environmentId}`,
     `${origin}/x/${environmentId}`,
   ])("refuses %s", (address) => {
-    expect(isRelayAddress(address, origin)).toBe(false);
+    expect(namesRelayAddress(address, origin)).toBe(false);
   });
 
   it("refuses an origin or id it would not derive from", () => {

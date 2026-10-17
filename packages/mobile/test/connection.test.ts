@@ -1,8 +1,5 @@
-import { createNyteClient, NyteTransportError, NyteWireError } from "@nyte-ai/client";
-import type { ServerInfo } from "@nyte-ai/protocol";
 import { describe, expect, it } from "vitest";
 import {
-  describeHostError,
   displayAddress,
   parseConnection,
   parseConnectionPayload,
@@ -38,7 +35,7 @@ describe("parseConnection", () => {
     );
   });
 
-  it("accepts the Tailscale range over plain HTTP but not its neighbours", () => {
+  it("accepts the Tailscale range 100.64.0.0/10 over plain HTTP but not the public space either side", () => {
     const token = "abcdefghijklmnop";
     expect(parseConnection({ name: "m", url: "http://100.126.254.2:8787", token }).url).toBe(
       "http://100.126.254.2:8787",
@@ -49,7 +46,6 @@ describe("parseConnection", () => {
     expect(parseConnection({ name: "m", url: "http://100.127.255.254:1", token }).url).toBe(
       "http://100.127.255.254:1",
     );
-    // 100.64.0.0/10 stops at 100.127; the ranges either side are ordinary public space.
     expect(() => parseConnection({ name: "m", url: "http://100.63.255.255:1", token })).toThrow(
       /HTTPS/,
     );
@@ -70,34 +66,14 @@ describe("parseConnection", () => {
     ).toThrow(/token has its own field/);
   });
 
-  it("removes empty query and fragment delimiters before client routes are appended", async () => {
+  it("removes empty query and fragment delimiters before the sdk appends its routes", () => {
     for (const suffix of ["?", "#", "?#"]) {
       const connection = parseConnection({
         name: "My Mac",
         url: `https://mac.example/nyte/${suffix}`,
         token: "t",
       });
-      const requests: string[] = [];
-      const client = createNyteClient({
-        baseUrl: connection.url,
-        token: connection.token,
-        fetch: async (input) => {
-          requests.push(
-            typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-          );
-          return Response.json({
-            ok: true,
-            defined: true,
-            value: {
-              version: "test",
-              wireVersion: 1,
-              host: { kind: "unspecified" },
-            } satisfies ServerInfo,
-          });
-        },
-      });
-      await client.info();
-      expect(requests).toEqual(["https://mac.example/nyte/v1/info"]);
+      expect(connection.url).toBe("https://mac.example/nyte");
     }
   });
 });
@@ -131,25 +107,5 @@ describe("parseConnectionPayload", () => {
     expect(() =>
       parseConnectionPayload("nyte://connect?url=http://93.184.216.34&token=abcdefghijklmnop"),
     ).toThrow(/HTTPS/);
-  });
-});
-
-describe("describeHostError", () => {
-  it("names the fix for refused tokens and unreachable hosts", () => {
-    expect(
-      describeHostError(new NyteWireError({ code: "unauthorized", message: "no" }, 401)),
-    ).toMatch(/Environments › Remote Access/);
-    expect(describeHostError(new NyteTransportError({ kind: "network", cause: null }))).toMatch(
-      /sharing/,
-    );
-    expect(describeHostError(new NyteTransportError({ kind: "bad_status", status: 404 }))).toMatch(
-      /not as a Nyte server/,
-    );
-  });
-
-  it("names the version difference when the Mac does not serve an operation", () => {
-    expect(
-      describeHostError(new NyteWireError({ code: "unknown_operation", message: "no" }, 404)),
-    ).toMatch(/older Nyte/);
   });
 });

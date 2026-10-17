@@ -1,5 +1,4 @@
-import { useRef, useState } from "react";
-import { Button, HStack, Host, Image, Menu, Text } from "@expo/ui/swift-ui";
+import { Button, Divider, HStack, Host, Image, Menu, Text } from "@expo/ui/swift-ui";
 import {
   buttonStyle,
   disabled,
@@ -7,112 +6,33 @@ import {
   font,
   foregroundStyle,
   accessibilityValue,
+  accessibilityLabel,
 } from "@expo/ui/swift-ui/modifiers";
-import type { NyteClient } from "@nyte-ai/client";
-import type { WorkspaceInfo, WorkspaceSelectInput, WorkspaceSelection } from "@nyte-ai/protocol";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccessibilityInfo } from "react-native";
 import { css, html } from "react-strict-dom";
-import { describeHostError } from "../connection/connection.ts";
-import { controls, spacing, textStyles, typography, useTheme } from "../theme.ts";
-import {
-  listedWorkspaces,
-  selectionMatches,
-  workspaceChipLabel,
-  workspaceMenuAvailable,
-  workspaceSelectCaption,
-  type WorkspaceMenu,
-} from "./workspace-menu.ts";
+import { controls, spacing, textStyles, useTheme } from "../theme.ts";
+import { workspaceName, type WorkspaceMenu } from "./workspace-menu.ts";
+import { useRegistryFolders, type RegistryFolders } from "./workspace-start.tsx";
 
-/**
- * Home and recent folders for a new chat. Follow-ups have no picker: the
- * session already sits on a folder. Shares without workspace capability hide
- * this. There is no Open folder control on the phone.
- */
 export function WorkspacePicker({
-  client,
-  onSelecting,
+  busy = false,
   onWorkspaceChange,
+  toolbar = false,
+  onSettings,
 }: {
-  client: NyteClient;
-  /** Handed the in-flight select so a caller can wait out the host's retarget. */
-  onSelecting?: (pending: Promise<void>) => void;
+  busy?: boolean;
   onWorkspaceChange?: () => void;
+  toolbar?: boolean;
+  onSettings?: () => void;
 }) {
   const theme = useTheme();
-  const queryClient = useQueryClient();
+  const registry = useRegistryFolders();
 
-  const menuQuery = useQuery({
-    queryKey: ["workspace-picker"],
-    queryFn: async (): Promise<{
-      selection: WorkspaceSelection;
-      items: readonly WorkspaceInfo[];
-    } | null> => {
-      const info = await client.info();
+  const menu = registryMenu(registry, onWorkspaceChange);
 
-      if (!workspaceMenuAvailable(info)) return null;
+  if (menu.kind === "loading" && !toolbar) return null;
 
-      const [selection, items] = await Promise.all([
-        client.workspace.current(),
-        client.workspace.list(),
-      ]);
-
-      return { selection, items: listedWorkspaces(items) };
-    },
-  });
-
-  const inFlight = useRef(false);
-  const [switching, setSwitching] = useState(false);
-  const [caption, setCaption] = useState<string>();
-
-  const menu: WorkspaceMenu =
-    menuQuery.isPending || menuQuery.data === null
-      ? { kind: "hidden" }
-      : menuQuery.isError
-        ? { kind: "failed", message: describeHostError(menuQuery.error) }
-        : {
-            kind: "ready",
-            items: menuQuery.data.items,
-            selection: menuQuery.data.selection,
-          };
-
-  const choose = (input: WorkspaceSelectInput) => {
-    const data = menuQuery.data;
-
-    if (data == null || inFlight.current) return;
-
-    if (selectionMatches(data.selection, input)) return;
-    inFlight.current = true;
-    setSwitching(true);
-    AccessibilityInfo.announceForAccessibility("Switching workspace");
-    setCaption(undefined);
-    const flight = client.workspace.select(input);
-    onSelecting?.(flight.then(() => undefined));
-    void flight
-      .then((outcome) => {
-        if (outcome.kind === "opened") {
-          queryClient.setQueryData(
-            ["workspace-picker"],
-            (old: { selection: WorkspaceSelection; items: readonly WorkspaceInfo[] } | null) =>
-              old == null ? old : { ...old, selection: outcome.selection },
-          );
-          onWorkspaceChange?.();
-        } else {
-          setCaption(workspaceSelectCaption(outcome));
-        }
-      })
-      .catch((cause: unknown) => {
-        setCaption(describeHostError(cause));
-      })
-      .finally(() => {
-        inFlight.current = false;
-        setSwitching(false);
-      });
-  };
-
-  if (menu.kind === "hidden") return null;
-
-  if (menu.kind === "failed") {
+  if (menu.kind === "failed" && !toolbar) {
     return (
       <html.p role="alert" style={textStyles.error}>
         {menu.message}
@@ -120,68 +40,113 @@ export function WorkspacePicker({
     );
   }
 
-  const selected = menu.selection;
+  const selected = menu.kind === "ready" ? menu.label : undefined;
 
   return (
-    <html.div style={styles.row} aria-busy={switching}>
-      <Host matchContents={{ horizontal: true }} style={chipHost} ignoreSafeArea="all">
+    <html.div style={styles.row}>
+      <Host
+        matchContents={toolbar ? false : { horizontal: true }}
+        style={toolbar ? toolbarHost : chipHost}
+        ignoreSafeArea="all"
+      >
         <Menu
           label={
-            <HStack spacing={4}>
-              <Text modifiers={[font(chipFont), foregroundStyle(theme.muted)]}>
-                {workspaceChipLabel(selected)}
-              </Text>
+            toolbar ? (
               <Image
-                systemName="chevron.down"
-                size={10}
-                modifiers={[foregroundStyle(theme.muted)]}
+                systemName="folder"
+                size={22}
+                modifiers={[foregroundStyle(theme.foreground)]}
               />
-            </HStack>
+            ) : (
+              <HStack spacing={4}>
+                <Text
+                  modifiers={[
+                    font({ textStyle: "footnote", weight: "medium" }),
+                    foregroundStyle(theme.muted),
+                  ]}
+                >
+                  {selected ?? "Workspaces"}
+                </Text>
+                <Image
+                  systemName="chevron.down"
+                  size={10}
+                  modifiers={[foregroundStyle(theme.muted)]}
+                />
+              </HStack>
+            )
           }
           modifiers={[
             buttonStyle("plain"),
             frame({ minHeight: controls.touchTarget }),
-            disabled(switching),
-            accessibilityValue(switching ? "Switching workspace" : workspaceChipLabel(selected)),
+            disabled(busy),
+            accessibilityLabel(toolbar ? "Workspaces and settings" : "Workspace"),
+            accessibilityValue(selected ?? ""),
           ]}
         >
-          <Button
-            label="Home"
-            modifiers={[disabled(switching)]}
-            systemImage={selected.kind === "home" ? "checkmark" : undefined}
-            onPress={() => choose({ kind: "home" })}
-          />
-          {menu.items.map((item) => (
-            <Button
-              key={item.path}
-              label={item.name}
-              modifiers={[disabled(switching)]}
-              systemImage={
-                selected.kind === "project" && selected.workspace.path === item.path
-                  ? "checkmark"
-                  : undefined
-              }
-              onPress={() => choose({ kind: "project", path: item.path })}
-            />
-          ))}
+          {menu.kind === "ready" ? (
+            menu.choices.length === 0 ? (
+              <Button label="No folders available" modifiers={[disabled(true)]} />
+            ) : (
+              menu.choices.map((choice) => (
+                <Button
+                  key={choice.key}
+                  label={choice.label}
+                  modifiers={[disabled(busy)]}
+                  systemImage={choice.selected ? "checkmark" : undefined}
+                  onPress={choice.choose}
+                />
+              ))
+            )
+          ) : menu.kind === "failed" ? (
+            <Button label="Retry workspaces" systemImage="arrow.clockwise" onPress={menu.retry} />
+          ) : menu.kind === "loading" ? (
+            <Button label="Loading workspaces…" modifiers={[disabled(true)]} />
+          ) : null}
+          {onSettings === undefined ? null : (
+            <>
+              <Divider />
+              <Button label="Settings" systemImage="gearshape" onPress={onSettings} />
+            </>
+          )}
         </Menu>
       </Host>
-      {switching ? (
-        <html.p role="status" style={textStyles.caption}>
-          Switching workspace…
-        </html.p>
-      ) : caption === undefined ? null : (
-        <html.p role="status" style={textStyles.caption}>
-          {caption}
-        </html.p>
-      )}
     </html.div>
   );
 }
 
-const chipFont = { size: typography.caption.fontSize, weight: "medium" } as const;
+function registryMenu(folders: RegistryFolders, onChange: (() => void) | undefined): WorkspaceMenu {
+  switch (folders.kind) {
+    case "loading":
+      return { kind: "loading" };
+    case "failed":
+      return { kind: "failed", message: folders.message, retry: folders.refresh };
+    case "ready":
+      return {
+        kind: "ready",
+        label: folders.selected === undefined ? undefined : workspaceName(folders.selected),
+        choices: folders.ready.map((row) => ({
+          key: row.id,
+          label: workspaceName(row),
+          selected: row.id === folders.selected?.id,
+          choose: () => {
+            if (row.id === folders.selected?.id) return;
+            folders.choose(row.id);
+            AccessibilityInfo.announceForAccessibility(`Workspace ${workspaceName(row)}`);
+            onChange?.();
+          },
+        })),
+      };
+    default: {
+      const exhaustive: never = folders;
+
+      return exhaustive;
+    }
+  }
+}
 
 const chipHost = { height: controls.touchTarget } as const;
+
+const toolbarHost = { width: controls.touchTarget, height: controls.touchTarget } as const;
 
 const styles = css.create({
   row: {

@@ -1,7 +1,8 @@
 import type { ComponentProps } from "react";
-import { Pressable, View, type ViewStyle } from "react-native";
+import { Pressable, View } from "react-native";
 import { Link, router, type Href } from "expo-router";
-import { Button, Host } from "@expo/ui/swift-ui";
+import { Host } from "@expo/ui";
+import { Button } from "@expo/ui/swift-ui";
 import {
   accessibilityHidden,
   buttonBorderShape,
@@ -41,16 +42,9 @@ type GlassButtonProps =
       scheme?: "dark";
     });
 
-/**
- * Every button that is not a list row.
- *
- * Toolbar and inline actions are the native glass control, which SwiftUI sizes
- * to its own label. A screen's full-width action cannot be: SwiftUI has no
- * `.infinity` across the bridge and a measured width arrives a frame late, so
- * `fill` draws the capsule from the shared tokens and lets the row own the width.
- */
 export function GlassButton(props: GlassButtonProps) {
   const theme = useTheme();
+
   const {
     label,
     systemImage,
@@ -58,12 +52,16 @@ export function GlassButton(props: GlassButtonProps) {
     busy = false,
     prominent = false,
   } = props;
+
   function activate() {
     if (isDisabled || busy) return;
+
     if (props.href !== undefined) {
       router.navigate(props.href);
+
       return;
     }
+
     props.onPress();
   }
 
@@ -73,6 +71,7 @@ export function GlassButton(props: GlassButtonProps) {
       prominent ? styles.prominent : styles.neutral,
       isDisabled && styles.disabled,
     ];
+
     const content = (
       <>
         {systemImage === undefined ? null : (
@@ -87,6 +86,7 @@ export function GlassButton(props: GlassButtonProps) {
         </html.span>
       </>
     );
+
     if (props.href !== undefined) {
       return (
         <Link
@@ -102,6 +102,7 @@ export function GlassButton(props: GlassButtonProps) {
         </Link>
       );
     }
+
     return (
       <html.button
         onClick={activate}
@@ -116,14 +117,52 @@ export function GlassButton(props: GlassButtonProps) {
   }
 
   const { iconOnly = false, size = "regular", scheme } = props;
-  // Chrome forced to dark sits on a camera preview or a photo, so its tint comes
-  // from the dark palette instead of the app's current appearance.
   const palette = scheme === "dark" ? themes.dark : theme;
   const height = size === "compact" ? controls.touchTarget : controls.primaryHeight;
 
-  const hostStyle: ViewStyle = iconOnly
-    ? { width: controls.touchTarget, height: controls.touchTarget }
-    : { height };
+  if (iconOnly && systemImage !== undefined) {
+    const icon = (
+      <SymbolView
+        name={systemImage}
+        size={controls.icon}
+        tintColor={prominent ? palette.accent : palette.foreground}
+      />
+    );
+
+    if (props.href !== undefined) {
+      return (
+        <Link
+          href={props.href}
+          asChild
+          onPress={(event) => {
+            if (isDisabled || busy) event.preventDefault();
+          }}
+        >
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={label}
+            accessibilityState={{ disabled: isDisabled || busy, busy }}
+          >
+            <html.div style={[styles.icon, (isDisabled || busy) && styles.disabled]}>
+              {icon}
+            </html.div>
+          </Pressable>
+        </Link>
+      );
+    }
+
+    return (
+      <html.button
+        aria-label={label}
+        aria-busy={busy}
+        disabled={isDisabled || busy}
+        onClick={activate}
+        style={[styles.icon, (isDisabled || busy) && styles.disabled]}
+      >
+        {icon}
+      </html.button>
+    );
+  }
 
   return (
     <View
@@ -133,12 +172,7 @@ export function GlassButton(props: GlassButtonProps) {
       accessibilityState={{ disabled: isDisabled, busy }}
       onAccessibilityTap={activate}
     >
-      <Host
-        style={hostStyle}
-        matchContents={!iconOnly ? { horizontal: true } : false}
-        colorScheme={scheme}
-        ignoreSafeArea="all"
-      >
+      <Host style={{ minHeight: height }} matchContents colorScheme={scheme} ignoreSafeArea="all">
         <Button
           label={label}
           systemImage={systemImage}
@@ -148,15 +182,11 @@ export function GlassButton(props: GlassButtonProps) {
             frame({ minWidth: controls.touchTarget, minHeight: height }),
             buttonStyle(prominent ? "glassProminent" : "glass"),
             controlSize("regular"),
-            buttonBorderShape(iconOnly ? "circle" : "capsule"),
+            buttonBorderShape("capsule"),
             tint(prominent ? palette.accentFill : palette.foreground),
-            font(
-              iconOnly
-                ? { size: typography.title.fontSize, weight: "regular" }
-                : { size: typography.button.fontSize, weight: "medium" },
-            ),
-            labelStyle(iconOnly ? "iconOnly" : systemImage ? "titleAndIcon" : "titleOnly"),
-            disabled(isDisabled),
+            font({ textStyle: "body", weight: "medium" }),
+            labelStyle(systemImage ? "titleAndIcon" : "titleOnly"),
+            disabled(isDisabled || busy),
           ]}
         />
       </Host>
@@ -165,6 +195,17 @@ export function GlassButton(props: GlassButtonProps) {
 }
 
 const styles = css.create({
+  icon: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: controls.touchTarget,
+    height: controls.touchTarget,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    padding: 0,
+    opacity: { default: 1, ":active": controls.pressedOpacity },
+  },
   fill: {
     display: "flex",
     flexDirection: "row",

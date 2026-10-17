@@ -4,9 +4,12 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", ".output/**", "dist/**", "out/**"]
+      "passThroughEnv": ["CENTRAL_LICENSE_KEY"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": [".output/**", "dist/**", "out/**"]
     },
     "@nyte-ai/tui#build": {
+      "env": ["NYTE_CONNECT_ORIGIN"],
       "outputs": ["../../bin/nyte", "../../bin/nyte.exe"]
     },
     "package": {
@@ -29,6 +32,12 @@
     "typecheck": {
       "dependsOn": ["^typecheck"]
     },
+    "@nyte-ai/web#typecheck": {
+      "dependsOn": ["^typecheck", "^build"]
+    },
+    "@nyte-ai/tui#typecheck": {
+      "dependsOn": ["^typecheck", "@nyte-ai/canvas#build"]
+    },
     "//#lint": {},
     "//#lint:fix": {
       "cache": false
@@ -37,5 +46,6 @@
     "//#format:fix": {
       "cache": false
     }
-  }
+  },
+  "agentGuidance": false
 }

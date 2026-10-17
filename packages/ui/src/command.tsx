@@ -15,12 +15,14 @@ import { Dialog } from "@base-ui/react/dialog";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 
-import { srOnly } from "./a11y.stylex.ts";
-import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { glyph, layer, radius, target } from "./schema.stylex.ts";
+import { srOnly } from "./styles/a11y.stylex.ts";
+import { floatingSurfaceStyles } from "./styles/floating-surface.stylex.ts";
+import { glyph, layer, radius, space, target } from "./styles/schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
+import type { Restyle } from "./styles/contracts.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { appearance, motion, role, type } from "./vars.stylex.ts";
+import { text } from "./styles/text.stylex.ts";
+import { appearance, motion, role, type } from "./styles/vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -45,9 +47,9 @@ const styles = create({
     alignItems: "flex-start",
     justifyContent: "center",
     paddingBlockStart: "clamp(72px, 12vh, 144px)",
-    paddingBlockEnd: 16,
-    paddingInline: 16,
-    overflow: "hidden",
+    paddingBlockEnd: space.s4,
+    paddingInline: space.s4,
+    overflow: "clip",
   },
   popup: {
     display: "flex",
@@ -57,7 +59,7 @@ const styles = create({
     borderStyle: "none",
     borderRadius: `calc(${radius.card} + 8px)`,
     outline: "none",
-    overflow: "hidden",
+    overflow: "clip",
     color: role.contentPrimary,
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transform: {
@@ -77,10 +79,10 @@ const styles = create({
     display: "grid",
     gridTemplateColumns: `${glyph.md} minmax(0, 1fr) auto`,
     alignItems: "center",
-    gap: 10,
+    gap: space.s2_5,
     flexShrink: 0,
     minHeight: 56,
-    paddingInline: 20,
+    paddingInline: space.s5,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
@@ -117,19 +119,17 @@ const styles = create({
   list: {
     minHeight: 0,
     flex: "1 1 auto",
-    padding: 8,
+    padding: space.s2,
     overflowY: "auto",
     overscrollBehavior: "contain",
     scrollPaddingBlock: 8,
     outline: "none",
   },
   groupLabel: {
-    paddingInline: 12,
-    paddingBlockStart: 12,
-    paddingBlockEnd: 6,
+    paddingInline: space.s3,
+    paddingBlockStart: space.s3,
+    paddingBlockEnd: space.s1_5,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     userSelect: "none",
   },
   item: {
@@ -137,10 +137,10 @@ const styles = create({
     display: "grid",
     gridTemplateColumns: `${glyph.md} minmax(0, 1fr) auto`,
     alignItems: "center",
-    columnGap: 10,
+    columnGap: space.s2_5,
     minHeight: `max(40px, ${target.min})`,
-    paddingBlock: 8,
-    paddingInline: 12,
+    paddingBlock: space.s2,
+    paddingInline: space.s3,
     borderRadius: radius.card,
     outlineStyle: { default: "none", "[data-highlighted]": "solid" },
     outlineWidth: 1,
@@ -148,9 +148,6 @@ const styles = create({
     outlineOffset: -1,
     backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    letterSpacing: type.letterBase,
     scrollMarginBlock: 8,
     cursor: "default",
     userSelect: "none",
@@ -173,27 +170,23 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: 4,
+    gap: space.s1,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
   separator: {
     flexShrink: 0,
     height: 1,
-    marginBlock: 4,
-    marginInline: 12,
+    marginBlock: space.s1,
+    marginInline: space.s3,
     backgroundColor: role.borderSecondaryTranslucent,
   },
   empty: {
-    display: { default: "none", ":not(:empty)": "grid" },
+    display: "grid",
     placeItems: "center",
-    minHeight: 152,
-    padding: 24,
+    minHeight: { default: 0, ":not(:empty)": 152 },
+    padding: { default: 0, ":not(:empty)": space.s6 },
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textAlign: "center",
   },
 });
@@ -218,12 +211,15 @@ function CommandClose({
 
 type PaletteProps<ItemValue> = Pick<
   Autocomplete.Root.Props<ItemValue>,
-  "value" | "defaultValue" | "onValueChange" | "onItemHighlighted" | "itemToStringValue"
+  | "value"
+  | "defaultValue"
+  | "onValueChange"
+  | "onItemHighlighted"
+  | "itemToStringValue"
+  | "loopFocus"
 > & {
   /** Every row's `value`, in render order. The highlight follows this list as rows change. */
   readonly items: readonly ItemValue[];
-  /** Whether arrow keys wrap from the last row to the first. */
-  readonly loop?: boolean;
 };
 
 function CommandPopup<ItemValue>({
@@ -231,7 +227,7 @@ function CommandPopup<ItemValue>({
   description,
   tint,
   items,
-  loop = false,
+  loopFocus,
   value,
   defaultValue,
   onValueChange,
@@ -242,7 +238,7 @@ function CommandPopup<ItemValue>({
   className,
   style,
   ...rest
-}: StyledProps<Dialog.Popup.Props> &
+}: StyledProps<Dialog.Popup.Props, Restyle<"Command.Popup">> &
   PaletteProps<ItemValue> & {
     /** The dialog's accessible name. Read by screen readers, never shown. */
     readonly title?: string;
@@ -280,7 +276,7 @@ function CommandPopup<ItemValue>({
             mode="none"
             autoHighlight="always"
             keepHighlight
-            loopFocus={loop}
+            loopFocus={loopFocus}
             items={items}
             value={value}
             defaultValue={defaultValue}
@@ -302,7 +298,7 @@ function CommandInput({
   className,
   style,
   ...rest
-}: StyledProps<Autocomplete.Input.Props> & {
+}: StyledProps<Autocomplete.Input.Props, Restyle<"Command.Input">> & {
   /** Right of the field: a shortcut hint, a clear button. */
   readonly trailing?: ReactNode;
 }): ReactElement {
@@ -328,7 +324,7 @@ function CommandList({
   className,
   style,
   ...rest
-}: StyledProps<Autocomplete.List.Props>): ReactElement {
+}: StyledProps<Autocomplete.List.Props, Restyle<"Command.List">>): ReactElement {
   return (
     <Autocomplete.List
       data-slot="command-list"
@@ -356,7 +352,9 @@ function CommandGroup({
       {...mergeStyleProps(props(xstyle), className, style)}
     >
       {heading !== undefined && (
-        <Autocomplete.GroupLabel {...props(styles.groupLabel)}>{heading}</Autocomplete.GroupLabel>
+        <Autocomplete.GroupLabel {...props(text.sm, styles.groupLabel)}>
+          {heading}
+        </Autocomplete.GroupLabel>
       )}
       {children}
     </Autocomplete.Group>
@@ -368,7 +366,7 @@ function CommandSeparator({
   className,
   style,
   ...rest
-}: StyledProps<Autocomplete.Separator.Props>): ReactElement {
+}: StyledProps<Autocomplete.Separator.Props, Restyle<"Command.Separator">>): ReactElement {
   return (
     <Autocomplete.Separator
       data-slot="command-separator"
@@ -380,8 +378,6 @@ function CommandSeparator({
 
 function CommandItem<ItemValue>({
   value,
-  onSelect,
-  onClick,
   leading,
   meta,
   children,
@@ -389,11 +385,9 @@ function CommandItem<ItemValue>({
   className,
   style,
   ...rest
-}: StyledProps<Omit<Autocomplete.Item.Props, "value">> & {
+}: StyledProps<Omit<Autocomplete.Item.Props, "value">, Restyle<"Command.Item">> & {
   /** Identifies the row; it must appear in the popup's `items`. */
   readonly value: ItemValue;
-  /** Runs when the row is clicked or chosen with Enter. */
-  readonly onSelect?: (value: ItemValue) => void;
   readonly leading?: ReactNode;
   /** Right column: a shortcut, a timestamp. Display only. */
   readonly meta?: ReactNode;
@@ -403,17 +397,13 @@ function CommandItem<ItemValue>({
       data-slot="command-item"
       value={value}
       {...rest}
-      onClick={(event) => {
-        onClick?.(event);
-        onSelect?.(value);
-      }}
-      {...mergeStyleProps(props(styles.item, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.item, xstyle), className, style)}
     >
       <span aria-hidden="true" {...props(styles.itemLeading)}>
         {leading}
       </span>
       <span {...props(styles.itemLabel)}>{children}</span>
-      {meta !== undefined && <span {...props(styles.itemMeta)}>{meta}</span>}
+      {meta !== undefined && <span {...props(text.base, styles.itemMeta)}>{meta}</span>}
     </Autocomplete.Item>
   );
 }
@@ -424,12 +414,12 @@ function CommandEmpty({
   className,
   style,
   ...rest
-}: StyledProps<Autocomplete.Empty.Props>): ReactElement {
+}: StyledProps<Autocomplete.Empty.Props, Restyle<"Command.Empty">>): ReactElement {
   return (
     <Autocomplete.Empty
       data-slot="command-empty"
       {...rest}
-      {...mergeStyleProps(props(styles.empty, xstyle), className, style)}
+      {...mergeStyleProps(props(text.base, styles.empty, xstyle), className, style)}
     />
   );
 }

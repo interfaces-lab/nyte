@@ -1,9 +1,11 @@
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
-import type { AuthInteraction, AuthPrompt } from "@nyte-ai/ai";
+import open from "open";
+import type { LoginDriver } from "./services/auth.ts";
 import { ansiEnabled, bold, cyan, dim } from "./cli-style.ts";
 
+/** Asks `message` on the terminal through readline, which owns raw mode and editing; a `secret` answer suppresses all of readline's echo, redraws after backspace, paste and cursor moves included. */
 async function ask(
   message: string,
   signal: AbortSignal,
@@ -12,8 +14,6 @@ async function ask(
 ): Promise<string> {
   signal.throwIfAborted();
 
-  // Readline owns raw mode and editing. Suppress its entire echo for secrets,
-  // including redraws after backspace, paste, and cursor movement.
   const hidden = secret
     ? new Writable({
         write(_chunk, _encoding, callback) {
@@ -54,72 +54,62 @@ async function ask(
     rl.close();
     hidden?.destroy();
 
-    if (secret) process.stderr.write("\n");
+    if (secret || signal.aborted) process.stderr.write("\n");
   }
 }
 
-/** CLI driver for the login funnel: prompts over readline, events to stderr. */
-export function cliInteraction(signal: AbortSignal, onInterrupt?: () => void): AuthInteraction {
+export function cliLoginDriver(signal: AbortSignal, onInterrupt?: () => void): LoginDriver {
+  const interactive = (): void => {
+    signal.throwIfAborted();
+
+    if (!process.stdin.isTTY || !process.stderr.isTTY)
+      throw new Error(
+        "Authentication requires input. Run `nyte login <provider>` in an interactive terminal; use --method oauth or --method api_key to choose a login method.",
+      );
+  };
+
   return {
     signal,
-    async prompt(prompt: AuthPrompt): Promise<string> {
-      const promptSignal =
-        prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]);
+    open(url, code) {
+      const color = ansiEnabled(process.stderr);
 
-      promptSignal.throwIfAborted();
-
-      if (!process.stdin.isTTY || !process.stderr.isTTY) {
-        throw new Error(
-          "Authentication requires input. Run `nyte login <provider>` in an interactive terminal; use --method oauth or --method api_key to choose a login method.",
-        );
-      }
-
-      if (prompt.type === "select") {
-        if (prompt.options.length === 0) throw new Error("No authentication choices available.");
-
-        for (const [index, option] of prompt.options.entries()) {
-          const description =
-            option.description === undefined
-              ? ""
-              : ` ${dim(option.description, ansiEnabled(process.stderr))}`;
-
-          console.error(
-            `  ${dim(`${String(index + 1)}.`, ansiEnabled(process.stderr))} ${option.label}${description}`,
-          );
-        }
-
-        const answer = await ask(`${prompt.message} [1] `, promptSignal, false, onInterrupt);
-        const choice = prompt.options[Number(answer.trim() || "1") - 1];
-
-        if (choice === undefined) throw new Error(`Invalid choice: ${answer}`);
-
-        return choice.id;
-      }
-
-      const hint = prompt.placeholder === undefined ? "" : ` (${prompt.placeholder})`;
-
-      return ask(`${prompt.message}${hint} `, promptSignal, prompt.type === "secret", onInterrupt);
+      void open(url).catch(() => undefined);
+      console.error(
+        code === undefined
+          ? `\nOpening your browser. If it doesn't open, visit:\n\n  ${cyan(url, color)}\n`
+          : `\nVisit ${cyan(url, color)} and enter code: ${bold(code, color)}\n`,
+      );
     },
-    notify(event) {
-      switch (event.type) {
-        case "auth_url":
-          console.error(
-            `\n${event.instructions ?? "Open this URL to continue:"}\n\n  ${cyan(event.url, ansiEnabled(process.stderr))}\n`,
-          );
-          break;
-        case "device_code": {
-          const lead = event.instructions === undefined ? "" : `${event.instructions}\n`;
-          console.error(
-            `\n${lead}Visit ${event.verificationUri} and enter code: ${bold(event.userCode, ansiEnabled(process.stderr))}\n`,
-          );
-          break;
-        }
+    async paste(message, secret, superseded) {
+      interactive();
 
-        case "info":
-        case "progress":
-          console.error(event.message);
-          break;
-      }
+      return ask(`${message} `, AbortSignal.any([signal, superseded]), secret, onInterrupt);
+    },
+    async choose(message, options, superseded) {
+      interactive();
+
+      if (options.length === 0) throw new Error("No authentication choices available.");
+
+      for (const [index, option] of options.entries())
+        console.error(
+          `  ${dim(`${String(index + 1)}.`, ansiEnabled(process.stderr))} ${option.label}`,
+        );
+
+      const answer = await ask(
+        `${message} [1] `,
+        AbortSignal.any([signal, superseded]),
+        false,
+        onInterrupt,
+      );
+
+      const choice = options[Number(answer.trim() || "1") - 1];
+
+      if (choice === undefined) throw new Error(`Invalid choice: ${answer}`);
+
+      return choice.id;
+    },
+    progress(message) {
+      console.error(message);
     },
   };
 }

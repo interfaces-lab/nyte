@@ -1,61 +1,47 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import type { MDXComponents } from "mdx/types";
-import type { ReactNode } from "react";
-import { DocCard } from "~/components/mdx/doc-card";
-import { Mermaid } from "~/components/mdx/mermaid";
+import { Link } from "@tanstack/react-router";
+import type { ComponentProps, ReactNode } from "react";
+import { CodeFrame } from "~/components/site/code-frame";
+import { splitHref } from "~/lib/href";
 import { componentsMdxComponents } from "~/components/components/mdx";
-import { sharedMdxComponents } from "~/app/(site)/_layout/mdx";
+import { foundationsMdxComponents } from "~/components/design/mdx";
+import { DocCard } from "~/components/mdx/doc-card";
+import { DesktopDownload } from "~/components/mdx/install";
+import { Mermaid } from "~/components/mdx/mermaid";
 
-import { Source, Sketch, Diff } from "~/components/mdx/kernel/code";
-import { Cas, LayerStack, Trace, TraceStep } from "~/components/mdx/kernel/figures";
-import { Quiz } from "~/components/mdx/kernel/quiz";
-import { Constants, Functions, OpenIssues } from "~/components/mdx/kernel/reference";
-import { C, Codes, Inline, P, Src, Table, To } from "~/components/mdx/kernel/ui";
+function Anchor({ href = "", className, ...rest }: ComponentProps<"a">) {
+  const scopedClass = [props(intent.primary).className, className].filter(Boolean).join(" ");
+  if (href.startsWith("#")) return <a href={href} {...rest} className={scopedClass} />;
+  if (href.startsWith("/")) return <Link {...splitHref(href)} {...rest} className={scopedClass} />;
+  return <a href={href} rel="noreferrer" target="_blank" {...rest} className={scopedClass} />;
+}
+
+function ScrollTable(props: ComponentProps<"table">) {
+  return (
+    <div className="doc-table-scroll">
+      <table {...props} />
+    </div>
+  );
+}
 
 function Cards({ children }: { children?: ReactNode }) {
   return <div className="docs-cards">{children}</div>;
 }
 
-/*
- * Core docs render MDX with their own elements. Headings keep the ids
- * fumadocs-mdx assigns so deep links still land.
- */
-export function docsMdxComponents(): MDXComponents {
-  return {
-    ...sharedMdxComponents(),
-    ...componentsMdxComponents(),
-    Cards,
-    DocCard,
-    Mermaid,
-    Source,
-    Sketch,
-    Diff,
-    Cas,
-    LayerStack,
-    Trace,
-    TraceStep,
-    Quiz,
-    Constants,
-    Functions,
-    OpenIssues,
-    C,
-    Codes,
-    Inline,
-    P,
-    Src,
-    Table,
-    To,
-  };
-}
-
-export function getMDXComponents(components?: MDXComponents) {
-  return {
-    ...docsMdxComponents(),
-    ...components,
-  } satisfies MDXComponents;
-}
-
-export const useMDXComponents = getMDXComponents;
+export const mdxComponents = {
+  a: Anchor,
+  pre: CodeFrame,
+  table: ScrollTable,
+  ...componentsMdxComponents,
+  ...foundationsMdxComponents,
+  Cards,
+  DocCard,
+  DesktopDownload,
+  Mermaid,
+} satisfies MDXComponents;
 
 declare global {
-  type MDXProvidedComponents = ReturnType<typeof getMDXComponents>;
+  type MDXProvidedComponents = typeof mdxComponents;
 }

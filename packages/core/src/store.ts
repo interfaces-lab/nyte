@@ -1,31 +1,70 @@
-/**
- * `@nyte-ai/core/store`: the kernel store contract, its SQLite backend for
- * hosts, and the connection seam another SQLite backend implements. The
- * exported helpers are pure reads over kernel commits.
- */
-export { SqlStore, SqliteStore, type SqliteStoreOptions } from "./kernel/sqlite.ts";
+export {
+  STORED_RECORD_TYPES,
+  decodeCallRecord,
+  decodeCommitRecord,
+  decodeHostIdentity,
+  decodeInboxRecord,
+  decodeKvValue,
+  decodeLease,
+  decodePartRecord,
+  decodePrincipalRecord,
+  decodeReceiptRecord,
+  decodeRunRecord,
+  decodeSeenRecord,
+  decodeSessionRecord,
+  decodeWorkspaceRecord,
+  envelope,
+} from "./contract/records.ts";
 
-export type { SqliteConnection, SqlRow, SqliteValue } from "./kernel/sql.ts";
-
-export { WorkerStore, type WorkerStoreOptions } from "./kernel/worker-store.ts";
+export type {
+  CallRecord,
+  CommitRecord,
+  PartRecord,
+  RecordKind,
+  SessionRecord,
+  WorkspaceRecord,
+} from "./contract/records.ts";
 
 export {
-  UnknownSession,
-  type AppendOutcome,
-  type Events,
-  type Leases,
-  type Objects,
-  type Refs,
-  type RefUpdateOptions,
-  type Session,
-  type SessionInfo,
-  type Store,
-} from "./kernel/store.ts";
+  admits,
+  collectSessionEvents,
+  decodeObject,
+  fenceNames,
+  loggedEvent,
+} from "./store/log.ts";
 
-export { toJsonValue } from "@nyte-ai/client";
+export { memoryStore } from "./store/memory-store.ts";
 
-export { branch, contextCommits, history } from "./kernel/graph.ts";
+export { STORE_VERSION, assertStoreVersion, migrateStore } from "./store/migrations.ts";
 
-export { sessionName } from "./kernel/session-name.ts";
+export type {
+  CommitOutcome,
+  LoggedRow,
+  MigrationTarget,
+  Relog,
+  StoredObject,
+  StoredRecord,
+} from "./store/migrations.ts";
 
-export { branchConfig, contextMessages, modelContext } from "@nyte-ai/client";
+export { readModelSelection } from "./store/model-state.ts";
+
+export {
+  callRef,
+  headRef,
+  hostIdentityRef,
+  hostPrincipalsRef,
+  inboxRef,
+  kvRef,
+  leaseRef,
+  parseSessionRef,
+  partRef,
+  receiptRef,
+  runRef,
+  seenRef,
+  sessionRef,
+  workspaceRef,
+} from "./store/refs.ts";
+
+export { projectSessionIndex, sessionIndexRef } from "./store/session-index.ts";
+
+export { blobId, objectId } from "./util/content.ts";

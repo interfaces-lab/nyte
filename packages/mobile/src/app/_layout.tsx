@@ -1,3 +1,4 @@
+import "../runtime.ts";
 import { useState } from "react";
 import { ActivityIndicator, AppState, StatusBar, StyleSheet, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -17,18 +18,19 @@ import { DevelopmentMenu } from "../development/development-menu.ts";
 
 export const unstable_settings = { anchor: "index" };
 
-// Queries refetch on window focus; on a phone that means the app coming forward.
-focusManager.setEventListener((handleFocus) => {
+/** Queries refetch on window focus; on a phone that means the app coming forward. */
+function listenForAppFocus(handleFocus: (focused: boolean) => void) {
   const subscription = AppState.addEventListener("change", (state) =>
     handleFocus(state === "active"),
   );
 
   return () => subscription.remove();
-});
+}
+
+focusManager.setEventListener(listenForAppFocus);
 
 export default function RootLayout() {
   useAppliedAppearance();
-  // A new host means a new cache: another Mac's sessions are not this one's.
   const [queryClient] = useState(() => new QueryClient());
 
   return (
@@ -43,7 +45,7 @@ export default function RootLayout() {
 function Gate() {
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
-  const { host, connect, edit, cancelEdit, disconnect } = useHostConnection();
+  const { host, disconnect } = useHostConnection();
   const base = dark ? DarkTheme : DefaultTheme;
 
   const navigationTheme = {
@@ -73,15 +75,11 @@ function Gate() {
               </html.div>
             ) : host.kind === "setup" ? (
               <html.div style={styles.root}>
-                <ConnectScreen
-                  onConnect={connect}
-                  edit={
-                    host.editing === undefined
-                      ? undefined
-                      : { saved: host.editing.saved, onCancel: cancelEdit }
-                  }
-                  notice={host.notice}
-                />
+                <ConnectScreen notice={host.notice} recovery={undefined} />
+              </html.div>
+            ) : host.kind === "recovery" ? (
+              <html.div style={styles.root}>
+                <ConnectScreen notice={undefined} recovery={host.recovery} />
               </html.div>
             ) : (
               <Connected
@@ -90,7 +88,7 @@ function Gate() {
                   client: host.client,
                   connection: host.connection,
                   saved: host.saved,
-                  edit,
+                  scope: host.scope,
                   disconnect,
                 }}
               />
@@ -103,11 +101,6 @@ function Gate() {
   );
 }
 
-/**
- * The connected half of the gate. Its own QueryClient means a different Mac can
- * never see the previous one's cached sessions, models, or workspaces — the
- * `key` on the call site remounts this when the connection target changes.
- */
 function Connected({ session }: { session: HostSession }) {
   const theme = useTheme();
   const [queryClient] = useState(() => new QueryClient());
@@ -143,10 +136,7 @@ function Connected({ session }: { session: HostSession }) {
             name="chat/[id]"
             options={{
               title: "",
-              // The transcript scrolls under a glass bar; the title rides on it.
-              headerTransparent: true,
-              headerBlurEffect: "systemChromeMaterial",
-              headerStyle: { backgroundColor: "transparent" },
+              contentStyle: { backgroundColor: theme.canvas },
             }}
           />
           <Stack.Screen name="changes/[id]" options={{ title: "Changed Files" }} />
@@ -166,8 +156,7 @@ const layoutRoot = StyleSheet.create({
 });
 
 const styles = css.create({
-  // The screen's own box: its parent is the native root, not a flex container,
-  // so it fills by size rather than by growing inside one.
+  /** The screen's own box: its parent is the native root, not a flex container, so it fills by size. */
   root: {
     display: "flex",
     flexDirection: "column",

@@ -11,7 +11,7 @@ import { test } from "vitest";
 
 const execute = promisify(execFile);
 
-test("production preload preserves rejected error data and watch callbacks through Electron", async () => {
+test("production preload preserves rejected error data through Electron", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-ipc-transport-"));
 
   try {

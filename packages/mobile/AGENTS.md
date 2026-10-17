@@ -3,6 +3,10 @@
 - Read [README.md](README.md) and the root instructions.
 - Keep runtime and provider work in the host. Import remote data through `@nyte-ai/client` and `@nyte-ai/protocol`, including its Node-free session state; do not import `@nyte-ai/core` into Metro.
 - Use React Strict DOM's `css` and `html` for native styled elements. Use native libraries for keyboard, list, markdown, and system controls. Never emulate StyleX with a local wrapper.
+- Use native sheets through Expo UI or Expo Router. Prefer medium/large detents for short details. Preserve system swipe dismissal and wait for dismissal before pushing another screen.
+- Follow iOS Human Interface typography. Use semantic SwiftUI text styles and support Dynamic Type, including growing controls and 44pt minimum touch targets.
+- Header actions use one native glass button surface. Never nest another glass button, outline, or ring inside it. Settings-row icons and profile images have no added border or tile; keep their touch targets large.
+- Use a clean border to indicate selected cards, not an added checkmark. The composer dock stays transparent around one elevated glass capsule.
 - In React Strict DOM `css.create`, use pixel strings for fixed line heights, such as `"24px"`; numeric line heights are CSS ratios. Native TextInput and Markdown style props still use numeric pixels.
 - Keep upstream reference provenance in the README. Do not copy unlicensed demo source or bundle provider keys.
 - Leave Metro and other dev servers to the user. Use bundle, typecheck, tests, and simulator build commands for verification.

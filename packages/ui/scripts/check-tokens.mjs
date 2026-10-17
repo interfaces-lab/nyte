@@ -14,15 +14,15 @@ const packages = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const lockPath = join(packages, "ui/test/token-lock.json");
 
 const tokenFiles = [
-  "ui/src/theme.stylex.ts",
-  "ui/src/roles.stylex.ts",
-  "ui/src/tokens.stylex.ts",
+  "ui/src/styles/theme.stylex.ts",
+  "ui/src/styles/roles.stylex.ts",
+  "ui/src/styles/tokens.stylex.ts",
   "app/src/theme/tokens.stylex.ts",
 ];
 
 const handleFiles = [
-  "ui/src/vars.stylex.ts",
-  "ui/src/schema.stylex.ts",
+  "ui/src/styles/vars.stylex.ts",
+  "ui/src/styles/schema.stylex.ts",
   "app/src/theme/schema.stylex.ts",
 ];
 

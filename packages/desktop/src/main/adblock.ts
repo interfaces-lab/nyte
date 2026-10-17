@@ -66,6 +66,18 @@ export function createBlocker(engine: FiltersEngine): Blocker {
   };
 }
 
+export function shieldPaused(url: string, allowedHosts: readonly string[]): boolean {
+  let hostname: string;
+
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+
+  return allowedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`));
+}
+
 export function parseFilterLists(text: string): FiltersEngine {
   return FiltersEngine.parse(text, {
     enableCompression: true,

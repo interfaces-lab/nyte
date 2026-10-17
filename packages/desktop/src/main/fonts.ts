@@ -109,7 +109,7 @@ function parseFontconfigCatalog(output: string): LocalFontCatalog {
 }
 
 /** Read OS font metadata in the trusted host, using no shell and no renderer permission. */
-export async function readLocalFonts(
+async function readLocalFonts(
   platform: NodeJS.Platform,
   run: CommandRunner = runFile,
 ): Promise<LocalFontCatalog> {

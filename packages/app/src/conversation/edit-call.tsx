@@ -1,33 +1,30 @@
 import { create, props } from "@stylexjs/stylex";
-import { parsePatchFacts, toolStatus } from "@nyte-ai/client";
-import type { ToolClass, ToolTurnPart } from "@nyte-ai/protocol";
-import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import type { ToolClass } from "@nyte-ai/sdk";
+import { tidyPath, toolNoun, toolStatus, toolVerbs } from "@nyte-ai/plugin/client/presentation";
+import type { ToolMessage } from "@nyte-ai/plugin/client/presentation";
+import { editPatch } from "./edit-patch.ts";
+import { focus } from "@nyte-ai/ui/styles/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
-import { button, glyph, radius } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { memo, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import { Deferred } from "../deferred.tsx";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { diffView } from "../theme/schema.stylex.ts";
-import { DiffView } from "./diff-view.tsx";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
-import { activityStyles } from "./styles.stylex.ts";
-import { tidyPath, toolNoun, toolVerbs } from "./tool-copy.ts";
+import { activityStyles } from "./activity.stylex.ts";
 import { ToolOutcome } from "./tool-line.tsx";
 
-export type EditToolClass = Extract<
-  ToolClass,
-  { readonly kind: "file_patch" | "file_edit" | "file_write" }
->;
+type EditToolClass = Extract<ToolClass, { readonly kind: "edit" }>;
 
-const HOVER = "@media (hover: hover) and (pointer: fine)";
-
-const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 65%, ${role.contentTertiary})`;
 
 const CARD_PREVIEW_ROWS = 4;
 
@@ -44,23 +41,26 @@ const styles = create({
   line: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: space.s1,
     minWidth: 0,
-    fontSize: type.fontLg,
-    lineHeight: type.leadingLg,
-    letterSpacing: type.letterLg,
     whiteSpace: "nowrap",
     userSelect: "none",
     "--_action": role.contentSecondary,
-    "--_file": { default: role.contentSecondary, ":hover": { [HOVER]: role.contentPrimary } },
+    "--_file": {
+      default: role.contentSecondary,
+      ":hover": { [media.hover]: role.contentPrimary },
+    },
     "--_chevron": "0",
   },
   lineToggle: {
     cursor: appearance.cursorInteractive,
-    "--_action": { default: role.contentSecondary, ":hover": { [HOVER]: role.contentPrimary } },
+    "--_action": {
+      default: role.contentSecondary,
+      ":hover": { [media.hover]: role.contentPrimary },
+    },
     "--_chevron": {
       default: "0",
-      ":hover": { [HOVER]: "1" },
+      ":hover": { [media.hover]: "1" },
       ":focus-within": "1",
       "[data-panel-open]": "1",
     },
@@ -78,21 +78,20 @@ const styles = create({
   },
   fileButton: {
     cursor: appearance.cursorInteractive,
-    textDecorationLine: { default: "none", ":hover": { [HOVER]: "underline" } },
+    textDecorationLine: {
+      default: "none",
+      ":hover": { [media.hover]: "underline" },
+    },
   },
   stats: {
     display: "inline-flex",
     flexShrink: 0,
-    gap: 4,
+    gap: space.s1,
     fontVariantNumeric: "tabular-nums",
   },
-  statsLine: { marginInlineStart: 8 },
+  statsLine: { marginInlineStart: space.s2 },
   stat: { color: role.contentSecondary },
   chevron: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
     width: glyph.md,
     height: glyph.md,
     color: role.contentTertiary,
@@ -105,27 +104,29 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     minWidth: 0,
-    marginBlock: 2,
+    marginBlock: space.s0_5,
     overflow: "clip",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: radius.control,
     backgroundColor: role.bgBase,
-    "--_expand-opacity": { default: 0, ":hover": 1, ":focus-within": 1 },
+    "--_expand-opacity": {
+      default: 0,
+      ":hover": { [media.hover]: 1 },
+      ":focus-within": 1,
+    },
   },
   header: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: space.s1_5,
     width: "100%",
     minWidth: 0,
-    paddingBlock: 6,
-    paddingInline: 8,
+    paddingBlock: space.s1_5,
+    paddingInline: space.s2,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textDecorationLine: "none",
     whiteSpace: "nowrap",
     userSelect: "none",
@@ -153,7 +154,7 @@ const styles = create({
   },
   cardBodyCollapsed: {
     maxHeight: `calc(${CARD_PREVIEW_ROWS} * ${diffView.lineHeight})`,
-    overflow: "hidden",
+    overflow: "clip",
   },
   expand: {
     position: "absolute",
@@ -163,9 +164,12 @@ const styles = create({
     alignItems: "flex-end",
     justifyContent: "center",
     height: button.heightXs,
-    paddingBottom: 1,
+    paddingBottom: space.px,
     backgroundImage: `linear-gradient(to bottom, transparent 0%, ${role.bgBase} 100%)`,
-    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
+    color: {
+      default: role.contentSecondary,
+      ":hover": { [media.hover]: role.contentPrimary },
+    },
     opacity: { default: "var(--_expand-opacity)", ":focus-visible": 1 },
     transitionProperty: "color, opacity",
     ...TRANSITION,
@@ -216,37 +220,26 @@ function Stats({
  * and whose body previews four rows of the diff.
  */
 export const EditCallView = memo(function EditCallView({
-  part,
+  message,
   toolClass,
   cwd,
   density,
 }: {
-  readonly part: ToolTurnPart;
+  readonly message: ToolMessage;
   readonly toolClass: EditToolClass;
   readonly cwd: string | undefined;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const status = toolStatus(part.state);
+  const status = toolStatus(message);
   const running = status.tense === "running";
   const opener = useReferenceOpener();
   const [open, setOpen] = useState(false);
-
-  const facts = useMemo(
-    () => (toolClass.kind === "file_patch" ? parsePatchFacts(toolClass.patch) : undefined),
-    [toolClass],
-  );
-
+  const facts = useMemo(() => editPatch(message), [message]);
   const path = tidyPath(toolClass.path, cwd);
   const name = basename(path);
   const added = facts?.added ?? 0;
   const removed = facts?.removed ?? 0;
-
-  const created =
-    toolClass.kind === "file_patch" &&
-    toolClass.op === "write" &&
-    facts !== undefined &&
-    facts.removed === 0 &&
-    facts.files.every((file) => file.hunks.every((hunk) => hunk.oldLines === 0));
+  const created = facts?.created === true;
 
   const verb =
     status.tense === "none"
@@ -263,10 +256,7 @@ export const EditCallView = memo(function EditCallView({
       ? undefined
       : { patch: facts.patch, added, removed };
 
-  const rows = facts?.files.reduce(
-    (total, entry) => total + entry.hunks.reduce((sum, hunk) => sum + hunk.lines.length + 1, 0),
-    0,
-  );
+  const rows = facts?.patch.split("\n").length;
 
   if (density === "detailed" && diff !== undefined) {
     const expandable = (rows ?? 0) > CARD_PREVIEW_ROWS;
@@ -288,7 +278,7 @@ export const EditCallView = memo(function EditCallView({
           <TooltipTrigger
             render={
               openFile === undefined || file === undefined ? (
-                <div {...props(styles.header)}>{header}</div>
+                <div {...props(text.base, styles.header)}>{header}</div>
               ) : (
                 <a
                   href={file.url}
@@ -296,7 +286,7 @@ export const EditCallView = memo(function EditCallView({
                     event.preventDefault();
                     openFile();
                   }}
-                  {...props(styles.header, styles.headerLink, focus.ringInset)}
+                  {...props(text.base, styles.header, styles.headerLink, focus.ringInset)}
                 >
                   {header}
                 </a>
@@ -309,7 +299,9 @@ export const EditCallView = memo(function EditCallView({
           data-tool-body
           {...props(styles.cardBody, expandable && !open && styles.cardBodyCollapsed)}
         >
-          <DiffView path={path} diff={diff} variant="card" />
+          <Deferred entry="code">
+            {({ DiffView }) => <DiffView path={path} diff={diff} variant="card" />}
+          </Deferred>
         </div>
         {expandable && (
           <Collapsible.Trigger
@@ -375,7 +367,9 @@ export const EditCallView = memo(function EditCallView({
       </Collapsible.Trigger>
       {diff !== undefined && (
         <Collapsible.Panel data-tool-body>
-          <DiffView path={path} diff={diff} variant="inline" />
+          <Deferred entry="code">
+            {({ DiffView }) => <DiffView path={path} diff={diff} variant="inline" />}
+          </Deferred>
         </Collapsible.Panel>
       )}
     </Collapsible.Root>

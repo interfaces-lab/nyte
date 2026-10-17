@@ -1,9 +1,12 @@
-import { toolStatus } from "@nyte-ai/client";
-import type { ToolStatus } from "@nyte-ai/client";
-import type { SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
-import type { SessionFrame } from "../live.ts";
-import { toolDetail, toolVerbs } from "./tool-copy.ts";
-import type { ToolVerbs } from "./tool-copy.ts";
+import type { SessionInfo, SessionView } from "@nyte-ai/sdk";
+import {
+  mainHead,
+  showsTool,
+  toolDetail,
+  toolStatus,
+  toolVerbs,
+} from "@nyte-ai/plugin/client/presentation";
+import type { ToolStatus } from "@nyte-ai/plugin/client/presentation";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
@@ -35,88 +38,65 @@ export function callStatus(status: ToolStatus): SubagentStatus {
 }
 
 export function sessionStatus(session: SessionInfo, unread: boolean): SubagentStatus {
-  const run = session.heads[0]?.run;
+  const execution = mainHead(session)?.execution;
 
-  if (run === undefined) return { indicator: "done", text: "" };
-  const phase = run.phase;
+  if (execution === undefined) return { indicator: "done", text: "" };
 
-  switch (phase.kind) {
-    case "respond":
-    case "tools":
+  switch (execution.kind) {
+    case "live":
       return PLANNING;
-    // Parked on its own background work, the child is still working.
     case "waiting":
-      return run.awaitingReply === true
+      return execution.on.kind === "part"
         ? { indicator: "attention", text: "Needs attention" }
         : PLANNING;
-    case "retry":
+    case "retrying":
       return { indicator: "running", text: "Retrying" };
-    case "done":
-      return { indicator: unread ? "unread" : "done", text: "Completed" };
-    case "failed":
-      return { indicator: "failed", text: "Stopped with error" };
-    case "aborted":
-      return { indicator: "failed", text: "Stopped" };
+    case "idle": {
+      const end = execution.lastRun?.end;
+
+      if (end === undefined || end.kind === "completed")
+        return {
+          indicator: unread ? "unread" : "done",
+          text: end === undefined ? "" : "Completed",
+        };
+
+      return end.kind === "failed"
+        ? { indicator: "failed", text: "Stopped with error" }
+        : { indicator: "failed", text: "Stopped" };
+    }
+
     default: {
-      const _exhaustive: never = phase;
+      const _exhaustive: never = execution;
 
       return _exhaustive;
     }
   }
 }
 
-type DelegateRole = Extract<TurnToolClass, { readonly kind: "delegate" }>["role"];
-
-export const DELEGATE_VERBS: Readonly<Record<DelegateRole, ToolVerbs>> = {
-  create: { running: "Creating", past: "Created" },
-  send: { running: "Messaging", past: "Messaged" },
-  read: { running: "Reading transcript", past: "Read transcript" },
-  stop: { running: "Stopping", past: "Stopped" },
-};
-
-/** The noun a verbless line adds after the agent it names: "review agent message · Blocked". */
-export const DELEGATE_NOUNS: Readonly<Record<DelegateRole, string>> = {
-  create: "agent",
-  send: "message",
-  read: "transcript",
-  stop: "stop",
-};
-
-function delegateDetail(toolClass: Extract<TurnToolClass, { readonly kind: "delegate" }>): string {
-  return toolClass.role === "create" ? toolClass.title : "subagent";
-}
-
 /** What a running child is doing now: its unsettled call, else what it streams. */
 export function subagentActivity(
-  frame: SessionFrame | undefined,
+  view: SessionView | undefined,
   cwd: string | undefined,
 ): string | undefined {
-  const turn = frame?.snapshot.transcript.findLast((entry) => entry.kind === "turn");
+  const call = view?.messages.findLast(
+    (message) => showsTool(message) && toolStatus(message).tense === "running",
+  );
 
-  const call =
-    turn?.kind === "turn"
-      ? turn.parts.findLast(
-          (part) => part.kind === "tool" && toolStatus(part.state).tense === "running",
-        )
-      : undefined;
-
-  if (call?.kind === "tool") {
-    const verb =
-      call.class.kind === "delegate"
-        ? DELEGATE_VERBS[call.class.role].running
-        : toolVerbs(call.class).running;
-
-    const detail =
-      call.class.kind === "delegate"
-        ? delegateDetail(call.class)
-        : toolDetail(call.class, cwd)?.text;
+  if (call !== undefined && showsTool(call)) {
+    const toolClass = call.state.class;
+    const verb = toolVerbs(toolClass).running;
+    const detail = toolDetail(toolClass, cwd)?.text;
 
     return detail === undefined ? verb : `${verb} ${detail}`;
   }
 
-  const streaming = frame?.live.order.at(-1)?.kind;
+  const streaming = view?.messages.findLast(
+    (message) => message.kind === "part" && message.status.kind === "live",
+  );
 
-  if (streaming === "thinking") return "Thinking";
+  if (streaming?.kind !== "part") return undefined;
 
-  return streaming === "text" ? "Writing a response" : undefined;
+  if (streaming.partKind === "thinking") return "Thinking";
+
+  return streaming.partKind === "text" ? "Writing a response" : undefined;
 }

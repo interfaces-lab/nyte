@@ -3,12 +3,11 @@
  * every request against these schemas and the page validates every reply, so
  * neither side trusts the other's JSON.
  */
-import { schemas } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 
 const Oid = Type.String({ pattern: "^[0-9a-f]{40}$" });
 
-export const GuideSectionSchema = Type.Object({
+const GuideSectionSchema = Type.Object({
   title: Type.String({ minLength: 1 }),
   explanation: Type.String({ minLength: 1 }),
   /** Changed files, or directories ending in `/` that stand for every changed file under them. */
@@ -26,7 +25,7 @@ export const GuideSchema = Type.Object({
 
 export type Guide = Static<typeof GuideSchema>;
 
-export const CommitSchema = Type.Object({
+const CommitSchema = Type.Object({
   oid: Oid,
   short: Type.String(),
   subject: Type.String(),
@@ -36,8 +35,6 @@ export const CommitSchema = Type.Object({
   /** The message past its subject line; empty for most commits. */
   body: Type.String(),
 });
-
-export type Commit = Static<typeof CommitSchema>;
 
 const fileChangeFields = {
   path: Type.String(),
@@ -55,18 +52,18 @@ const fileChangeFields = {
   blobs: Type.String(),
 };
 
-export const FileChangeSchema = Type.Object(fileChangeFields);
+const FileChangeSchema = Type.Object(fileChangeFields);
 
 export type FileChange = Static<typeof FileChangeSchema>;
 
-export const BriefStatusSchema = Type.Union([
+const BriefStatusSchema = Type.Union([
   Type.Literal("running"),
   Type.Literal("done"),
   Type.Literal("failed"),
 ]);
 
 /** One head's brief: the call that wrote its guide, or is writing it. */
-export const BriefSchema = Type.Object({
+const BriefSchema = Type.Object({
   head: Oid,
   status: BriefStatusSchema,
   failure: Type.Optional(Type.String()),
@@ -84,8 +81,8 @@ export const BriefSchema = Type.Object({
 export type Brief = Static<typeof BriefSchema>;
 
 /** Nyte coding on the review's branch, in its own worktree. */
-export const AuthorSchema = Type.Object({
-  sessionId: schemas.SessionId,
+const AuthorSchema = Type.Object({
+  sessionId: Type.String(),
   worktree: Type.String(),
   status: Type.Union([Type.Literal("working"), Type.Literal("idle"), Type.Literal("failed")]),
   failure: Type.Optional(Type.String()),
@@ -93,16 +90,14 @@ export const AuthorSchema = Type.Object({
 
 export type Author = Static<typeof AuthorSchema>;
 
-export const ApprovalSchema = Type.Object({ head: Oid, at: Type.Number() });
-
-export type Approval = Static<typeof ApprovalSchema>;
+const ApprovalSchema = Type.Object({ head: Oid, at: Type.Number() });
 
 /**
  * A side chat: questions asked beside the pull request, answered by a fork of
  * the head's brief. Each thread is its own fork, so it starts from what the
  * guide already read and nothing it says is saved as a chat.
  */
-export const ThreadSchema = Type.Object({
+const ThreadSchema = Type.Object({
   /** The commit whose brief it forks. */
   head: Oid,
   /** The page's id for the thread. */
@@ -124,7 +119,7 @@ export const RevisionSchema = Type.Object({
 
 export type Revision = Static<typeof RevisionSchema>;
 
-export const ReviewSummarySchema = Type.Object({
+const ReviewSummarySchema = Type.Object({
   id: Type.String(),
   title: Type.String(),
   baseRef: Type.String(),
@@ -162,7 +157,7 @@ export const ReviewDetailSchema = Type.Object({
   title: Type.String(),
   baseRef: Type.String(),
   headRef: Type.String(),
-  sessionId: schemas.SessionId,
+  sessionId: Type.String(),
   createdAt: Type.Number(),
   /** What you asked Nyte to build, for a review that started as a task. */
   task: Type.Optional(Type.String()),
@@ -182,7 +177,7 @@ export const ReviewDetailSchema = Type.Object({
 
 export type ReviewDetail = Static<typeof ReviewDetailSchema>;
 
-export const PatchSchema = Type.Object({
+const PatchSchema = Type.Object({
   ...fileChangeFields,
   patch: Type.String(),
   /** Too large to draw; the counts still stand. */
@@ -193,7 +188,7 @@ export const PatchListSchema = Type.Object({ patches: Type.Array(PatchSchema) })
 
 export type Patch = Static<typeof PatchSchema>;
 
-export const BranchSchema = Type.Object({
+const BranchSchema = Type.Object({
   name: Type.String(),
   oid: Oid,
   subject: Type.String(),
@@ -201,8 +196,6 @@ export const BranchSchema = Type.Object({
   ahead: Type.Integer(),
   behind: Type.Integer(),
 });
-
-export type Branch = Static<typeof BranchSchema>;
 
 export const RepoSchema = Type.Object({
   root: Type.String(),
@@ -236,10 +229,13 @@ export type CreateReview = Static<typeof CreateReviewSchema>;
 
 export const CreatedSchema = Type.Object({ id: Type.String() });
 
-/** The review's core sessions: never changing once they exist, so a page can watch them. */
+/**
+ * The review's core sessions: never changing once they exist, so a page can
+ * watch them. Each is absent until its first message starts it.
+ */
 export const SessionSchema = Type.Object({
-  sessionId: schemas.SessionId,
-  authorSessionId: Type.Optional(schemas.SessionId),
+  sessionId: Type.Optional(Type.String()),
+  authorSessionId: Type.Optional(Type.String()),
 });
 
 export type Sessions = Static<typeof SessionSchema>;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { fetchAnthropicAccountLimits } from "../src/api/anthropic-messages.ts";
+import { fetchAnthropicAccountLimits } from "../src/providers/anthropic-limits.ts";
 import type { Model } from "../src/types.ts";
 
 const NOW = 2_000_000_000_000;
@@ -48,18 +48,21 @@ describe("Anthropic account limits", () => {
     assert.deepEqual(limits.windows, [
       {
         id: "five_hour",
+        label: "5-hour",
         usedPercent: 28,
         windowMinutes: 300,
         resetsAt: NOW,
       },
       {
         id: "seven_day",
+        label: "Weekly",
         usedPercent: 56,
         windowMinutes: 10_080,
         resetsAt: NOW,
       },
       {
         id: "seven_day_sonnet",
+        label: "Sonnet weekly",
         usedPercent: 91,
         windowMinutes: 10_080,
         resetsAt: NOW,

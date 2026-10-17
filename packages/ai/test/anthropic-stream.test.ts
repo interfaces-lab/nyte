@@ -1,4 +1,4 @@
-import { normalizeContext } from "@nyte-ai/schema";
+import { normalizeContext } from "@nyte-ai/schema/model";
 import assert from "node:assert/strict";
 import { expect, test } from "vitest";
 import { stream, type AnthropicOptions } from "../src/api/anthropic-messages.ts";
@@ -108,7 +108,7 @@ test("interleaved tool calls retain initial arguments and never persist parser s
         frame({
           type: "content_block_delta",
           index: 2,
-          delta: { type: "input_json_delta", partial_json: '{"path":"a"' },
+          delta: { type: "input_json_delta", partial_json: '{"path":"a"}' },
         }),
         frame({
           type: "content_block_delta",
@@ -306,8 +306,14 @@ test("unknown event and content variants do not interrupt known content", async 
     limits.map((value) => value.windows),
     [
       [
-        { id: "five_hour", usedPercent: 50, windowMinutes: 300, resetsAt: 1790898600000 },
-        { id: "seven_day", usedPercent: 16, windowMinutes: 10080 },
+        {
+          id: "five_hour",
+          label: "5-hour",
+          usedPercent: 50,
+          windowMinutes: 300,
+          resetsAt: 1790898600000,
+        },
+        { id: "seven_day", label: "Weekly", usedPercent: 16, windowMinutes: 10080 },
       ],
     ],
   );

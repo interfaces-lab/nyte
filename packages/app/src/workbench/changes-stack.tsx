@@ -1,27 +1,36 @@
 import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
+import type { CodeViewLineSelection, SelectedLineRange } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem, CodeViewReactOptions } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import type { LineStat } from "@nyte-ai/sdk";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Button } from "@nyte-ai/ui/button";
+import { ADD_TO_CHAT_LABEL, addToChat, addsToChat } from "../conversation/add-to-chat.ts";
 import type { DiffFilesLoader } from "../conversation/diff-expansion.ts";
 import {
   DIFF_SEPARATOR_CSS,
   EXPANSION_LINE_COUNT,
   adaptDiffExpanders,
 } from "../conversation/diff-view.tsx";
-import { diffStyles } from "../conversation/styles.stylex.ts";
+import { diffStyles } from "../conversation/diff.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
+import { nyte } from "../nyte.ts";
 import { preferences, useSetting } from "../preferences/index.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { keyOwner } from "../shell/focus-owner.ts";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
+import { diffRangeExcerpt } from "./diff-range.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 
@@ -39,12 +48,12 @@ const styles = create({
   headerRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: space.s2,
     boxSizing: "border-box",
     width: "100%",
     minHeight: workbench.headerHeight,
     paddingBlock: workbench.headerPaddingBlock,
-    paddingInlineEnd: 8,
+    paddingInlineEnd: space.s2,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
@@ -67,11 +76,9 @@ const styles = create({
     textAlign: "left",
   },
   notice: {
-    padding: 10,
+    padding: space.s2_5,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
 });
@@ -91,6 +98,12 @@ interface ScrollReport {
   path: string | undefined;
 }
 
+/**
+ * The first header starts flush with the file tree's filter row. React clears
+ * the viewer ref on unmount, so a scroll report timer that outlives the stack
+ * writes nothing. Lines picked in a diff go to the chat from the gutter's
+ * button, the file header's Add to Chat, or its chord.
+ */
 export function ChangesStack({
   items,
   collapsedPaths,
@@ -107,6 +120,7 @@ export function ChangesStack({
   onRevertPath,
   onScrollTop,
   onActivePath,
+  onDemandPatch,
 }: {
   readonly items: readonly ChangesStackItem[];
   readonly collapsedPaths: readonly string[];
@@ -123,6 +137,7 @@ export function ChangesStack({
   readonly onRevertPath?: (path: string) => void;
   readonly onScrollTop: (scrollTop: number) => void;
   readonly onActivePath: (path: string) => void;
+  readonly onDemandPatch?: (path: string) => () => void;
 }): ReactElement {
   const theme = useSetting(preferences.theme);
   const viewer = useRef<CodeViewHandle<string, undefined>>(null);
@@ -132,6 +147,44 @@ export function ChangesStack({
   const model = useMemo(() => codeItems(items, collapsedPaths), [codeItems, items, collapsedPaths]);
   const collapsed = useMemo(() => new Set(collapsedPaths), [collapsedPaths]);
   const scrollReport = useRef<ScrollReport>({ top: scrollTop, timer: undefined, path: undefined });
+  const [selection, setSelection] = useState<CodeViewLineSelection | null>(null);
+  const sources = useRef(model.sourceById);
+  const mac = nyte.platform === "darwin";
+
+  useLayoutEffect(() => {
+    sources.current = model.sourceById;
+  }, [model.sourceById]);
+
+  const addRange = useCallback((id: string, range: SelectedLineRange): boolean => {
+    const item = viewer.current?.getItem(id);
+    const source = sources.current.get(id);
+
+    if (item?.type !== "diff" || source === undefined) return false;
+    const reference = diffRangeExcerpt(source.path, item.fileDiff, range);
+
+    if (reference === undefined || !addToChat({ reference })) return false;
+    viewer.current?.clearSelectedLines();
+
+    return true;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (selection === null) return undefined;
+
+    const add = (event: KeyboardEvent): void => {
+      const owner = keyOwner();
+
+      if (event.defaultPrevented || !addsToChat(event, mac)) return;
+
+      if (owner !== undefined && owner.closest("[data-changes-stack]") === null) return;
+
+      if (addRange(selection.id, selection.range)) event.preventDefault();
+    };
+
+    window.addEventListener("keydown", add);
+
+    return () => window.removeEventListener("keydown", add);
+  }, [addRange, mac, selection]);
 
   const options = useMemo(
     () =>
@@ -142,14 +195,20 @@ export function ChangesStack({
         loadDiffFiles,
         expansionLineCount: EXPANSION_LINE_COUNT,
         stickyHeaders: true,
-        // The first header starts flush with the file tree's filter row.
         layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
         unsafeCSS: STACK_CSS,
         onPostRender: (node, _instance, phase) => {
           if (phase !== "unmount") adaptDiffExpanders(node);
         },
+        enableLineSelection: true,
+        onGutterUtilityClick: (
+          range: SelectedLineRange,
+          context: { readonly item: { readonly id: string } },
+        ) => {
+          addRange(context.item.id, range);
+        },
       }) satisfies CodeViewReactOptions<string, undefined>,
-    [theme, layout, loadDiffFiles, wordWrap],
+    [theme, layout, loadDiffFiles, wordWrap, addRange],
   );
 
   useLayoutEffect(() => {
@@ -190,11 +249,20 @@ export function ChangesStack({
       return (
         <StackHeader
           path={item.path}
-          added={item.added}
-          removed={item.removed}
+          stat={item.stat}
           collapsed={collapsed.has(item.path)}
+          demand={onDemandPatch}
           onToggleCollapsed={onToggleCollapsed}
         >
+          {selection?.id === codeItem.id && (
+            <Button
+              iconOnly
+              icon="paperclip"
+              aria-label={ADD_TO_CHAT_LABEL}
+              aria-keyshortcuts={mac ? "Meta+Shift+L" : "Control+Shift+L"}
+              onClick={() => addRange(selection.id, selection.range)}
+            />
+          )}
           {onRevertPath !== undefined && (
             <Button
               iconOnly
@@ -210,14 +278,27 @@ export function ChangesStack({
                 ? `Mark ${item.path} not viewed`
                 : viewed === "changed"
                   ? `Mark ${item.path} viewed; changed since last view`
-                  : `Mark ${item.path} viewed`
+                  : viewed === "unknown"
+                    ? `Mark ${item.path} viewed; its earlier mark is not checked against this diff yet`
+                    : `Mark ${item.path} viewed`
             }
             onChange={(next) => onViewedChange(item.path, next)}
           />
         </StackHeader>
       );
     },
-    [collapsed, model.sourceById, onRevertPath, onToggleCollapsed, onViewedChange, viewedState],
+    [
+      addRange,
+      collapsed,
+      mac,
+      model.sourceById,
+      onDemandPatch,
+      onRevertPath,
+      onToggleCollapsed,
+      onViewedChange,
+      selection,
+      viewedState,
+    ],
   );
 
   return (
@@ -230,15 +311,16 @@ export function ChangesStack({
         containerRef={(node) => {
           if (node === null) return;
           node.dataset.nyteScrollport = "balanced";
+          node.dataset.changesStack = "";
         }}
+        onSelectedLinesChange={setSelection}
         renderCustomHeader={renderHeader}
         renderAnnotation={(annotation) => (
-          <div {...props(styles.notice)}>{annotation.metadata}</div>
+          <div {...props(text.sm, styles.notice)}>{annotation.metadata}</div>
         )}
         onScroll={(top, instance) => {
           const report = scrollReport.current;
           report.top = top;
-          // React clears the viewer ref on unmount; a timer that outlives the stack writes nothing.
           window.clearTimeout(report.timer);
           report.timer = window.setTimeout(() => {
             report.timer = undefined;
@@ -272,19 +354,22 @@ export function ChangesStack({
 
 function StackHeader({
   path,
-  added = 0,
-  removed = 0,
+  stat,
   collapsed,
+  demand,
   onToggleCollapsed,
   children,
 }: {
   readonly path: string;
-  readonly added?: number;
-  readonly removed?: number;
+  readonly stat: LineStat;
   readonly collapsed: boolean;
+  readonly demand: ((path: string) => () => void) | undefined;
   readonly onToggleCollapsed: (path: string) => void;
   readonly children: ReactNode;
 }): ReactElement {
+  const added = stat.kind === "text" ? stat.added : 0;
+  const removed = stat.kind === "text" ? stat.removed : 0;
+
   return (
     <Collapsible.Root
       open={!collapsed}
@@ -301,10 +386,7 @@ function StackHeader({
         <span {...props(diffStyles.stackHeaderGlyph, diffStyles.stackHeaderIcon)}>
           <FileTypeIcon path={path} />
         </span>
-        <Collapsible.Chevron
-          size={12}
-          xstyle={[diffStyles.stackHeaderGlyph, diffStyles.stackHeaderChevron]}
-        />
+        <Collapsible.Chevron size={12} xstyle={diffStyles.stackHeaderChevron} />
         <span {...props(diffStyles.stackPath, styles.path)}>{path}</span>
         {(added > 0 || removed > 0) && (
           <span
@@ -325,6 +407,20 @@ function StackHeader({
         )}
       </Collapsible.Trigger>
       {children}
+      {}
+      {!collapsed && demand !== undefined && <PatchDemand key={path} path={path} demand={demand} />}
     </Collapsible.Root>
   );
+}
+
+function PatchDemand({
+  path,
+  demand,
+}: {
+  readonly path: string;
+  readonly demand: (path: string) => () => void;
+}): null {
+  useMountEffect(() => demand(path));
+
+  return null;
 }

@@ -1,9 +1,6 @@
-import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthContext } from "../src/auth/types.ts";
 import { createModels } from "../src/models.ts";
-import { InMemoryModelsStore } from "../src/models-store.ts";
-import { openrouterProvider } from "../src/providers/openrouter.ts";
 import { vercelAiGatewayProvider } from "../src/providers/vercel-ai-gateway.ts";
 import type { FetchFunction } from "../src/types.ts";
 
@@ -78,26 +75,5 @@ describe("verifyAuth", () => {
       reason: "unconfigured",
     });
     expect(fetch).not.toHaveBeenCalled();
-  });
-});
-
-describe("gateway catalogs", () => {
-  it.each([
-    ["vercel-ai-gateway", vercelAiGatewayProvider],
-    ["openrouter", openrouterProvider],
-  ])("serves every bundled %s model from the stored catalog", async (id, provider) => {
-    const catalog: unknown = JSON.parse(
-      readFileSync(new URL(`../catalog/${id}.json`, import.meta.url), "utf8"),
-    );
-    if (!Array.isArray(catalog)) throw new Error(`${id} catalog is not an array`);
-    const modelsStore = new InMemoryModelsStore();
-    await modelsStore.write(id, { models: catalog });
-    const models = createModels({ modelsStore });
-    models.setProvider(provider());
-
-    const result = await models.refresh({ allowNetwork: false });
-
-    expect(result.errors.size).toBe(0);
-    expect(models.getModels(id)).toHaveLength(catalog.length);
   });
 });

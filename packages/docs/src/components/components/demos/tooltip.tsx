@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 

@@ -1,6 +1,7 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { radius } from "@nyte-ai/ui/schema.stylex";
+import { radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -8,7 +9,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { Button } from "@nyte-ai/ui/button";
 import { keys } from "../query-keys.ts";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { CodeBlock } from "./code-block.tsx";
 import type { DiagramResult } from "./mermaid-render.ts";
 
@@ -16,9 +17,9 @@ const styles = create({
   figure: {
     boxSizing: "border-box",
     width: "100%",
-    marginBlock: 10,
+    marginBlock: space.s2_5,
     marginInline: 0,
-    overflow: "hidden",
+    overflow: "clip",
     borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
@@ -26,13 +27,13 @@ const styles = create({
   toolbar: {
     display: "flex",
     alignItems: "center",
-    paddingInline: 8,
+    paddingInline: space.s2,
   },
   viewport: {
     boxSizing: "border-box",
     width: "100%",
     maxHeight: 420,
-    padding: 12,
+    padding: space.s3,
     overflow: "auto",
   },
   pending: {
@@ -41,8 +42,6 @@ const styles = create({
     minHeight: 96,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   diagram: {
     display: "flex",
@@ -103,18 +102,17 @@ export function renderMermaid(source: string, signal: AbortSignal): Promise<Diag
   });
 }
 
-/** A Mermaid fence is a diagram first, with its source available on demand. */
+/**
+ * A Mermaid fence is a diagram first, with its source available on demand.
+ * Prose draws a fence as source until its message settles, so each diagram
+ * renders once; the same source always renders the same svg, so the result
+ * stays cached past unmount and a row that scrolls back paints it at once.
+ */
 export function MermaidDiagram({ source }: { readonly source: string }): ReactElement {
   const render = useQuery({
     queryKey: keys.mermaid(source),
     queryFn: ({ signal }) => renderMermaid(source, signal),
-    // Same source always renders the same svg, so it never refetches while
-    // mounted. The key holds the whole source and the result holds the svg, and
-    // a streamed fence leaves one abandoned key per delta, so the entry goes
-    // when its last observer does: the signal ends the worker and the cache
-    // drops the key together.
     staleTime: Infinity,
-    gcTime: 0,
   });
 
   const [sourceVisible, setSourceVisible] = useState(false);
@@ -138,7 +136,7 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
       ) : (
         <div data-nyte-scrollport {...props(styles.viewport)}>
           {rendered.kind === "pending" ? (
-            <div role="status" {...props(styles.pending)}>
+            <div role="status" {...props(text.sm, styles.pending)}>
               Rendering diagram…
             </div>
           ) : (

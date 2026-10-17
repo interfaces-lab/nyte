@@ -1,6 +1,6 @@
 const SEARCH_URL = "https://duckduckgo.com/?q=";
 
-function parseWebUrl(value: string): string | undefined {
+export function parseWebUrl(value: string): string | undefined {
   try {
     const url = new URL(value);
 
@@ -36,7 +36,11 @@ export function resolveBrowserAddress(input: string): string | undefined {
     return parseWebUrl(`${scheme}${value}`);
   }
 
-  return `${SEARCH_URL}${encodeURIComponent(value)}`;
+  return searchAddress(value);
+}
+
+export function searchAddress(query: string): string {
+  return `${SEARCH_URL}${encodeURIComponent(query)}`;
 }
 
 /** What the address bar shows for a loaded page. */

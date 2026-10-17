@@ -1,7 +1,7 @@
-import type { Turn } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
+import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
+import type { Message } from "@nyte-ai/sdk";
 import type { CanvasSnapshot } from "./wire";
-
-export type ConversationTurn = Extract<Turn, { readonly kind: "turn" }>;
 
 export const demoSources = [
   {
@@ -36,47 +36,121 @@ export default function Canvas() {
   },
 ];
 
+const noUsage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  reasoning: null,
+  total: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+const noClasses = {
+  read: { count: 0, paths: [] },
+  list: { count: 0, paths: [] },
+  edit: { count: 0, paths: [] },
+  shell: { count: 0, paths: [] },
+  delegate: { count: 0, paths: [] },
+  custom: { count: 1, paths: [] },
+};
+
+function settled(id: string, at: number) {
+  return { kind: "settled", commit: asId<"commit">(id), endedAt: at } as const;
+}
+
 export function demoTurns(snapshots: readonly CanvasSnapshot[]): readonly ConversationTurn[] {
   return snapshots.flatMap((snapshot, index) => {
     const script = demoSources[index];
 
     if (script === undefined) return [];
     const id = `demo:${snapshot.id}`;
+    const turn = asId<"turn">(id);
     const at = index * 10_000;
+    const prompt = asId<"message">(`${id}:user`);
+
+    const messages: readonly Message[] = [
+      {
+        kind: "user",
+        id: prompt,
+        turn,
+        at,
+        content: script.question,
+        source: { kind: "user" },
+        delivery: "queue",
+        status: { kind: "landed", commit: asId<"commit">(`${id}:user`), run: null, replaced: null },
+        siblings: { index: 0, count: 1, ids: [] },
+      },
+      {
+        kind: "part",
+        id: asId<"message">(`${id}:thinking`),
+        turn,
+        at: at + 700,
+        part: asId<"part">(`${id}:thinking`),
+        partKind: "thinking",
+        role: "step",
+        state: {
+          markdown: "A chart will make the comparison easier to read.",
+          merged: 1,
+          signature: null,
+        },
+        version: 1,
+        status: settled(`${id}:thinking`, at + 1400),
+      },
+      {
+        kind: "part",
+        id: asId<"message">(`${id}:canvas`),
+        turn,
+        at: at + 1400,
+        part: asId<"part">(`${id}:canvas`),
+        partKind: "tool",
+        role: "step",
+        state: {
+          call: asId<"call">(`${id}:canvas`),
+          name: "canvas",
+          args: {},
+          class: { kind: "custom", label: "Canvas" },
+          phase: "settled",
+          outcome: {
+            kind: "ok",
+            content: [{ kind: "text", text: `canvas:${snapshot.id}\nShown above the reply.` }],
+            output: null,
+            parts: [],
+          },
+          changes: null,
+        },
+        version: 1,
+        status: settled(`${id}:published`, at + 2000),
+      },
+      {
+        kind: "part",
+        id: asId<"message">(`${id}:reply`),
+        turn,
+        at: at + 2100,
+        part: asId<"part">(`${id}:reply`),
+        partKind: "text",
+        role: "answer",
+        state: { markdown: script.reply, signature: null },
+        version: 1,
+        status: settled(`${id}:reply`, at + 2100),
+      },
+    ];
 
     return [
       {
-        kind: "turn",
-        id,
-        run: { kind: "none" },
-        startedAt: at,
-        durationMs: 2100,
-        parts: [
-          { kind: "user", commit: `${id}:user`, parent: null, content: script.question, at },
-          {
-            kind: "thinking",
-            commit: `${id}:thinking`,
-            contentIndex: 0,
-            text: "A chart will make the comparison easier to read.",
-            at: at + 700,
-          },
-          {
-            kind: "tool",
-            callId: `${id}:canvas`,
-            at: at + 1400,
-            class: { kind: "custom", label: "Canvas" },
-            state: { kind: "success", commit: `${id}:published` },
-            output: `canvas:${snapshot.id}\nShown above the reply.`,
-          },
-          {
-            kind: "assistant",
-            commit: `${id}:reply`,
-            contentIndex: 0,
-            text: script.reply,
-            at: at + 2100,
-          },
-        ],
-      } satisfies ConversationTurn,
+        info: {
+          id: turn,
+          run: null,
+          prompt,
+          state: { kind: "ended", end: { kind: "completed", usage: noUsage } },
+          startedAt: at,
+          endedAt: at + 2100,
+          steps: 2,
+          thinkingOnly: false,
+          summary: { byClass: noClasses, failed: 0, stopped: 0, added: 0, removed: 0 },
+        },
+        messages,
+      },
     ];
   });
 }
@@ -88,6 +162,6 @@ export function revealDemo(
   return turns.flatMap((turn, index) => {
     const count = Math.max(0, shown - index * 4);
 
-    return count === 0 ? [] : [{ ...turn, parts: turn.parts.slice(0, count) }];
+    return count === 0 ? [] : [{ ...turn, messages: turn.messages.slice(0, count) }];
   });
 }

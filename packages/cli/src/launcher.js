@@ -7,7 +7,7 @@ import process from "node:process";
 
 import packageJson from "../package.json" with { type: "json" };
 
-export const REPOSITORY = "interfaces-lab/nyte";
+const REPOSITORY = "interfaces-lab/nyte";
 
 export function platformTarget(platform = process.platform, arch = process.arch) {
   if ((platform !== "darwin" && platform !== "linux") || (arch !== "arm64" && arch !== "x64")) {
@@ -21,7 +21,7 @@ export function releaseAssetName(version, target) {
   return `nyte-v${version.replace(/^v/u, "")}-${target}`;
 }
 
-export function cacheRoot(env = process.env) {
+function cacheRoot(env = process.env) {
   return env["NYTE_BIN_DIR"] ?? join(homedir(), ".nyte", "bin");
 }
 

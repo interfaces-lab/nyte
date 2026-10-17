@@ -1,21 +1,3 @@
-/**
- * `@stylexjs/unplugin` for every build that compiles `@nyte-ai/ui` from source.
- *
- * The published build ships component rules in a `nyte-ui` layer below the
- * app's, so an app style always beats a component style. A source build
- * compiles both in one StyleX pass, where two rules for one property at one
- * priority are ordered by their declaration text, and the outcome flips
- * between development and production. This restores the published order
- * after StyleX has compiled each file:
- *
- * - Component classes take the `nyte` prefix, as in the published build, so a
- *   component never shares an atomic class with the app.
- * - App rules rise above every component priority. With CSS layers that is a
- *   later layer; with runtime injection, a higher specificity level.
- *
- * StyleX's own `classNamePrefix` cannot do the first: it also names the
- * constants and variables the app reads from `@nyte-ai/ui`.
- */
 import unplugin from "@stylexjs/unplugin";
 
 const COMPONENT_SOURCE = /[\\/]packages[\\/]ui[\\/]src[\\/]/;
@@ -26,6 +8,36 @@ const ATOMIC_PRIORITY = 1000;
 /** Above the highest component priority bucket, a pseudo-element under an at-rule. */
 const APP_OFFSET = 10_000;
 
+/**
+ * StyleX sees a `defineConsts` key only as `var(--hash)` and prices it as a
+ * plain property (3000) rather than the at-rule it stands for, which also
+ * lifts the rule a specificity level. Each leading `var(--hash){` wrapper is
+ * repriced as `@media` (200), so `[media.hover]` sorts exactly like the
+ * literal query; `assertMediaConsts` fails the build on any other condition
+ * const, whose key this would misprice.
+ */
+const CONST_KEY_OVERPRICE = 3000 - 200;
+
+const CONST_WRAPPERS = /^(?:var\(--[\w-]+\)\{)*/;
+
+/** A const value usable as a style key: an at-rule or a pseudo-class. */
+const CONDITION = /^[@:]/;
+
+/** Throw on a `defineConsts` condition other than `@media`, the only one the const-key repricing is right for. */
+function assertMediaConsts(rules) {
+  for (const [, rule] of rules) {
+    if (rule.constKey == null) continue;
+    const value = String(rule.constVal);
+
+    if (!CONDITION.test(value) || value.startsWith("@media")) continue;
+
+    throw new Error(
+      `The defineConsts value "${value}" is a condition other than @media. ` +
+        "nyte-stylex-order prices every const key as @media; write this condition as a literal key.",
+    );
+  }
+}
+
 function nyteStylexOrder({ types }) {
   return {
     name: "nyte-stylex-order",
@@ -33,6 +45,13 @@ function nyteStylexOrder({ types }) {
       const rules = file.metadata.stylex;
 
       if (!Array.isArray(rules)) return;
+      assertMediaConsts(rules);
+
+      for (const rule of rules) {
+        const wrappers = rule[1].ltr.match(CONST_WRAPPERS)[0].split("{").length - 1;
+
+        rule[2] -= wrappers * CONST_KEY_OVERPRICE;
+      }
 
       const atomic = rules.filter(
         ([name, rule, priority]) =>
@@ -44,7 +63,7 @@ function nyteStylexOrder({ types }) {
       if (COMPONENT_SOURCE.test(file.opts.filename ?? "")) {
         renameComponentClasses(file, atomic, types);
       } else {
-        raiseAppPriorities(file, atomic, types);
+        for (const rule of atomic) rule[2] += APP_OFFSET;
       }
     },
   };
@@ -71,40 +90,30 @@ function renameComponentClasses(file, atomic, types) {
   });
 }
 
-function raiseAppPriorities(file, atomic, types) {
-  for (const rule of atomic) rule[2] += APP_OFFSET;
-
-  // Runtime injection: each `inject({ ltr, priority })` call carries its own copy.
-  file.path.traverse({
-    ObjectExpression(path) {
-      if (!path.parentPath.isCallExpression()) return;
-      const properties = path.node.properties;
-
-      if (!properties.some((property) => property.key?.name === "ltr")) return;
-
-      for (const property of properties) {
-        if (
-          property.key?.name === "priority" &&
-          property.value.type === "NumericLiteral" &&
-          property.value.value >= ATOMIC_PRIORITY
-        ) {
-          property.value = types.numericLiteral(property.value.value + APP_OFFSET);
-        }
-      }
-    },
-  });
-}
-
 function withOrder(options = {}) {
   const babelConfig = options.babelConfig ?? {};
 
   return {
+    runtimeInjection: false,
+    propertyValidationMode: "throw",
     ...options,
     babelConfig: { ...babelConfig, plugins: [...(babelConfig.plugins ?? []), nyteStylexOrder] },
   };
 }
 
+const settledStylesheet = {
+  name: "nyte-stylex-settled-stylesheet",
+  apply: "serve",
+  configureServer(server) {
+    server.middlewares.use((request, _response, next) => {
+      if (request.url?.startsWith("/virtual:stylex.css") !== true) return next();
+      void server.waitForRequestsIdle().then(() => next(), next);
+    });
+  },
+};
+
 export const stylex = {
-  vite: (options) => unplugin.vite(withOrder(options)),
+  vite: (options) => [settledStylesheet, unplugin.vite(withOrder(options))],
   rollup: (options) => unplugin.rollup(withOrder(options)),
+  esbuild: (options) => unplugin.esbuild(withOrder(options)),
 };

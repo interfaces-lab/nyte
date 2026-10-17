@@ -1,10 +1,17 @@
-import Link from "next/link";
-import { navGroups } from "~/lib/nav";
+import { HrefLink } from "~/components/site/href-link";
+import { designNav, docsNav, type NavSection } from "~/lib/docs";
 import { releasesUrl } from "~/lib/releases";
 import { githubUrl } from "~/lib/shared";
 
 const linkClass =
   "rounded-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-(--site-panel)";
+
+/** One link per page in an unlabeled section, then one per labeled section, to its first page. */
+function footerLinks(nav: readonly NavSection[]) {
+  return nav.flatMap((section) =>
+    section.label ? [{ title: section.label, href: section.items[0].href }] : section.items,
+  );
+}
 
 export function SiteFooter() {
   const columns = [
@@ -17,13 +24,8 @@ export function SiteFooter() {
         { title: "llms.txt", href: "/llms.txt" },
       ],
     },
-    {
-      label: "Docs",
-      links: navGroups().flatMap((group) => {
-        const [first] = group.items;
-        return first ? [{ title: group.label, href: first.href }] : [];
-      }),
-    },
+    { label: "Docs", links: footerLinks(docsNav) },
+    { label: "Design", links: footerLinks(designNav) },
     {
       label: "Legal",
       links: [
@@ -34,8 +36,8 @@ export function SiteFooter() {
   ];
 
   return (
-    <footer className="relative isolate mx-(--plate-inset) mb-(--plate-inset) overflow-hidden rounded-(--plate-radius) bg-(--site-panel) after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
-      <div className="mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pt-20 sm:pt-24">
+    <footer className="relative isolate mx-(--plate-inset) mb-(--plate-inset) overflow-clip rounded-(--plate-radius) bg-(--site-panel) after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
+      <div className="mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pt-section">
         <nav aria-label="Sitemap" className="flex flex-wrap gap-x-16 gap-y-10">
           {columns.map((column) => (
             <div key={column.label} className="min-w-28">
@@ -44,9 +46,9 @@ export function SiteFooter() {
                 {column.links.map((link) => (
                   <li key={link.href}>
                     {link.href.startsWith("/") || link.href.startsWith("#") ? (
-                      <Link href={link.href} className={linkClass}>
+                      <HrefLink href={link.href} className={linkClass}>
                         {link.title}
-                      </Link>
+                      </HrefLink>
                     ) : (
                       <a href={link.href} target="_blank" rel="noreferrer" className={linkClass}>
                         {link.title}
@@ -62,7 +64,7 @@ export function SiteFooter() {
         <svg
           aria-hidden="true"
           viewBox="0 0 1000 351"
-          className="mt-20 block w-full text-foreground opacity-[0.14] select-none sm:mt-28 dark:opacity-[0.16]"
+          className="mt-section block w-full text-foreground opacity-[0.14] select-none dark:opacity-[0.16]"
         >
           <defs>
             <pattern id="footer-scanlines" width="8" height="9" patternUnits="userSpaceOnUse">

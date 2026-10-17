@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { WindowTabStrip } from "./window-tab-strip.tsx";
 import type { WindowTabItem, WindowTabStripProps } from "./window-tab-strip.tsx";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 
 function check(condition: boolean, message: string): void {

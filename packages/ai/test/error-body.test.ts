@@ -2,9 +2,6 @@
  * Unit tests for the shared provider error-body normalizer: one synthesized
  * error object per SDK shape, the non-Error fallback, truncation, the empty
  * parsed-body edge case, and the formatProviderError compose helper.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/error-body.test.ts
- * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
@@ -116,8 +113,7 @@ describe("normalizeProviderError", () => {
 
     const norm = normalizeProviderError(error);
 
-    assert.ok(norm.body?.includes("... [truncated 50 chars]"));
-    assert.ok((norm.body?.length ?? Number.POSITIVE_INFINITY) < longBody.length);
+    assert.equal(norm.body, `${"x".repeat(MAX_PROVIDER_ERROR_BODY_CHARS)}... [truncated 50 chars]`);
   });
 
   test("sets messageCarriesBody when the message already contains the extracted body", () => {

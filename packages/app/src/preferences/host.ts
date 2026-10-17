@@ -5,7 +5,7 @@
  * appears made.
  */
 import { hashKey } from "@tanstack/react-query";
-import type { HostSettingKey, HostSettings, HostSettingsPatch } from "@nyte-ai/host/settings";
+import type { HostSettingKey, HostSettings, HostSettingsPatch } from "../bridge.ts";
 import { toast } from "@nyte-ai/ui/toast";
 import { errorMessage } from "../errors.ts";
 import { nyte } from "../nyte.ts";
@@ -15,10 +15,6 @@ import type { Setting } from "./store.ts";
 
 const HASH = hashKey(keys.hostSettings);
 
-/**
- * The settings route's loader: host rows render with their values, never empty
- * first. A file that can't be read leaves those rows disabled, not the whole page.
- */
 export async function loadHostSettings(): Promise<void> {
   const bridge = nyte.host.settings;
 
@@ -40,7 +36,7 @@ export function acceptHostSettings(settings: HostSettings): void {
   queryClient.setQueryData(keys.hostSettings, settings);
 }
 
-async function change(patch: HostSettingsPatch): Promise<void> {
+export async function changeHostSettings(patch: HostSettingsPatch): Promise<void> {
   const bridge = nyte.host.settings;
 
   if (bridge === undefined) return;
@@ -58,7 +54,7 @@ export function hostSetting<K extends HostSettingKey>(key: K): Setting<HostSetti
     set: (value) => {
       const patch: { -readonly [P in HostSettingKey]?: HostSettings[P] } = {};
       patch[key] = value;
-      void change(patch);
+      void changeHostSettings(patch);
     },
     subscribe: (listener) =>
       queryClient.getQueryCache().subscribe((event) => {

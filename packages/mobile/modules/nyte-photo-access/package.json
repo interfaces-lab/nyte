@@ -1,0 +1,6 @@
+{
+  "name": "nyte-photo-access",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native completion for Nyte's limited photo access picker."
+}

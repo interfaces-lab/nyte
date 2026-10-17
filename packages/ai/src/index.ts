@@ -1,9 +1,6 @@
 /**
  * @nyte-ai/ai: the provider layer. Side-effect free: provider factories and API
  * implementations are exported explicitly below; nothing registers globally.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/index.ts
- * Synced with pi 7ebf9087e.
  */
 export type { Static, TSchema } from "typebox";
 
@@ -24,13 +21,11 @@ export * from "./api/lazy.ts";
 
 export { OpenAICodexCompactionError } from "./api/openai-codex-compaction-error.ts";
 
-export type {
-  OpenAICodexCompactResult,
-  OpenAICodexResponsesOptions,
-  OpenAICodexWebSocketDebugStats,
-} from "./api/openai-codex-responses.ts";
+export type { OpenAICodexCompactResult } from "./api/openai-codex-compact.ts";
 
-export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
+export type { OpenAICodexResponsesOptions } from "./api/openai-codex-protocol.ts";
+
+export type { OpenAICompletionsOptions } from "./api/openai-completions-params.ts";
 
 export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 
@@ -80,6 +75,15 @@ export * from "./models.ts";
 
 export { getFastModeCostMultiplier } from "./model-pricing.ts";
 
+export {
+  baseModel,
+  FAST_MODEL_SUFFIX,
+  fastModelId,
+  providerIdentity,
+  supportsFastMode,
+  withFastVariants,
+} from "./model-variants.ts";
+
 export * from "./models-store.ts";
 
 export * from "./prompt-cache.ts";
@@ -87,6 +91,8 @@ export * from "./prompt-cache.ts";
 export * from "./session-resources.ts";
 
 export * from "./types.ts";
+
+export type { ApiOptionsMap, ApiStreamOptions } from "./api-options.ts";
 
 export * from "./utils/diagnostics.ts";
 
@@ -114,7 +120,11 @@ export * from "./utils/validation.ts";
 
 export { anthropicProvider } from "./providers/anthropic.ts";
 
-export { createNyteModels, defaultModelPerProvider } from "./providers/nyte-catalog.ts";
+export {
+  createNyteModels,
+  defaultModelPerProvider,
+  nyteProviders,
+} from "./providers/nyte-catalog.ts";
 
 export { githubCopilotProvider } from "./providers/github-copilot.ts";
 
@@ -125,6 +135,10 @@ export { opencodeProvider } from "./providers/opencode.ts";
 export { openaiProvider } from "./providers/openai.ts";
 
 export { openaiCodexProvider } from "./providers/openai-codex.ts";
+
+export { fetchOpenAICodexAccountLimits } from "./providers/openai-codex-limits.ts";
+
+export { fetchAnthropicAccountLimits } from "./providers/anthropic-limits.ts";
 
 export { openrouterProvider } from "./providers/openrouter.ts";
 

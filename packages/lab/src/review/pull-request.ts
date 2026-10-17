@@ -10,6 +10,6 @@ export function pullRequestNumber(id: string): number {
 }
 
 /** Nyte, for a branch it built from a chat; otherwise whoever wrote the newest commit. */
-export function openerOf(review: ReviewDetail): string {
+export function readOpener(review: ReviewDetail): string {
   return review.task === undefined ? (review.commits[0]?.author ?? "You") : "Nyte";
 }

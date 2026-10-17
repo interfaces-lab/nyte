@@ -1,12 +1,8 @@
 /**
  * Redacted diagnostics attached to an AssistantMessage for failures and recoveries (retries, transport errors).
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/diagnostics.ts
- * Synced with pi 7ebf9087e.
  */
-import type { AssistantMessageDiagnostic, DiagnosticErrorInfo } from "@nyte-ai/schema";
+import type { AssistantMessageDiagnostic, DiagnosticErrorInfo } from "@nyte-ai/schema/model";
 
-// Nyte divergence: the diagnostic shapes live in @nyte-ai/schema because AssistantMessage (wire type) carries them; re-exported here so callers that follow pi's layout keep working.
 export type { AssistantMessageDiagnostic, DiagnosticErrorInfo };
 
 export function formatThrownValue(cause: unknown): string {

@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Toolbar } from "@nyte-ai/ui/toolbar";

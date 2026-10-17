@@ -17,11 +17,14 @@ export function MessageFooter({ children }: { children: ReactNode }) {
 }
 
 const styles = css.create({
-  message: { display: "flex", flexDirection: "column" },
+  message: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+    paddingBlock: spacing.xs,
+  },
   end: {
     alignItems: "flex-end",
-    gap: spacing.xs,
-    marginTop: spacing.lg,
-    paddingBlock: spacing.xs,
   },
 });

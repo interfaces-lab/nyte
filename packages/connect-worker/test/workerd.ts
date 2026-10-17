@@ -10,8 +10,8 @@
  * throws. `close()` restores it. WebSockets cannot be patched, so connect them
  * to `localUrl(...)`.
  *
- * Exported for other packages' interop tests, which import it by relative
- * path. It reads no `.dev.vars` or `.env` file and no live secret.
+ * The relay tests and the host link test share it. It reads no `.dev.vars`
+ * or `.env` file and no live secret.
  */
 import { fileURLToPath } from "node:url";
 import {
@@ -37,7 +37,7 @@ import {
   createProof,
   generateMachineKey,
   keyThumbprint,
-  publicKeyOf,
+  toPublicJwk,
   signClaims,
   verifyClaims,
 } from "@nyte-ai/connect/signing";
@@ -54,6 +54,7 @@ export const WORKERD_ISSUER = "https://clerk.test.example";
 export const WORKERD_AUTHORIZED_PARTY = "https://app.test.example";
 
 const TABLES = [
+  "link_transactions",
   "devices",
   "environments",
   "owners",
@@ -64,10 +65,6 @@ const TABLES = [
 
 const random = (bytes = 24) =>
   Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString("base64url");
-
-// ---------------------------------------------------------------------------
-// A desktop on its relay socket
-// ---------------------------------------------------------------------------
 
 export type OpenFrame = Extract<RelayFrame, { t: "open" }>;
 
@@ -146,7 +143,7 @@ export class RelayDesktop {
   ): Promise<Extract<RelayFrame, { t: T }>> {
     for (;;) {
       for (const [index, frame] of this.unread.entries())
-        if (isFrame(frame, t) && match(frame)) {
+        if (taggedAs(frame, t) && match(frame)) {
           this.unread.splice(index, 1);
 
           return frame;
@@ -158,7 +155,7 @@ export class RelayDesktop {
 
   /** Unread frames of one type, without waiting. */
   pending<T extends RelayFrame["t"]>(t: T): Extract<RelayFrame, { t: T }>[] {
-    return this.unread.filter((frame) => isFrame(frame, t));
+    return this.unread.filter((frame) => taggedAs(frame, t));
   }
 
   send(frame: DesktopFrame): void {
@@ -257,7 +254,7 @@ export class RelayDesktop {
   }
 }
 
-function isFrame<T extends RelayFrame["t"]>(
+function taggedAs<T extends RelayFrame["t"]>(
   frame: RelayFrame,
   t: T,
 ): frame is Extract<RelayFrame, { t: T }> {
@@ -322,10 +319,6 @@ export function enrollmentHandler(input: {
   };
 }
 
-// ---------------------------------------------------------------------------
-// The broker
-// ---------------------------------------------------------------------------
-
 export interface WorkerdBroker {
   /** `CONNECT_ORIGIN`: proofs' and Clerk's `aud`, and the base of relay addresses. */
   readonly origin: string;
@@ -339,6 +332,9 @@ export interface WorkerdBroker {
    * The unpatched fetch. A request for `origin` is dispatched straight to the
    * Worker, as the edge would, not through wrangler's dev proxy: that proxy
    * never passes a caller's disconnect on, so `request.signal` would not fire.
+   * A Blob or FormData body is the runtime Request's to encode, not the
+   * dispatcher's undici, and the Worker's response stream is piped into this
+   * runtime's own so cancel and abort cross the pipe.
    */
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
   /** A Clerk session JWT the broker accepts. */
@@ -380,7 +376,10 @@ export interface WorkerdBroker {
   close(): Promise<void>;
 }
 
-export async function startWorkerdBroker(): Promise<WorkerdBroker> {
+export async function startWorkerdBroker(
+  options: { readonly origin?: string } = {},
+): Promise<WorkerdBroker> {
+  const origin = options.origin ?? WORKERD_ORIGIN;
   const clerkKeys = await generateKeyPair("RS256", { modulusLength: 2048, extractable: true });
   const signingKey = { ...(await generateMachineKey()), kid: "broker-test-1" };
   const clerkSecretKey = `sk_test_${random()}`;
@@ -394,7 +393,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
       {
         configPath: "./workerd.jsonc",
         secrets: {
-          CONNECT_ORIGIN: WORKERD_ORIGIN,
+          CONNECT_ORIGIN: origin,
           CONNECT_WEB_ORIGINS: "https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179",
           CLERK_ISSUER: WORKERD_ISSUER,
           CLERK_AUTHORIZED_PARTIES: `${WORKERD_AUTHORIZED_PARTY},https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179`,
@@ -426,7 +425,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
     if (url.origin === "https://api.clerk.com")
       return clerk.handle(url, input instanceof Request ? input : (init ?? {}));
 
-    if (url.origin === WORKERD_ORIGIN) return broker.fetch(input, init);
+    if (url.origin === origin) return broker.fetch(input, init);
 
     if (url.hostname === "127.0.0.1" || url.hostname === "localhost") return original(input, init);
 
@@ -434,7 +433,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
   };
 
   const broker: WorkerdBroker = {
-    origin: WORKERD_ORIGIN,
+    origin,
     local,
     brokerKeys,
     clerk,
@@ -442,12 +441,11 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
     async fetch(input, init) {
       const body = init?.body;
 
-      // Their encoding is the runtime Request's to make, not the dispatcher's undici.
       if (body instanceof Blob || body instanceof FormData)
         return broker.fetch(new Request(input, init));
       const url = new URL(input instanceof Request ? input.url : input);
 
-      if (url.origin !== WORKERD_ORIGIN) return original(input, init);
+      if (url.origin !== origin) return original(input, init);
       const response = await worker.fetch(
         url.href,
         input instanceof Request
@@ -469,7 +467,6 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
             },
       );
 
-      // The dispatcher's stream piped into this runtime's own; cancel and abort cross the pipe.
       const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
 
       response.body?.pipeTo(writable).catch(() => undefined);
@@ -487,7 +484,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         iss: WORKERD_ISSUER,
         sub: input.userId,
         sid: input.sessionId ?? `sess_${input.userId}`,
-        aud: WORKERD_ORIGIN,
+        aud: origin,
         sts: "active",
         v: 2,
         iat,
@@ -527,18 +524,18 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         });
       const key = input.key ?? (await generateMachineKey());
       const body = JSON.stringify({
-        publicKey: publicKeyOf(key),
+        publicKey: toPublicJwk(key),
         name: input.name ?? "Studio Mac",
       });
-      const response = await broker.fetch(`${WORKERD_ORIGIN}${BROKER_ROUTES.environments}`, {
+      const response = await broker.fetch(`${origin}${BROKER_ROUTES.environments}`, {
         method: "POST",
         headers: {
           authorization: `Bearer ${await broker.sessionToken({ userId: input.userId })}`,
           "content-type": "application/json",
           "nyte-proof": await createProof({
             key,
-            issuer: await keyThumbprint(publicKeyOf(key)),
-            audience: WORKERD_ORIGIN,
+            issuer: await keyThumbprint(toPublicJwk(key)),
+            audience: origin,
             method: "POST",
             path: BROKER_ROUTES.environments,
             body,
@@ -556,7 +553,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
 
     async attach(input) {
       const desktop = new RelayDesktop(
-        localUrl(`${WORKERD_ORIGIN}${BROKER_ROUTES.relay(input.environmentId)}`),
+        localUrl(`${origin}${BROKER_ROUTES.relay(input.environmentId)}`),
       );
 
       await desktop.opened();
@@ -565,7 +562,7 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         proof: await createProof({
           key: input.key,
           issuer: input.environmentId,
-          audience: WORKERD_ORIGIN,
+          audience: origin,
           method: "GET",
           path: BROKER_ROUTES.relay(input.environmentId),
           body: "",

@@ -1,0 +1,36 @@
+---
+title: Spinner
+description: "A dithered moon that cycles its phases while work runs"
+---
+
+```ts title="Import"
+import { Spinner } from "@nyte-ai/ui/spinner";
+```
+
+## Usage
+
+- The spinner is 15px and takes the text color of its parent.
+- Under reduced motion it holds one phase.
+
+## Examples
+
+<Preview>
+  <SpinnerDemo />
+</Preview>
+
+```tsx
+<Spinner />
+```
+
+## Props
+
+| Prop        | Type                  | Default | Description                     |
+| ----------- | --------------------- | ------- | ------------------------------- |
+| `xstyle`    | `XStyle`              |         | See [Theming](/design/theming). |
+| `className` | `string`              |         | See [Theming](/design/theming). |
+| `style`     | `React.CSSProperties` |         | See [Theming](/design/theming). |
+
+## Accessibility
+
+- The spinner is `aria-hidden`. Announce the running state with nearby text or `aria-busy` on the
+  region.

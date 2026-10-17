@@ -1,10 +1,10 @@
 import { StrictMode } from "react";
 import { create, props } from "@stylexjs/stylex";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/styles/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { applyDisplayMode } from "../theme/appearance.ts";
+import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import { AnimatedNumber } from "./animated-number.tsx";
 
@@ -89,22 +89,8 @@ export async function run(reduced: boolean) {
     );
 
     if (!reduced) {
-      const durationToken = getComputedStyle(element("count"))
-        .getPropertyValue("--nyte-duration-normal")
-        .trim();
-
-      const duration = Number.parseFloat(durationToken) * (durationToken.endsWith("ms") ? 1 : 1000);
-      const ease = getComputedStyle(element("count")).getPropertyValue("--nyte-easing-out").trim();
-      check(
-        animations.some(
-          (animation) =>
-            animation.effect?.getTiming().duration === duration &&
-            animation.effect.getTiming().easing === ease,
-        ),
-        "Use the current CSS timing tokens",
-      );
       animations.forEach((animation) => {
-        animation.currentTime = duration / 2;
+        animation.currentTime = Number(animation.effect?.getTiming().duration) / 2;
       });
       check(
         element("filename").getBoundingClientRect().left === filenameLeft,

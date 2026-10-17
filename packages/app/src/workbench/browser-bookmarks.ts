@@ -41,14 +41,13 @@ function snapshot(): Bookmarks {
   return current;
 }
 
+/** Bookmarks stay usable for this window when storage is unavailable. */
 function save(next: Bookmarks): void {
   current = next;
 
   try {
     window.localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // Keep bookmarks usable for this window when storage is unavailable.
-  }
+  } catch {}
 
   for (const listener of listeners) listener();
 }

@@ -1,48 +1,45 @@
-import { FitAddon, Ghostty, Terminal } from "ghostty-web";
+import { FitAddon, Terminal } from "ghostty-web";
 import type { ITheme } from "ghostty-web";
-import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
+import { serial } from "@nyte-ai/schema/serial";
 import { toast } from "@nyte-ai/ui/toast";
-import { nyte } from "../nyte.ts";
 import { preferences } from "../preferences/index.ts";
+import { addToChat, addsToChat } from "../conversation/add-to-chat.ts";
+import type { ExcerptReference } from "../conversation/message-references.ts";
 import { errorMessage } from "../errors.ts";
-import type { TerminalBridge } from "../bridge.ts";
+import { nyte } from "../nyte.ts";
 import { props } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
   attachTerminalOutput,
   getTerminal,
-  isShellTerminal,
   terminalActions,
+  terminalPrinted,
 } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
+import { loadGhostty } from "./ghostty.ts";
+
+/** A command line the user entered, at the buffer row it was entered on. */
+interface CommandMark {
+  readonly row: number;
+  readonly line: string;
+}
 
 interface TerminalView {
   readonly element: HTMLDivElement;
   readonly terminal: Terminal;
+  /** Oldest first; a mark whose row no longer reads its line has scrolled away. */
+  readonly commands: CommandMark[];
   fit(): void;
 }
 
-let ghostty: Promise<Ghostty> | undefined;
-
 const views = new Map<string, TerminalView>();
 
-function terminalBridge(): TerminalBridge {
-  const terminal = nyte.host.terminal;
+const selectionListeners = new Map<string, Set<() => void>>();
 
-  if (terminal === undefined) throw new Error("This host does not provide terminals");
-
-  return terminal;
-}
-
-function loadGhostty(): Promise<Ghostty> {
-  ghostty ??= Ghostty.load(wasmUrl).catch((cause: unknown) => {
-    ghostty = undefined;
-    throw cause;
-  });
-
-  return ghostty;
+function notifySelection(id: string): void {
+  for (const listener of selectionListeners.get(id) ?? []) listener();
 }
 
 /** Canvas terminals need resolved sRGB values, not CSS variables or color-mix expressions. */
@@ -121,38 +118,18 @@ function terminalAppearance() {
   }
 }
 
-function sendInput(id: string, data: string): Promise<void> {
-  const tab = getTerminal(id);
-
-  if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") {
-    return Promise.resolve();
-  }
-
-  const write = async (): Promise<void> => {
-    for (let start = 0; start < data.length;) {
-      let end = Math.min(start + 65536, data.length);
-      const last = data.charCodeAt(end - 1);
-
-      if (end < data.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
-      await terminalBridge().write({ id, data: data.slice(start, end) });
-      start = end;
-    }
-  };
-
-  return write().catch((cause: unknown) => {
-    const current = getTerminal(id);
-
-    if (current !== undefined && isShellTerminal(current) && current.state.kind === "running") {
-      toast.add({
-        type: "error",
-        title: "Couldn't write to terminal",
-        id: "terminal-write-" + id,
-        description: errorMessage(cause),
-      });
-    }
-  });
+/** Whether keys typed into `tab` reach a shell: one running, or one starting, which keeps them until it runs. */
+function takesInput(tab: TerminalTab): boolean {
+  return tab.kind === "shell" && (tab.state.kind === "running" || tab.state.kind === "starting");
 }
 
+/**
+ * Ghostty's compatibility container is editable; only its input should accept
+ * native text and IME. The fit addon defers a fit that lands while a previous
+ * one settles, so the PTY follows the terminal's own resize event rather than
+ * a read after fit(). A click clears the selection without an event, so every
+ * press and release reports the selection once it settles.
+ */
 async function createView(id: string): Promise<TerminalView | undefined> {
   const engine = await loadGhostty();
   const existing = views.get(id);
@@ -161,7 +138,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const initialTab = getTerminal(id);
 
   if (initialTab === undefined) return undefined;
-  const commandOutput = !isShellTerminal(initialTab);
+  const commandOutput = initialTab.kind !== "shell";
   const root = document.documentElement;
   const initialAppearance = terminalAppearance();
   const element = document.createElement("div");
@@ -182,7 +159,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     scrollback: preferences.terminalScrollback.get(),
     smoothScrollDuration: 0,
     convertEol: commandOutput,
-    disableStdin: commandOutput || initialTab.state.kind !== "running",
+    disableStdin: commandOutput || !takesInput(initialTab),
   });
 
   const fit = new FitAddon();
@@ -190,7 +167,6 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   terminal.open(element);
 
   if (commandOutput) terminal.write("\u001b[?25l");
-  // Ghostty's compatibility container is editable; only its input should accept native text/IME.
   element.removeAttribute("contenteditable");
   element.removeAttribute("role");
   element.removeAttribute("aria-label");
@@ -205,17 +181,21 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   if (commandOutput) terminal.textarea?.setAttribute("readonly", "");
 
-  if (!isShellTerminal(initialTab) && terminal.textarea !== undefined) {
-    terminal.textarea.value = initialTab.source.output;
-  }
+  let mirrorFrame = 0;
+
+  const mirrorOutput = (): void => {
+    cancelAnimationFrame(mirrorFrame);
+    mirrorFrame = requestAnimationFrame(() => {
+      if (terminal.textarea !== undefined) terminal.textarea.value = terminalPrinted(id);
+    });
+  };
+
+  if (commandOutput) mirrorOutput();
 
   terminal.textarea?.setAttribute("spellcheck", "false");
-  let disposed = false;
   let resizeFrame = 0;
   let lastSize = "";
 
-  // The fit addon defers a fit that lands while a previous one settles, so the
-  // PTY follows the terminal's own resize event rather than a read after fit().
   const syncSize = (): void => {
     const size = String(terminal.cols) + ":" + String(terminal.rows);
     const tab = getTerminal(id);
@@ -223,19 +203,19 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     if (
       size === lastSize ||
       tab === undefined ||
-      !isShellTerminal(tab) ||
+      tab.kind !== "shell" ||
       tab.state.kind !== "running"
     ) {
       return;
     }
 
     lastSize = size;
-    void terminalBridge()
-      .resize({
+    void terminalActions
+      .resize(
         id,
-        cols: Math.min(1000, Math.max(2, terminal.cols)),
-        rows: Math.min(1000, Math.max(1, terminal.rows)),
-      })
+        Math.min(1000, Math.max(2, terminal.cols)),
+        Math.min(1000, Math.max(1, terminal.rows)),
+      )
       .catch((cause: unknown) => {
         toast.add({
           type: "error",
@@ -260,12 +240,9 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   };
 
   const update = (tab: TerminalTab): void => {
-    terminal.options.disableStdin = !isShellTerminal(tab) || tab.state.kind !== "running";
+    terminal.options.disableStdin = !takesInput(tab);
 
-    if (!isShellTerminal(tab) && terminal.textarea !== undefined) {
-      terminal.textarea.value = tab.source.output;
-    }
-
+    if (commandOutput) mirrorOutput();
     scheduleFit();
   };
 
@@ -298,14 +275,23 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const stopScrollback = preferences.terminalScrollback.subscribe(() => {
     terminal.options.scrollback = preferences.terminalScrollback.get();
   });
+
   document.fonts.addEventListener("loadingdone", scheduleFit);
-  let pendingInput = Promise.resolve();
+  const input = serial();
+  const commands: CommandMark[] = [];
 
   const data = terminal.onData((value) => {
-    pendingInput = pendingInput.then(() => sendInput(id, value));
+    if (value.includes("\r")) markCommand(terminal, commands);
+    void input.run(() => terminalActions.write(id, value));
   });
 
   const title = terminal.onTitleChange((value) => terminalActions.title(id, value));
+
+  const selected = terminal.onSelectionChange(() => notifySelection(id));
+
+  const reportSettledSelection = (): void => {
+    setTimeout(() => notifySelection(id));
+  };
 
   const copy = (event: ClipboardEvent): void => {
     const text = terminal.getSelection();
@@ -323,14 +309,22 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     event.stopPropagation();
     const tab = getTerminal(id);
 
-    if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") return;
+    if (tab === undefined || tab.kind !== "shell" || tab.state.kind !== "running") return;
     terminal.paste(text);
   };
 
+  element.addEventListener("mousedown", reportSettledSelection);
+  element.ownerDocument.addEventListener("mouseup", reportSettledSelection);
   element.addEventListener("copy", copy, true);
   element.addEventListener("paste", paste, true);
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.ctrlKey && event.code === "Backquote") return true;
+
+    if (addsToChat(event, nyte.platform === "darwin")) {
+      if (event.type === "keydown" && addTerminalToChat(id)) event.preventDefault();
+
+      return true;
+    }
 
     if ((event.metaKey || (event.ctrlKey && event.shiftKey)) && event.key.toLowerCase() === "c") {
       if (event.type === "keydown") document.execCommand("copy");
@@ -340,30 +334,18 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
     return false;
   });
-  const view = { element, terminal, fit: fitVisible };
+  const view = { element, terminal, commands, fit: fitVisible };
   views.set(id, view);
   attachTerminalOutput(id, {
     write(value) {
-      terminal.write(commandOutput ? value + "\u001b[?25l" : value, () => {
-        const tab = getTerminal(id);
+      terminal.write(commandOutput ? value + "\u001b[?25l" : value);
 
-        if (!disposed && tab !== undefined && isShellTerminal(tab)) {
-          void terminalBridge()
-            .acknowledge({ id, length: value.length })
-            .catch(() => undefined);
-        }
-      });
-    },
-    replace(value) {
-      // Clear through VT sequences: Ghostty.reset replaces WASM still held by its selection manager.
-      terminal.clearSelection();
-      terminal.scrollToBottom();
-      terminal.write("\u001b[3J\u001b[2J\u001b[H" + value + "\u001b[?25l");
+      if (commandOutput) mirrorOutput();
     },
     update,
     dispose() {
-      disposed = true;
       cancelAnimationFrame(resizeFrame);
+      cancelAnimationFrame(mirrorFrame);
       resize.disconnect();
       appearance.disconnect();
       stopBlink();
@@ -372,6 +354,9 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       data.dispose();
       sized.dispose();
       title.dispose();
+      selected.dispose();
+      element.removeEventListener("mousedown", reportSettledSelection);
+      element.ownerDocument.removeEventListener("mouseup", reportSettledSelection);
       element.removeEventListener("copy", copy, true);
       element.removeEventListener("paste", paste, true);
       element.removeEventListener("focus", focusInput);
@@ -431,4 +416,76 @@ export function copyTerminal(id: string): void {
         description: errorMessage(cause),
       }),
     );
+}
+
+function bufferLine(terminal: Terminal, row: number): string | undefined {
+  return terminal.buffer.active.getLine(row)?.translateToString(true).trim();
+}
+
+/** Remembers the line under the cursor as a command when Enter submits it; a blank one is no command. */
+function markCommand(terminal: Terminal, commands: CommandMark[]): void {
+  const buffer = terminal.buffer.active;
+
+  if (buffer.type !== "normal") return;
+  const row = buffer.length - terminal.rows + buffer.cursorY;
+  const line = bufferLine(terminal, row);
+
+  if (line === undefined || line === "") return;
+  commands.push({ row, line });
+
+  if (commands.length > 200) commands.shift();
+}
+
+/**
+ * The selection as an excerpt. An agent's command names its own output; in a
+ * shell, the command is the last line entered at or above the selection's
+ * first row that still reads as it did when entered.
+ */
+function terminalExcerpt(id: string): ExcerptReference | undefined {
+  const view = views.get(id);
+  const tab = getTerminal(id);
+  const text = view?.terminal.getSelection().replace(/\s+$/u, "") ?? "";
+
+  if (view === undefined || tab === undefined || text === "") return undefined;
+  const top = view.terminal.getSelectionPosition()?.start.y ?? -1;
+
+  const command =
+    tab.kind === "job"
+      ? tab.title
+      : view.commands.findLast(
+          (mark) => mark.row <= top && bufferLine(view.terminal, mark.row) === mark.line,
+        )?.line;
+
+  return {
+    kind: "excerpt",
+    source: command === undefined ? { kind: "terminal" } : { kind: "terminal", command },
+    text,
+  };
+}
+
+export function terminalHasSelection(id: string): boolean {
+  return views.get(id)?.terminal.hasSelection() === true;
+}
+
+export function subscribeTerminalSelection(id: string, listener: () => void): () => void {
+  const listeners = selectionListeners.get(id) ?? new Set();
+  listeners.add(listener);
+  selectionListeners.set(id, listeners);
+
+  return () => {
+    listeners.delete(listener);
+
+    if (listeners.size === 0) selectionListeners.delete(id);
+  };
+}
+
+/** Adds the selection to the active chat and clears it; false when nothing is selected or no chat takes it. */
+export function addTerminalToChat(id: string): boolean {
+  const reference = terminalExcerpt(id);
+
+  if (reference === undefined || !addToChat({ reference })) return false;
+  views.get(id)?.terminal.clearSelection();
+  notifySelection(id);
+
+  return true;
 }

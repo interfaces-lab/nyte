@@ -9,7 +9,9 @@ import { Popover } from "@nyte-ai/ui/popover";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { SwitchField } from "@nyte-ai/ui/switch";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { space } from "@nyte-ai/ui/styles/schema.stylex";
+import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { motion, useReducedMotion } from "motion/react";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -27,26 +29,22 @@ import {
 
 const styles = create({
   popup: { width: 300, padding: 0 },
-  morph: { overflow: "hidden" },
-  step: { display: "flex", flexDirection: "column", gap: 12, padding: 16 },
-  copy: { display: "flex", flexDirection: "column", gap: 4 },
+  morph: { overflow: "clip" },
+  step: { display: "flex", flexDirection: "column", gap: space.s3, padding: space.s4 },
+  copy: { display: "flex", flexDirection: "column", gap: space.s1 },
   title: {
     margin: 0,
     color: role.contentPrimary,
-    fontSize: type.fontLg,
-    fontWeight: 600,
-    lineHeight: type.leadingLg,
+    fontWeight: type.weightSemibold,
   },
   body: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
     textWrap: "pretty",
   },
-  progress: { display: "flex", alignItems: "center", gap: 8, color: role.contentPrimary },
-  actions: { display: "flex", justifyContent: "flex-end", gap: 8 },
-  switch: { paddingInline: 12, paddingBlock: 10 },
+  progress: { display: "flex", alignItems: "center", gap: space.s2, color: role.contentPrimary },
+  actions: { display: "flex", justifyContent: "flex-end", gap: space.s2 },
+  switch: { paddingInline: space.s3, paddingBlock: space.s2_5 },
 });
 
 const EASE = [0.32, 0.72, 0, 1] as const;
@@ -93,10 +91,10 @@ function Step({
   return (
     <div {...props(styles.step)}>
       <div {...props(styles.copy)}>
-        <Popover.Title render={<h3 />} xstyle={styles.title}>
+        <Popover.Title render={<h3 />} xstyle={[text.lg, styles.title]}>
           {title}
         </Popover.Title>
-        {body !== undefined && <p {...props(styles.body)}>{body}</p>}
+        {body !== undefined && <p {...props(text.base, styles.body)}>{body}</p>}
       </div>
       {children}
       <div {...props(styles.actions)}>{actions}</div>
@@ -141,7 +139,7 @@ function LinkSteps({
     return (
       <Step
         title={`${view.environment.name} is linked`}
-        body={`Open Nyte on your iPhone and sign in as ${view.owner.label}.`}
+        body={`While Remote Access is on, devices signed in as ${view.owner.label} can connect.`}
         actions={
           <Button variant="solid" tone="primary" onClick={onClose}>
             Done
@@ -204,9 +202,9 @@ function LinkSteps({
         </>
       }
     >
-      {notice !== undefined && <p {...props(styles.body)}>{notice}</p>}
+      {notice !== undefined && <p {...props(text.base, styles.body)}>{notice}</p>}
       {failure !== undefined && (
-        <p role="alert" {...props(intent.danger, styles.body)}>
+        <p role="alert" {...props(text.base, intent.danger, styles.body)}>
           {failure}
         </p>
       )}

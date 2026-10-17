@@ -7,11 +7,15 @@ import electronPath from "electron";
 import electronMetadata from "electron/package.json" with { type: "json" };
 import { ACCOUNT_SCHEMES } from "../src/account/scheme.ts";
 
+/**
+ * A renamed copy of Electron's app bundle carrying the dev icon and URL scheme. Mission Control
+ * reads the bundle icon, not the runtime Dock override, and a fresh path per artwork avoids
+ * macOS's cached icon. An interrupted preparation retries from a clean copy, leaving pnpm's
+ * Electron intact.
+ */
 export function prepareDevElectron() {
   if (process.platform !== "darwin") return electronPath;
 
-  // Mission Control reads the bundle icon, not the runtime Dock override.
-  // A fresh path also avoids reusing macOS's cached icon after an artwork change.
   const icon = readFileSync(new URL("../build/icon.icns", import.meta.url));
 
   const fingerprint = createHash("sha256")
@@ -31,7 +35,6 @@ export function prepareDevElectron() {
 
   if (!existsSync(ready)) {
     mkdirSync(cache, { recursive: true });
-    // Retry interrupted preparation from a clean copy. Keep pnpm's Electron intact.
     rmSync(bundle, { recursive: true, force: true });
     cpSync(join(dirname(electronPath), "../.."), bundle, {
       recursive: true,

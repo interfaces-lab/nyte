@@ -1,8 +1,6 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 
-/*
+/**
  * Sits on the top edge of the preview. Once that edge passes under the nav,
  * the document is marked and the nav leaves the plate's white for a frosted bar.
  */

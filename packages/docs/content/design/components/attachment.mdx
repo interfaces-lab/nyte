@@ -1,0 +1,64 @@
+---
+title: Attachment
+description: "File and image attachments"
+---
+
+```ts title="Import"
+import { Attachment, AttachmentContent, AttachmentTitle } from "@nyte-ai/ui/attachment";
+```
+
+Parts for attached files and images. Your app handles uploads, previews and removal.
+
+## Usage
+
+- Style with `className` and `style`, not `xstyle`.
+- `AttachmentAction` uses Nyte button styles unless `render` replaces it.
+
+## Anatomy
+
+| Part                    | Element                     | Parent              |
+| ----------------------- | --------------------------- | ------------------- |
+| `AttachmentGroup`       | `div`                       | Your container      |
+| `Attachment`            | `div`                       | `AttachmentGroup`   |
+| `AttachmentMedia`       | `div`                       | `Attachment`        |
+| `AttachmentContent`     | `div`                       | `Attachment`        |
+| `AttachmentTitle`       | `span`                      | `AttachmentContent` |
+| `AttachmentDescription` | `span`                      | `AttachmentContent` |
+| `AttachmentTrigger`     | `button`, or `render`       | `Attachment`        |
+| `AttachmentActions`     | `div`                       | `Attachment`        |
+| `AttachmentAction`      | Base UI button, or `render` | `AttachmentActions` |
+
+## Examples
+
+```tsx
+<Attachment state="done">
+  <AttachmentContent>
+    <AttachmentTitle>report.pdf</AttachmentTitle>
+  </AttachmentContent>
+</Attachment>
+```
+
+## Props
+
+Parts take native props and refs and set a matching `data-slot`.
+
+| Part                | Prop          | Type                                                                                         | Default                           |
+| ------------------- | ------------- | -------------------------------------------------------------------------------------------- | --------------------------------- |
+| `Attachment`        | `state`       | `"idle" \| "uploading" \| "processing" \| "error" \| "done"`                                 | `"done"`                          |
+| `Attachment`        | `size`        | `"default" \| "sm" \| "xs" \| null`                                                          | `"default"`                       |
+| `Attachment`        | `orientation` | `"horizontal" \| "vertical" \| null`                                                         | `"horizontal"`                    |
+| `AttachmentMedia`   | `variant`     | `"icon" \| "image" \| null`                                                                  | `"icon"`                          |
+| `AttachmentTrigger` | `render`      | `ReactElement \| render callback`                                                            | `button`                          |
+| `AttachmentTrigger` | `type`        | Native button type                                                                           | `"button"`, only without `render` |
+| `AttachmentAction`  | `variant`     | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`        | `"ghost"`                         |
+| `AttachmentAction`  | `size`        | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null` | `"icon-xs"`                       |
+
+`Attachment` sets `data-state`, `data-size` and `data-orientation`. Media sets `data-variant`. `null` omits the matching class and attribute. A `null` action variant means `"ghost"`.
+
+Only `AttachmentAction` accepts state callbacks for `className` and `style`.
+
+<include>../../base-ui-reference/button/Button.md</include>
+
+## Accessibility
+
+Name the preview and icon-only action buttons, and give images alt text. Upload and error states are not announced.

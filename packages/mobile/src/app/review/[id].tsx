@@ -1,18 +1,12 @@
 import { useLocalSearchParams } from "expo-router";
-import { sessionId, type SessionId } from "@nyte-ai/protocol";
 import { ReviewScreen } from "../../review/review-screen.tsx";
 import { EmptyState } from "../../ui/empty-state.tsx";
+import { parseSessionId } from "../../view-helpers.ts";
 
 export default function Review() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const rawId = Array.isArray(id) ? id[0] : id;
-  let parsed: SessionId | undefined;
-
-  try {
-    parsed = sessionId(rawId);
-  } catch {
-    parsed = undefined;
-  }
+  const parsed = parseSessionId(rawId);
 
   if (parsed === undefined) {
     return <EmptyState title="Chat not found" description="This conversation doesn't exist." />;

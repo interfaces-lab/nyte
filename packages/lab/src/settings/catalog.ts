@@ -50,7 +50,7 @@ export type Setting =
   | (SettingBase & { readonly status: "shipped"; readonly before: string | null })
   | (SettingBase & { readonly status: "wire" | "new" });
 
-export interface Group {
+interface Group {
   readonly title?: string;
   readonly settings: readonly Setting[];
 }

@@ -1,0 +1,23 @@
+{
+  "name": "@nyte-ai/demo-tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "start": "bun src/index.tsx",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/sdk": "workspace:*",
+    "@opentui/core": "^0.6.5",
+    "@opentui/solid": "^0.6.5",
+    "solid-js": "1.9.12"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "@types/node": "^26.6.5",
+    "typescript": "6.0.3"
+  }
+}

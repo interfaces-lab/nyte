@@ -1,8 +1,8 @@
 {
   "name": "nyte-ai",
-  "version": "0.0.16-dev.2",
+  "version": "0.0.18",
   "private": false,
-  "description": "Headless agent runner and terminal client for Nyte",
+  "description": "Installs the nyte command: downloads, verifies and runs the native Nyte terminal client",
   "keywords": [
     "agent",
     "ai",
@@ -35,7 +35,7 @@
     "test": "vitest --run"
   },
   "devDependencies": {
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.4"
   },
   "engines": {
     "node": ">=26"

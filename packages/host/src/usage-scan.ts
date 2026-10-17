@@ -1,5 +1,5 @@
 import { Worker } from "node:worker_threads";
-import type { UsageScan, UsageScanReader, UsageScanRequest } from "./store-usage.ts";
+import type { UsageScan, UsageScanReader, UsageScanRequest } from "./usage-service.ts";
 
 export interface UsageWorkerRequest extends UsageScanRequest {
   readonly id: number;

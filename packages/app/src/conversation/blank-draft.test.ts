@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { sessionId } from "@nyte-ai/protocol";
+import { asId } from "@nyte-ai/schema";
 import { PaneController } from "../layout/pane-controller.ts";
+import { activeSelection } from "../layout/pane-layout.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 
 function writeDraft(controller: PaneController, text: string, paneId: PaneId = "primary"): void {
@@ -92,55 +93,67 @@ test("active draft removal does not depend on the sidebar content index", () => 
   assert.notEqual(controller.viewState.readBlank("primary").id, draftId);
 });
 
-test("taking a draft owns the live editor document and clears the pane immediately", () => {
-  const controller = new PaneController({ storageKey: "take-live-draft" });
+test("a send holds the live editor document under the draft's id and refuses a second", () => {
+  const controller = new PaneController({ storageKey: "send-live-draft" });
   writeDraft(controller, "Stale parent text");
-  const composer = controller.viewState.readBlank("primary").composer;
+  const { id, composer } = controller.viewState.readBlank("primary");
   const text = "Pasted reference\n\nFirst request";
-  const published: string[] = [];
 
-  const unsubscribe = controller.viewState.subscribe(() => {
-    published.push(controller.viewState.readBlank("primary").composer.draft);
-  });
-
-  const submitted = controller.viewState.takeBlank("primary", {
+  const status = controller.viewState.beginSend("primary", {
     ...composer,
     draft: text,
     selectionStart: text.length,
     selectionEnd: text.length,
   });
 
-  assert.equal(submitted.composer.draft, text);
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, "");
-  assert.deepEqual(controller.viewState.drafts(), []);
-  assert.deepEqual(published, [""]);
+  const held = controller.viewState.readBlank("primary");
+  assert.equal(held.id, id);
+  assert.equal(held.composer.draft, text);
+  assert.equal(held.status, status);
+  assert.equal(controller.viewState.beginSend("primary", held.composer), undefined);
 
-  controller.viewState.restoreBlank("primary", submitted);
+  controller.viewState.cancelSend(id);
+  assert.equal(controller.viewState.readBlank("primary").id, id);
   assert.equal(controller.viewState.readBlank("primary").composer.draft, text);
-  unsubscribe();
+  assert.equal(controller.viewState.readBlank("primary").status.kind, "editing");
 });
 
-test("restoring a failed send parks it instead of replacing a newer draft", () => {
-  const controller = new PaneController({ storageKey: "restore-sent-draft" });
+test("a send belongs to its draft: parking keeps it, and a start under way cannot be withdrawn", () => {
+  const controller = new PaneController({ storageKey: "park-sending-draft" });
   writeDraft(controller, "First request");
+  const { id, composer } = controller.viewState.readBlank("primary");
+  const waiting = controller.viewState.beginSend("primary", composer);
+  assert.ok(waiting !== undefined);
 
-  const submitted = controller.viewState.takeBlank(
-    "primary",
-    controller.viewState.readBlank("primary").composer,
-  );
+  controller.newChat();
+  assert.equal(controller.viewState.readDraft(id)?.status, waiting);
 
-  writeDraft(controller, "Second request");
+  assert.equal(controller.viewState.commitSend(id, waiting), true);
+  assert.equal(controller.viewState.commitSend(id, waiting), false);
+  controller.viewState.cancelSend(id);
+  assert.equal(controller.viewState.readDraft(id)?.status.kind, "starting");
 
-  controller.viewState.restoreBlank("primary", submitted);
+  controller.viewState.failSend(id, { kind: "failed", cause: "host went away" });
+  assert.deepEqual(controller.viewState.readDraft(id)?.status, {
+    kind: "failed",
+    cause: "host went away",
+  });
+  assert.equal(controller.viewState.readDraft(id)?.composer.draft, "First request");
+});
 
-  assert.equal(controller.viewState.readBlank("primary").composer.draft, "Second request");
-  assert.deepEqual(
-    controller.viewState
-      .drafts()
-      .map((draft) => draft.composer.draft)
-      .sort(),
-    ["First request", "Second request"],
-  );
+test("a started draft opens its chat only in the pane that shows it", () => {
+  const controller = new PaneController({ storageKey: "open-started-draft" });
+  writeDraft(controller, "Started elsewhere");
+  const { id } = controller.viewState.readBlank("primary");
+  const other = asId<"session">("other");
+  controller.selectSession(other);
+
+  controller.openDraftChat(id, asId<"session">(id));
+  assert.deepEqual(activeSelection(controller.getSnapshot().layout), {
+    kind: "session",
+    sessionId: other,
+  });
+  assert.equal(controller.viewState.readDraft(id), undefined);
 });
 
 test("late removal of a parked draft preserves the pane's newer draft", () => {
@@ -185,7 +198,7 @@ test("reload restores parked drafts and follow-up text", () => {
   writeDraft(first, "First idea");
   first.newChat();
   writeDraft(first, "Second idea");
-  const chat = sessionId("chat-1");
+  const chat = asId<"session">("chat-1");
   first.viewState.updateSession(chat, "primary", (current) => ({
     ...current,
     composer: {
@@ -215,13 +228,28 @@ test("corrupt stored drafts are ignored", () => {
   assert.deepEqual(controller.viewState.drafts(), []);
 });
 
-test("sending a draft writes the empty composer before the window reloads", () => {
+test("a send waiting at reload comes back as an editable draft under its id", () => {
   const storage = memoryStorage();
   const first = new PaneController({ storage, storageKey: "panes-send" });
   writeDraft(first, "Send me");
-  first.viewState.takeBlank("primary", first.viewState.readBlank("primary").composer);
+  const { id, composer } = first.viewState.readBlank("primary");
+  first.viewState.beginSend("primary", composer);
 
   const reloaded = new PaneController({ storage, storageKey: "panes-send" });
+  assert.equal(reloaded.viewState.readBlank("primary").id, id);
+  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "Send me");
+  assert.equal(reloaded.viewState.readBlank("primary").status.kind, "editing");
+});
+
+test("a started chat's draft is written away before the window reloads", () => {
+  const storage = memoryStorage();
+  const first = new PaneController({ storage, storageKey: "panes-started" });
+  writeDraft(first, "Send me");
+  const { id, composer } = first.viewState.readBlank("primary");
+  first.viewState.beginSend("primary", composer);
+  first.viewState.removeDraft(id);
+
+  const reloaded = new PaneController({ storage, storageKey: "panes-started" });
   assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "");
   assert.deepEqual(reloaded.viewState.drafts(), []);
 });

@@ -7,14 +7,14 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
-import type { NyteClient } from "@nyte-ai/client";
-import type { SessionId, VcsDiff, VcsFileKind } from "@nyte-ai/protocol";
-import { parsePatchFacts, type PatchFile } from "@nyte-ai/client";
+import { readHunks } from "@nyte-ai/schema";
+import type { Hunk } from "@nyte-ai/schema";
+import type { Connection, FileStatus, PatchEntry, PatchSet, SessionId } from "@nyte-ai/sdk";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { useRemoteChat } from "./remote-chat.ts";
-import { fileStatus, recordedEdits, type RecordedEdit } from "./turn-changes.ts";
+import { changedFiles, fileStatus } from "./turn-changes.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
 type Source = "agent" | "mac" | "uncommitted";
@@ -23,6 +23,8 @@ type Line =
   | { kind: "hunk"; text: string }
   | { kind: "context" | "added" | "removed"; gutter: number | undefined; text: string };
 
+type TextPatch = Extract<PatchEntry, { kind: "text" }>;
+
 type FileSection = {
   key: string;
   path: string;
@@ -30,7 +32,8 @@ type FileSection = {
   added: number;
   removed: number;
   subtitle: string | undefined;
-  file: PatchFile;
+  file: TextPatch;
+  hunks: readonly Hunk[];
   lineCount: number;
 };
 
@@ -40,11 +43,11 @@ const LINE_LIMIT = 400;
 /** How much of one file is on screen. The header toggles, the footer promotes. */
 type FileView = "collapsed" | "head" | "whole";
 
-/** Parsed patch → display lines with new-side (or old-side) line numbers. */
-function linesOf(file: PatchFile, limit: number): Line[] {
+/** A file's hunks → display lines with new-side (or old-side) line numbers. */
+function displayLines(hunks: readonly Hunk[], limit: number): Line[] {
   const out: Line[] = [];
 
-  for (const hunk of file.hunks) {
+  for (const hunk of hunks) {
     if (out.length === limit) return out;
 
     out.push({
@@ -54,20 +57,15 @@ function linesOf(file: PatchFile, limit: number): Line[] {
     let oldLine = hunk.oldStart;
     let newLine = hunk.newStart;
 
-    for (const raw of hunk.lines) {
+    for (const { kind, text } of hunk.lines) {
       if (out.length === limit) return out;
 
-      const marker = raw[0];
-      const text = raw.slice(1);
-
-      if (marker === "+") {
+      if (kind === "add") {
         out.push({ kind: "added", gutter: newLine, text });
         newLine += 1;
-      } else if (marker === "-") {
+      } else if (kind === "remove") {
         out.push({ kind: "removed", gutter: oldLine, text });
         oldLine += 1;
-      } else if (marker === "\\") {
-        continue;
       } else {
         out.push({ kind: "context", gutter: newLine, text });
         oldLine += 1;
@@ -79,46 +77,43 @@ function linesOf(file: PatchFile, limit: number): Line[] {
   return out;
 }
 
-function fileSection(file: PatchFile, path: string, subtitle: string | undefined): FileSection {
+function fileSection(file: TextPatch, subtitle: string | undefined): FileSection {
+  const hunks = readHunks(file.patch);
+
   return {
-    key: path + (subtitle ?? ""),
-    path,
-    status: fileStatus(file),
+    key: file.path + (subtitle ?? ""),
+    path: file.path,
+    status: fileStatus(file.status),
     added: file.added,
     removed: file.removed,
     subtitle,
     file,
-    lineCount: file.hunks.reduce((count, hunk) => count + hunk.oldLines + 1, file.added),
+    hunks,
+    lineCount: hunks.reduce((count, hunk) => count + hunk.lines.length + 1, 0),
   };
 }
 
-function vcsStatus(kind: VcsFileKind): FileSection["status"] {
-  switch (kind) {
-    case "added":
-    case "untracked":
-      return "A";
-    case "modified":
-    case "conflicted":
-      return "M";
-    case "deleted":
-      return "D";
-    case "renamed":
-      return "R";
-    default: {
-      const _exhaustive: never = kind;
+async function textPatches(stream: AsyncIterable<PatchSet>): Promise<TextPatch[]> {
+  let last: PatchSet | undefined;
 
-      return _exhaustive;
-    }
-  }
+  for await (const set of stream) last = set;
+
+  return [...(last?.entries.values() ?? [])].flatMap((entry) =>
+    entry.kind === "text" ? [entry] : [],
+  );
 }
 
+/**
+ * A session's changes, from the agent's record or the Mac's working tree. Past three files, only the
+ * file the user arrived on starts open; a tap moves one file between collapsed, head, and full views.
+ */
 export function ChangesScreen({
   client,
   sessionId,
   initialPath,
   initialSource,
 }: {
-  client: NyteClient;
+  client: Connection;
   sessionId: SessionId;
   initialPath: string | undefined;
   initialSource: Source | undefined;
@@ -126,48 +121,91 @@ export function ChangesScreen({
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [source, setSource] = useState<Source>(initialSource ?? "agent");
-  // Sections past three start collapsed; taps move one file between views.
   const [views, setViews] = useState<ReadonlyMap<string, FileView>>(new Map());
   const [pulling, setPulling] = useState(false);
   const chat = useRemoteChat(client, sessionId);
 
-  const edits = useMemo(
-    () => recordedEdits(chat.state?.transcript.items ?? []),
-    [chat.state?.transcript.items],
+  const workspaceId = chat.info?.workspace;
+
+  const runs = useMemo(
+    () =>
+      (chat.state?.turns ?? []).flatMap((turn) =>
+        turn.run !== null && changedFiles(turn) ? [turn.run] : [],
+      ),
+    [chat.state?.turns],
   );
 
-  const conversationPaths = useMemo(() => [...edits.keys()], [edits]);
+  const conversationPaths = useMemo(
+    () => (chat.state?.changes ?? []).map((change) => change.path),
+    [chat.state?.changes],
+  );
+
+  const agentQuery = useQuery({
+    queryKey: ["run-patches", sessionId, runs],
+    enabled: source === "agent" && workspaceId !== undefined,
+    queryFn: async () => {
+      if (workspaceId === undefined) return [];
+      const workspace = client.workspace(workspaceId);
+      const perRun: TextPatch[][] = [];
+
+      for (const run of runs) {
+        const changed = await workspace.changes(run);
+        const paths = changed.files.map((file) => file.path);
+        perRun.push(await textPatches(workspace.patches(run, paths)));
+      }
+
+      return perRun;
+    },
+  });
+
+  const git = async () => {
+    if (workspaceId === undefined) throw new Error("This conversation's folder isn't known yet.");
+    const capability = await client.workspace(workspaceId).git();
+
+    if (capability.kind !== "available") throw new Error(capability.reason);
+
+    return capability.api;
+  };
 
   const macDiffsQuery = useQuery({
     queryKey: ["mac-diffs", sessionId, conversationPaths],
-    enabled: source === "mac",
-    queryFn: () =>
-      client.workspace.vcs.diff({
-        target: { kind: "session", sessionId },
-        scope: { kind: "worktree" },
-        paths: conversationPaths.length === 0 ? undefined : conversationPaths,
-        ignoreWhitespace: false,
-      }),
+    enabled: source === "mac" && workspaceId !== undefined,
+    queryFn: async () => {
+      const api = await git();
+      const scope = { kind: "worktree" } as const;
+
+      const paths =
+        conversationPaths.length > 0
+          ? conversationPaths
+          : (await api.changes(scope)).files.map((change) => change.path);
+
+      return textPatches(api.patches(scope, paths));
+    },
   });
 
   const snapshotQuery = useQuery({
     queryKey: ["vcs-snapshot", sessionId],
-    enabled: source === "uncommitted",
-    queryFn: () => client.workspace.vcs.snapshot({ target: { kind: "session", sessionId } }),
+    enabled: source === "uncommitted" && workspaceId !== undefined,
+    queryFn: async () => (await git()).status(),
   });
 
-  const uncommitted =
+  const uncommitted: readonly { path: string; status: FileStatus; where: string }[] =
     snapshotQuery.data?.kind === "repository"
       ? [
           ...snapshotQuery.data.staged.map((file) => ({ ...file, where: "Staged" })),
           ...snapshotQuery.data.unstaged.map((file) => ({ ...file, where: "Unstaged" })),
+          ...snapshotQuery.data.untracked.map((path) => ({
+            path,
+            status: "untracked" as const,
+            where: "Untracked",
+          })),
         ]
       : [];
 
   const macDiffs:
     | { kind: "loading" }
     | { kind: "failed"; message: string }
-    | { kind: "ready"; diffs: readonly VcsDiff[] } =
+    | { kind: "ready"; diffs: readonly TextPatch[] } =
     macDiffsQuery.status === "pending"
       ? { kind: "loading" }
       : macDiffsQuery.status === "error"
@@ -176,43 +214,25 @@ export function ChangesScreen({
 
   const sections = useMemo<FileSection[]>(() => {
     if (source === "agent") {
-      const out: FileSection[] = [];
+      const edits = new Map<string, TextPatch[]>();
 
-      for (const [path, group] of edits) {
-        group.forEach((edit: RecordedEdit, index: number) => {
-          out.push(
-            fileSection(
-              edit.file,
-              path,
-              group.length > 1 ? `Edit ${String(index + 1)} of ${String(group.length)}` : undefined,
-            ),
-          );
-        });
-      }
+      for (const file of (agentQuery.data ?? []).flat())
+        edits.set(file.path, [...(edits.get(file.path) ?? []), file]);
 
-      return out;
+      return [...edits.values()].flatMap((group) =>
+        group.map((file, index) =>
+          fileSection(
+            file,
+            group.length > 1 ? `Edit ${String(index + 1)} of ${String(group.length)}` : undefined,
+          ),
+        ),
+      );
     }
 
-    if (macDiffsQuery.data === undefined) return [];
-    const out: FileSection[] = [];
+    return (macDiffsQuery.data ?? []).map((file) => fileSection(file, undefined));
+  }, [source, agentQuery.data, macDiffsQuery.data]);
 
-    for (const diff of macDiffsQuery.data) {
-      if (diff.kind === "binary") continue;
-      const facts = parsePatchFacts(diff.patch);
-
-      if (facts === undefined) continue;
-
-      for (const file of facts.files) {
-        const path = file.path ?? diff.path;
-        out.push({ ...fileSection(file, path, undefined), status: vcsStatus(diff.status) });
-      }
-    }
-
-    return out;
-  }, [source, edits, macDiffsQuery.data]);
-
-  // Past three files, only the one the user arrived on starts open.
-  const viewOf = useCallback(
+  const readView = useCallback(
     (section: FileSection): FileView =>
       views.get(section.key) ??
       (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head"),
@@ -222,7 +242,7 @@ export function ChangesScreen({
   const setView = (key: string, view: FileView) =>
     setViews((current) => new Map(current).set(key, view));
 
-  const agentEmpty = chat.state !== undefined && edits.size === 0;
+  const agentEmpty = chat.state !== undefined && runs.length === 0;
 
   return (
     <html.div style={styles.screen}>
@@ -244,7 +264,7 @@ export function ChangesScreen({
       </Host>
       <html.p style={[textStyles.caption, styles.caption]}>
         {source === "agent"
-          ? "Edits the agent reported. Commands that changed files outside edit tools aren't included."
+          ? "Files each agent run changed, by edit tools and commands alike."
           : source === "mac"
             ? "Current uncommitted changes on your Mac for these files. Can include edits made outside this conversation."
             : "Every file changed on your Mac since the last commit."}
@@ -260,7 +280,7 @@ export function ChangesScreen({
           uncommitted.map((file) => (
             <html.div key={`${file.where}:${file.path}`} style={styles.fileHeader}>
               <html.div style={styles.badge}>
-                <html.span style={styles.badgeText}>{vcsStatus(file.kind)}</html.span>
+                <html.span style={styles.badgeText}>{fileStatus(file.status)}</html.span>
               </html.div>
               <html.div style={styles.fileHeaderText}>
                 <html.span style={[textStyles.secondary, styles.fileName]}>{file.path}</html.span>
@@ -270,7 +290,7 @@ export function ChangesScreen({
           ))
         )
       ) : source === "agent" ? (
-        chat.state === undefined ? (
+        chat.state === undefined || (!agentEmpty && agentQuery.status === "pending") ? (
           <html.div style={styles.state}>
             <ActivityIndicator color={theme.muted} />
           </html.div>
@@ -280,7 +300,7 @@ export function ChangesScreen({
             description="The agent didn't report file edits in this conversation. Try On Mac to see what's changed there."
           />
         ) : (
-          <DiffSections sections={sections} viewOf={viewOf} onSetView={setView} />
+          <DiffSections sections={sections} readView={readView} onSetView={setView} />
         )
       ) : macDiffs.kind === "loading" ? (
         <html.div style={styles.state}>
@@ -301,7 +321,7 @@ export function ChangesScreen({
       ) : (
         <DiffSections
           sections={sections}
-          viewOf={viewOf}
+          readView={readView}
           onSetView={setView}
           refreshControl={
             <RefreshControl
@@ -322,12 +342,12 @@ export function ChangesScreen({
 
 function DiffSections({
   sections,
-  viewOf,
+  readView,
   onSetView,
   refreshControl,
 }: {
   sections: FileSection[];
-  viewOf: (section: FileSection) => FileView;
+  readView: (section: FileSection) => FileView;
   onSetView: (key: string, view: FileView) => void;
   refreshControl?: ReactElement<RefreshControlProps>;
 }) {
@@ -336,17 +356,20 @@ function DiffSections({
   const visibleSections = useMemo(
     () =>
       sections.map((section) => {
-        const view = viewOf(section);
+        const view = readView(section);
 
         return {
           ...section,
           data:
             view === "collapsed"
               ? []
-              : linesOf(section.file, view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY),
+              : displayLines(
+                  section.hunks,
+                  view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY,
+                ),
         };
       }),
-    [sections, viewOf],
+    [sections, readView],
   );
 
   return (
@@ -361,7 +384,7 @@ function DiffSections({
       refreshControl={refreshControl}
       contentContainerStyle={{ paddingBottom: spacing.xl }}
       renderSectionHeader={({ section }) => {
-        const collapsed = viewOf(section) === "collapsed";
+        const collapsed = readView(section) === "collapsed";
 
         return (
           <html.button
@@ -395,7 +418,7 @@ function DiffSections({
       renderSectionFooter={({ section }) => {
         const hidden = section.lineCount - LINE_LIMIT;
 
-        if (viewOf(section) !== "head" || hidden <= 0) return null;
+        if (readView(section) !== "head" || hidden <= 0) return null;
 
         return (
           <html.button onClick={() => onSetView(section.key, "whole")} style={styles.showRest}>
