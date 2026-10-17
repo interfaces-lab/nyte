@@ -35,7 +35,7 @@ process.env.ELECTRON_RENDERER_URL = "http://127.0.0.1:9";
 
 registerRenderer({ scheme, frontendApiHost: undefined, shellRoot });
 
-const preview = offscreenCanvasPreviewer(scheme, shellRoot);
+const preview = offscreenCanvasPreviewer(scheme, shellRoot, join(directory, "driver.cjs"));
 
 /** Previews the sandbox probe twice against local STUN and TURN listeners: what it reached each time, and what reached them. */
 async function probe() {

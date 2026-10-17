@@ -123,6 +123,7 @@ const config = (mode: string): UserConfig => ({
         input: {
           index: resolve("src/preload/index.ts"),
           "browser-page": resolve("src/preload/browser-page.ts"),
+          "canvas-preview": resolve("src/preload/canvas-preview.ts"),
         },
         treeshake: { moduleSideEffects: false },
         output: { format: "cjs", entryFileNames: "[name].js" },

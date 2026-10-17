@@ -42,6 +42,35 @@ const Results = Type.Object({
   }),
 });
 
+/**
+ * Bundles `entry` into `directory` as CommonJS. Each entry is built apart: the sandboxed driver
+ * preload can require no chunk it would share with the main fixture.
+ */
+async function bundle(entry: string, directory: string, fileName: string): Promise<void> {
+  await build({
+    configFile: false,
+    envDir: false,
+    logLevel: "silent",
+    resolve: { conditions: ["node"], mainFields: ["module", "main"] },
+    build: {
+      target: "node24",
+      outDir: directory,
+      emptyOutDir: false,
+      minify: false,
+      lib: {
+        entry: fileURLToPath(new URL(entry, import.meta.url)),
+        formats: ["cjs"],
+        fileName: () => fileName,
+      },
+      rollupOptions: {
+        external: (id) =>
+          id === "electron" || id.startsWith("node:") || builtinModules.includes(id),
+        treeshake: { moduleSideEffects: false },
+      },
+    },
+  });
+}
+
 test.skipIf(!built)(
   "previews the multi-file repo-galaxy offscreen in real Electron, from the scheme-served shell, a canvas that hangs its renderer holds up no later preview, and a canvas runs as sealed as in the chat's frame",
   { timeout: 150_000 },
@@ -50,28 +79,8 @@ test.skipIf(!built)(
 
     try {
       await mkdir(join(directory, "profile"));
-      await build({
-        configFile: false,
-        envDir: false,
-        logLevel: "silent",
-        resolve: { conditions: ["node"], mainFields: ["module", "main"] },
-        build: {
-          target: "node24",
-          outDir: directory,
-          emptyOutDir: false,
-          minify: false,
-          lib: {
-            entry: fileURLToPath(new URL("./fixtures/canvas-preview-main.ts", import.meta.url)),
-            formats: ["cjs"],
-            fileName: () => "main.cjs",
-          },
-          rollupOptions: {
-            external: (id) =>
-              id === "electron" || id.startsWith("node:") || builtinModules.includes(id),
-            treeshake: { moduleSideEffects: false },
-          },
-        },
-      });
+      await bundle("./fixtures/canvas-preview-main.ts", directory, "main.cjs");
+      await bundle("../preload/canvas-preview.ts", directory, "driver.cjs");
       await writeFile(
         join(directory, "package.json"),
         JSON.stringify({ name: "nyte-canvas-preview-test", main: "main.cjs" }),

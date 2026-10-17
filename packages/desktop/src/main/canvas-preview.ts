@@ -1,26 +1,29 @@
 /**
  * The desktop canvas previewer, in main: each preview opens its own
- * offscreen window on the real canvas shell from its scheme, lets
- * `runCanvasPreview` drive it, and destroys it after, so a canvas that
- * hangs its renderer takes nothing down with it once the preview's signal
- * aborts. The windows share one in-memory session of their own, which
- * serves only the shell, under its policy plus the chat frame's sandbox,
- * so the page gets the frame's opaque origin; it grants no permission, and
- * its WebRTC may only go through a proxy that leads nowhere. The host process asks for a preview
- * over its RPC (`host-messages.ts`).
+ * offscreen window on the real canvas shell from its scheme, with the
+ * preview's driver (`preload/canvas-preview.ts`) as its preload, answers the
+ * driver's resizes and captures, and destroys the window after, so a canvas
+ * that hangs its renderer takes nothing down with it once the preview's
+ * signal aborts. The driver runs beside the canvas, so main reads its report
+ * as untrusted and keeps its own capture. The windows share one in-memory
+ * session of their own, which serves only the shell, under its policy plus
+ * the chat frame's sandbox, so the page gets the frame's opaque origin; it
+ * grants no permission, and its WebRTC may only go through a proxy that leads
+ * nowhere. The host process asks for a preview over its RPC (`host-messages.ts`).
  */
 import { pathToFileURL } from "node:url";
 import { BrowserWindow, net, session } from "electron";
 import type { Session } from "electron";
-import { runCanvasPreview } from "@nyte-ai/plugin/core/canvas-preview";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type {
   CanvasPreviewOutcome,
-  CanvasPreviewPage,
   CanvasPreviewRequest,
   CanvasPreviewer,
 } from "@nyte-ai/plugin/core/canvas-preview";
 import { resolveRendererFile, shellContentSecurityPolicy } from "../account/policy.ts";
 import type { accountScheme } from "../account/scheme.ts";
+import { CANVAS_PREVIEW_CHANNELS } from "../shared/canvas-preview.ts";
 import { canvasShellUrl } from "./renderer.ts";
 
 /** The preview session's partition; without the `persist:` prefix, nothing it stores outlives the app. */
@@ -28,6 +31,30 @@ const PARTITION = "canvas-preview";
 
 /** A proxy nothing listens on, for every host, loopback included: WebRTC, kept to proxied traffic, then reaches no one, over UDP or TCP. */
 const NOWHERE = "socks5://127.0.0.1:9";
+
+/** The largest viewport side a driver may ask for, in CSS pixels. */
+const VIEWPORT_LIMIT = 4_096;
+
+const ViewportSide = Type.Integer({ minimum: 1, maximum: VIEWPORT_LIMIT });
+
+/** What the driver answers with. Its report's PNG is not read: main answers with the capture it took. */
+const DriverOutcome = Type.Union([
+  Type.Object({
+    kind: Type.Literal("rendered"),
+    report: Type.Object({
+      heights: Type.Object({ chat: Type.Number(), phone: Type.Number() }),
+      errors: Type.Array(
+        Type.Object({
+          phase: Type.Union([Type.Literal("load"), Type.Literal("render")]),
+          message: Type.String(),
+          stack: Type.Union([Type.String(), Type.Null()]),
+        }),
+      ),
+      console: Type.Array(Type.Object({ level: Type.String(), text: Type.String() })),
+    }),
+  }),
+  Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
+]);
 
 /** Opens the preview session, serving the shell at `root` over `scheme`. */
 async function openPreviewSession(
@@ -66,7 +93,7 @@ async function openPreviewSession(
   return preview;
 }
 
-function previewWindow(preview: Session): BrowserWindow {
+function previewWindow(preview: Session, driver: string): BrowserWindow {
   const window = new BrowserWindow({
     show: false,
     width: 808,
@@ -74,6 +101,7 @@ function previewWindow(preview: Session): BrowserWindow {
     useContentSize: true,
     webPreferences: {
       offscreen: { deviceScaleFactor: 1 },
+      preload: driver,
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -113,53 +141,75 @@ function painted(window: BrowserWindow): Promise<void> {
 
 /**
  * Returns a previewer over the canvas shell at `root`, served over
- * `scheme`. Each preview renders offscreen, or answers unavailable when its
- * window fails to load the shell or its signal aborts first; the window is
- * destroyed either way.
+ * `scheme`, driven by the preload at `driver`. Each preview renders
+ * offscreen, or answers unavailable when its window fails to load the shell,
+ * its driver fails, or its signal aborts first; the window is destroyed
+ * either way.
  */
 export function offscreenCanvasPreviewer(
   scheme: ReturnType<typeof accountScheme>,
   root: string,
+  driver: string,
 ): CanvasPreviewer {
   let preview: Promise<Session> | undefined;
 
   return async (request, signal) => {
     preview ??= openPreviewSession(scheme, root);
 
-    return previewOffscreen(await preview, canvasShellUrl(scheme), request, signal);
+    return previewOffscreen(await preview, driver, canvasShellUrl(scheme), request, signal);
   };
 }
 
 async function previewOffscreen(
   preview: Session,
+  driver: string,
   shellUrl: string,
   request: CanvasPreviewRequest,
   signal: AbortSignal,
 ): Promise<CanvasPreviewOutcome> {
   if (signal.aborted) return { kind: "unavailable", reason: "The preview was stopped." };
-  const window = previewWindow(preview);
+  const window = previewWindow(preview, driver);
   const contents = window.webContents;
-  const page: CanvasPreviewPage = {
-    evaluate: (expression) => contents.executeJavaScript(expression),
-    async resize(width, height) {
-      window.setContentSize(width, height);
-      await painted(window);
-    },
-    async capture() {
-      await painted(window);
+  let png: Uint8Array | undefined;
 
-      return new Uint8Array((await contents.capturePage()).toPNG());
-    },
-  };
+  contents.ipc.handle(CANVAS_PREVIEW_CHANNELS.resize, async (_event, width, height) => {
+    if (!Value.Check(ViewportSide, width) || !Value.Check(ViewportSide, height))
+      throw new Error("The preview asked for a viewport out of range.");
+    window.setContentSize(width, height);
+    await painted(window);
+  });
+
+  contents.ipc.handle(CANVAS_PREVIEW_CHANNELS.capture, async () => {
+    await painted(window);
+    png = new Uint8Array((await contents.capturePage()).toPNG());
+
+    return png;
+  });
+  const answered = Promise.withResolvers<unknown>();
+  contents.ipc.once(CANVAS_PREVIEW_CHANNELS.outcome, (_event, outcome) =>
+    answered.resolve(outcome),
+  );
   const stopped = Promise.withResolvers<never>();
   const stop = (): void => stopped.reject(new Error("The preview was stopped."));
   signal.addEventListener("abort", stop, { once: true });
+  contents.once("render-process-gone", () =>
+    stopped.reject(new Error("The preview's renderer stopped.")),
+  );
 
   try {
     const run = async (): Promise<CanvasPreviewOutcome> => {
       await window.loadURL(shellUrl);
+      contents.send(CANVAS_PREVIEW_CHANNELS.run, request);
+      const outcome = await answered.promise;
 
-      return { kind: "rendered", report: await runCanvasPreview(page, request) };
+      if (!Value.Check(DriverOutcome, outcome))
+        throw new Error("The preview answered something unreadable.");
+
+      if (outcome.kind === "failed") throw new Error(outcome.message);
+
+      if (png === undefined) throw new Error("The preview finished without a capture.");
+
+      return { kind: "rendered", report: { ...outcome.report, png } };
     };
 
     return await Promise.race([run(), stopped.promise]);

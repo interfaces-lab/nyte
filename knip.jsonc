@@ -62,7 +62,7 @@
       "entry": [
         // electron.vite.config.ts rolldown inputs beside index; knip's electron-vite plugin reads only index.
         "src/main/{host-entry,usage-worker,codemode-worker,codemode-runtime}.ts",
-        "src/preload/browser-page.ts",
+        "src/preload/{browser-page,canvas-preview}.ts",
         // Injected by the serve-only nyte:serve-devtools plugin.
         "src/renderer/src/devtools.tsx",
         // Bundled by tests from their path.

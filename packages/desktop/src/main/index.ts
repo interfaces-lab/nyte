@@ -800,7 +800,11 @@ if (!hasSingleInstanceLock) {
     shellRoot,
   });
   canvasShell = canvasShellUrl(scheme);
-  previewCanvas = offscreenCanvasPreviewer(scheme, shellRoot);
+  previewCanvas = offscreenCanvasPreviewer(
+    scheme,
+    shellRoot,
+    join(import.meta.dirname, "../preload/canvas-preview.js"),
+  );
   account = createAccount(config);
 
   app.on("second-instance", (_event, argv) => {
