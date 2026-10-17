@@ -421,7 +421,7 @@ export function claudeCodeSdk(start: StartQuery = query) {
     id: CLAUDE_CODE_PROVIDER,
     name: "Claude Code",
     baseUrl: "process://claude-code",
-    capabilities: { steer: true, stopSubagent: false, ownPermissions: true },
+    capabilities: { steer: true },
     auth: {
       apiKey: {
         name: "Claude Code login",

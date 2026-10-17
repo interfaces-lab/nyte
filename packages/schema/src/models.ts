@@ -89,17 +89,10 @@ export type ProviderUsage = Decoded<typeof ProviderUsageType>;
 /**
  * What a model's runtime does around a turn, for clients to read instead of
  * its provider id: `steer` when a message sent mid-turn reaches it before the
- * turn ends (otherwise it waits for the turn), `stopSubagent` when one of its
- * subagents can be stopped without stopping the turn, and `ownPermissions`
- * when the runtime decides which of its own tool calls ask first, so Nyte's
- * gate answers the calls it asks about and cannot hold the rest. The inputs it
- * reads are `ModelInfo.input`.
+ * turn ends (otherwise it waits for the turn). The inputs it reads are
+ * `ModelInfo.input`.
  */
-export const ModelCapabilitiesType = Type.Object({
-  steer: Type.Boolean(),
-  stopSubagent: Type.Boolean(),
-  ownPermissions: Type.Boolean(),
-});
+export const ModelCapabilitiesType = Type.Object({ steer: Type.Boolean() });
 
 export type ModelCapabilities = Decoded<typeof ModelCapabilitiesType>;
 

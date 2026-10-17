@@ -34,7 +34,7 @@ export const CATALOG: ModelCatalogView = {
           compactAt: 80_000,
           maxOutput: 8_000,
           input: ["text", "image"],
-          capabilities: { steer: true, stopSubagent: true, ownPermissions: false },
+          capabilities: { steer: true },
           cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
         },
         {
@@ -48,7 +48,7 @@ export const CATALOG: ModelCatalogView = {
           compactAt: 80_000,
           maxOutput: 8_000,
           input: ["text"],
-          capabilities: { steer: true, stopSubagent: true, ownPermissions: false },
+          capabilities: { steer: true },
           cost: { input: 0.5, output: 1, cacheRead: 0, cacheWrite: 0 },
         },
       ],

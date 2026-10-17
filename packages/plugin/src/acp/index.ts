@@ -248,7 +248,7 @@ export function acpAgents(options?: { readonly agents?: () => Promise<readonly A
     id: ACP_PROVIDER,
     name: "ACP agents",
     baseUrl: "process://acp",
-    capabilities: { steer: false, stopSubagent: false, ownPermissions: true },
+    capabilities: { steer: false },
     auth: {
       apiKey: {
         name: "Installed ACP agents",

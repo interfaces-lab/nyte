@@ -39,7 +39,7 @@ const model = (id: string, name: string): ModelInfo => ({
   compactAt: 100_000,
   maxOutput: 8_000,
   input: ["text"],
-  capabilities: { steer: true, stopSubagent: true, ownPermissions: false },
+  capabilities: { steer: true },
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 });
 

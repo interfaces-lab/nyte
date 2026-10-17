@@ -374,7 +374,7 @@ async function defaultModel(kernel: Kernel, models: Models): Promise<ModelRef | 
   return null;
 }
 
-const NYTE_LOOP: ModelCapabilities = { steer: true, stopSubagent: true, ownPermissions: false };
+const NYTE_LOOP: ModelCapabilities = { steer: true };
 
 function projectModel(
   model: Model<Api>,

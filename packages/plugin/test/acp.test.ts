@@ -188,7 +188,7 @@ it("fails the turn with the agent's last words when it exits before answering", 
   expect(end.failure.message).toContain("Crash Agent exited. (no config found)");
 });
 
-it("publishes the agent as a model that queues follow-ups and owns its permissions", async () => {
+it("publishes the agent as a model that queues follow-ups", async () => {
   await using opened = await openHost(refuseDeletes);
   const catalog = await opened.host.models.list();
   const provider = catalog.providers.find((entry) => entry.id === "acp");
@@ -198,7 +198,7 @@ it("publishes the agent as a model that queues follow-ups and owns its permissio
     expect.objectContaining({
       ref: { provider: "acp", id: "fake" },
       name: "Fake Agent",
-      capabilities: { steer: false, stopSubagent: false, ownPermissions: true },
+      capabilities: { steer: false },
     }),
   );
 });

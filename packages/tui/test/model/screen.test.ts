@@ -90,7 +90,7 @@ describe("placeholder", () => {
   test("busy queues when the chat's model cannot take a message mid-turn", () => {
     const agent = {
       ...model("model"),
-      capabilities: { steer: false, stopSubagent: false, ownPermissions: true },
+      capabilities: { steer: false },
     };
     const catalog = {
       ...CATALOG,
