@@ -76,6 +76,16 @@ app.whenReady().then(async () => {
   wc.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
   const cancelled = await escaped;
 
+  const forging = picker.pickElement(wc);
+  await sleep(100);
+  await wc.executeJavaScript(
+    'document.querySelectorAll("button")[1].dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 320, clientY: 80 }));' +
+      'window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })); true',
+  );
+  await sleep(100);
+  wc.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+  const forged = await forging;
+
   const first = picker.pickElement(wc);
   await sleep(100);
   const second = await picker.pickElement(wc);
@@ -87,6 +97,7 @@ app.whenReady().then(async () => {
     clicked,
     parent: parent && parent.selector,
     cancelled: cancelled === undefined,
+    forged: forged === undefined,
     toggled: toggled === undefined && second === undefined,
     overlays,
   }));
@@ -96,7 +107,7 @@ app.whenReady().then(async () => {
 `;
 
 test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
-  "a pick outlines, takes the click from the page, climbs with the arrows and cancels",
+  "a pick outlines, takes the click from the page, climbs with the arrows, ignores the page's own events and cancels",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "nyte-picker-e2e-"));
 
@@ -144,6 +155,7 @@ test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
         clicked: "",
         parent: "main",
         cancelled: true,
+        forged: true,
         toggled: true,
         overlays: 2,
       });

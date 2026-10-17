@@ -2,8 +2,10 @@
  * Picking an element on a browser panel's page for the chat. A page script in
  * its own isolated world outlines what the pointer is over; a click or Enter
  * picks it, ArrowUp and ArrowDown move to its parent or first child, and
- * Escape cancels. Running the script while a pick is open cancels that pick,
- * so one chord starts and stops it. The page never sees the clicks it takes,
+ * Escape cancels. Only the user's own input counts: a click or key the page
+ * dispatches itself is ignored, so the page cannot choose what is picked.
+ * Running the script while a pick is open cancels that pick, so one chord
+ * starts and stops it. The page never sees the clicks it takes,
  * and the script answers only once the outline is off the screen, so the crop
  * shows the element alone.
  *
@@ -88,6 +90,9 @@ const PICKER_SCRIPT = `(() => {
     event.stopPropagation();
     event.stopImmediatePropagation();
   };
+  const trusted = (listener) => (event) => {
+    if (event.isTrusted) listener(event);
+  };
   return new Promise((resolve) => {
     const finish = (result) => {
       for (const [type, listener] of listeners) window.removeEventListener(type, listener, true);
@@ -108,17 +113,17 @@ const PICKER_SCRIPT = `(() => {
       });
     };
     const listeners = [
-      ["mousemove", (event) => show(document.elementFromPoint(event.clientX, event.clientY))],
+      ["mousemove", trusted((event) => show(document.elementFromPoint(event.clientX, event.clientY)))],
       ["pointerdown", block],
       ["mousedown", block],
       ["pointerup", block],
       ["mouseup", block],
-      ["click", (event) => {
+      ["click", trusted((event) => {
         block(event);
         show(document.elementFromPoint(event.clientX, event.clientY));
         pick();
-      }],
-      ["keydown", (event) => {
+      })],
+      ["keydown", trusted((event) => {
         if (event.key === "Escape") {
           block(event);
           finish({ kind: "cancelled" });
@@ -132,7 +137,7 @@ const PICKER_SCRIPT = `(() => {
           block(event);
           show(current.firstElementChild);
         }
-      }],
+      })],
     ];
     for (const [type, listener] of listeners) window.addEventListener(type, listener, true);
     window.__nytePick = () => finish({ kind: "cancelled" });
