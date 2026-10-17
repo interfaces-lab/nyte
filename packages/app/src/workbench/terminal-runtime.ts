@@ -4,7 +4,10 @@ import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
 import { serial } from "@nyte-ai/schema/serial";
 import { toast } from "@nyte-ai/ui/toast";
 import { preferences } from "../preferences/index.ts";
+import { addToChat, addsToChat } from "../conversation/add-to-chat.ts";
+import type { ExcerptReference } from "../conversation/message-references.ts";
 import { errorMessage } from "../errors.ts";
+import { macPlatform } from "../platform.ts";
 import { props } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { Tint } from "@nyte-ai/ui/surface-theme";
@@ -17,15 +20,29 @@ import {
 } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 
+/** A command line the user entered, at the buffer row it was entered on. */
+interface CommandMark {
+  readonly row: number;
+  readonly line: string;
+}
+
 interface TerminalView {
   readonly element: HTMLDivElement;
   readonly terminal: Terminal;
+  /** Oldest first; a mark whose row no longer reads its line has scrolled away. */
+  readonly commands: CommandMark[];
   fit(): void;
 }
 
 let ghostty: Promise<Ghostty> | undefined;
 
 const views = new Map<string, TerminalView>();
+
+const selectionListeners = new Map<string, Set<() => void>>();
+
+function notifySelection(id: string): void {
+  for (const listener of selectionListeners.get(id) ?? []) listener();
+}
 
 function loadGhostty(): Promise<Ghostty> {
   ghostty ??= Ghostty.load(wasmUrl).catch((cause: unknown) => {
@@ -137,7 +154,8 @@ function sendInput(id: string, data: string): Promise<void> {
  * Ghostty's compatibility container is editable; only its input should accept
  * native text and IME. The fit addon defers a fit that lands while a previous
  * one settles, so the PTY follows the terminal's own resize event rather than
- * a read after fit().
+ * a read after fit(). A click clears the selection without an event, so every
+ * press and release reports the selection once it settles.
  */
 async function createView(id: string): Promise<TerminalView | undefined> {
   const engine = await loadGhostty();
@@ -287,9 +305,20 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
   document.fonts.addEventListener("loadingdone", scheduleFit);
   const input = serial();
-  const data = terminal.onData((value) => void input.run(() => sendInput(id, value)));
+  const commands: CommandMark[] = [];
+
+  const data = terminal.onData((value) => {
+    if (value.includes("\r")) markCommand(terminal, commands);
+    void input.run(() => sendInput(id, value));
+  });
 
   const title = terminal.onTitleChange((value) => terminalActions.title(id, value));
+
+  const selected = terminal.onSelectionChange(() => notifySelection(id));
+
+  const reportSettledSelection = (): void => {
+    setTimeout(() => notifySelection(id));
+  };
 
   const copy = (event: ClipboardEvent): void => {
     const text = terminal.getSelection();
@@ -311,10 +340,18 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     terminal.paste(text);
   };
 
+  element.addEventListener("mousedown", reportSettledSelection);
+  element.ownerDocument.addEventListener("mouseup", reportSettledSelection);
   element.addEventListener("copy", copy, true);
   element.addEventListener("paste", paste, true);
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.ctrlKey && event.code === "Backquote") return true;
+
+    if (addsToChat(event, macPlatform(undefined))) {
+      if (event.type === "keydown" && addTerminalToChat(id)) event.preventDefault();
+
+      return true;
+    }
 
     if ((event.metaKey || (event.ctrlKey && event.shiftKey)) && event.key.toLowerCase() === "c") {
       if (event.type === "keydown") document.execCommand("copy");
@@ -324,7 +361,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
 
     return false;
   });
-  const view = { element, terminal, fit: fitVisible };
+  const view = { element, terminal, commands, fit: fitVisible };
   views.set(id, view);
   attachTerminalOutput(id, {
     write(value) {
@@ -344,6 +381,9 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       data.dispose();
       sized.dispose();
       title.dispose();
+      selected.dispose();
+      element.removeEventListener("mousedown", reportSettledSelection);
+      element.ownerDocument.removeEventListener("mouseup", reportSettledSelection);
       element.removeEventListener("copy", copy, true);
       element.removeEventListener("paste", paste, true);
       element.removeEventListener("focus", focusInput);
@@ -403,4 +443,76 @@ export function copyTerminal(id: string): void {
         description: errorMessage(cause),
       }),
     );
+}
+
+function bufferLine(terminal: Terminal, row: number): string | undefined {
+  return terminal.buffer.active.getLine(row)?.translateToString(true).trim();
+}
+
+/** Remembers the line under the cursor as a command when Enter submits it; a blank one is no command. */
+function markCommand(terminal: Terminal, commands: CommandMark[]): void {
+  const buffer = terminal.buffer.active;
+
+  if (buffer.type !== "normal") return;
+  const row = buffer.length - terminal.rows + buffer.cursorY;
+  const line = bufferLine(terminal, row);
+
+  if (line === undefined || line === "") return;
+  commands.push({ row, line });
+
+  if (commands.length > 200) commands.shift();
+}
+
+/**
+ * The selection as an excerpt. An agent's command names its own output; in a
+ * shell, the command is the last line entered at or above the selection's
+ * first row that still reads as it did when entered.
+ */
+function terminalExcerpt(id: string): ExcerptReference | undefined {
+  const view = views.get(id);
+  const tab = getTerminal(id);
+  const text = view?.terminal.getSelection().replace(/\s+$/u, "") ?? "";
+
+  if (view === undefined || tab === undefined || text === "") return undefined;
+  const top = view.terminal.getSelectionPosition()?.start.y ?? -1;
+
+  const command =
+    tab.kind === "job"
+      ? tab.title
+      : view.commands.findLast(
+          (mark) => mark.row <= top && bufferLine(view.terminal, mark.row) === mark.line,
+        )?.line;
+
+  return {
+    kind: "excerpt",
+    source: command === undefined ? { kind: "terminal" } : { kind: "terminal", command },
+    text,
+  };
+}
+
+export function terminalHasSelection(id: string): boolean {
+  return views.get(id)?.terminal.hasSelection() === true;
+}
+
+export function subscribeTerminalSelection(id: string, listener: () => void): () => void {
+  const listeners = selectionListeners.get(id) ?? new Set();
+  listeners.add(listener);
+  selectionListeners.set(id, listeners);
+
+  return () => {
+    listeners.delete(listener);
+
+    if (listeners.size === 0) selectionListeners.delete(id);
+  };
+}
+
+/** Adds the selection to the active chat and clears it; false when nothing is selected or no chat takes it. */
+export function addTerminalToChat(id: string): boolean {
+  const reference = terminalExcerpt(id);
+
+  if (reference === undefined || !addToChat({ reference })) return false;
+  views.get(id)?.terminal.clearSelection();
+  notifySelection(id);
+
+  return true;
 }
