@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
-import { localProvider, sqliteStore } from "@nyte-ai/host";
+import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
 import { fakeModels, testModel } from "@nyte-ai/host/bench";
 import type { FakeModels } from "@nyte-ai/host/bench";
 import { sdk } from "@nyte-ai/sdk";
@@ -82,6 +82,7 @@ export async function openScenarioHost(input: {
     store: sqliteStore({ path: input.database }),
     models: fake.models,
     plugins: [{ id: "local", environment: localProvider({ home: input.home }) }],
+    github: localGitHubAccount({ home: input.home }),
     workspace: { kind: "local", path: input.home },
     home: input.home,
   });

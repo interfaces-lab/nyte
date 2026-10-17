@@ -3,7 +3,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
-import { localProvider, sqliteStore } from "@nyte-ai/host";
+import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
 import {
   CI_PROMPT,
   ciHome,
@@ -138,6 +138,7 @@ export async function ciWebHost(route: CiRoute): Promise<CiWebHost> {
       store: sqliteStore({ path: store }),
       models: fake.models,
       plugins: [{ id: "local", environment: localProvider({ home: home.home }) }],
+      github: localGitHubAccount({ home: home.home }),
       workspace: { kind: "local", path: repo.root },
       home: home.home,
     });
