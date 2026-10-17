@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { compileCanvas } from "@nyte-ai/plugin/core/canvas";
+import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import {
   CANVAS_RUNTIME,
   initializeResult,
@@ -73,23 +73,39 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
 const port = server.address().port;
 
-const compile = compileCanvas;
+/** A `.tsx` fixture alone, or a folder's main.tsx with its other files, as the tool takes them. */
+async function readFixture(entry) {
+  const path = join(root, "test/fixtures", entry.name);
 
-const fixtures = (await readdir(join(root, "test/fixtures"))).filter((name) =>
-  name.endsWith(".tsx"),
+  if (!entry.isDirectory()) return { source: await readFile(path, "utf8"), files: {} };
+  const names = (await readdir(path)).filter((name) => /\.tsx?$/u.test(name));
+
+  return {
+    source: await readFile(join(path, "main.tsx"), "utf8"),
+    files: Object.fromEntries(
+      await Promise.all(
+        names
+          .filter((name) => name !== "main.tsx")
+          .map(async (name) => [name, await readFile(join(path, name), "utf8")]),
+      ),
+    ),
+  };
+}
+
+const fixtures = (await readdir(join(root, "test/fixtures"), { withFileTypes: true })).filter(
+  (entry) => entry.isDirectory() || entry.name.endsWith(".tsx"),
 );
 
 const modules = [];
 
-for (const name of fixtures) {
-  const outcome = await compile(await readFile(join(root, "test/fixtures", name), "utf8"));
+for (const entry of fixtures) {
+  const { source, files } = await readFixture(entry);
+  const outcome = await compileCanvas(source, files);
+  const name = entry.name.replace(/\.tsx$/, "");
 
   if (outcome.kind !== "compiled")
     throw new Error(`${name} did not compile: ${JSON.stringify(outcome.errors)}`);
-  modules.push({
-    name: name.replace(/\.tsx$/, ""),
-    module: { runtime: outcome.runtime, code: outcome.code, title: name },
-  });
+  modules.push({ name, module: { runtime: outcome.runtime, code: outcome.code, title: name } });
 }
 
 const context = (theme) => ({
