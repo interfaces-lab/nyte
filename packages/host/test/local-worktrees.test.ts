@@ -173,7 +173,7 @@ describe.skipIf(!hasGit)("localWorktrees", () => {
 });
 
 describe.skipIf(!hasGit)("worktree isolation on a local host", () => {
-  it("runs a task's subagent in a worktree with the parent's uncommitted changes, keeps its edits out of the parent, and removes the worktree with the subagent", async () => {
+  it("runs a task's subagent in a worktree with the parent's uncommitted changes, keeps its edits out of the parent, and keeps the worktree with its changes listed after the subagent", async () => {
     const root = await repository();
     const home = await folder();
     await writeFile(join(root, "a.txt"), "one\nuncommitted\n");
@@ -271,8 +271,6 @@ describe.skipIf(!hasGit)("worktree isolation on a local host", () => {
     expect(provider.snapshots?.(await provider.attach(workspace.target))).toBeDefined();
     expect(await host.session(child.id).remove()).toEqual({ kind: "removed" });
     expect(await readFile(join(path, "note.txt"), "utf8")).toBe("from the subagent\n");
-    expect((await host.workspaces.list()).map((listed) => listed.id)).not.toContain(
-      child.workspace,
-    );
+    expect((await host.workspaces.list()).map((listed) => listed.id)).toContain(child.workspace);
   });
 });
