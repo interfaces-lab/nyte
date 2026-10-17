@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { isJsonObject, McpExposureNameType, McpOAuthConfigType } from "@nyte-ai/schema";
 import { isJson } from "@nyte-ai/schema";
@@ -10,7 +11,6 @@ import type {
   McpScope,
   ValidationIssue,
 } from "@nyte-ai/schema";
-import process from "node:process";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -279,15 +279,17 @@ function settings(
 }
 
 /**
- * Changes the `mcpServers` of one `mcp.json`, keeping the rest of the file:
- * `change` returns the new servers, or `null` when it has nothing to change.
- * A missing file starts empty; one that is not a JSON object is refused. The
- * file is replaced whole, readable only by the user, as it may hold secrets.
+ * Plans a change to the `mcpServers` of one `mcp.json`, keeping the rest of
+ * the file: `change` returns the new servers, or `null` when it has nothing
+ * to change. A missing file starts empty; one that is not a JSON object is
+ * refused. Nothing is written; pass the text to {@link writeMcpFile}.
  */
-export async function editMcpFile(
+export async function planMcpEdit(
   path: string,
   change: (servers: { readonly [name: string]: Json }) => { readonly [name: string]: Json } | null,
-): Promise<McpChange & { readonly text?: string }> {
+): Promise<
+  { readonly kind: "planned"; readonly text: string } | Exclude<McpChange, { kind: "updated" }>
+> {
   const contents = await readMcpFile(path);
 
   if (contents.kind === "unreadable")
@@ -311,11 +313,18 @@ export async function editMcpFile(
   const next = change(servers);
 
   if (next === null) return { kind: "missing" };
-  const text = `${JSON.stringify({ ...parsed, mcpServers: next }, null, 2)}\n`;
-  const temporary = `${path}.${String(process.pid)}.tmp`;
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(temporary, text, { mode: 0o600 });
-  await rename(temporary, path);
 
-  return { kind: "updated", text };
+  return { kind: "planned", text: `${JSON.stringify({ ...parsed, mcpServers: next }, null, 2)}\n` };
+}
+
+/**
+ * Replaces one `mcp.json` whole, readable only by the user as it may hold
+ * secrets. A symlinked file is written through the link.
+ */
+export async function writeMcpFile(path: string, text: string): Promise<void> {
+  const target = await realpath(path).catch(() => path);
+  const temporary = `${target}.${randomUUID()}.tmp`;
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(temporary, text, { mode: 0o600 });
+  await rename(temporary, target);
 }
