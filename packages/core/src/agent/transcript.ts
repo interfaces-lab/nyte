@@ -670,7 +670,7 @@ async function userContent(
         case "excerpt":
           return Promise.resolve({
             type: "text",
-            text: `<excerpt ${excerptAttributes(item.source)}>\n${item.text}\n</excerpt>`,
+            text: `<excerpt ${excerptAttributes(item.source)}>\n${fencedExcerpt(item.text)}\n</excerpt>`,
           });
       }
     }),
@@ -780,6 +780,11 @@ function excerptAttributes(source: ExcerptSource): string {
     case "browser":
       return `source="browser" ${attribute("url", source.url)} ${attribute("selector", source.selector)}`;
   }
+}
+
+/** An excerpt's text with every closing `</excerpt` (any case or spacing) broken as `<\/excerpt`, so text picked from a page or a terminal cannot end the excerpt and pose as the user's own words. */
+function fencedExcerpt(text: string): string {
+  return text.replaceAll(/<(\s*)\/(\s*excerpt)/gi, "<$1\\/$2");
 }
 
 function escapeAttribute(value: string): string {
