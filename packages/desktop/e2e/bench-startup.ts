@@ -97,7 +97,7 @@ const metricFields = [
     key: "hostRequests",
     label: "Host requests before composer",
     unit: "count",
-    budget: { fresh: 1, restored: 17, heavy: 17 },
+    budget: { fresh: 1, restored: 13, heavy: 13 },
   },
   { key: "mainHeapBytes", label: "Main JS heap", unit: "bytes", budget: every(18 * MIB) },
   {
