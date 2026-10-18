@@ -4,7 +4,7 @@
  * Each `relay-*.test.ts` file calls `withWorkerdRelay` for a broker of its own.
  */
 import { BROKER_ROUTES, EnrollResponse } from "@nyte-ai/connect";
-import { RELAY_REFUSALS, RELAY_RESPONSE_HEADER_NAMES } from "@nyte-ai/connect/relay";
+import { RELAY_REFUSALS, RELAY_RESPONSE_HEADER_NAMES, encodeChunks } from "@nyte-ai/connect/relay";
 import type { RelayRefusalCode } from "@nyte-ai/connect/relay";
 import { createProof, sha256 } from "@nyte-ai/connect/signing";
 import type { PrivateJwk } from "@nyte-ai/connect/signing";
@@ -174,6 +174,41 @@ export const settle = (ms = 300) => new Promise((resolve) => setTimeout(resolve,
  */
 export async function leftOpen(desktop: RelayDesktop): Promise<void> {
   while (desktop.socket.readyState === WebSocket.OPEN) await settle(50);
+}
+
+/**
+ * On Windows, aborting a dispatch before its response head leaves the
+ * harness's connection to local workerd open, so the Worker never sees the
+ * client leave; the mid-stream abort tests cover the same reset there.
+ */
+export const abortBeforeHeadKeepsSocket = process.platform === "win32";
+
+/**
+ * Local workerd notices that an HTTP client went away only when it next
+ * writes to it on Linux and Windows (macOS reports the peer's FIN at once), so
+ * the desktop keeps answering each channel until the relay resets it.
+ */
+export async function answerUntilReset(
+  desktop: RelayDesktop,
+  channels: readonly string[],
+  head: "send" | "sent",
+): Promise<void> {
+  const waiting = new Set(channels);
+  const data = encodeChunks(new TextEncoder().encode("data: more\n\n"))[0] ?? "";
+
+  if (head === "send")
+    for (const ch of waiting) desktop.send({ t: "head", ch, status: 200, headers: {} });
+  const resets = (async () => {
+    while (waiting.size > 0)
+      waiting.delete((await desktop.next("reset", (reset) => waiting.has(reset.ch))).ch);
+  })();
+
+  while (waiting.size > 0) {
+    for (const ch of waiting) desktop.send({ t: "data", ch, data });
+    await Promise.race([resets, settle(50)]);
+  }
+
+  await resets;
 }
 
 export async function waitFor(check: () => Promise<boolean>): Promise<void> {

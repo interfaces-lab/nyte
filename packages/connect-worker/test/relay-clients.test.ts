@@ -21,6 +21,8 @@ import {
   expectCors,
   broker,
   withWorkerdRelay,
+  abortBeforeHeadKeepsSocket,
+  answerUntilReset,
 } from "./relay-fixture.ts";
 
 withWorkerdRelay();
@@ -471,29 +473,29 @@ describe("phone requests", () => {
     expect(await wireError(await release())).toEqual(refused(403, "forbidden"));
   });
 
-  it("refuses past the channel limit with closed, and resets every abandoned channel", async () => {
-    const { environmentId, desktop, bearer } = await enrolled();
+  it.skipIf(abortBeforeHeadKeepsSocket)(
+    "refuses past the channel limit with closed, and resets every abandoned channel",
+    async () => {
+      const { environmentId, desktop, bearer } = await enrolled();
 
-    desktop.handler = undefined;
-    const aborts = Array.from({ length: RELAY_CHANNEL_LIMIT }, () => new AbortController());
-    const pending = aborts.map((abort) =>
-      phone({ environmentId, bearer }, "/head.view", { signal: abort.signal }).catch(
-        () => undefined,
-      ),
-    );
-    const opened = [];
+      desktop.handler = undefined;
+      const aborts = Array.from({ length: RELAY_CHANNEL_LIMIT }, () => new AbortController());
+      const pending = aborts.map((abort) =>
+        phone({ environmentId, bearer }, "/head.view", { signal: abort.signal }).catch(
+          () => undefined,
+        ),
+      );
+      const opened = [];
 
-    for (let index = 0; index < RELAY_CHANNEL_LIMIT; index += 1)
-      opened.push((await desktop.next("open")).ch);
-    expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
-      refused(503, "closed"),
-    );
+      for (let index = 0; index < RELAY_CHANNEL_LIMIT; index += 1)
+        opened.push((await desktop.next("open")).ch);
+      expect(await wireError(await phone({ environmentId, bearer }, "/sessions.list"))).toEqual(
+        refused(503, "closed"),
+      );
 
-    for (const abort of aborts) abort.abort();
-    await Promise.all(pending);
-    const reset = new Set<string>();
-
-    while (reset.size < opened.length) reset.add((await desktop.next("reset")).ch);
-    expect([...reset].sort()).toEqual([...opened].sort());
-  });
+      for (const abort of aborts) abort.abort();
+      await Promise.all(pending);
+      await answerUntilReset(desktop, opened, "send");
+    },
+  );
 });
