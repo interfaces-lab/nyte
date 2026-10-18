@@ -83,8 +83,7 @@ ${setup}
       `
 const { app, BrowserWindow } = require("electron");
 const { writeFileSync } = require("node:fs");
-process.stdin.on("close", () => app.exit(1));
-process.stdin.resume();
+setInterval(() => { try { process.kill(${process.pid}, 0); } catch { app.exit(1); } }, 1000).unref();
 app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: ${JSON.stringify(studio)},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });
