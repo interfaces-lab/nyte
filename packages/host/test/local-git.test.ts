@@ -481,7 +481,7 @@ describe.skipIf(!hasGit)("localGit", () => {
     await writeFile(
       wrapper,
       process.platform === "win32"
-        ? `@echo %*>> "${log}"\n@git %*\n`
+        ? `@node -e "require('node:fs').appendFileSync(process.argv[1], process.argv.slice(2).join(' ') + '\\n')" "${log}" %*\n@git %*\n`
         : `#!/bin/sh\necho "$*" >> '${log}'\nexec git "$@"\n`,
     );
     await chmod(wrapper, 0o755);

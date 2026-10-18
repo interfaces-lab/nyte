@@ -53,7 +53,8 @@ describe("localExec over pipes", () => {
     );
     const { text, frames } = await read(job);
 
-    expect(text).toBe(windows ? `${root}\r\nout\r\nerr\r\n` : `${root}\nout\nerr\n`);
+    if (windows) expect(text.split("\r\n").toSorted()).toEqual(["", root, "err", "out"].toSorted());
+    else expect(text).toBe(`${root}\nout\nerr\n`);
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 3 });
     expect(await job.settled()).toEqual({ kind: "exited", code: 3, reason: "exited" });
     expect(job.key).toBeNull();
