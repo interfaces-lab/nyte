@@ -44,7 +44,7 @@ test("public Copilot composition bundles and logs in without Node globals", asyn
         "test/fixtures/copilot-browser.ts",
         `--outfile=${output}`,
       ],
-      { stdio: "pipe" },
+      { stdio: "pipe", shell: process.platform === "win32" },
     );
     const transport = fakeFetch({
       [DEVICE]: () => deviceCode({ interval: 0.001 }),
