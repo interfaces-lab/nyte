@@ -177,6 +177,13 @@ export async function leftOpen(desktop: RelayDesktop): Promise<void> {
 }
 
 /**
+ * On Windows, aborting a dispatch before its response head leaves the
+ * harness's connection to local workerd open, so the Worker never sees the
+ * client leave; the mid-stream abort tests cover the same reset there.
+ */
+export const abortBeforeHeadKeepsSocket = process.platform === "win32";
+
+/**
  * Local workerd notices that an HTTP client went away only when it next
  * writes to it on Linux and Windows (macOS reports the peer's FIN at once), so
  * the desktop keeps answering each channel until the relay resets it.
