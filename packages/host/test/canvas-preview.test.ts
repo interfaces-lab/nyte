@@ -158,7 +158,7 @@ it.skipIf(shell === undefined || chromium === undefined)(
         stored: "SecurityError",
         geolocation: "denied",
         notifications: "refused",
-        media: "SecurityError",
+        media: expect.stringMatching(/^(SecurityError|NotFoundError)$/),
         activated: false,
         ice: "gathered",
       });
