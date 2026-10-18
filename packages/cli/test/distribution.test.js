@@ -12,13 +12,14 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 import { ensureBinary, platformTarget, releaseAssetName } from "../src/launcher.js";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const cli = join(repo, "packages/cli");
+const releaseTest = platformTarget() === undefined ? test.skip : test;
 
 /**
  * Writes a `curl` into `bin` that serves release files from `$FIXTURE_RELEASE` and returns `bin`.
@@ -78,10 +79,11 @@ test("npm pack ships a self-contained guide and working source examples", async 
         npm_config_userconfig: join(fixture, "npmrc"),
       },
       stdio: "pipe",
+      shell: process.platform === "win32",
     });
     const archive = (await readdir(fixture)).find((name) => name.endsWith(".tgz"));
     assert.ok(archive);
-    execFileSync("tar", ["-xzf", join(fixture, archive), "-C", fixture]);
+    execFileSync("tar", ["-xzf", archive], { cwd: fixture });
     const packed = join(fixture, "package");
     await checkDocs(packed);
     await checkDocs(join(packed, "docs"));
@@ -96,7 +98,7 @@ test("npm pack ships a self-contained guide and working source examples", async 
       mode: 0o755,
     });
     const options = {
-      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${fakeBin}${delimiter}${process.env.PATH}` },
       encoding: "utf8",
       input: "",
     };
@@ -121,86 +123,96 @@ test("npm pack ships a self-contained guide and working source examples", async 
   }
 }, 30_000);
 
-test("native assembly, npm cache, and installer retain matching docs without network access", async () => {
-  const fixture = await mkdtemp(join(tmpdir(), "nyte-native-pack-"));
-  try {
-    const binary = join(fixture, "fixture-binary");
-    await writeFile(binary, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-    const output = join(fixture, "release");
-    const target = platformTarget();
-    assert.ok(target);
-    execFileSync("sh", [join(repo, "scripts/assemble-release.sh"), binary, output, target]);
-    const metadata = JSON.parse(await readFile(join(cli, "package.json"), "utf8"));
-    const asset = releaseAssetName(metadata.version, target);
-    const archive = join(output, `${asset}.tar.gz`);
-    execFileSync("tar", ["-xzf", archive, "-C", output]);
-    assert.equal((await readFile(join(output, "VERSION"), "utf8")).trim(), metadata.version);
-    await checkDocs(join(output, "docs"));
-    assert.equal(await readFile(join(output, "nyte"), "utf8"), await readFile(binary, "utf8"));
-    execFileSync("shasum", ["-a", "256", "-c", `${asset}.tar.gz.sha256`], { cwd: output });
+releaseTest(
+  "native assembly, npm cache, and installer retain matching docs without network access",
+  async () => {
+    const fixture = await mkdtemp(join(tmpdir(), "nyte-native-pack-"));
+    try {
+      const binary = join(fixture, "fixture-binary");
+      await writeFile(binary, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      const output = join(fixture, "release");
+      const target = platformTarget();
+      assert.ok(target);
+      execFileSync("sh", [join(repo, "scripts/assemble-release.sh"), binary, output, target]);
+      const metadata = JSON.parse(await readFile(join(cli, "package.json"), "utf8"));
+      const asset = releaseAssetName(metadata.version, target);
+      const archive = join(output, `${asset}.tar.gz`);
+      execFileSync("tar", ["-xzf", archive, "-C", output]);
+      assert.equal((await readFile(join(output, "VERSION"), "utf8")).trim(), metadata.version);
+      await checkDocs(join(output, "docs"));
+      assert.equal(await readFile(join(output, "nyte"), "utf8"), await readFile(binary, "utf8"));
+      execFileSync("shasum", ["-a", "256", "-c", `${asset}.tar.gz.sha256`], { cwd: output });
 
-    const cachedBinary = await ensureBinary({
-      root: join(fixture, "cache"),
-      version: metadata.version,
-      fetchFn: async (url) =>
-        new Response(await readFile(join(output, new URL(url).pathname.split("/").pop()))),
-    });
-    await checkDocs(join(dirname(cachedBinary), "docs"));
+      const cachedBinary = await ensureBinary({
+        root: join(fixture, "cache"),
+        version: metadata.version,
+        fetchFn: async (url) =>
+          new Response(await readFile(join(output, new URL(url).pathname.split("/").pop()))),
+      });
+      await checkDocs(join(dirname(cachedBinary), "docs"));
 
-    const fakeBin = await fakeCurl(join(fixture, "fake-bin"));
-    const installDir = join(fixture, "custom prefix/bin");
-    const installed = execFileSync(
-      "sh",
-      [
-        join(repo, "packages/docs/public/install"),
-        "--version",
-        metadata.version,
-        "--no-modify-path",
-      ],
-      {
-        env: {
-          ...process.env,
-          PATH: `${fakeBin}:${process.env.PATH}`,
-          FIXTURE_RELEASE: output,
-          NYTE_INSTALL_DIR: installDir,
-          GITHUB_ACTIONS: "false",
+      const fakeBin = await fakeCurl(join(fixture, "fake-bin"));
+      const installDir = join(fixture, "custom prefix/bin");
+      const installed = execFileSync(
+        "sh",
+        [
+          join(repo, "packages/docs/public/install"),
+          "--version",
+          metadata.version,
+          "--no-modify-path",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+            FIXTURE_RELEASE: output,
+            NYTE_INSTALL_DIR: installDir,
+            GITHUB_ACTIONS: "false",
+          },
+          encoding: "utf8",
         },
-        encoding: "utf8",
-      },
-    );
-    const docs = resolve(installDir, "../share/nyte", metadata.version, "docs");
-    await checkDocs(docs);
-    assert.equal(await readFile(join(installDir, "nyte"), "utf8"), await readFile(binary, "utf8"));
-    assert.ok(installed.includes(`/share/nyte/${metadata.version}/docs/README.md`));
-    await writeFile(join(installDir, "nyte"), "existing executable\n");
-    await writeFile(join(output, `${asset}.tar.gz.sha256`), `${"0".repeat(64)}  ${asset}.tar.gz\n`);
-    const rejected = spawnSync(
-      "sh",
-      [
-        join(repo, "packages/docs/public/install"),
-        "--version",
-        metadata.version,
-        "--no-modify-path",
-      ],
-      {
-        env: {
-          ...process.env,
-          PATH: `${fakeBin}:${process.env.PATH}`,
-          FIXTURE_RELEASE: output,
-          NYTE_INSTALL_DIR: installDir,
-          GITHUB_ACTIONS: "false",
+      );
+      const docs = resolve(installDir, "../share/nyte", metadata.version, "docs");
+      await checkDocs(docs);
+      assert.equal(
+        await readFile(join(installDir, "nyte"), "utf8"),
+        await readFile(binary, "utf8"),
+      );
+      assert.ok(installed.includes(`/share/nyte/${metadata.version}/docs/README.md`));
+      await writeFile(join(installDir, "nyte"), "existing executable\n");
+      await writeFile(
+        join(output, `${asset}.tar.gz.sha256`),
+        `${"0".repeat(64)}  ${asset}.tar.gz\n`,
+      );
+      const rejected = spawnSync(
+        "sh",
+        [
+          join(repo, "packages/docs/public/install"),
+          "--version",
+          metadata.version,
+          "--no-modify-path",
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+            FIXTURE_RELEASE: output,
+            NYTE_INSTALL_DIR: installDir,
+            GITHUB_ACTIONS: "false",
+          },
+          encoding: "utf8",
         },
-        encoding: "utf8",
-      },
-    );
-    assert.notEqual(rejected.status, 0);
-    assert.ok(!rejected.stdout.includes("Installed nyte"));
-    assert.equal(await readFile(join(installDir, "nyte"), "utf8"), "existing executable\n");
-    await checkDocs(docs);
-  } finally {
-    await rm(fixture, { recursive: true, force: true });
-  }
-}, 30_000);
+      );
+      assert.notEqual(rejected.status, 0);
+      assert.ok(!rejected.stdout.includes("Installed nyte"));
+      assert.equal(await readFile(join(installDir, "nyte"), "utf8"), "existing executable\n");
+      await checkDocs(docs);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);
 
 async function installerFixture(fixture) {
   const binary = join(fixture, "fixture-binary");
@@ -253,7 +265,7 @@ esac
   };
 }
 
-test.each(["blocked share", "docs symlink", "document symlink", "conflicting document"])(
+releaseTest.each(["blocked share", "docs symlink", "document symlink", "conflicting document"])(
   "installer preserves the executable and outside bytes with %s",
   async (obstacle) => {
     const fixture = await mkdtemp(join(tmpdir(), "nyte-install-reject-"));
@@ -300,24 +312,28 @@ test.each(["blocked share", "docs symlink", "document symlink", "conflicting doc
   30_000,
 );
 
-test("installer appends PATH once and respects --no-modify-path in an isolated HOME", async () => {
-  const fixture = await mkdtemp(join(tmpdir(), "nyte-install-path-"));
-  try {
-    const installer = await installerFixture(fixture);
-    const sentinel = "# shell rc sentinel\n";
-    await writeFile(installer.rc, sentinel);
-    const first = installer.run();
-    assert.equal(first.status, 0, first.stderr);
-    const expected = `${sentinel}\n# nyte\nexport PATH="${installer.installDir}:$PATH"\n`;
-    assert.equal(await readFile(installer.rc, "utf8"), expected);
-    const rerun = installer.run();
-    assert.equal(rerun.status, 0, rerun.stderr);
-    assert.equal(await readFile(installer.rc, "utf8"), expected);
-    await writeFile(installer.rc, sentinel);
-    const skipped = installer.run("--no-modify-path");
-    assert.equal(skipped.status, 0, skipped.stderr);
-    assert.equal(await readFile(installer.rc, "utf8"), sentinel);
-  } finally {
-    await rm(fixture, { recursive: true, force: true });
-  }
-}, 30_000);
+releaseTest(
+  "installer appends PATH once and respects --no-modify-path in an isolated HOME",
+  async () => {
+    const fixture = await mkdtemp(join(tmpdir(), "nyte-install-path-"));
+    try {
+      const installer = await installerFixture(fixture);
+      const sentinel = "# shell rc sentinel\n";
+      await writeFile(installer.rc, sentinel);
+      const first = installer.run();
+      assert.equal(first.status, 0, first.stderr);
+      const expected = `${sentinel}\n# nyte\nexport PATH="${installer.installDir}:$PATH"\n`;
+      assert.equal(await readFile(installer.rc, "utf8"), expected);
+      const rerun = installer.run();
+      assert.equal(rerun.status, 0, rerun.stderr);
+      assert.equal(await readFile(installer.rc, "utf8"), expected);
+      await writeFile(installer.rc, sentinel);
+      const skipped = installer.run("--no-modify-path");
+      assert.equal(skipped.status, 0, skipped.stderr);
+      assert.equal(await readFile(installer.rc, "utf8"), sentinel);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);
