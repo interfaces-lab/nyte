@@ -35,6 +35,8 @@ const PAGE_TWO = `<!doctype html><meta charset="utf-8"><title>page two</title>
 `;
 
 const HARNESS = `const { app, BaseWindow, WebContentsView, session } = require("electron");
+process.stdin.on("close", () => app.exit(1));
+process.stdin.resume();
 const http = require("node:http");
 const fs = require("node:fs");
 const rt = require("./runtime.cjs");
@@ -151,7 +153,7 @@ test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
         const child = spawn(
           electronPath,
           [join(dir, "harness.js"), "--use-mock-keychain", "--password-store=basic"],
-          { stdio: ["ignore", "pipe", "ignore"] },
+          { stdio: ["pipe", "pipe", "ignore"] },
         );
 
         let stdout = "";

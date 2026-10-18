@@ -1,15 +1,3 @@
-/**
- * The side chat: questions beside the pull request, drawn with the app's own
- * conversation parts (TurnView with its working groups, ComposerFrame). It
- * is not a place and is never saved as a chat; the toolbar's Ask opens it on
- * every view.
- *
- * A thread is demo or live. Live, a question goes to a fork of the guide's
- * brief, cut by the thread's first question, so it starts from everything
- * the guide read; a change goes to Nyte on the branch. Demo plays a scripted
- * turn instead and calls no model. A CSS animation paces it, so nothing here
- * needs a timer.
- */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import { useRef, useState, type ReactElement } from "react";
 import type { ComposerSubmission } from "@nyte-ai/app/conversation/composer-document.ts";
@@ -20,9 +8,7 @@ import type {
 import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { composerStyles } from "@nyte-ai/app/conversation/composer.stylex.ts";
-import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
-import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -30,6 +16,7 @@ import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { TurnRows } from "../shell/turn-rows";
 import { useAsk, useChange, useRepo, useSideThread } from "./api";
 import {
   PART_MS,
@@ -43,8 +30,6 @@ import {
 import type { GuideWriting } from "./guide";
 import { useReviewState } from "./review-state";
 import type { ReviewDetail } from "./wire";
-
-const NO_TURNS: readonly ConversationTurn[] = [];
 
 const NO_SUGGESTIONS = {
   status: "ready",
@@ -170,14 +155,11 @@ export function SideChat({
             </div>
           )}
           {turns.map((turn, index) => (
-            <TurnView
+            <TurnRows
               key={turn.info.id}
               turn={turn}
-              continuations={NO_TURNS}
               density={density}
               cwd={root}
-              changes={[]}
-              onOpenChanges={() => {}}
               running={running && index === turns.length - 1}
             />
           ))}
@@ -275,7 +257,6 @@ const styles = create({
     paddingInline: "16px 8px",
   },
   title: { flex: 1, color: role.contentPrimary, fontSize: type.fontSm, fontWeight: 600 },
-  // Reversed, so the newest message stays in view as turns arrive and nothing has to scroll it there.
   scroller: {
     display: "flex",
     flexDirection: "column-reverse",
@@ -299,7 +280,6 @@ const styles = create({
     fontSize: type.fontSm,
     textWrap: "pretty",
   },
-  // The demo's clock: each run of this invisible animation lets the next part of the scripted turn land.
   pacer: (ms: number) => ({
     position: "absolute",
     opacity: 0,

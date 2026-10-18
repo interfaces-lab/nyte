@@ -22,7 +22,6 @@ import type {
 
 type LinkState = HostView["link"];
 
-/** A wait query, or a replayed operation whose input names its own id, so a retry is the same request. */
 type RetryName = {
   [N in OperationName]: Declarations[N] extends { readonly wait: true }
     ? N
@@ -44,6 +43,7 @@ export interface Link {
 
 export interface Rows {
   readonly link: Link;
+  operations(): string | null;
   call<N extends CallName>(
     name: N,
     input: OperationInput<N>,
@@ -162,6 +162,7 @@ export function createRows(transport: Transport, link: Link): Rows {
 
   return {
     link,
+    operations: () => transport.operations(),
     call,
     async wait(name, input, options) {
       for (let attempts = 1; ; attempts += 1) {
@@ -203,11 +204,7 @@ export function createRows(transport: Transport, link: Link): Rows {
         link.signal,
       ),
     watch: (name, input, opened) =>
-      through(
-        resumable(transport, link, name, encodeInput(name, input), opened),
-        (frame) => decoded(name, frame),
-        link.signal,
-      ),
+      resumable(transport, link, name, encodeInput(name, input), opened),
     output: (input) =>
       through(
         transport.output(encodeInput("job.output", input)),
@@ -217,19 +214,19 @@ export function createRows(transport: Transport, link: Link): Rows {
   };
 }
 
-/** Returns a watch's frames across link losses: each loss reports the link and reopens the watch after a backoff, and its first frame restores the link; the host answers a reopened watch from its current state. */
-function resumable(
+function resumable<N extends OperationName>(
   transport: Transport,
   link: Link,
-  name: OperationName,
+  name: N,
   input: Json,
   opened: AsyncIterator<Json> | undefined,
-): AsyncIterable<Json> {
-  return closable<Json>(() => {
+): AsyncIterable<OperationOutput<N>> {
+  return closable<OperationOutput<N>>(() => {
     const stop = new AbortController();
     const signal = AbortSignal.any([stop.signal, link.signal]);
     let frames: AsyncIterator<Json> | null = opened ?? null;
     let attempts = 0;
+    let reopened = false;
 
     const release = (): void => {
       void frames?.return?.();
@@ -270,8 +267,25 @@ function resumable(
             }
 
             attempts = 0;
+            const value = decoded(name, next.value);
 
-            return next;
+            if (value !== null) {
+              reopened = false;
+
+              return { done: false, value: value.value };
+            }
+
+            if (reopened)
+              throw new SdkError(
+                "invalid",
+                `The host sends ${name} frames this client cannot read.`,
+              );
+            reopened = true;
+            frames = null;
+            void current.return?.();
+            dev("sdk", "watch reopened", { name });
+
+            continue;
           }
 
           frames = null;

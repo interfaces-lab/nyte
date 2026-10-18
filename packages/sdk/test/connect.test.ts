@@ -4,7 +4,7 @@ import { TOKEN, composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Connection } from "@nyte-ai/core";
 import { listenFetch } from "@nyte-ai/host";
-import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
+import { chatOnly, fakeModels } from "@nyte-ai/bench";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { connect } from "../src/connect.ts";
 import { createSendJournal } from "../src/journal.ts";

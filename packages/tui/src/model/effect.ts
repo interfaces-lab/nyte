@@ -20,6 +20,9 @@ import type { QuestionTypedDraft, Selection, Submission } from "./state.ts";
 /** What `/mcp` can do to one server besides signing in. */
 export type McpAction = "reconnect" | "enable" | "disable" | "logout";
 
+/** When a folder's trust question is asked: `always` (`/trust`, even when decided), `if-needed` (a folder the chat moved to, undecided, in the chat) or `at-launch` (the folder the TUI opened in, undecided, on the whole screen before the chat). */
+export type TrustAsk = "always" | "if-needed" | "at-launch";
+
 export type Effect =
   | {
       readonly kind: "select-account";
@@ -110,7 +113,7 @@ export type Effect =
       readonly kind: "run-command";
       readonly session: SessionId;
       readonly name: string;
-      readonly argument: string | null;
+      readonly argument: string;
       readonly delivery: Delivery;
     }
   | {
@@ -143,7 +146,7 @@ export type Effect =
   | {
       readonly kind: "check-trust";
       readonly workspace: WorkspaceId;
-      readonly ask: "always" | "if-needed";
+      readonly ask: TrustAsk;
     }
   | {
       readonly kind: "set-trust";
@@ -154,6 +157,12 @@ export type Effect =
   | { readonly kind: "login-answer"; readonly dialog: DialogId; readonly answer: string | null }
   | { readonly kind: "read-preview"; readonly marker: string; readonly path: string }
   | { readonly kind: "list-directory"; readonly path: string; readonly cwd: string }
+  | {
+      readonly kind: "complete-command";
+      readonly session: SessionId;
+      readonly name: string;
+      readonly prefix: string;
+    }
   | { readonly kind: "resolve-mention"; readonly query: string; readonly cwd: string };
 
 type ComposerOp =

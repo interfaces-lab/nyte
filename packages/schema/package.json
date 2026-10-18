@@ -20,7 +20,22 @@
     "./serial": "./src/serial.ts"
   },
   "publishConfig": {
-    "access": "public"
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "import": "./dist/src/index.js"
+      },
+      "./model": {
+        "types": "./dist/src/model/index.d.ts",
+        "import": "./dist/src/model/index.js"
+      },
+      "./serial": {
+        "types": "./dist/src/serial.d.ts",
+        "import": "./dist/src/serial.js"
+      }
+    },
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -36,7 +51,7 @@
     "@cfworker/json-schema": "4.1.1",
     "@types/node": "^26.6.5",
     "typescript": "6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=26.4.0"

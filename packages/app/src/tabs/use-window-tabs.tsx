@@ -1,8 +1,3 @@
-/**
- * The window tabs meet the rest of the app here: the route and the active
- * tab's focused place agree, the host's current folder follows the focused
- * chat, and the strip reads its items from the session directory.
- */
 import { useRouter } from "@tanstack/react-router";
 import { useMemo, useSyncExternalStore } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/sdk";
@@ -32,15 +27,6 @@ export function useWindowTabsState(): WindowState {
   return useSyncExternalStore(windowTabs.subscribe, windowTabs.getSnapshot, windowTabs.getSnapshot);
 }
 
-/**
- * Asks the host to select the restored active tab's chat folder for this
- * window. The first frame already shows the folder the last run recorded for
- * that chat; the host's answer confirms it, or corrects it when the folder is
- * gone or awaits trust. The host reads the chat's folder from its own store
- * and announces nothing, so the workbench takes the folder without the reload
- * a `workspace_opened` event runs. Absent on the web, which keeps no folder
- * per window.
- */
 async function restoreChatFolder(): Promise<void> {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
 
@@ -48,16 +34,6 @@ async function restoreChatFolder(): Promise<void> {
   queryClient.setQueryData(keys.host, await nyte.host.restore({ session: place.sessionId }));
 }
 
-/**
- * The active tab's focused place and the route agree. A tab change moves the
- * route; a route reached on its own (a typed or restored URL, browser Back,
- * Settings opening Environments, the startup chat) becomes the tab's place.
- * The route's place on mount wins, so the web's URL opens what it names. The
- * focused chat's folder becomes current, once the session directory and the
- * workspaces it names have loaded (a chat restored at launch is focused before
- * they land); switches run one at a time and only the latest, so a fast ⌃Tab
- * ends on its last folder.
- */
 export function useWindowTabsSync(): void {
   const router = useRouter();
 
@@ -119,7 +95,7 @@ export function useWindowTabsSync(): void {
     follow();
     const unsubscribeRouter = router.subscribe("onResolved", adopt);
     const unsubscribeTabs = windowTabs.subscribe(follow);
-    const unsubscribeDirectory = directoryWatch("all").subscribe(follow);
+    const unsubscribeDirectory = directoryWatch("roots").subscribe(follow);
 
     const unsubscribeWorkspaces = queryClient.getQueryCache().subscribe((event) => {
       if (event.query.queryKey[0] === keys.workspaces[0]) follow();
@@ -158,7 +134,6 @@ function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>)
   }
 }
 
-/** The strip's items: titles, status marks and unread dots from the session directory. */
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
   const directory = useWorkspaceSessionDirectory();
   const working = useWorkingSessionIds();

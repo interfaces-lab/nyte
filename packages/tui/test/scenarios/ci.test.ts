@@ -8,7 +8,8 @@ import {
   ciScript,
   fakeModels,
   formatWaterfall,
-} from "@nyte-ai/host/bench";
+  simulate,
+} from "@nyte-ai/bench";
 import { clearSpans, enableTracing } from "@nyte-ai/sdk/client";
 import { shellPort } from "../../src/effects/local-ports.ts";
 import { followedSession } from "../../src/model/state.ts";
@@ -18,7 +19,6 @@ import {
   framedCells,
   lastTrace,
   machineLoad,
-  openScenarioHost,
   overBudget,
   round,
   saveFrame,
@@ -36,10 +36,6 @@ const run = promisify(execFile);
 
 const SIZE = { width: 120, height: 48 } as const;
 
-/**
- * Runs `command` as a private `!!` command. The transcript places it among turns by its start on
- * the TUI's clock, which the harness holds still, so the clock first moves to the host's wall time.
- */
 async function runLocally(tui: Tui, command: string): Promise<void> {
   tui.clock.setTime(Date.now());
   await tui.send(`!!${command}`);
@@ -54,7 +50,11 @@ test("scenario D from the keyboard: CI MCP log tail, canvas, test, fix, rerun, t
   await using home = await ciHome({ route: "mcp" });
   const turns = ciScript({ skill: home.skills["ci-triage"] ?? "", route: "mcp" });
   const fake = fakeModels({ fallback: turns.answer });
-  await using scenario = await openScenarioHost({ fake, home: home.home, workspace: repo.root });
+  await using scenario = await simulate({
+    models: fake.models,
+    home: home.home,
+    workspace: repo.root,
+  });
 
   await using tui = await startTui({
     host: scenario.host,

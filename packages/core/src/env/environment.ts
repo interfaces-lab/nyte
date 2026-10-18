@@ -132,11 +132,16 @@ export function createEnvironmentRegistry(kernel: Kernel): EnvironmentRegistry {
   const attaching = (session: SessionId): Promise<Attachment> => {
     const slot = ensureSessionSlot(session);
 
-    slot.attaching ??= requireSession(kernel.store, session).then((found) =>
+    if (slot.attaching !== null) return slot.attaching;
+    const started = requireSession(kernel.store, session).then((found) =>
       open(found.record.workspace, { session }, slot),
     );
+    slot.attaching = started;
+    started.catch(() => {
+      if (slot.attaching === started) slot.attaching = null;
+    });
 
-    return slot.attaching;
+    return started;
   };
 
   const attachingWorkspace = (workspace: WorkspaceId): Promise<Attachment> => {

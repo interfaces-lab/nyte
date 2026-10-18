@@ -252,17 +252,30 @@ function records(from: number): fc.Arbitrary<Entry> {
         return entry("principals", "host/principals", legacy, time);
       }),
     fc
-      .tuple(ID, body("workspace"), at)
-      .map(([id, value, time]) =>
-        entry(
+      .tuple(
+        ID,
+        body("workspace"),
+        at,
+        fc.option(fc.constantFrom("/work/a", "/work/a/", "/work/a/b", "/work/c"), {
+          nil: null,
+        }),
+        older(from, 6) ? fc.boolean() : fc.constantFrom(true, false, null),
+      )
+      .map(([id, value, time, folder, trusted]) => {
+        const placed =
+          folder === null ? value : { ...value, target: { kind: "local", path: folder } };
+
+        const legacy = older(from, 16)
+          ? Object.fromEntries(Object.entries(placed).filter(([key]) => key !== "isolation"))
+          : placed;
+
+        return entry(
           "workspace",
           `workspaces/${id}`,
-          older(from, 16)
-            ? Object.fromEntries(Object.entries(value).filter(([key]) => key !== "isolation"))
-            : value,
+          older(from, 19) ? { ...legacy, projectResources: trusted } : legacy,
           time,
-        ),
-      ),
+        );
+      }),
     fc
       .tuple(ID, ID, body("commit"), at)
       .map(([session, head, value, time]) =>

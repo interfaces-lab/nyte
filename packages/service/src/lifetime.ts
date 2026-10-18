@@ -1,22 +1,16 @@
 import { execFile } from "node:child_process";
 import process from "node:process";
-import type { Attachment, Busy, ServiceClient } from "./routes.ts";
+import { buildOperations } from "./build.ts";
+import type { Attachment, Busy, Handoff, ServiceClient } from "./routes.ts";
 
-/**
- * How long the service runs with no attached client before it stops: five minutes. Long
- * enough that quitting and relaunching `nyte`, `nyte update`, or a script running one
- * command after another reuses the warm host instead of paying its cold start (store,
- * plugins, MCP servers) each time; short enough that a service nobody uses is gone within
- * minutes rather than running for days on old code.
- */
+const encoder = new TextEncoder();
+
 export const IDLE_GRACE_MS = 5 * 60_000;
 
-/** Schedules the idle checks: `wait` calls `callback` after `ms` and returns what cancels it. */
 export interface Timers {
   wait(callback: () => void, ms: number): () => void;
 }
 
-/** When the service stops on its own: after `grace` ms with no attached client and no work, it calls `idle`. */
 export interface LifetimeOptions {
   readonly grace: number;
   readonly timers: Timers;
@@ -31,22 +25,15 @@ export const REAL_TIMERS: Timers = {
   },
 };
 
-/** The default stop: SIGTERM to the service's own process, the signal `nyte service stop` sends, so `nyte service run` shuts down the way it does then. */
 export function terminate(): void {
   process.kill(process.pid, "SIGTERM");
 }
 
-/**
- * Counts the client processes attached to the service and stops it once none has been
- * attached for the grace period, unless `staying` reports a reason to stay (the service
- * installed, Connect linked) or `working` a run driving or a job alive, in which case it
- * checks again a grace period later.
- */
 export class Lifetime {
   readonly #options: LifetimeOptions;
   readonly #working: () => Promise<boolean>;
   readonly #staying: () => Promise<boolean>;
-  readonly #attached = new Set<Attachment>();
+  readonly #attached = new Map<Attachment, (handoff: Handoff) => void>();
   #cancel: (() => void) | undefined;
   #ended = false;
 
@@ -61,7 +48,6 @@ export class Lifetime {
     this.#arm();
   }
 
-  /** Holds `attachment` until the client's connection ends, which the returned stream's cancel or `signal` reports. */
   attach(attachment: Attachment, signal: AbortSignal): Response {
     const entry = { ...attachment };
     let released = false;
@@ -74,35 +60,47 @@ export class Lifetime {
       if (this.#attached.size === 0) this.#arm();
     };
 
-    this.#attached.add(entry);
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this.#attached.set(entry, (handoff) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(handoff)}\n`));
+          controller.close();
+          release();
+        });
+      },
+      cancel: release,
+    });
+
     this.#cancel?.();
     this.#cancel = undefined;
     signal.addEventListener("abort", release, { once: true });
 
-    return new Response(new ReadableStream<Uint8Array>({ cancel: release }), {
+    return new Response(body, {
       headers: { "Content-Type": "application/x-ndjson", "Cache-Control": "no-store" },
     });
   }
 
-  /** Lists the attached clients with each one's terminal. */
   async clients(): Promise<readonly ServiceClient[]> {
-    const attached = [...this.#attached];
+    const attached = [...this.#attached.keys()];
     const terminals = await terminalsByPid(attached.map((entry) => entry.pid));
 
     return attached.map((entry) => ({ ...entry, tty: terminals.get(entry.pid) ?? null }));
   }
 
-  /**
-   * Stops the service for a client of another build, unless a client other than process
-   * `caller` is attached or `working` reports work; then it keeps running and returns why.
-   * The stop waits a tick so the caller's response is written first.
-   */
-  async retire(caller: number): Promise<Busy | undefined> {
-    const others = (): number => [...this.#attached].filter((entry) => entry.pid !== caller).length;
-    const working = others() === 0 && (await this.#working().catch(() => true));
+  async retire(caller: number, takeover?: string): Promise<Busy | undefined> {
+    const holding = (): number =>
+      [...this.#attached.keys()].filter(
+        (entry) =>
+          entry.pid !== caller &&
+          !(takeover !== undefined && entry.follows && buildOperations(entry.build) === takeover),
+      ).length;
 
-    if (others() > 0 || working) return { clients: others(), working };
+    const working = holding() === 0 && (await this.#working().catch(() => true));
 
+    if (holding() > 0 || working) return { clients: holding(), working };
+
+    if (takeover !== undefined)
+      for (const hand of this.#attached.values()) hand({ kind: "retiring", to: "desktop" });
     this.close();
     this.#options.timers.wait(this.#options.idle, 0);
 
@@ -143,7 +141,6 @@ export class Lifetime {
   }
 }
 
-/** Reads each pid's controlling terminal from `ps`; a pid without one, a gone pid, or a failed `ps` has no entry. */
 async function terminalsByPid(pids: readonly number[]): Promise<ReadonlyMap<number, string>> {
   if (pids.length === 0) return new Map();
 

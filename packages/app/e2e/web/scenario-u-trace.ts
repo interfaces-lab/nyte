@@ -3,30 +3,18 @@ import { join } from "node:path";
 import process from "node:process";
 import { expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { buildWaterfall, formatWaterfall } from "@nyte-ai/host/bench";
-import type { SpanSource, Waterfall, WaterfallRow } from "@nyte-ai/host/bench";
+import { buildWaterfall, formatWaterfall } from "@nyte-ai/bench";
+import type { SpanSource, Waterfall, WaterfallRow } from "@nyte-ai/bench";
 import { SPAN_NAMES } from "@nyte-ai/sdk";
 import type { Span } from "@nyte-ai/sdk";
 
-/** Where the suites run scenario U: the Electron app, or the web app over HTTP. */
 export type Surface = "desktop" | "web";
 
-/** One hop of scenario U: the code that times it and its budget on each surface. */
 interface Hop {
   readonly site: string;
   readonly budget: Readonly<Record<Surface, number>>;
 }
 
-/**
- * Scenario U's hops, keyed by span name and, where one name times several
- * things, the tool or part it served. Each budget is the hop's p95 over five
- * measured runs plus 25%, rounded up to 5 ms, desktop then web; a hop measured in single milliseconds
- * gets 25 ms, since a 10 ms budget missed on scheduler noise alone. The
- * submit's first three hops time sessions.start, which starts the chat with
- * its first message, and were measured again with canvas_render once the
- * canvas compiled as a module graph.
- * `tool.run:question` is the user's answer and has no budget.
- */
 export const HOPS: ReadonlyMap<string, Hop> = new Map([
   ["composer.submit", hop("app/src/conversation/composer-send.ts:startComposerChat", 55, 50)],
   ["sdk.send", hop("sdk/src/client.ts:sessions.start", 55, 50)],
@@ -35,7 +23,7 @@ export const HOPS: ReadonlyMap<string, Hop> = new Map([
   ["model.stream", hop("core/src/agent/turn.ts:stream", 200, 160)],
   ["mcp.connect", hop("host/src/mcp/hub.ts:connectTraced", 825, 555)],
   ["mcp.call:search_places", hop("host/src/mcp/tools.ts:execute", 80, 70)],
-  ["mcp.serve", hop("host/src/bench/scenarios/mcp-server.mjs:serve", 70, 65)],
+  ["mcp.serve", hop("bench/src/scenarios/mcp-server.mjs:serve", 70, 65)],
   ["tool.run:read", hop("core/src/agent/turn.ts:execute", 25, 25)],
   ["tool.run:mcp__places__search_places", hop("core/src/agent/turn.ts:execute", 110, 70)],
   ["tool.run:canvas_render", hop("core/src/agent/turn.ts:execute", 30, 35)],
@@ -52,10 +40,8 @@ function hop(site: string, desktop: number, web: number): Hop {
   return { site, budget: { desktop, web } };
 }
 
-/** The hops a user's own time spans, which no budget covers. */
 const USER_PACED = new Set(["tool.run:question"]);
 
-/** Focuses `target` with Tab (Shift+Tab when `backward`), as a keyboard user reaches it. */
 export async function tabTo(target: Locator, backward = false, limit = 60): Promise<void> {
   const page = target.page();
 
@@ -71,7 +57,6 @@ export async function tabTo(target: Locator, backward = false, limit = 60): Prom
   throw new Error(`Tab never reached ${String(target)}.`);
 }
 
-/** The trace spans this page's renderer recorded (tracing on through localStorage `NYTE_TRACE`). */
 export async function readRendererSpans(page: Page): Promise<readonly Span[]> {
   const entries = await page.evaluate(() =>
     performance.getEntriesByType("measure").map((entry) => ({
@@ -117,7 +102,6 @@ export async function readRendererSpans(page: Page): Promise<readonly Span[]> {
   });
 }
 
-/** The trace of the page's last submit: the receipt id `composer.submit` ran under. */
 export function submitTrace(spans: readonly Span[]): string {
   const trace = spans.findLast((span) => span.name === "composer.submit")?.trace;
 
@@ -134,7 +118,6 @@ function hopKey(row: WaterfallRow): string {
   return HOPS.has(narrow) || USER_PACED.has(narrow) ? narrow : row.name;
 }
 
-/** Each hop's longest span on `waterfall`: the submit's own, and the untraced `mcp.connect` it waited on; user-paced hops and other untraced spans (the user's terminal) left out. */
 export function hopDurations(waterfall: Waterfall): Readonly<Record<string, number>> {
   const longest: Record<string, number> = {};
 
@@ -148,7 +131,6 @@ export function hopDurations(waterfall: Waterfall): Readonly<Record<string, numb
   return longest;
 }
 
-/** Fails naming every hop of `waterfall` over its `surface` budget, and every budgeted hop it lacks. */
 export function expectWithinBudgets(waterfall: Waterfall, surface: Surface): void {
   const measured = hopDurations(waterfall);
 
@@ -165,7 +147,6 @@ export function expectWithinBudgets(waterfall: Waterfall, surface: Surface): voi
   expect(over, `scenario U hops over their ${surface} budget`).toEqual([]);
 }
 
-/** What one scenario U run leaves for the evidence: its wall time, hops and waterfall. */
 export interface ScenarioRun {
   readonly surface: Surface;
   readonly wallMs: number;
@@ -174,7 +155,6 @@ export interface ScenarioRun {
   readonly facts: Readonly<Record<string, unknown>>;
 }
 
-/** Lines up `trace` across `sources` and, when `NYTE_SCENARIO_U_OUT` names a folder, writes the run there as `<surface>-<time>.json` with its text waterfall. */
 export async function recordRun(input: {
   readonly surface: Surface;
   readonly trace: string;
@@ -204,7 +184,6 @@ export async function recordRun(input: {
   return run;
 }
 
-/** The lines of a transcript's aria snapshot through the row `last` names: the frames a quit cannot change. */
 export function settledFrames(snapshot: string, last: RegExp): string {
   const lines = snapshot.split("\n");
   const end = lines.findIndex((line) => last.test(line));

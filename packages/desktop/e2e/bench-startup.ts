@@ -23,22 +23,6 @@ function every(limit: number): Readonly<Record<StartupCase, number>> {
   return { fresh: limit, restored: limit, heavy: limit };
 }
 
-/**
- * Every metric the bench reports. `budget` is the p95 ceiling the judged build must stay under,
- * by scenario; `null` reports without gating. Set from main c7094f5c against daniel/audit
- * (macOS arm64, packaged, 7 runs, main's restored and heavy homes seeded by its own code): each
- * budget is the branch's p95 plus 15% (memory plus 5%), and no latency or long-task budget sits
- * above main's median in its scenario. Fresh and restored allow the one long task left, the
- * entry's evaluation (60-94 ms), at main's median of 88 ms. Every scenario makes at most three
- * IPC calls before the composer; main makes 22 there. A restored chat's folder is selected by
- * the host (`host.restore`) without a reload, so its `workspace.files` and `workspace.git` reads
- * join the first burst of host requests: 14 in most runs, and up to 17 when the folder's
- * `files.scan`, `git.watch` and a stream cancel start before the composer. With no splash, first
- * contentful paint is the shell itself, drawn once the window shows, so it is reported next
- * to main's splash and not gated. First meaningful paint is the shell's first frame, which the main
- * process waits for to show the window: the branch's p95 over 14 launches per scenario plus 15%
- * (645, 543 and 561 ms), under main c7094f5c's fresh median of 844 ms.
- */
 const metricFields = [
   {
     key: "spawnToTypedInputMs",
@@ -162,9 +146,7 @@ interface Options {
   readonly warmup: number;
   readonly output: string;
   readonly json: boolean;
-  /** Where one extra traced launch per build and scenario saves its trace.zip and frame strip. */
   readonly trace: string | undefined;
-  /** A script that seeds the baseline's restored and heavy homes in its own store format. */
   readonly baselineSeed: string | undefined;
 }
 
@@ -195,7 +177,6 @@ type Sample =
       readonly output: readonly string[];
     };
 
-/** Paths resolve against INIT_CWD, where pnpm was invoked, because `pnpm --dir` moves the cwd. */
 function readOptions(): Options | undefined {
   const { values } = parseArgs({
     options: {
@@ -263,11 +244,6 @@ function readOptions(): Options | undefined {
   };
 }
 
-/**
- * Seeds a home with `script`, run as `node --conditions=nyte-source <script> <directory>
- * <scenario>` and printing the fixture as JSON. Revisions before the shared store keep sessions
- * in another format, so the baseline's own code writes its home.
- */
 async function seedHome(script: string, directory: string, scenario: StartupCase) {
   const { stdout } = await promisify(execFile)(
     process.execPath,
@@ -318,12 +294,6 @@ function launchEnvironment(fixture: StartupFixture) {
   };
 }
 
-/**
- * Records in main when each renderer host call arrives, so any build can be counted without
- * help from its preload. Electron emits its internal `-ipc-invoke` event on the sender's
- * session for every `ipcRenderer.invoke`, with the channel after the event; there is no
- * public event for invokes.
- */
 async function recordHostCalls(application: ElectronApplication) {
   return application.evaluateHandle(({ session }, channel) => {
     const arrivals: number[] = [];
@@ -365,10 +335,6 @@ async function inspectMain(application: ElectronApplication) {
   }));
 }
 
-/**
- * Main's used heap after a full collection, requested over main's own inspector, so the reading
- * does not move with when V8 last collected.
- */
 async function collectMainHeap(application: ElectronApplication): Promise<number> {
   return application.evaluate(async () => {
     const { Session } = process.getBuiltinModule("node:inspector/promises");
@@ -385,7 +351,6 @@ async function collectMainHeap(application: ElectronApplication): Promise<number
   });
 }
 
-/** Waits, polling every frame, for a composer that accepts input over the scenario's chat. */
 async function waitForComposer(page: Page, expected: StartupFixture["expected"]) {
   const ready = await page.waitForFunction(
     (scenario) => {
@@ -544,7 +509,6 @@ async function closeApplication(application: ElectronApplication): Promise<void>
   }
 }
 
-/** Isolation holds when the profile stays inside the fixture, even for builds that ignore --user-data-dir. */
 async function launch(build: Build, fixture: StartupFixture) {
   const application = await _electron.launch({
     executablePath: build.executable,
@@ -578,10 +542,6 @@ async function launch(build: Build, fixture: StartupFixture) {
   }
 }
 
-/**
- * Opens the scenario's chat once so the next launch restores it. A seeded baseline predates
- * window tabs restoring their chat by themselves, so its startup destination is set to the last chat.
- */
 async function primeProfile(build: Build, fixture: StartupFixture, seeded: boolean): Promise<void> {
   if (fixture.expected.kind === "empty") return;
   const application = await launch(build, fixture);
@@ -898,7 +858,7 @@ async function run(options: Options): Promise<void> {
       spawn:
         "Renderer epoch (performance.timeOrigin + startTime) minus Electron main process.getCreationTime().",
       firstMeaningfulPaint:
-        "Renderer nyte:shell-ready mark: the animation frame after the shell first commits, which main waits for before it shows the window.",
+        "Renderer nyte:shell-ready mark: the animation frame after the shell first commits, which main waits for, with the sidebar and the restored chat, before it shows the window.",
       composer:
         "Renderer performance.now() on the first animation frame where the composer is editable, visible, and over the scenario's chat.",
       typedInput:

@@ -1,17 +1,11 @@
-/**
- * Compiles the TUI into `bin/nyte`. `Bun.build` rather than the CLI because
- * the Solid JSX transform is a bundler plugin. Worker entries are named from
- * `packages/` so the host can resolve them in the embedded module graph. The
- * binary moves into `bin/` only after compilation and signing succeed. It carries the code id
- * of the tree it was built from, which goes into the service build.
- */
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
 import { hashSourceTree } from "../src/code-id.ts";
+import { VERSION } from "../src/version.ts";
 import { codemodePlugin } from "./codemode-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
 
@@ -23,11 +17,6 @@ const name = process.platform === "win32" ? "nyte.exe" : "nyte";
 
 const started = performance.now();
 
-/**
- * `Bun.build` reports a failed bundle by throwing an `AggregateError` whose
- * `errors` hold the diagnostics. Printing only the top-level `message` reduces
- * every failure to "Bundle failed", so recurse into the aggregate.
- */
 function describe(cause: unknown): string {
   if (cause instanceof AggregateError) {
     return [cause.message, ...cause.errors.map((error) => describe(error))].join("\n");
@@ -71,6 +60,7 @@ try {
   }
 
   await rename(executable, join(destination, name));
+  await writeFile(join(destination, "nyte.version"), `${VERSION}\n`);
   process.stdout.write(
     `Built bin/${name} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
   );

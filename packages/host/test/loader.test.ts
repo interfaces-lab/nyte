@@ -5,7 +5,7 @@ import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { loadPluginDirectory, loadPluginFiles, pluginLoader } from "../src/index.ts";
-import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
+import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const folders: string[] = [];
 

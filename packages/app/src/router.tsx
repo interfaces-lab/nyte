@@ -24,7 +24,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { keys, queryClient, readSession } from "./queries.ts";
+import { keys, queryClient, readSession, useHostRelease } from "./queries.ts";
 import { routeChatExists } from "./route-session.ts";
 import { directoryWatch } from "./sdk.tsx";
 import { startupConnection } from "./startup.ts";
@@ -75,7 +75,6 @@ const styles = create({
     backgroundColor: role.bgBase,
     overflow: "clip",
   },
-  /** With window tabs the main area is a card set into the chrome, which the titlebar shares. */
   card: {
     marginInlineEnd: shell.cardInset,
     marginBlockEnd: shell.cardInset,
@@ -109,7 +108,6 @@ const styles = create({
   },
 });
 
-/** The host connection failed after the shell mounted; the stage stays, drafts included. */
 function ConnectionFailure(): ReactElement | null {
   const connection = useSyncExternalStore(startupConnection.subscribe, startupConnection.read);
 
@@ -125,7 +123,21 @@ function ConnectionFailure(): ReactElement | null {
   );
 }
 
-/** `appIcon` is the host's product mark, shown in About; the host bundles it. */
+function ReleaseNotice(): ReactElement | null {
+  const release = useHostRelease();
+
+  if (release === undefined) return null;
+
+  return (
+    <div role="status" {...props(styles.connectionFailure)}>
+      <span>
+        This host runs Nyte {release.version}, another release than this app. Update both to see
+        everything.
+      </span>
+    </div>
+  );
+}
+
 export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   return (
     <TooltipProvider>
@@ -136,11 +148,6 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   );
 }
 
-/**
- * The window chrome around the stage. Customize and Environments are pages of
- * the active tab that cover the stage; Back and a sidebar row leave them by
- * navigating the tab.
- */
 function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const shellRouter = useRouter();
   const page = useStagePage();
@@ -217,6 +224,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
             )}
           >
             <ConnectionFailure />
+            <ReleaseNotice />
             <Matches />
           </main>
         </SessionDndProvider>
@@ -233,7 +241,6 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   );
 }
 
-/** The panes stay mounted under a page, so a chat keeps its state through Customize. */
 function WorkspaceRouteStage(): ReactElement {
   const page = useStagePage();
 
@@ -256,7 +263,6 @@ const searchText = Type.String();
 
 interface StartupContext {
   pending: boolean;
-  /** Move to the last chat once the directory arrives, if the user has not started on a new one. */
   readonly openLastChatOnArrival: () => void;
 }
 
@@ -271,10 +277,6 @@ const rootRoute = createRootRouteWithContext<{ startup: StartupContext }>()({
   }),
 });
 
-/**
- * The stage route. `workspace` is undefined until a folder opens; the stage
- * stays mounted either way and only its data binding changes.
- */
 const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "_workspace",
@@ -295,7 +297,7 @@ const indexRoute = createRoute({
     if (preferences.startupDestination.get() === "new-chat") return;
 
     const directory =
-      directoryWatch("all").value ??
+      directoryWatch("roots").value ??
       queryClient.getQueryData<readonly SessionInfo[]>(keys.firstFrameRoots);
 
     if (directory === undefined) {
@@ -316,19 +318,12 @@ const indexRoute = createRoute({
   },
 });
 
-/** The directory is newest-first, so its first open root is the last chat. */
 function lastChat(directory: readonly SessionInfo[]): SessionId | undefined {
   return directory.find((session) => session.parent === null && !session.archived)?.id;
 }
 
-/**
- * Without a directory or the last run's chats, startup shows a new chat until
- * the directory arrives, then moves to the last chat, unless the user has
- * started typing or clicking in the meantime: a draft in the new chat
- * outranks the startup destination.
- */
 function openLastChatOnArrival(router: AppRouter): void {
-  const directory = directoryWatch("all");
+  const directory = directoryWatch("roots");
   const controller = new AbortController();
   const options = { capture: true, signal: controller.signal } as const;
   const stop = (): void => controller.abort();
@@ -385,11 +380,6 @@ const threadRoute = createRoute({
   errorComponent: RouteError,
 });
 
-/**
- * A chat route renders at once, before the host has said the chat exists;
- * one it no longer has returns the window to a new chat when the answer
- * arrives.
- */
 function leaveMissingChat(router: AppRouter): void {
   const sessionId = currentRouteSession(router);
 
@@ -408,9 +398,8 @@ function leaveMissingChat(router: AppRouter): void {
   );
 }
 
-/** The session directory's first list, or none when its watch fails before one. */
 async function readDirectory(): Promise<readonly SessionInfo[]> {
-  const directory = directoryWatch("all");
+  const directory = directoryWatch("roots");
   const answered = Promise.withResolvers<void>();
 
   const leave = directory.subscribe(() => {
@@ -448,12 +437,10 @@ const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute])
 
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
-/** Desktop windows show tabs: restore this window's strip before the router starts. */
 export function startWindowTabs(firstWindow: boolean): void {
   windowTabs.start(firstWindow);
 }
 
-/** The route the active window tab shows. */
 export function windowTabRoute(): string {
   return placeHref(tabPlace(activeTab(windowTabs.getSnapshot())));
 }
@@ -485,7 +472,6 @@ export function createAppRouter({ history }: { history: RouterHistory }) {
 
 export type AppRouter = ReturnType<typeof createAppRouter>;
 
-/** The chat the current location shows, if it is one. */
 function currentRouteSession(router: AppRouter): SessionId | undefined {
   for (const match of router.state.matches) {
     if (match.routeId === threadRoute.id) return match.params.sessionId;

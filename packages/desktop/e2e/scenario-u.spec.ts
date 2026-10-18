@@ -20,12 +20,11 @@ import {
   submitTrace,
   tabTo,
 } from "@nyte-ai/app/e2e/scenario-u-trace";
-import { readPrintedSpans, readSpanFile, RESTAURANT_PROMPT } from "@nyte-ai/host/bench";
+import { readPrintedSpans, readSpanFile, RESTAURANT_PROMPT } from "@nyte-ai/bench";
 import { prepareHome } from "./baseline.ts";
 import { launchDesktop } from "./launch.ts";
 import { composer, messages } from "./ui.ts";
 
-/** The transcript row a quit mid-answer leaves settled: the step group holding the command. */
 const LAST_SETTLED = /button "Ran 1 command, 2 tools"/u;
 
 const MEASURING = process.env.NYTE_SCENARIO_U_MEASURE === "1";
@@ -34,7 +33,6 @@ function workbench(page: Page) {
   return page.getByRole("complementary", { name: "Workbench" });
 }
 
-/** The scrollback the workbench saved for its terminal tabs, as the next launch restores it. */
 function savedScrollback(page: Page): Promise<string> {
   return page.evaluate(() =>
     Object.keys(localStorage)

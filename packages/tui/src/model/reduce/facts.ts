@@ -1,9 +1,9 @@
 import type { MessageId, SessionId, SessionView, WorkspaceId } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { shortId } from "../../lib/format.ts";
+import { completingCommands } from "../commands.ts";
 import { CLOSED, explicitMentionQuery, nextCompletion } from "../completion.ts";
 import { addPart } from "../draft.ts";
-import type { Effect } from "../effect.ts";
 import type { Fact } from "../msg.ts";
 import { currentQuestion, sameQuestion } from "../question.ts";
 import { chatFolder, followedSession, followedShells } from "../state.ts";
@@ -31,35 +31,35 @@ function followedOnly<M extends { readonly session: SessionId }>(
 
 export const factHandlers = {
   "host-opened": (state) => stay(withFacts(state, { host: "open" })),
-  "session-opened": (state, msg) => ({
-    state: opened(state, msg),
-    effects: trustOnEntry(state, msg.info.workspace),
-  }),
-  "blank-opened": (state, msg) => ({
-    state: withLocal(entered(withFacts(state, { chat: msg.chat, tasks: [] })), {
+  "session-opened": (state, msg) => trustOnEntry(state, opened(state, msg), msg.info.workspace),
+  "blank-opened": (state, msg) => {
+    const next = withLocal(entered(withFacts(state, { chat: msg.chat, tasks: [] })), {
       pending: state.local.pending.filter((op) => op.kind !== "switch"),
-    }),
-    effects:
-      msg.chat.folder.kind === "folder"
-        ? [
-            ...trustOnEntry(state, msg.chat.folder.id),
-            { kind: "load-folder-catalog", workspace: msg.chat.folder.id },
-          ]
-        : [],
-  }),
+    });
+
+    const { folder } = msg.chat;
+
+    if (folder.kind !== "folder") return stay(next);
+
+    return andThen(trustOnEntry(state, next, folder.id), (current) => ({
+      state: current,
+      effects: [{ kind: "load-folder-catalog", workspace: folder.id }],
+    }));
+  },
   "blank-folder": (state, msg) => {
     const { chat } = state.facts;
 
     if (chat?.kind !== "blank" || chat.id !== msg.session || chat.folder.kind === "folder")
       return stay(state);
 
-    return {
-      state: withFacts(state, { chat: { ...chat, folder: { kind: "folder", id: msg.workspace } } }),
-      effects: [
-        ...trustOnEntry(state, msg.workspace),
-        { kind: "load-folder-catalog", workspace: msg.workspace },
-      ],
-    };
+    const next = withFacts(state, {
+      chat: { ...chat, folder: { kind: "folder", id: msg.workspace } },
+    });
+
+    return andThen(trustOnEntry(state, next, msg.workspace), (current) => ({
+      state: current,
+      effects: [{ kind: "load-folder-catalog", workspace: msg.workspace }],
+    }));
   },
   view: followedOnly<MsgOf<"view">>((state, session, msg, now) =>
     viewArrived(state, session, msg.view, now),
@@ -128,12 +128,21 @@ export const factHandlers = {
   tick: (state) => stay(state),
 } satisfies SomeHandlers;
 
-function trustOnEntry(state: State, workspace: WorkspaceId): readonly Effect[] {
-  const before = state.facts.chat === null ? null : chatFolder(state.facts.chat);
+function trustOnEntry(before: State, next: State, workspace: WorkspaceId): Step {
+  const folder = before.facts.chat === null ? null : chatFolder(before.facts.chat);
 
-  return before?.kind === "folder" && before.id === workspace
-    ? []
-    : [{ kind: "check-trust", workspace, ask: "if-needed" }];
+  if (folder?.kind === "folder" && folder.id === workspace) return stay(next);
+
+  return {
+    state: withLocal(next, { settlingTrust: [...next.local.settlingTrust, workspace] }),
+    effects: [
+      {
+        kind: "check-trust",
+        workspace,
+        ask: folder === null || folder.kind === "launch-folder" ? "at-launch" : "if-needed",
+      },
+    ],
+  };
 }
 
 function opened(state: State, msg: Extract<Fact, { kind: "session-opened" }>): State {
@@ -489,7 +498,7 @@ function draftChanged(
   const { draft } = state.local;
   const changed = msg.text !== draft.text;
   const mirror = { text: msg.text, cursor: msg.cursor, row: msg.row, parts: draft.parts };
-  const completion = nextCompletion(state.local.completion, mirror);
+  const completion = nextCompletion(state.local.completion, mirror, completingCommands(state));
   const preview = state.local.preview;
 
   const next = withLocal(state, {
@@ -507,7 +516,12 @@ function draftChanged(
 export function completionLookup(before: State["local"]["completion"], next: State): Step {
   const after = next.local.completion;
 
-  if (after.kind !== "open" || after.directories !== null || after.explicit !== null)
+  if (
+    after.kind !== "open" ||
+    after.directories !== null ||
+    after.explicit !== null ||
+    after.suggestions !== null
+  )
     return stay(next);
 
   if (
@@ -520,6 +534,19 @@ export function completionLookup(before: State["local"]["completion"], next: Sta
 
   if (after.token.trigger === "cd")
     return { state: next, effects: [{ kind: "list-directory", path: after.token.query, cwd }] };
+
+  if (after.token.trigger === "argument" && next.facts.chat !== null)
+    return {
+      state: next,
+      effects: [
+        {
+          kind: "complete-command",
+          session: next.facts.chat.id,
+          name: after.token.command,
+          prefix: after.token.query,
+        },
+      ],
+    };
 
   if (after.token.trigger === "@" && explicitMentionQuery(after.token.query))
     return { state: next, effects: [{ kind: "resolve-mention", query: after.token.query, cwd }] };

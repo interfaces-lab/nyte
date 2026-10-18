@@ -86,7 +86,7 @@
     "@types/react": "19.2.18",
     "babel-plugin-react-compiler": "1.0.0",
     "babel-preset-expo": "57.0.13",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.10",
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.16",
     "typescript": "6.0.3",
     "vitest": "5.0.2"
   },

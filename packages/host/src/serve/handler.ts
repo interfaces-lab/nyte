@@ -1,5 +1,5 @@
 import { Type } from "typebox";
-import { compile, OPERATIONS, SdkError } from "@nyte-ai/schema";
+import { compile, isJsonObject, OPERATIONS, SdkError } from "@nyte-ai/schema";
 import type { Authority, Json } from "@nyte-ai/schema";
 import type { Connection } from "@nyte-ai/core";
 import { bindConnection } from "./binding.ts";
@@ -108,9 +108,10 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
       const authenticated = await options.connection(request);
 
       if (name === CHANNEL_PATH) {
-        await readBody(request, limit);
+        const value = await readBody(request, limit);
+        const deflate = isJsonObject(value) && value.deflate === true;
 
-        return withHeaders(channels.open(authenticated.connection, request.signal), {
+        return withHeaders(channels.open(authenticated.connection, request.signal, deflate), {
           ...cors,
           ...authenticated.headers,
         });

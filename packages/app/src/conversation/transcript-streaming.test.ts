@@ -6,8 +6,8 @@ import { testRenderer } from "../../test/renderer.ts";
 const Report = Type.Object({
   deltas: Type.Number(),
   mountedRows: Type.Number(),
-  turnViewUpdates: Type.Number(),
-  turnViewMounts: Type.Number(),
+  rowUpdates: Type.Number(),
+  rowMounts: Type.Number(),
   updatesPerDelta: Type.Number(),
   commitMsPerDelta: Type.Number(),
 });

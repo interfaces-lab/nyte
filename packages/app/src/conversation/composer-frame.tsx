@@ -3,7 +3,7 @@ import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { DragEvent, ReactElement, ReactNode } from "react";
-import type { Delivery } from "@nyte-ai/sdk";
+import type { CommandCompletion, Delivery } from "@nyte-ai/sdk";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
@@ -87,6 +87,8 @@ interface ComposerFrameProps {
   inputRef?: (element: ComposerEditorHandle | null) => void;
   onFocusChange?: (focused: boolean) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
+  /** Suggests the text after a command whose `completes` is set. */
+  completeCommand?: (name: string, prefix: string) => Promise<readonly CommandCompletion[]>;
   /** Workspace entries behind `@`. Callers without an open workspace pass an empty ready list. */
   mentionFiles: ComposerMentionFiles;
   hasConversationContext?: boolean;
@@ -129,6 +131,7 @@ export function ComposerFrame({
   inputRef,
   onFocusChange,
   suggestionCatalog,
+  completeCommand,
   mentionFiles,
   hasConversationContext = false,
   attachments = [],
@@ -156,12 +159,13 @@ export function ComposerFrame({
   const suggestionMenu = useComposerSuggestions({
     editorRef: areaRef,
     anchorRef: frameRef,
-    side: surface === "new-chat" ? "bottom" : "top",
+    side: surface === "new-chat" || editing?.kind === "message" ? "bottom" : "top",
     suggestionCatalog,
     mentionFiles,
     hasConversationContext,
     references,
     onCommand: commandsEnabled ? () => void submit("submit") : undefined,
+    completeCommand,
   });
 
   const canAttach = onFilesSelected !== undefined;
@@ -482,7 +486,7 @@ export function ComposerFrame({
             onDocumentChange={(next, completion) => {
               onDocumentChange(next);
               resize(next.text);
-              suggestionMenu.onCompletionChange(answering ? undefined : completion);
+              suggestionMenu.onCompletionChange(answering ? undefined : completion, next);
             }}
             onFilesSelected={onFilesSelected}
             onFocusChange={onFocusChange}

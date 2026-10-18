@@ -57,7 +57,8 @@ import { canvasShellUrl, registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
-import { ExpectedHostError } from "./errors.ts";
+import { adoptStagedCli, installCli, stageCli } from "./cli.ts";
+import { ExpectedHostError, retainDiagnostic } from "./errors.ts";
 import { answerAccount } from "./host-account.ts";
 import { answerAgent } from "./host-browser-agent.ts";
 import { HostProcess } from "./host-process.ts";
@@ -71,26 +72,16 @@ import { decodeBrowserBounds, decodeBrowserFocus, themePreference } from "./ipc-
 interface NyteWindow {
   readonly window: BrowserWindow;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
-  /** Show the window the first time, in its opening frame; later calls do nothing. */
   readonly present: () => void;
-  /**
-   * Whether the window has been shown at least once. Synthesized mouse input
-   * is silently dropped until the first show, so the explicit signal avoids
-   * a race the fallback (window.isVisible) cannot catch.
-   */
   shown: boolean;
 }
 
-/** Keyed by the renderer's webContents id; ordered by focus, most recent last. */
 const windows = new Map<HostWindow, NyteWindow>();
 
-/** Forked when Electron is ready, before the first window; the primary instance only. */
 let hostProcess: HostProcess | undefined;
 
-/** Settles once the host process is forked, for work that may start before Electron is ready. */
 const hostStarted = Promise.withResolvers<HostProcess>();
 
-/** The Nyte account's sign-in, in a build with Clerk; created in the primary instance only. */
 let account: AccountSession | undefined;
 
 let rendererUrl: string;
@@ -99,7 +90,6 @@ let canvasShell: string;
 
 let previewCanvas: CanvasPreviewer;
 
-/** Aborts the canvas previews in flight once the last window closes, so a hidden preview window neither holds the app open nor renders for no one. */
 let previewsOpen = new AbortController();
 
 function macOSTrafficLightPosition(zoomFactor: number) {
@@ -111,13 +101,6 @@ function macOSTrafficLightPosition(zoomFactor: number) {
   };
 }
 
-/**
- * Vibrancy needs an opaque window. `transparent: true` gives the NSWindow a
- * clear backing, the vibrancy view behind the page has nothing left to blur,
- * and the sidebar falls back to flat colour, so it must stay unset here.
- * Increased contrast drops the effect entirely rather than blurring a surface
- * the user asked to be legible.
- */
 function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
   const options: Partial<Electron.BrowserWindowConstructorOptions> = {
     acceptFirstMouse: true,
@@ -135,12 +118,6 @@ function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> 
   return options;
 }
 
-/**
- * A vibrant window still takes a fill, and its alpha tints the material rather
- * than clearing it. Light stays neutral; dark carries a quarter black so the
- * blur reads dark instead of washing out. Without vibrancy the window needs a
- * real colour, matching `--nyte-bg-base`.
- */
 function windowBackgroundColor(): string {
   if (process.platform !== "darwin" || nativeTheme.shouldUseHighContrastColors) {
     return nativeTheme.shouldUseDarkColors ? "#1b1b1b" : "#ffffff";
@@ -168,7 +145,6 @@ const launchState = new LaunchStateStore(join(app.getPath("userData"), "launch-s
 
 const home = updateTest ? app.getPath("userData") : homedir();
 
-/** A development build can hold the host's open, so a test can prove the first frame never waits for it. */
 const hostDelay = Number.parseInt(process.env["NYTE_DESKTOP_HOST_DELAY_MS"] ?? "", 10);
 
 const hostOpenDelayMs = app.isPackaged || Number.isNaN(hostDelay) ? undefined : hostDelay;
@@ -187,18 +163,15 @@ function broadcast(event: HostEvent): void {
   for (const window of windows.keys()) send(window, HOST_EVENT_CHANNEL, event);
 }
 
-/** Push a host event to one window, or to every window when `window` is omitted. */
 function emitHostEvent(event: HostEvent, window?: HostWindow): void {
   if (window === undefined) broadcast(event);
   else send(window, HOST_EVENT_CHANNEL, event);
 }
 
-/** The window app-level commands act on: the one focused most recently. */
 function currentWindow(): NyteWindow | undefined {
   return [...windows.values()].at(-1);
 }
 
-/** Bring a window forward. One that has not drawn its first frame yet shows itself when it does. */
 function reveal(entry: NyteWindow): void {
   if (!entry.shown) return;
   const { window } = entry;
@@ -353,7 +326,6 @@ async function pickFolder(id: HostWindow): Promise<string | undefined> {
   return result.canceled ? undefined : result.filePaths[0];
 }
 
-/** The operations main answers; the host process answers the rest (`HOST_PROCESS_PATHS`). */
 const mainCalls: CallTable = {
   "host.fonts": () => localFonts(),
   "host.pickWorkspace": async (window) => {
@@ -405,7 +377,18 @@ const mainRoute: CallRoute = (window, path, input) => callTable(mainCalls, windo
 
 const mainPaths: ReadonlySet<string> = new Set(MAIN_OPERATION_PATHS);
 
-/** Returns the renderer's origin as Chromium sends it, `scheme://host`; Node reports a custom scheme's `URL.origin` as opaque. */
+async function installStagedCli(staged: Promise<string>): Promise<void> {
+  try {
+    const detail = await installCli(home, await staged, process.env["SHELL"]);
+    await dialog.showMessageBox({ type: "info", message: "Installed the nyte command.", detail });
+  } catch (cause) {
+    dialog.showErrorBox(
+      "Couldn't install the nyte command",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
+}
+
 function rendererOrigin(url: string): string {
   const parsed = new URL(url);
 
@@ -417,6 +400,7 @@ function startHost(): HostProcess {
     join(import.meta.dirname, "host-entry.js"),
     {
       home,
+      version: app.getVersion(),
       rendererOrigin: rendererOrigin(rendererUrl),
       account: account === undefined ? null : account.state(),
       openDelayMs: hostOpenDelayMs,
@@ -502,13 +486,11 @@ function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent
   return entry;
 }
 
-/** Re-centres the macOS traffic lights on the titlebar for the window's zoom factor. */
 function placeWindowButtons(window: BrowserWindow): void {
   if (process.platform !== "darwin" || window.isDestroyed()) return;
   window.setWindowButtonPosition(macOSTrafficLightPosition(window.webContents.getZoomFactor()));
 }
 
-/** Tells the renderer whether the window is fullscreen, which moves its macOS titlebar inset. */
 function sendFullscreen(window: BrowserWindow): void {
   if (process.platform !== "darwin" || window.isDestroyed()) return;
   window.webContents.send(WINDOW_FULLSCREEN_CHANNEL, window.isFullScreen());
@@ -572,11 +554,6 @@ interface OpeningFrame {
   readonly fullscreen: boolean;
 }
 
-/**
- * The frame a new window opens in. The first window takes the last closed window's place,
- * size, and maximized or fullscreen state, when a display's work area still shows that place;
- * a window opened beside others takes only the size, and the system places it.
- */
 function openingFrame(): OpeningFrame {
   const saved = launchState.window();
 
@@ -603,19 +580,8 @@ function openingFrame(): OpeningFrame {
   };
 }
 
-/**
- * How long a loaded window stays hidden waiting for the interface's first frame. A renderer that
- * crashed or failed before it painted is shown anyway.
- */
-const FIRST_FRAME_LIMIT_MS = 2_000;
+const FIRST_FRAME_LIMIT_MS = 4_000;
 
-/**
- * Opens a Nyte window, shown once the interface has drawn its first frame. Its host work is released when the renderer
- * goes away or a committed main-frame navigation leaves the document behind; the navigation's
- * start event fires before `will-navigate` can cancel, so it would tear down under a renderer
- * that stays. A link that would open a window goes to the system browser instead, and an
- * invalid one stays closed.
- */
 function createWindow(): NyteWindow {
   const frame = openingFrame();
 
@@ -763,14 +729,12 @@ function createWindow(): NyteWindow {
   return entry;
 }
 
-/** How long quitting waits for the history flush and the host close before it exits anyway. */
 const SHUTDOWN_LIMIT_MS = 5_000;
 
 let shuttingDown: Promise<void> | undefined;
 
 let shutDown = false;
 
-/** Flushes browser history and closes the host, once; quit and relaunch both wait for it. */
 function shutdown(): Promise<void> {
   shuttingDown ??= Promise.race([
     Promise.allSettled([browserHistory.flush(), hostProcess?.close(SHUTDOWN_LIMIT_MS)]),
@@ -866,7 +830,26 @@ if (!hasSingleInstanceLock) {
         activity: () => startedHost().activity(),
         beforeRelaunch: shutdown,
       });
+
+    const cli =
+      app.isPackaged && process.platform !== "win32"
+        ? stageCli({
+            resources: process.resourcesPath,
+            stages: join(app.getPath("userData"), "cli"),
+          })
+        : undefined;
+
+    const cliItem = menu.getMenuItemById("install-cli");
+
+    if (cli !== undefined && cliItem !== null) {
+      cliItem.visible = true;
+      cliItem.click = () => void installStagedCli(cli);
+    }
+
     Menu.setApplicationMenu(menu);
+    void cli
+      ?.then((staged) => adoptStagedCli(home, staged))
+      .catch((cause: unknown) => retainDiagnostic({ correlationId: "desktop-cli-stage", cause }));
   });
 
   app.on("before-quit", (event) => {

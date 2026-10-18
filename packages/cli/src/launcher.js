@@ -1,20 +1,30 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  readlink,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import process from "node:process";
 
 import packageJson from "../package.json" with { type: "json" };
 
 const REPOSITORY = "interfaces-lab/nyte";
 
-export function platformTarget(platform = process.platform, arch = process.arch) {
-  if ((platform !== "darwin" && platform !== "linux") || (arch !== "arm64" && arch !== "x64")) {
-    return undefined;
-  }
+const RELEASE_TARGETS = ["darwin-arm64", "linux-arm64", "linux-x64"];
 
-  return `${platform}-${arch}`;
+export function platformTarget(platform = process.platform, arch = process.arch) {
+  const target = `${platform}-${arch}`;
+
+  return RELEASE_TARGETS.includes(target) ? target : undefined;
 }
 
 export function releaseAssetName(version, target) {
@@ -56,7 +66,11 @@ export async function ensureBinary(options = {}) {
   const root = options.root ?? cacheRoot(options.env);
   const binary = join(root, version, "nyte");
 
-  if ((await stat(binary).catch(() => undefined))?.isFile()) return binary;
+  if ((await stat(binary).catch(() => undefined))?.isFile()) {
+    await linkCurrent(root, binary);
+
+    return binary;
+  }
 
   const fetchFn = options.fetchFn ?? globalThis.fetch;
   const asset = releaseAssetName(version, target);
@@ -97,14 +111,27 @@ export async function ensureBinary(options = {}) {
     }
 
     await chmod(binary, 0o755);
-
-    return binary;
   } catch (error) {
     await rm(binary, { force: true });
     throw error;
   } finally {
     await rm(archive, { force: true });
   }
+
+  await linkCurrent(root, binary);
+
+  return binary;
+}
+
+async function linkCurrent(root, binary) {
+  const link = join(root, "nyte");
+  const target = relative(root, binary);
+
+  if ((await readlink(link).catch(() => undefined)) === target) return;
+  const temporary = `${link}.${process.pid}.tmp`;
+  await rm(temporary, { force: true });
+  await symlink(target, temporary);
+  await rename(temporary, link);
 }
 
 export async function launch(args = process.argv.slice(2), options = {}) {

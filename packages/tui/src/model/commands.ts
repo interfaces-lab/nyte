@@ -217,6 +217,21 @@ export function commandRegistry(state: State): readonly CommandEntry[] {
   });
 }
 
+/** The plugin commands `/` reaches here that suggest the text after their name. */
+export function completingCommands(state: State): ReadonlySet<string> {
+  const reached = new Set(
+    commandRegistry(state).flatMap((entry) => (entry.source === "plugin" ? [entry.name] : [])),
+  );
+
+  return new Set(
+    pluginCommands(state).flatMap((command) =>
+      command.completes && command.side === "core" && reached.has(command.name)
+        ? [command.name]
+        : [],
+    ),
+  );
+}
+
 export function resolveCommand(state: State, name: string): CommandEntry | null {
   return (
     commandRegistry(state).find((entry) => entry.name === name || entry.aliases.includes(name)) ??

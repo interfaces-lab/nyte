@@ -3,22 +3,12 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
 import { asId } from "@nyte-ai/schema";
-import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
+import { chatOnly, fakeModels } from "../test/fixtures/fake-models.ts";
 import { openHost } from "../src/open.ts";
 import { sqliteStore } from "../src/sqlite.ts";
 import { MAPPING } from "../test/migration/mapping.ts";
 import { verifyMigration } from "../test/migration/verify.ts";
 
-/**
- * The store this run reads (default `~/.nyte/nyte.db`), only through SQLite's
- * online backup. The run migrates a copy with this checkout's code, checks
- * every row against `MAPPING` with `verifyMigration`, then opens the copy with
- * this checkout's host, admitting only, and folds every head of every
- * session. The copies and `report.json` land in the work directory (default a
- * new temporary one); any problem exits 1.
- *
- * Usage: node scripts/migrate-proof.ts [store.db] [work directory]
- */
 const source = resolve(process.argv[2] ?? join(homedir(), ".nyte", "nyte.db"));
 
 const work = resolve(process.argv[3] ?? mkdtempSync(join(tmpdir(), "nyte-migrate-proof-")));

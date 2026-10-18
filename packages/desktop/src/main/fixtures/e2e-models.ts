@@ -9,8 +9,8 @@ import {
   lastUserText,
   testModel,
   titleReply,
-} from "@nyte-ai/host/bench";
-import type { Reply, Request, Script } from "@nyte-ai/host/bench";
+} from "@nyte-ai/bench";
+import type { Reply, Request, Script } from "@nyte-ai/bench";
 import { contentText, getCurrentTools } from "@nyte-ai/schema/model";
 import type { ModelRef } from "@nyte-ai/schema";
 import { restaurantReplies, restaurantSkill } from "@nyte-ai/app/e2e/scenario-u-fixture";
@@ -114,20 +114,12 @@ export function scriptedReply(text: string): Reply {
   }
 }
 
-/** Whether `request` belongs to a chat that opened with scenario D's message. */
 function ciChat(request: Request): boolean {
   const first = request.context.messages.find((message) => message.role === "user");
 
   return first?.role === "user" && contentText(first.content, "") === CI_PROMPT;
 }
 
-/**
- * Answers scenario D ("why did CI fail on my PR, fix it") with the bench's
- * script. The route follows the tools the first request lists, as the CI
- * skill tells the model: the CI MCP server's when they are there, else `gh`.
- * Each answered request prints a `NYTE_E2E_CI` line with what the model read
- * last, so a test can check the model saw the failing tail of the job log.
- */
 function ciAnswer(): (request: Request) => Reply | undefined {
   let turns: Script | undefined;
 

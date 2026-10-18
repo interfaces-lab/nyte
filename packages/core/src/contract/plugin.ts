@@ -1,5 +1,6 @@
 import type {
   Awaitable,
+  CommandCompletion,
   CompactionPlan,
   Decision,
   Disposer,
@@ -76,17 +77,34 @@ export interface Setting<T = unknown> {
   watch(): AsyncIterable<T>;
 }
 
-export interface Command<Args = unknown, S extends Side = Side> {
+export interface Command<S extends Side = Side> {
+  /**
+   * What a user types after `/`, so name it for everyone (`websearch-key`, not `key`), in
+   * lowercase letters, digits and `-`. The host refuses a name a client keeps for its own
+   * commands; a later plugin's command of the same name replaces this one. Both are reported.
+   */
   readonly name: string;
   readonly title: string;
   readonly description: string;
 
-  readonly arguments?: Schema<Args>;
+  /** Picking the command waits for text after its name instead of running it at once. */
+  readonly takesText?: boolean;
   readonly category?: string;
   readonly keywords?: readonly string[];
 
+  /**
+   * Suggests the text after the name from what is typed there so far, untrimmed, as a client's
+   * `/` menu asks while the user types; a command with it takes text. A suggestion's `value`
+   * replaces all of that text. A throw is reported and suggests nothing.
+   */
+  complete?(
+    prefix: string,
+    context: { readonly signal: AbortSignal; readonly api: PluginApi<S> },
+  ): Awaitable<readonly CommandCompletion[]>;
+
+  /** Runs with the text typed after the name, trimmed; `""` when there is none. */
   run(
-    args: Args,
+    text: string,
     context: {
       readonly signal: AbortSignal;
       readonly api: PluginApi<S>;

@@ -46,14 +46,6 @@ export function footerFor(state: State, queued: number): FooterModel {
   const { workspace } = state.facts;
   const context = view?.context;
 
-  const badges = (view?.catalog.settings ?? []).flatMap((setting) => {
-    const badge = setting.choices?.find(
-      (choice) => JSON.stringify(choice.value) === JSON.stringify(setting.value),
-    )?.badge;
-
-    return badge === undefined ? [] : [badge];
-  });
-
   return {
     powerline: {
       workspace: basename(workspace.cwd),
@@ -62,7 +54,6 @@ export function footerFor(state: State, queued: number): FooterModel {
       provider: session?.selection.model.provider,
       model: session?.selection.model.id,
       effort: session?.selection.effort,
-      statuses: badges,
       queued,
       tokens: context?.tokens ?? 0,
       window: context?.window ?? 0,

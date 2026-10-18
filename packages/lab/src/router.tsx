@@ -1,104 +1,12 @@
-import { createRoute, createRouter, redirect } from "@tanstack/react-router";
-import type { ReactElement } from "react";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
-import { RequestsPage } from "./requests/page";
-import { ProjectsPage } from "./projects/page";
-import { ReviewPage } from "./review/page";
-import { SettingsPage } from "./settings/page";
-import { TabsPage } from "./tabs/page";
-import { CanvasPage } from "./canvas/page";
-import { ChangesPage } from "./changes/page";
-import { SdkSpecPage } from "./sdk/page";
-import { MessagesPage } from "./messages/page";
-import { ProfilePage } from "./profile/page";
-import { UsagePage } from "./usage/page";
-import { rootRoute } from "./routes/__root";
+import { createRouter } from "@tanstack/react-router";
+import { routeTree } from "./routeTree.gen";
 
-const ReviewSearch = Type.Object({ id: Type.Optional(Type.String()) });
-
-const reviewRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/review",
-  validateSearch: (search): { readonly id?: string } =>
-    Value.Check(ReviewSearch, search) ? search : {},
-  component: ReviewRoute,
-  head: () => ({ meta: [{ title: "Lab · Review" }] }),
-});
-
-function ReviewRoute(): ReactElement {
-  return <ReviewPage initialReview={reviewRoute.useSearch<typeof router>().id} />;
+export function getRouter() {
+  return createRouter({ routeTree, scrollRestoration: true });
 }
 
-const routeTree = rootRoute.addChildren([
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/",
-    beforeLoad: () => {
-      throw redirect({ href: "/requests" });
-    },
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/requests",
-    component: RequestsPage,
-    head: () => ({ meta: [{ title: "Lab · Requests" }] }),
-  }),
-  reviewRoute,
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/projects",
-    component: ProjectsPage,
-    head: () => ({ meta: [{ title: "Lab · Projects" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/tabs",
-    component: TabsPage,
-    head: () => ({ meta: [{ title: "Lab · Tabs" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/canvas",
-    component: CanvasPage,
-    head: () => ({ meta: [{ title: "Lab · Canvas" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/changes",
-    component: ChangesPage,
-    head: () => ({ meta: [{ title: "Lab · Changes" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/messages",
-    component: MessagesPage,
-    head: () => ({ meta: [{ title: "Lab · Messages" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/profile",
-    component: ProfilePage,
-    head: () => ({ meta: [{ title: "Lab · Profile" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/usage",
-    component: UsagePage,
-    head: () => ({ meta: [{ title: "Lab · Usage" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/sdk",
-    component: SdkSpecPage,
-    head: () => ({ meta: [{ title: "Lab · SDK reference" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/settings",
-    component: SettingsPage,
-    head: () => ({ meta: [{ title: "Lab · Settings" }] }),
-  }),
-]);
-
-export const router = createRouter({ routeTree, scrollRestoration: true });
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: ReturnType<typeof getRouter>;
+  }
+}

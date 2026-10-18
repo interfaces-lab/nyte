@@ -68,7 +68,6 @@ test("reads charged requests once, with workspace and session metadata, not run 
           id: "workspace",
           target: { kind: "local", path: "/project" },
           identity: "local",
-          projectResources: true,
           projectSources: [],
           addedBy: "local",
           createdAt: at,

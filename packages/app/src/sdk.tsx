@@ -33,7 +33,6 @@ const first = Promise.withResolvers<Connection>();
 
 let ready = first.promise;
 
-/** Opens a host connection and installs it. A desktop or web shell calls this once it knows the endpoint. */
 export async function connectHost(
   endpoint: HostEndpoint,
   options: {
@@ -65,11 +64,6 @@ export function installConnection(connection: Connection): void {
   if (replaced) for (const stores of registries) stores.clear();
 }
 
-/**
- * The installed connection, once there is one. The shell mounts before the
- * host answers, so anything that can run that early (a watch, a query, a
- * send typed during startup) waits here rather than failing.
- */
 export function connected(): Promise<Connection> {
   return ready;
 }
@@ -78,14 +72,12 @@ export function currentConnection(): Connection | undefined {
   return installed;
 }
 
-/** The installed connection, for actions that only a mounted, connected screen can start. */
 export function connection(): Connection {
   if (installed === undefined) throw new Error("No Nyte connection is installed");
 
   return installed;
 }
 
-/** A watch's latest frame and its failure; a new frame clears the failure. */
 interface WatchState<T> {
   readonly value: T | undefined;
   readonly error: Error | undefined;
@@ -93,14 +85,18 @@ interface WatchState<T> {
 
 const UNSTARTED: WatchState<never> = { value: undefined, error: undefined };
 
-class WatchStore<T> {
+const FIRST_REOPEN_MS = 1_000;
+
+const MAX_REOPEN_MS = 30_000;
+
+export class WatchStore<T> {
   private state: WatchState<T> = UNSTARTED;
   private readonly listeners = new Set<() => void>();
   private stop: (() => void) | undefined;
+  private failures = 0;
   private readonly open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>;
   private readonly idle: () => void;
 
-  /** `open` may wait before it has a source, as a family's watch waits for its connection. */
   constructor(
     open: () => AsyncIterable<T> | Promise<AsyncIterable<T>>,
     idle: () => void = () => undefined,
@@ -121,18 +117,12 @@ class WatchStore<T> {
     return this.listeners.size > 0;
   }
 
-  /**
-   * Stop and forget the watch. Subscribers get a new, empty state even when
-   * nothing had arrived, so they render again and reach the store that
-   * replaces this one.
-   */
   dispose(): void {
     this.stop?.();
     this.stop = undefined;
     this.publish({ value: undefined, error: undefined });
   }
 
-  /** Reopen a failed watch for its current subscribers, keeping the last frame on screen. */
   retry = (): void => {
     this.stop?.();
     this.stop = undefined;
@@ -158,10 +148,19 @@ class WatchStore<T> {
 
   getState = (): WatchState<T> => this.state;
 
-  /** Shows `value` until the watch's own frames arrive, unless one already has. */
   prime(value: T): void {
     if (this.state.value !== undefined) return;
     this.publish({ value, error: undefined });
+  }
+
+  first(): Promise<void> {
+    if (this.state.value !== undefined || this.state.error !== undefined || !this.active)
+      return Promise.resolve();
+
+    return this.next().then(
+      () => undefined,
+      () => undefined,
+    );
   }
 
   next(): Promise<T> {
@@ -188,6 +187,7 @@ class WatchStore<T> {
   private start(): () => void {
     let stopped = false;
     let iterator: AsyncIterator<T> | undefined;
+    let reopen: ReturnType<typeof setTimeout> | undefined;
 
     void (async () => {
       try {
@@ -200,19 +200,28 @@ class WatchStore<T> {
           const next = await iterator.next();
 
           if (stopped || next.done === true) return;
+          this.failures = 0;
           this.publish({ value: next.value, error: undefined });
         }
       } catch (cause) {
         if (stopped) return;
+        this.failures += 1;
         this.publish({
           value: this.state.value,
           error: cause instanceof Error ? cause : new Error(String(cause)),
         });
+        reopen = setTimeout(
+          () => {
+            if (!stopped) this.stop = this.start();
+          },
+          Math.min(FIRST_REOPEN_MS * 2 ** (this.failures - 1), MAX_REOPEN_MS),
+        );
       }
     })();
 
     return () => {
       stopped = true;
+      clearTimeout(reopen);
       void iterator?.return?.();
     };
   }
@@ -228,7 +237,6 @@ const registries = new Set<{ clear(): void }>();
 
 const RETAINED_WATCHES = 16;
 
-/** One watch per key, opened once a connection is installed and dropped when a new one replaces it. */
 export function watchFamily<K extends string, T>(
   open: (connection: Connection, key: K) => AsyncIterable<T>,
 ) {
@@ -270,7 +278,6 @@ const unstarted = (): WatchState<never> => UNSTARTED;
 
 const noRetry = (): void => undefined;
 
-/** A watch's state plus `retry`, which reopens it after a failure. */
 export function useWatch<T>(
   store: WatchStore<T> | undefined,
 ): WatchState<T> & { readonly retry: () => void } {
@@ -283,11 +290,6 @@ export function useWatch<T>(
   return { value: state.value, error: state.error, retry: store?.retry ?? noRetry };
 }
 
-/**
- * One slice of a watch's state. The component re-renders only when the slice
- * changes, so `select` must return a primitive or a part of the state, never
- * a new object.
- */
 export function useWatchSelect<T, S>(
   store: WatchStore<T> | undefined,
   select: (state: WatchState<T>) => S,
@@ -351,50 +353,106 @@ export const hostWatch = watchFamily((current, _key: "host"): AsyncIterable<Host
 );
 
 export const directoryWatch = watchFamily(
-  (current, _key: "all"): AsyncIterable<readonly SessionInfo[]> =>
-    current.sessions.watch({ parents: { kind: "all" } }),
+  (current, parents: "roots" | "all"): AsyncIterable<readonly SessionInfo[]> =>
+    current.sessions.watch({ parents: { kind: parents } }),
 );
+
+export function findListedSession(session: SessionId): SessionInfo | undefined {
+  return (
+    directoryWatch("roots").value?.find((item) => item.id === session) ??
+    directoryWatch("all").value?.find((item) => item.id === session)
+  );
+}
 
 export const childrenWatch = watchFamily(
   (current, session: SessionId): AsyncIterable<readonly SessionInfo[]> =>
     current.sessions.watch({ parents: { kind: "children", session } }),
 );
 
-/** Each session watch's pager. */
+const OPENING_TAIL = 40;
+
 const pagers = new Map<SessionId, PagedViews>();
 
-/** The oldest message a session showed when its pager last came back empty. */
 const exhausted = new Map<SessionId, string>();
 
-/** Resolves in the task after the next animation frame, once that frame has painted. */
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
-/** A session's views, with its older messages paged in by `loadEarlierMessages`. */
+function keepItems<T>(
+  shown: readonly T[],
+  next: readonly T[],
+  key: (item: T) => string,
+): readonly T[] {
+  const known = new Map(shown.map((item) => [key(item), item]));
+
+  const items = next.map((item) => {
+    const kept = known.get(key(item));
+
+    return kept !== undefined && JSON.stringify(kept) === JSON.stringify(item) ? kept : item;
+  });
+
+  return items.length === shown.length && items.every((item, index) => item === shown[index])
+    ? shown
+    : items;
+}
+
+function keepShown(shown: SessionView, next: SessionView): SessionView {
+  if (JSON.stringify(shown) === JSON.stringify(next)) return shown;
+
+  return {
+    ...next,
+    messages: keepItems(shown.messages, next.messages, (message) => message.id),
+    turns: keepItems(shown.turns, next.turns, (turn) => turn.id),
+    changes: keepItems(shown.changes, next.changes, (change) => change.path),
+  };
+}
+
 export const sessionWatch = watchFamily(
   (current, session: SessionId): AsyncIterable<SessionView> => {
-    const views = pagedViews(current.session(session));
+    const views = pagedViews(current.session(session), { tail: OPENING_TAIL });
     pagers.set(session, views);
     exhausted.delete(session);
 
-    return tracePaints(views, session, nextFrame);
+    const kept: AsyncIterable<SessionView> = {
+      [Symbol.asyncIterator]() {
+        const iterator = views[Symbol.asyncIterator]();
+        let first = true;
+
+        return {
+          async next() {
+            const next = await iterator.next();
+
+            if (next.done === true || !first) return next;
+            first = false;
+            const shown = sessionWatch(session).value;
+
+            return shown === undefined
+              ? next
+              : { done: false, value: keepShown(shown, next.value) };
+          },
+          async return() {
+            await iterator.return?.();
+
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+
+    return tracePaints(kept, session, nextFrame);
   },
 );
 
 const previews = new Map<SessionId, Promise<void>>();
 
-/**
- * Reads a chat's view once and primes its watch with it, so opening the chat
- * shows it at once. A read, unlike a watch, leaves the chat unread.
- */
 export function preloadSession(session: SessionId): Promise<void> {
   if (sessionWatch(session).value !== undefined) return Promise.resolve();
 
   const pending =
     previews.get(session) ??
     connected()
-      .then((current) => current.session(session).view())
+      .then((current) => current.session(session).view({ tail: OPENING_TAIL }))
       .then(
         (view) => sessionWatch(session).prime(view),
         () => undefined,
@@ -406,11 +464,6 @@ export function preloadSession(session: SessionId): Promise<void> {
   return pending;
 }
 
-/**
- * Page up to `limit` older messages into a session's watch, resolving how many
- * came. Once a page comes back empty the host is not asked again until the
- * oldest message shown changes, so scrolling at the top stays quiet.
- */
 export async function loadEarlierMessages(session: SessionId, limit: number): Promise<number> {
   const pager = pagers.get(session);
   const oldest = sessionWatch(session).value?.messages[0]?.id;

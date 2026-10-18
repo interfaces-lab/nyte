@@ -1,4 +1,5 @@
 import type {
+  CommandCompletion,
   CommandOutcome,
   Configuration,
   ConfigurationPatch,
@@ -7,7 +8,6 @@ import type {
   Cursor,
   HeadName,
   HistoryPage,
-  Json,
   MergeOutcome,
   MessageId,
   MoveOptions,
@@ -103,7 +103,11 @@ export interface Session extends Head {
 
   stop(): Promise<{ readonly stopped: readonly RunId[]; readonly withdrawn: readonly MessageId[] }>;
 
-  command(name: string, args?: Json): Promise<CommandOutcome>;
+  /** Runs plugin command `name` with the text typed after it (`""` for none). */
+  command(name: string, text: string): Promise<CommandOutcome>;
+
+  /** Suggests the text after plugin command `name` from `prefix`, what is typed there so far; none for a command that suggests nothing. */
+  completeCommand(name: string, prefix: string): Promise<readonly CommandCompletion[]>;
   readonly parts: {
     create<K extends PartDefinition>(
       kind: K,
@@ -152,6 +156,20 @@ export interface Head {
   view(options?: ViewOptions): Promise<SessionView>;
 
   watch(options?: ViewOptions): AsyncIterable<SessionView>;
+
+  /**
+   * Calls `listener` each time the head's view changes, and returns the unsubscribe. The first
+   * listener opens a `watch()`, and the last one to leave closes it. With `current`, it is the
+   * store React's `useSyncExternalStore`, Svelte, Vue and Solid read; both are stable, so keep the
+   * handle rather than calling `session.head(name)` on every render.
+   */
+  subscribe(listener: () => void): () => void;
+
+  /**
+   * The view the latest change delivered, or `undefined` before the first. It throws the watch's
+   * error once the watch fails, until a new first listener opens another.
+   */
+  current(): SessionView | undefined;
 
   /** The `limit` messages before `before`, older than the view's window, with the turns they belong to. */
   history(input: { readonly before: MessageId; readonly limit: number }): Promise<HistoryPage>;

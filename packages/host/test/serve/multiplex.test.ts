@@ -24,7 +24,7 @@ it.each([1, 128])("delivers a large replay in %i frames and continues its peer",
   const stream = createStreamClient(async (path, init) => {
     const request = new Request(`http://host.test/${path}`, { ...init, method: "POST" });
 
-    if (path === CHANNEL_PATH) return channels.open(owner, request.signal);
+    if (path === CHANNEL_PATH) return channels.open(owner, request.signal, true);
     const channel = request.headers.get(CHANNEL_HEADER);
     const id = request.headers.get(STREAM_HEADER);
 
@@ -45,7 +45,7 @@ it.each([1, 128])("delivers a large replay in %i frames and continues its peer",
           }),
         ),
     );
-  });
+  }, true);
 
   try {
     const [large, peer] = await Promise.all([
@@ -87,7 +87,7 @@ it("cancels one waiter during a shared handshake without canceling its peer", as
       );
       await gate.promise;
 
-      return channels.open(owner, request.signal);
+      return channels.open(owner, request.signal, true);
     }
 
     const channel = request.headers.get(CHANNEL_HEADER);
@@ -96,7 +96,7 @@ it("cancels one waiter during a shared handshake without canceling its peer", as
     if (channel === null || id === null) return new Response(null, { status: 204 });
 
     return channels.start(owner, channel, id, request.signal, async () => new Response("kept"));
-  });
+  }, true);
 
   const canceled = stream("run.settled", {}, first.signal);
   const kept = stream("run.settled", {}, second.signal);
@@ -274,7 +274,7 @@ it("pauses a blocked channel's sources and releases them on cancellation", async
   const { owner } = await served();
   const channels = createStreamChannels();
   const controller = new AbortController();
-  const response = channels.open(owner, controller.signal);
+  const response = channels.open(owner, controller.signal, false);
   const id = response.headers.get(CHANNEL_HEADER);
   assert(id !== null && response.body !== null);
   let canceled = false;

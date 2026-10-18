@@ -1,5 +1,6 @@
 import type {
   BlobId,
+  CommandCompletion,
   CommandOutcome,
   ConfigureOutcome,
   GitHubAccountState,
@@ -61,9 +62,7 @@ export interface Ports {
 export interface HostPort {
   session(id: SessionId): SessionPort;
   workspace(id: WorkspaceId): WorkspacePort;
-  /** Registers `path`, or the folder the TUI opened in when `null`, as a workspace; with neither, resolves the host's default workspace. */
   openFolder(path: string | null): Promise<WorkspaceId>;
-  /** Starts chat `id` with its first message; the same id and input start it once. A start that failed once it landed resolves as started; `taken` means an earlier start made chat `id` with other input. */
   start(input: {
     readonly id: SessionId;
     readonly workspace: WorkspaceId;
@@ -73,7 +72,7 @@ export interface HostPort {
     { readonly kind: "started"; readonly message: MessageId } | { readonly kind: "taken" }
   >;
   rootSessions(): AsyncIterable<SessionInfo>;
-  catalog(): AsyncIterable<Pick<HostView, "catalog" | "settings">>;
+  catalog(): AsyncIterable<Pick<HostView, "catalog" | "settings" | "version">>;
   sessionInfos(): AsyncIterable<readonly SessionInfo[]>;
   listModels(): Promise<ModelCatalogView>;
   accounts(provider: string | null): Promise<readonly ModelAccount[]>;
@@ -90,14 +89,12 @@ export interface HostPort {
     driver: LoginDriver,
   ): Promise<{ readonly provider: string; readonly name: string }>;
   hostPlugins(): Promise<HostView["plugins"]>;
-  /** The machine's `gh` login and the workspace on GitHub through the host, or `null` where the host serves no GitHub. */
   github(
     workspace: WorkspaceId,
   ): Promise<{ readonly account: GitHubAccountState; readonly folder: GitHubState } | null>;
   mcp(workspace: WorkspaceId): Promise<McpView>;
   mcpAction(workspace: WorkspaceId, server: string, action: McpAction): Promise<McpChange>;
   mcpLogin(workspace: WorkspaceId, server: string, driver: LoginDriver): Promise<void>;
-  /** The folder, its saved trust decision, whether its project files load now (`null`: ask), and the files trust would load. */
   trustInfo(workspace: WorkspaceId): Promise<{
     readonly path: string;
     readonly home: boolean;
@@ -113,11 +110,9 @@ export interface HostPort {
 
 export interface WorkspacePort {
   readonly id: WorkspaceId;
-  /** The plugin commands and skills a new chat here would offer. */
   catalog(): Promise<WorkspaceCatalogView>;
-  /** Runs a command of {@link WorkspacePort.catalog} without a chat; a `prompt` outcome is the first message of the chat it starts. */
-  command(name: string, argument: string | null): Promise<WorkspaceCommandOutcome>;
-  /** The folder on this machine, or `null` when the workspace is elsewhere. */
+  command(name: string, text: string): Promise<WorkspaceCommandOutcome>;
+  completeCommand(name: string, prefix: string): Promise<readonly CommandCompletion[]>;
   cwd(): Promise<string | null>;
   upload(bytes: Uint8Array): Promise<BlobId>;
   mentions(signal: AbortSignal): Promise<readonly string[]>;
@@ -126,7 +121,6 @@ export interface WorkspacePort {
 export interface SessionPort {
   readonly id: SessionId;
   watch(): AsyncIterable<SessionView>;
-  /** Pages up to `limit` older messages into the latest watch's views; resolves how many came, 0 at the session's first message. */
   earlier(limit: number): Promise<number>;
   info(): Promise<SessionInfo>;
   workspace(): Promise<{ readonly id: WorkspaceId; readonly cwd: string | null }>;
@@ -139,7 +133,6 @@ export interface SessionPort {
   ): Promise<"revised" | "landed-first" | "gone">;
   stopRun(run: RunId): Promise<"stopped" | "missing">;
   answer(part: PartId, answers: QuestionAnswers): Promise<boolean>;
-  /** Answers an approval; resolves null once it is taken, else why it was not. */
   approve(part: PartId, decision: ApprovalDecision): Promise<string | null>;
   move(position: Position, options: MoveOptions): Promise<MoveOutcome>;
   tree(): Promise<TreeView>;
@@ -149,7 +142,8 @@ export interface SessionPort {
     readonly effort?: Thinking;
   }): Promise<ConfigureOutcome>;
   applySetting(id: string, value: Json): Promise<ConfigureOutcome>;
-  command(name: string, argument: string | null): Promise<CommandOutcome>;
+  command(name: string, text: string): Promise<CommandOutcome>;
+  completeCommand(name: string, prefix: string): Promise<readonly CommandCompletion[]>;
   stopTask(
     task:
       | { readonly kind: "agent"; readonly session: SessionId }
@@ -186,16 +180,12 @@ export interface TerminalPort {
 }
 
 export interface SettingsPort {
-  /** Reads synchronously, so the first frame draws with the user's settings; a file that fails to parse is left out and listed. */
   read(cwd: string): SettingsRead;
   write(cwd: string, patch: SettingsPatch): Promise<ResolvedSettings>;
-  /** Resolves once every write asked for so far has landed, so a read after it sees them. */
   settled(): Promise<void>;
 }
 
-/** What the first frame draws before the host answers: the model a new chat starts on. */
 export interface FirstFramePort {
-  /** Reads synchronously; `null` when no launch recorded one yet, or the record doesn't parse. */
   read(): Selection | null;
   write(selection: Selection): Promise<void>;
 }

@@ -685,9 +685,6 @@ function listContributionSchemas(plugin: Plugin<"core">): readonly {
       ...at(["tools", tool.name, "parameters"], tool.parameters, "input"),
       ...at(["tools", tool.name, "output"], tool.output, "output"),
     ]),
-    ...(declared?.commands ?? []).flatMap((command) =>
-      at(["commands", command.name, "arguments"], command.arguments, "input"),
-    ),
     ...(declared?.settings ?? []).flatMap((setting) =>
       at(["settings", setting.id], setting.schema, "output"),
     ),
@@ -729,6 +726,8 @@ function collisions(plugins: readonly Plugin<"core">[]): readonly ValidationIssu
     for (const tool of declared?.tools ?? []) claim("tools", tool.name, plugin.id);
 
     for (const setting of declared?.settings ?? []) claim("settings", setting.id, plugin.id);
+
+    for (const command of declared?.commands ?? []) claim("commands", command.name, plugin.id);
 
     for (const part of declared?.parts ?? []) {
       if (!RESERVED_PART_KINDS.has(part.kind)) claim("parts", part.kind, plugin.id);

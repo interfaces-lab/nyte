@@ -73,6 +73,8 @@ export function createStore(options: StoreOptions): Store {
 
           for (const effect of effects.splice(0)) runner.run(effect);
         }
+
+        runner.changed();
       } finally {
         draining = false;
       }

@@ -23,8 +23,8 @@ third-party assets or dependencies.
 | `@nyte-ai/schema` | Shared message, model, and tool types |
 
 The seven SDK packages share the CLI release version. Their `workspace:*`
-dependencies become exact versions when pnpm packs them. The first prerelease
-uses the `next` dist-tag. Node hosts require Node 26.4 or later; `sdk` (its
+dependencies become exact versions when pnpm packs them. Prereleases use the
+`next` dist-tag. Node hosts require Node 26.4 or later; `sdk` (its
 `browser` and `react-native` entry), `core`, `protocol`, and `schema` also run in
 browsers. The supplied plugin package declares OpenTUI and React as optional
 peers, for its renderers.
@@ -35,6 +35,7 @@ peers, for its renderers.
 | --- | --- |
 | `app`, `desktop`, `tui`, `mobile` | Product applications, distributed through their own builds |
 | `connect`, `connect-worker` | Product connection services |
+| `bench` | Test fixtures: scripted models, cassettes, scenarios, and the host simulation |
 | `ui` | Component library awaiting a separate release |
 | `docs`, `lab`, `demo`, `demo/website`, `demo/server/*` | Site, experiments, and examples |
 
@@ -51,42 +52,26 @@ pnpm sdk:pack
 pnpm sdk:verify
 ```
 
-`check` rejects missing visibility, version mismatches, and public packages with
-private production dependencies. `pack` builds dependencies before dependents:
+`check` rejects missing visibility, public packages without MIT, public access or provenance,
+public packages with private production dependencies, and a `publishConfig.exports` that does
+not map each source export into `dist`. Each package's `build:package` task, which Turborepo
+runs dependencies first, does the build:
 
 1. TypeScript emits declarations.
 2. Bun builds ESM JavaScript with external package dependencies and shared chunks.
    All source modules are entrypoints, including worker and lazy-loaded modules.
-3. The script temporarily changes source exports to `types` and `import` entries
-   in `dist` and copies the license files into the package, runs `pnpm pack`, then
-   restores the manifest and removes the copies in `finally`.
-4. Tarballs and their publication order are written to `dist/sdk`.
+3. The root `LICENSE` and `THIRD-PARTY-NOTICES.md` are copied into the package.
 
-This follows [OpenCode v2's SDK build and publish scripts](https://github.com/anomalyco/opencode/tree/v2/packages/sdk/script).
-Nyte uses pnpm to pack its pnpm workspace. Workspace development continues to
-resolve TypeScript source; consumers get compiled JavaScript and declarations.
-Do not use plain `npm publish` inside an SDK source package.
+`pack` runs that task and `pnpm pack` into `dist/sdk`. pnpm swaps in `publishConfig.exports`
+and turns `workspace:*` into exact versions. Workspace development keeps resolving TypeScript
+source; consumers get compiled JavaScript and declarations. Publish with pnpm only: npm
+ignores `publishConfig.exports` and would ship the source exports.
 
-`verify` installs the tarballs into a temporary project outside the workspace.
-It must pass before release; checking workspace imports is insufficient because
-symlinks can hide missing files and Node's refusal to strip TypeScript inside
-`node_modules`.
+`verify` installs the tarballs from `dist/sdk`, or from the directory it is given, into a
+temporary project outside the workspace. It must pass before release; checking workspace
+imports is insufficient because symlinks can hide missing files and Node's refusal to strip
+TypeScript inside `node_modules`.
 
 ## Publish
 
-No SDK packages have been published by this change. Before the first release:
-
-- Confirm access to the `@nyte-ai` npm scope and availability of all seven names.
-- Configure npm trusted publishing for each package using
-  `.github/workflows/sdk-packages.yml` and the `npm-sdk` GitHub environment.
-- Protect that environment with release approval. If npm requires an initial
-  publication before trusted publishing can be configured, an authorized
-  maintainer must bootstrap the verified tarballs with npm credentials.
-- Set all public package versions to the intended release and commit the changes.
-
-Run the **SDK packages** workflow without publishing first. It builds, verifies,
-and uploads the tarballs. To publish, run it on a matching `v<version>` tag with
-`publish` enabled. It publishes the exact verified tarballs in dependency order,
-uses `next` for prereleases and `latest` otherwise, and requests npm provenance.
-Already-published versions are skipped so a partially completed release can resume.
-The CLI launcher's existing release workflow remains separate.
+[RELEASING.md](RELEASING.md) covers versioning, the release workflow, and the one-time npm setup.

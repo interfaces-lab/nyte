@@ -1,3 +1,4 @@
+import { deflateSync } from "fflate";
 import { SdkError } from "@nyte-ai/schema";
 import type { Connection } from "@nyte-ai/core";
 import { CHANNEL_HEADER, asSdkError, encodeError, streamBuffer } from "@nyte-ai/protocol";
@@ -7,10 +8,14 @@ const encoder = new TextEncoder();
 
 const CHUNK_BYTES = 48 * 1024;
 
+/** Smaller chunks compress under ~4x and save too few bytes to pay for deflating and inflating them. */
+const DEFLATE_MIN_BYTES = 16 * 1024;
+
 export function createStreamChannels() {
   type Channel = {
     readonly connection: Connection;
     readonly signal: AbortSignal;
+    readonly deflate: boolean;
     readonly streams: Map<string, AbortController>;
     readonly push: (frame: StreamFrame, signal: AbortSignal) => Promise<void>;
   };
@@ -29,7 +34,7 @@ export function createStreamChannels() {
   };
 
   return {
-    open(connection: Connection, signal: AbortSignal): Response {
+    open(connection: Connection, signal: AbortSignal, deflate: boolean): Response {
       const id = crypto.randomUUID();
       const controller = new AbortController();
       const streams = new Map<string, AbortController>();
@@ -65,6 +70,7 @@ export function createStreamChannels() {
       channels.set(id, {
         connection,
         signal: controller.signal,
+        deflate,
         streams,
         push: (frame, signal) =>
           buffer.write(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`), signal),
@@ -129,7 +135,13 @@ export function createStreamChannels() {
                 if (signal.aborted) break;
                 const chunk = next.value.subarray(start, start + CHUNK_BYTES);
                 await channel.push(
-                  { kind: "chunk", stream: streamId, data: chunk.toBase64() },
+                  channel.deflate && chunk.byteLength >= DEFLATE_MIN_BYTES
+                    ? {
+                        kind: "deflated",
+                        stream: streamId,
+                        data: deflateSync(chunk, { level: 1 }).toBase64(),
+                      }
+                    : { kind: "chunk", stream: streamId, data: chunk.toBase64() },
                   signal,
                 );
               }

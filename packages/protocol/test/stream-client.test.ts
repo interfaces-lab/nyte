@@ -20,7 +20,7 @@ it("cancels a stream the client lets go of, never one the host ended", async () 
     else streams.set(path, init.headers[STREAM_HEADER]);
 
     return new Response(null);
-  });
+  }, false);
 
   const { signal } = new AbortController();
 

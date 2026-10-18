@@ -16,6 +16,7 @@ import type { BlankChat, Selection, State, WorkspaceFacts } from "../model/state
 import { SessionConfigurator } from "../services/session-config.ts";
 import type { ConfigPatch, RunChoice } from "../services/session-config.ts";
 import { readWorkspaceStatus } from "../services/workspace.ts";
+import { supersedes, VERSION } from "../version.ts";
 import type { HandlerContext, LocalHandlerContext } from "./scope.ts";
 
 const HISTORY_PAGE = 200;
@@ -26,7 +27,6 @@ export const PLACEHOLDER_SELECTION: Selection = {
   fast: false,
 };
 
-/** Opens a blank chat: a draft that the first send starts under `chat.id`. No session exists before then. */
 export async function openBlank(chat: BlankChat, context: HandlerContext): Promise<void> {
   const { dispatch, scope } = context;
   scope.followed?.controller.abort();
@@ -35,7 +35,6 @@ export async function openBlank(chat: BlankChat, context: HandlerContext): Promi
   await settleFolder(chat, context);
 }
 
-/** Registers a blank chat's launch folder with the host, then reads that workspace's branch and files. */
 export async function settleFolder(chat: BlankChat, context: HandlerContext): Promise<void> {
   const workspace = context.ports.host.workspace(await blankWorkspace(chat, context));
   const cwd = await workspace.cwd();
@@ -44,7 +43,6 @@ export async function settleFolder(chat: BlankChat, context: HandlerContext): Pr
     await refreshWorkspace(context, cwd, { mentions: workspace, signal: context.signal });
 }
 
-/** The workspace a blank chat starts in; a chat still in its launch folder waits for that folder's one registration. */
 export async function blankWorkspace(
   chat: BlankChat,
   context: HandlerContext,
@@ -63,7 +61,6 @@ export async function blankWorkspace(
   return workspace;
 }
 
-/** Opens a blank chat in the current chat's workspace, on the default model at the remembered thinking level. */
 export async function openNew(context: HandlerContext): Promise<void> {
   const state = context.read();
   const { chat } = state.facts;
@@ -83,7 +80,6 @@ export async function openNew(context: HandlerContext): Promise<void> {
   );
 }
 
-/** The host's default model at the remembered thinking level, lowered to what the model supports; without one, at the level core would give it. */
 export function defaultSelection(
   catalog: ModelCatalogView,
   remembered: Thinking | undefined,
@@ -209,7 +205,6 @@ export async function follow(
   unavailable(info.activation, dispatch);
 }
 
-/** Pages older messages into the followed session's views once the transcript shows its first loaded row. */
 export async function loadEarlier(
   effect: { readonly session: SessionId },
   context: HandlerContext,
@@ -223,9 +218,19 @@ export async function watchHost(context: HandlerContext): Promise<void> {
   const { ports, dispatch, read, scope } = context;
   let seen = read().facts.catalog.catalog?.generation ?? null;
   let settings = JSON.stringify(read().facts.hostSettings);
+  let newer = false;
 
   const catalogs = each(ports.host.catalog(), context.signal, (entry) => {
     const listed = JSON.stringify(entry.settings);
+
+    if (!newer && supersedes(entry.version, VERSION)) {
+      newer = true;
+      dispatch({
+        kind: "inform",
+        tone: "info",
+        text: `This host is newer (nyte ${entry.version}); update to see everything · /update`,
+      });
+    }
 
     if (listed !== settings) {
       settings = listed;

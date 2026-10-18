@@ -1,24 +1,68 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useMatchRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import type { NavSection } from "~/lib/docs";
 
-export function Sidebar({ sections }: { sections: readonly NavSection[] }) {
+export interface TocEntry {
+  title: ReactNode;
+  url: string;
+  depth: number;
+}
+
+/**
+ * The docs tree, beside the page and in the phone menu. Rows are the site
+ * nav's pills: its control height, its inset, its fill for the current page.
+ * The current page's sections branch beneath its row, and the one most
+ * recently scrolled past the top third of the viewport is lit, so the mark
+ * moves as you read.
+ */
+export function DocNav({
+  sections,
+  toc,
+  className,
+  onNavigate,
+}: {
+  sections: readonly NavSection[];
+  toc: readonly TocEntry[];
+  className: string;
+  onNavigate?: () => void;
+}) {
+  const matchRoute = useMatchRoute();
+  const current = useCurrentHeading(toc);
+
   return (
-    <nav className="doc-side hidden flex-col lg:flex gap-6 text-[14px]/5" aria-label="Docs">
+    <nav className={className} aria-label="Docs">
       {sections.map((section) => (
         <div key={section.label ?? section.items[0].href}>
           {section.label ? (
-            <h2 className="pb-2 font-normal text-tertiary-foreground">{section.label}</h2>
+            <h2 className="px-2.5 pb-1 font-normal text-tertiary-foreground">{section.label}</h2>
           ) : null}
-          <ul>
+          <ul className="flex flex-col gap-px">
             {section.items.map((item) => (
               <li key={item.href}>
                 <Link
                   to={item.href}
-                  className="block py-1 text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground"
+                  className="block rounded-full px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground aria-[current=page]:bg-foreground/10 aria-[current=page]:text-foreground"
                   activeOptions={{ exact: true }}
+                  onClick={onNavigate}
                 >
                   {item.title}
                 </Link>
+                {toc.length > 0 && matchRoute({ to: item.href }) !== false ? (
+                  <ul className="doc-side-branches" aria-label="On this page">
+                    {toc.map((entry) => (
+                      <li key={entry.url} className="doc-side-branch">
+                        <a
+                          href={entry.url}
+                          aria-current={current === entry.url ? "location" : undefined}
+                          onClick={onNavigate}
+                        >
+                          {entry.title}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -26,4 +70,36 @@ export function Sidebar({ sections }: { sections: readonly NavSection[] }) {
       ))}
     </nav>
   );
+}
+
+function useCurrentHeading(toc: readonly TocEntry[]) {
+  const [current, setCurrent] = useState<string | null>(null);
+
+  useEffect(() => {
+    const headings = toc.flatMap((entry) => {
+      const heading = document.getElementById(entry.url.slice(1));
+
+      return heading === null ? [] : [heading];
+    });
+
+    if (headings.length === 0) return;
+
+    const pick = () => {
+      const line = window.innerHeight / 3;
+      const passed = headings.findLast((heading) => heading.getBoundingClientRect().top <= line);
+
+      setCurrent(`#${(passed ?? headings[0]).id}`);
+    };
+
+    pick();
+    window.addEventListener("scroll", pick, { passive: true, capture: true });
+    window.addEventListener("resize", pick);
+
+    return () => {
+      window.removeEventListener("scroll", pick, { capture: true });
+      window.removeEventListener("resize", pick);
+    };
+  }, [toc]);
+
+  return current;
 }

@@ -10,7 +10,7 @@ import { LiveTurn, liveTurnStyles } from "@nyte-ai/app/conversation/live-turn.ts
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { SubagentSessionsProvider } from "@nyte-ai/app/conversation/subagent-sessions.ts";
 import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
-import { TurnView, UserMessageView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { TurnItemView, UserMessageView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { BranchModelPicker } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
 import { TranscriptSkeleton } from "@nyte-ai/app/screens/transcript-skeleton.tsx";
@@ -60,7 +60,7 @@ function RowView({
   readonly staged: Stage;
   readonly density: ToolCallDensity;
 }): ReactElement | null {
-  const { working, settledWork, changes } = staged;
+  const { working, settledWork } = staged;
 
   switch (row.kind) {
     case "skeleton":
@@ -74,18 +74,21 @@ function RowView({
           </Button>
         </StatusMarker>
       );
-    case "turn":
+    case "part":
+    case "step":
+    case "agents":
+    case "response":
+    case "failure":
+    case "changes":
       return (
-        <TurnView
-          turn={row.turn}
-          continuations={row.continuations}
+        <TurnItemView
+          row={row}
+          running={(row.kind === "step" || row.kind === "changes") && row.trailing && working}
           density={density}
           cwd={CWD}
-          changes={changes}
           onEditUser={editUser}
           branchModel={BRANCH_MODEL}
           onOpenChanges={openChanges}
-          running={row.trailing && working}
         />
       );
 
@@ -127,8 +130,13 @@ function SceneView({
 }): ReactElement {
   return (
     <div {...props(styles.transcript)}>
-      {staged.rows.map((row) => (
-        <RowView key={row.messageId} row={row} staged={staged} density={density} />
+      {staged.rows.map((row, index) => (
+        <div
+          key={row.messageId}
+          {...props(styles.row, !row.leads && styles.rowWithin, index === 0 && styles.rowFirst)}
+        >
+          <RowView row={row} staged={staged} density={density} />
+        </div>
       ))}
     </div>
   );
@@ -229,8 +237,8 @@ export function MessagesPage(): ReactElement {
           <div {...props(styles.heading)}>
             <h1 {...props(styles.title)}>Chat messages</h1>
             <p {...props(styles.detail)}>
-              {COUNT} specimens from SDK data, drawn by the app&rsquo;s TurnView, LiveTurn and row
-              surfaces in each tool call density.
+              {COUNT} specimens from SDK data, drawn by the app&rsquo;s TurnItemView, LiveTurn and
+              row surfaces in each tool call density.
             </p>
           </div>
           <div {...props(styles.actions)}>
@@ -294,7 +302,8 @@ const styles = create({
     flexDirection: "column",
     gap: 24,
     boxSizing: "border-box",
-    minHeight: "100vh",
+    height: "100%",
+    overflowY: "auto",
     paddingBlock: "32px 120px",
     paddingInline: 32,
     backgroundColor: role.bgBase,
@@ -469,8 +478,10 @@ const styles = create({
   transcript: {
     display: "flex",
     flexDirection: "column",
-    gap: conversation.turnGap,
     maxWidth: conversation.measure,
     minWidth: 0,
   },
+  row: { minWidth: 0, paddingTop: { default: conversation.turnGap, ":empty": 0 } },
+  rowWithin: { paddingTop: { default: conversation.rowGap, ":empty": 0 } },
+  rowFirst: { paddingTop: 0 },
 });

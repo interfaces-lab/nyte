@@ -9,23 +9,13 @@ import { promisify, stripVTControlCharacters } from "node:util";
 import { press } from "@nyte-ai/app/e2e/scenario-d";
 import { HOURS_QUESTION } from "@nyte-ai/app/e2e/scenario-u-fixture";
 import { tabTo } from "@nyte-ai/app/e2e/scenario-u-trace";
-import { CI_PROMPT, RESTAURANT_PROMPT } from "@nyte-ai/host/bench";
+import { CI_PROMPT, RESTAURANT_PROMPT } from "@nyte-ai/bench";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { launchPackaged, polishAnswers, polishHome, serveScriptedModel } from "./polish-fixture.ts";
 import type { PackagedDesktop, PolishHome, ScriptedEndpoint } from "./polish-fixture.ts";
 import { composer, messages } from "./ui.ts";
 
-/**
- * The packaged build this spec drives (`NYTE_POLISH_EXE`, default this
- * package's `dist`). The spec captures every surface scenarios U and D touch
- * in its empty, loading, streaming, error, offline, reconnecting, long,
- * narrow, dark and reduced-motion states as a window PNG and an accessibility
- * snapshot under `NYTE_POLISH_OUT`. `NYTE_POLISH_LABEL=before` captures a
- * baseline without judging it; the judged (`after`) run asserts no layout
- * shift at startup, resume or while streaming, no busy indicator over a
- * restored transcript, focus on the next action, and a keyboard-only path.
- */
 const EXECUTABLE =
   process.env.NYTE_POLISH_EXE ??
   resolve(import.meta.dirname, "../dist/mac-arm64/Nyte.app/Contents/MacOS/Nyte");
@@ -38,7 +28,6 @@ const RECONNECT_PROMPT = "Are you still there?";
 
 const LONG_PROMPT = "/long 80";
 
-/** A window and the app that owns it. */
 interface Shown {
   readonly application: ElectronApplication;
   readonly page: Page;
@@ -47,7 +36,6 @@ interface Shown {
 interface Run {
   readonly out: string;
   readonly notes: Record<string, unknown>;
-  /** The app the run drives now. */
   readonly desktop: () => PackagedDesktop;
 }
 
@@ -62,12 +50,6 @@ function workbench(page: Page): Locator {
   return page.getByRole("complementary", { name: "Workbench" });
 }
 
-/**
- * Saves `scope`'s accessibility tree, then the window's pixels (as macOS
- * composites them, so guest browser views and the traffic lights show; a page
- * screenshot when it cannot), as `<surface>/<state>-<label>`. A judged run
- * also holds a `committed` scope to its snapshot in `polish.spec.ts-snapshots`.
- */
 async function capture(
   run: Run,
   target: Shown,
@@ -95,13 +77,8 @@ async function capture(
     await expect(scope).toMatchAriaSnapshot({ name: `${surface}-${state}.aria.yml` });
 }
 
-/** How long a baseline run gives one phase before noting it and moving on. */
 const BASELINE_PHASE_MS = 90_000;
 
-/**
- * Saves the window as macOS composites it, guest browser views included,
- * which a page screenshot leaves out; false when `screencapture` cannot.
- */
 async function captureWindow(application: ElectronApplication, path: string): Promise<boolean> {
   const source = await application
     .evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getMediaSourceId())
@@ -116,12 +93,6 @@ async function captureWindow(application: ElectronApplication, path: string): Pr
   );
 }
 
-/**
- * Runs one phase and saves the notes so far. A judged run fails on its first
- * error; a baseline run notes it, captures the window as each state in
- * `shows` it did not reach, and carries on, since the build before the fix
- * may lack the surface.
- */
 async function phase(
   run: Run,
   name: string,
@@ -159,7 +130,6 @@ async function phase(
   });
 }
 
-/** Moves a menu's highlight with the arrow keys until `item` has focus. */
 async function arrowTo(item: Locator, limit = 12): Promise<void> {
   for (let presses = 0; presses < limit; presses += 1) {
     if (await item.evaluate((element) => element === document.activeElement).catch(() => false))
@@ -170,10 +140,6 @@ async function arrowTo(item: Locator, limit = 12): Promise<void> {
   throw new Error(`The arrow keys never reached ${String(item)}.`);
 }
 
-/**
- * Reads every layout shift the document buffered, with each moved node and
- * its rectangles. A string, as the DOM library declares no `LayoutShift`.
- */
 const READ_SHIFTS = `new Promise((done) => {
   const entries = [];
   const observer = new PerformanceObserver((list) => entries.push(...list.getEntries()));
@@ -213,7 +179,6 @@ const LayoutShiftsSchema = Type.Array(
   }),
 );
 
-/** The layout shifts this document recorded without recent input from `since` (renderer ms): their score and what moved. */
 async function layoutShifts(page: Page, since = 0) {
   const shifts = Value.Parse(
     LayoutShiftsSchema,
@@ -223,11 +188,6 @@ async function layoutShifts(page: Page, since = 0) {
   return { score: shifts.reduce((total, entry) => total + entry.value, 0), shifts };
 }
 
-/**
- * Samples every frame for `ms` and lists the frames in which `text` was in
- * the transcript while a busy indicator (`aria-busy`, a progress bar, or a
- * "Loading" label) was in it, with the indicator.
- */
 function busyOverContent(page: Page, text: string, ms: number): Promise<readonly string[]> {
   return page.evaluate(
     ({ text, ms }) =>
@@ -258,7 +218,6 @@ function busyOverContent(page: Page, text: string, ms: number): Promise<readonly
   );
 }
 
-/** The CSS properties of animations running now that move or resize something rather than fade it. */
 function movingAnimations(page: Page): Promise<readonly string[]> {
   return page.evaluate(() =>
     document.getAnimations().flatMap((animation) => {
@@ -303,7 +262,6 @@ async function setTheme(desktop: PackagedDesktop, theme: "light" | "dark"): Prom
   );
 }
 
-/** Opens a new chat with ⌘N and checks the composer took focus, the next action. */
 async function newChat(run: Run, page: Page): Promise<void> {
   await page.keyboard.press("ControlOrMeta+n");
   await expect(composer(page)).toHaveText("");

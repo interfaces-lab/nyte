@@ -1,0 +1,125 @@
+---
+title: Entry points
+description: Options for sdk.open and sdk.connect, and the helpers @nyte-ai/sdk exports beside them.
+---
+
+## sdk.open
+
+```ts
+sdk.open(options: OpenHostOptions): Promise<Host>
+```
+
+Composes a host in this Node process and returns it. Available from `@nyte-ai/sdk` in Node only;
+elsewhere it rejects with `SdkError("unavailable")`.
+
+| Option      | Type                              | Default                                                      |
+| ----------- | --------------------------------- | ------------------------------------------------------------ |
+| `store`     | `Store`                           | SQLite at `<home>/.nyte/nyte.db`, closed with the host       |
+| `workspace` | `WorkspaceTarget`                 | `{ kind: "local", path: process.cwd() }`                     |
+| `models`    | `Models` from `@nyte-ai/ai`       | Nyte's catalog over credentials encrypted in the store       |
+| `plugins`   | `Plugin<"core">[]`                | `[]`                                                         |
+| `home`      | `string`                          | `os.homedir()`. Its `.nyte` holds settings, plugins and keys |
+| `secrets`   | `{ key(): Promise<Uint8Array> }`  | The key in `<home>/.nyte`                                    |
+| `execution` | `run`, `admit-only` or `dispatch` | `run`, covering every session                                |
+| `mcp`       | `McpHubFactory`                   | The host's MCP hub                                           |
+| `github`    | `GitHubAccountApi`                | The machine's `gh` login, with the default local provider    |
+| `shell`     | `() => string \| null`            | `$SHELL`, for terminal jobs                                  |
+
+The host always loads the first-party plugins and the plugin files in `<home>/.nyte/plugins`.
+`plugins` come after the first-party ones; one with a first-party plugin's `id` replaces it, and one
+that provides the `local` environment replaces the default local provider.
+
+`execution` decides who runs the sessions this host admits. `run` runs them here. `admit-only`
+stores messages and leaves running to another process. `dispatch` calls your function with each
+session and head that has work, for a queue or workflow engine to pick up.
+
+`host.close()` stops watching plugin files, closes listeners, closes the host, then closes the store
+if the host opened it.
+
+## sdk.connect
+
+```ts
+sdk.connect(options: ConnectOptions): Promise<Connection>
+```
+
+Connects to a host over HTTP and resolves once the host has sent its first view. Available from
+`@nyte-ai/sdk` everywhere, and from `@nyte-ai/sdk/client` without the host code.
+
+| Option        | Type                                                     | Notes                                                |
+| ------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| `url`         | `string`                                                 | The listener's address                               |
+| `credentials` | `CredentialSource`                                       | See below                                            |
+| `expect`      | `{ hostId: HostId }`                                     | Throws `SdkError("stale")` when another host answers |
+| `journal`     | `RequestJournal`                                         | Where unsent messages wait. Default: in memory       |
+| `fetch`       | `(url: string, init?: RequestInit) => Promise<Response>` | Replaces the global `fetch`                          |
+
+`credentials` is one of:
+
+- `{ kind: "token", token }` for a listener token or a device token from pairing.
+- `{ kind: "pairing", code }` for a code from `principals.pair`. After connecting,
+  `connection.credential` holds the device token to save.
+- `{ kind: "custom", headers() }` to compute request headers yourself, for a listener with custom
+  auth.
+
+## createSendJournal
+
+```ts
+createSendJournal(): RequestJournal
+```
+
+The in-memory journal `connect` uses when you pass none. Messages in it survive a dropped
+connection but not a restart. To keep them across restarts, pass your own `RequestJournal`:
+
+```ts
+interface RequestJournal {
+  load(): Promise<readonly JournalEntry[]>;
+  put(entry: JournalEntry): Promise<void>;
+  remove(id: ReceiptId): Promise<void>;
+}
+```
+
+`connect` calls `load` once and resends what it returns. `send` calls `put` before the request and
+`remove` once the host has acknowledged it. A `JournalEntry` is JSON, so any key-value store works.
+
+## pagedViews
+
+```ts
+pagedViews(head: Head, options?: ViewOptions): PagedViews
+```
+
+Watches `head` and keeps older messages you load at the front of each view. `PagedViews` is an
+`AsyncIterable<SessionView>` with one more method:
+
+- `earlier(limit)` loads up to `limit` messages before the oldest one shown and resolves with how
+  many came, `0` once the chat's first message is shown. A call while one is loading waits for it.
+
+If the head moves past the loaded pages, the next view drops them. Iterate it once.
+
+## watchStore
+
+```ts
+watchStore<T>(open: () => AsyncIterable<T>): WatchStore<T>
+```
+
+Turns a watch into the store every head already is: `subscribe(listener)` returns the unsubscribe,
+and `current()` returns the latest value, or `undefined` before the first. The first listener calls
+`open()`, and the last one to leave closes that watch, keeping the value it saw. Once a watch fails,
+`current()` throws its error until a new first listener opens another.
+
+```ts
+const sessions = watchStore(() => connection.sessions.watch());
+```
+
+## SdkError
+
+```ts
+class SdkError extends Error {
+  readonly code: SdkErrorCode;
+  readonly hostId: HostId | null;
+  readonly issues: readonly ValidationIssue[];
+  readonly correlation: string | null;
+}
+```
+
+The one error the SDK throws. [Shared concepts](/docs/sdk/reference/shared-concepts#errors-and-outcomes)
+lists the codes.

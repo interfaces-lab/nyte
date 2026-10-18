@@ -130,7 +130,9 @@ export {
 
 export type { EndSpan, Span, SpanDetail, SpanName } from "./util/trace.ts";
 
-export { closable, coalesce, forwarded } from "./util/iterable.ts";
+export { closable, coalesce, forwarded, watchStore } from "./util/iterable.ts";
+
+export type { WatchStore } from "./util/iterable.ts";
 
 export { matchesOutput } from "./util/json-schema.ts";
 

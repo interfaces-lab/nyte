@@ -21,6 +21,12 @@ over stdin. `--effort` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh
 `max`; an invalid explicit value is an error. The selected model may clamp a valid level.
 In print mode `--model` also becomes the host's default model; `--effort` applies to that run only.
 
+`--trust` and `--no-trust` save whether the folder's project files (skills, plugins, MCP
+servers) load, the same way `/trust` does: for the resumed session's folder, or the current
+folder for a new chat. Without either, the terminal asks before a folder with project files
+and no saved decision runs its first message. Print mode never asks: there an undecided folder
+loads its project files only when the Project trust setting is `always`.
+
 ## Print output and exits
 
 Human print mode writes answer text to stdout and tool names and diagnostics to stderr.

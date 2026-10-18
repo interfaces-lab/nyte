@@ -1,8 +1,8 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fakeModels } from "@nyte-ai/host/bench";
-import type { FakeModels } from "@nyte-ai/host/bench";
+import { fakeModels } from "@nyte-ai/bench";
+import type { FakeModels } from "@nyte-ai/bench";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import type { BrowserAgent } from "../browser-agent.ts";
 import { unusedBrowserAgent } from "../browser-stub.ts";
@@ -28,6 +28,7 @@ export async function testDesktop(
 
   const host = new DesktopHost({
     home,
+    version: "0.0.0-test",
     models: fake.models,
     rendererOrigin: "nyte://app",
     emitHostEvent: (event) => events.push(event),

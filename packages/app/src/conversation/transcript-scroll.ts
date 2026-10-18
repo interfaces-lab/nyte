@@ -1,4 +1,3 @@
-/** Mirrors the transcript's former `paddingTop`. */
 export const TRANSCRIPT_PADDING_START = 16;
 
 const STICKY_EPSILON = 2;
@@ -29,7 +28,8 @@ export function syncSticky(viewport: HTMLElement, content: HTMLElement, followin
       rect.top;
 
     const rowBottom =
-      prompt.closest("[data-message-id]")?.getBoundingClientRect().bottom ?? rect.bottom;
+      prompt.closest("[data-turn-span], [data-message-id]")?.getBoundingClientRect().bottom ??
+      rect.bottom;
 
     const eligible =
       rect.height < viewport.clientHeight &&

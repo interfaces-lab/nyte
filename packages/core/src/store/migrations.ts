@@ -8,14 +8,24 @@ import {
   SdkError,
   ToolCallType,
   withJson,
+  WorkspaceTargetType,
   writePatch,
 } from "@nyte-ai/schema";
 import type { Json, ObjectId } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { decodeCallRecord, decodeRunRecord } from "../contract/records.ts";
+import { decodeCallRecord, decodeRunRecord, envelope } from "../contract/records.ts";
 import { objectId } from "../util/content.ts";
-import { callRef, endedRunRef, liveRef, parseSessionRef, runRef, sessionRef } from "./refs.ts";
+import {
+  callRef,
+  endedRunRef,
+  liveRef,
+  parseSessionRef,
+  runRef,
+  sessionRef,
+  trustRef,
+  trustTarget,
+} from "./refs.ts";
 import { waitIndex, wokenIndex } from "./wait-index.ts";
 
 type StoreDialect = "sqlite" | "postgres";
@@ -36,12 +46,13 @@ interface RewriteStep {
   adds?(name: string, record: Json): readonly string[];
 }
 
-/** Finds refs to add at records no ref reaches any more (`recover`, the refs to create from every ref's name, every session's log and the objects of a record kind); one that exists is kept. */
+/** Finds refs to add (`recover`, the refs to create from every ref and the record it holds as the store stood before this migration, every session's log and the objects of a record kind); one that exists is kept. */
 interface RecoverStep {
   readonly kind: "recover";
   readonly name: string;
   recover(input: {
     readonly refs: ReadonlySet<string>;
+    readonly records: readonly StoredRecord[];
     readonly logs: AsyncIterable<SessionLog>;
     readonly objects: (kind: string) => AsyncIterable<StoredObject>;
   }): Promise<readonly Creation[]>;
@@ -74,10 +85,11 @@ export interface StoredObject {
   readonly body: string;
 }
 
-/** A ref the migration creates at an object it already holds, unless the ref exists. */
+/** A ref the migration creates at the object `target` with `body`, written unless the store holds it, unless the ref exists. */
 interface Creation {
   readonly name: string;
   readonly target: ObjectId;
+  readonly body: string;
 }
 
 /** One logged event as the store keeps it. */
@@ -533,7 +545,10 @@ const endedRunRecords: RecoverStep = {
           ended.set(event.run, (ended.get(event.run) ?? new Set()).add(log.session));
       }
 
-    const latest = new Map<string, { readonly id: ObjectId; readonly at: number; record: Json }>();
+    const latest = new Map<
+      string,
+      { readonly object: StoredObject; readonly at: number; record: Json }
+    >();
 
     for await (const object of objects("run")) {
       const record = parsed(object.body);
@@ -548,11 +563,11 @@ const endedRunRecords: RecoverStep = {
       const at = isJsonObject(record) && typeof record.at === "number" ? record.at : 0;
       const kept = latest.get(run);
 
-      if (kept === undefined || at > kept.at || (at === kept.at && object.id > kept.id))
-        latest.set(run, { id: object.id, at, record });
+      if (kept === undefined || at > kept.at || (at === kept.at && object.id > kept.object.id))
+        latest.set(run, { object, at, record });
     }
 
-    return [...latest].flatMap(([run, { id, record }]) => {
+    return [...latest].flatMap(([run, { object, record }]) => {
       const [only, ...others] = ended.get(run) ?? [];
 
       if (only === undefined || others.length > 0 || decodeRunRecord(record) === null) return [];
@@ -566,7 +581,7 @@ const endedRunRecords: RecoverStep = {
       )
         return [];
 
-      return [{ name: endedRunRef(session, ran), target: id }];
+      return [{ name: endedRunRef(session, ran), target: object.id, body: object.body }];
     });
   },
 };
@@ -594,6 +609,79 @@ const foldCheckpoints: SchemaStep = {
   },
 };
 
+const WORKSPACE_TARGET = compile(withJson(WorkspaceTargetType));
+
+/**
+ * Trust belongs to a folder: each added workspace's own `projectResources`
+ * decision becomes its folder's decision at `trust/<folder key>`. A
+ * worktree's is dropped, since it follows the folder it was made from. Where
+ * several workspaces of one folder decided, the latest written wins, and a
+ * decline wins over a grant written at the same time.
+ */
+const folderTrust: RecoverStep = {
+  kind: "recover",
+  name: "2026-10-17-folder-trust",
+  async recover({ refs, records }) {
+    const chosen = new Map<string, { readonly record: Json; readonly at: number }>();
+
+    for (const stored of records) {
+      const object = parsed(stored.body);
+
+      if (
+        !stored.name.startsWith("workspaces/") ||
+        !isJsonObject(object) ||
+        object.kind !== "workspace" ||
+        !isJsonObject(object.body)
+      )
+        continue;
+      const { projectResources, isolation, target } = object.body;
+
+      if (
+        typeof projectResources !== "boolean" ||
+        (isolation ?? null) !== null ||
+        !WORKSPACE_TARGET.Check(target)
+      )
+        continue;
+      const folder = trustTarget(WORKSPACE_TARGET.Decode(target));
+      const name = await trustRef(folder);
+      const at = typeof object.at === "number" ? object.at : 0;
+      const kept = chosen.get(name);
+
+      if (kept === undefined || at > kept.at || (at === kept.at && !projectResources))
+        chosen.set(name, {
+          at,
+          record: envelope("trust", { target: folder, trusted: projectResources }, at),
+        });
+    }
+
+    return Promise.all(
+      [...chosen]
+        .filter(([name]) => !refs.has(name))
+        .map(async ([name, { record }]) => ({
+          name,
+          target: await objectId(record),
+          body: JSON.stringify(record),
+        })),
+    );
+  },
+};
+
+/** A workspace record no longer holds its folder's trust; `folderTrust` moved it. */
+const workspaceTrustMoved: RewriteStep = {
+  kind: "rewrite",
+  name: "2026-10-17-workspace-trust-moved",
+  rewrite(object) {
+    if (!isJsonObject(object) || object.kind !== "workspace") return null;
+
+    return patched(object, (body) => {
+      if (!("projectResources" in body)) return body;
+      const { projectResources: _moved, ...rest } = body;
+
+      return rest;
+    });
+  },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -612,6 +700,8 @@ const STORE_STEPS: readonly StoreStep[] = [
   endedRunRecords,
   workspaceIsolation,
   foldCheckpoints,
+  folderTrust,
+  workspaceTrustMoved,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;
@@ -648,7 +738,7 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
         ? { moved: [], created: [] }
         : await rewriteRecords(rewrites, records);
 
-    const recovered = stamp.empty ? [] : await recoverRefs(recovers, target, records);
+    const recovered = stamp.empty ? [] : await recoverRefs(steps, target, records);
 
     const relogged =
       stamp.empty || !rewrites.some((step) => step.rewriteLog !== undefined)
@@ -682,22 +772,35 @@ export async function migrateStore(target: MigrationTarget): Promise<void> {
   );
 }
 
+/** Runs each recover step over the records as the rewrite steps before it leave them. */
 async function recoverRefs(
-  recovers: readonly RecoverStep[],
+  steps: readonly StoreStep[],
   target: MigrationTarget,
   records: readonly StoredRecord[],
 ): Promise<readonly Creation[]> {
   const refs = new Set(records.map((record) => record.name));
   const found: Creation[] = [];
+  let seen = records;
 
-  for (const step of recovers)
+  for (const step of steps) {
+    if (step.kind === "rewrite" && step.rewrite !== undefined)
+      seen = seen.map((stored) => {
+        const record = parsed(stored.body);
+        const next = record === null ? null : (step.rewrite?.(record) ?? null);
+
+        return next === null ? stored : { ...stored, body: JSON.stringify(next) };
+      });
+
+    if (step.kind !== "recover") continue;
     found.push(
       ...(await step.recover({
         refs,
+        records: seen,
         logs: target.logs(),
         objects: (kind) => target.objects(kind),
       })),
     );
+  }
 
   return found;
 }
@@ -718,11 +821,11 @@ async function rewriteRecords(
 
     if (next === record && adds.length === 0) continue;
     const id = next === record ? stored.target : await objectId(next);
+    const body = next === record ? stored.body : JSON.stringify(next);
 
-    if (next !== record)
-      moved.push({ name: stored.name, expect: stored.revision, id, body: JSON.stringify(next) });
+    if (next !== record) moved.push({ name: stored.name, expect: stored.revision, id, body });
 
-    for (const name of adds) created.push({ name, target: id });
+    for (const name of adds) created.push({ name, target: id, body });
   }
 
   return { moved, created };

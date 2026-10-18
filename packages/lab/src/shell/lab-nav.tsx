@@ -1,22 +1,14 @@
 import { create, props } from "@stylexjs/stylex";
 import { Link } from "@tanstack/react-router";
-import type { router } from "../router";
 
 const PAGES = [
-  ["/requests", "Requests"],
   ["/review", "Review"],
   ["/projects", "Projects"],
   ["/tabs", "Tabs"],
-  ["/canvas", "Canvas"],
   ["/changes", "Changes"],
-  ["/messages", "Messages"],
-  ["/profile", "Profile"],
-  ["/usage", "Usage"],
-  ["/sdk", "SDK"],
   ["/settings", "Settings"],
+  ["/studio", "Studio"],
 ] as const;
-
-type Path = (typeof PAGES)[number][0];
 
 /** Painted from literals: each page loads a different palette, and this sits on all of them. */
 const styles = create({
@@ -60,7 +52,7 @@ export function LabNav() {
   return (
     <nav aria-label="Lab pages" {...props(styles.nav)}>
       {PAGES.map(([path, label]) => (
-        <Link<typeof router, string, Path>
+        <Link
           key={path}
           to={path}
           activeOptions={{ exact: true, includeSearch: false }}

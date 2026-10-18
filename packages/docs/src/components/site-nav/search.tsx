@@ -3,6 +3,9 @@ import { useEffect, useId, useState } from "react";
 import { create } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Input } from "@nyte-ai/ui/input";
+import { liteClient } from "algoliasearch/lite";
+import { IconMagnifyingGlass } from "central-icons";
+import { algoliaClient } from "fumadocs-core/search/client/algolia";
 import { splitHref } from "~/lib/href";
 
 const styles = create({
@@ -36,6 +39,33 @@ function parseResults(value: unknown): Result[] {
   return results;
 }
 
+const { VITE_ALGOLIA_APP_ID: appId, VITE_ALGOLIA_SEARCH_KEY: searchKey } = import.meta.env;
+
+/** Algolia once its keys are set; `pnpm sync:algolia` fills the index after a deploy. */
+const algolia =
+  appId && searchKey
+    ? algoliaClient({
+        indexName: import.meta.env.VITE_ALGOLIA_INDEX ?? "docs",
+        client: liteClient(appId, searchKey),
+      })
+    : null;
+
+async function searchSite(query: string, signal: AbortSignal): Promise<Result[]> {
+  if (algolia) {
+    try {
+      return parseResults(await algolia.search(query));
+    } catch {
+      return [];
+    }
+  }
+
+  const body: unknown = await fetch(`/api/search?query=${encodeURIComponent(query)}`, { signal })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null);
+
+  return parseResults(body);
+}
+
 function Highlighted({ content }: { content: string }) {
   return content.split(/<\/?mark>/).map((part, index) =>
     index % 2 === 1 ? (
@@ -49,7 +79,7 @@ function Highlighted({ content }: { content: string }) {
 }
 
 /**
- * ⌘K over the shared /api/search index, drawn with the shared Dialog and
+ * ⌘K over Algolia, or the shared /api/search index without its keys, drawn with the shared Dialog and
  * Input. Results outside the current section are kept: an agent searching
  * "subagent" should find the core docs too. A result on the other host (docs
  * from design.nyte.sh, or back) navigates with a full document load.
@@ -79,13 +109,10 @@ export function SiteSearch() {
     if (!open || trimmed === "") return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
-      const body: unknown = await fetch(`/api/search?query=${encodeURIComponent(trimmed)}`, {
-        signal: controller.signal,
-      })
-        .then((response) => (response.ok ? response.json() : null))
-        .catch(() => null);
+      const found = await searchSite(trimmed, controller.signal);
+
       if (controller.signal.aborted) return;
-      setResponse({ query: trimmed, results: parseResults(body) });
+      setResponse({ query: trimmed, results: found });
       setActive(0);
     }, 89);
     return () => {
@@ -121,6 +148,14 @@ export function SiteSearch() {
         aria-label="Search"
       >
         <span>Search</span>
+      </button>
+      <button
+        type="button"
+        className="hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected text-foreground hover:bg-foreground/10 max-lg:inline-flex hero:text-white"
+        onClick={() => setOpen(true)}
+        aria-label="Search"
+      >
+        <IconMagnifyingGlass size={16} />
       </button>
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Popup aria-label="Search" xstyle={styles.popup}>
@@ -165,6 +200,16 @@ export function SiteSearch() {
             <div className="border-t border-border-subtle px-4 py-6 text-center text-sm text-muted-foreground">
               No results. Try a function or ref name.
             </div>
+          ) : null}
+          {algolia ? (
+            <a
+              href="https://www.algolia.com/?utm_medium=referral&utm_source=nyte-docs"
+              target="_blank"
+              rel="noreferrer"
+              className="border-t border-border-subtle px-4 py-2 text-right text-xs/5 text-muted-foreground hover:text-foreground"
+            >
+              Search by Algolia
+            </a>
           ) : null}
         </Dialog.Popup>
       </Dialog.Root>

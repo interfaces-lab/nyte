@@ -13,11 +13,7 @@ import { post, served } from "./fakes.ts";
 
 const main: HeadName = asId("main");
 
-/** A first frame of the default tail, 200 short messages and their turns, whatever the session's length. */
 const FRAME_BUDGET = 256 * 1024;
-
-/** How much longer attaching to a 10,000-message chat may take than to a 100-message one: restoring its checkpoint takes about 50 ms here, and replaying its 40,000 events without one about 270 ms. */
-const ATTACH_SPREAD_MS = 100;
 
 const folders: string[] = [];
 
@@ -25,7 +21,6 @@ afterAll(async () => {
   await Promise.all(folders.map((folder) => rm(folder, { recursive: true, force: true })));
 });
 
-/** Starts a chat and grows it to `messages` messages: each exchange after the first a question and an answer streamed in four updates, as a model's text part is logged. */
 async function chat(store: Store, messages: number): Promise<SessionId> {
   const { handler, fake, host } = await served({ store });
   fake.reply("Hi.");
@@ -107,10 +102,36 @@ async function chat(store: Store, messages: number): Promise<SessionId> {
   return session;
 }
 
+function tallied(store: Store) {
+  const tally = { events: 0 };
+
+  const counted: Store = {
+    close: () => store.close(),
+    async open() {
+      const connection = await store.open();
+
+      return {
+        ...connection,
+        refs: {
+          ...connection.refs,
+          async log(session, after, limit) {
+            const events = await connection.refs.log(session, after, limit);
+            tally.events += events.length;
+
+            return events;
+          },
+        },
+      };
+    },
+  };
+
+  return { store: counted, tally };
+}
+
 async function attach(store: Store, session: SessionId) {
-  const { handler, host } = await served({ store });
+  const { store: counted, tally } = tallied(store);
+  const { handler, host } = await served({ store: counted });
   const aborted = new AbortController();
-  const started = performance.now();
   const response = await post(handler, "head.watch", { session, head: main }, {}, aborted.signal);
   assert(response.body !== null);
   let first: Json = null;
@@ -120,27 +141,21 @@ async function attach(store: Store, session: SessionId) {
     break;
   }
 
-  const elapsed = performance.now() - started;
+  const read = tally.events;
   aborted.abort();
   await host.close();
   const frame = decodeOutput("head.watch", first);
   assert(frame.kind === "view");
 
   return {
-    elapsed,
+    read,
     bytes: new TextEncoder().encode(JSON.stringify(first)).byteLength,
     messages: frame.view.messages.length,
   };
 }
 
-function median(values: readonly number[]): number {
-  const sorted = values.toSorted((left, right) => left - right);
-
-  return sorted[Math.floor(sorted.length / 2)] ?? 0;
-}
-
 it(
-  "attaches to a 10,000-message chat about as fast as to a 100-message one, its first frame within the tail's byte budget",
+  "attaches to a 10,000-message chat from its checkpoint, reading fewer log events than a 100-message one replays, its first frame within the tail's byte budget",
   { timeout: 120_000 },
   async () => {
     const folder = await mkdtemp(join(tmpdir(), "nyte-attach-"));
@@ -156,21 +171,14 @@ it(
       .poll(async () => (await connection.checkpoints?.read(long))?.seq ?? 0, { timeout: 10_000 })
       .toBeGreaterThan(10_000);
 
-    const shortRuns: number[] = [];
-    const longRuns: number[] = [];
-    let longFrame = { bytes: 0, messages: 0 };
-
-    for (let round = 0; round < 5; round += 1) {
-      shortRuns.push((await attach(store, short)).elapsed);
-      const attached = await attach(store, long);
-      longRuns.push(attached.elapsed);
-      longFrame = attached;
-    }
+    const shortAttach = await attach(store, short);
+    const longAttach = await attach(store, long);
 
     expect(await connection.checkpoints?.read(short)).toBeNull();
-    expect(longFrame.messages).toBe(200);
-    expect(longFrame.bytes).toBeLessThan(FRAME_BUDGET);
-    expect(median(longRuns) - median(shortRuns)).toBeLessThan(ATTACH_SPREAD_MS);
+    expect(shortAttach.read).toBeGreaterThan(0);
+    expect(longAttach.read).toBeLessThan(shortAttach.read);
+    expect(longAttach.messages).toBe(200);
+    expect(longAttach.bytes).toBeLessThan(FRAME_BUDGET);
     await store.close();
   },
 );

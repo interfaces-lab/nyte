@@ -3,7 +3,14 @@ import { props } from "@stylexjs/stylex";
 import type { MDXComponents } from "mdx/types";
 import { Link } from "@tanstack/react-router";
 import type { ComponentProps, ReactNode } from "react";
-import { CodeFrame } from "~/components/site/code-frame";
+import {
+  CodeBlockTab,
+  CodeBlockTabs,
+  CodeBlockTabsList,
+  CodeBlockTabsTrigger,
+  CodeFrame,
+  GroupPanel,
+} from "~/components/site/code-frame";
 import { splitHref } from "~/lib/href";
 import { componentsMdxComponents } from "~/components/components/mdx";
 import { foundationsMdxComponents } from "~/components/design/mdx";
@@ -37,8 +44,13 @@ export const mdxComponents = {
   ...componentsMdxComponents,
   ...foundationsMdxComponents,
   Cards,
+  CodeBlockTab,
+  CodeBlockTabs,
+  CodeBlockTabsList,
+  CodeBlockTabsTrigger,
   DocCard,
   DesktopDownload,
+  GroupPanel,
   Mermaid,
 } satisfies MDXComponents;
 

@@ -9,7 +9,7 @@ import { nyteProviders } from "@nyte-ai/ai";
 import { storedAccounts } from "./stored-accounts.ts";
 import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, localProvider, openHost } from "../src/index.ts";
-import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
+import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 
 const folders: string[] = [];
 
@@ -425,10 +425,10 @@ describe("openHost", () => {
     const before = await firstView(host);
 
     expect(before.plugins.some((row) => row.id === "hot")).toBe(false);
-    await writeFile(join(dir, "hot.mjs"), 'export default { id: "hot" };\n');
 
-    const landed = await viewWhere(
+    const landed = await rewriteUntil(
       host,
+      { path: join(dir, "hot.mjs"), contents: 'export default { id: "hot" };\n' },
       (view) => view.catalog !== before.catalog && view.plugins.some((row) => row.id === "hot"),
     );
 
@@ -439,12 +439,14 @@ describe("openHost", () => {
     expect(landed.plugins.some((row) => row.id === "chat-only")).toBe(true);
 
     const broken = join(dir, "broken.mjs");
-    await writeFile(broken, "export default {;\n");
-    await viewWhere(host, (view) => view.plugins.some((row) => row.id === broken));
-    await writeFile(broken, 'export default { id: "mended" };\n');
 
-    const mended = await viewWhere(
+    await rewriteUntil(host, { path: broken, contents: "export default {;\n" }, (view) =>
+      view.plugins.some((row) => row.id === broken),
+    );
+
+    const mended = await rewriteUntil(
       host,
+      { path: broken, contents: 'export default { id: "mended" };\n' },
       (view) =>
         view.plugins.some((row) => row.id === "mended") &&
         !view.plugins.some((row) => row.id === broken),
@@ -454,17 +456,23 @@ describe("openHost", () => {
   });
 });
 
-async function viewWhere(host: Host, matches: (view: HostView) => boolean): Promise<HostView> {
+async function rewriteUntil(
+  host: Host,
+  file: { readonly path: string; readonly contents: string },
+  matches: (view: HostView) => boolean,
+): Promise<HostView> {
   const views = host.watch()[Symbol.asyncIterator]();
-  const deadline = setTimeout(() => void views.return?.(), 5000);
+  const write = () => writeFile(file.path, file.contents);
+  await write();
+  const rewriting = setInterval(() => void write(), 250);
 
   try {
     for (let next = await views.next(); next.done !== true; next = await views.next())
       if (matches(next.value)) return next.value;
   } finally {
-    clearTimeout(deadline);
+    clearInterval(rewriting);
     await views.return?.();
   }
 
-  throw new Error("No host view matched within 5 s.");
+  throw new Error("The host's watch ended before a view matched.");
 }

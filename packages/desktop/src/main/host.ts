@@ -6,12 +6,15 @@ import { canvasPlugin } from "@nyte-ai/plugin/core/canvas";
 import type { CanvasPreviewer } from "@nyte-ai/plugin/core/canvas-preview";
 import { codemodePlugin } from "@nyte-ai/plugin/core/codemode";
 import { completeShellEnvironment } from "@nyte-ai/host/shell-env";
+import { StoreOwned } from "@nyte-ai/host";
 import { catalogForUsage, UsageScanner } from "@nyte-ai/host/usage-service";
 import type { UsageScanReader } from "@nyte-ai/host/usage-service";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 import type { Host, HostView, Listener, OpenHostOptions, SessionInfo } from "@nyte-ai/sdk";
-import type { ConnectRuntime, ConnectShare } from "@nyte-ai/connect/host";
-import { ConnectError, hostShare } from "@nyte-ai/connect/host";
+import { desktopService, retireService } from "@nyte-ai/service";
+import type { DesktopService } from "@nyte-ai/service";
+import type { ConnectShare } from "@nyte-ai/connect/host";
+import { ConnectError, ConnectRuntime, hostShare } from "@nyte-ai/connect/host";
 import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
 import type {
   HostEvent,
@@ -57,30 +60,21 @@ export type DesktopUpdateActivity =
 
 export interface DesktopHostDependencies {
   readonly home: string;
+  readonly version: string;
   readonly models?: OpenHostOptions["models"];
   readonly usageScan?: UsageScanReader;
   readonly rendererOrigin: string;
-  /**
-   * The built-in remote-access plugins the host process registers. Without them, as
-   * in tests that never serve through one, their reaches are refused.
-   */
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
   readonly keepAwake?: (awake: boolean) => void;
   readonly settingsChanged?: (settings: DesktopSettings) => void;
-  /** Push a host event to one window, or to every window when `window` is omitted. */
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
-  /** The browser panel's pages, which the desktop browser tools drive. */
   readonly agent: BrowserAgent;
-  /** How long to wait before opening the host, so a test can prove nothing on screen waits for it. */
   readonly openDelayMs?: number | undefined;
-  /** Listen here again, as renderers of a host that stopped still hold it; a new port when it is taken. */
   readonly endpoint?: HostEndpoint;
-  /** Renders canvas previews offscreen in main; without it, as in tests, canvas_preview is not offered. */
   readonly preview?: CanvasPreviewer;
 }
 
-/** One handler per operation the host process answers, so a missing or misshapen one is a type error. */
 type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
 
 interface Opened {
@@ -88,7 +82,12 @@ interface Opened {
   readonly listener: Listener;
   readonly url: string;
   readonly token: string;
+  readonly service: DesktopService;
 }
+
+type Opening =
+  | { readonly kind: "opened"; readonly opened: Opened }
+  | { readonly kind: "held"; readonly message: string };
 
 type ActiveRemote =
   | {
@@ -116,13 +115,45 @@ function listenerAddress(listener: Listener): string {
   return listener.address;
 }
 
+async function retireLocalService(home: string): Promise<string | undefined> {
+  const retirement = await retireService(home);
+
+  if (retirement.kind === "none" || retirement.kind === "stopped") return undefined;
+  const pid = String(retirement.registration.pid);
+  const owner = `The Nyte service (pid ${pid}) has your chats open`;
+
+  switch (retirement.kind) {
+    case "desktop":
+      return `Another Nyte (pid ${pid}) has your chats open. Quit it, and this one opens them.`;
+    case "serve":
+      return `\`nyte serve\` (pid ${pid}) has your chats open at ${retirement.registration.url}. Stop it with \`nyte service stop\`, and Nyte opens them.`;
+    case "running":
+      return `${owner} and didn't stop. Run \`nyte service stop\`, and Nyte opens them.`;
+    case "busy": {
+      const { clients } = retirement.busy;
+
+      return clients > 0
+        ? `${owner} and ${String(clients)} terminal ${clients === 1 ? "client still uses" : "clients still use"} it. Quit nyte there, or run \`nyte service stop\`, and Nyte opens them.`
+        : `${owner} and a run or job is still working in it. Nyte opens them once it finishes, or run \`nyte service stop\`.`;
+    }
+    default: {
+      const _exhaustive: never = retirement;
+
+      return _exhaustive;
+    }
+  }
+}
+
+const OPEN_RETRY_MS = 1_000;
+
+const OPEN_RETRY_CAP_MS = 5_000;
+
 function working(session: SessionInfo): boolean {
   return session.heads.some(
     (head) => head.execution.kind === "live" || head.execution.kind === "retrying",
   );
 }
 
-/** Every session row, across pages. */
 async function listSessions(host: Host): Promise<readonly SessionInfo[]> {
   let page = await host.sessions.list({ parents: { kind: "all" } });
   const rows = [...page.items];
@@ -135,7 +166,6 @@ async function listSessions(host: Host): Promise<readonly SessionInfo[]> {
   return rows;
 }
 
-/** Counts the host's running pty jobs whose shell is not sitting at a prompt: the terminal commands a relaunch would stop. */
 async function busyTerminals(host: Host): Promise<number> {
   const busy = await Promise.all(
     (await host.workspaces.list()).map(async ({ id }) => {
@@ -154,12 +184,10 @@ async function busyTerminals(host: Host): Promise<number> {
   return busy.reduce((total, count) => total + count, 0);
 }
 
-/** The first wait before a host watch that ended or failed is opened again; it doubles up to the cap. */
 const WATCH_RETRY_MS = 250;
 
 const WATCH_RETRY_CAP_MS = 30_000;
 
-/** Resolves after `ms`, or as soon as `signal` aborts. */
 function pause(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const wake = (): void => {
@@ -173,11 +201,6 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/**
- * Applies each value of a host watch until `signal` aborts. A watch that ends or
- * throws is opened again after a growing pause, so state main derives from it
- * (settings, keep-awake) does not freeze at its last value.
- */
 async function follow<T>(
   open: () => AsyncIterable<T>,
   apply: (value: T) => void,
@@ -237,7 +260,6 @@ function serverProblem(cause: unknown): ServerConnectionProblem {
   return SERVER_PROBLEMS.server;
 }
 
-/** The saved server's state as its connection's link reports it. */
 function linkedServer(url: string, view: HostView): ServerState {
   const { link } = view;
 
@@ -253,11 +275,6 @@ function linkedServer(url: string, view: HostView): ServerState {
   return { kind: "unavailable", baseUrl: url, problem };
 }
 
-/**
- * Rethrows a host failure in the form the renderer may see: an SDK failure keeps its code and
- * message and a Connect failure reads as unavailable. Anything else is rethrown as it is, to
- * get a diagnostic ID.
- */
 export function throwForRenderer(cause: unknown): never {
   if (cause instanceof ConnectError)
     throw new ExpectedHostError({ code: "unavailable", message: cause.message });
@@ -268,7 +285,6 @@ export function throwForRenderer(cause: unknown): never {
   throw cause;
 }
 
-/** The saved server as one long-lived watch reports it; `first` settles with its first answer. */
 interface ServerWatch {
   readonly saved: SavedServer;
   readonly stop: AbortController;
@@ -315,13 +331,14 @@ async function requireTailnetHost(): Promise<string> {
 
 export class DesktopHost {
   readonly #deps: DesktopHostDependencies;
-  readonly #opened: Promise<Opened>;
+  readonly #connect: ConnectRuntime;
+  #opened: Promise<Opened>;
+  #waiting: string | undefined;
   readonly #usageScan: UsageScanReader;
   readonly #servers: ServerSettingsStore;
   readonly #selections = new Map<HostWindow, SelectedWorkspace>();
   #settings: DesktopSettings = DEFAULT_DESKTOP_SETTINGS;
   #rows: readonly SessionInfo[] = [];
-  /** Aborted on close; every host watch main follows ends with it. */
   readonly #watching = new AbortController();
   #rowsWatch: AbortController | undefined;
   #awake = false;
@@ -334,48 +351,117 @@ export class DesktopHost {
     this.#deps = dependencies;
     this.#servers = new ServerSettingsStore(join(dependencies.home, ".nyte", "server.json"));
     this.#usageScan = dependencies.usageScan ?? new UsageScanner(dependencies.home);
-    this.#opened = this.#open();
-    this.#opened.then(
+
+    this.#connect =
+      dependencies.connect ??
+      new ConnectRuntime({
+        config: undefined,
+        home: join(dependencies.home, ".nyte"),
+        authorizer: undefined,
+        onChange: () => this.remoteChanged(),
+      });
+
+    this.#opened = this.#begin();
+  }
+
+  #begin(): Promise<Opened> {
+    const opened = this.#openOwned();
+    opened.then(
       (opened) => this.#followView(opened.host),
       () => undefined,
     );
+
+    return opened;
+  }
+
+  #ready(): Promise<Opened> {
+    return this.#opened.catch((cause: unknown) => {
+      if (this.#closing !== undefined) throw cause;
+      this.#opened = this.#begin();
+
+      return this.#opened;
+    });
   }
 
   host(): Promise<Host> {
-    return this.#opened.then((opened) => opened.host);
+    return this.#ready().then((opened) => opened.host);
   }
 
-  async #open(): Promise<Opened> {
+  async #openOwned(): Promise<Opened> {
     performance.mark("nyte:host-start");
-    const { home } = this.#deps;
     void completeShellEnvironment().then(() => performance.mark("nyte:shell-environment-ready"));
     const delay = this.#deps.openDelayMs;
 
     if (delay !== undefined) await new Promise((resolve) => setTimeout(resolve, delay));
+    const { signal } = this.#watching;
 
-    const host = await sdk.open({
-      models: this.#deps.models,
-      home,
-      workspace: { kind: "local", path: home },
-      shell: () => this.#settings.terminalShell,
-      plugins: [
-        desktopSettingsPlugin,
-        desktopBrowserPlugin(this.#deps.agent, home),
-        codemodePlugin(codemodeRuntimeOptions()),
-        canvasPlugin(this.#deps.preview),
-      ],
-    });
+    for (let wait = OPEN_RETRY_MS; ; wait = Math.min(wait * 2, OPEN_RETRY_CAP_MS)) {
+      const opening = await this.#open();
+
+      if (opening.kind === "opened") {
+        if (this.#waiting !== undefined)
+          this.#deps.emitHostEvent({ kind: "status", message: "Nyte opened your chats." });
+        this.#waiting = undefined;
+
+        return opening.opened;
+      }
+
+      const { message } = opening;
+
+      if (message !== this.#waiting) this.#deps.emitHostEvent({ kind: "status", message });
+      this.#waiting = message;
+      await pause(wait, signal);
+
+      if (signal.aborted) throw new SdkError("unavailable", message);
+    }
+  }
+
+  async #open(): Promise<Opening> {
+    const { home } = this.#deps;
+    const refusal = await retireLocalService(home);
+
+    if (refusal !== undefined) return { kind: "held", message: refusal };
+
+    const host = await sdk
+      .open({
+        models: this.#deps.models,
+        home,
+        workspace: { kind: "local", path: home },
+        shell: () => this.#settings.terminalShell,
+        plugins: [
+          desktopSettingsPlugin,
+          desktopBrowserPlugin(this.#deps.agent, home),
+          codemodePlugin(codemodeRuntimeOptions()),
+          canvasPlugin(this.#deps.preview),
+        ],
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof StoreOwned) return cause;
+
+        throw cause;
+      });
+
+    if (host instanceof StoreOwned) return { kind: "held", message: host.message };
 
     performance.mark("nyte:host-opened");
 
     const { endpoint } = this.#deps;
     const token = endpoint?.token ?? newToken();
 
+    const service = desktopService({
+      home,
+      token,
+      version: this.#deps.version,
+      connect: this.#connect,
+      share: this.#connectShare,
+    });
+
     const listen = (port?: number) =>
       host.listen({
         transport: { kind: "http", port },
         auth: { kind: "token", token },
         origins: [this.#deps.rendererOrigin],
+        before: service.before,
       });
 
     const listener =
@@ -384,8 +470,15 @@ export class DesktopHost {
         : await listen(Number(new URL(endpoint.url).port)).catch(() => listen());
 
     performance.mark("nyte:endpoint-ready");
+    const url = listenerAddress(listener);
 
-    return { host, listener, url: listenerAddress(listener), token };
+    await service
+      .register({ url, hostId: host.hostId })
+      .catch((cause: unknown) =>
+        retainDiagnostic({ correlationId: "desktop-service-registration", cause }),
+      );
+
+    return { kind: "opened", opened: { host, listener, url, token, service } };
   }
 
   #followView(host: Host): void {
@@ -401,7 +494,6 @@ export class DesktopHost {
     );
   }
 
-  /** Session rows matter only to keep-awake, so they are watched only while it is on. */
   #followRows(host: Host): void {
     const wanted = this.#settings.keepAwake;
 
@@ -432,7 +524,6 @@ export class DesktopHost {
     this.#deps.keepAwake?.(awake);
   }
 
-  /** The host process's entry point: an operation path and its input, already decoded at the IPC boundary. */
   call<P extends CallPath>(
     window: HostWindow,
     path: P,
@@ -442,8 +533,10 @@ export class DesktopHost {
   }
 
   readonly #handlers: CallTable = {
-    "host.endpoint": async () => {
-      const { host, url, token } = await this.#opened;
+    "host.endpoint": async (window) => {
+      if (this.#waiting !== undefined)
+        this.#deps.emitHostEvent({ kind: "status", message: this.#waiting }, window);
+      const { host, url, token } = await this.#ready();
 
       return { url, credentials: { kind: "token", token }, expect: { hostId: host.hostId } };
     },
@@ -497,37 +590,52 @@ export class DesktopHost {
     },
     "host.remote.revoke": (_window, input) =>
       this.#remoteOperations.run(() => this.#revokeRemoteDevice(input)),
-    "host.connect.state": async () =>
-      this.#deps.connect?.view() ?? { kind: "unavailable", reason: "not_configured" },
-    "host.connect.link": () => this.#connect().link(),
-    "host.connect.cancel": () => this.#connect().cancel(),
+    "host.connect.state": () => this.#connect.view(),
+    "host.connect.link": () => this.#connect.link(),
+    "host.connect.cancel": () => this.#connect.cancel(),
     "host.connect.setEnabled": (_window, { enabled }) =>
-      this.#connect().setEnabled({ enabled, share: this.#connectShare }),
-    "host.connect.unlink": () => this.#connect().unlink(),
-    "host.connect.revokeDevice": (_window, input) => this.#connect().revokeDevice(input),
-    "host.connect.openAccount": () => this.#connect().openAccount(),
-    "host.connect.signOut": () => this.#connect().signOut(),
+      this.#connect.setEnabled({ enabled, share: this.#connectShare }),
+    "host.connect.unlink": () => this.#connect.unlink(),
+    "host.connect.revokeDevice": (_window, input) => this.#connect.revokeDevice(input),
+    "host.connect.openAccount": () => this.#connect.openAccount(),
+    "host.connect.signOut": () => this.#connect.signOut(),
   } satisfies HostCalls;
 
   releaseWindow(window: HostWindow): void {
     this.#selections.delete(window);
   }
 
+  remoteChanged(): void {
+    this.#remoteChanged();
+    this.#opened.then(
+      (opened) => opened.service.connectChanged(),
+      () => undefined,
+    );
+  }
+
+  resume(): void {
+    this.#connect.resume();
+  }
+
+  accountChanged(): void {
+    this.#connect.accountChanged();
+  }
+
   close(): Promise<void> {
     this.#closing ??= (async () => {
       this.#watching.abort();
       this.#holdAwake();
-      await this.#deps.connect?.close().catch(() => undefined);
+      await this.#connect.close().catch(() => undefined);
       await this.#remoteOperations.run(() => this.#stopRemote()).catch(() => undefined);
       const opened = await this.#opened.catch(() => undefined);
       await this.#usageScan.close();
+      await opened?.service.close().catch(() => undefined);
       await opened?.host.close();
     })();
 
     return this.#closing;
   }
 
-  /** Asks the host when called, so a relaunch is never gated on a watch that went quiet. */
   async updateActivity(): Promise<DesktopUpdateActivity> {
     const opened = await this.#opened.catch(() => undefined);
     const rows = opened === undefined ? [] : await listSessions(opened.host);
@@ -543,14 +651,13 @@ export class DesktopHost {
   }
 
   async autostartConnect(): Promise<void> {
-    await this.#deps.connect?.autostart(this.#connectShare);
+    await this.#connect.autostart(this.#connectShare);
   }
 
   #state(window: HostWindow) {
     return { workspace: this.#selections.get(window) };
   }
 
-  /** Selects chat `session`'s folder for `window` without announcing it; the caller's reply carries it. */
   async #selectChatFolder(window: HostWindow, session: string): Promise<void> {
     const { host } = await this.#opened;
     const info = await host
@@ -605,7 +712,6 @@ export class DesktopHost {
     };
   }
 
-  /** Answers from the saved server's watch; only the first read after launch waits, for its first answer. */
   async #serverState(): Promise<ServerState> {
     this.#server ??= this.#servers.read().then((saved) => this.#startServer(saved));
     const watch = await this.#server;
@@ -630,7 +736,6 @@ export class DesktopHost {
     return { kind: "connected" as const, baseUrl: input.baseUrl, version: answered.version };
   }
 
-  /** Replaces the saved server's watch: stops the old one and, given a server, opens the next. */
   async #watchServer(saved: SavedServer | undefined): Promise<void> {
     const previous = await this.#server;
     previous?.stop.abort();
@@ -652,12 +757,6 @@ export class DesktopHost {
     return watch;
   }
 
-  /**
-   * Keeps one connection to the saved server and reads its state from the link
-   * `connection.watch` reports, so a status read costs nothing: the SDK reconnects a lost link
-   * itself. A refused or closed connection reads as unavailable and is opened again after a
-   * growing pause. Each change is announced as `server_changed`.
-   */
   async #followServer(watch: ServerWatch): Promise<void> {
     const { saved } = watch;
     const signal = AbortSignal.any([watch.stop.signal, this.#watching.signal]);
@@ -869,18 +968,6 @@ export class DesktopHost {
 
     if (active?.reach === input.plugin) active.listener.disconnectClients();
     this.#remoteChanged();
-  }
-
-  #connect(): ConnectRuntime {
-    const { connect } = this.#deps;
-
-    if (connect === undefined)
-      throw new ExpectedHostError({
-        code: "unknown",
-        message: "Account remote access isn't available here.",
-      });
-
-    return connect;
   }
 
   readonly #connectShare: ConnectShare = async (listen) => {

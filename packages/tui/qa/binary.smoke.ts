@@ -64,10 +64,8 @@ function records(stdout: string) {
 const ready = (pty: Pty) =>
   pty.waitFor((screen) => screen.text.includes("enter send") && !screen.text.includes("Loading"));
 
-/** How long the binary may take to exit after it is told to, by a signal or a closed terminal. */
 const EXIT_BUDGET_MS = 2_000;
 
-/** The status `pty` exits with and the milliseconds it took from `from`; throws if it outlives the budget. */
 async function exitTimed(pty: Pty, from: number) {
   const status = await Promise.race([pty.exited(), Bun.sleep(EXIT_BUDGET_MS * 2).then(() => null)]);
   const elapsed = performance.now() - from;
@@ -80,7 +78,6 @@ async function exitTimed(pty: Pty, from: number) {
   return { status, elapsed };
 }
 
-/** Resolves once `done` holds, checking every 10 ms; throws after the exit budget. */
 async function eventually(done: () => boolean, what: string): Promise<void> {
   const deadline = performance.now() + EXIT_BUDGET_MS;
 
@@ -291,7 +288,7 @@ test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", as
   expect(pty.output()).toMatch(RESUME);
 }, 30_000);
 
-test("the TUI exits 1 within 2 s with the reason and the resume command when its service stops", async () => {
+test("the TUI follows its chat to the service it starts when its service stops", async () => {
   await using service = await serveForBinary({ plugin: false, code: CODE });
   service.reply({ content: [{ type: "text", text: "Answered before the restart." }] });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
@@ -300,14 +297,14 @@ test("the TUI exits 1 within 2 s with the reason and the resume command when its
   pty.press("chat.submit");
   await pty.waitFor((screen) => screen.text.includes("Answered before the restart."));
 
-  const from = performance.now();
   await service.stop();
+  await pty.waitFor((screen) => screen.text.includes("follows the Nyte service now"));
+
+  const from = performance.now();
+  pty.signal("SIGINT");
   const { status, elapsed } = await exitTimed(pty, from);
 
-  expect(status).toBe(1);
+  expect(status).toBe(130);
   expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
-  expect(pty.output()).toContain(
-    "The Nyte service stopped, or a nyte of another build replaced it, so this TUI lost its connection.",
-  );
   expect(pty.output()).toMatch(RESUME);
-}, 30_000);
+}, 60_000);

@@ -182,6 +182,7 @@ export function Composer({
   }, [floatingMount, portalHost]);
 
   const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
+
   const workspaceFiles = useMentionFiles(true);
   const mentionFiles = composerSource(workspaceFiles.data, workspaceFiles.isError);
   const latestViewState = useRef(currentViewState);
@@ -605,6 +606,9 @@ export function Composer({
                   }
             }
             onEmptySubmit={questions === undefined ? sendNextQueued : undefined}
+            completeCommand={(name, prefix) =>
+              connection().session(sessionId).completeCommand(name, prefix)
+            }
             suggestionCatalog={
               questions === undefined
                 ? suggestionCatalog

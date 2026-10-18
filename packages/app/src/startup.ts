@@ -1,30 +1,14 @@
 import { useLayoutEffect } from "react";
 import type { AppRouter } from "./router.tsx";
 
-/**
- * What a renderer's first frame waits for. Only local work fits here: the
- * fonts it draws in and its route. Nothing the host answers can hold the
- * shell back; host data fills in underneath it.
- */
 interface RendererStartupOptions {
   readonly fonts: readonly string[];
   readonly router: Pick<AppRouter, "load">;
-  /**
-   * Replace the empty page with the interface, and call `mounted` once it has committed. Runs
-   * once, when the local work has landed.
-   */
-  readonly mountShell: (mounted: () => void) => void;
-  /**
-   * The host connection. It opens once the shell has mounted: the composer
-   * takes input while it runs, and the connection's own main-thread work
-   * cannot hold back the first frame.
-   */
+  readonly mountShell: () => void;
   readonly connect: () => Promise<void>;
-  /** The local work failed; show it and offer `retry`. */
   readonly showError: (retry: () => void) => void;
 }
 
-/** Whether the host connection behind a mounted shell has opened. */
 type StartupConnection =
   | { readonly kind: "connecting" }
   | { readonly kind: "connected" }
@@ -40,7 +24,6 @@ function publish(state: StartupConnection): void {
   for (const listener of listeners) listener();
 }
 
-/** The startup connection, for `useSyncExternalStore`: the shell shows a failure with its retry. */
 export const startupConnection = {
   subscribe: (listener: () => void): (() => void) => {
     listeners.add(listener);
@@ -50,22 +33,16 @@ export const startupConnection = {
   read: (): StartupConnection => connectionState,
 };
 
-/** How long after the host connects a window that shows no composer holds its startup reads. */
 const STARTUP_READS_FALLBACK_MS = 1000;
 
 const startupReads = Promise.withResolvers<void>();
 
 let holdingStartupReads = false;
 
-/**
- * Resolves once reads the first frame does not need may start: at once, or
- * while a renderer starts up, after its composer has drawn what it shows.
- */
 export function startupReadsReleased(): Promise<void> {
   return holdingStartupReads ? startupReads.promise : Promise.resolve();
 }
 
-/** Lets held startup reads begin once the next frame has painted and the main thread is idle. */
 function releaseStartupReads(): void {
   if (!holdingStartupReads) return;
 
@@ -80,7 +57,6 @@ function releaseStartupReads(): void {
   });
 }
 
-/** Releases held startup reads once `ready`: the composer has what it shows on its first frame. */
 export function useReleaseStartupReads(ready: boolean): void {
   useLayoutEffect(() => {
     if (ready) releaseStartupReads();
@@ -91,12 +67,6 @@ function mark(name: string): void {
   if (performance.getEntriesByName(name).length === 0) performance.mark(name);
 }
 
-/**
- * Mounts the interface as soon as its fonts and route are ready, then opens
- * the host connection under it. A local failure shows a retry; a connection
- * failure leaves the shell mounted and publishes a retry through
- * `startupConnection`.
- */
 export function startRendererStartup(options: RendererStartupOptions): void {
   const { connect } = options;
   let loading = false;
@@ -130,9 +100,10 @@ export function startRendererStartup(options: RendererStartupOptions): void {
       }
 
       loading = false;
-      options.mountShell(open);
+      options.mountShell();
     })();
   };
 
+  open();
   load();
 }

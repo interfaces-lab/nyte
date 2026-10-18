@@ -9,11 +9,26 @@
       "outputs": [".output/**", "dist/**", "out/**"]
     },
     "@nyte-ai/tui#build": {
+      "dependsOn": ["^build"],
       "env": ["NYTE_CONNECT_ORIGIN"],
-      "outputs": ["../../bin/nyte", "../../bin/nyte.exe"]
+      "outputs": ["../../bin/nyte", "../../bin/nyte.exe", "../../bin/nyte.version"]
+    },
+    "build:package": {
+      "dependsOn": ["^build:package"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/sdk-packages.mjs",
+        "$TURBO_ROOT$/LICENSE",
+        "$TURBO_ROOT$/THIRD-PARTY-NOTICES.md"
+      ],
+      "outputs": ["dist/**", "LICENSE", "THIRD-PARTY-NOTICES.md"]
     },
     "package": {
       "dependsOn": ["build"],
+      "cache": false
+    },
+    "@nyte-ai/desktop#package": {
+      "dependsOn": ["build", "@nyte-ai/tui#build"],
       "cache": false
     },
     "@nyte-ai/ai#models:generate": {
@@ -27,7 +42,11 @@
       "persistent": true
     },
     "test": {
-      "dependsOn": ["^test"]
+      "dependsOn": ["transit", "^build"],
+      "passThroughEnv": ["DISPLAY", "XAUTHORITY"]
+    },
+    "transit": {
+      "dependsOn": ["^transit"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]

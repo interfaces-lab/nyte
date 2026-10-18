@@ -8,7 +8,7 @@ import { asId, asSeq, readHunks } from "@nyte-ai/schema";
 import type { DurableEvent, Json, SessionId } from "@nyte-ai/schema";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { sqliteStore } from "../src/index.ts";
-import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
+import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
 import { storeConformance } from "./store-conformance.ts";
 
 const created: DurableEvent = { head: null, kind: "head", from: null, to: null, reason: "created" };
@@ -654,7 +654,7 @@ describe("sqliteStore", () => {
     ]);
   });
 
-  it("forgets the old default trust of stored workspaces, keeping a declined one, once", async () => {
+  it("forgets the old default trust of stored workspaces and keeps a declined one as its folder's, once", async () => {
     const path = join(await folder(), "nyte.db");
     const fresh = sqliteStore({ path });
     await fresh.open();
@@ -701,6 +701,7 @@ describe("sqliteStore", () => {
       const found = {
         a: await decision("workspaces/a"),
         b: await decision("workspaces/b"),
+        trust: await Promise.all((await refs.list("trust/")).map((ref) => decision(ref.name))),
         revision: (await refs.get("workspaces/a"))?.revision,
       };
       await store.close();
@@ -711,9 +712,12 @@ describe("sqliteStore", () => {
     const first = await read();
 
     expect(first).toMatchObject({
-      a: { id: "a", projectResources: null },
-      b: { id: "b", projectResources: false },
+      a: { id: "a" },
+      b: { id: "b" },
+      trust: [{ target: { kind: "local", path: "/work/b" }, trusted: false }],
     });
+    expect(first.a).not.toHaveProperty("projectResources");
+    expect(first.b).not.toHaveProperty("projectResources");
     expect(await read()).toEqual(first);
   });
 

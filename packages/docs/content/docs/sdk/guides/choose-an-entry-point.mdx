@@ -1,0 +1,148 @@
+---
+title: Choose an entry point
+description: Run the host in your process with sdk.open, or reach one elsewhere with sdk.connect.
+---
+
+The host is the process that runs the agent and stores its sessions. Pick where it runs, and the
+entry point follows.
+
+| You are writing                                    | Use                                      |
+| -------------------------------------------------- | ---------------------------------------- |
+| A script, server or CLI that runs the agent itself | `sdk.open` from `@nyte-ai/sdk`           |
+| A browser or mobile app                            | `sdk.connect` from `@nyte-ai/sdk`        |
+| A Node client of a host that runs elsewhere        | `sdk.connect` from `@nyte-ai/sdk/client` |
+
+Both return the same handle tree. Starting with `sdk.open` and moving the host into its own process
+later changes how you get the `Connection`, not the code that uses it.
+
+## Run the host in your process
+
+`sdk.open` needs Node 26.4 or later. Every option has a default:
+
+| Option      | Default                                                                  |
+| ----------- | ------------------------------------------------------------------------ |
+| `store`     | SQLite at `<home>/.nyte/nyte.db`, which the host closes when it closes   |
+| `workspace` | The local folder `process.cwd()`                                         |
+| `models`    | Nyte's model catalog over credentials encrypted in the store             |
+| `plugins`   | None; the first-party plugins and `<home>/.nyte/plugins` load either way |
+| `home`      | `os.homedir()`                                                           |
+
+Pass your own store to keep the agent's data apart from Nyte's. A store you pass stays yours, so
+close it after the host:
+
+```ts title="host.ts"
+import { sqliteStore } from "@nyte-ai/host";
+import { sdk } from "@nyte-ai/sdk";
+
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({
+  store,
+  workspace: { kind: "local", path: "/Users/me/project" },
+});
+
+// ...
+
+await host.close();
+await store.close();
+```
+
+In a local workspace, the agent's tools run in that folder without asking first. The folder's own
+instructions and plugins wait until you
+[trust the folder](/docs/build/composition#the-folder-it-works-in). For a host with no folder at all,
+pass `chatOnlyProvider()` from `@nyte-ai/host/providers` as in
+[Chat without a folder](/docs/sdk/examples#chat-without-a-folder).
+
+## Serve it to other processes
+
+`host.listen` puts the same host on HTTP. It binds `127.0.0.1` unless you pass a `hostname`, and it
+refuses a token shorter than 16 characters.
+
+```ts title="host.ts"
+const listener = await host.listen({
+  transport: { kind: "http", port: 8787 },
+  auth: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+  origins: ["https://app.example.com"],
+});
+
+console.log("Listening on", listener.address);
+```
+
+`origins` lists the browser origins allowed to call it. `host.close()` closes its listeners first.
+Behind your own sign-in, `auth: { kind: "custom", authorize }` maps each request to a principal and
+its authority.
+
+## Connect from another process
+
+```ts title="client.ts"
+import { sdk } from "@nyte-ai/sdk/client";
+
+const connection = await sdk.connect({
+  url: "https://agent.example.com",
+  credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+});
+```
+
+`connect` resolves after the host answers with its first view, so a bad URL or token fails here
+rather than on the first call. In a browser, import from `@nyte-ai/sdk`; the browser build is
+already free of host code.
+
+The listener token grants full access to the host. Keep it on machines you control, and never put
+it in a `VITE_*` or `NEXT_PUBLIC_*` variable.
+
+### Give each device its own credential
+
+Pairing mints a one-time code for one principal. The device trades it for a token of its own, which
+you can revoke without touching anyone else.
+
+```ts tab="host.ts"
+import { sdk } from "@nyte-ai/sdk";
+
+const host = await sdk.open({});
+const { code } = await host.principals.pair({ authority: new Set(["participant"]) });
+
+console.log("Pairing code:", code);
+```
+
+```ts tab="device.ts"
+import { writeFile } from "node:fs/promises";
+import process from "node:process";
+import { sdk } from "@nyte-ai/sdk/client";
+
+const connection = await sdk.connect({
+  url: "https://agent.example.com",
+  credentials: { kind: "pairing", code: process.argv[2] ?? "" },
+});
+
+await writeFile("credential.json", JSON.stringify(connection.credential));
+```
+
+Run `host.ts`, then `node device.ts <code>` on the device. After pairing, `connection.credential` is
+`{ kind: "token", token }`; pass it as `credentials` next time. `host.principals.revoke(id)` closes that principal's live connections.
+
+### Check which host answered
+
+Pass `expect` with a host id you saved earlier. `connect` throws `SdkError("stale")` when a
+different host answers at that URL, for example after the machine was reinstalled.
+
+```ts
+import { asId } from "@nyte-ai/schema";
+
+const connection = await sdk.connect({
+  url: "https://agent.example.com",
+  credentials: { kind: "token", token },
+  expect: { hostId: asId<"host">(savedHostId) },
+});
+```
+
+## What differs between the two
+
+A `Host` is a `Connection` with a few more members:
+
+- `listen` serves the host over HTTP or as a fetch handler.
+- `inspect(session)` reads a session's refs, stored objects and durable events.
+- `execution` lets a driver claim sessions, advance one head and repair owed work.
+- `plugins.replace` accepts plugin objects as well as plugin files.
+
+Everything else, from `sessions` to `models`, behaves the same over the network. Authority is the
+one difference you will notice: a token connection gets participant and owner authority, and a
+paired device gets what `pair` granted.

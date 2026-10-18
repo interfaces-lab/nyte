@@ -1,4 +1,3 @@
-/** Usage: node scripts/build.mjs [--package <electron-builder args>] */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -28,12 +27,6 @@ const shouldPackage = packageIndex !== -1;
 
 const builderArgs = shouldPackage ? args.slice(packageIndex + 1) : [];
 
-/**
- * A terminal gets a live tail of each long stage. Turbo's stream output
- * prefixes lines and ignores cursor movement, so it gets one line per change.
- * Anything else (CI, a piped log) gets every line the tools print, folded per
- * stage on GitHub Actions.
- */
 const turboStream = process.env.TURBO_HASH !== undefined && process.env.TURBO_IS_TUI === undefined;
 
 const live = process.stdout.isTTY === true && !turboStream;
@@ -42,13 +35,12 @@ const githubActions = process.env.GITHUB_ACTIONS === "true";
 
 let panel;
 
-/**
- * Under Turbo, package depends on build, so out/ is already current or was
- * restored from cache. Ad-block lists are not cached and stay in both paths.
- */
 const compiled = shouldPackage && process.env.TURBO_HASH !== undefined;
 
-const stages = [{ title: "Ad-block lists", run: () => node("scripts/build-adblock.mjs") }];
+const stages = [
+  { title: "Electron", run: () => pnpm("exec", "install-electron") },
+  { title: "Ad-block lists", run: () => node("scripts/build-adblock.mjs") },
+];
 
 if (!compiled) {
   stages.push(
@@ -68,11 +60,16 @@ if (!compiled) {
   );
 }
 
+const bundlesCli = process.platform !== "win32";
+
 if (shouldPackage && !compiled) {
   stages.push(
     { title: "Canvas shell", tail: true, run: () => pnpm("--dir", "../canvas", "build") },
     { title: "Web app", tail: true, run: () => pnpm("--dir", "../app", "build") },
   );
+
+  if (bundlesCli)
+    stages.push({ title: "nyte CLI", tail: true, run: () => pnpm("--dir", "../tui", "build") });
 }
 
 if (compiled && !existsSync(join(desktopRoot, "..", "app", "dist", "index.html"))) {
@@ -82,6 +79,11 @@ if (compiled && !existsSync(join(desktopRoot, "..", "app", "dist", "index.html")
 
 if (compiled && !existsSync(join(desktopRoot, "..", "canvas", "dist", "shell", "index.html"))) {
   failure("packages/canvas/dist/shell is missing. Run `pnpm --dir packages/canvas build` first.");
+  process.exit(1);
+}
+
+if (compiled && bundlesCli && !existsSync(join(desktopRoot, "..", "..", "bin", "nyte"))) {
+  failure("bin/nyte is missing. Run `pnpm build:tui` first.");
   process.exit(1);
 }
 
@@ -143,11 +145,6 @@ function node(script, ...rest) {
   return run(process.execPath, [join(desktopRoot, script), ...rest]);
 }
 
-/**
- * spawn() does not resolve `.cmd` shims; npm_execpath is a native binary, not JS.
- * Windows additionally refuses to launch a `.cmd` without a shell, so ask for
- * one there. Every argument is a bare word or relative path, so shell quoting is moot.
- */
 function pnpm(...rest) {
   return process.platform === "win32" ? run("pnpm.cmd", rest, { shell: true }) : run("pnpm", rest);
 }

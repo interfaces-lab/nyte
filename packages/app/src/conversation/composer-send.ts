@@ -280,7 +280,7 @@ async function runCommand(
 ): Promise<DeliveryOutcome> {
   if (name === COMPACT_COMMAND.name) return compactSession(session, argument);
 
-  const outcome = await session.command(name, argument === "" ? undefined : argument);
+  const outcome = await session.command(name, argument);
 
   switch (outcome.kind) {
     case "ran":
@@ -289,11 +289,6 @@ async function runCommand(
       return { kind: "sent", note: undefined };
     case "unknown":
       return { kind: "refused", message: `/${name} isn't available in this chat.` };
-    case "invalid":
-      return {
-        kind: "refused",
-        message: outcome.issues[0]?.message ?? `/${name} needs other arguments.`,
-      };
     case "failed":
       return { kind: "refused", message: outcome.message };
     default: {

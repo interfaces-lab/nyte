@@ -17,7 +17,7 @@ import { createHostState } from "./api/host.ts";
 import { createKernel } from "./compose.ts";
 import { begin, newRun } from "./engine/runs.ts";
 import { publishSet } from "./fold/watch.ts";
-import { envelope, leaseRef, memoryStore, partRef, workspaceRef } from "./store.ts";
+import { envelope, leaseRef, memoryStore, partRef, trustRef, workspaceRef } from "./store.ts";
 import type { Kernel, TurnDriver } from "./contract/kernel.ts";
 import type {
   EnvironmentProvider,
@@ -187,7 +187,6 @@ export async function setup(
       id: workspace,
       target: { kind: "test", locator: null },
       identity: asId("identity"),
-      projectResources: true,
       projectSources: [],
       addedBy: asId("local"),
       createdAt: 0,
@@ -198,6 +197,12 @@ export async function setup(
       {
         name: workspaceRef(workspace),
         target: await store.objects.put(envelope("workspace", record, 0)),
+      },
+      {
+        name: await trustRef(record.target),
+        target: await store.objects.put(
+          envelope("trust", { target: record.target, trusted: true }, 0),
+        ),
       },
     ]);
   }

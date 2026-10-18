@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { readSpanFile, RESTAURANT_PROMPT } from "@nyte-ai/host/bench";
+import { readSpanFile, RESTAURANT_PROMPT } from "@nyte-ai/bench";
 import { clearSpans, enableTracing, readSpans } from "@nyte-ai/sdk";
 import { collectErrors } from "../utils/errors.ts";
 import {
@@ -26,7 +26,6 @@ import {
   tabTo,
 } from "./scenario-u-trace.ts";
 
-/** The transcript row a quit mid-answer leaves settled: the step group holding the command. */
 const LAST_SETTLED = /button "Ran 1 command, 2 tools"/u;
 
 const MEASURING = process.env.NYTE_SCENARIO_U_MEASURE === "1";
@@ -41,7 +40,6 @@ function workbench(page: Page) {
   return page.getByRole("complementary", { name: "Workbench" });
 }
 
-/** A port nothing listens on, kept for both of the host's runs so the paired browser finds it again. */
 async function freePort(): Promise<number> {
   const server = createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -53,7 +51,6 @@ async function freePort(): Promise<number> {
   return address.port;
 }
 
-/** The scrollback the workbench saved for its terminal tabs, as the next load restores it. */
 function savedScrollback(page: Page): Promise<string> {
   return page.evaluate(() =>
     Object.keys(localStorage)
@@ -63,7 +60,6 @@ function savedScrollback(page: Page): Promise<string> {
   );
 }
 
-/** A browser context that records renderer spans, from `storage` when the browser reopens. */
 async function openContext(
   browser: Browser,
   storage?: Awaited<ReturnType<BrowserContext["storageState"]>>,

@@ -15,6 +15,8 @@ export const GROUPINGS = [
   "environment",
 ] as const;
 
+export const SORTS = ["created", "updated", "status"] as const;
+
 export const SHELVES = ["inbox", "working", "done", "archived"] as const;
 
 export const SHOW_FIELDS = ["updated", "environment", "pr", "branch", "machine"] as const;
@@ -26,6 +28,8 @@ export const PULL_REQUESTS = ["draft", "open", "merged", "closed", "none"] as co
 export const ENVIRONMENTS = ["cloud", "local"] as const;
 
 type SessionGrouping = (typeof GROUPINGS)[number];
+
+type SessionSort = (typeof SORTS)[number];
 
 export type SessionShowField = (typeof SHOW_FIELDS)[number];
 
@@ -39,7 +43,7 @@ export type SessionShelf = (typeof SHELVES)[number];
 
 export interface SessionViewSettings {
   readonly grouping: SessionGrouping;
-  readonly sortByStatus: boolean;
+  readonly sort: SessionSort;
   readonly show: readonly SessionShowField[];
   readonly statuses: readonly SessionStatus[];
   readonly pullRequests: readonly SessionPullRequest[];
@@ -55,8 +59,8 @@ export interface SessionViewGroup {
 }
 
 export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
-  grouping: "inbox",
-  sortByStatus: true,
+  grouping: "none",
+  sort: "created",
   show: ["updated", "environment", "pr"] as const,
   statuses: [],
   pullRequests: [],
@@ -126,6 +130,14 @@ export function deriveShelf(
   }
 }
 
+function compareCreated(left: SessionInfo, right: SessionInfo): number {
+  return (
+    Number(right.pinned) - Number(left.pinned) ||
+    right.createdAt - left.createdAt ||
+    left.id.localeCompare(right.id)
+  );
+}
+
 function compareUpdated(left: SessionInfo, right: SessionInfo): number {
   return (
     Number(right.pinned) - Number(left.pinned) ||
@@ -161,15 +173,25 @@ function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): numbe
 
 /** The row order a view settles on; the flat list merges workspaces with it. */
 export function sessionOrder(
-  sortByStatus: boolean,
+  sort: SessionSort,
   working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
 ): (left: SessionInfo, right: SessionInfo) => number {
-  if (!sortByStatus) return compareUpdated;
+  switch (sort) {
+    case "created":
+      return compareCreated;
+    case "updated":
+      return compareUpdated;
+    case "status":
+      return (left, right) =>
+        Number(right.pinned) - Number(left.pinned) ||
+        stageRank(left, working) - stageRank(right, working) ||
+        compareUpdated(left, right);
+    default: {
+      const _exhaustive: never = sort;
 
-  return (left, right) =>
-    Number(right.pinned) - Number(left.pinned) ||
-    stageRank(left, working) - stageRank(right, working) ||
-    compareUpdated(left, right);
+      return _exhaustive;
+    }
+  }
 }
 
 function groupSessions(
@@ -265,7 +287,7 @@ export function sessionsForView(
       settings.statuses.includes(deriveSessionStatus(session, working)),
   );
 
-  const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, working));
+  const ordered = filtered.toSorted(sessionOrder(settings.sort, working));
 
   return groupSessions(ordered, settings.grouping, environment, now, working);
 }

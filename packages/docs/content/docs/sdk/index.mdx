@@ -1,0 +1,77 @@
+---
+title: SDK
+description: Run Nyte's agent from your own code, in the same process or on another machine.
+---
+
+`@nyte-ai/sdk` is the same API the desktop app, the terminal and the web app use. A host owns
+sessions, workspaces, models and credentials. Your code holds a `Connection` to it. `sdk.open`
+starts a host inside your Node process, and `sdk.connect` reaches one running somewhere else. Both
+return the same handles, so code written against one works against the other.
+
+```ts title="summarize.ts"
+import { isPart, text } from "@nyte-ai/plugin/core";
+import { sdk } from "@nyte-ai/sdk";
+
+const host = await sdk.open({});
+const { session, receipt } = await host.sessions.start({ content: "Summarize this folder" });
+
+await receipt.settled();
+
+for (const message of (await session.view()).messages) {
+  if (isPart(message, text)) console.log(message.state.markdown);
+}
+
+await host.close();
+```
+
+With no options, `sdk.open` works in the current folder and keeps sessions in `~/.nyte/nyte.db`.
+The model needs a signed-in provider first; [Build an agent app](/docs/build/composition) shows the
+login.
+
+## The handle tree
+
+Everything hangs off one `Connection`. Getting a handle by id, such as `connection.session(id)`,
+does no I/O; its methods check that the thing exists when you call them.
+
+```txt
+Connection
+├── sessions          start, list, watch
+├── session(id)       a Session, which is also its main Head
+│   ├── send, view, subscribe, current, watch, history, tree, move, configure
+│   ├── heads         create, merge, remove; head(name) for one
+│   ├── run(id), receipt(id), part(id), parts.create
+│   └── info, update, remove, stop, command
+├── workspaces        list, inspect, add, forget
+├── workspace(id)     files, git, github, browser, jobs, mcp
+├── models            list, login, logout, setDefault, verify, refresh, usage
+├── settings, plugins, principals, github
+└── watch, blob, close
+```
+
+A `Host`, which `sdk.open` returns, is a `Connection` plus `listen`, `inspect` and `execution`.
+
+## Packages
+
+| Import                    | What it has                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------- |
+| `@nyte-ai/sdk`            | `sdk.open`, `sdk.connect`, `SdkError`, `watchStore`, `pagedViews`, `createSendJournal` |
+| `@nyte-ai/sdk/client`     | `sdk.connect` alone, so importing it never loads the host                              |
+| `@nyte-ai/host`           | `sqliteStore`, `localProvider` and the deploy targets                                  |
+| `@nyte-ai/host/providers` | `chatOnlyProvider`, for a host with no folder                                          |
+| `@nyte-ai/plugin/core`    | `isPart`, `definePart`, the built-in parts and the core `Plugin` type                  |
+| `@nyte-ai/plugin/client`  | The same part helpers, `defineRenderer` and the client `Plugin` type                   |
+| `@nyte-ai/schema`         | `asId` for typed ids, and `standard` to pass TypeBox schemas where one is expected     |
+
+In a browser or React Native bundle, `@nyte-ai/sdk` resolves to a build without the host. Its
+`sdk.open` rejects with `SdkError("unavailable")`.
+
+## Where to go next
+
+- [Build an agent app](/docs/build/composition) walks from one API call to a web app and a TUI.
+- [Examples](/docs/sdk/examples) are short programs to copy: streaming, tools, worktrees and more.
+- [Choose an entry point](/docs/sdk/guides/choose-an-entry-point) compares `sdk.open` and
+  `sdk.connect`.
+- [Send messages](/docs/sdk/guides/send-messages) covers receipts, delivery, retries and edits.
+- [Render a session](/docs/sdk/guides/render-a-session) turns a view into a transcript.
+- [Shared concepts](/docs/sdk/reference/shared-concepts) explains errors, outcomes, ids and
+  revisions, which every other page assumes.

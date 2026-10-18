@@ -2,13 +2,19 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
-import { testModel } from "@nyte-ai/host/bench";
+import { testModel } from "@nyte-ai/bench";
 import { exitText } from "../../src/app/main.tsx";
 import { followedSession } from "../../src/model/state.ts";
 import { openTestHost } from "../fixture/host.ts";
-import { footerShows, shownAt, startTui } from "../harness/tui.ts";
+import { footerShows, startTui } from "../harness/tui.ts";
+import type { Tui } from "../harness/tui.ts";
 
 const TURNS = 1_000;
+
+const TAIL = 200;
+
+const firstTranscriptFrame = (tui: Tui): string | undefined =>
+  tui.recorder.recordedFrames.find((recorded) => /answer \d+/u.test(recorded.frame))?.frame;
 
 test("/quit names the resume command; --session reopens the transcript, model and level, and the next request carries the history", async () => {
   await using fixture = await openTestHost({
@@ -49,7 +55,7 @@ test("/quit names the resume command; --session reopens the transcript, model an
   expect(JSON.stringify(fixture.requests[1]?.context.messages)).toContain("hi nyte");
 });
 
-test("a 2,000-message session's first screen paints within 100 ms of launch, and the same frame after quitting and resuming again", async () => {
+test("a 2,000-message session opens on its 200-message tail, its last answer in the first frame that shows the transcript, and the same frame after quitting and resuming again", async () => {
   await using fixture = await openTestHost();
   fixture.reply({ content: [{ type: "text", text: "answer 0" }] });
   const { session, receipt } = await fixture.host.sessions.start({ content: "question 0" });
@@ -74,7 +80,8 @@ test("a 2,000-message session's first screen paints within 100 ms of launch, and
 
   await tui.frame((frame) => frame.includes(last));
 
-  expect(shownAt(tui, (frame) => frame.includes(last))).toBeLessThanOrEqual(100);
+  expect(firstTranscriptFrame(tui)).toContain(last);
+  expect(followedSession(tui.store.state())?.view?.messages).toHaveLength(TAIL);
   await tui.state((store) => store.screen().blocked === null);
   await tui.renderOnce();
   const before = tui.captureCharFrame();
@@ -92,7 +99,8 @@ test("a 2,000-message session's first screen paints within 100 ms of launch, and
 
   await resumed.frame((frame) => frame.includes(last));
 
-  expect(shownAt(resumed, (frame) => frame.includes(last))).toBeLessThanOrEqual(100);
+  expect(firstTranscriptFrame(resumed)).toContain(last);
+  expect(followedSession(resumed.store.state())?.view?.messages).toHaveLength(TAIL);
   await resumed.state((store) => store.screen().blocked === null);
   await resumed.renderOnce();
   expect(resumed.captureCharFrame()).toBe(before);

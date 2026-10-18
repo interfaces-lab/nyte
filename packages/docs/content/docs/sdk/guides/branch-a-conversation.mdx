@@ -1,0 +1,102 @@
+---
+title: Branch a conversation
+description: Fork a session into heads, rewind history, and merge a branch back.
+---
+
+A session's history is a tree of commits, and a head is a named pointer into it. Every session
+starts with one head, `main`, and the `Session` handle is that head. Sending, viewing and
+configuring work the same on any head.
+
+## Fork a head
+
+```ts
+import { asId } from "@nyte-ai/schema";
+
+const name = asId<"head">("try-sqlite");
+const tree = await session.tree();
+const created = await session.heads.create(name, { from: tree.tip });
+
+if (created.kind !== "missing-source") {
+  const branch = session.head(name);
+  await branch.send("Try the same fix with SQLite instead");
+}
+```
+
+`from` is a position: `{ kind: "start" }` or `{ kind: "commit", id }`. Leave it out to fork from
+`main`'s tip. `tree()` returns a head's `tip` and every node in the tree, so you can fork another
+head's tip or any earlier commit. `create` returns `exists` when a head already has that name.
+
+The new head inherits the history up to its position. If it should hit the same prompt cache, give
+it the source's configuration before the first send:
+
+```ts
+const { configuration } = await session.view();
+
+if (configuration.effective !== null) await branch.configure(configuration.effective);
+```
+
+## Merge it back
+
+```ts
+const merged = await session.heads.merge(name);
+```
+
+| Outcome    | Meaning                                                     |
+| ---------- | ----------------------------------------------------------- |
+| `merged`   | The parent head now has the branch's history                |
+| `diverged` | The parent moved since the fork; `base` is where they split |
+| `busy`     | The parent has a live run. Try again once it ends           |
+| `stale`    | The `expect` revision you passed no longer matches          |
+| `is-main`  | `main` has no parent to merge into                          |
+
+`heads.remove(name)` deletes the pointer. Commits another head can still reach stay in the tree.
+
+## Rewind a head
+
+`move` points a head at an earlier position. Moving to a user message puts the head on the commit
+before it and hands the message's content back, so you can put it in the composer:
+
+```ts
+const last = view.messages.findLast((message) => message.kind === "user");
+
+if (last?.kind === "user" && last.status.kind === "landed") {
+  const receipt = await session.move(
+    { kind: "commit", id: last.status.commit },
+    { running: "stop" },
+  );
+  const outcome = await receipt.settled();
+
+  if (outcome.kind === "moved" && outcome.handback !== null) setDraft(outcome.handback);
+}
+```
+
+A move refuses to interrupt a live run unless you pass `running: "stop"`, and returns `busy`
+instead. That is the opposite default from an edit, which stops the run on its own.
+
+`main` never moves to before the chat's first message, because the chat would be empty. To rewrite
+the first message, edit it with `send(content, { replace })`.
+
+## Keep a summary of what you left
+
+A move or an edit can leave messages off the head. They stay in the tree either way. Pass
+`abandoned` to also write a summary of them onto the head:
+
+```ts
+await session.send("Start over with a smaller fix", {
+  replace: first.id,
+  abandoned: { summarize: { instructions: "Keep the failing test names" } },
+  expect: view.revision,
+});
+```
+
+A move's outcome names the summary message in `summary`, or settles `summary-failed` when the summary
+couldn't be written.
+
+## Compact a long chat
+
+```ts
+const outcome = await session.compact({ instructions: "Keep the open questions" });
+```
+
+`compact` summarizes the head's history so later runs send less context. It returns `started` with
+the summary message, `busy` while a run is live, or `nothing-to-compact`.

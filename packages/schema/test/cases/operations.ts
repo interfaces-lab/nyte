@@ -198,8 +198,13 @@ export const operations = {
   ),
   "session.command input": operation(
     OPERATIONS["session.command"].input,
-    { session, name: "core/compact", args: { focus: ["tests"] } },
-    { session, args: {} },
+    { session, name: "review", text: "the tests" },
+    { session, text: "" },
+  ),
+  "session.completeCommand input": operation(
+    OPERATIONS["session.completeCommand"].input,
+    { session, name: "review", prefix: "the te" },
+    { session, prefix: 3 },
   ),
   "head.send input": operation(
     OPERATIONS["head.send"].input,
@@ -364,8 +369,13 @@ export const operations = {
   ),
   "workspace.command input": operation(
     OPERATIONS["workspace.command"].input,
-    { workspace, name: "qa-probe/qa-probe", args: { focus: ["tests"] } },
-    { workspace, args: {} },
+    { workspace, name: "qa-probe", text: "the tests" },
+    { workspace, text: "" },
+  ),
+  "workspace.completeCommand input": operation(
+    OPERATIONS["workspace.completeCommand"].input,
+    { workspace, name: "qa-probe", prefix: "" },
+    { workspace, name: "qa-probe" },
   ),
   "workspace.watch input": operation(OPERATIONS["workspace.watch"].input, workspaceInput, {
     workspace: 1,

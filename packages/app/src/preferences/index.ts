@@ -1,12 +1,3 @@
-/**
- * Client preferences: per device, in localStorage, readable before first
- * paint. Machine-wide settings live in ~/.nyte/settings.json; see `host.ts`.
- *
- * Add one with an entry below. Read it with `useSetting(preferences.x)` in a
- * component or `preferences.x.get()` outside React, and give it a row on a
- * settings page. New entries take a field of a record key; the single-key
- * entries keep the layout earlier builds wrote.
- */
 import { typed } from "@nyte-ai/schema/model";
 import { Type } from "typebox";
 import type { ThemePreference } from "../bridge.ts";
@@ -30,8 +21,9 @@ const CHANGES = "nyte:changes:v1";
 
 const SIDEBAR = "nyte.desktop.sidebar.v3";
 
-/** The rail's width in pixels: what a drag or the keyboard can reach. */
 export const SIDEBAR_WIDTH = { min: 214, max: 400, step: 8 } as const;
+
+export const CHAT_WIDTH = { min: 600, max: 1600, step: 20 } as const;
 
 const integer = (minimum: number, maximum: number) => Type.Integer({ minimum, maximum });
 
@@ -96,6 +88,11 @@ export const preferences = {
     { key: APPEARANCE, field: "codeBlockWordWrap" },
     Type.Boolean(),
     false,
+  ),
+  chatWidth: definePreference(
+    { key: APPEARANCE, field: "chatWidth" },
+    integer(CHAT_WIDTH.min, CHAT_WIDTH.max),
+    840,
   ),
   terminalScrollback: definePreference(
     { key: TERMINAL, field: "scrollback" },

@@ -4,20 +4,23 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { generateMachineKey, publicKeySet } from "@nyte-ai/connect/signing";
+import { operationsDigest } from "@nyte-ai/protocol";
 import { sdk } from "@nyte-ai/sdk";
 import type { Host } from "@nyte-ai/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureService,
   IDLE_GRACE_MS,
+  readRegistration,
   serviceBuild,
   serviceClients,
   startService,
+  writeRegistration,
 } from "../src/index.ts";
 import type { Timers } from "../src/index.ts";
+import { SERVICE_ROUTES } from "../src/routes.ts";
 import { findSupervisor } from "../src/supervisor.ts";
 
-/** Timers that wait until the test fires them. */
 function manualTimers() {
   const pending = new Set<{ readonly callback: () => void; readonly ms: number }>();
 
@@ -145,6 +148,58 @@ describe("the service's lifetime", () => {
     );
     expect(idled).toBe(false);
     await job.stop();
+  });
+
+  it("retires for Nyte.app with its following clients handed over, and stays for one that can't follow", async () => {
+    const handed = Promise.withResolvers<"desktop" | null>();
+    const attachment = new AbortController();
+
+    const registration = await ensureService({
+      home,
+      version: "v1",
+      command: NEVER_STARTED,
+      signal: attachment.signal,
+      lost: handed.resolve,
+    });
+    await until(async () => (await serviceClients(registration)).length === 1);
+
+    const older = new URL(SERVICE_ROUTES.attach, registration.url);
+    older.searchParams.set("pid", String(process.ppid));
+    older.searchParams.set("startedAt", "1");
+    older.searchParams.set("build", "v0+0000000000000000");
+    const held = new AbortController();
+    await fetch(older, {
+      headers: { Authorization: `Bearer ${registration.token}` },
+      signal: held.signal,
+    });
+    await until(async () => (await serviceClients(registration)).length === 2);
+
+    const retire = new URL(SERVICE_ROUTES.retire, registration.url);
+    retire.searchParams.set("pid", String(process.pid));
+    retire.searchParams.set("operations", await operationsDigest());
+    const headers = { Authorization: `Bearer ${registration.token}` };
+
+    const refused = await fetch(retire, { method: "POST", headers });
+
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ clients: 1, working: false });
+    held.abort();
+    await until(async () => (await serviceClients(registration)).length === 1);
+
+    expect((await fetch(retire, { method: "POST", headers })).status).toBe(202);
+    expect(await handed.promise).toBe("desktop");
+    clock.fire();
+    await until(() => idled);
+    attachment.abort();
+  });
+
+  it("steps down once its registration names another service", async () => {
+    const registration = await readRegistration(home);
+
+    if (registration === undefined) throw new Error("The service registered nothing.");
+    await writeRegistration(home, { ...registration, pid: process.ppid, hostId: "replacement" });
+
+    await until(() => idled);
   });
 
   it.runIf(findSupervisor("/") !== undefined)("never stops while it's installed", async () => {

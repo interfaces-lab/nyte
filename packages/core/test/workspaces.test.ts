@@ -311,7 +311,6 @@ describe("workspaces", () => {
       id: sandbox,
       target: { kind: "sandbox", locator: "box" },
       identity: asId("box"),
-      projectResources: true,
       projectSources: [],
       addedBy: LOCAL,
       createdAt: 0,
@@ -637,7 +636,10 @@ describe("activation (§37j–m)", () => {
 
     const third = createHost(kernelOver(kernel.store, provider, { plugins: [gate] }), credential);
 
-    expect(await third.session(session.id).command("hello")).toEqual({ kind: "ran", output: "hi" });
+    expect(await third.session(session.id).command("hello", "")).toEqual({
+      kind: "ran",
+      output: "hi",
+    });
   });
 
   it("lets a plugin send and run a prompt command from its own activate without waiting on that activation", async () => {
@@ -658,7 +660,7 @@ describe("activation (§37j–m)", () => {
       },
       async activate(api) {
         await api.session.send("Hello from activate.", { delivery: "attach" });
-        await api.session.command("nudge");
+        await api.session.command("nudge", "");
       },
     };
 

@@ -4,7 +4,7 @@ import type { Connection, SessionId, SessionInfo } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { ActionToasts } from "./action-toasts.ts";
 import { keys } from "./query-keys.ts";
-import { connection, directoryWatch } from "./sdk.tsx";
+import { connection, findListedSession } from "./sdk.tsx";
 
 type SessionChange =
   | { readonly kind: "archive"; readonly archived: boolean }
@@ -17,7 +17,6 @@ interface PendingChange {
   readonly change: SessionChange;
 }
 
-/** Closing a pane returns a guarded restoration, so Undo cannot replace a newer selection. */
 type HideSession = (sessionId: SessionId) => () => void;
 
 function applyChange(session: SessionInfo, change: SessionChange): SessionInfo | null {
@@ -38,11 +37,6 @@ function applyChange(session: SessionInfo, change: SessionChange): SessionInfo |
   }
 }
 
-/**
- * Query caches retain host data. Pending edits are projected at read time so
- * pushed rows, watch snapshots, and workspace reloads cannot erase local intent.
- * Successful edits patch the caches before their projection is removed.
- */
 export class SessionActions {
   readonly #client: QueryClient;
   readonly #connection: () => Pick<Connection, "session">;
@@ -198,7 +192,7 @@ export class SessionActions {
 
   #find(sessionId: SessionId): SessionInfo | undefined {
     const session =
-      directoryWatch("all").value?.find((item) => item.id === sessionId) ??
+      findListedSession(sessionId) ??
       this.#client.getQueryData<SessionInfo | null>(keys.session(sessionId)) ??
       undefined;
 

@@ -187,12 +187,13 @@ export const settingInfo: SettingInfo = {
 export const catalog: SessionCatalogView = {
   commands: [
     {
-      name: "core/compact",
+      name: "review",
       owner: "core",
       side: "core",
-      title: "Compact",
-      description: "Compacts.",
-      arguments: { type: "string" },
+      title: "Review",
+      description: "Reviews.",
+      takesText: true,
+      completes: true,
       category: "context",
       keywords: ["summary"],
     },

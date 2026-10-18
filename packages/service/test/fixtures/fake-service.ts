@@ -1,12 +1,4 @@
-/**
- * Stands in for `nyte service run`: takes the service lock, answers `/.nyte/describe` with its
- * host id, and renames its registration, under build `build`, into place `delay` ms after it
- * listens, the way `startService` does. A `stale` service answers every other request the
- * way a host built before an operation answers it; a `stubborn` one also ignores SIGTERM. A
- * `fresh` service holds each attach request open until it exits and refuses to retire while
- * a client other than the caller is attached, as `startService` does.
- * Run from the service home as `node fake-service.ts <build> <delay> [fresh|stale|stubborn]`.
- */
+import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import process from "node:process";
@@ -30,7 +22,6 @@ if (lock.kind === "held") {
 
 const hostId = `host-${String(process.pid)}`;
 
-/** The pid of each attach request held open, once per request. */
 const attached: number[] = [];
 
 const server = createServer((request, response) => {
@@ -82,8 +73,16 @@ await once(server.listen(0, "127.0.0.1"), "listening");
 
 const { port } = Value.Parse(Type.Object({ port: Type.Number() }), server.address());
 
+const registration = {
+  url: "",
+  token: "t".repeat(32),
+  pid: process.pid,
+  version: build,
+  hostId,
+};
+
 const stop = async (): Promise<never> => {
-  await removeRegistration(home, process.pid);
+  await removeRegistration(home, registration);
   await lock.release();
   server.close();
   process.exit(0);
@@ -93,14 +92,11 @@ process.on("SIGTERM", () => {
   if (mode !== "stubborn") void stop();
 });
 
+if (mode === "stubborn")
+  spawn(process.execPath, ["-e", "setTimeout(() => undefined, 30_000)"], { stdio: "ignore" });
+
 setTimeout(() => void stop(), 30_000);
 
 await sleep(Number(delay));
 
-await writeRegistration(home, {
-  url: `http://127.0.0.1:${String(port)}`,
-  token: "t".repeat(32),
-  pid: process.pid,
-  version: build,
-  hostId,
-});
+await writeRegistration(home, { ...registration, url: `http://127.0.0.1:${String(port)}` });

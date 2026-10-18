@@ -8,14 +8,13 @@ import { attempt, put, STALE } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { dev } from "../util/dev-log.ts";
 import { readWorkspace, workspaceRecords } from "./environment.ts";
-import { projectTrust } from "./trust.ts";
 import { byIdentity, changed, sessionsOn } from "./workspaces.ts";
 
 /**
  * Answers the workspace that isolates `session` in a git worktree of `source`,
  * making it on the first call: the provider checks a new branch out with the
- * source's uncommitted changes, and the folder is registered with the source's
- * trust and an `isolation` naming the session. A later call for the session,
+ * source's uncommitted changes, and the folder is registered with an
+ * `isolation` naming the session, so it follows the source's trust. A later call for the session,
  * as a replayed start makes, answers the same workspace and makes nothing.
  */
 export async function isolateWorkspace(
@@ -55,7 +54,6 @@ export async function isolateWorkspace(
   const inspected = await provider.inspect(worktree.target);
   const identity = { kind: worktree.target.kind, identity: inspected.identity };
   const id = asId<"workspace">(await objectId(identity));
-  const trusted = await projectTrust(kernel, source);
 
   return attempt<WorkspaceId>(`Registering the worktree for ${input.session}`, async () => {
     const existing = await byIdentity(kernel.store, identity);
@@ -66,7 +64,6 @@ export async function isolateWorkspace(
       id,
       target: worktree.target,
       identity: inspected.identity,
-      projectResources: trusted,
       projectSources: inspected.projectSources,
       addedBy: principal,
       createdAt: Date.now(),

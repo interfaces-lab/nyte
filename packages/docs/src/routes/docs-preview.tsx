@@ -30,7 +30,7 @@ function DocsPreviewLayout({ children }: { children: ReactNode }) {
         </Link>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          <SiteMobileNav sections={docsNav} githubHref={githubUrl} />
+          <SiteMobileNav docs={docsNav} site={[]} githubHref={githubUrl} />
         </div>
       </header>
 

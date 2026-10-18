@@ -460,7 +460,21 @@ export function ChangesToolbar({
               </Button>
             }
           />
-          <MenuContent alignOffset={-4} xstyle={styles.scopeMenu}>
+          <MenuContent
+            alignOffset={-4}
+            xstyle={styles.scopeMenu}
+            footer={
+              hasEmptyTurns ? (
+                <MenuCheckboxItem
+                  checked={showAllTurns}
+                  closeOnClick={false}
+                  onCheckedChange={setShowAllTurns}
+                >
+                  Show All Turns
+                </MenuCheckboxItem>
+              ) : undefined
+            }
+          >
             <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
               {workingTreeScopeOptions(snapshot).map((option) => (
                 <ScopeRadioItem key={changesScopeValue(option.scope)} option={option} />
@@ -497,18 +511,6 @@ export function ChangesToolbar({
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>
-            {hasEmptyTurns && (
-              <>
-                <MenuSeparator />
-                <MenuCheckboxItem
-                  checked={showAllTurns}
-                  closeOnClick={false}
-                  onCheckedChange={setShowAllTurns}
-                >
-                  Show All Turns
-                </MenuCheckboxItem>
-              </>
-            )}
           </MenuContent>
         </Menu>
         {branch !== undefined && <BranchReadoutChip branch={branch} />}

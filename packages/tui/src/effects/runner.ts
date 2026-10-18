@@ -17,6 +17,7 @@ import {
   refreshWorkspaceFacts,
   reload,
   revise,
+  completeCommand,
   runCommand,
   stopRun,
   stopTask,
@@ -51,6 +52,7 @@ export interface Runner {
   run(effect: Effect): void;
   /** Boots once the host opens; a host that can't open fails boot. */
   boot(options: BootOptions): void;
+  changed(): void;
   readonly exited: Promise<{ readonly code: number }>;
   settled(): Promise<void>;
   dispose(): Promise<void>;
@@ -119,6 +121,9 @@ export function createRunner(context: RunnerContext): Runner {
       track("boot", async () => {
         if (await reachable) await boot(options, handlerContext);
       }),
+    changed() {
+      for (const listener of scope.changes) listener();
+    },
     exited: scope.exit.promise,
     async settled() {
       while (inFlight.size > 0) await Promise.allSettled(inFlight);
@@ -196,6 +201,7 @@ const ROUTES: Routes = {
   exit: local(exit),
   "refresh-workspace": local(refreshWorkspaceFacts),
   "run-command": host(runCommand),
+  "complete-command": host(completeCommand),
   "stop-task": host(stopTask),
   "apply-setting": host(applySetting),
   "check-trust": host(checkTrust),

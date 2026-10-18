@@ -1,7 +1,3 @@
-/**
- * A chat in a pane: its transcript, composer, trays and pane menu. The tray
- * presentation draws a subagent's chat inside its parent's tray.
- */
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { threadStyles } from "./thread.stylex.ts";
 import { modelConfiguration } from "./model-configuration.ts";
@@ -66,7 +62,6 @@ const NO_CHANGES: SessionView["changes"] = [];
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
-/** How many older messages one scroll to the top pages in, as the TUI does. */
 const HISTORY_PAGE = 200;
 
 type SessionDeletionState =
@@ -146,10 +141,6 @@ type SessionConversationProps =
       readonly onOpenSubagentTray: (sessionId: SessionId) => void;
     };
 
-/**
- * One stable, polite status line for the run. The transcript is virtualized,
- * so its rows can't announce themselves: they would repeat as they remount.
- */
 function RunAnnouncer({ working }: { readonly working: boolean }): ReactElement {
   const [shown, setShown] = useState(working);
   const [message, setMessage] = useState("");
@@ -166,10 +157,6 @@ function RunAnnouncer({ working }: { readonly working: boolean }): ReactElement 
   );
 }
 
-/**
- * From the composer, PageUp and PageDown page the transcript, as they do in
- * the TUI; an open suggestion menu takes them first.
- */
 function ComposerPaging({ column }: { readonly column: HTMLElement | null }): null {
   const controls = useTranscriptControls();
 
@@ -200,16 +187,6 @@ function ComposerPaging({ column }: { readonly column: HTMLElement | null }): nu
   return null;
 }
 
-/**
- * The scrollport arrives as state, so everything below it re-runs on the
- * commit that creates the node, not one commit late. Rows walk the
- * transcript, so they are keyed on the durable inputs: a streaming frame
- * re-renders this and must not repeat them. A turn that ends in a step group
- * already draws the run's indicator there; one that ends in prose needs it
- * below the prose, or the model looks idle while it prepares its next step. A
- * subagent card always opens the tray, whatever the child's state; the tray's
- * own expand action is the way to a full chat.
- */
 export function SessionConversation(conversation: SessionConversationProps): ReactElement {
   const { paneId, presentation, sessionId } = conversation;
   const host = useHostState();
@@ -313,6 +290,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
         loading: view === undefined && viewError === undefined,
         failed: viewError !== undefined,
         turns,
+        changes: view?.changes ?? NO_CHANGES,
         landing: messages.submitted,
         held: messages.held,
         retrying,
@@ -473,7 +451,6 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
               {presentation === "full" && <RunAnnouncer working={working} />}
               <Timeline
                 sessionId={sessionId}
-                changes={view?.changes ?? NO_CHANGES}
                 ready={ready}
                 rows={rows}
                 working={working}

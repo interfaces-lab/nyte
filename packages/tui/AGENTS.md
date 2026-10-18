@@ -35,7 +35,7 @@ Native resources (`SyntaxStyle`, `TextBuffer`) take `renderer.nativeScene` as ow
 ## Tests
 
 - `bun test` runs everything in process: model tests are plain functions over `test/fixture/view.ts`, effect tests run the runner over `fakeHost`/`fakePorts`, and UI tests use `testRender` from `@opentui/solid` (`bunfig.toml` preloads the Solid transform).
-- App tests start the whole TUI with `startTui()` (`test/harness/tui.ts`): a test renderer whose clock is a `ManualClock`, `mountApp` over a real in-process host with `fakeModels` from `@nyte-ai/host/bench`, and fake local ports. `opened: false` holds the host closed, `typed` types before mount, and `until`/`frame` render until a condition holds or fail after a bounded number of turns with the last frame. Drive keys by command name with `press`, never by escape sequence.
+- App tests start the whole TUI with `startTui()` (`test/harness/tui.ts`): a test renderer whose clock is a `ManualClock`, `mountApp` over a real in-process host with `fakeModels` from `@nyte-ai/bench`, and fake local ports. `opened: false` holds the host closed, `typed` types before mount, and `until`/`frame` render until a condition holds or fail after a bounded number of turns with the last frame. Drive keys by command name with `press`, never by escape sequence.
 - `qa/binary.smoke.ts` is the only test of the compiled binary: pipes and a PTY, against a service this process registers in an isolated HOME (`qa/service.ts`), so the binary connects to a real host over the fake provider. `qa/pty.ts` encodes keys with `EmbeddedTerminalRenderable.encodeKey` for the modes the binary negotiated. Keep it to what only the binary shows: startup, trust, exit codes and the resume text.
 
 ## Verification

@@ -74,6 +74,22 @@ describe("turn", () => {
     expect(frame).not.toContain("[canvas]");
   });
 
+  test("a part it has no renderer for shows its kind and state raw", async () => {
+    const view = buildView((v) =>
+      v.turn("t1", (t) =>
+        t
+          .user("map it")
+          .part("maps/places", { pins: [{ name: "Cafe" }] }, { role: "answer" })
+          .ended("completed"),
+      ),
+    );
+
+    await using app = await renderWithApp(buildState(followed(view)), transcript);
+    const frame = app.captureCharFrame();
+
+    expect(frame).toContain('[maps/places] { "pins": [ { "name": "Cafe" } ] }');
+  });
+
   test("blocks keep view order and changing output mode expands the card", async () => {
     const view = buildView((v) =>
       v.turn("t1", (t) =>

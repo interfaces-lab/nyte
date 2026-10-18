@@ -1,9 +1,3 @@
-/**
- * One transcript item. User prompts are the only ordinary contained message
- * region. Assistant prose stays flat, while reasoning, tools, and system
- * history use compact rows. Parts keep core's stable identity so settled and
- * streaming content exchange in place.
- */
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { srOnly } from "@nyte-ai/ui/styles/a11y.stylex";
 import { props } from "@stylexjs/stylex";
@@ -67,7 +61,8 @@ import { RecoveryAction } from "./turn-recovery.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
-import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
+import { userDisplayText } from "./transcript-presentation.ts";
+import type { TurnItemRow } from "./transcript-rows.ts";
 import { errorMessage } from "../errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../catalog.ts";
 
@@ -153,7 +148,6 @@ function UserMessageImages({ content }: { content: UserContent }): ReactElement 
 export interface BranchModelChoice {
   readonly model: DesktopModelOption | undefined;
   readonly thinkingLevel: ModelThinkingLevel | undefined;
-  /** The choice is the model's fast sibling. */
   readonly fast: boolean;
 }
 
@@ -168,7 +162,6 @@ export type TurnChangesTarget =
   | { readonly kind: "file"; readonly turnId: ConversationTurnId; readonly path: string };
 
 interface UserEditState extends BranchModelChoice {
-  /** The message as a draft: its head sentences back as chips, edited in the composer's editor. */
   readonly document: ComposerDocumentState;
   readonly attachments: readonly ComposerImageAttachment[];
   readonly kept: readonly MessageFile[];
@@ -178,13 +171,6 @@ interface UserEditState extends BranchModelChoice {
   readonly error: string | undefined;
 }
 
-/**
- * One user row. Without `onEdit` it is read-only, which also draws a message
- * that has left the composer but has no commit yet. Editing is composing
- * again from the sent content, so it is the same frame the composer uses:
- * attachments, the `+` menu, `@` and `/` completion, the model picker. The edit
- * sits in a thread, so a workspace is open behind it for `@` mentions.
- */
 export function UserMessageView({
   content,
   onEdit,
@@ -196,9 +182,28 @@ export function UserMessageView({
 }): ReactElement {
   const [edit, setEdit] = useState<UserEditState | undefined>();
   const rowRef = useRef<HTMLDivElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
   const transcript = useTranscriptControls();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
-  const canDismissEdit = edit !== undefined && !edit.saving && edit.attachmentReads === 0;
+  const original = contentDraftText(content);
+  const editing = edit !== undefined;
+
+  const canDismissEdit =
+    edit !== undefined &&
+    !edit.saving &&
+    edit.attachmentReads === 0 &&
+    edit.document.text === original &&
+    edit.attachments.length === 0 &&
+    edit.kept.length === messageFiles(content).length;
+
+  useEffect(() => {
+    const row = rowRef.current;
+
+    if (!editing || row === null) return;
+
+    return transcript.keep(row);
+  }, [editing, transcript]);
+
   useEffect(() => {
     const row = rowRef.current;
 
@@ -211,9 +216,7 @@ export function UserMessageView({
 
       if (
         target instanceof Element &&
-        target.closest(
-          '[data-composer-frame], [role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]',
-        )
+        target.closest('[role="menu"], [role="listbox"], [role="dialog"], [data-base-ui-inert]')
       )
         return;
       setEdit(undefined);
@@ -223,8 +226,7 @@ export function UserMessageView({
 
     return () => row.ownerDocument.removeEventListener("click", dismiss);
   }, [canDismissEdit]);
-  const original = contentDraftText(content);
-  const pluginCatalog = usePluginCatalog();
+  const pluginCatalog = usePluginCatalog(useTranscriptScope()?.sessionId);
   const workspaceFiles = useMentionFiles(edit !== undefined);
 
   const begin = (): void => {
@@ -248,6 +250,22 @@ export function UserMessageView({
       }),
     );
     editorRef.current?.focus({ preventScroll: true });
+  };
+
+  const cancel = (): void => {
+    flushSync(() => setEdit(undefined));
+    editButtonRef.current?.focus({ preventScroll: true });
+  };
+
+  const reveal = (): void => {
+    const row = rowRef.current;
+    const messages = row?.closest<HTMLElement>('[role="region"]');
+
+    if (row === null || messages === null || messages === undefined) return;
+    const box = row.getBoundingClientRect();
+    const view = messages.getBoundingClientRect();
+
+    if (box.bottom <= view.top || box.top >= view.bottom) row.scrollIntoView({ block: "nearest" });
   };
 
   const patchEdit = (patch: (current: UserEditState) => UserEditState): void => {
@@ -281,6 +299,7 @@ export function UserMessageView({
     }
 
     setEdit({ ...edit, saving: true, error: undefined });
+    const messages = rowRef.current?.closest<HTMLElement>('[role="region"]');
 
     try {
       const next = await uploadComposerContent(draft);
@@ -290,6 +309,7 @@ export function UserMessageView({
         fast: edit.fast,
       });
       setEdit(undefined);
+      messages?.focus({ preventScroll: true });
 
       return true;
     } catch (cause: unknown) {
@@ -350,6 +370,7 @@ export function UserMessageView({
             )}
             {onEdit !== undefined && (
               <Row.Primary
+                ref={editButtonRef}
                 aria-keyshortcuts="F2"
                 aria-description={original === "" ? undefined : userDisplayText(original)}
                 xstyle={srOnly}
@@ -381,9 +402,10 @@ export function UserMessageView({
             <ComposerFrame
               surface="follow-up"
               document={edit.document}
-              onDocumentChange={(document) =>
-                patchEdit((current) => ({ ...current, document, error: undefined }))
-              }
+              onDocumentChange={(document) => {
+                if (document.text !== edit.document.text) reveal();
+                patchEdit((current) => ({ ...current, document, error: undefined }));
+              }}
               onSubmit={save}
               placeholder="Edit message"
               disabled={edit.saving}
@@ -405,7 +427,7 @@ export function UserMessageView({
               inputRef={(handle) => {
                 editorRef.current = handle;
               }}
-              editing={{ kind: "message", onCancel: () => setEdit(undefined) }}
+              editing={{ kind: "message", onCancel: cancel }}
             />
           </div>
         )}
@@ -505,11 +527,6 @@ function TurnChangesCard({
   );
 }
 
-/**
- * A compaction shows while it runs, then folds its summary behind a
- * disclosure; one that ended without a summary leaves the turn's own notice
- * to explain.
- */
 function NoteView({ message }: { message: ViewMessage }): ReactElement | null {
   const sessionId = useTranscriptScope()?.sessionId;
 
@@ -607,10 +624,19 @@ const ResponseView = memo(function ResponseView({
   return markdown === "" ? null : <Prose markdown={markdown} streaming={streaming} />;
 });
 
-interface TurnBodyProps {
+export const TurnItemView = memo(function TurnItemView({
+  row,
+  running,
+  density,
+  cwd,
+  onEditUser,
+  branchModel,
+  onOpenChanges,
+}: {
+  row: TurnItemRow;
+  running: boolean;
   density: ToolCallDensity;
   cwd: string | undefined;
-  changes: SessionView["changes"];
   onEditUser?: (
     message: UserMessage,
     content: UserContent,
@@ -618,105 +644,44 @@ interface TurnBodyProps {
   ) => Promise<void>;
   branchModel?: BranchModelPicker;
   onOpenChanges: (target: TurnChangesTarget) => void;
-  running: boolean;
-}
+}): ReactElement | null {
+  switch (row.kind) {
+    case "part":
+      return (
+        <TurnPartView
+          message={row.message}
+          cwd={cwd}
+          density={density}
+          onEditUser={onEditUser}
+          branchModel={branchModel}
+        />
+      );
+    case "step": {
+      const [first] = row.messages;
 
-function drawsNothing(turn: ConversationTurn): boolean {
-  return turn.messages.length === 0 && turn.info.state.kind !== "ended";
-}
+      if (!running && row.messages.length === 1 && first !== undefined && showsTool(first))
+        return <TurnPartView message={first} cwd={cwd} density={density} />;
 
-function turnChanges(
-  turn: ConversationTurn,
-  changes: SessionView["changes"],
-): SessionView["changes"] {
-  const paths = new Set(
-    turn.messages.flatMap((message) =>
-      showsTool(message) && message.state.phase === "settled"
-        ? (message.state.changes?.paths ?? [])
-        : [],
-    ),
-  );
+      return (
+        <StepGroupView
+          messages={row.messages}
+          cwd={cwd}
+          added={row.added}
+          removed={row.removed}
+          running={running}
+          density={density}
+        />
+      );
+    }
 
-  return changes.filter((change) => paths.has(change.path));
-}
+    case "agents":
+      return <SubagentGroupView messages={row.messages} cwd={cwd} />;
+    case "response":
+      return <ResponseView messages={row.messages} />;
+    case "failure": {
+      const failure = failureNotice(row.failure);
 
-const TurnBody = memo(function TurnBody({
-  turn,
-  density,
-  cwd,
-  changes: sessionChanges,
-  onEditUser,
-  branchModel,
-  onOpenChanges,
-  running,
-}: TurnBodyProps & { turn: ConversationTurn }): ReactElement | null {
-  const changes = useMemo(() => turnChanges(turn, sessionChanges), [turn, sessionChanges]);
-  const display = useMemo(() => displayTranscriptParts(turn.messages), [turn]);
-
-  if (drawsNothing(turn)) return null;
-  const { state } = turn.info;
-
-  const failure =
-    state.kind === "ended" && state.end.kind === "failed"
-      ? failureNotice(state.end.failure)
-      : undefined;
-
-  return (
-    <>
-      {display.map((item, index) => {
-        if (item.kind === "step") {
-          const [first] = item.messages;
-          const trailing = index === display.length - 1;
-          const active = running && trailing;
-
-          if (!active && item.messages.length === 1 && first !== undefined && showsTool(first)) {
-            return <TurnPartView key={first.id} message={first} cwd={cwd} density={density} />;
-          }
-
-          return (
-            <StepGroupView
-              key={`step:${first?.id ?? turn.info.id}`}
-              messages={item.messages}
-              cwd={cwd}
-              added={trailing ? turn.info.summary.added : 0}
-              removed={trailing ? turn.info.summary.removed : 0}
-              running={active}
-              density={density}
-            />
-          );
-        }
-
-        if (item.kind === "agents") {
-          return (
-            <SubagentGroupView
-              key={`agents:${item.messages[0]?.id ?? turn.info.id}`}
-              messages={item.messages}
-              cwd={cwd}
-            />
-          );
-        }
-
-        if (item.kind === "response") {
-          return (
-            <ResponseView
-              key={`response:${item.messages[0]?.id ?? turn.info.id}`}
-              messages={item.messages}
-            />
-          );
-        }
-
-        return (
-          <TurnPartView
-            key={item.message.id}
-            message={item.message}
-            cwd={cwd}
-            density={density}
-            onEditUser={onEditUser}
-            branchModel={branchModel}
-          />
-        );
-      })}
-      {failure !== undefined && (
+      return (
         <StatusMarker
           role={failure.tone === "danger" ? "alert" : "status"}
           variant={failure.tone === "danger" ? "destructive" : "default"}
@@ -729,41 +694,21 @@ const TurnBody = memo(function TurnBody({
             </>
           )}
         </StatusMarker>
-      )}
-      {!running && changes.length > 0 && (
+      );
+    }
+
+    case "changes":
+      return running ? null : (
         <TurnChangesCard
-          files={changes}
-          onReview={() => onOpenChanges({ kind: "turn", turnId: turn.info.id })}
-          onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: turn.info.id, path })}
+          files={row.files}
+          onReview={() => onOpenChanges({ kind: "turn", turnId: row.turn })}
+          onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: row.turn, path })}
         />
-      )}
-    </>
-  );
-});
+      );
+    default: {
+      const _exhaustive: never = row;
 
-export const TurnView = memo(function TurnView({
-  turn,
-  continuations,
-  running,
-  ...body
-}: TurnBodyProps & {
-  turn: ConversationTurn;
-  continuations: readonly ConversationTurn[];
-}): ReactElement | null {
-  const turns = [turn, ...continuations];
-
-  if (turns.every(drawsNothing)) return null;
-
-  return (
-    <div {...props(turnStyles.turn)}>
-      {turns.map((entry, index) => (
-        <TurnBody
-          key={entry.info.id}
-          {...body}
-          turn={entry}
-          running={running && index === turns.length - 1}
-        />
-      ))}
-    </div>
-  );
+      return _exhaustive;
+    }
+  }
 });

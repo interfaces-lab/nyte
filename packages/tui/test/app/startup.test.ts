@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestRendererSetup } from "@opentui/core/testing";
 import { expect, test } from "bun:test";
-import { lastUserText } from "@nyte-ai/host/bench";
+import { lastUserText } from "@nyte-ai/bench";
 import type { Selection } from "../../src/model/state.ts";
 import { rootSessions } from "../../src/run.ts";
 import { FileSettingsStore } from "../../src/services/settings.ts";
@@ -17,7 +17,6 @@ const RECORDED: Selection = {
 
 const CURRENT: Selection = { model: { provider: "test", id: "model" }, effort: "off", fast: false };
 
-/** Where the welcome title, the composer's input row and its bottom border sit, from the drawn spans. */
 function layoutRows(tui: Pick<TestRendererSetup, "captureSpans">): readonly number[] {
   const rows = tui.captureSpans().lines.map((line) => line.spans.map((span) => span.text).join(""));
 

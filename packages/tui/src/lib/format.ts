@@ -169,7 +169,6 @@ export interface PowerlineState {
   readonly provider: string;
   readonly model: string;
   readonly effort?: Thinking;
-  readonly statuses: readonly string[];
   readonly queued: number;
   readonly tokens: number;
   readonly window: number;
@@ -212,8 +211,6 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
       ? ""
       : ` ${state.branch}${state.dirty ? "*" : ""}`;
 
-  const badges = [...(state.effort === undefined ? [] : [state.effort]), ...(state.statuses ?? [])];
-
   const segments: PowerlineSegment[] = [
     ...(state.workspace === undefined
       ? []
@@ -221,7 +218,7 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
     ...(state.model === undefined ? [] : [{ text: state.model, tone: "model" as const }]),
   ];
 
-  if (badges.length > 0) segments.push({ text: badges.join(" "), tone: "effort" });
+  if (state.effort !== undefined) segments.push({ text: state.effort, tone: "effort" });
   const tokens = state.tokens ?? 0;
   const window = state.window ?? 0;
 

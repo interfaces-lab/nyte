@@ -7,7 +7,6 @@ import type { Scene } from "./build";
 
 export interface Stage {
   readonly rows: readonly TranscriptRow[];
-  readonly changes: SessionView["changes"];
   readonly working: boolean;
   readonly settledWork: boolean;
 }
@@ -20,17 +19,6 @@ export function stage(scene: Scene): Stage {
 
   const settledWork =
     lastTurn !== undefined && displayTranscriptParts(lastTurn.messages).at(-1)?.kind === "step";
-
-  const rows = transcriptRows({
-    loading: scene.loading === true,
-    failed: scene.failed === true,
-    turns: scene.turns,
-    landing,
-    held: scene.execution?.kind === "idle" && scene.execution.lastRun?.end.kind !== "completed",
-    retrying: scene.execution?.kind === "retrying" ? scene.execution.reason : undefined,
-    working,
-    running,
-  });
 
   const changes = scene.turns.flatMap((turn) =>
     turn.messages.flatMap((message): SessionView["changes"] => {
@@ -48,89 +36,77 @@ export function stage(scene: Scene): Stage {
     }),
   );
 
-  return { rows, changes, working, settledWork };
+  const rows = transcriptRows({
+    loading: scene.loading === true,
+    failed: scene.failed === true,
+    turns: scene.turns,
+    changes,
+    landing,
+    held: scene.execution?.kind === "idle" && scene.execution.lastRun?.end.kind !== "completed",
+    retrying: scene.execution?.kind === "retrying" ? scene.execution.reason : undefined,
+    working,
+    running,
+  });
+
+  return { rows, working, settledWork };
 }
 
 export function trail({ rows, working }: Stage): readonly string[] {
-  return rows.flatMap((row): readonly string[] => {
-    switch (row.kind) {
-      case "skeleton":
-      case "error":
-        return [row.kind];
-      case "retry":
-        return [`retry "${row.message}"`];
-      case "landing":
-        return [`landing${row.pending ? " · pending" : ""}`];
-      case "live":
-        return row.working ? ["live"] : [];
-      case "turn": {
-        const turns = [row.turn, ...row.continuations];
-        const trailing = row.trailing && working;
+  return rows.flatMap((row) => {
+    const lines = rowLines(row, working);
 
-        const head = `turn${trailing ? " · trailing, running" : ""}${
-          row.continuations.length > 0 ? ` · +${String(row.continuations.length)} continuation` : ""
-        }`;
-
-        return [
-          head,
-          ...turns.flatMap((entry, turnIndex): readonly string[] => {
-            const display = displayTranscriptParts(entry.messages);
-            const active = trailing && turnIndex === turns.length - 1;
-
-            const groups = display.map((item, index) => {
-              switch (item.kind) {
-                case "part": {
-                  const { message } = item;
-
-                  if (message.kind === "user") return "  user";
-
-                  return `  ${message.partKind}${showsTool(message) ? `:${message.state.class.kind}` : ""}${message.status.kind === "live" ? " · live" : ""}`;
-                }
-
-                case "agents":
-                  return `  agents ×${String(item.messages.length)}`;
-                case "response":
-                  return `  response ×${String(item.messages.length)}${item.messages.some((message) => showsText(message) && message.status.kind === "live") ? " · live" : ""}`;
-                case "step": {
-                  const kinds = item.messages
-                    .map((message) =>
-                      showsTool(message) ? message.state.class.kind : message.partKind,
-                    )
-                    .join(", ");
-
-                  const [first] = item.messages;
-
-                  const lone =
-                    item.messages.length === 1 &&
-                    first !== undefined &&
-                    showsTool(first) &&
-                    !(active && index === display.length - 1);
-
-                  return lone ? `  step → line [${kinds}]` : `  step [${kinds}]`;
-                }
-
-                default: {
-                  const _exhaustive: never = item;
-
-                  return _exhaustive;
-                }
-              }
-            });
-
-            const { state } = entry.info;
-
-            return state.kind === "ended" && state.end.kind === "failed"
-              ? [...groups, `  failure ${state.end.failure.class}`]
-              : groups;
-          }),
-        ];
-      }
-
-      default: {
-        const _exhaustive: never = row;
-
-        return _exhaustive;
-      }
-    }
+    return row.group !== null && row.leads ? ["turn", ...lines] : lines;
   });
+}
+
+function rowLines(row: TranscriptRow, working: boolean): readonly string[] {
+  switch (row.kind) {
+    case "skeleton":
+    case "error":
+      return [row.kind];
+    case "retry":
+      return [`retry "${row.message}"`];
+    case "landing":
+      return [`landing${row.pending ? " · pending" : ""}`];
+    case "live":
+      return row.working ? ["live"] : [];
+    case "part": {
+      const { message } = row;
+
+      if (message.kind === "user") return ["  user"];
+
+      return [
+        `  ${message.partKind}${showsTool(message) ? `:${message.state.class.kind}` : ""}${message.status.kind === "live" ? " · live" : ""}`,
+      ];
+    }
+
+    case "agents":
+      return [`  agents ×${String(row.messages.length)}`];
+    case "response":
+      return [
+        `  response ×${String(row.messages.length)}${row.messages.some((message) => showsText(message) && message.status.kind === "live") ? " · live" : ""}`,
+      ];
+    case "step": {
+      const kinds = row.messages
+        .map((message) => (showsTool(message) ? message.state.class.kind : message.partKind))
+        .join(", ");
+
+      const [first] = row.messages;
+      const running = row.trailing && working;
+
+      const lone = row.messages.length === 1 && first !== undefined && showsTool(first) && !running;
+
+      return [`  step${lone ? " → line" : ""} [${kinds}]${running ? " · running" : ""}`];
+    }
+
+    case "failure":
+      return [`  failure ${row.failure.class}`];
+    case "changes":
+      return [`  changes ×${String(row.files.length)}`];
+    default: {
+      const _exhaustive: never = row;
+
+      return _exhaustive;
+    }
+  }
 }

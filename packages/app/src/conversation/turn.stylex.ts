@@ -1,13 +1,8 @@
-/** A turn: the user's bubble, the response, and what the turn changed. */
 import { create } from "@stylexjs/stylex";
 import { glyph, layer, media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-/**
- * The prompt's own padding; the message editor in `composer.stylex.ts` keeps
- * the same, so an edit leaves text and images where the bubble had them.
- */
 const USER_PROMPT_PADDING_BLOCK = 8;
 
 const USER_PROMPT_PADDING_INLINE = 10;
@@ -16,18 +11,10 @@ const USER_IMAGES_GAP = 8;
 
 export const USER_MESSAGE_PREVIEW_LINES = 3.5;
 
-/** Room for a chip's background above the first line, which the clip would cut. */
 const USER_PREVIEW_BLEED_TOP = 2;
 
-/**
- * The collapsed-message fade spans the clipped fractional line
- * plus the whole line above it, and runs out through the prompt's bottom
- * padding. The half line is gone before the clip, so nothing reads as sliced
- * text against the prompt's edge.
- */
 const USER_PREVIEW_FADE = `calc(${type.leadingLg} * ${(USER_MESSAGE_PREVIEW_LINES % 1) + 1} + ${USER_PROMPT_PADDING_BLOCK}px)`;
 
-/** The user prompt's side of a turn, spanning the measure behind its bubble. */
 export const messageStyles = create({
   end: {
     position: "relative",
@@ -75,25 +62,8 @@ export const bubbleStyles = create({
 });
 
 export const turnStyles = create({
-  turn: {
-    display: "flex",
-    flexDirection: "column",
-    gap: conversation.rowGap,
-    width: "100%",
-    minWidth: 0,
-    /**
-     * The sticky prompt sticks against the outer scrollport, not its turn;
-     * layout containment leaves that alone (no overflow clip, no scroller).
-     */
-    contain: "layout",
-  },
-  /**
-   * The row's inset is the transcript's top edge while the prompt is stuck:
-   * it paints the pane colour, so rows scrolling past vanish behind it instead
-   * of surfacing above the prompt. The scrollport drops its own fade then,
-   * which would otherwise make this strip translucent.
-   */
   userRow: {
+    pointerEvents: "auto",
     position: { default: "sticky", "[data-sticky-disabled='true']": "relative" },
     zIndex: { default: layer.stickyContent, "[data-sticky-disabled='true']": "auto" },
     top: 0,
@@ -113,11 +83,6 @@ export const turnStyles = create({
     overflow: "clip",
     maxHeight: `calc(${type.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES})`,
   },
-  /**
-   * The preview bleeds into the prompt's padding so the fade has somewhere to
-   * finish; negative margins give the bleed back, leaving the row's height and
-   * the toggle's place unchanged.
-   */
   userPreviewFade: {
     maxHeight: `calc(${type.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES} + ${USER_PREVIEW_BLEED_TOP + USER_PROMPT_PADDING_BLOCK}px)`,
     paddingTop: USER_PREVIEW_BLEED_TOP,
@@ -185,7 +150,6 @@ export const turnStyles = create({
   },
   changesAdded: { color: role.contentSecondary },
   changesRemoved: { color: role.contentSecondary },
-  // The edit is the composer frame itself; this only stacks an error line above it.
   userEdit: {
     display: "flex",
     flexDirection: "column",

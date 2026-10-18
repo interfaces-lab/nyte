@@ -9,14 +9,21 @@ import type {
 } from "@nyte-ai/schema";
 import type { OperationName } from "./declarations.ts";
 import { parseJson } from "./json.ts";
-import { HOST_HEADER, decodeError, parseOutputFrames, parseSse, withInputHeader } from "./wire.ts";
+import {
+  HOST_HEADER,
+  OPERATIONS_HEADER,
+  decodeError,
+  parseOutputFrames,
+  parseSse,
+  withInputHeader,
+} from "./wire.ts";
 import { createStreamClient } from "./stream-client.ts";
 
 /** Describes where a transport sends requests, the headers each carries (credentials, read again per request), and the `fetch` it uses. */
 export type TransportOptions = {
   readonly url: string;
   headers(): Promise<Readonly<Record<string, string>>>;
-  readonly fetch?: typeof fetch;
+  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 };
 
 /** Returns a byte reader over a response body: its size from `Content-Length` and its mime from `X-Nyte-Mime` when the host sent them (§40w), and the file version the host read when it sent one (`X-Nyte-Version`, §40h). */
@@ -36,16 +43,18 @@ export type Transport = {
   ): Promise<Json>;
   credential(): string | null;
   host(): HostId | null;
+  operations(): string | null;
 };
 
 const DONE = { done: true, value: undefined } as const;
 
-/** Returns a transport over `fetch` and `ReadableStream`, with no `EventSource`, so headers reach every request and it runs in browsers and React Native. */
+/** Returns a transport over `fetch` and `ReadableStream`, with no `EventSource`, so headers reach every request and it runs in browsers and React Native; a host off loopback is asked for deflated stream frames. */
 export function createTransport(options: TransportOptions): Transport {
   const base = options.url.replace(/\/+$/, "");
   const send = options.fetch ?? fetch;
   let credential: string | null = null;
   let host: HostId | null = null;
+  let operations: string | null = null;
 
   const post = async (
     name: string,
@@ -73,6 +82,7 @@ export function createTransport(options: TransportOptions): Transport {
     }
 
     if (answered !== null) host = asId<"host">(answered);
+    operations = response.headers.get(OPERATIONS_HEADER) ?? operations;
     credential = response.headers.get("X-Nyte-Credential") ?? credential;
 
     if (response.ok) return response;
@@ -85,7 +95,7 @@ export function createTransport(options: TransportOptions): Transport {
     headers: { "Content-Type": "application/json", ...headers },
   });
 
-  const stream = createStreamClient(post);
+  const stream = createStreamClient(post, crossesNetwork(base));
 
   return {
     async invoke(name, input, request) {
@@ -151,6 +161,7 @@ export function createTransport(options: TransportOptions): Transport {
     },
     credential: () => credential,
     host: () => host,
+    operations: () => operations,
   };
 }
 
@@ -212,6 +223,12 @@ function cancellable<T>(open: (signal: AbortSignal) => AsyncIterable<T>): AsyncI
       };
     },
   };
+}
+
+function crossesNetwork(url: string): boolean {
+  const { hostname } = new URL(url);
+
+  return hostname !== "localhost" && hostname !== "[::1]" && !hostname.startsWith("127.");
 }
 
 function jsonOrText(text: string): Json {

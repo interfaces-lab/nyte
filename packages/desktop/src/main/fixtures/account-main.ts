@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { basename, join } from "node:path";
+import process from "node:process";
 import { app, BrowserWindow, shell } from "electron";
 import type { WebContents } from "electron";
 import { Type } from "typebox";
@@ -13,6 +14,10 @@ import { registerAccount } from "../account.ts";
 import { AccountCancelled } from "../account-session.ts";
 import { AccountStore } from "../account-store.ts";
 import { registerRenderer } from "../renderer.ts";
+
+process.stdin.on("close", () => app.exit(1));
+
+process.stdin.resume();
 
 const directory = process.argv[2];
 

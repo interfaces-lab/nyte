@@ -16,6 +16,7 @@ export interface RunFlags {
   readonly provider?: string;
   readonly model?: string;
   readonly effort?: Thinking;
+  readonly trust?: boolean;
   readonly rest: readonly string[];
 }
 
@@ -34,6 +35,8 @@ export function parseFlags(args: readonly string[]): RunFlags {
       provider: { type: "string" },
       model: { type: "string" },
       effort: { type: "string" },
+      trust: { type: "boolean" },
+      "no-trust": { type: "boolean" },
     },
   });
 
@@ -49,6 +52,9 @@ export function parseFlags(args: readonly string[]): RunFlags {
   if (values.session !== undefined && values.resume === true) {
     throw new Error("Use either --session <session-id> or --resume.");
   }
+
+  if (values.trust === true && values["no-trust"] === true)
+    throw new Error("Use either --trust or --no-trust.");
 
   if (values.session === "") throw new Error("--session requires a non-empty session ID.");
   const effort = THINKING_LEVELS.find((level) => level === values.effort);
@@ -75,6 +81,10 @@ export function parseFlags(args: readonly string[]): RunFlags {
   if (values.model !== undefined) flags = { ...flags, model: values.model };
 
   if (effort !== undefined) flags = { ...flags, effort };
+
+  if (values.trust === true) flags = { ...flags, trust: true };
+
+  if (values["no-trust"] === true) flags = { ...flags, trust: false };
 
   return flags;
 }

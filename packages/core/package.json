@@ -21,7 +21,26 @@
     "./testing": "./src/testing.ts"
   },
   "publishConfig": {
-    "access": "public"
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "import": "./dist/src/index.js"
+      },
+      "./server": {
+        "types": "./dist/src/server.d.ts",
+        "import": "./dist/src/server.js"
+      },
+      "./store": {
+        "types": "./dist/src/store.d.ts",
+        "import": "./dist/src/store.js"
+      },
+      "./testing": {
+        "types": "./dist/src/testing.d.ts",
+        "import": "./dist/src/testing.js"
+      }
+    },
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -38,7 +57,7 @@
     "@cfworker/json-schema": "4.1.1",
     "@types/node": "^26.6.5",
     "typescript": "6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=26.4.0"

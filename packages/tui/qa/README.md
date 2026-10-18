@@ -14,8 +14,15 @@ registered, that `/quit` and SIGTERM print the resume command that `--session` r
 a closed terminal, SIGHUP, and SIGTERM after the terminal closed each end the TUI within 2 s, the
 first while the service sees the TUI's streams close.
 
+`qa/service.smoke.ts` runs the binary's services in temporary HOMEs: of two services started at
+once one serves and the other exits 0; a service or `nyte serve` whose registration names another
+process exits 0 with its jobs stopped; a nyte retires a service registered with an older build,
+which exits 0; with Nyte.app registered, nyte uses its host and `nyte service stop` leaves it
+running; and `nyte service install` run through `~/.nyte/bin/nyte` writes a unit that runs that
+link, against a stand-in `launchctl` and `systemctl`.
+
 `qa/service.ts` starts a Nyte service inside the test process, over `fakeModels` from
-`@nyte-ai/host/bench`, and registers it in an isolated HOME. The binary finds that registration
+`@nyte-ai/bench`, and registers it in an isolated HOME. The binary finds that registration
 and connects to it, so no provider, credential or network is involved, and every request the
 binary causes is visible to the test. `freshHome` registers nothing, so the binary starts its
 own service there; disposing it waits for that service to register, then stops it. `qa/pty.ts` runs the binary in a Bun PTY and parses its

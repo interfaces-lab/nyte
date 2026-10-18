@@ -152,11 +152,15 @@
   }
 }
 
-/* A page that opens with a plate repaints the nav white until the plate scrolls away. */
-@custom-variant hero (html:not([data-nav-stuck]) body:has(.landing-plate) &);
+/* A page that opens with a plate repaints the nav white until the plate scrolls away or the phone menu covers it. */
+@custom-variant hero (html:not([data-nav-stuck], [data-menu-open]) body:has(.landing-plate) &);
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  html[data-menu-open] {
+    overflow: hidden;
+  }
+
   .dark {
     --selection-l: 0.46;
   }
@@ -173,6 +177,34 @@
 }
 
 @layer components {
+  /* The phone menu: the whole screen beneath the sticky nav, which keeps its close control on top. */
+  .site-menu {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: calc(var(--site-nav-top) + var(--site-nav-height) + 24px) var(--site-pad) 48px;
+    @apply bg-background;
+    outline: none;
+    transition:
+      opacity 200ms ease-out,
+      translate 200ms ease-out,
+      visibility 200ms;
+  }
+
+  .site-menu:not([data-open]) {
+    visibility: hidden;
+    opacity: 0;
+    translate: 0 -8px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .site-menu {
+      transition: none;
+    }
+  }
+
   .shiki {
     font-variant-ligatures: none;
     tab-size: 2;

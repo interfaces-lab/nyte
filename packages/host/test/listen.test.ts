@@ -18,8 +18,8 @@ import { memoryStore } from "@nyte-ai/core/store";
 import { createTransport, decodeError, parseSse } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { listen, pluginLoader } from "../src/index.ts";
-import { fakeModels, open } from "../src/bench/fake-models.ts";
-import type { FakeModels } from "../src/bench/fake-models.ts";
+import { fakeModels, open } from "./fixtures/fake-models.ts";
+import type { FakeModels } from "./fixtures/fake-models.ts";
 
 const TOKEN = "a-token-of-at-least-16";
 

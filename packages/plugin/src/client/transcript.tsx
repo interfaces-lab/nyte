@@ -4,14 +4,12 @@ import type { ReactNode } from "react";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import { defineRenderer } from "@nyte-ai/plugin/client";
 
-/** Returns what a part whose state fails its schema draws. */
-const unreadable = (kind: string): ReactNode => (
-  <div data-part={kind}>This {kind} part cannot be shown.</div>
-);
+const unreadable = (): ReactNode => null;
 
 /**
  * Renderers for React clients, the desktop and the web: the five built-in
- * part kinds. The tool's Stop action calls `act`.
+ * part kinds. The tool's Stop action calls `act`. A state its schema rejects
+ * draws nothing, for the client to show raw.
  *
  * @category plugins
  * @since 0.1.0

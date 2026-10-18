@@ -37,7 +37,6 @@ export const layout = defineVars({
   "--nyte-suggestion-item-height": "var(--nyte-row-height-md)",
   "--nyte-suggestion-item-gap": "8px",
   "--nyte-conversation-measure": "840px",
-  "--nyte-prose-measure": "54ch",
   "--nyte-prose-paragraph-gap": "16px",
   "--nyte-conversation-gutter": "16px",
   "--nyte-conversation-header-height": "35px",

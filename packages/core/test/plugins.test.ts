@@ -1,6 +1,5 @@
-import { asId, asSeq, standard } from "@nyte-ai/schema";
+import { asId, asSeq } from "@nyte-ai/schema";
 import type { SessionCatalogView } from "@nyte-ai/schema";
-import { Type } from "typebox";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { systemPromptPlugin } from "../src/builtins/system-prompt.ts";
 import { toolSource } from "../src/extend/registry.ts";
@@ -41,7 +40,6 @@ describe("plugin runtime", () => {
       { id: "twin" },
       { id: "twin" },
       { id: "sandbox", environment: provider("local") },
-      { id: "opaque", contribute: { commands: [{ ...says("odd", "odd"), arguments: opaque }] } },
       broken,
     ]);
 
@@ -50,7 +48,6 @@ describe("plugin runtime", () => {
       ["twin", "rejected"],
       ["twin", "rejected"],
       ["sandbox", "rejected"],
-      ["opaque", "rejected"],
       ["broken", "rejected"],
     ]);
     expect(outcomes[3]?.issues).toEqual([
@@ -62,9 +59,6 @@ describe("plugin runtime", () => {
       },
     ]);
     expect(outcomes[4]?.issues).toEqual([
-      expect.objectContaining({ path: ["commands", "odd", "arguments"] }),
-    ]);
-    expect(outcomes[5]?.issues).toEqual([
       {
         severity: "error",
         path: ["activate"],
@@ -92,7 +86,6 @@ describe("plugin runtime", () => {
       ["tools", 0],
       ["twin", 2],
       ["sandbox", 1],
-      ["opaque", 1],
       ["broken", 1],
     ]);
   });
@@ -131,7 +124,7 @@ describe("plugin runtime", () => {
     expect(replaced.plugins).toEqual([{ kind: "activated", id: "greeter", issues: [] }]);
     expect(replaced.generation).toBe(kernel.host.current().catalog);
     expect([first?.aborted, gone?.aborted]).toEqual([true, true]);
-    expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
+    expect(await session.command("hello", "")).toEqual({ kind: "ran", output: "v2" });
 
     const failing = await host.plugins.replace(
       [
@@ -152,7 +145,7 @@ describe("plugin runtime", () => {
         issues: [expect.objectContaining({ message: "Activation failed: Broken build." })],
       },
     ]);
-    expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
+    expect(await session.command("hello", "")).toEqual({ kind: "ran", output: "v2" });
     expect(starts).toBe(1);
 
     const unparsable = await host.plugins.replace(
@@ -162,7 +155,7 @@ describe("plugin runtime", () => {
 
     expect(unparsable.plugins.map((outcome) => outcome.kind)).toEqual(["kept-previous"]);
     expect(starts).toBe(1);
-    expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
+    expect(await session.command("hello", "")).toEqual({ kind: "ran", output: "v2" });
 
     const fresh = await host.plugins.replace(
       [{ id: "new", activate: () => Promise.reject(new Error("No.")) }],
@@ -172,7 +165,7 @@ describe("plugin runtime", () => {
     );
 
     expect(fresh.plugins.map((outcome) => outcome.kind)).toEqual(["rejected"]);
-    expect(await session.command("hello")).toEqual({ kind: "unknown" });
+    expect(await session.command("hello", "")).toEqual({ kind: "unknown" });
   });
 
   it("replaces host-wide: every live session and the plugins new sessions load", async () => {
@@ -185,11 +178,11 @@ describe("plugin runtime", () => {
     ]);
 
     expect(report.plugins).toEqual([{ kind: "activated", id: "greeter", issues: [] }]);
-    expect(await session.command("hello")).toEqual({ kind: "ran", output: "v2" });
+    expect(await session.command("hello", "")).toEqual({ kind: "ran", output: "v2" });
 
     const { session: later } = await host.sessions.start({ content: "Hi." });
 
-    expect(await later.command("hello")).toEqual({ kind: "ran", output: "v2" });
+    expect(await later.command("hello", "")).toEqual({ kind: "ran", output: "v2" });
     expect(kernel.plugins.host.map((plugin) => plugin.id)).toEqual(["greeter"]);
   });
 
@@ -411,12 +404,13 @@ describe("plugin api", () => {
     const catalog: SessionCatalogView = {
       commands: [
         {
-          name: "greeter/hello",
+          name: "hello",
           owner: "greeter",
           side: "core",
           title: "hello",
           description: "Says hi.",
-          arguments: null,
+          takesText: false,
+          completes: false,
           category: "Fun",
         },
       ],
@@ -469,7 +463,7 @@ describe("plugin api", () => {
     await second.kernel.plugins.runtime(session.id).ready;
 
     expect(second.kernel.sessions.catalog(session.id).commands).toEqual([
-      expect.objectContaining({ name: "greeter/hello" }),
+      expect.objectContaining({ name: "hello" }),
     ]);
     expect(second.kernel.host.current().catalog).toBe(generation);
     await views.return?.();
@@ -477,19 +471,22 @@ describe("plugin api", () => {
 });
 
 describe("commands", () => {
-  it("answers ran, sent, invalid, unknown and failed", async () => {
+  it("answers ran, sent, unknown and failed, and refuses names no client can offer", async () => {
     const { kernel, session } = await loaded([
       {
         id: "cmds",
         contribute: {
           commands: [
             {
-              name: "say",
-              title: "Say",
+              name: "echo",
+              title: "Echo",
               description: "Says it.",
-              arguments: standard(Type.String()),
-              run: (args) => `said ${String(args)}`,
+              takesText: true,
+              run: (text) => `said ${text}`,
             },
+            says("say", "cmds"),
+            says("new", "shadowed"),
+            says("Odd_Name", "untypable"),
             { name: "quiet", title: "Quiet", description: "Says nothing.", run: () => undefined },
             {
               name: "ask",
@@ -511,18 +508,25 @@ describe("commands", () => {
       { id: "other", contribute: { commands: [says("say", "other")] } },
     ]);
 
-    expect(await session.command("cmds/say", "hi")).toEqual({ kind: "ran", output: "said hi" });
-    expect(await session.command("other/say")).toEqual({ kind: "ran", output: "other" });
-    expect(await session.command("say", "hi")).toEqual({ kind: "unknown" });
-    expect(await session.command("quiet")).toEqual({ kind: "ran", output: null });
-    expect(await session.command("cmds/say", 3)).toMatchObject({
-      kind: "invalid",
-      issues: [expect.objectContaining({ severity: "error" })],
-    });
-    expect(await session.command("boom")).toEqual({ kind: "failed", message: "Exploded." });
-    expect(await session.command("nope")).toEqual({ kind: "unknown" });
+    expect(await session.command("echo", "  hi  ")).toEqual({ kind: "ran", output: "said hi" });
+    expect(await session.command("say", "")).toEqual({ kind: "ran", output: "other" });
+    expect(await session.command("cmds/say", "")).toEqual({ kind: "unknown" });
+    expect(await session.command("quiet", "")).toEqual({ kind: "ran", output: null });
+    expect(await session.command("new", "")).toEqual({ kind: "unknown" });
+    expect(await session.command("Odd_Name", "")).toEqual({ kind: "unknown" });
+    expect(
+      kernel.host
+        .current()
+        .plugins.find((row) => row.id === "cmds")
+        ?.issues.map((issue) => issue.message),
+    ).toEqual([
+      "/new is a built-in command; give the plugin's command another name.",
+      'The command name Odd_Name can\'t be typed after "/": use lowercase letters, digits and "-".',
+    ]);
+    expect(await session.command("boom", "")).toEqual({ kind: "failed", message: "Exploded." });
+    expect(await session.command("nope", "")).toEqual({ kind: "unknown" });
 
-    const sent = await session.command("ask");
+    const sent = await session.command("ask", "");
     assert(sent.kind === "sent");
 
     const admitted = (await kernel.store.refs.log(session.id, asSeq(0), 100)).find(
@@ -535,8 +539,49 @@ describe("commands", () => {
     expect(admitted).toMatchObject({
       message: sent.receipt,
       content: "Review the diff.",
-      source: { kind: "action", label: "Ask", command: "cmds/ask" },
+      source: { kind: "action", label: "Ask", command: "ask" },
     });
+  });
+
+  it("suggests a command's text from what is typed, none from a missing or failing one", async () => {
+    const { kernel, session } = await loaded([
+      {
+        id: "keys",
+        contribute: {
+          commands: [
+            {
+              ...says("key", "saved"),
+              complete: (prefix) =>
+                ["exa", "tavily"]
+                  .filter((name) => name.startsWith(prefix))
+                  .map((name) => ({ value: `${name} `, label: name })),
+            },
+            {
+              ...says("broken", "never"),
+              complete: () => {
+                throw new Error("No list.");
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect((await session.view()).catalog.commands).toEqual([
+      expect.objectContaining({ name: "key", takesText: true, completes: true }),
+      expect.objectContaining({ name: "broken", takesText: true, completes: true }),
+    ]);
+    expect(await session.completeCommand("key", "ta")).toEqual([
+      { value: "tavily ", label: "tavily" },
+    ]);
+    expect(await session.completeCommand("nope", "")).toEqual([]);
+    expect(await session.completeCommand("broken", "")).toEqual([]);
+    expect(
+      kernel.host
+        .current()
+        .plugins.find((row) => row.id === "keys")
+        ?.issues.map((issue) => issue.message),
+    ).toEqual(["Suggesting text for /broken failed: No list."]);
   });
 
   it("lists and runs a new chat's commands before any chat, the folder's own only while it is trusted", async () => {
@@ -584,18 +629,18 @@ describe("commands", () => {
     const at = host.workspace(workspace);
 
     expect((await at.catalog()).commands.map((command) => command.name)).toEqual([
-      "host/hello",
-      "folder/probe",
-      "folder/ask",
+      "hello",
+      "probe",
+      "ask",
     ]);
     expect(imported).toEqual([["/work/project/.nyte/plugins/x.ts"]]);
-    expect(await at.command("probe")).toEqual({ kind: "ran", output: "answered" });
-    expect(await at.command("folder/ask")).toEqual({ kind: "prompt", content: "Review this." });
-    expect(await at.command("never")).toEqual({ kind: "unknown" });
+    expect(await at.command("probe", "")).toEqual({ kind: "ran", output: "answered" });
+    expect(await at.command("ask", "")).toEqual({ kind: "prompt", content: "Review this." });
+    expect(await at.command("never", "")).toEqual({ kind: "unknown" });
     expect((await host.sessions.list()).items).toEqual([]);
 
     expect(await at.update({ projectResources: false })).toEqual({ kind: "updated" });
-    expect((await at.catalog()).commands.map((command) => command.name)).toEqual(["host/hello"]);
+    expect((await at.catalog()).commands.map((command) => command.name)).toEqual(["hello"]);
     await expect(host.workspace(asId("missing")).catalog()).rejects.toMatchObject({
       code: "unknown",
     });

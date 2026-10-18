@@ -1,6 +1,6 @@
 import { props } from "@stylexjs/stylex";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import type { Virtualizer } from "@tanstack/react-virtual";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
+import type { Range, VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import type { SessionId } from "@nyte-ai/sdk";
 import { Button } from "@nyte-ai/ui/button";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
@@ -42,6 +42,66 @@ const VIEWPORT_GUESS = 800;
 
 const SCROLL_EDGE_THRESHOLD = 60;
 
+const MEASURED_TRANSCRIPTS = 16;
+
+const measured = new Map<string, VirtualItem[]>();
+
+type TranscriptItem = Pick<
+  TranscriptRow,
+  "messageId" | "scrollAnchor" | "group" | "leads" | "sticky"
+>;
+
+function readStickyRows(items: readonly TranscriptItem[]) {
+  const above: number[] = [];
+  const ends = new Map<number, number>();
+  let sticky = -1;
+
+  for (const [index, item] of items.entries()) {
+    if (item.group === null || item.group !== items[index - 1]?.group) sticky = -1;
+
+    if (item.sticky && item.group !== null) sticky = index;
+    above.push(sticky);
+  }
+
+  let end = items.length - 1;
+
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+
+    if (item === undefined) continue;
+
+    if (item.group === null || item.group !== items[index + 1]?.group) end = index;
+
+    if (item.sticky && item.group !== null) ends.set(index, end);
+  }
+
+  return { above, ends };
+}
+
+function stickyRange(range: Range, above: readonly number[]): number[] {
+  const indexes = defaultRangeExtractor(range);
+  const held = above[range.startIndex] ?? -1;
+
+  return held >= 0 && held < (indexes[0] ?? 0) ? [held, ...indexes] : indexes;
+}
+
+function stretchSpans(instance: TranscriptVirtualizer, ends: ReadonlyMap<number, number>): void {
+  for (const item of instance.getVirtualItems()) {
+    const last = ends.get(item.index);
+    const span = instance.elementsCache.get(item.key)?.firstElementChild;
+    const fill = span?.lastElementChild;
+    const end = last === undefined ? undefined : instance.measurementsCache[last]?.end;
+
+    if (end === undefined || !(span instanceof HTMLElement) || !(fill instanceof HTMLElement))
+      continue;
+    const extent = `${String(Math.max(0, end - item.end))}px`;
+
+    if (fill.style.height === extent) continue;
+    fill.style.height = extent;
+    span.style.marginBottom = `-${extent}`;
+  }
+}
+
 interface Anchor {
   readonly key: string;
   readonly element: Element | undefined;
@@ -51,7 +111,8 @@ interface Anchor {
 interface TranscriptControls {
   readonly end: () => void;
   readonly hold: (element: Element) => void;
-  /** Scroll a viewport's height up or down, as a wheel would. */
+  /** Keeps the element's row rendered while it scrolls out of view, until the returned release runs. */
+  readonly keep: (element: Element) => () => void;
   readonly page: (direction: 1 | -1) => void;
 }
 
@@ -59,7 +120,6 @@ interface TranscriptOptions {
   readonly paneId: PaneId;
   readonly sessionId: SessionId;
   readonly viewportRef?: (viewport: HTMLDivElement | null) => void;
-  /** The first loaded row is near the top: page in older messages. */
   readonly onReachStart?: () => void;
 }
 
@@ -69,13 +129,15 @@ interface TranscriptState extends TranscriptOptions {
   readonly dock: HTMLDivElement | null;
   readonly setDock: (dock: HTMLDivElement | null) => void;
   readonly controlsRef: RefObject<TranscriptControls | null>;
-  /** Stable forwarders to whichever transcript currently fills `controlsRef`. */
   readonly controls: TranscriptControls;
 }
+
+const ignore = (): void => {};
 
 const NO_CONTROLS: TranscriptControls = {
   end: () => undefined,
   hold: () => undefined,
+  keep: () => ignore,
   page: () => undefined,
 };
 
@@ -88,8 +150,6 @@ function useTranscript(): TranscriptState {
 
   return transcript;
 }
-
-const ignore = (): void => {};
 
 export function useTranscriptDock(): (dock: HTMLDivElement | null) => void {
   return useContext(TranscriptContext)?.setDock ?? ignore;
@@ -124,6 +184,7 @@ export function TranscriptProvider({
   const [controls] = useState((): TranscriptControls => ({
     end: () => controlsRef.current?.end(),
     hold: (element) => controlsRef.current?.hold(element),
+    keep: (element) => controlsRef.current?.keep(element) ?? ignore,
     page: (direction) => controlsRef.current?.page(direction),
   }));
 
@@ -152,7 +213,7 @@ export const TranscriptContent = memo(function TranscriptContent({
   estimateSize,
   renderItem,
 }: {
-  readonly items: readonly Pick<TranscriptRow, "messageId" | "scrollAnchor">[];
+  readonly items: readonly TranscriptItem[];
   readonly ready: boolean;
   readonly estimateSize: (index: number) => number;
   readonly renderItem: (index: number) => ReactNode;
@@ -181,6 +242,27 @@ export const TranscriptContent = memo(function TranscriptContent({
   const opening = useRef(initialPosition.kind === "end");
   const content = useRef<HTMLDivElement>(null);
   const scrollport = useRef<HTMLDivElement | null>(null);
+
+  const measuredKey = `${sessionId}\u0000${paneId}`;
+  const [initialMeasurements] = useState(() => measured.get(measuredKey) ?? []);
+  const sticky = useMemo(() => readStickyRows(items), [items]);
+
+  const [kept, setKept] = useState<ReadonlySet<string>>(() => new Set());
+
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = stickyRange(range, sticky.above);
+
+      if (kept.size === 0) return indexes;
+      const rendered = new Set(indexes);
+
+      for (const [index, item] of items.entries())
+        if (kept.has(item.messageId)) rendered.add(index);
+
+      return [...rendered].toSorted((first, second) => first - second);
+    },
+    [items, kept, sticky],
+  );
 
   const [initialOffset] = useState(() => {
     let total = TRANSCRIPT_PADDING_START;
@@ -220,6 +302,7 @@ export const TranscriptContent = memo(function TranscriptContent({
 
     if (scroll === null || content.current === null) return;
     correct(instance);
+    stretchSpans(instance, sticky.ends);
 
     if (opening.current && heldRef.current === null) {
       if (left <= 1) opening.current = false;
@@ -245,6 +328,8 @@ export const TranscriptContent = memo(function TranscriptContent({
     estimateSize,
     getItemKey,
     initialOffset,
+    initialMeasurementsCache: initialMeasurements,
+    rangeExtractor,
     overscan: OVERSCAN,
     paddingStart: TRANSCRIPT_PADDING_START,
     paddingEnd: TRANSCRIPT_PADDING_END + dockHeight,
@@ -259,6 +344,8 @@ export const TranscriptContent = memo(function TranscriptContent({
   useLayoutEffect(() => {
     heldRef.current = held;
   }, [held]);
+
+  useLayoutEffect(() => stretchSpans(virtualizer, sticky.ends));
 
   useLayoutEffect(() => {
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
@@ -287,6 +374,21 @@ export const TranscriptContent = memo(function TranscriptContent({
     const anchor = { key, element, top: topIn(scroll, element) };
     heldRef.current = anchor;
     flushSync(() => setHeld(anchor));
+  };
+
+  const keep = (element: Element): (() => void) => {
+    const key = element.closest<HTMLElement>("[data-message-id]")?.dataset.messageId;
+
+    if (key === undefined) return ignore;
+    setKept((current) => new Set(current).add(key));
+
+    return () =>
+      setKept((current) => {
+        const next = new Set(current);
+        next.delete(key);
+
+        return next;
+      });
   };
 
   const release = (): void => {
@@ -360,8 +462,15 @@ export const TranscriptContent = memo(function TranscriptContent({
         ...state,
         scroll: { ...state.scroll, [paneId]: position },
       }));
+      measured.delete(measuredKey);
+      measured.set(measuredKey, virtualizer.takeSnapshot());
+
+      for (const key of measured.keys()) {
+        if (measured.size <= MEASURED_TRANSCRIPTS) break;
+        measured.delete(key);
+      }
     },
-    [paneId, sessionId, viewStore, virtualizer],
+    [measuredKey, paneId, sessionId, viewStore, virtualizer],
   );
 
   useLayoutEffect(() => {
@@ -370,6 +479,7 @@ export const TranscriptContent = memo(function TranscriptContent({
     controlsRef.current = {
       end,
       hold,
+      keep,
       page: (direction) => {
         release();
         virtualizer.scrollBy(direction * viewport.clientHeight * 0.9);
@@ -505,10 +615,19 @@ export const TranscriptContent = memo(function TranscriptContent({
               data-nyte-scroll-anchor={item.scrollAnchor}
               {...props(
                 messageScrollerStyles.item,
+                !item.leads && messageScrollerStyles.itemWithin,
+                item.sticky && messageScrollerStyles.itemSticky,
                 virtualItem.index === 0 && messageScrollerStyles.itemFirst,
               )}
             >
-              {renderItem(virtualItem.index)}
+              {item.sticky ? (
+                <div data-turn-span {...props(messageScrollerStyles.span)}>
+                  {renderItem(virtualItem.index)}
+                  <div aria-hidden />
+                </div>
+              ) : (
+                renderItem(virtualItem.index)
+              )}
             </div>
           );
         })}

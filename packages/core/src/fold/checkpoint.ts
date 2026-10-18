@@ -52,10 +52,8 @@ import { dev } from "../util/dev-log.ts";
 import { FOLD_CODE } from "./code.ts";
 import { EMPTY_CATALOG } from "./fold.ts";
 
-/** Past this many events since the last checkpoint, the next settled fold writes one, so a cold fold replays about this many and a run's. */
 const REPLAY_EVENTS = 1_024;
 
-/** Past this many logged bytes since the last checkpoint, or the checkpoint's own length when larger, the next settled fold writes one: each write is paid for by as many logged bytes, and replaying the gap never costs much more than reading the checkpoint. */
 const REPLAY_BYTES = 1_048_576;
 
 const head = idSchema<"head">();
@@ -64,17 +62,14 @@ const message = idSchema<"message">();
 
 const turn = idSchema<"turn">();
 
-/** What a checkpoint is stamped with: the fold code, the store version and the build that wrote it. */
 const FoldCheckpointStamp = Type.Object({
   code: Type.Literal(FOLD_CODE),
   store: Type.Literal(STORE_VERSION),
-  build: Type.String(),
 });
 
 const FoldCheckpointType = Type.Object({
   code: Type.Literal(FOLD_CODE),
   store: Type.Number(),
-  build: Type.String(),
   seq: SeqType,
   seen: list(entry(idSchema<"principal">(), list(entry(head, nullable(idSchema<"commit">()))))),
   changes: list(typed<FileChange>()(FileChangeType)),
@@ -180,13 +175,12 @@ export interface FoldCheckpointing {
 
 /** Returns the checkpointing of `session`'s fold over the kernel's store, inert where the store keeps no checkpoints. `folded` reads the fold as it stands, its maps changing in place under each event, so a checkpoint encodes it in the same tick it reads it; `streaming` tells whether a part of the session streams. */
 export function foldCheckpointing(
-  kernel: Pick<Kernel, "store" | "description">,
+  kernel: Pick<Kernel, "store">,
   session: SessionId,
   folded: () => FoldState,
   streaming: () => boolean,
 ): FoldCheckpointing {
   const store = kernel.store.checkpoints;
-  const build = kernel.description.version;
   let kept = { seq: 0, length: 0 };
   let restored = false;
   let offered = false;
@@ -215,7 +209,7 @@ export function foldCheckpointing(
     const state = settled();
 
     if (state === null) return;
-    const body = encodeFoldCheckpoint(state, build);
+    const body = encodeFoldCheckpoint(state);
 
     if (body === null) {
       dev("fold", "checkpoint skipped: paths and maps disagree", { session, seq: state.seq });
@@ -247,7 +241,7 @@ export function foldCheckpointing(
         const checkpoint = await store?.read(session);
 
         if (checkpoint === undefined || checkpoint === null) return null;
-        const state = decodeFoldCheckpoint(checkpoint.body, build, session, principal);
+        const state = decodeFoldCheckpoint(checkpoint.body, session, principal);
 
         return state === null ? null : { state, length: checkpoint.body.length };
       })().catch((error) => {
@@ -274,13 +268,7 @@ export function foldCheckpointing(
   };
 }
 
-/**
- * Returns `state` as checkpoint text for a store to keep, or null when its paths do not hold the
- * very messages and turns its maps do, the sharing a restored fold rebuilds from ids, as it gives
- * a part's message its part's state again. The text leaves out the principal and what the fold
- * seeds live on every attach: the activation, the catalog and the background items.
- */
-function encodeFoldCheckpoint(state: FoldState, build: string): string | null {
+function encodeFoldCheckpoint(state: FoldState): string | null {
   const index = state[INDEX];
 
   for (const [name, folded] of index.heads) {
@@ -304,7 +292,6 @@ function encodeFoldCheckpoint(state: FoldState, build: string): string | null {
   const body: FoldCheckpointBody = {
     code: FOLD_CODE,
     store: STORE_VERSION,
-    build,
     seq: state.seq,
     seen: Array.from(state.seen, ([principal, heads]) => [principal, [...heads]]),
     changes: state.changes,
@@ -350,10 +337,8 @@ function encodeFoldCheckpoint(state: FoldState, build: string): string | null {
   return JSON.stringify(body);
 }
 
-/** Returns the fold a checkpoint holds as `principal` sees it, or null for text this fold code, store version and `build` did not write (a migration may have rewritten the records and events it folded), its stamp checked before the whole body is validated. */
 function decodeFoldCheckpoint(
   text: string,
-  build: string,
   session: SessionId,
   principal: PrincipalId,
 ): FoldState | null {
@@ -361,8 +346,8 @@ function decodeFoldCheckpoint(
   const body = decodeObject(text);
   const checking = performance.now();
 
-  if (!stamps.Check(body) || body.build !== build) {
-    dev("fold", "checkpoint of other code, store or build", { session });
+  if (!stamps.Check(body)) {
+    dev("fold", "checkpoint of other code or store", { session });
 
     return null;
   }

@@ -9,6 +9,7 @@ import type {
   CallId,
   Capability,
   ChangeSet,
+  CommandCompletion,
   ConsoleEntry,
   Cursor,
   DiffOptions,
@@ -514,7 +515,7 @@ export interface Workspaces {
   add(
     target: WorkspaceTarget,
     options?: {
-      /** Trusts (`true`) or declines (`false`) the folder's project files; by default it inherits the nearest registered parent folder's decision. */
+      /** Trusts (`true`) or declines (`false`) the folder's project files; by default the folder follows a decision saved for it or the nearest folder above it. */
       readonly projectResources?: boolean;
       readonly expect?: { readonly identity: EnvironmentIdentity };
     },
@@ -535,8 +536,12 @@ export interface Workspace {
 
   /**
    * Records the user's trust decision for the folder's project files: `true`
-   * loads them, `false` skips them, `null` forgets the decision so the host's
-   * `workspaceTrust` mode applies. Live sessions reload with the change.
+   * loads them, `false` skips them, `null` forgets the decision so the
+   * nearest folder above with one, else the host's `workspaceTrust` mode,
+   * applies. The decision belongs to the folder: every workspace there and
+   * every folder below without its own follows it, and it outlives the
+   * workspace. A worktree's goes to the folder it was made from. Live
+   * sessions reload with the change.
    */
   update(patch: {
     readonly projectResources?: boolean | null;
@@ -552,11 +557,15 @@ export interface Workspace {
   catalog(): Promise<WorkspaceCatalogView>;
 
   /**
-   * Runs command `name` of {@link Workspace.catalog} without a chat. A command that answers
+   * Runs command `name` of {@link Workspace.catalog} without a chat, with the text typed after
+   * it (`""` for none). A command that answers
    * with a prompt runs nothing more: its `prompt` outcome is the first message of the chat it
    * asks to start.
    */
-  command(name: string, args?: Json): Promise<WorkspaceCommandOutcome>;
+  command(name: string, text: string): Promise<WorkspaceCommandOutcome>;
+
+  /** Suggests the text after command `name` of {@link Workspace.catalog} from `prefix`, as a chat's `completeCommand` does. */
+  completeCommand(name: string, prefix: string): Promise<readonly CommandCompletion[]>;
 
   readonly jobs: Jobs;
 

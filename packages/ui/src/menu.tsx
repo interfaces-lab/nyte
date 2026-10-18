@@ -132,6 +132,8 @@ export const menuStyles = create({
     whiteSpace: "nowrap",
   },
   indicator: { display: "flex" },
+  body: { minHeight: 0, overflowY: "auto", overscrollBehavior: "contain" },
+  footer: { flexShrink: 0 },
   separator: {
     height: 1,
     marginBlock: space.s1,
@@ -302,9 +304,11 @@ export function MenuContent({
   collisionPadding = 8,
   tint,
   matchAnchorWidth = false,
+  footer,
   xstyle,
   className,
   style,
+  children,
   ...rest
 }: StyledProps<MenuPrimitive.Popup.Props, Restyle<"MenuContent">> &
   Pick<
@@ -321,6 +325,8 @@ export function MenuContent({
     readonly tint?: Tint;
     /** Sizes the popup to its anchor, the trigger unless `anchor` names another element. */
     readonly matchAnchorWidth?: boolean;
+    /** Rows under a separator that stay in view while the rows above scroll; the place for an action after a list that grows. */
+    readonly footer?: ReactNode;
   }): ReactElement {
   return (
     <MenuPrimitive.Portal>
@@ -350,7 +356,19 @@ export function MenuContent({
             style,
           )}
           {...rest}
-        />
+        >
+          {footer === undefined ? (
+            children
+          ) : (
+            <>
+              <div {...props(menuStyles.body)}>{children}</div>
+              <div {...props(menuStyles.footer)}>
+                <MenuSeparator />
+                {footer}
+              </div>
+            </>
+          )}
+        </MenuPrimitive.Popup>
       </MenuPrimitive.Positioner>
     </MenuPrimitive.Portal>
   );
@@ -369,7 +387,7 @@ export function MenuSubContent({
   className,
   style,
   ...rest
-}: Omit<ComponentProps<typeof MenuContent>, "matchAnchorWidth">): ReactElement {
+}: Omit<ComponentProps<typeof MenuContent>, "matchAnchorWidth" | "footer">): ReactElement {
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner

@@ -14,16 +14,10 @@ const execute = promisify(execFile);
 
 declare global {
   interface Window {
-    /** Writes the test window as `<name>.png` into `captures`, then dispatches `renderer-captured`. */
     readonly rendererCapture: (name: string) => void;
   }
 }
 
-/**
- * Electron's Chromium, as the app build targets. Older targets make
- * lightningcss polyfill the tokens' light-dark() with variables only its own
- * color-scheme rules define.
- */
 const ELECTRON_CHROMIUM = 152 << 16;
 
 export async function testRenderer(
@@ -40,7 +34,6 @@ export async function testRenderer(
     forcePseudoClasses?: readonly string[];
     forcePseudoSelector?: string;
     studio?: boolean;
-    /** A directory where `window.rendererCapture(name)` writes the window as `<name>.png`, then dispatches `renderer-captured`. */
     captures?: string;
   } = {},
 ): Promise<string> {
@@ -90,6 +83,8 @@ ${setup}
       `
 const { app, BrowserWindow } = require("electron");
 const { writeFileSync } = require("node:fs");
+process.stdin.on("close", () => app.exit(1));
+process.stdin.resume();
 app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: ${JSON.stringify(studio)},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });

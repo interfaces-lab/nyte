@@ -28,7 +28,8 @@ import { sessionRecovery } from "../flags.ts";
 import type { RunFlags } from "../flags.ts";
 import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts";
 import type { Ending } from "../lifecycle.ts";
-import { connectLocalService, watchRemote } from "../service.ts";
+import { trustFolder } from "../run.ts";
+import { connectLocalService, followRemote } from "../service.ts";
 import type { ServiceSession } from "../service.ts";
 import type { Msg } from "../model/msg.ts";
 import { followedSession, initialState } from "../model/state.ts";
@@ -48,10 +49,8 @@ import { createTickers } from "./ticker.ts";
 import { holdTypeahead } from "./typeahead.ts";
 import type { Typeahead } from "./typeahead.ts";
 
-/** Ports that work before the host opens. The app adds the host, its plugins and the renderer's clock. */
 type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
 
-/** The host once it is reachable, and what the app closes with it. */
 interface OpenedHost {
   readonly host: HostPort;
   readonly plugins: PluginsPort;
@@ -64,29 +63,20 @@ export interface AppOptions {
   readonly ports: LocalPorts;
   readonly cwd: string;
   readonly boot: BootOptions;
-  /** Opens the host. The app paints and takes typing at once, and boots when this resolves. */
   readonly open: (dispatch: (msg: Msg) => void) => Promise<OpenedHost>;
-  /** Keys held since the renderer began reading stdin, replayed once the composer has focus. */
   readonly typeahead?: Typeahead;
   readonly kit?: (kit: Kit) => Kit;
-  /** The streams beside the renderer that write to its terminal; a write one fails is a hangup, as the renderer's input ending is. */
   readonly outputs?: readonly Writable[];
 }
 
 export interface MountedApp {
   readonly store: Store;
-  /** The status the app ends with: 0 on quit, 1 when boot fails, and 129, a hangup, once its terminal or renderer is gone. */
   readonly closing: Promise<number>;
   readonly report: ReturnType<typeof createReporter>;
   startupError(): string | null;
   close(): Promise<void>;
 }
 
-/**
- * Mounts the app on `renderer` and focuses the composer before the host exists, so input
- * paints at once; opens the host alongside and boots once it is reachable. Every timer
- * runs on `renderer.clock`.
- */
 export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const { renderer } = options;
   const controller = new AbortController();
@@ -285,18 +275,6 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   };
 }
 
-/** Why the TUI ends when its service goes away: the connection can't follow a service that restarted. */
-const SERVICE_LOST =
-  "error: The Nyte service stopped, or a nyte of another build replaced it, so this TUI lost its connection.";
-
-/**
- * Runs the interactive TUI: connects to the service from the first instruction, holds keys
- * typed before the app mounts, and prints the resume command on exit. The exit text waits
- * for `renderer.closed`, because OpenTUI restores and clears the terminal after `destroy`
- * returns and would wipe anything written before. When the service goes away the TUI ends with
- * status 1, the reason, and the resume command. Resolves with the status to exit with; once
- * the app ends or a signal arrives, shutdown has `SHUTDOWN_DEADLINE_MS` before the process exits.
- */
 export async function runTui(flags: RunFlags): Promise<number> {
   const connecting = connectLocalService();
   connecting.catch(() => undefined);
@@ -366,20 +344,25 @@ export async function runTui(flags: RunFlags): Promise<number> {
       log,
     },
     boot: { home, cwd, target: bootTarget(flags), ...flagSelection(flags) },
-    open: (dispatch) => openService({ connecting, renderer, terminal, log, cwd, dispatch }),
+    open: (dispatch) => openService({ connecting, renderer, terminal, log, cwd, flags, dispatch }),
   });
 
   const unhook = installProcessHooks(app.report);
 
   const lost = connecting.then(
-    (service) => service.lost.then(() => "lost" as const),
+    (service) => service.following.ended.then((error) => ({ error })),
     () => new Promise<never>(() => undefined),
   );
 
-  const ending = await Promise.race([app.closing, signalled.promise.then(exitStatus), lost]);
-  const status = ending === "lost" ? 1 : ending;
+  const ending = await Promise.race([
+    app.closing.then((status) => ({ status })),
+    signalled.promise.then((signal) => ({ status: exitStatus(signal) })),
+    lost,
+  ]);
 
-  if (ending === "lost") failures.push(SERVICE_LOST);
+  const status = "status" in ending ? ending.status : 1;
+
+  if ("error" in ending) failures.push(`error: ${ending.error.message}`);
   stopEnding();
   exitWithin(status);
   const session = followedSession(app.store.state())?.id ?? null;
@@ -402,16 +385,16 @@ export async function runTui(flags: RunFlags): Promise<number> {
   return status === 0 && failures.length > 0 ? 1 : status;
 }
 
-/** Opens the background service's host for the TUI: its plugins, and the Nyte Connect status. */
 async function openService(input: {
   readonly connecting: Promise<ServiceSession>;
   readonly renderer: CliRenderer;
   readonly terminal: TerminalPort;
   readonly log: CrashLog;
   readonly cwd: string;
+  readonly flags: RunFlags;
   readonly dispatch: (msg: Msg) => void;
 }): Promise<OpenedHost> {
-  const { connection, registration } = await input.connecting;
+  const { connection, following } = await input.connecting;
   const remote = new AbortController();
 
   const close = async (): Promise<void> => {
@@ -419,11 +402,34 @@ async function openService(input: {
     await connection.close();
   };
 
-  void watchRemote(registration, remote.signal, (facts) =>
-    input.dispatch({ kind: "remote", remote: facts }),
-  ).catch((cause: unknown) => {
-    if (!remote.signal.aborted) input.log.write("watch", cause);
-  });
+  const unsubscribe = following.subscribe((registration) =>
+    input.dispatch({
+      kind: "inform",
+      tone: "info",
+      text:
+        registration.owner === "desktop"
+          ? "Nyte.app has your chats open now; this nyte follows it"
+          : "This nyte follows the Nyte service now",
+    }),
+  );
+
+  remote.signal.addEventListener("abort", unsubscribe, { once: true });
+
+  const { trust, resume } = input.flags;
+
+  if (trust !== undefined)
+    await trustFolder(connection, resume, input.cwd, trust).catch(async (cause: unknown) => {
+      await close();
+
+      throw cause;
+    });
+
+  followRemote(
+    following,
+    remote.signal,
+    (facts) => input.dispatch({ kind: "remote", remote: facts }),
+    (cause) => input.log.write("watch", cause),
+  );
 
   const plugins = await pluginsPort(connection, {
     notify: (title, body, sound) => input.terminal.notify(title, body, sound),
@@ -451,7 +457,6 @@ async function openService(input: {
 
 export function exitText(input: {
   readonly session: SessionId | null;
-  /** A new chat's first message that was still waiting for the host. */
   readonly unsent: string | null;
   readonly failures: readonly string[];
   readonly crashes: readonly FailureReport[];
@@ -468,12 +473,10 @@ export function exitText(input: {
   return lines.length === 0 ? "" : `\n${lines.map((line) => `${line}\n`).join("")}`;
 }
 
-/** The renderable a client plugin drew for a part, or null when none drew one and the transcript shows its fallback. */
 export function drawnPart(renderer: CliRenderer, drawn: unknown): Renderable | null {
   return drawn === undefined || drawn === null ? null : maybeMakeRenderable(renderer, drawn);
 }
 
-/** Resolves once `renderer` has painted its next frame. */
 export function nextFrame(renderer: CliRenderer): Promise<void> {
   return new Promise((resolve) => renderer.once(CliRenderEvents.FRAME, () => resolve()));
 }

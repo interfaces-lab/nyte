@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "index",
+    "remote-access",
+    "---SDK---",
+    "sdk/index",
+    "build/composition",
+    "sdk/examples",
+    "...sdk/guides",
+    "---SDK reference---",
+    "...sdk/reference"
+  ]
+}

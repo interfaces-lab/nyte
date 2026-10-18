@@ -1,4 +1,5 @@
 import type {
+  CommandCompletion,
   CommitId,
   Delivery,
   Json,
@@ -15,7 +16,7 @@ import type {
   WorkspaceId,
 } from "@nyte-ai/sdk";
 import type { ChatCommand } from "../lib/constants.ts";
-import type { McpAction } from "./effect.ts";
+import type { McpAction, TrustAsk } from "./effect.ts";
 import type { ResolvedSettings, SettingsPatch } from "../lib/settings-schema.ts";
 import type { Task } from "../lib/tasks.ts";
 import type { MentionFile } from "./completion.ts";
@@ -257,8 +258,9 @@ export type Outcome =
       readonly decision: boolean | null;
       readonly trusted: boolean | null;
       readonly sources: readonly string[];
-      readonly ask: "always" | "if-needed";
+      readonly ask: TrustAsk;
     }
+  | { readonly kind: "trust-settled"; readonly workspace: WorkspaceId }
   | {
       readonly kind: "preview-loaded";
       readonly marker: string;
@@ -271,10 +273,16 @@ export type Outcome =
       readonly entries: readonly string[];
     }
   | {
+      readonly kind: "command-completed";
+      readonly name: string;
+      readonly prefix: string;
+      readonly items: readonly CommandCompletion[];
+    }
+  | {
       readonly kind: "command-unknown";
       readonly session: SessionId;
       readonly name: string;
-      readonly argument: string | null;
+      readonly argument: string;
       readonly delivery: Delivery;
     }
   | {

@@ -12,20 +12,23 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { build } from "bun";
 
 const root = realpathSync(fileURLToPath(new URL("../", import.meta.url)));
 
-const artifacts = join(root, "dist/sdk");
+const artifacts = resolve(process.argv[2] ?? join(root, "dist/sdk"));
 
 const names = ["schema", "ai", "protocol", "core", "plugin", "host", "sdk"].map(
   (name) => `@nyte-ai/${name}`,
 );
 
-assert.equal(process.argv.length, 2, "Usage: bun scripts/verify-sdk-packages.mjs");
+assert.ok(
+  process.argv.length <= 3,
+  "Usage: bun scripts/verify-sdk-packages.mjs [tarball-directory]",
+);
 
 const environment = { ...process.env, NODE_PATH: "", NODE_OPTIONS: "" };
 
@@ -90,12 +93,14 @@ import process from "node:process";
 import { asId } from "@nyte-ai/schema";
 import { operationsDigest } from "@nyte-ai/protocol";
 import { uuidv7 } from "@nyte-ai/ai";
+import { createModels } from "@nyte-ai/ai/models";
+import { AssistantMessageEventStream } from "@nyte-ai/ai/utils/event-stream";
 import type { Store } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { Plugin } from "@nyte-ai/plugin/core";
 import { sqliteStore } from "@nyte-ai/host";
-import { fakeModels } from "@nyte-ai/host/bench";
 import { chatOnlyProvider } from "@nyte-ai/host/providers";
+import type { AssistantMessage, Model } from "@nyte-ai/schema/model";
 import { SdkError, sdk } from "@nyte-ai/sdk";
 
 const directory = process.cwd();
@@ -105,10 +110,52 @@ assert.ok(uuidv7().length > 0);
 assert.match(await operationsDigest(), /^[0-9a-f]{16}$/);
 const smokePlugin = { id: "smoke" } satisfies Plugin;
 
+const smokeModel: Model<"smoke"> = {
+  id: "smoke",
+  name: "Smoke",
+  api: "smoke",
+  provider: "smoke",
+  baseUrl: "http://smoke.invalid",
+  reasoning: false,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 1000,
+  maxTokens: 100,
+};
+
+function hello(): AssistantMessageEventStream {
+  const stream = new AssistantMessageEventStream();
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [{ type: "text", text: "Hello." }],
+    api: smokeModel.api,
+    provider: smokeModel.provider,
+    model: smokeModel.id,
+    usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  };
+  queueMicrotask(() => {
+    stream.push({ type: "start", partial: message });
+    stream.push({ type: "done", reason: "stop", message });
+  });
+  return stream;
+}
+
+const models = createModels();
+models.setProvider({
+  id: "smoke",
+  name: "Smoke",
+  auth: { apiKey: { name: "Smoke key", resolve: async () => ({ auth: { apiKey: "smoke" }, source: "smoke" }) } },
+  getModels: () => [smokeModel],
+  stream: hello,
+  streamSimple: hello,
+});
+
 function open(store: Store) {
   return sdk.open({
     store,
-    models: fakeModels({ fallback: { content: [{ type: "text", text: "Hello." }] } }).models,
+    models,
     plugins: [{ id: "chat-only", environment: chatOnlyProvider() }, smokePlugin],
     workspace: { kind: "chat-only", locator: null },
     home: join(directory, "home"),
@@ -183,18 +230,22 @@ try {
   run("pnpm", ["--version"], root);
   temporary = realpathSync(mkdtempSync(join(tmpdir(), "nyte-sdk-verify-")));
   assert.ok(!inside(root, temporary), "The consumer must be outside the workspace");
-  const release = JSON.parse(readFileSync(join(artifacts, "release.json"), "utf8"));
-  assert.equal(typeof release.version, "string", "release.version must be a string");
-  assert.ok(release.version.length > 0);
-  assert.ok(Array.isArray(release.packages), "release.packages must be an array");
-  assert.equal(release.packages.length, names.length, "Expected seven public SDK tarballs");
-  assert.deepEqual(release.packages.map((entry) => entry.name).sort(), [...names].sort());
-  const tarballs = globSync("*.tgz", { cwd: artifacts }).sort();
-  assert.deepEqual(
-    release.packages.map((entry) => entry.file).sort(),
-    tarballs,
-    "release.json must list exactly the packed tarballs",
-  );
+
+  const tarballs = globSync("*.tgz", { cwd: artifacts });
+
+  const entries = names.map((name) => {
+    const prefix = `${name.slice(1).replace("/", "-")}-`;
+
+    const files = tarballs.filter(
+      (file) => file.startsWith(prefix) && /^\d/.test(file.slice(prefix.length)),
+    );
+
+    assert.equal(files.length, 1, `Expected one ${name} tarball in ${artifacts}`);
+
+    return { name, file: files[0] };
+  });
+
+  let version;
 
   const privateNames = new Set(
     globSync("packages/**/package.json", {
@@ -209,17 +260,9 @@ try {
 
   const dependencies = {};
   const packed = new Map();
-  const visited = new Set();
   mkdirSync(join(temporary, "tarballs"));
 
-  for (const entry of release.packages) {
-    assert.equal(typeof entry.file, "string");
-    assert.equal(
-      basename(entry.file),
-      entry.file,
-      "Tarball filenames must not contain directories",
-    );
-    assert.ok(entry.file.endsWith(".tgz"));
+  for (const entry of entries) {
     const tarball = join(temporary, "tarballs", entry.file);
     copyFileSync(join(artifacts, entry.file), tarball);
     const listing = run("tar", ["-tzf", tarball], temporary, 30_000, true).trim().split("\n");
@@ -246,7 +289,8 @@ try {
     const directory = join(unpack, "package");
     const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
     assert.equal(manifest.name, entry.name);
-    assert.equal(manifest.version, release.version);
+    version ??= manifest.version;
+    assert.equal(manifest.version, version, `${entry.name} must share the release version`);
     assert.equal(manifest.private, false);
     assert.equal(manifest.type, "module");
     checkProtocols(manifest, entry.name);
@@ -278,12 +322,6 @@ try {
 
         if (!dependency.startsWith("@nyte-ai/")) continue;
         assert.ok(names.includes(dependency), `Unknown SDK dependency ${dependency}`);
-
-        if (field === "dependencies")
-          assert.ok(
-            visited.has(dependency),
-            `${dependency} must precede ${entry.name} in release.json`,
-          );
       }
     }
 
@@ -329,7 +367,6 @@ try {
 
     packed.set(entry.name, manifest);
     dependencies[entry.name] = `file:./tarballs/${entry.file}`;
-    visited.add(entry.name);
     console.log(`PASS tarball ${entry.name}`);
   }
 
@@ -432,7 +469,7 @@ console.log("PASS OAuth lazy loads without login or network");
       packages: "bundle",
     });
 
-    for (const log of bundle.logs) console.error(String(log));
+    for (const log of bundle.logs) console.error(log);
     assert.ok(bundle.success, "Browser sdk bundle failed");
     assert.ok(bundle.outputs.length > 0);
 
@@ -490,9 +527,7 @@ console.log("PASS OAuth lazy loads without login or network");
     );
   });
   assert.equal(failures.length, 0, `Failed checks: ${failures.join(", ")}`);
-  console.log(
-    `Verified ${names.length} packed SDK packages at ${release.version}. Nothing published.`,
-  );
+  console.log(`Verified ${names.length} packed SDK packages at ${version}. Nothing published.`);
 } catch (error) {
   console.error("SDK verification failed:", error);
   process.exitCode = 1;

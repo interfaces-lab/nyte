@@ -1,10 +1,3 @@
-/**
- * What the last connected run saw of its host, kept so the next launch draws
- * a new chat, its model, the sidebar and the window's folder before the host
- * answers. Each seed sits under a key of its own that the live query shows as
- * its placeholder, so the live answer replaces it in place and only live
- * answers are recorded.
- */
 import type { HostId, SessionInfo, WorkspaceInfo } from "@nyte-ai/sdk";
 import {
   idSchema,
@@ -19,8 +12,9 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { HostState } from "./bridge.ts";
 import { keys, newestModelCatalog, queryClient } from "./queries.ts";
-import { directoryWatch } from "./sdk.tsx";
+import { directoryWatch, sessionWatch } from "./sdk.tsx";
 import { sessionId } from "./schemas.ts";
+import { startupConnection } from "./startup.ts";
 import { activeTab, tabPlace } from "./tabs/model.ts";
 import { windowTabs } from "./tabs/window-tabs.ts";
 
@@ -30,20 +24,11 @@ const ROOT_LIMIT = 60;
 
 const FirstFrameType = Type.Object(
   {
-    /** Whose world this is: `local` for the desktop's own host, the saved connection URL on the web. */
     host: Type.String({ minLength: 1 }),
-    /** The host's id when this was recorded; a connection that reports another drops the snapshot. */
     hostId: Type.String({ minLength: 1 }),
     catalog: ModelCatalogViewType,
     workspaces: Type.Array(WorkspaceInfoType),
-    /** Pinned and newest open root chats, in the directory's order. */
     sessions: Type.Array(SessionInfoType, { maxItems: ROOT_LIMIT }),
-    /**
-     * The chat the window's active tab showed and the folder the window had
-     * selected for it, so a window reopening on that chat lays out its
-     * workbench for the folder on its first frame; null when the tab showed
-     * no chat or the chat lives in Home.
-     */
     folder: Type.Union([
       Type.Object(
         {
@@ -76,7 +61,6 @@ const SEEDED_KEYS = [
 
 let seededHostId: string | undefined;
 
-/** The connection this run records for; the newest one wins. */
 let recording: { readonly host: string; readonly hostId: HostId } | undefined;
 
 function readStored(): string | null {
@@ -99,20 +83,12 @@ function parseFrame(stored: string | null, host: string): FirstFrame | undefined
   }
 }
 
-/** Drop the stored snapshot, as when the host behind its connection changed. */
 export function forgetFirstFrame(): void {
   try {
     localStorage.removeItem(FIRST_FRAME_KEY);
   } catch {}
 }
 
-/**
- * Seed the catalog, the folders, the recent chats and, for a window reopening
- * on the chat it recorded, that chat's folder from the last run on `host`, and
- * answer whether there was one. Runs before the first render, after the
- * window's tabs are restored; a missing, unreadable or foreign snapshot is
- * forgotten and the shell starts empty.
- */
 export function seedFirstFrame(host: string): boolean {
   const stored = readStored();
   const frame = parseFrame(stored, host);
@@ -141,7 +117,6 @@ function seeded(query: Query): boolean {
   return query.state.dataUpdatedAt === 0 && SEEDED_KEYS.includes(query.queryHash);
 }
 
-/** Pinned roots and the newest open ones, kept in the directory's newest-first order. */
 function recentRoots(directory: readonly SessionInfo[]): readonly SessionInfo[] {
   const roots = directory.filter((session) => session.parent === null && !session.archived);
   const pinned = roots.filter((session) => session.pinned);
@@ -154,7 +129,6 @@ function recentRoots(directory: readonly SessionInfo[]): readonly SessionInfo[] 
   return roots.filter((session) => kept.has(session)).slice(0, ROOT_LIMIT);
 }
 
-/** The window's folder for the chat its active tab shows, or null. */
 function windowFolder(): FirstFrame["folder"] {
   const place = tabPlace(activeTab(windowTabs.getSnapshot()));
   const workspace = queryClient.getQueryData<HostState>(keys.host)?.workspace;
@@ -167,7 +141,7 @@ function windowFolder(): FirstFrame["folder"] {
 function write(): void {
   const catalog = newestModelCatalog();
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
-  const directory = directoryWatch("all").value;
+  const directory = directoryWatch("roots").value;
 
   if (recording === undefined || catalog === undefined) return;
 
@@ -187,12 +161,6 @@ function write(): void {
   } catch {}
 }
 
-/**
- * Keep this run's view of `host` for the next launch. A connection to
- * another host than the one seeded drops the seed at once. Writes happen
- * only when the page hides or goes away, the moments a later launch reads
- * from.
- */
 export function recordFirstFrame(host: string, hostId: HostId): void {
   if (seededHostId !== undefined && seededHostId !== hostId) {
     seededHostId = undefined;
@@ -208,4 +176,34 @@ export function recordFirstFrame(host: string, hostId: HostId): void {
   }
 
   recording = { host, hostId };
+}
+
+const CONTENT_WAIT_MS = 2_000;
+
+export async function windowContentReady(): Promise<void> {
+  const place = tabPlace(activeTab(windowTabs.getSnapshot()));
+  const failed = Promise.withResolvers<void>();
+
+  const check = (): void => {
+    if (startupConnection.read().kind === "failed") failed.resolve();
+  };
+
+  const leave = startupConnection.subscribe(check);
+  const limit = setTimeout(failed.resolve, CONTENT_WAIT_MS);
+  check();
+
+  try {
+    await Promise.race([
+      failed.promise,
+      Promise.all([
+        queryClient.getQueryData(keys.firstFrameRoots) === undefined
+          ? directoryWatch("roots").first()
+          : undefined,
+        place.kind === "session" ? sessionWatch(place.sessionId).first() : undefined,
+      ]),
+    ]);
+  } finally {
+    clearTimeout(limit);
+    leave();
+  }
 }

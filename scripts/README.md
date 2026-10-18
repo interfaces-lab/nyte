@@ -9,14 +9,16 @@ file. CLI and TUI package versions must match. It never downloads or publishes.
 
 [Package distribution](../PACKAGES.md) declares public and private packages. Run
 `pnpm sdk:check`, `pnpm sdk:pack`, then `pnpm sdk:verify` before publishing the SDK.
-The separate SDK workflow builds declarations with TypeScript, JavaScript with Bun,
-and publishes the verified pnpm tarballs. It does not publish by default.
+`sdk-packages.mjs build` builds one package's declarations with TypeScript and its
+JavaScript with Bun; Turborepo runs it as `build:package`. [RELEASING.md](../RELEASING.md)
+covers publishing.
 
 ## Release versions
 
-The release workflow requires CLI, TUI, and desktop versions to match the release tag and
-installs dependencies from the frozen lockfile. TUI and desktop bundle their core and built-in
-plugins from that checkout; they do not load a separately upgraded core at runtime.
+The release workflow requires every package in the Changesets fixed group to match the
+release version and installs dependencies from the frozen lockfile. TUI and desktop bundle
+their core and built-in plugins from that checkout; they do not load a separately upgraded
+core at runtime.
 
 Pin the app release, not individual internal workspace packages. A plugin loaded from a user
 or project directory uses the running host's API. Update that plugin's source with the host

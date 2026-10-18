@@ -307,25 +307,37 @@ function webSearch(api: PluginApi): ToolDefinition<{ query: string }> {
   };
 }
 
-const keyCommand: Command<{ provider: SearchProvider; key: string }> = {
-  name: "key",
+const keyCommand: Command = {
+  name: "websearch-key",
   title: "Set a web search key",
-  description: "Store an API key for a web search provider; an empty key removes it.",
-  arguments: standard(Type.Object({ provider: providerSchema, key: Type.String() })),
-  async run(args, { api }) {
-    const key = args.key.trim();
+  description: "Store a web search provider's API key: <provider> <key>; no key removes it.",
+  complete(prefix) {
+    const typed = prefix.trimStart();
 
-    if (key === "") await api.storage.secrets.delete(args.provider);
-    else await api.storage.secrets.set(args.provider, key);
+    if (/\s/u.test(typed)) return [];
 
-    return `Key for ${args.provider} ${key === "" ? "removed" : "saved"}.`;
+    return PROVIDERS.filter((known) => known.startsWith(typed.toLowerCase())).map((known) => ({
+      value: `${known} `,
+      label: known,
+    }));
+  },
+  async run(text, { api }) {
+    const [named = "", key = ""] = text.split(/\s+(.*)/su);
+    const chosen = PROVIDERS.find((known) => known === named.toLowerCase());
+
+    if (chosen === undefined) throw new Error(`Name a provider first: ${PROVIDERS.join(", ")}.`);
+
+    if (key === "") await api.storage.secrets.delete(chosen);
+    else await api.storage.secrets.set(chosen, key);
+
+    return `Key for ${chosen} ${key === "" ? "removed" : "saved"}.`;
   },
 };
 
 /**
  * Adds `web_search`, routed by the host setting `web_search.provider` to
  * Tavily, Exa, Firecrawl or Parallel. A provider's key lives in the plugin's
- * secrets under the provider's id, set with the `key` command; without one
+ * secrets under the provider's id, set with the `websearch-key` command; without one
  * the provider's keyless route is used.
  *
  * @category plugins

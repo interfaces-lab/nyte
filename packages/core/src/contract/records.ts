@@ -224,7 +224,6 @@ const WorkspaceRecordType = record({
   id: idSchema<"workspace">(),
   target: typed<WorkspaceTarget>()(WorkspaceTargetType),
   identity: idSchema<"environment-identity">(),
-  projectResources: Type.Union([Type.Boolean(), Type.Null()]),
   projectSources: list(Type.String()),
   addedBy: idSchema<"principal">(),
   createdAt: Type.Number(),
@@ -232,6 +231,14 @@ const WorkspaceRecordType = record({
 });
 
 export type WorkspaceRecord = Static<typeof WorkspaceRecordType>;
+
+/** The user's decision for one folder's project files, at `trust/<folder key>`; folders under it inherit it. */
+const TrustRecordType = record({
+  target: typed<WorkspaceTarget>()(WorkspaceTargetType),
+  trusted: Type.Boolean(),
+});
+
+export type TrustRecord = Static<typeof TrustRecordType>;
 
 const PrincipalRecordType = record({
   principals: list(
@@ -276,6 +283,7 @@ export type RecordKind =
   | "receipt"
   | "seen"
   | "workspace"
+  | "trust"
   | "lease"
   | "call"
   | "kv"
@@ -292,6 +300,7 @@ export const STORED_RECORD_TYPES = {
   receipt: ReceiptRecordType,
   seen: SeenRecordType,
   workspace: WorkspaceRecordType,
+  trust: TrustRecordType,
   lease: LeaseType,
   call: CallRecordType,
   principals: PrincipalRecordType,
@@ -322,6 +331,8 @@ export const decodeWorkspaceRecord: Decode<WorkspaceRecord> = decoder(
   "workspace",
   WorkspaceRecordType,
 );
+
+export const decodeTrustRecord: Decode<TrustRecord> = decoder("trust", TrustRecordType);
 
 export const decodeCallRecord: Decode<CallRecord> = decoder("call", CallRecordType);
 

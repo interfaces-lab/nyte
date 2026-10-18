@@ -14,8 +14,8 @@ import type { McpView } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it, vi } from "vitest";
 import { createMcpHub, openHost } from "../src/index.ts";
 import type { McpConnector } from "../src/index.ts";
-import { chatOnly, fakeModels } from "../src/bench/fake-models.ts";
-import type { FakeModels } from "../src/bench/fake-models.ts";
+import { chatOnly, fakeModels } from "./fixtures/fake-models.ts";
+import type { FakeModels } from "./fixtures/fake-models.ts";
 
 const folders: string[] = [];
 

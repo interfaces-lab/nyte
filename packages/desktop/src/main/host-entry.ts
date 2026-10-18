@@ -1,9 +1,3 @@
-/**
- * The host process: an Electron utility process that main forks at launch. It runs the Nyte
- * host (store, folds, MCP, tools, terminals, listeners, remote access and Connect) off main's
- * thread, so main keeps only windows, menus, dialogs and the browser panel. Renderers reach the
- * host over its HTTP listener; main forwards their other host operations here (`host-messages.ts`).
- */
 import { join } from "node:path";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { ConnectRuntime } from "@nyte-ai/connect/host";
@@ -93,11 +87,12 @@ function open(options: HostProcessOptions): void {
     config: readConnectConfig(import.meta.env),
     home: join(home, ".nyte"),
     authorizer: account === undefined ? undefined : { kind: "session", account },
-    onChange: () => post({ kind: "event", event: { kind: "remote_access_changed" } }),
+    onChange: () => host.remoteChanged(),
   });
 
   const host = new DesktopHost({
     home,
+    version: options.version,
     models,
     usageScan: new UsageScanWorker(home, new URL("./usage-worker.js", import.meta.url)),
     rendererOrigin: options.rendererOrigin,
@@ -151,12 +146,12 @@ function open(options: HostProcessOptions): void {
 
         return;
       case "resume":
-        connect.resume();
+        host.resume();
 
         return;
       case "account":
         account?.changed(data.state);
-        connect.accountChanged();
+        host.accountChanged();
 
         return;
       case "close":

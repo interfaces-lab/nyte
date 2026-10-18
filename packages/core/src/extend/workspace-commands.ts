@@ -1,6 +1,6 @@
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
-  Json,
+  CommandCompletion,
   SessionId,
   WorkspaceCatalogView,
   WorkspaceCommandOutcome,
@@ -12,7 +12,13 @@ import { readWorkspace } from "../env/environment.ts";
 import { newChatPlugins } from "./activation.ts";
 import { createHookDispatch } from "./hooks.ts";
 import { activateApart } from "./plugin-runtime.ts";
-import { commandInfos, createRegistrySet, invokeCommand, skillInfos } from "./registry.ts";
+import {
+  commandInfos,
+  completeCommand,
+  createRegistrySet,
+  invokeCommand,
+  skillInfos,
+} from "./registry.ts";
 import { scanWorkspaceResources } from "./resources.ts";
 import { settingHandle } from "./settings.ts";
 
@@ -33,10 +39,10 @@ export function runWorkspaceCommand(
   context: ConnectionContext,
   workspace: WorkspaceId,
   name: string,
-  args: Json | undefined,
+  text: string,
 ): Promise<WorkspaceCommandOutcome> {
   return withNewChatPlugins(kernel, workspace, async (plugins) => {
-    const invoked = await invokeCommand(kernel, context, plugins.session, plugins, name, args);
+    const invoked = await invokeCommand(kernel, context, plugins.session, plugins, name, text);
 
     if (invoked.kind !== "returned") return invoked;
     const { result } = invoked;
@@ -47,6 +53,19 @@ export function runWorkspaceCommand(
 
     return { kind: "prompt", content: result.prompt };
   });
+}
+
+/** Asks command `name` what may follow `prefix` as a new chat in `workspace` would offer it, without the chat. */
+export function completeWorkspaceCommand(
+  kernel: Kernel,
+  context: ConnectionContext,
+  workspace: WorkspaceId,
+  name: string,
+  prefix: string,
+): Promise<readonly CommandCompletion[]> {
+  return withNewChatPlugins(kernel, workspace, (plugins) =>
+    completeCommand(kernel, context, plugins.session, plugins, name, prefix),
+  );
 }
 
 /**

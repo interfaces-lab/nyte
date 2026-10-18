@@ -7,4 +7,5 @@ export declare const stylex: {
   readonly vite: (options?: Parameters<typeof unplugin.vite>[0]) => VitePlugin[];
   readonly rollup: typeof unplugin.rollup;
   readonly esbuild: typeof unplugin.esbuild;
+  readonly webpack: typeof unplugin.webpack;
 };

@@ -167,6 +167,7 @@ export function liveChoices(state: State, purpose: ListPurpose): readonly Choice
           shown === "" ? "Load its project files" : `Load ${shown}${more}`,
         ),
         choice("decline", "Don't trust", "Skip its skills, prompts, plugins and MCP servers"),
+        ...(purpose.gate ? [choice("quit", "Quit", "Decide next time")] : []),
         ...(purpose.decision === null
           ? []
           : [choice("forget", "Forget my answer", "Follow the Project trust setting")]),
@@ -213,7 +214,9 @@ export function listTitle(state: State, purpose: ListPurpose): string {
     case "provider":
       return purpose.mode === "login" ? "Sign in to a provider" : "Remove a stored credential";
     case "trust":
-      return `Trust ${purpose.path}?`;
+      return purpose.gate
+        ? `${purpose.path} has project files that can run code. Trust it?`
+        : `Trust ${purpose.path}?`;
     case "mcp":
       return "MCP servers";
     case "mcp-server":
@@ -251,7 +254,7 @@ export function initialHighlight(
     case "provider":
       return index(state.facts.chat?.selection.model.provider);
     case "trust":
-      return index(purpose.decision === false ? "decline" : "trust");
+      return index(purpose.gate || purpose.decision === false ? "decline" : "trust");
     default:
       return 0;
   }

@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "colors",
+    "radius",
+    "spacing",
+    "typography",
+    "shadows",
+    "motion",
+    "tokens",
+    "theming",
+    "focus",
+    "icons"
+  ]
+}

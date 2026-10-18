@@ -22,7 +22,6 @@ export type Sink<T> = {
 
 const DONE = { done: true, value: undefined } as const;
 
-/** One `head.watch` shared by every watcher of a head in this client: the latest view and its subscribers. */
 interface ViewHold {
   view(): SessionView | null;
   subscribe(sink: Sink<SessionView>): Disposer;
@@ -163,7 +162,7 @@ export function watchHost(rows: Rows, opened?: AsyncIterator<Json>): AsyncIterab
             const next = await frames.next();
 
             if (next.done === true) break;
-            view = hostView(next.value, rows.link.current());
+            view = hostView(next.value, rows.link.current(), rows.operations());
             sink.next(view);
           }
 
@@ -213,10 +212,11 @@ export function withUnsent(
   };
 }
 
-function hostView(wire: HostViewWire, link: HostView["link"]): HostView {
+function hostView(wire: HostViewWire, link: HostView["link"], operations: string | null): HostView {
   return {
     id: wire.id,
     link,
+    operations,
     name: wire.name,
     platform: wire.platform,
     version: wire.version,

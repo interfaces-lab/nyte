@@ -53,6 +53,8 @@ beforeAll(async () => {
     `
     const { app, BrowserWindow } = require("electron");
     const { writeFileSync } = require("node:fs");
+    process.stdin.on("close", () => app.exit(1));
+    process.stdin.resume();
     app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
     app.setPath("sessionData", ${JSON.stringify(join(directory, "session"))});
     app.whenReady().then(async () => {

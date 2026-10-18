@@ -6,7 +6,7 @@ import { DocArticle } from "./article";
 export function DocPageView({ page }: { page: DocPage }) {
   return (
     <DocArticle
-      eyebrow={page.section}
+      eyebrow={page.section === page.title ? undefined : page.section}
       title={page.title}
       lede={page.description}
       toc={page.toc}

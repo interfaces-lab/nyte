@@ -12,6 +12,7 @@ export {
   decodeRunRecord,
   decodeSeenRecord,
   decodeSessionRecord,
+  decodeTrustRecord,
   decodeWorkspaceRecord,
   envelope,
 } from "./contract/records.ts";
@@ -22,6 +23,7 @@ export type {
   PartRecord,
   RecordKind,
   SessionRecord,
+  TrustRecord,
   WorkspaceRecord,
 } from "./contract/records.ts";
 
@@ -62,6 +64,8 @@ export {
   runRef,
   seenRef,
   sessionRef,
+  trustRef,
+  trustTarget,
   workspaceRef,
 } from "./store/refs.ts";
 

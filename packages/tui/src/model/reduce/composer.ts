@@ -1,5 +1,10 @@
 import type { Delivery, SessionId } from "@nyte-ai/sdk";
-import { resolveCommand, runnableCommand, slashNamespace } from "../commands.ts";
+import {
+  completingCommands,
+  resolveCommand,
+  runnableCommand,
+  slashNamespace,
+} from "../commands.ts";
 import {
   completionEdit,
   completionModel,
@@ -248,6 +253,19 @@ export const composerHandlers = {
       }),
     );
   },
+  "command-completed": (state, msg) => {
+    const current = state.local.completion;
+
+    if (
+      current.kind !== "open" ||
+      current.token.trigger !== "argument" ||
+      current.token.command !== msg.name ||
+      current.token.query !== msg.prefix
+    )
+      return stay(state);
+
+    return stay(withLocal(state, { completion: { ...current, suggestions: msg.items } }));
+  },
   "mention-resolved": (state, msg) => {
     const current = state.local.completion;
 
@@ -265,7 +283,7 @@ export const composerHandlers = {
     submitSnapshot(
       state,
       msg.session,
-      { text: `/${msg.name}${msg.argument === null ? "" : ` ${msg.argument}`}`, parts: NO_PARTS },
+      { text: `/${msg.name}${msg.argument === "" ? "" : ` ${msg.argument}`}`, parts: NO_PARTS },
       msg.delivery,
     ),
 } satisfies SomeHandlers;
@@ -437,7 +455,11 @@ function recomplete(current: State): Step {
   return completionLookup(
     current.local.completion,
     withLocal(current, {
-      completion: nextCompletion(current.local.completion, current.local.draft),
+      completion: nextCompletion(
+        current.local.completion,
+        current.local.draft,
+        completingCommands(current),
+      ),
     }),
   );
 }

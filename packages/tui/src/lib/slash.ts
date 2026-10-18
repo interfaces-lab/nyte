@@ -1,4 +1,5 @@
 import fuzzysort from "fuzzysort";
+import type { ClientCommandName } from "@nyte-ai/schema";
 import type { SkillInfo } from "@nyte-ai/sdk";
 import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
 
@@ -55,6 +56,12 @@ export interface SlashCommand {
   readonly aliases?: readonly string[];
 }
 
+/** A built-in's name and aliases come from the names the host keeps for clients, so no plugin command takes one. */
+interface BuiltinSlash extends SlashCommand {
+  readonly name: ClientCommandName;
+  readonly aliases?: readonly ClientCommandName[];
+}
+
 export const SLASH_COMMANDS = [
   { name: "help", description: "Browse commands", kind: "action" },
   { name: "settings", description: "Change settings", kind: "action" },
@@ -86,7 +93,7 @@ export const SLASH_COMMANDS = [
   { name: "reload", description: "Reload plugins and skills", kind: "action" },
   { name: "update", description: "Update nyte to the latest release", kind: "action" },
   { name: "skills", description: "Browse skills", kind: "action" },
-] as const satisfies readonly SlashCommand[];
+] as const satisfies readonly BuiltinSlash[];
 
 type BuiltinSlashCommand = (typeof SLASH_COMMANDS)[number];
 

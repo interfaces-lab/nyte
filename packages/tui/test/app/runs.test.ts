@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Job } from "@nyte-ai/core";
-import { testModel } from "@nyte-ai/host/bench";
+import { testModel } from "@nyte-ai/bench";
 import { asId } from "@nyte-ai/schema";
 import type { JobEnd, Json } from "@nyte-ai/schema";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";

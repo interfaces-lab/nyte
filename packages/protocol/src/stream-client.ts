@@ -1,9 +1,11 @@
+import { inflateSync } from "fflate";
 import { SdkError } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
 import {
   CANCEL_PATH,
   CHANNEL_HEADER,
   CHANNEL_PATH,
+  DEFLATE_REQUEST,
   readStreamFrame,
   STREAM_HEADER,
 } from "./stream-channel.ts";
@@ -16,8 +18,8 @@ type Post = (
   init: RequestInit & { readonly headers: Readonly<Record<string, string>> },
 ) => Promise<Response>;
 
-/** Multiplex streams over one channel opened through `post`; the channel closes when its last stream is released. */
-export function createStreamClient(post: Post) {
+/** Multiplex streams over one channel opened through `post`, asking for `deflated` frames when `deflate`; the channel closes when its last stream is released. */
+export function createStreamClient(post: Post, deflate: boolean) {
   type Stream = {
     readonly buffer: ReturnType<typeof streamBuffer>;
     readonly dispose: () => void;
@@ -72,7 +74,10 @@ export function createStreamClient(post: Post) {
     channel = current;
     void (async () => {
       try {
-        const response = await post(CHANNEL_PATH, { ...json({}), signal: controller.signal });
+        const response = await post(CHANNEL_PATH, {
+          ...json(deflate ? DEFLATE_REQUEST : {}),
+          signal: controller.signal,
+        });
         const id = response.headers.get(CHANNEL_HEADER);
 
         if (id === null || response.body === null)
@@ -96,7 +101,8 @@ export function createStreamClient(post: Post) {
             let chunk: Uint8Array;
 
             try {
-              chunk = Uint8Array.fromBase64(frame.data);
+              const bytes = Uint8Array.fromBase64(frame.data);
+              chunk = frame.kind === "deflated" ? inflateSync(bytes) : bytes;
             } catch {
               throw new SdkError("invalid", "The host sent invalid stream bytes.");
             }

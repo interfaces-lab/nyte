@@ -5,8 +5,8 @@ import process from "node:process";
 import { promisify } from "node:util";
 import { expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { buildWaterfall, ciRepo, formatWaterfall } from "@nyte-ai/host/bench";
-import type { CiRepo, SpanSource, Waterfall, WaterfallRow } from "@nyte-ai/host/bench";
+import { buildWaterfall, ciRepo, formatWaterfall } from "@nyte-ai/bench";
+import type { CiRepo, SpanSource, Waterfall, WaterfallRow } from "@nyte-ai/bench";
 import { SPAN_NAMES } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -14,16 +14,10 @@ import type { Span, SpanDetail } from "@nyte-ai/sdk";
 
 const run = promisify(execFile);
 
-/** Runs git in `cwd` and answers what it printed. */
 export async function git(cwd: string, ...args: readonly string[]): Promise<string> {
   return (await run("git", [...args], { cwd })).stdout;
 }
 
-/**
- * Scenario D's repo under `parent` (`ciRepo`), its branch pushed to a bare
- * `origin.git` beside it, as a pull request's branch tracks its remote, so the
- * commit bar can commit and push.
- */
 export async function pushedCiRepo(parent: string): Promise<CiRepo> {
   const repo = await ciRepo(parent);
   const origin = join(parent, "origin.git");
@@ -34,13 +28,6 @@ export async function pushedCiRepo(parent: string): Promise<CiRepo> {
   return repo;
 }
 
-/**
- * Scenario D's per-hop budgets in milliseconds, for the longest span of each
- * hop. A hop is a span name, or a name and the tool or part kind it served
- * (`tool.run:bash`); the narrower key wins. Measured on an M4 Pro with the
- * scripted model pacing 30 ms to first token and 2 ms per delta, each budget
- * is several times its measurement, so a miss is a regression, not noise.
- */
 export const HOP_BUDGETS: ReadonlyMap<string, number> = new Map([
   ["composer.submit", 250],
   ["sdk.send", 250],
@@ -63,10 +50,8 @@ export const HOP_BUDGETS: ReadonlyMap<string, number> = new Map([
   ["client.paint", 400],
 ]);
 
-/** How long the expanded tool row of the 5 MiB job log may take from its keystroke to the frame that shows it. */
 export const LOG_ROW_BUDGET_MS = 100;
 
-/** One hop of a waterfall against its budget. */
 export interface HopRow {
   readonly hop: string;
   readonly process: string;
@@ -76,7 +61,6 @@ export interface HopRow {
   readonly budget: number | null;
 }
 
-/** Focuses `target` as Tab would, checks it took focus, and presses `key` on it. */
 export async function press(target: Locator, key = "Enter"): Promise<void> {
   await expect(async () => {
     await target.focus();
@@ -85,7 +69,6 @@ export async function press(target: Locator, key = "Enter"): Promise<void> {
   await target.page().keyboard.press(key);
 }
 
-/** Presses `button` from the keyboard for as long as it is shown, as a "Scroll to bottom" control that may leave on its own. */
 export async function pressUntilGone(button: Locator): Promise<void> {
   await expect(async () => {
     if ((await button.count()) > 0) {
@@ -106,7 +89,6 @@ const MeasureSchema = Type.Object({
   detail: Type.Union([Type.Record(Type.String(), ScalarSchema), Type.Null()]),
 });
 
-/** The trace spans this page's renderer recorded (tracing on through localStorage `NYTE_TRACE`). */
 export async function readRendererSpans(page: Page): Promise<readonly Span[]> {
   const entries = await page.evaluate(() =>
     performance.getEntriesByType("measure").map((entry) =>
@@ -138,7 +120,6 @@ export async function readRendererSpans(page: Page): Promise<readonly Span[]> {
   });
 }
 
-/** The trace `composer.submit` started for the page's last message: its receipt id. */
 export function submitTrace(spans: readonly Span[]): string {
   const trace = spans.findLast((span) => span.name === "composer.submit")?.trace;
 
@@ -158,7 +139,6 @@ function budgetFor(hop: string): number | null {
   return HOP_BUDGETS.get(hop) ?? HOP_BUDGETS.get(hop.split(":")[0] ?? "") ?? null;
 }
 
-/** Folds `waterfall` into one row per hop and process: how often it ran, its longest and total time, and its budget. */
 export function hopTable(waterfall: Waterfall): readonly HopRow[] {
   const rows = new Map<string, HopRow>();
 
@@ -180,7 +160,6 @@ export function hopTable(waterfall: Waterfall): readonly HopRow[] {
   return [...rows.values()];
 }
 
-/** Draws `table` as a Markdown table. */
 export function formatHopTable(table: readonly HopRow[]): string {
   return [
     "| hop | process | count | max ms | total ms | budget ms | within |",
@@ -192,10 +171,8 @@ export function formatHopTable(table: readonly HopRow[]): string {
   ].join("\n");
 }
 
-/** Budgeted hops a run may lack: `mcp.connect` carries no trace and shows only when the link connects inside the run. */
 const UNTRACED: ReadonlySet<string> = new Set(["mcp.connect"]);
 
-/** Expects every budgeted hop in `table` within its budget, naming the ones over it and the ones it lacks. */
 export function expectWithinBudgets(table: readonly HopRow[]): void {
   const missing = [...HOP_BUDGETS.keys()].flatMap((key) =>
     UNTRACED.has(key) || table.some((row) => row.hop === key || row.hop.startsWith(`${key}:`))
@@ -212,18 +189,12 @@ export function expectWithinBudgets(table: readonly HopRow[]): void {
   expect([...missing, ...over], "hops missing or over budget").toEqual([]);
 }
 
-/** Scenario D's waterfall of `trace` across `sources`, with its hop table. */
 export function scenarioWaterfall(trace: string, sources: readonly SpanSource[]) {
   const waterfall = buildWaterfall(trace, sources);
 
   return { waterfall, hops: hopTable(waterfall) };
 }
 
-/**
- * Writes a run's proof under `NYTE_WATERFALL_DIR` when it is set: `<name>.json`
- * with `facts`, the waterfall and the hop table, and `<name>.md` with the drawn
- * waterfall and the hop table.
- */
 export async function saveProof(
   name: string,
   input: {
@@ -246,11 +217,6 @@ export async function saveProof(
   );
 }
 
-/**
- * Presses `key` on `trigger` and returns the milliseconds from its keydown to
- * the first animation frame holding an element labelled `label` whose text
- * includes `text`, as the startup bench times a keystroke to its paint.
- */
 export async function timeKeyToFrame(
   trigger: Locator,
   shown: { readonly label: string; readonly text: string },
@@ -297,12 +263,6 @@ export async function timeKeyToFrame(
   );
 }
 
-/**
- * Counts the pixels of two same-size PNG screenshots that differ by more than
- * `tolerance` (0-255) in any channel, decoding them in `page`; -1 when their
- * sizes differ. Font antialiasing can move a channel by a few levels between
- * two paints of the same frame, which a byte compare would call a change.
- */
 export async function countChangedPixels(
   page: Page,
   before: Buffer,
@@ -354,7 +314,6 @@ export async function countChangedPixels(
   );
 }
 
-/** Lists `detail` without its session id, for a proof file. */
 export function plainDetail(detail: SpanDetail): SpanDetail {
   return Object.fromEntries(Object.entries(detail).filter(([key]) => key !== "session"));
 }

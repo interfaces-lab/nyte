@@ -9,8 +9,8 @@ import type { Connection, Listener, Plugin } from "@nyte-ai/core";
 import type { ServedHost } from "@nyte-ai/core/server";
 import type { Kernel } from "@nyte-ai/core/testing";
 import { listenFetch, localProvider, seedSigner } from "@nyte-ai/host";
-import { chatOnly, fakeModels } from "@nyte-ai/host/bench";
-import type { FakeModels } from "@nyte-ai/host/bench";
+import { chatOnly, fakeModels } from "@nyte-ai/bench";
+import type { FakeModels } from "@nyte-ai/bench";
 import { composeServer } from "@nyte-ai/core/testing";
 
 export const TOKEN_SECRET = "a-token-of-at-least-16";
@@ -25,7 +25,6 @@ export type Intercept = (
 export interface Served {
   readonly fake: FakeModels;
   readonly host: ServedHost;
-  /** The kernel under the host, for tests that publish on its bus. */
   readonly kernel: Kernel;
   readonly listener: Listener;
   readonly fetch: typeof fetch;

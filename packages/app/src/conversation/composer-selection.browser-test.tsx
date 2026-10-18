@@ -4,6 +4,8 @@ import { createRef } from "react";
 import type { ComponentProps } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import type { Root } from "react-dom/client";
+import type { CommandInfo } from "@nyte-ai/sdk";
 import { applyDisplayMode } from "@nyte-ai/ui/appearance";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
@@ -67,6 +69,92 @@ function glyphBox(area: HTMLElement, offset: number): DOMRect {
   range.setEnd(point.node, point.offset + 1);
 
   return range.getBoundingClientRect();
+}
+
+async function until<T>(read: () => T | null | undefined, what: string): Promise<T> {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const value = read();
+
+    if (value !== null && value !== undefined) return value;
+    await paint();
+  }
+
+  throw new Error(`Timed out waiting for ${what}`);
+}
+
+const WEBSEARCH_KEY = {
+  name: "websearch-key",
+  description: "Set the web search key",
+  owner: "web-search",
+  side: "core",
+  title: "Web search key",
+  takesText: true,
+  completes: true,
+} satisfies CommandInfo;
+
+async function checkArgumentCompletion(root: Root, client: QueryClient): Promise<void> {
+  const editorRef = createRef<ComposerEditorHandle>();
+  const prefixes: string[] = [];
+  let draft: ComposerDocumentState = { text: "", selectionStart: 0, selectionEnd: 0 };
+
+  const completeCommand = async (name: string, prefix: string) => {
+    prefixes.push(prefix);
+
+    return name === "websearch-key" && !/\s/u.test(prefix) && "tavily".startsWith(prefix)
+      ? [{ value: "tavily ", label: "tavily" }]
+      : [];
+  };
+
+  flushSync(() =>
+    root.render(
+      <QueryClientProvider client={client}>
+        <ComposerFrame
+          surface="follow-up"
+          document={draft}
+          onDocumentChange={(next) => {
+            draft = next;
+          }}
+          onSubmit={() => true}
+          placeholder="Message"
+          inputRef={(next) => {
+            editorRef.current = next;
+          }}
+          suggestionCatalog={{ status: "ready", data: { commands: [WEBSEARCH_KEY], skills: [] } }}
+          completeCommand={completeCommand}
+          mentionFiles={{ status: "ready", data: [] }}
+        />
+      </QueryClientProvider>,
+    ),
+  );
+  await paint();
+  const editor = editorRef.current;
+  const area = editor?.readElement() ?? null;
+
+  if (editor === null || area === null) throw new Error("Editor unavailable");
+  flushSync(() => editor.focus());
+  document.execCommand("insertText", false, "/websearch-key ta");
+
+  const option = await until(
+    () =>
+      [...document.querySelectorAll("[role='option']")].find(
+        (node) => node.textContent === "tavily",
+      ),
+    "the tavily suggestion",
+  );
+
+  check(option.getAttribute("aria-selected") === "true", "The first suggestion is highlighted");
+  check(prefixes.at(-1) === "ta", `Asked with the typed prefix, got ${JSON.stringify(prefixes)}`);
+
+  area.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+  await until(
+    () => (editor.readDocument().text === "/websearch-key tavily " ? true : undefined),
+    `the picked argument, draft ${JSON.stringify(editor.readDocument().text)}`,
+  );
+  await paint();
+  check(
+    document.querySelector("[role='option']") === null,
+    "An empty answer hides the argument menu",
+  );
 }
 
 const variants = [
@@ -284,6 +372,7 @@ export async function run(): Promise<string> {
       }
     }
 
+    await checkArgumentCompletion(root, client);
     check(trusted === clicks, `Expected ${String(clicks)} trusted clicks, got ${String(trusted)}`);
     check(failures.length === 0, failures.join("\n"));
 

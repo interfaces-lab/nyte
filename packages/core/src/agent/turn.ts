@@ -177,6 +177,7 @@ async function turn(
   const run = given.id;
   const configuration = given.configuration;
   let state = await resumed(context, given);
+  await boundary();
   let charged = { total: ZERO_USAGE, requests: 0 };
   let callIds = new Map<ModelToolCall, CallId>();
 

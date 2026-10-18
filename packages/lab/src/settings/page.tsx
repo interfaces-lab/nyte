@@ -8,9 +8,14 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
+import { sidebarStyles as rail } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { appearanceStyles as appearance } from "@nyte-ai/app/settings/appearance.stylex.ts";
 import { settingsStyles as shell } from "@nyte-ai/app/settings/settings.stylex.ts";
-import { settings as settingsSchema } from "@nyte-ai/app/theme/schema.stylex.ts";
+import {
+  settings as settingsSchema,
+  shell as frame,
+  sidebar,
+} from "@nyte-ai/app/theme/schema.stylex.ts";
 import { settingsPatterns } from "@nyte-ai/app/theme/settings-patterns.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -31,6 +36,7 @@ import { Switch } from "@nyte-ai/ui/switch";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
+import { DISPLAY_MODES, useDisplayMode, type DisplayMode } from "../shell/display-mode";
 import { SECTIONS, type Control, type Setting, type Status } from "./catalog";
 
 const FILTERS = ["all", "shipped", "wire", "new"] as const;
@@ -348,6 +354,9 @@ function SettingRow({
 export function SettingsPage(): ReactElement {
   const [filter, setFilter] = useState<Filter>("all");
   const [annotated, setAnnotated] = useState(true);
+  const [scheme, setScheme] = useState<DisplayMode>("light");
+
+  useDisplayMode(scheme);
 
   const sections = SECTIONS.map((section) => ({
     ...section,
@@ -361,25 +370,49 @@ export function SettingsPage(): ReactElement {
 
   return (
     <div {...props(styles.page)}>
-      <nav aria-label="Settings sections" {...props(styles.rail)}>
-        {sections.map((section) => (
-          <Row key={section.id} variant="nav" render={<a href={`#${section.id}`} />}>
-            <Row.Leading>
-              <Icon name={section.icon} size={14} />
-            </Row.Leading>
-            <Row.Label>{section.title}</Row.Label>
-            <Row.Meta>
-              {section.groups.reduce((total, group) => total + group.settings.length, 0)}
-            </Row.Meta>
-          </Row>
-        ))}
+      <nav aria-label="Settings sections" {...props(shell.navigation, styles.rail)}>
+        <div {...props(shell.navList)}>
+          {sections.map((section) => (
+            <Row
+              key={section.id}
+              variant="nav"
+              render={<a href={`#${section.id}`} />}
+              xstyle={rail.navRow}
+            >
+              <Row.Leading xstyle={rail.navLeading}>
+                <Icon name={section.icon} size={14} />
+              </Row.Leading>
+              <Row.Label>{section.title}</Row.Label>
+              <Row.Meta>
+                {section.groups.reduce((total, group) => total + group.settings.length, 0)}
+              </Row.Meta>
+            </Row>
+          ))}
+        </div>
       </nav>
 
-      <main {...props(styles.content)}>
-        <div {...props(styles.contentInner)}>
-          <header {...props(styles.header)}>
-            <h1 {...props(settingsPatterns.pageTitle)}>Settings draft</h1>
-            <p {...props(settingsPatterns.sectionDescription)}>
+      <main data-nyte-scrollport="balanced" {...props(shell.content, styles.card)}>
+        <div {...props(shell.contentInner)}>
+          <header {...props(shell.panel)}>
+            <div {...props(shell.titleRow)}>
+              <h1 {...props(settingsPatterns.pageTitle)}>Settings draft</h1>
+              <ToggleGroup
+                aria-label="Scheme"
+                value={[scheme]}
+                onValueChange={(values) => {
+                  const next = DISPLAY_MODES.find((mode) => mode.value === values.at(-1));
+
+                  if (next !== undefined) setScheme(next.value);
+                }}
+              >
+                {DISPLAY_MODES.map((mode) => (
+                  <Toggle key={mode.value} value={mode.value} size="sm">
+                    {mode.label}
+                  </Toggle>
+                ))}
+              </ToggleGroup>
+            </div>
+            <p {...props(settingsPatterns.sectionDescription, styles.lede)}>
               Every row has a description and a source in code. Shipped rows exist today and only
               get copy. Wire up rows exist as a constant, menu toggle, file, or env var with no row.
               New rows need new behaviour. Profile, Providers sign-ins, and Usage don't change.
@@ -438,45 +471,27 @@ export function SettingsPage(): ReactElement {
 }
 
 const styles = create({
+  /** The app's chrome: the settings rail on the sidebar's material, the page in a card set into it. */
   page: {
     display: "flex",
-    height: "100%",
-    backgroundColor: role.bgBase,
+    boxSizing: "border-box",
+    height: "100dvh",
+    paddingBlockStart: frame.titlebarHeight,
+    backgroundColor: role.sidebarMaterial,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
   },
-  rail: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    width: 220,
-    flexShrink: 0,
-    paddingBlock: 48,
-    paddingInline: 8,
-    backgroundColor: role.bgChrome,
-  },
-  content: {
-    flex: 1,
-    minWidth: 0,
-    overflowY: "auto",
+  rail: { flex: "none", width: sidebar.width },
+  card: {
+    marginInlineEnd: frame.cardInset,
+    marginBlockEnd: frame.cardInset,
+    borderRadius: radius.card,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     scrollPaddingBlockStart: 24,
   },
-  contentInner: {
-    display: "flex",
-    flexDirection: "column",
-    containerType: "inline-size",
-    gap: settingsSchema.sectionGap,
-    width: `min(${settingsSchema.contentWidth}, calc(100% - 2 * ${settingsSchema.contentGutter}))`,
-    marginInline: "auto",
-    paddingBlock: "48px 120px",
-  },
-  header: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    paddingInline: 4,
-  },
+  lede: { paddingInline: 4 },
   toolbar: {
+    paddingInline: 4,
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",

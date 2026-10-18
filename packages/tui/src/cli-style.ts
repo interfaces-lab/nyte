@@ -129,6 +129,7 @@ const HELP_FLAGS: readonly AlignedRow[] = [
   { label: "--model <id>", detail: "override the saved model" },
   { label: "--session <session-id>", detail: "target a session; mutually exclusive with --resume" },
   { label: "--effort <level>", detail: `set thinking level: ${THINKING_LEVELS.join(", ")}` },
+  { label: "--trust, --no-trust", detail: "save whether this folder's project files load" },
 ];
 
 /** The `--help` screen. Colored on a TTY, plain otherwise. */

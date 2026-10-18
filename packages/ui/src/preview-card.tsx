@@ -11,8 +11,9 @@ import { text } from "./styles/text.stylex.ts";
 import { motion, role } from "./styles/vars.stylex.ts";
 
 const styles = create({
-  positioner: { zIndex: layer.menu, outline: "none" },
+  positioner: { zIndex: layer.menu, outline: "none", pointerEvents: "none" },
   popup: {
+    pointerEvents: "auto",
     display: "flex",
     flexDirection: "column",
     width: "max-content",

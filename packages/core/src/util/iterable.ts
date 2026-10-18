@@ -225,3 +225,70 @@ export function coalesce<T>(source: AsyncIterable<T>, frameMs = 16): AsyncIterab
     };
   });
 }
+
+/** A watch's latest value as a store, the shape React's `useSyncExternalStore`, Svelte, Vue and Solid read. */
+export interface WatchStore<T> {
+  subscribe(listener: () => void): () => void;
+  current(): T | undefined;
+}
+
+/**
+ * Holds `open()`'s latest value: the first listener opens the watch, every
+ * value calls each listener, and the last listener to leave closes it, keeping
+ * the value it saw. A watch that fails makes `current()` throw its error until
+ * a new first listener opens another.
+ */
+export function watchStore<T>(open: () => AsyncIterable<T>): WatchStore<T> {
+  const listeners = new Set<() => void>();
+  let value: T | undefined;
+  let failure: { readonly error: unknown } | null = null;
+  let close: (() => void) | null = null;
+
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
+
+  const start = () => {
+    const iterator = open()[Symbol.asyncIterator]();
+    let watching = true;
+
+    failure = null;
+    close = () => {
+      watching = false;
+      void iterator.return?.();
+    };
+
+    void (async () => {
+      try {
+        for (let next = await iterator.next(); watching && next.done !== true;) {
+          value = next.value;
+          notify();
+          next = await iterator.next();
+        }
+      } catch (error) {
+        if (!watching) return;
+        failure = { error };
+        notify();
+      }
+    })();
+  };
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+
+      if (listeners.size === 1) start();
+
+      return () => {
+        if (!listeners.delete(listener) || listeners.size > 0) return;
+        close?.();
+        close = null;
+      };
+    },
+    current() {
+      if (failure !== null) throw failure.error;
+
+      return value;
+    },
+  };
+}

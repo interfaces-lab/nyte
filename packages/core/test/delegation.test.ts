@@ -2,7 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type { Message } from "@nyte-ai/schema";
 import { contentText } from "@nyte-ai/schema/model";
 import { assert, describe, expect, it } from "vitest";
-import { isPart, tool } from "../src/index.ts";
+import { isPart, text, tool } from "../src/index.ts";
 import { fakeModels, open } from "./fake-models.ts";
 import type { Reply, Request } from "./fake-models.ts";
 import { until } from "../src/harness.ts";
@@ -91,6 +91,64 @@ describe("delegation", () => {
     expect(view.messages.at(-1)).toMatchObject({
       kind: "part",
       state: { markdown: "The child found 42." },
+    });
+  });
+
+  it("returns task when the user writes, so the parent answers while the child keeps working", async () => {
+    const fake = fakeModels();
+    let release = () => {};
+
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    fake.reply(
+      {
+        content: [
+          {
+            type: "toolCall",
+            id: "call-task",
+            name: "task",
+            arguments: { prompt: "Find the answer.", title: "Finder" },
+          },
+        ],
+      },
+      { content: [{ type: "text", text: "Halfway." }], until: gate },
+      { content: [{ type: "text", text: "Still on it." }] },
+      { content: [{ type: "text", text: "It found it." }] },
+    );
+
+    await using host = await open(fake);
+    const { session: parent } = await host.sessions.start({ content: "Delegate it." });
+
+    const child = await until(async () => {
+      const execution = (await parent.view()).execution;
+
+      if (execution.kind !== "waiting" || execution.on.kind !== "run") return undefined;
+
+      const found = host.session(execution.on.session);
+      const streamed = (await found.view()).messages.some(
+        (message) => isPart(message, text) && message.state.markdown === "Halfway.",
+      );
+
+      return streamed ? found : undefined;
+    });
+
+    await parent.send("How is it going?");
+    await until(() => (fake.requests.length === 3 ? true : undefined));
+
+    expect(lastResult(fake.requests[2])).toBe(`Subagent ${child.id} is still working.\n\nHalfway.`);
+    expect(fake.requests[2].context.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: "How is it going?",
+    });
+
+    release();
+    await until(() => (fake.requests.length === 4 ? true : undefined));
+
+    expect(fake.requests[3].context.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: `Child ${child.id} completed:\n\nHalfway.`,
     });
   });
 

@@ -3,31 +3,21 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
 import { scheduler } from "node:timers/promises";
-import { logPath } from "./registration.ts";
 
-/** The launchd label of the installed service; a systemd unit is named `nyte.service`. */
 const SERVICE_LABEL = "sh.nyte.service";
 
 const SYSTEMD_UNIT = "nyte.service";
 
-/** How long one supervisor command may run; `systemctl stop` waits for the service to exit. */
 const COMMAND_TIMEOUT_MS = 60_000;
 
 const UNLOAD_TIMEOUT_MS = 10_000;
 
-/** How often an unload checks whether launchd has dropped the job. */
 const UNLOAD_POLL_MS = 50;
 
-/**
- * The service manager that runs the installed service for the user whose home is `home`:
- * a launch agent in the user's `gui/<uid>` domain on macOS, a systemd user unit on Linux.
- * `unit` is the file the supervisor loads.
- */
 export type Supervisor =
   | { readonly kind: "launchd"; readonly unit: string; readonly domain: string }
   | { readonly kind: "systemd"; readonly unit: string };
 
-/** The supervisor of `platform`, or undefined on a platform without launchd or systemd. */
 export function findSupervisor(
   home: string,
   platform: NodeJS.Platform = process.platform,
@@ -46,25 +36,26 @@ export function findSupervisor(
   };
 }
 
-/** Whether `home` has the service's unit installed for this platform's supervisor. */
+export function logPath(home: string): string {
+  return join(home, ".nyte", "logs", "service.log");
+}
+
+export function commandLink(home: string): string {
+  return join(home, ".nyte", "bin", "nyte");
+}
+
 export async function unitInstalled(home: string): Promise<boolean> {
   const supervisor = findSupervisor(home);
 
   return supervisor !== undefined && (await present(supervisor.unit));
 }
 
-/** What a unit runs: `command` in `home`, with `environment` as its whole environment. */
 export interface UnitPlan {
   readonly home: string;
   readonly command: readonly [string, ...string[]];
   readonly environment: Readonly<Record<string, string>>;
 }
 
-/**
- * Renders the unit. Both supervisors start it at login, restart it when it crashes or exits
- * with a failure, leave it stopped after a clean exit (the one `nyte service stop` causes),
- * and append its output to the service log.
- */
 export function renderUnit(supervisor: Supervisor, plan: UnitPlan): string {
   const log = logPath(plan.home);
 
@@ -127,7 +118,6 @@ export function renderUnit(supervisor: Supervisor, plan: UnitPlan): string {
   ].join("\n");
 }
 
-/** Writes the unit for `plan` and creates the log's directory; false when the unit already read exactly so. */
 export async function writeUnit(supervisor: Supervisor, plan: UnitPlan): Promise<boolean> {
   const text = renderUnit(supervisor, plan);
   await mkdir(dirname(logPath(plan.home)), { recursive: true, mode: 0o700 });
@@ -148,7 +138,6 @@ export async function writeUnit(supervisor: Supervisor, plan: UnitPlan): Promise
   return true;
 }
 
-/** Starts the unit as written unless it already runs; loads it first when launchd hasn't. */
 export async function startUnit(supervisor: Supervisor): Promise<void> {
   if (supervisor.kind === "systemd") {
     await required("systemctl", ["--user", "start", SYSTEMD_UNIT]);
@@ -160,11 +149,6 @@ export async function startUnit(supervisor: Supervisor): Promise<void> {
   await required("launchctl", ["kickstart", launchdTarget(supervisor)]);
 }
 
-/**
- * Stops the unit's service through the supervisor, so it can't restart the old command, waits
- * for `stopped` (which stops a service the supervisor doesn't run), then starts the unit as
- * written now and has it start at login.
- */
 export async function relaunchUnit(
   supervisor: Supervisor,
   stopped: () => Promise<boolean>,
@@ -184,7 +168,6 @@ export async function relaunchUnit(
   await required("launchctl", ["bootstrap", supervisor.domain, supervisor.unit]);
 }
 
-/** Stops the unit's service, unloads the unit and deletes it; false when it wasn't installed. */
 export async function removeUnit(supervisor: Supervisor): Promise<boolean> {
   if (!(await present(supervisor.unit))) return false;
 
@@ -198,7 +181,6 @@ export async function removeUnit(supervisor: Supervisor): Promise<boolean> {
   return true;
 }
 
-/** The pid the supervisor runs the service as; null when the unit isn't loaded or its service isn't running. */
 export async function supervisedPid(supervisor: Supervisor): Promise<number | null> {
   if (supervisor.kind === "systemd") {
     const shown = await run("systemctl", [
@@ -220,7 +202,6 @@ export async function supervisedPid(supervisor: Supervisor): Promise<number | nu
   return printed.code === 0 && pid !== undefined ? Number(pid) : null;
 }
 
-/** Boots the job out of launchd and waits until launchd has dropped it, since a bootstrap while it drains fails. */
 async function unload(supervisor: Extract<Supervisor, { kind: "launchd" }>): Promise<void> {
   const target = launchdTarget(supervisor);
   await optional("launchctl", ["bootout", target]);
@@ -243,7 +224,6 @@ interface Ran {
   readonly stderr: string;
 }
 
-/** Runs a supervisor command; a command that can't start at all (not on PATH) throws. */
 function run(command: string, args: readonly string[]): Promise<Ran> {
   return new Promise((settle, fail) => {
     execFile(command, args, { timeout: COMMAND_TIMEOUT_MS }, (error, stdout, stderr) => {
@@ -271,7 +251,6 @@ async function required(command: string, args: readonly string[]): Promise<void>
     );
 }
 
-/** Runs a step whose failure only means there was nothing to do, such as unloading a job that isn't loaded. */
 async function optional(command: string, args: readonly string[]): Promise<void> {
   await run(command, args);
 }
@@ -284,7 +263,6 @@ function xml(text: string): string {
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
-/** Quotes one systemd value, escaping its `%` specifiers. */
 function systemdValue(text: string): string {
   const escaped = text.replaceAll("%", "%%");
 

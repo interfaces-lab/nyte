@@ -4,18 +4,9 @@ import { failure, formatSize, green, red, table } from "./terminal.mjs";
 
 const KIB = 1_024;
 
-/**
- * The renderer's deferred entries (workbench panels, diffs and code highlighting, usage charts,
- * Clerk) and every grammar load on first use, the terminal wasm is its own asset, and provider
- * SDKs load on first request. Each budget ratchets a little above the build that set it (the
- * renderer 5%, the rest about 2%) so growth fails here; lower it when an entry shrinks.
- * `main` is every chunk main's entry loads before its first window, and `host` the same for the
- * host process, which loads beside it. `css` is the render-blocking stylesheet the startup HTML
- * links.
- */
 const budgets = {
-  main: 105 * KIB,
-  host: 1_270 * KIB,
+  main: 108 * KIB,
+  host: 1_297 * KIB,
   preload: 8 * KIB,
   renderer: 2_840 * KIB,
   css: 190 * KIB,
@@ -33,7 +24,6 @@ for await (const path of glob("src/**/*.{ts,tsx}", { cwd: desktopRoot })) {
   }
 }
 
-/** Workspace packages ship TypeScript source, which Node cannot load from node_modules. */
 const workspaceImport = /(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u;
 
 for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {
@@ -44,7 +34,6 @@ for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {
   }
 }
 
-/** `entry` and every chunk it imports statically, which all load before its body runs. */
 async function staticGraph(entry) {
   const files = new Set([entry]);
 

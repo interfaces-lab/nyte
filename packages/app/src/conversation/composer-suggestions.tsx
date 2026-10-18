@@ -9,11 +9,12 @@ import { props } from "@stylexjs/stylex";
 import { text } from "@nyte-ai/ui/styles/text.stylex";
 import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
+import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import type { MentionFile } from "./message-references.ts";
-import type { CommandInfo } from "@nyte-ai/sdk";
+import type { CommandCompletion, CommandInfo } from "@nyte-ai/sdk";
 import type { SessionCatalogView, SkillInfo } from "@nyte-ai/sdk";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
@@ -47,14 +48,24 @@ interface PluginCommandSuggestion {
   readonly command: CommandInfo;
 }
 
+interface ArgumentSuggestion {
+  readonly kind: "argument";
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly icon: "command";
+  readonly value: string;
+}
+
 type ComposerSuggestion =
+  | ArgumentSuggestion
   | PluginCommandSuggestion
   | SkillSuggestion
   | MentionSuggestion
   | FileSuggestion;
 
 /** Suggestions that become chips; the rest rewrite the token in place. */
-type ChipSuggestion = Exclude<ComposerSuggestion, PluginCommandSuggestion>;
+type ChipSuggestion = Exclude<ComposerSuggestion, PluginCommandSuggestion | ArgumentSuggestion>;
 
 type SuggestionMenuState =
   | {
@@ -68,7 +79,37 @@ type SuggestionMenuState =
       readonly start: number;
       readonly end: number;
       readonly query: string;
+    }
+  | {
+      readonly kind: "argument";
+      readonly command: string;
+      readonly start: number;
+      readonly end: number;
+      readonly query: string;
     };
+
+/** The text after a completing command's name while the caret is past it; it runs to the end of the draft. */
+function argumentToken(
+  document: ComposerDocumentState,
+  commands: readonly CommandInfo[],
+): SuggestionMenuState | undefined {
+  const argument = findCommandArgument(document.text, document.selectionStart);
+
+  if (
+    argument === undefined ||
+    document.selectionStart !== document.selectionEnd ||
+    !commands.some((candidate) => candidate.name === argument.command && candidate.completes)
+  )
+    return undefined;
+
+  return { kind: "argument", ...argument, end: document.text.length };
+}
+
+interface ArgumentAnswer {
+  readonly command: string;
+  readonly query: string;
+  readonly suggestions: readonly ArgumentSuggestion[];
+}
 
 /**
  * The menu's token as the editor holds it now. The menu state commits after
@@ -78,7 +119,18 @@ type SuggestionMenuState =
 function liveToken(
   document: ComposerDocumentState,
   menu: SuggestionMenuState,
+  commands: readonly CommandInfo[],
 ): SuggestionMenuState | undefined {
+  if (menu.kind === "argument") {
+    const argument = argumentToken(document, commands);
+
+    return argument?.kind === "argument" &&
+      argument.command === menu.command &&
+      argument.start === menu.start
+      ? argument
+      : undefined;
+  }
+
   const token = completionTrigger(
     document.text.slice(menu.start),
     document.selectionStart - menu.start,
@@ -162,7 +214,7 @@ function rankSuggestions(
 }
 
 function suggestionsFor(
-  kind: SuggestionMenuState["kind"],
+  kind: Exclude<SuggestionMenuState["kind"], "argument">,
   rawQuery: string,
   commands: readonly CommandInfo[],
   skills: readonly SkillInfo[],
@@ -207,6 +259,7 @@ function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
     case "file":
       return "files";
     case "plugin-command":
+    case "argument":
       return "commands";
     case "skill":
       return "skills";
@@ -237,6 +290,7 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
     case "skill":
       return suggestion.skill.location;
     case "mention":
+    case "argument":
       return undefined;
     case "file":
       return mentionsFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
@@ -249,7 +303,7 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
 }
 
 function suggestionEmptyText(
-  kind: SuggestionMenuState["kind"],
+  kind: Exclude<SuggestionMenuState["kind"], "argument">,
   source: ComposerSource<unknown>,
   slashSubject: "commands and skills" | "skills",
 ): string {
@@ -409,6 +463,11 @@ interface ComposerSuggestionsOptions {
   readonly references: readonly MessageReference[];
   /** Sends a draft that is only a picked `run` command; absent where commands cannot run, which hides them. */
   readonly onCommand?: () => void;
+  /** Suggests the text after a command whose `completes` is set. */
+  readonly completeCommand?: (
+    name: string,
+    prefix: string,
+  ) => Promise<readonly CommandCompletion[]>;
 }
 
 interface ComposerSuggestions {
@@ -416,7 +475,10 @@ interface ComposerSuggestions {
   readonly combobox: ComposerComboboxState;
   /** Workspace entries the editor resolves typed paths against. */
   readonly files: readonly MentionFile[];
-  readonly onCompletionChange: (completion: ComposerCompletion | undefined) => void;
+  readonly onCompletionChange: (
+    completion: ComposerCompletion | undefined,
+    document: ComposerDocumentState,
+  ) => void;
   /** Menu navigation and selection; true when the key was consumed. */
   readonly onKeyDown: (event: KeyboardEvent) => boolean;
   /** Types the trigger at the caret so the completion opens from the edit itself. */
@@ -425,7 +487,8 @@ interface ComposerSuggestions {
 }
 
 /**
- * The `@` and `/` completion menu the composer drives.
+ * The `@` and `/` completion menu the composer drives, plus the host's
+ * suggestions for the text after a command that completes it.
  *
  * - Up to thousands of files rank per keystroke, so ranking stays off the
  *   render path for renders that changed nothing it reads.
@@ -439,6 +502,8 @@ interface ComposerSuggestions {
  *   picks nor sends.
  * - The highlight belongs to the list on screen; a query the list has not
  *   caught up with ranks afresh.
+ * - An argument menu stays closed until the host answers for the prefix on
+ *   screen and closes on an empty answer; Enter then sends.
  * - The editor drives the popup: a press or focus move inside the anchor is
  *   editing, not dismissal, and `select` decides then.
  */
@@ -451,6 +516,7 @@ export function useComposerSuggestions({
   hasConversationContext,
   references,
   onCommand,
+  completeCommand,
 }: ComposerSuggestionsOptions): ComposerSuggestions {
   const listRef = useRef<HTMLDivElement>(null);
   const [activeOption, setActiveOption] = useState<HTMLDivElement | null>(null);
@@ -468,10 +534,45 @@ export function useComposerSuggestions({
   const files = mentionFiles.status === "ready" ? mentionFiles.data : NONE;
   const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
   const kind = menu?.kind;
+  const argument = menu?.kind === "argument" ? menu : undefined;
 
-  const suggestions = useMemo(
+  const completions = useQuery({
+    queryKey: ["command-completion", popupId, argument?.command, argument?.query],
+    queryFn:
+      argument === undefined || completeCommand === undefined
+        ? skipToken
+        : async (): Promise<ArgumentAnswer> => {
+            const answer = await completeCommand(argument.command, argument.query).catch(
+              (): readonly CommandCompletion[] => [],
+            );
+
+            return {
+              command: argument.command,
+              query: argument.query,
+              suggestions: answer.map((completion) => ({
+                kind: "argument",
+                id: `argument:${completion.value}`,
+                label: completion.label,
+                description: completion.description ?? "",
+                icon: "command",
+                value: completion.value,
+              })),
+            };
+          },
+  });
+
+  const answer = completions.data;
+
+  const answered = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
+    token.kind === "argument" && answer?.command === token.command && answer.query === token.query
+      ? answer.suggestions
+      : NONE;
+
+  const argumentSuggestions = menu === undefined ? NONE : answered(menu);
+
+  const listed = useMemo(
     () =>
-      kind === undefined
+      kind === undefined || kind === "argument"
         ? NONE
         : suggestionsFor(
             kind,
@@ -483,6 +584,9 @@ export function useComposerSuggestions({
           ),
     [kind, deferredQuery, commands, skills, rankMentions, hasConversationContext],
   );
+
+  const suggestions = kind === "argument" ? argumentSuggestions : listed;
+  const open = menu !== undefined && (menu.kind !== "argument" || suggestions.length > 0);
 
   const activeIndex = Math.min(index, Math.max(0, suggestions.length - 1));
   const activeSuggestion = menu === undefined ? undefined : suggestions[activeIndex];
@@ -525,9 +629,11 @@ export function useComposerSuggestions({
     token: SuggestionMenuState,
     text: string,
   ): void => {
-    if (suggestion.kind === "plugin-command") {
+    if (suggestion.kind === "argument") {
+      editorRef.current?.replaceText(token.start, token.end, suggestion.value);
+    } else if (suggestion.kind === "plugin-command") {
       const runs =
-        suggestion.command.arguments === null &&
+        !suggestion.command.takesText &&
         onCommand !== undefined &&
         references.length === 0 &&
         `${text.slice(0, token.start)}${text.slice(token.end)}`.trim() === "";
@@ -543,13 +649,24 @@ export function useComposerSuggestions({
   };
 
   const rankLive = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
-    suggestionsFor(token.kind, token.query, commands, skills, rankMentions, hasConversationContext);
+    token.kind === "argument"
+      ? answered(token)
+      : suggestionsFor(
+          token.kind,
+          token.query,
+          commands,
+          skills,
+          rankMentions,
+          hasConversationContext,
+        );
 
   const click = (suggestion: ComposerSuggestion): void => {
     const document = editorRef.current?.readDocument();
 
     const token =
-      menu === undefined || document === undefined ? undefined : liveToken(document, menu);
+      menu === undefined || document === undefined
+        ? undefined
+        : liveToken(document, menu, commands);
 
     if (token === undefined || document === undefined) return;
 
@@ -572,7 +689,7 @@ export function useComposerSuggestions({
   };
 
   const onKeyDown = (event: KeyboardEvent): boolean => {
-    if (menu === undefined) return false;
+    if (menu === undefined || !open) return false;
 
     if (event.key === "Escape") {
       event.preventDefault();
@@ -613,7 +730,7 @@ export function useComposerSuggestions({
 
     if (!picks) return false;
     const document = editorRef.current?.readDocument();
-    const token = document === undefined ? undefined : liveToken(document, menu);
+    const token = document === undefined ? undefined : liveToken(document, menu, commands);
 
     if (token === undefined || document === undefined) {
       event.preventDefault();
@@ -639,7 +756,7 @@ export function useComposerSuggestions({
   const menuElement = (
     <>
       <Popover.Root
-        open={menu !== undefined}
+        open={open}
         modal={false}
         onOpenChange={(open, details) => {
           if (open) return;
@@ -679,9 +796,11 @@ export function useComposerSuggestions({
               aria-label={
                 menu?.kind === "mention"
                   ? "Mention files and context"
-                  : onCommand === undefined
-                    ? "Skills"
-                    : "Commands and skills"
+                  : menu?.kind === "argument"
+                    ? `/${menu.command} suggestions`
+                    : onCommand === undefined
+                      ? "Skills"
+                      : "Commands and skills"
               }
               onMouseDown={(event) => event.preventDefault()}
               xstyle={composerStyles.suggestionMenu}
@@ -689,7 +808,7 @@ export function useComposerSuggestions({
               <div ref={listRef} {...props(composerStyles.suggestionList)}>
                 {suggestions.length === 0 ? (
                   <div role="status" {...props(text.base, composerStyles.suggestionEmpty)}>
-                    {menu === undefined
+                    {menu === undefined || menu.kind === "argument"
                       ? undefined
                       : suggestionEmptyText(
                           menu.kind,
@@ -751,14 +870,22 @@ export function useComposerSuggestions({
           </Popover.Positioner>
         </Popover.Portal>
       </Popover.Root>
-      <PreviewCard open={activeSuggestion !== undefined && activeOption !== null}>
-        {activeSuggestion === undefined || activeOption === null ? null : (
+      <PreviewCard
+        open={
+          activeSuggestion !== undefined &&
+          activeSuggestion.kind !== "argument" &&
+          activeOption !== null
+        }
+      >
+        {activeSuggestion === undefined ||
+        activeSuggestion.kind === "argument" ||
+        activeOption === null ? null : (
           <PreviewCardContent
             anchor={activeOption}
             side="right"
             align="end"
             sideOffset={6}
-            collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+            collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "end" }}
             aria-label={`Details for ${activeSuggestion.label}`}
             xstyle={composerStyles.suggestionPreview}
           >
@@ -770,20 +897,18 @@ export function useComposerSuggestions({
   );
 
   return {
-    open: menu !== undefined,
+    open,
     combobox: {
-      expanded: menu !== undefined,
-      popupId: menu === undefined ? undefined : popupId,
+      expanded: open,
+      popupId: open ? popupId : undefined,
       activeOption:
-        menu === undefined || suggestions.length === 0
-          ? undefined
-          : `${popupId}-${String(activeIndex)}`,
+        !open || suggestions.length === 0 ? undefined : `${popupId}-${String(activeIndex)}`,
     },
     files,
-    onCompletionChange: (completion) =>
+    onCompletionChange: (completion, document) =>
       show(
         completion === undefined
-          ? undefined
+          ? argumentToken(document, commands)
           : {
               kind: completion.kind === "@" ? "mention" : "slash",
               start: completion.start,

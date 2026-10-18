@@ -158,6 +158,11 @@ function durableObjectTarget(storage: DurableObjectSql): MigrationTarget {
         }
 
         for (const created of change.creates) {
+          rows(
+            "INSERT INTO objects (id, body) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL",
+            created.target,
+            created.body,
+          );
           const revision = mintRevision();
 
           if (

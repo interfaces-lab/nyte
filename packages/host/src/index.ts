@@ -18,3 +18,4 @@ export * from "./plugins/loader.ts";
 export * from "./postgres.ts";
 export * from "./secrets.ts";
 export * from "./sqlite.ts";
+export { StoreOwned } from "./store-owner.ts";

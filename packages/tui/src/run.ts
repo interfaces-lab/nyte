@@ -71,6 +71,22 @@ export async function addFolder(connection: Connection, path: string): Promise<W
   return added.workspace;
 }
 
+export async function trustFolder(
+  connection: Connection,
+  resume: ResumeTarget,
+  cwd: string,
+  trusted: boolean,
+): Promise<void> {
+  const session = await targetSession(connection, resume);
+
+  const workspace =
+    session === null ? await addFolder(connection, cwd) : (await session.info()).workspace;
+
+  const outcome = await connection.workspace(workspace).update({ projectResources: trusted });
+
+  if (outcome.kind === "missing") throw new Error("This folder is no longer registered.");
+}
+
 /** The session a print run continues, or `null` when it starts a new chat. */
 export async function targetSession(
   connection: Connection,

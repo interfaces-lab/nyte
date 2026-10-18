@@ -739,7 +739,6 @@
       "--nyte-diff-preview-max-height",
       "--nyte-pane-divider-gap",
       "--nyte-pane-sash-size",
-      "--nyte-prose-measure",
       "--nyte-prose-paragraph-gap",
       "--nyte-settings-card-gap",
       "--nyte-settings-content-gutter",
@@ -1016,7 +1015,6 @@
       "headerHeight",
       "measure",
       "paragraphGap",
-      "proseMeasure",
       "rowGap",
       "rowMinHeight",
       "turnGap"

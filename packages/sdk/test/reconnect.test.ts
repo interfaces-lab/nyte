@@ -61,3 +61,45 @@ it("reports each lost watch and backs off before reopening it, restoring the lin
     link.close("client");
   }
 });
+
+it("reopens a watch whose frame it cannot read, and fails when the reopened watch's first frame is unreadable too", async () => {
+  const link = createLink();
+  const transport = createTransport({ url: "http://unused.test", headers: async () => ({}) });
+  const jobs = { kind: "jobs", jobs: [] };
+  const unknown = { kind: "unknown" };
+  const attempts: Json[][] = [[jobs, unknown], [jobs, unknown], [unknown]];
+  let opened = 0;
+
+  const rows = createRows(
+    {
+      ...transport,
+      frames() {
+        const frames = attempts[opened++] ?? [];
+
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield* frames;
+            await new Promise<void>(() => undefined);
+          },
+        };
+      },
+    },
+    link,
+  );
+
+  const watching = rows
+    .watch("jobs.watch", { workspace: asId("workspace") })
+    [Symbol.asyncIterator]();
+
+  try {
+    expect(await watching.next()).toEqual({ done: false, value: jobs });
+    expect(await watching.next()).toEqual({ done: false, value: jobs });
+    expect(opened).toBe(2);
+    await expect(watching.next()).rejects.toThrow("frames this client cannot read");
+    expect(opened).toBe(3);
+    expect(link.current()).toEqual({ kind: "connected" });
+  } finally {
+    await watching.return?.();
+    link.close("client");
+  }
+});

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Plugin } from "@nyte-ai/core";
-import { chatOnly } from "@nyte-ai/host/bench";
+import { chatOnly } from "@nyte-ai/bench";
 import { asId } from "@nyte-ai/schema";
 import { COMPOSER_PLACEHOLDER } from "../../src/lib/constants.ts";
 import { openTestHost } from "../fixture/host.ts";

@@ -1,0 +1,162 @@
+---
+title: Render a session
+description: Read a session's view once or live, draw its messages, and page in older history.
+---
+
+The host folds a session's events into a `SessionView`: the messages in order, the turns they belong
+to, what is running now, and the files that changed. Your client draws the view. It never replays
+events or merges streamed text itself.
+
+## Read it once, subscribe, or watch
+
+```ts
+const view = await session.view({ tail: 100 });
+```
+
+```ts
+const unsubscribe = session.subscribe(() => {
+  const view = session.current();
+
+  if (view !== undefined) draw(view);
+});
+```
+
+```ts
+for await (const view of session.watch({ tail: 100 })) draw(view);
+```
+
+`view` returns one snapshot. `subscribe` and `current` make the session a store, the shape React's
+`useSyncExternalStore`, Svelte, Vue and Solid read; [Build an agent app](/docs/build/composition#build-the-chat)
+shows each. The first listener opens a watch and the last one to leave closes it. `current()` is
+`undefined` until the first view arrives, and throws if the watch fails. Keep the handle you
+subscribe to, since `session.head(name)` returns a new one each call.
+
+`watch` yields a whole view on every change, not a patch, for scripts that read in a loop. When the
+connection drops, it picks up from where it stopped, so nothing is missed or repeated. If the stream
+can't recover, iteration throws.
+
+`watchStore` from `@nyte-ai/sdk` gives any other watch the same store shape, such as a live session
+list: `watchStore(() => connection.sessions.watch())`.
+
+`tail` limits how many recent messages the view carries. The view always includes the turns those
+messages belong to.
+
+## Draw the messages
+
+A message is either something the user sent or a part the agent produced.
+
+```ts
+import { isPart, text, thinking, tool } from "@nyte-ai/plugin/client";
+import type { Message } from "@nyte-ai/sdk";
+
+function describe(message: Message): string | null {
+  if (message.kind === "user") {
+    const status = message.status.kind === "landed" ? "" : ` (${message.status.kind})`;
+    return typeof message.content === "string"
+      ? `You: ${message.content}${status}`
+      : `You: …${status}`;
+  }
+
+  if (isPart(message, text)) return message.state.markdown;
+  if (isPart(message, thinking)) return null;
+  if (isPart(message, tool)) {
+    return message.state.phase === "settled"
+      ? `${message.state.name}: ${message.state.outcome.kind}`
+      : `${message.state.name}: ${message.state.phase}`;
+  }
+
+  return `[${message.partKind}]`;
+}
+```
+
+`isPart` checks the part's kind and validates its state against the definition, so
+`message.state` is typed inside the branch. Parts from plugins you don't render still have a
+`partKind`, a `state` and a `status`. Fall back to something plain rather than dropping them.
+
+A user message moves through three statuses:
+
+| Status    | Meaning                                                     |
+| --------- | ----------------------------------------------------------- |
+| `unsent`  | In your client's journal, not yet acknowledged by the host  |
+| `pending` | Admitted by the host, waiting for a run to take it          |
+| `landed`  | Part of history, with its `commit` and the `run` it started |
+
+A message you just sent is in the view at once as `unsent`. There is no separate optimistic state
+to keep.
+
+The built-in parts are `text` for answers, `thinking` for reasoning, and `tool` for tool calls. A
+tool part goes through `calling`, `running` and `settled`; once settled, `outcome.kind` is `ok`,
+`failed`, `interrupted`, `rejected` or `stopped`.
+
+## Show what is running
+
+`view.execution` says what the head is doing right now:
+
+```ts
+import type { SessionView } from "@nyte-ai/sdk";
+
+function status(view: SessionView): string {
+  const { execution } = view;
+
+  switch (execution.kind) {
+    case "idle":
+      return execution.lastRun?.end.kind ?? "ready";
+    case "live":
+      return execution.stopping ? "stopping" : execution.phase;
+    case "waiting":
+      return `waiting on ${execution.on.kind}`;
+    case "retrying":
+      return `retrying: ${execution.reason}`;
+  }
+}
+```
+
+A live run is `responding` while the model streams and `executing` while tools run. A waiting run is
+parked on a part, a run, a job or a timer. When a run failed, `lastRun.end.failure` carries a
+`class` such as `rate_limit` or `auth` and a message to show.
+
+## Load older messages
+
+A view with a `tail` stops at its oldest message. `history` reads the page before it:
+
+```ts
+const oldest = view.messages[0];
+
+if (oldest !== undefined) {
+  const page = await session.history({ before: oldest.id, limit: 50 });
+}
+```
+
+For a scrolling transcript, `pagedViews` does the bookkeeping. It wraps `watch` and keeps the pages
+you loaded at the front of every view it yields:
+
+```ts
+import { pagedViews } from "@nyte-ai/sdk";
+
+const views = pagedViews(session, { tail: 50 });
+
+for await (const view of views) draw(view);
+
+// When the reader scrolls to the top:
+const loaded = await views.earlier(50);
+```
+
+`earlier` resolves with how many messages it added, and `0` once the first message of the chat is
+showing. Iterate a `pagedViews` once.
+
+## The rest of the view
+
+| Field           | What it holds                                                              |
+| --------------- | -------------------------------------------------------------------------- |
+| `revision`      | The head's current revision, for `expect` on edits and moves               |
+| `messages`      | User messages and parts, oldest first                                      |
+| `turns`         | One entry per turn, with its state, step count and a summary of tool calls |
+| `parts`         | Every part with its placement, including modal ones outside the transcript |
+| `usage`         | Tokens and cost summed over every completed run in the head's history      |
+| `execution`     | Idle, live, waiting or retrying                                            |
+| `background`    | Child sessions, jobs and browser pages, with whether each is still working |
+| `configuration` | The `selected` configuration and the `effective` one after defaults        |
+| `context`       | Tokens in the model's context and the size of its window                   |
+| `heads`         | Every head in the session                                                  |
+| `changes`       | Files the session changed in its workspace                                 |
+| `catalog`       | The commands, settings, skills, agents and tools this session can use      |

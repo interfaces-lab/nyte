@@ -315,7 +315,7 @@ describe("transport", () => {
         const request = new Request(input, init);
 
         if (new URL(request.url).pathname === `/${CHANNEL_PATH}`)
-          return channels.open(owner, request.signal);
+          return channels.open(owner, request.signal, true);
         const channel = request.headers.get(CHANNEL_HEADER);
         const stream = request.headers.get(STREAM_HEADER);
         assert(channel !== null && stream !== null);

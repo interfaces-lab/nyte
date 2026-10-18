@@ -10,6 +10,7 @@ import type {
   OperationName,
   OperationOutput,
 } from "./declarations.ts";
+import { rawPart } from "./raw-parts.ts";
 
 type Node = { readonly [key: string]: unknown };
 
@@ -17,7 +18,6 @@ type Definitions = Readonly<Record<string, Node>>;
 
 type Path = readonly (string | number)[];
 
-/** A schema node compiled once into what the walks read: `inert` where no walk changes or rejects a valid value, `composite` for an object, array or record, `choice` for a union. */
 type Plan = Inert | Composite | Choice;
 
 type Inert = { readonly form: "inert" };
@@ -26,9 +26,14 @@ type Composite = {
   readonly form: "composite";
   readonly properties: Map<string, Plan> | null;
   rest: Plan | null;
-  items: Plan | null;
-  itemKinds: ReadonlySet<string> | null;
+  items: Items | null;
   readonly nulled: string[];
+};
+
+type Items = {
+  readonly plan: Plan;
+  readonly kinds: ReadonlySet<string> | null;
+  readonly reads: (value: unknown) => boolean;
 };
 
 type Choice = {
@@ -47,6 +52,8 @@ type Candidate = {
 const INERT: Inert = { form: "inert" };
 
 const PRIMITIVE_TYPES = new Set(["string", "number", "integer", "boolean", "null"]);
+
+const VIEW_DEPTH = 2;
 
 const rows: {
   readonly [N in OperationName]: Declaration<OperationInput<N>, OperationOutput<N>>;
@@ -102,14 +109,13 @@ export function encodeOutput<N extends OperationName>(name: N, value: OperationO
   return encode(plan(rows[name].output), value) ?? null;
 }
 
-/** Decodes an operation's output, or one frame of it, leniently: unknown fields are ignored and array records of an unknown kind skipped; a value that still fails throws `SdkError("invalid")`, which a stream reader skips. Wire forms stay wire forms: the sdk rebuilds `Set`s and `Map`s. */
 export function decodeOutput<N extends OperationName>(name: N, value: unknown): OperationOutput<N> {
   const schema = rows[name].output;
   const result = schema["~standard"].validate(value);
 
   if (!(result instanceof Promise) && result.issues === undefined) return result.value;
 
-  return validated(schema, known(plan(schema), value));
+  return validated(schema, known(plan(schema), value, name === "head.watch" ? VIEW_DEPTH : null));
 }
 
 function validated<T>(schema: Schema<T>, value: unknown): T {
@@ -209,7 +215,6 @@ function compilePlan(start: Node, scope: Definitions, memo: Map<Node, Plan>): Pl
     properties,
     rest: null,
     items: null,
-    itemKinds: null,
     nulled: [],
   };
 
@@ -226,8 +231,12 @@ function compilePlan(start: Node, scope: Definitions, memo: Map<Node, Plan>): Pl
   const items = readNode(node.items);
 
   if (items !== null) {
-    composite.items = compilePlan(items, definitions, memo);
-    composite.itemKinds = readKinds(items, definitions, new Map());
+    let validator: Validator | null = null;
+    composite.items = {
+      plan: compilePlan(items, definitions, memo),
+      kinds: readKinds(items, definitions, new Map()),
+      reads: (value) => (validator ??= Compile(definitions, items)).Check(value),
+    };
   }
 
   for (const key of Guard.IsArray(node.required) ? node.required : []) {
@@ -255,7 +264,8 @@ function collect(plan: Plan, value: unknown, path: Path, found: Path[]): void {
     const { items } = plan;
 
     if (items !== null)
-      for (const [index, item] of value.entries()) collect(items, item, [...path, index], found);
+      for (const [index, item] of value.entries())
+        collect(items.plan, item, [...path, index], found);
 
     return;
   }
@@ -296,7 +306,7 @@ function encode(plan: Plan, value: unknown): Json | undefined {
 
     return items === null
       ? toJson(value)
-      : Array.from(value, (item: unknown) => encode(items, item) ?? null);
+      : Array.from(value, (item: unknown) => encode(items.plan, item) ?? null);
   }
 
   if (typeof value !== "object" || value === null) return toJson(value);
@@ -321,38 +331,46 @@ function encode(plan: Plan, value: unknown): Json | undefined {
   return record;
 }
 
-function known(plan: Plan, value: unknown): unknown {
+function known(plan: Plan, value: unknown, positional: number | null): unknown {
   if (plan.form === "inert") return value;
 
   if (plan.form === "choice") {
     const member = select(plan, value);
 
-    return member === null ? value : known(member, value);
+    return member === null ? value : known(member, value, positional);
   }
 
   if (Guard.IsArray(value)) {
-    const { items, itemKinds } = plan;
+    const { items } = plan;
 
     if (items === null) return value;
+    const { kinds, reads } = items;
+    const keeps = positional !== null && positional >= 0;
 
-    return value
-      .filter((item) => {
-        const kind = readKind(item);
+    return value.flatMap((item) => {
+      const kind = readKind(item);
+      const listed = kinds === null || kind === undefined || kinds.has(kind);
+      const read = listed ? known(items.plan, item, null) : item;
 
-        return itemKinds === null || kind === undefined || itemKinds.has(kind);
-      })
-      .map((item) => known(items, item));
+      if (listed && reads(read)) return [read];
+      const raw = rawPart(item);
+
+      if (raw !== null && reads(raw)) return [raw];
+
+      return keeps ? [read] : [];
+    });
   }
 
   const { properties } = plan;
 
   if (typeof value !== "object" || value === null || properties === null) return value;
+  const inner = positional === null ? null : positional - 1;
 
   return Object.fromEntries(
     Object.entries(value).map(([key, field]) => {
       const property = properties.get(key);
 
-      return [key, property === undefined ? field : known(property, field)];
+      return [key, property === undefined ? field : known(property, field, inner)];
     }),
   );
 }

@@ -1,22 +1,9 @@
-/**
- * The guide: the change told in the order a reviewer should read it. Each
- * section is a band. Its story stays put on the left while its code scrolls
- * past on the right, and code the story names links to the line that holds
- * it: pointing at the name lights the line, clicking scrolls to it.
- *
- * Files open as hunks. A deleted file, a long one and one you have reviewed
- * start folded to their header, so a section reads in one screen. While a
- * brief is written, the status line says so and core's own tool steps show
- * what the reviewer reads. A guide for an earlier head stays up while the
- * next one is written from the interdiff.
- */
 import { create, props } from "@stylexjs/stylex";
 import type { SelectedLineRange } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
-import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { preferences, useSetting } from "@nyte-ai/app/preferences/index.ts";
 import { PierreWorkerProvider } from "@nyte-ai/app/pierre-worker-provider.tsx";
 import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
@@ -38,18 +25,15 @@ import {
   type ReviewFile,
 } from "./code";
 import { workspace } from "../shell/host-stub";
+import { TurnRows } from "../shell/turn-rows";
 import { useHeadTurns } from "./api";
 import { plural, sectionFiles } from "./files";
 import { linkProse, type LineTarget, type ProseSegment } from "./prose-links";
 import type { Brief, Guide, ReviewDetail } from "./wire";
 
-/** Files a section opens with; the rest start folded so a large section stays scannable. */
 const OPEN_FILES = 3;
 
-/** Past this many changed lines a file starts folded; its header still counts them. */
 const LONG_DIFF = 240;
-
-const NO_TURNS: readonly ConversationTurn[] = [];
 
 export interface GuideFiles {
   readonly files: readonly ReviewFile[];
@@ -59,15 +43,11 @@ export interface GuideFiles {
   readonly onToggle: (path: string, fallback: boolean) => void;
   readonly justUpdated: (path: string) => boolean;
   readonly onOpenInDiff: (path: string) => void;
-  /** Selected lines, named the way a message names them. */
   readonly onReference: (reference: string) => void;
 }
 
-/** How the page around the guide follows it. */
 export interface GuideNavigation {
-  /** The section in view, reported as the guide scrolls. */
   readonly onInView: (index: number) => void;
-  /** Each band as it mounts and unmounts, for the toolbar and the Overview to scroll to. */
   readonly onBand: (index: number, node: HTMLElement | null) => void;
 }
 
@@ -81,16 +61,11 @@ function lastStep(turns: readonly ConversationTurn[]): string | undefined {
   return step?.kind === "custom" ? step.label : undefined;
 }
 
-/** Writing the guide: the page's one way to spend on it, and whether that request is in flight. */
 export interface GuideWriting {
   readonly onWrite: () => void;
   readonly requesting: boolean;
 }
 
-/**
- * The line above the guide: progress, a failure, or, with no guide yet, the
- * page's one action under the words that explain it, where the eye already is.
- */
 function StatusLine({
   review,
   current,
@@ -190,16 +165,13 @@ function StatusLine({
       {shown === undefined &&
         turns.map((turn) => (
           <div key={turn.info.id} {...props(styles.steps)}>
-            <TurnView
+            <TurnRows
               turn={{
                 ...turn,
                 messages: turn.messages.filter((message) => message.kind !== "user"),
               }}
-              continuations={NO_TURNS}
               density={density}
               cwd={workspace.path}
-              changes={[]}
-              onOpenChanges={() => {}}
               running
             />
           </div>
@@ -208,7 +180,6 @@ function StatusLine({
   );
 }
 
-/** Pierre draws each file in a shadow root; its rows carry the line number and the row type. */
 function lineRow(card: HTMLElement | undefined, target: LineTarget): Element | undefined {
   const root = card?.querySelector("diffs-container")?.shadowRoot;
 
@@ -232,7 +203,6 @@ function FileCard({
   readonly input: GuideFiles;
   readonly lit: LineTarget | undefined;
   readonly register: (path: string, node: HTMLDivElement | null) => void;
-  /** Pierre finished drawing: a line waiting to be scrolled to can be found now. */
   readonly onDrawn: (path: string) => void;
 }): ReactElement {
   const options = usePierreOptions("unified");
@@ -291,7 +261,6 @@ function FileCard({
   );
 }
 
-/** One run of a section's story: words, or a name that points into the code beside it. */
 function Segment({
   segment,
   lit,
@@ -346,13 +315,6 @@ function Segment({
   );
 }
 
-/**
- * The guide beside its files. Only the guide scrolls: a row's own
- * scrollIntoView would also slide Pierre's code sideways under its sticky
- * gutter. A line in a folded or still-drawing file waits for Pierre's next
- * draw to scroll to it. The section in view is the last band whose top has
- * passed the upper third.
- */
 export function ReviewGuide({
   review,
   current,
@@ -369,7 +331,6 @@ export function ReviewGuide({
   readonly shown: (Brief & { readonly guide: Guide }) | undefined;
   readonly version: number;
   readonly input: GuideFiles;
-  /** The pull request's title block, above the guide's status. */
   readonly header: ReactNode;
   readonly navigation: GuideNavigation;
   readonly writing: GuideWriting;
@@ -618,7 +579,6 @@ const styles = create({
   },
   statusEmpty: { display: "contents" },
   statusIcon: { display: "inline-grid", placeItems: "center", width: glyph.sm, flexShrink: 0 },
-  // The button follows the sentence it answers instead of waiting at the far edge of a wide row.
   statusText: { flex: "0 1 auto", minWidth: 0, textWrap: "pretty" },
   empty: {
     display: "flex",
@@ -664,7 +624,6 @@ const styles = create({
     scrollMarginBlockStart: 8,
     "@container (max-width: 820px)": { gridTemplateColumns: "minmax(0, 1fr)", rowGap: 20 },
   },
-  // The story stays beside its code while the code scrolls.
   story: {
     position: { default: "sticky", "@container (max-width: 820px)": "static" },
     top: 24,
@@ -694,7 +653,6 @@ const styles = create({
     letterSpacing: type.letterLg,
     textWrap: "balance",
   },
-  // The story is the page's reading text: the size and colour of prose, not of a caption.
   explanation: {
     marginBlock: "6px 0",
     maxWidth: "62ch",

@@ -1,8 +1,3 @@
-/**
- * LobeHub Streamdown renders Markdown with raw HTML disabled. Nyte supplies the
- * semantic components so links still cross the desktop host boundary and
- * fenced code paints immediately and highlights in a worker.
- */
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -60,15 +55,8 @@ const AGENT_LINK = "agent:";
 
 const InsideLink = createContext(false);
 
-/** True while the message the markdown belongs to is still streaming. */
 const ProseStreaming = createContext(false);
 
-/**
- * The workspace's file list as conversation content reads it to resolve
- * citations. It is the composer's query, observed without refetching: spans
- * and canvases mount and remount as the transcript scrolls, and each mount
- * must not walk the workspace again. The composer and thread keep it fresh.
- */
 export function useCitableFiles(enabled: boolean) {
   return useQuery({
     ...mentionFilesOptions(enabled),
@@ -77,12 +65,6 @@ export function useCitableFiles(enabled: boolean) {
   });
 }
 
-/**
- * A file the prose names draws the way Cursor cites one: an inline link led
- * by the file's icon. The icon holds on to the label's first segment, later
- * segments may wrap after a slash, and punctuation after the link stays on its
- * line.
- */
 function FileCitation({
   reference,
   open,
@@ -142,12 +124,6 @@ function FileCitation({
   );
 }
 
-/**
- * Inline code the workspace can resolve becomes a file citation, so a path the
- * model names opens where a path the reader typed opens. The file list is
- * `useCitableFiles`; a surface with no opener never asks for it and every span
- * stays literal.
- */
 function MarkdownCode({
   node: _node,
   className: _className,
@@ -170,11 +146,6 @@ function MarkdownCode({
   return <FileCitation reference={reference} open={open} label={text} code />;
 }
 
-/**
- * The workspace file a link names: a `file:` URL, an absolute path, or a
- * path relative to the workspace with an optional `:12` or `#L12` suffix.
- * A scheme has no dot, so `ci.ts:42` is a path and `mailto:` is not.
- */
 export function linkReference(
   href: string,
   files: readonly MentionFile[],
@@ -304,25 +275,25 @@ function MarkdownPre({
 
 const markdownComponents = {
   p: ({ node: _node, className: _className, ...elementProps }) => (
-    <p {...elementProps} {...props(proseStyles.measure, proseStyles.paragraph)} />
+    <p {...elementProps} {...props(proseStyles.paragraph)} />
   ),
   h1: ({ node: _node, className: _className, ...elementProps }) => (
-    <h1 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h1)} />
+    <h1 {...elementProps} {...props(proseStyles.heading, proseStyles.h1)} />
   ),
   h2: ({ node: _node, className: _className, ...elementProps }) => (
-    <h2 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h2)} />
+    <h2 {...elementProps} {...props(proseStyles.heading, proseStyles.h2)} />
   ),
   h3: ({ node: _node, className: _className, ...elementProps }) => (
-    <h3 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h3)} />
+    <h3 {...elementProps} {...props(proseStyles.heading, proseStyles.h3)} />
   ),
   h4: ({ node: _node, className: _className, ...elementProps }) => (
-    <h4 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h4)} />
+    <h4 {...elementProps} {...props(proseStyles.heading, proseStyles.h4)} />
   ),
   h5: ({ node: _node, className: _className, ...elementProps }) => (
-    <h5 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h5)} />
+    <h5 {...elementProps} {...props(proseStyles.heading, proseStyles.h5)} />
   ),
   h6: ({ node: _node, className: _className, ...elementProps }) => (
-    <h6 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h6)} />
+    <h6 {...elementProps} {...props(proseStyles.heading, proseStyles.h6)} />
   ),
   strong: ({ node: _node, className: _className, ...elementProps }) => (
     <strong {...elementProps} {...props(proseStyles.strong)} />
@@ -330,16 +301,16 @@ const markdownComponents = {
   code: MarkdownCode,
   a: MarkdownLink,
   ul: ({ node: _node, className: _className, ...elementProps }) => (
-    <ul {...elementProps} {...props(proseStyles.measure, proseStyles.list)} />
+    <ul {...elementProps} {...props(proseStyles.list)} />
   ),
   ol: ({ node: _node, className: _className, ...elementProps }) => (
-    <ol {...elementProps} {...props(proseStyles.measure, proseStyles.list)} />
+    <ol {...elementProps} {...props(proseStyles.list)} />
   ),
   li: ({ node: _node, className: _className, ...elementProps }) => (
     <li {...elementProps} {...props(proseStyles.listItem)} />
   ),
   blockquote: ({ node: _node, className: _className, ...elementProps }) => (
-    <blockquote {...elementProps} {...props(proseStyles.measure, proseStyles.blockquote)} />
+    <blockquote {...elementProps} {...props(proseStyles.blockquote)} />
   ),
   hr: ({ node: _node, className: _className, ...elementProps }) => (
     <hr {...elementProps} {...props(proseStyles.rule)} />
@@ -374,19 +345,8 @@ function subscribeReducedMotion(onChange: () => void): () => void {
   return () => reducedMotionQuery.removeEventListener("change", onChange);
 }
 
-/** Reference definitions and footnotes resolve across blocks, so only a whole-document parse draws them. */
 const CROSS_BLOCK = /^ {0,3}\[[^\]\n]+\]:/mu;
 
-/**
- * A message's markdown. While it streams, Streamdown parses block by block, so
- * a delta reparses only the open block; a whole-document parse per frame
- * costs 11 ms at 13 K characters and 92 ms at 51 K. A message that streamed in
- * this mount keeps that renderer when it settles, so nothing under it
- * remounts: selection, code-block scroll and diagrams stay put. Only a message
- * whose reference links or footnotes span blocks switches to the
- * whole-document parse at settle, and a settled mount or reduced motion uses
- * that parse from the start.
- */
 export const Prose = memo(function Prose({
   markdown,
   streaming = false,

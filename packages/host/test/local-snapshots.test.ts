@@ -85,8 +85,10 @@ describe.skipIf(!hasGit)("localSnapshots in a repository", () => {
     expect(after).not.toBe(before);
     expect(await snapshots.before(run)).toBe(before);
     expect(sh(root, "status", "--porcelain")).toBe(statusBefore);
-    await vi.waitFor(() =>
-      expect(sh(root, "ls-tree", "refs/nyte/kept:g000000")).toContain(`tree ${after.slice(4)}\t`),
+    await vi.waitFor(
+      () =>
+        expect(sh(root, "ls-tree", "refs/nyte/kept:g000000")).toContain(`tree ${after.slice(4)}\t`),
+      { timeout: 20_000 },
     );
     expect(sh(root, "ls-tree", "refs/nyte/kept:g000000")).toContain(`tree ${committed}\t`);
     expect(sh(root, "show-ref")).not.toContain("refs/nyte/snapshots/");

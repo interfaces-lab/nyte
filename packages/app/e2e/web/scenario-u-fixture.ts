@@ -10,42 +10,26 @@ import {
   RESTAURANT_PROMPT,
   RESTAURANT_SKILL,
   titleReply,
-} from "@nyte-ai/host/bench";
-import type { Reply, Request } from "@nyte-ai/host/bench";
+} from "@nyte-ai/bench";
+import type { Reply, Request } from "@nyte-ai/bench";
 import { contentText } from "@nyte-ai/schema/model";
 
-/** The command scenario U's agent asks to run once the user approves it, in the home folder. */
 export const HOURS_COMMAND = "./places-hours luigi";
 
-/** The last line `HOURS_COMMAND` prints. */
 export const HOURS_DONE = "places-hours: luigi is open until 22:30";
 
-/** The option of scenario U's question that approves `HOURS_COMMAND`. */
 export const RUN_HOURS = "Run it";
 
-/** Scenario U's question to the user before it runs `HOURS_COMMAND`. */
 export const HOURS_QUESTION = "Check whether Luigi's Trattoria is open now?";
 
-/** Scenario U's final answer, streamed in 40 deltas 250 ms apart so a test can quit while it streams. */
 export const HOURS_ANSWER = `${RESTAURANT_ANSWER} It is open until 22:30 tonight.`;
 
-/** The skill's path inside `home`. */
 export function restaurantSkill(home: string): string {
   return join(home, ".agents", "skills", "restaurant-picker", "SKILL.md");
 }
 
 const PACE: Reply["timing"] = { firstMs: 30, deltaMs: 2 };
 
-/**
- * Scenario U ("find me a random restaurant nearby") as the desktop and web
- * suites drive it: read the skill at `skill`, search places, render the
- * canvas (its links on `origin` instead of `https://fixture.test` when set),
- * ask to run `HOURS_COMMAND`, run it once approved, then stream
- * `HOURS_ANSWER`. Each reply follows the request's last message in a chat
- * that opened with `RESTAURANT_PROMPT`, so a restarted host carries on where
- * the transcript stands; null for any other chat. With `log`, each answered
- * request prints a `NYTE_E2E_U <json>` line naming the tool result it read.
- */
 export function restaurantReplies(input: {
   readonly skill: string;
   readonly origin?: string;
@@ -161,7 +145,6 @@ export function restaurantReplies(input: {
   };
 }
 
-/** The `places-hours` command: prints a line every half second for three seconds, then `HOURS_DONE`. */
 const HOURS_CLI = `#!/bin/sh
 echo "places-hours: looking up $1"
 for hour in 12:00 13:00 15:00 18:00 20:00 22:30; do
@@ -171,23 +154,13 @@ done
 echo "places-hours: $1 is open until 22:30"
 `;
 
-/** What scenario U adds to a home, and the places site its canvas links to. */
 export interface ScenarioU {
-  /** The local places site standing in for `https://fixture.test`. */
   readonly origin: string;
-  /** The file the places server appends its `mcp.serve` spans to. */
   readonly traceFile: string;
-  /** The paths the places site served, in order. */
   readonly visits: readonly string[];
   close(): Promise<void>;
 }
 
-/**
- * Adds scenario U to `home`: the places MCP server in `.nyte/mcp.json` under
- * this process's Node (a cold 400 ms start, 50 ms per call), the
- * restaurant-picker skill, the `places-hours` command, and a local site
- * whose pages are each restaurant's menu.
- */
 export async function prepareScenarioU(home: string): Promise<ScenarioU> {
   const traceFile = join(home, "mcp-spans.jsonl");
   await writeFile(traceFile, "");

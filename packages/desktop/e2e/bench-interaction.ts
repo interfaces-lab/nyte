@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { dev } from "@nyte-ai/core";
-import { lastUserText, titleReply } from "@nyte-ai/host/bench";
-import type { Reply } from "@nyte-ai/host/bench";
+import { lastUserText, titleReply } from "@nyte-ai/bench";
+import type { Reply } from "@nyte-ai/bench";
 import { sdk } from "@nyte-ai/sdk";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -30,20 +30,10 @@ const timeout = 60_000;
 
 const MIB = 1_024 * 1_024;
 
-/** The streamed answer: 300 deltas, one every 16 ms (about 60 tokens a second for 5 s). */
 const streamDeltas = 300;
 
 const streamEnd = "Stream end marker.";
 
-/**
- * Every metric this bench reports, with the judged build's ceiling (`max`) or floor (`min`), or
- * `null` to report only. A ceiling holds the p95, or the median where the field says `gate`. Every
- * ceiling is absolute (one 60 Hz frame, no idle CPU, no leak, the long chat open within 100 ms),
- * except the cold Terminal, Files and Changes panels: main c7094f5c's median over nine runs on the
- * same machine (55.3, 15.8 and 13.5 ms) plus 25%, held by the median of one cold open per launch.
- * The other latencies main sets a bar for (the Browser panel, warm panels, the switches) are
- * reported, not gated: compare them with `--compare`'s baseline column.
- */
 const metricFields = [
   { key: "openTranscriptMs", label: "Open the 2,000-message chat", unit: "ms", max: 100 },
   { key: "keystrokeMs", label: "Keystroke to paint, in that chat", unit: "ms", max: 16.7 },
@@ -100,7 +90,6 @@ interface Build {
   readonly executable: string;
 }
 
-/** Paths resolve against INIT_CWD, where pnpm was invoked, because `pnpm --dir` moves the cwd. */
 function readOptions() {
   const { values } = parseArgs({
     options: {
@@ -155,7 +144,6 @@ function readOptions() {
 
 type Options = NonNullable<ReturnType<typeof readOptions>>;
 
-/** The baseline chats plus one of `turns` echoed turns, seeded through this revision's SDK. */
 async function seedHome(directory: string, turns: number): Promise<Fixture> {
   dev.off();
   const prepared = await prepareHome(directory);
@@ -198,7 +186,6 @@ async function seedHome(directory: string, turns: number): Promise<Fixture> {
   };
 }
 
-/** Lists the scripted model as Anthropic's only model and stores a key for it, in every build's format. */
 async function allowScriptedModel(home: string, origin: string): Promise<void> {
   await mkdir(join(home, ".nyte"), { recursive: true });
   await writeFile(
@@ -256,7 +243,6 @@ async function launch(build: Build, fixture: Fixture, origin: string) {
   });
 }
 
-/** Resolves with the renderer time of the first frame showing `title`'s tab selected over `lastMessage`. */
 async function chatShown(page: Page, scenario: { title: string; lastMessage: string }) {
   const handle = await page.waitForFunction(
     ({ title, lastMessage }) => {
@@ -279,7 +265,6 @@ async function chatShown(page: Page, scenario: { title: string; lastMessage: str
   return Value.Parse(Type.Number(), await handle.jsonValue());
 }
 
-/** Resolves with the renderer time of the first frame where the workbench shows `selector`. */
 async function workbenchShows(page: Page, selector: string) {
   const handle = await page.waitForFunction(
     (inner) => {
@@ -296,7 +281,6 @@ async function workbenchShows(page: Page, selector: string) {
   return Value.Parse(Type.Number(), await handle.jsonValue());
 }
 
-/** The renderer time of the next pointerdown, armed before a click. */
 async function armPointer(page: Page): Promise<void> {
   await page.evaluate(() =>
     document.addEventListener(
@@ -319,7 +303,6 @@ async function pointerTime(page: Page): Promise<number> {
   );
 }
 
-/** Shows `title`'s sidebar row, which moves under the Done shelf once its chat has been read. */
 async function revealRow(page: Page, title: string): Promise<void> {
   const row = chatRow(page, title);
 
@@ -333,7 +316,6 @@ async function revealRow(page: Page, title: string): Promise<void> {
   await row.waitFor();
 }
 
-/** Opens a chat from the sidebar and returns pointerdown to the first frame showing its last message. */
 async function switchTo(page: Page, title: string, lastMessage: string): Promise<number> {
   await revealRow(page, title);
   await armPointer(page);
@@ -345,7 +327,6 @@ async function switchTo(page: Page, title: string, lastMessage: string): Promise
   return end - (await pointerTime(page));
 }
 
-/** Records every animation frame's timestamp until stopped; returns the frame intervals in ms. */
 async function recordFrames(page: Page): Promise<() => Promise<readonly number[]>> {
   await page.evaluate(() => {
     document.documentElement.dataset.benchFrames = "on";
@@ -395,10 +376,6 @@ function percentile(values: readonly number[], share: number): number {
   return sorted[Math.max(0, Math.ceil(sorted.length * share) - 1)] ?? Number.NaN;
 }
 
-/**
- * Adds the Anthropic API key in Settings, as a user does, so the build refreshes Anthropic's
- * catalog from the scripted endpoint: this branch keeps keys in the keychain, not auth.json.
- */
 async function connectAnthropic(page: Page): Promise<void> {
   await page.keyboard.press("ControlOrMeta+,");
   await page.getByRole("link", { name: "Providers", exact: true }).click();
@@ -420,7 +397,6 @@ async function connectAnthropic(page: Page): Promise<void> {
   await leaveSettings(page);
 }
 
-/** Picks the scripted model in the open chat's composer, through the picker's Model submenu where it has one. */
 async function chooseScripted(page: Page): Promise<void> {
   const picker = page.getByRole("form", { name: "Message composer" }).getByRole("button", {
     name: /Scripted|Choose a model|model/iu,
@@ -453,7 +429,6 @@ async function treeTotals(application: ElectronApplication) {
   return { processes: tree.length, rss: tree.reduce((total, row) => total + row.residentBytes, 0) };
 }
 
-/** Electron's CPU and idle wakeups per process, averaged since the previous call. */
 async function appMetrics(application: ElectronApplication) {
   return application.evaluate(({ app }) =>
     app.getAppMetrics().map((entry) => ({
@@ -465,7 +440,6 @@ async function appMetrics(application: ElectronApplication) {
   );
 }
 
-/** CPU seconds per process of the tree from `ps`, whose `time` reads [[hh:]mm:]ss.cc. */
 async function cpuSeconds(
   root: number | undefined,
 ): Promise<ReadonlyMap<number, { command: string; seconds: number }>> {
@@ -487,10 +461,6 @@ async function cpuSeconds(
   );
 }
 
-/**
- * Each panel's rail button and the content its first frame shows. Files shows its toolbar in the
- * frame that draws its empty state, which main c7094f5c lacks.
- */
 const panels = [
   { key: "browser", rail: "Browser", ready: '[aria-label="Address"]' },
   { key: "terminal", rail: "Terminal", ready: '[aria-label="Terminal input"]' },
@@ -498,7 +468,6 @@ const panels = [
   { key: "changes", rail: "Changes", ready: '[aria-label="Workspace changes"]' },
 ] as const;
 
-/** Opens a workbench panel from its rail button: pointerdown to the first frame its content shows. */
 async function openPanel(page: Page, rail: string, ready: string): Promise<number> {
   const workbench = page.getByRole("complementary", { name: "Workbench" });
   await armPointer(page);
@@ -514,7 +483,6 @@ async function openPanel(page: Page, rail: string, ready: string): Promise<numbe
   return end - (await pointerTime(page));
 }
 
-/** Closes the app and kills whatever of its process tree outlives it. */
 async function quit(application: ElectronApplication): Promise<void> {
   const tree = await inspectProcessTree(application.process().pid);
   await application.close().catch(() => undefined);
@@ -544,7 +512,6 @@ async function closeWorkbenchTabs(page: Page): Promise<void> {
   await expect(page.getByRole("navigation", { name: "Workbench navigation" })).toBeVisible();
 }
 
-/** Runs one measuring step, keeping its error instead of ending the run. */
 async function step(
   page: Page,
   errors: string[],
@@ -823,7 +790,6 @@ async function measure(
   return { build, metrics, errors, notes };
 }
 
-/** The scripted model, with `/bench-stream` and `/soak` answers and a promise for each stream's deltas. */
 async function serveScripted() {
   let waiting: ((window: { firstEpochMs: number; lastEpochMs: number }) => void) | undefined;
   let firstEpochMs = 0;

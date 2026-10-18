@@ -307,7 +307,7 @@ export function Sidebar(): ReactElement {
     onClearFilters: () => setSessionView(clearSessionFilters(view)),
   };
 
-  const order = sessionOrder(view.sortByStatus, workingSessions);
+  const order = sessionOrder(view.sort, workingSessions);
 
   const listed: readonly ListedSession[] | undefined = sessionDirectory.data
     ?.flatMap((directory) => {

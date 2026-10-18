@@ -116,4 +116,5 @@ export const stylex = {
   vite: (options) => [settledStylesheet, unplugin.vite(withOrder(options))],
   rollup: (options) => unplugin.rollup(withOrder(options)),
   esbuild: (options) => unplugin.esbuild(withOrder(options)),
+  webpack: (options) => unplugin.webpack(withOrder(options)),
 };

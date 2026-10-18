@@ -9,18 +9,13 @@ import renderers from "@nyte-ai/plugin/client/transcript";
 import type { Placement, SessionId, SubmitDraft } from "@nyte-ai/sdk";
 import { toast } from "@nyte-ai/ui/toast";
 import { canvasRenderers } from "./conversation/canvas-frame.tsx";
+import { RawPartView } from "./conversation/raw-part.tsx";
 import { connected, connection, directoryWatch } from "./sdk.tsx";
 
 let mounting: Promise<ClientPlugins> | undefined;
 
 let mounted: ClientPlugins | undefined;
 
-/**
- * Mounts the desktop's client plugins once the host connects, feeds them the
- * session directory, so a run that ends anywhere reaches their hooks, and
- * tells them each time the focused session changes (`focusMoved` calls its
- * listener after any change that may move it).
- */
 export function watchClientPlugins(
   session: () => SessionId | undefined,
   focusMoved: (listener: () => void) => () => void,
@@ -85,7 +80,6 @@ export function watchClientPlugins(
   };
 }
 
-/** The draft the client plugins' before_submit hooks let through, as they rewrote it; throws with the reason one refused it. A window whose plugins failed to mount sends it as it is. */
 export async function admitDraft(draft: SubmitDraft): Promise<SubmitDraft> {
   const plugins = await mounting?.catch(() => undefined);
 
@@ -114,7 +108,8 @@ export function drawPart(
   message: PartMessage,
   placement: Placement,
 ): ReactNode {
-  const drawn = mounted?.draw(connection().session(sessionId), message, placement);
+  if (mounted === undefined) return null;
+  const drawn = mounted.draw(connection().session(sessionId), message, placement);
 
-  return isValidElement(drawn) ? drawn : null;
+  return isValidElement(drawn) ? drawn : <RawPartView message={message} />;
 }

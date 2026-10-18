@@ -3,12 +3,17 @@ import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
+import process from "node:process";
 import { app, BrowserWindow } from "electron";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { canvasShellUrl, registerRenderer } from "../renderer.ts";
+
+process.stdin.on("close", () => app.exit(1));
+
+process.stdin.resume();
 
 const directory = process.argv[2];
 

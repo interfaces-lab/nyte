@@ -5,12 +5,12 @@ import type { Renderer } from "@nyte-ai/plugin/client";
 import type { Plugin } from "@nyte-ai/plugin/client";
 import { defineRenderer } from "@nyte-ai/plugin/client";
 
-/** Returns what a part whose state fails its schema draws. */
-const unreadable = (kind: string): VNode => Text({ content: `This ${kind} part cannot be shown.` });
+const unreadable = (): VNode | null => null;
 
 /**
  * Renderers for the terminal client, as OpenTUI nodes: the five built-in
- * part kinds. Feature plugins contribute their own renderers.
+ * part kinds. Feature plugins contribute their own renderers. A state its
+ * schema rejects draws nothing, for the client to show raw.
  *
  * @category plugins
  * @since 0.1.0

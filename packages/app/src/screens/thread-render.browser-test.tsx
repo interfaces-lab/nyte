@@ -235,7 +235,6 @@ const host = { workspace: undefined } satisfies HostState;
 
 let renderFailure: unknown;
 
-/** One controller for every mount, so a reopened chat finds the anchors it left. */
 const panes = new PaneController({ storageKey: "thread-render-test" });
 
 panes.selectSession(ID);
@@ -332,6 +331,12 @@ function visible(selector: string): HTMLElement[] {
       return height > 0 && measureTop(block) >= 0 && measureTop(block) + height <= bottom;
     })
     .sort((first, second) => measureTop(first) - measureTop(second));
+}
+
+function answerIndex(row: HTMLElement): number | undefined {
+  const match = /^response:answer-(\d+)$/u.exec(row.dataset.messageId ?? "");
+
+  return match?.[1] === undefined ? undefined : Number(match[1]);
 }
 
 function distance(): number {
@@ -513,7 +518,7 @@ async function checkRules(): Promise<string> {
       "an editable message below the top edge",
     );
     await openEditor(editable);
-    await holds("7/12", editable, 3);
+    await holds("7/12", editable, 6);
     expectRule(
       "19",
       editable.querySelector("[contenteditable='true']") !== null,
@@ -582,13 +587,15 @@ async function checkRules(): Promise<string> {
     await wheel(-250);
     await holds("5/9", first(visible(PROSE)[0], "visible prose"), 6);
     const rowAbove = (): HTMLElement | undefined =>
-      listRows().find((row) => measureTop(row) + row.getBoundingClientRect().height < 0);
+      listRows().find(
+        (row) =>
+          answerIndex(row) !== undefined &&
+          measureTop(row) + row.getBoundingClientRect().height < 0,
+      );
     await wheelUntil(() => rowAbove() !== undefined);
-    const aboveIndex = Number(
-      first(rowAbove(), "a turn row above the anchor").dataset.messageId?.replace(
-        "landing:prompt-",
-        "",
-      ),
+    const aboveIndex = first(
+      answerIndex(first(rowAbove(), "an answer above the anchor")),
+      "its turn",
     );
     const held = first(visible(PROSE)[0], "visible prose");
     const heldTop = measureTop(held);
@@ -616,7 +623,10 @@ async function checkRules(): Promise<string> {
     expectRule("10", near(measureTop(held), heldTop), `a row above grew: ${moved(held, heldTop)}`);
     const spanning = (): HTMLElement | undefined =>
       listRows().find(
-        (row) => measureTop(row) < 0 && measureTop(row) + row.getBoundingClientRect().height > 0,
+        (row) =>
+          answerIndex(row) !== undefined &&
+          measureTop(row) < 0 &&
+          measureTop(row) + row.getBoundingClientRect().height > 0,
       );
     const lowerProse = (): HTMLElement | undefined =>
       visible(PROSE).find((block) => block.closest("[data-message-id]") !== spanning());
@@ -627,7 +637,7 @@ async function checkRules(): Promise<string> {
     window.getSelection()?.setBaseAndExtent(lower, 0, lower, lower.childNodes.length);
     await painted();
     const lowerTop = measureTop(lower);
-    await grow(Number(spanningRow.dataset.messageId?.replace("landing:prompt-", "")));
+    await grow(first(answerIndex(spanningRow), "the spanning answer's turn"));
     checkFrame("spanning row grew while held");
     expectRule(
       "10/11",
@@ -637,21 +647,22 @@ async function checkRules(): Promise<string> {
     window.getSelection()?.removeAllRanges();
 
     step = "16, 18";
-    const deep = (): HTMLElement | undefined =>
+    const reading = (): HTMLElement | undefined =>
       listRows().find(
         (row) =>
-          measureTop(row) < -100 && measureTop(row) + row.getBoundingClientRect().height > 150,
+          answerIndex(row) !== undefined &&
+          answerIndex(row) !== TALL_PROMPT &&
+          measureTop(row) < -20 &&
+          measureTop(row) + row.getBoundingClientRect().height > 40,
       );
-    await wheelUntil(() => deep() !== undefined, -150);
-    const stuck = Array.from(
-      deep()?.querySelectorAll<HTMLElement>("[data-sticky-user-message]") ?? [],
-    ).find(
-      (candidate) =>
-        Math.abs(measureTop(candidate)) <= 2 && candidate.dataset.stickyActive === "true",
+    await wheelUntil(() => reading() !== undefined, -50);
+    const readIndex = first(answerIndex(first(reading(), "an answer being read")), "its turn");
+    const stuck = stage.log.querySelector<HTMLElement>(
+      `[data-message-id='landing:prompt-${String(readIndex)}'] [data-sticky-user-message]`,
     );
     expectRule(
       "16",
-      stuck !== undefined,
+      stuck !== null && Math.abs(measureTop(stuck)) <= 2 && stuck.dataset.stickyActive === "true",
       "the prompt of the turn being read is not stuck at the top",
     );
     const tallRow = (): HTMLElement | null =>

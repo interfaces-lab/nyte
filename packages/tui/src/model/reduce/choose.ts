@@ -275,17 +275,19 @@ const CHOOSERS: Choosers = {
     }
   },
   trust: (state, purpose, msg, now, reduce) =>
-    msg.choice === null
-      ? stay(withoutDialog(state, msg.dialog))
-      : reduce(
-          withoutDialog(state, msg.dialog),
-          {
-            kind: "set-trust",
-            workspace: purpose.workspace,
-            value: msg.choice === "trust" ? true : msg.choice === "decline" ? false : null,
-          },
-          now,
-        ),
+    purpose.gate && msg.choice === "quit"
+      ? { state, effects: [{ kind: "exit", code: 0 }] }
+      : msg.choice === null
+        ? stay(withoutDialog(state, msg.dialog))
+        : reduce(
+            withoutDialog(state, msg.dialog),
+            {
+              kind: "set-trust",
+              workspace: purpose.workspace,
+              value: msg.choice === "trust" ? true : msg.choice === "decline" ? false : null,
+            },
+            now,
+          ),
   setting: (state, purpose, msg, now, reduce) => {
     const closed = withoutDialog(state, msg.dialog);
     const row = settingRows(state).find((candidate) => candidate.id === purpose.key);

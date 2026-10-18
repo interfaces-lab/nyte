@@ -20,11 +20,10 @@ import "../theme/tokens.stylex.ts";
 import { scriptedConnection, viewStream } from "../../test/scripted-connection.ts";
 import { USAGE, endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 import { lastCommit, renderCount, resetRenders } from "./transcript-render-counter.ts";
-import { TurnView } from "./turn-view.tsx";
+import { TurnItemView } from "./turn-view.tsx";
 
 const ID = asId<"session">("transcript-streaming");
 
-/** Four messages a turn: 2,000 in the transcript. */
 const TURNS = 500;
 
 const DELTAS = 500;
@@ -125,7 +124,6 @@ const unchanged = {
   catalog: { commands: [], settings: [], skills: [], agents: [], tools: [] },
 } as const satisfies Omit<SessionView, "messages">;
 
-/** Each delta replaces the live answer only, as the fold does: everything else keeps its identity. */
 function view(liveText: string): SessionView {
   return { ...unchanged, messages: [...settled, prose(TURNS, liveText, true)] };
 }
@@ -164,7 +162,6 @@ async function until(predicate: () => boolean, what: string): Promise<void> {
   }
 }
 
-/** Streams `DELTAS` deltas into a 2,000-message transcript and reports TurnView renders. */
 export async function run(): Promise<string> {
   queryClient.clear();
   queryClient.setQueryData(keys.host, host);
@@ -205,7 +202,7 @@ export async function run(): Promise<string> {
     );
 
     for (let index = 0; index < 10; index += 1) await painted();
-    resetRenders(TurnView);
+    resetRenders(TurnItemView);
     let rendering = 0;
 
     for (let index = 0; index < DELTAS; index += 1) {
@@ -217,13 +214,13 @@ export async function run(): Promise<string> {
     }
 
     const mounted = container.querySelectorAll("[data-message-id]").length;
-    const counts = renderCount(TurnView);
+    const counts = renderCount(TurnItemView);
 
     return JSON.stringify({
       deltas: DELTAS,
       mountedRows: mounted,
-      turnViewUpdates: counts.updates,
-      turnViewMounts: counts.mounts,
+      rowUpdates: counts.updates,
+      rowMounts: counts.mounts,
       updatesPerDelta: counts.updates / DELTAS,
       commitMsPerDelta: rendering / DELTAS,
     });

@@ -45,7 +45,7 @@ export interface FakeSession extends SessionPort {
     readonly answer: { readonly part: string; readonly answers: string[][] }[];
     readonly move: unknown[];
     readonly configure: { readonly model?: ModelRef; readonly effort?: string }[];
-    readonly commands: { readonly name: string; readonly argument: string | null }[];
+    readonly commands: { readonly name: string; readonly argument: string }[];
     readonly settings: { readonly id: string; readonly value: unknown }[];
     readonly stoppedTasks: unknown[];
   };
@@ -62,12 +62,9 @@ export interface FakeHost extends HostPort {
   readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
   readonly starts: Parameters<HostPort["start"]>[0][];
-  /** Each folder registration asked of the host, by path; `null` is the launch folder. */
   readonly folders: (string | null)[];
-  /** The plugin commands and skills every workspace offers a new chat. */
   folderCatalog: WorkspaceCatalogView;
-  /** Each command run in a workspace without a chat. */
-  readonly folderRuns: { readonly name: string; readonly argument: string | null }[];
+  readonly folderRuns: { readonly name: string; readonly argument: string }[];
   folderCommandResult: WorkspaceCommandOutcome | null;
 }
 
@@ -233,6 +230,7 @@ function fakeSession(id: string): FakeSession {
 
       return session.commandResult ?? { kind: "ran", output: `ran ${name}` };
     },
+    completeCommand: async () => [],
     async stopTask(task) {
       calls.stoppedTasks.push(task);
 
@@ -249,7 +247,7 @@ function fakeSession(id: string): FakeSession {
 
 export function fakeHost(): FakeHost {
   const sessions = new Map<string, FakeSession>();
-  const catalogs = queue<Pick<HostView, "catalog" | "settings">>();
+  const catalogs = queue<Pick<HostView, "catalog" | "settings" | "version">>();
 
   const directory = queue<readonly SessionInfo[]>();
   const defaults: ModelRef[] = [];
@@ -284,6 +282,7 @@ export function fakeHost(): FakeHost {
 
         return host.folderCommandResult ?? { kind: "ran", output: `ran ${name}` };
       },
+      completeCommand: async () => [],
       cwd: async () => "/tmp/fake-workspace",
       upload: async () => asId("blob-1"),
       mentions: async () => [],
@@ -308,7 +307,7 @@ export function fakeHost(): FakeHost {
     publishSessions: (list) => directory.push(list),
     publishCatalog(next) {
       catalog = next;
-      catalogs.push({ catalog: next.generation, settings: [] });
+      catalogs.push({ catalog: next.generation, settings: [], version: "0.0.0" });
     },
     listModels: async () => catalog,
     accounts: async () => [],
@@ -398,7 +397,6 @@ export interface FakePorts extends Ports {
   };
 }
 
-/** The first-frame record in memory: `saved` is what the next launch would read. */
 export interface FakeFirstFrame extends FirstFramePort {
   saved: Selection | null;
 }

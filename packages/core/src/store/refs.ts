@@ -8,7 +8,9 @@ import type {
   RunId,
   SessionId,
   WorkspaceId,
+  WorkspaceTarget,
 } from "@nyte-ai/schema";
+import { objectId } from "../util/content.ts";
 
 export function sessionRef(id: SessionId): string {
   return `sessions/${id}`;
@@ -70,6 +72,16 @@ export function callRef(id: SessionId, call: CallId): string {
 
 export function workspaceRef(id: WorkspaceId): string {
   return `workspaces/${id}`;
+}
+
+/** The ref holding the trust decision for the folder `target` names; trailing slashes don't make another folder. */
+export async function trustRef(target: WorkspaceTarget): Promise<string> {
+  return `trust/${await objectId(trustTarget(target))}`;
+}
+
+/** `target` as a trust decision names it: a local path without trailing slashes. */
+export function trustTarget(target: WorkspaceTarget): WorkspaceTarget {
+  return "path" in target ? { kind: target.kind, path: target.path.replace(/\/+$/u, "") } : target;
 }
 
 export function kvRef(scope: string, owner: string, key: string): string {

@@ -29,36 +29,54 @@ function displays(query: string, files: readonly MentionFile[] = SOURCES.files):
   return mentionSuggestions(query, files).map((file) => file.display);
 }
 
+const NONE: ReadonlySet<string> = new Set();
+
 function at(text: string, cursor = text.length) {
   return { text, cursor };
 }
 
 function model(text: string): CompletionModel | null {
-  return completionModel(nextCompletion(CLOSED, at(text)), at(text), SOURCES);
+  return completionModel(nextCompletion(CLOSED, at(text), NONE), at(text), SOURCES);
 }
 
 describe("tokens", () => {
   test("a /cd path first, then a / or @ word under the cursor", () => {
-    expect(completionToken(at("/cd ~/sr"))).toEqual({
+    expect(completionToken(at("/cd ~/sr"), NONE)).toEqual({
       trigger: "cd",
       query: "~/sr",
       from: 4,
       to: 8,
     });
-    expect(completionToken(at("fix @src/a"))).toEqual({
+    expect(completionToken(at("fix @src/a"), NONE)).toEqual({
       trigger: "@",
       query: "src/a",
       from: 4,
       to: 10,
     });
-    expect(completionToken(at("a/b"))).toBeNull();
+    expect(completionToken(at("a/b"), NONE)).toBeNull();
+  });
+
+  test("the text after a command that suggests it, from past the name to the line's end", () => {
+    const completing = new Set(["websearch-key"]);
+
+    expect(completionToken(at("/websearch-key ta", 17), completing)).toEqual({
+      trigger: "argument",
+      command: "websearch-key",
+      query: "ta",
+      from: 15,
+      to: 17,
+    });
+    expect(completionToken(at("/websearch-key ta"), NONE)).toBeNull();
+    expect(completionToken(at("/websearch-key", 14), completing)).toMatchObject({ trigger: "/" });
   });
 
   test("Esc keeps the menu closed until its token disappears", () => {
-    const dismissed = dismissCompletion(nextCompletion(CLOSED, at("/re")));
+    const dismissed = dismissCompletion(nextCompletion(CLOSED, at("/re"), NONE));
 
-    expect(nextCompletion(dismissed, at("/res"))).toBe(dismissed);
-    expect(nextCompletion(nextCompletion(dismissed, at("")), at("/re")).kind).toBe("open");
+    expect(nextCompletion(dismissed, at("/res"), NONE)).toBe(dismissed);
+    expect(nextCompletion(nextCompletion(dismissed, at(""), NONE), at("/re"), NONE).kind).toBe(
+      "open",
+    );
   });
 
   test("mid-prompt, a slash with no matches is a path, not a menu", () => {
@@ -92,7 +110,7 @@ describe("accepting", () => {
     });
 
     const draft = at("/usa and more", 4);
-    const withText = completionModel(nextCompletion(CLOSED, draft), draft, SOURCES);
+    const withText = completionModel(nextCompletion(CLOSED, draft, NONE), draft, SOURCES);
     const first = withText?.items[0];
 
     expect(
@@ -179,7 +197,7 @@ describe("@ mentions", () => {
 
   test("a resolved path comes first unless the index already lists it", () => {
     const typed = at("@./src/app");
-    const open = nextCompletion(CLOSED, typed);
+    const open = nextCompletion(CLOSED, typed, NONE);
 
     const resolved = (file: MentionFile) =>
       completionModel(

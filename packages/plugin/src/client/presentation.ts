@@ -84,6 +84,32 @@ export function showsThinking(message: Message): message is ThinkingMessage {
 }
 
 /**
+ * A part a client has no renderer for, shown raw: the text its state carries
+ * as `markdown` or `text`, else its state as indented JSON.
+ *
+ * @category presentation
+ */
+export type RawPart = { readonly format: "text" | "json"; readonly body: string };
+
+/**
+ * Reads a part's state raw, for a part kind or state shape this client does
+ * not know, such as one a newer host or an absent plugin sent.
+ *
+ * @category presentation
+ */
+export function readRawPart(message: PartMessage): RawPart {
+  const { state } = message;
+
+  if (typeof state === "object" && state !== null && !Array.isArray(state)) {
+    const prose = "markdown" in state ? state.markdown : "text" in state ? state.text : undefined;
+
+    if (typeof prose === "string") return { format: "text", body: prose };
+  }
+
+  return { format: "json", body: state === undefined ? "null" : JSON.stringify(state, null, 2) };
+}
+
+/**
  * Narrows to the report a child or job delivered; a person or an action sent the rest.
  *
  * @category presentation
@@ -255,6 +281,36 @@ export function mainHead(session: Pick<SessionInfo, "heads">): HeadInfo | undefi
  */
 export function sessionMark(session: Pick<SessionInfo, "heads">): SessionMark {
   return executionMark(mainHead(session)?.execution);
+}
+
+/**
+ * The text after a one-line draft's leading `/name `, while the caret is past
+ * it: `start` is where that text begins, `query` runs from there to the caret.
+ *
+ * @category presentation
+ */
+export interface CommandArgument {
+  readonly command: string;
+  readonly start: number;
+  readonly query: string;
+}
+
+const COMMAND_ARGUMENT = /^[ \t]*\/([a-z0-9][a-z0-9-]*)[ \t]+/u;
+
+/**
+ * Finds the text a draft gives the command it starts with, or undefined when
+ * it starts with none, spans lines, or the caret is before that text.
+ *
+ * @category presentation
+ */
+export function findCommandArgument(value: string, cursor: number): CommandArgument | undefined {
+  const found = COMMAND_ARGUMENT.exec(value);
+  const command = found?.[1];
+
+  if (found === null || command === undefined || /[\r\n]/u.test(value)) return undefined;
+  const start = found[0].length;
+
+  return cursor < start ? undefined : { command, start, query: value.slice(start, cursor) };
 }
 
 /**

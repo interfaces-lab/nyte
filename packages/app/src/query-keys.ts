@@ -2,29 +2,20 @@ import type { GitScope, RunId, SessionId, WorkspaceId } from "@nyte-ai/sdk";
 
 export const keys = {
   host: ["host"] as const,
+  clientOperations: ["client-operations"] as const,
   hostSettings: ["host-settings"] as const,
   updates: ["updates"] as const,
   workspaces: ["workspaces"] as const,
-  // Under workspaces, so a trust decision re-reads it too.
   workspaceCatalog: (workspace: WorkspaceId | undefined) =>
     ["workspaces", "catalog", workspace] as const,
-  /** The last run's folders, shown until the live list arrives. */
   firstFrameWorkspaces: ["first-frame", "workspaces"] as const,
-  /** The last run's recent chats, shown until the live directory arrives. */
   firstFrameRoots: ["first-frame", "roots"] as const,
   modelCatalog: (generation: string) => ["catalog", "models", generation] as const,
   accountLimits: (generation: string) => ["account-limits", generation] as const,
-  /**
-   * Usage reads everything once. A read walks every stored commit whatever
-   * window it is asked for, so the window buys nothing on the way in and costs
-   * a full re-read on every range press. The day is the key, so the page reads
-   * again after midnight and not before.
-   */
   usage: (untilDay: string) => ["usage", untilDay] as const,
   github: ["github"] as const,
   server: ["server"] as const,
   remoteAccess: ["remote-access"] as const,
-  // Under remoteAccess, so `remote_access_changed` re-reads it too.
   connect: ["remote-access", "connect"] as const,
   session: (sessionId: SessionId) => ["session", sessionId] as const,
   gitChanges: (

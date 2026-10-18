@@ -16,9 +16,13 @@ import { advance, cover, repair } from "../drive/execution.ts";
 import { createPrincipals, gate, gated } from "../engine/principals.ts";
 import { createWorkspaces, workspaceHandle } from "../env/workspaces.ts";
 import { createSettingsApi } from "../extend/settings.ts";
-import { readWorkspaceCatalog, runWorkspaceCommand } from "../extend/workspace-commands.ts";
+import {
+  completeWorkspaceCommand,
+  readWorkspaceCatalog,
+  runWorkspaceCommand,
+} from "../extend/workspace-commands.ts";
 import { inspect } from "../store/inspect.ts";
-import { forwarded } from "../util/iterable.ts";
+import { forwarded, watchStore } from "../util/iterable.ts";
 import { watchHost } from "./host.ts";
 import { createSessions, sessionHandle } from "./session.ts";
 
@@ -78,11 +82,13 @@ export function createConnection(
   const head = (handle: Head): Head => ({
     ...handle,
     watch: (options) => track(handle.watch(options)),
+    ...watchStore(() => track(handle.watch())),
   });
 
   const session = (handle: Session): Session => ({
     ...handle,
     watch: (options) => track(handle.watch(options)),
+    ...watchStore(() => track(handle.watch())),
     head: (name) => head(handle.head(name)),
   });
 
@@ -103,7 +109,9 @@ export function createConnection(
     const handle: Workspace = {
       ...workspaceHandle(kernel, context, id, client),
       catalog: () => readWorkspaceCatalog(kernel, id),
-      command: (name, args) => runWorkspaceCommand(kernel, context, id, name, args),
+      command: (name, text) => runWorkspaceCommand(kernel, context, id, name, text),
+      completeCommand: (name, prefix) =>
+        completeWorkspaceCommand(kernel, context, id, name, prefix),
     };
 
     return gated("workspace", handle, authority, {

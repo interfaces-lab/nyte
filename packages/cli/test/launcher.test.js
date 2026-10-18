@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
@@ -28,6 +28,7 @@ test("downloads, verifies, and caches the native binary", async () => {
       fetchFn,
     });
     assert.equal(await readFile(binary, "utf8"), "#!/bin/sh\nexit 0\n");
+    assert.equal(await readlink(join(root, "nyte")), join("0.2.0", "nyte"));
 
     const cached = await ensureBinary({
       version: "0.2.0",

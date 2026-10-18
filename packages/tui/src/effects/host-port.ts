@@ -239,8 +239,8 @@ function workspacePort(host: Connection, id: WorkspaceId): WorkspacePort {
   return {
     id,
     catalog: () => host.workspace(id).catalog(),
-    command: (name, argument) =>
-      host.workspace(id).command(name, argument === null ? undefined : argument),
+    command: (name, text) => host.workspace(id).command(name, text),
+    completeCommand: (name, prefix) => host.workspace(id).completeCommand(name, prefix),
     async cwd() {
       const workspace = await host.workspace(id).info();
 
@@ -397,7 +397,8 @@ function sessionPort(
         ...(patch.effort === undefined ? {} : { thinking: patch.effort }),
       }),
     applySetting: (id, value) => session.configure({ settings: { [id]: value } }),
-    command: (name, argument) => session.command(name, argument === null ? undefined : argument),
+    command: (name, text) => session.command(name, text),
+    completeCommand: (name, prefix) => session.completeCommand(name, prefix),
     async stopTask(task) {
       if (task.kind === "agent") {
         const stopped = await host.session(task.session).stop();

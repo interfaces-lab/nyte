@@ -6,11 +6,10 @@ import { extname, join, normalize } from "node:path";
 import process from "node:process";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
-import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/host/bench";
+import { fakeModels, lastUserText, testModel, titleReply } from "@nyte-ai/bench";
 import { sdk } from "@nyte-ai/sdk";
 import { ARCHIVED_SESSION_COUNT, E2E_PORT, E2E_TOKEN, README_LINE } from "./address.ts";
 
-/** The echo provider answers `Echo: <message>`; a title request gets `Echo: <first message>`. */
 const { models } = fakeModels({
   id: "echo",
   name: "Echo",

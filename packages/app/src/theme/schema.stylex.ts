@@ -1,40 +1,20 @@
-/**
- * Desktop geometry schema. Components compose these named decisions instead
- * of growing their own almost-matching widths, insets, and row heights. The
- * values live in `tokens.stylex.ts`; importing this file ships them.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench-layout.stylex.ts
- */
 import { defineConsts } from "@stylexjs/stylex";
 import "./tokens.stylex.ts";
 
 export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
-  /** macOS reserves this zoom-adjusted lane for the traffic lights. */
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
-  /** With window tabs the main area is a card set this far into the chrome. */
   cardInset: "var(--nyte-shell-card-inset)",
 });
 
 export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
-  /**
-   * Running prose (paragraphs, lists, headings, quotes) wraps near 72
-   * characters a line; tables, code, and canvases keep the full `measure`.
-   * In `ch` so it follows the font size; Inter's `0` is wider than its average
-   * letter, so 54ch is what lands a line at about 72 characters.
-   */
-  proseMeasure: "var(--nyte-prose-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
   gutter: "var(--nyte-conversation-gutter)",
   headerHeight: "var(--nyte-conversation-header-height)",
   turnGap: "var(--nyte-conversation-turn-gap)",
   rowGap: "var(--nyte-conversation-row-gap)",
   rowMinHeight: "var(--nyte-conversation-row-min-height)",
-  /**
-   * How far a row dissolves at a scrollport edge: the strip above the composer
-   * and the transcript's own top fade.
-   */
   edgeFade: "var(--nyte-conversation-edge-fade)",
   composerInset: "var(--nyte-composer-inset)",
   composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
@@ -98,12 +78,7 @@ export const workbench = defineConsts({
 });
 
 export const pane = defineConsts({
-  /**
-   * The drag lane on a pane divider. It centres a 1px line, so the track stays
-   * odd; an even one would land the hairline on a half pixel.
-   */
   sashSize: "var(--nyte-pane-sash-size)",
-  /** Holds the suggestion divider on the same footing: an odd gap, a centred line. */
   dividerGap: "var(--nyte-pane-divider-gap)",
 });
 

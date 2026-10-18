@@ -3,14 +3,13 @@
  * surfaces (component previews and CTAs, docs cards) stay in components.css
  * and docs.css, which load after this file.
  *
- * Geometry: 1072 inner, 1312 once the rail fits, 24 pad, 220 sidebar, 48
+ * Geometry: 1072 inner, 1312 on wide screens, 24 pad, 220 sidebar, 48
  * gutter, 72ch article. Mono for eyebrows and group labels; never uppercase.
  */
 
 @layer components {
   .doc {
     --doc-side: 220px;
-    --doc-toc: 200px;
     --doc-gutter: 48px;
     --doc-article: 72ch;
 
@@ -52,16 +51,9 @@
     }
   }
 
-  @media (min-width: 1400px) {
-    .doc-frame {
-      grid-template-columns: var(--doc-side) minmax(0, 1fr) var(--doc-toc);
-    }
-  }
-
   /* ---- sidebar --------------------------------------------------------- */
 
-  .doc-side,
-  .doc-toc {
+  .doc-side {
     position: sticky;
     top: var(--doc-rail-top);
     max-height: calc(100dvh - var(--doc-rail-top) - 24px);
@@ -137,9 +129,6 @@
 
   .doc-prose h2 {
     margin: 48px 0 12px;
-    padding-top: 24px;
-    border-top: 1px solid;
-    @apply border-border-subtle;
     font-size: 22px;
     line-height: 1.3;
     letter-spacing: -0.02em;
@@ -251,6 +240,43 @@
     position: relative;
   }
 
+  /* An editor's tab strip: the open file shares the code's surface. */
+  .doc-code-tabs {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    @apply bg-fill-selected;
+    box-shadow: inset 0 -0.5px 0 var(--color-border-subtle);
+  }
+
+  .doc-code-tab {
+    display: inline-flex;
+    flex-shrink: 0;
+    gap: 6px;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 14px;
+    box-shadow: inset -0.5px 0 0 var(--color-border-subtle);
+    @apply text-muted-foreground;
+    font-size: 13px;
+    line-height: 20px;
+    white-space: nowrap;
+    transition:
+      color 120ms ease-out,
+      background-color 120ms ease-out;
+  }
+
+  :hover > .doc-code-tab {
+    @apply text-foreground;
+  }
+
+  .doc-code-tab[data-active],
+  [data-active] > .doc-code-tab {
+    @apply bg-sidebar;
+    @apply text-foreground;
+  }
+
   .doc-code-copy {
     position: absolute;
     top: 5px;
@@ -324,75 +350,57 @@
     opacity: 0.7;
   }
 
-  /* ---- on this page ---------------------------------------------------- */
+  /* ---- the current page's sections, branching under its row ---------- */
 
-  .doc-toc {
-    display: none;
+  .doc-side-branches {
+    margin: 2px 0 6px 10px;
+    font-size: calc(13em / 14);
+    line-height: calc(16em / 13);
   }
 
-  @media (min-width: 1400px) {
-    .doc-toc {
-      display: block;
-    }
-  }
-
-  .doc-toc .doc-eyebrow {
-    display: block;
-    margin: 0 0 8px 12px;
-  }
-
-  .doc-toc ol {
+  .doc-side-branch {
     position: relative;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    border-left: 0.5px solid;
+    padding-left: 18px;
+  }
+
+  .doc-side-branch::before,
+  .doc-side-branch::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    border: 0 solid;
     @apply border-border-subtle;
+    pointer-events: none;
   }
 
-  .doc-toc a {
-    position: relative;
+  .doc-side-branch::before {
+    top: 0;
+    bottom: 0;
+    border-left-width: 1px;
+  }
+
+  .doc-side-branch:last-child::before {
+    bottom: auto;
+    height: calc(12em / 13);
+  }
+
+  .doc-side-branch::after {
+    top: calc(12em / 13);
+    width: 8px;
+    border-top-width: 1px;
+  }
+
+  .doc-side-branch a {
     display: block;
-    padding: 4px 0 4px 12px;
+    padding: calc(4em / 13) 0;
     @apply text-muted-foreground;
-    font-size: 13px;
-    line-height: 21px;
     text-wrap: balance;
     transition: color 120ms ease-out;
   }
 
-  .doc-toc a[data-depth="3"] {
-    padding-left: 24px;
-  }
-
-  .doc-toc a[data-depth="4"] {
-    padding-left: 36px;
-  }
-
-  .doc-toc a:hover {
+  .doc-side-branch a:hover,
+  .doc-side-branch a[aria-current] {
     @apply text-foreground;
-  }
-
-  /* The tail: a segment of the rail lights up beside the current heading. */
-  .doc-toc a::before {
-    content: "";
-    position: absolute;
-    left: -1px;
-    top: 5px;
-    bottom: 5px;
-    width: 1.5px;
-    border-radius: 999px;
-    @apply bg-muted-foreground;
-    opacity: 0;
-    transition: opacity 160ms ease-out;
-  }
-
-  .doc-toc a[aria-current="true"] {
-    @apply text-foreground;
-  }
-
-  .doc-toc a[aria-current="true"]::before {
-    opacity: 1;
   }
 
   /* ---- footer nav ------------------------------------------------------ */
@@ -466,7 +474,7 @@
     vertical-align: -0.2em;
   }
 
-  .doc-toc .doc-platform-icon {
+  .doc-side .doc-platform-icon {
     display: none;
   }
 

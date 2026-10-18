@@ -44,6 +44,7 @@ import {
   toCommitObjectId,
   walkCommitPath,
 } from "../store/session.ts";
+import { watchStore } from "../util/iterable.ts";
 import { extractUserText } from "../util/text.ts";
 
 const PREVIEW = 80;
@@ -62,13 +63,17 @@ export function headHandle(
 ): Head {
   const { principal } = context;
 
+  const watch: Head["watch"] = (options) =>
+    watchHead(kernel, { session, head, principal, options });
+
   return {
     sessionId: session,
     name: head,
     send: (content, options) => admit(kernel, { session, head, context, content, options }),
     configure: (patch) => configure(kernel, session, head, patch),
     view: (options) => viewHead(kernel, { session, head, principal, options }),
-    watch: (options) => watchHead(kernel, { session, head, principal, options }),
+    watch,
+    ...watchStore(() => watch()),
     history: (input) =>
       historyHead(kernel, { session, head, principal, before: input.before, limit: input.limit }),
     tree: () => tree(kernel, session, head),

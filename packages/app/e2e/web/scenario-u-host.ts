@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import { localGitHubAccount, localProvider, sqliteStore } from "@nyte-ai/host";
-import { fakeModels, testModel } from "@nyte-ai/host/bench";
-import type { FakeModels } from "@nyte-ai/host/bench";
+import { fakeModels, testModel } from "@nyte-ai/bench";
+import type { FakeModels } from "@nyte-ai/bench";
 import { sdk } from "@nyte-ai/sdk";
 import { restaurantReplies, restaurantSkill } from "./scenario-u-fixture.ts";
 
@@ -20,7 +20,6 @@ const TYPES = new Map([
   [".json", "application/json"],
 ]);
 
-/** The built web app's file for `request`, or its index for a route; undefined for the host's own paths. The canvas shell is open to any origin, as `public/vercel.json` serves it, since its sandboxed frame loads it from an opaque origin. */
 async function serveApp(request: Request): Promise<Response | undefined> {
   const { pathname } = new URL(request.url);
 
@@ -42,21 +41,13 @@ async function serveApp(request: Request): Promise<Response | undefined> {
   }
 }
 
-/** A host serving the web app for scenario U, as a machine the browser pairs with. */
 export interface ScenarioHost {
   readonly origin: string;
   readonly fake: FakeModels;
-  /** The link that pairs a browser with this host. */
   readonly pairing: string;
   close(): Promise<void>;
 }
 
-/**
- * Opens a host over the SQLite file `database` with `home` as its home and
- * workspace, answering scenario U's chat (canvas links on `places`), and
- * serves it with the built web app on `port` behind `token`. Opening it
- * again over the same file and home is a restart.
- */
 export async function openScenarioHost(input: {
   readonly database: string;
   readonly home: string;

@@ -1,0 +1,151 @@
+---
+title: Send messages
+description: Start a chat, send to it, wait for answers, and retry or edit without sending twice.
+---
+
+Every message returns a receipt. The receipt says the host has the message. It doesn't say the agent
+answered. Wait on the receipt for the part you care about, or don't wait at all and watch the view
+instead.
+
+## Start a chat with its first message
+
+```ts
+const { session, receipt } = await connection.sessions.start({
+  name: "Fix the flaky test",
+  content: "Find out why the date test fails on CI",
+});
+```
+
+`start` creates the session and admits the first message in one step, so there is never an empty
+session. Before that, the chat is a draft that only your client knows about. `start` resolves once
+the session's `before_send` hooks have accepted the message. If a hook refuses it, the session is
+removed and `start` throws.
+
+The other inputs are optional:
+
+| Input           | What it does                                                            |
+| --------------- | ----------------------------------------------------------------------- |
+| `id`            | Names the chat, its first message and its receipt. Minted when absent   |
+| `name`          | The title shown in session lists                                        |
+| `workspace`     | A registered `WorkspaceId`. Absent, the host's default workspace        |
+| `parent`        | Makes this a child of another session                                   |
+| `configuration` | Model, thinking, agent and settings for the chat                        |
+| `prompt`        | Adds a layer to the system prompt, or replaces it                       |
+| `isolation`     | `"worktree"` runs the chat in a new git worktree, removed with the chat |
+
+Pass `id` when a draft already has one, or when you retry after your own process restarted. The same
+id with the same input returns the same start. Different input under a taken id throws
+`SdkError("invalid")`.
+
+## Send to a running chat
+
+```ts
+const receipt = await session.send("Then add a regression test", { delivery: "queue" });
+```
+
+`delivery` decides how the message meets a run that is already going:
+
+| Delivery            | When the agent sees it                                            |
+| ------------------- | ----------------------------------------------------------------- |
+| `"steer"` (default) | At the live run's next boundary, so it can change course mid-task |
+| `"queue"`           | After the current run ends, as the prompt for the next one        |
+| `"attach"`          | With the next turn, without starting one                          |
+
+`steer` and `queue` both start a run when nothing is running.
+
+## Wait for what you need
+
+A `SendReceipt` has three waits:
+
+- `landed()` resolves when the message has its place in history.
+- `settled()` resolves with how the run ended: `completed`, `stopped` or `failed`. It can also
+  resolve `withdrawn`, when the message was stopped before it landed.
+- `status()` answers right away with `pending`, `settled` or `missing`.
+
+```ts
+const end = await receipt.settled();
+
+if (end.kind === "failed") console.error(end.failure.message);
+```
+
+Pass a signal to stop waiting. Aborting the wait doesn't stop the run.
+
+```ts
+const end = await receipt.settled({ signal: AbortSignal.timeout(60_000) });
+```
+
+To stop the work itself, call `receipt.stop()`. It withdraws a message that is still queued, or
+stops the run it started.
+
+## Retries are already handled
+
+`send` mints the receipt id before anything reaches the network, writes the message to a journal and
+shows it in the view as `unsent`. When a request fails, the SDK resends it under the same id, and the
+host admits it once. You don't need your own retry loop.
+
+The journal lives in memory, so it covers a dropped connection but not a restart. To survive one,
+pass `journal` to `connect`: an object with `load`, `put` and `remove` over storage you own. On the
+next `connect`, the SDK resends every entry it finds.
+
+If you'd rather keep the id yourself, pass it. The same id with the same content replays the first
+admission.
+
+```ts
+import { asId } from "@nyte-ai/schema";
+
+await session.send("Then add a regression test", { id: asId<"receipt">(savedId) });
+```
+
+## Edit a message
+
+Editing sends new content in place of an earlier message. It is also the only way to change a chat's
+first message.
+
+```ts
+const view = await session.view();
+const first = view.messages.find((message) => message.kind === "user");
+
+if (first !== undefined && view.revision !== null) {
+  await session.send("Find out why the time zone test fails on CI", {
+    replace: first.id,
+    expect: view.revision,
+  });
+}
+```
+
+An edit stops a live run before it lands. Pass `running: "refuse"` to leave the run alone; the edit
+then settles `busy` instead. `expect` makes the edit conditional on the history you saw, so a message that arrived in the
+meantime isn't lost. When the view's `revision` is `null`, read the view again before editing.
+
+The replaced messages stay in the session's tree. To leave a summary of them on the new path, pass
+`abandoned: { summarize: {} }`; [Branch a conversation](/docs/sdk/guides/branch-a-conversation)
+covers history in more depth.
+
+## Stop everything
+
+```ts
+const { stopped, withdrawn } = await session.stop();
+```
+
+`stop` ends every live run on the session and withdraws every queued message, and tells you which.
+To stop one run, use `session.run(id).stop()`.
+
+## Change the model
+
+```ts
+const outcome = await session.configure({
+  model: { provider: "openai-codex", id: "{{modelId}}" },
+  thinking: "high",
+});
+```
+
+`configure` takes a patch of what to change. It returns `unknown-model`, `unknown-agent` or
+`invalid` instead of throwing when the patch doesn't fit the catalog. To pin a configuration on one
+message, pass it to `send`:
+
+```ts
+await session.send("Explain the fix in one paragraph", { configuration: { thinking: "low" } });
+```
+
+`thinking` is one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`. `agent` selects
+an agent a plugin declared.

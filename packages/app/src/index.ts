@@ -10,4 +10,4 @@ export { startRendererStartup } from "./startup.ts";
 
 export { StartupFailure } from "./startup-failure.tsx";
 
-export { recordFirstFrame, seedFirstFrame } from "./first-frame.ts";
+export { recordFirstFrame, seedFirstFrame, windowContentReady } from "./first-frame.ts";

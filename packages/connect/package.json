@@ -1,5 +1,6 @@
 {
   "name": "@nyte-ai/connect",
+  "version": "0.0.0",
   "private": true,
   "description": "The Nyte Connect contract: broker and desktop routes, their schemas, relay addresses and framing, and a broker client. Node-free; the signing and relay entries are for the broker and desktop only.",
   "type": "module",
@@ -28,6 +29,6 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typescript": "6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }

@@ -12,6 +12,7 @@ import {
   decodeRunRecord,
   decodeSeenRecord,
   decodeSessionRecord,
+  decodeTrustRecord,
   decodeWorkspaceRecord,
   loggedEvent,
   objectId,
@@ -25,6 +26,7 @@ import { Value } from "typebox/value";
 import {
   changedPaths,
   derivedRefs,
+  folderTrustRecords,
   MAPPING,
   migratedLog,
   migratedRecord,
@@ -44,6 +46,7 @@ const DECODERS = new Map<string, Decode>(
     receipt: decodeReceiptRecord,
     seen: decodeSeenRecord,
     workspace: decodeWorkspaceRecord,
+    trust: decodeTrustRecord,
     lease: decodeLease,
     call: decodeCallRecord,
     principals: decodePrincipalRecord,
@@ -345,6 +348,13 @@ export async function verifyMigration(
 
     if (from < 15)
       for (const [name, target] of endedRunRefs(database, refsBefore)) derived.set(name, target);
+
+    const workspaces = [...refsBefore].flatMap(([name, row]) =>
+      name.startsWith("workspaces/") && row.body !== null ? [decodeObject(row.body)] : [],
+    );
+
+    for (const [name, record] of await folderTrustRecords(from, workspaces))
+      if (!refsBefore.has(name)) derived.set(name, await objectId(record));
 
     const added = new Map<string, number>();
 

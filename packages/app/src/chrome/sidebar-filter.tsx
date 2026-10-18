@@ -32,6 +32,7 @@ import {
   amongOptions,
   PULL_REQUESTS,
   SHOW_FIELDS,
+  SORTS,
   STATUSES,
   toggleOption,
   type SessionPullRequest,
@@ -141,7 +142,7 @@ export function WorkspaceControls({
             </Toggle>
           }
         />
-        <MenuContent side="right" align="start" xstyle={styles.popup}>
+        <MenuContent side="bottom" align="end" xstyle={styles.popup}>
           <MenuSub>
             <MenuSubTrigger icon="folder">Grouping</MenuSubTrigger>
             <MenuSubContent xstyle={styles.popup}>
@@ -151,11 +152,11 @@ export function WorkspaceControls({
                   if (amongOptions(grouping, GROUPINGS)) onChange({ ...value, grouping });
                 }}
               >
-                <MenuRadioItem value="inbox" icon="inbox-empty" closeOnClick={false}>
-                  Inbox
-                </MenuRadioItem>
                 <MenuRadioItem value="none" icon="list" closeOnClick={false}>
                   None
+                </MenuRadioItem>
+                <MenuRadioItem value="inbox" icon="inbox-empty" closeOnClick={false}>
+                  Inbox
                 </MenuRadioItem>
                 <MenuRadioItem value="repository" icon="github" closeOnClick={false}>
                   Repository
@@ -172,13 +173,27 @@ export function WorkspaceControls({
               </MenuRadioGroup>
             </MenuSubContent>
           </MenuSub>
-          <MenuCheckboxItem
-            checked={value.sortByStatus}
-            icon="status"
-            onCheckedChange={(sortByStatus) => onChange({ ...value, sortByStatus })}
-          >
-            Sort by Status
-          </MenuCheckboxItem>
+          <MenuSub>
+            <MenuSubTrigger icon="chevron-up-down">Sort</MenuSubTrigger>
+            <MenuSubContent xstyle={styles.popup}>
+              <MenuRadioGroup
+                value={value.sort}
+                onValueChange={(sort) => {
+                  if (amongOptions(sort, SORTS)) onChange({ ...value, sort });
+                }}
+              >
+                <MenuRadioItem value="created" icon="new-chat" closeOnClick={false}>
+                  Created
+                </MenuRadioItem>
+                <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
+                  Updated
+                </MenuRadioItem>
+                <MenuRadioItem value="status" icon="status" closeOnClick={false}>
+                  Status
+                </MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuSubContent>
+          </MenuSub>
           <MenuSub>
             <MenuSubTrigger icon="eye">Show</MenuSubTrigger>
             <MenuSubContent xstyle={styles.popup}>

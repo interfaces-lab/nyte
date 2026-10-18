@@ -404,6 +404,7 @@ describe("watch", () => {
       id: "h1",
       link: { kind: "connected" },
       name: "studio",
+      operations: null,
       platform: "darwin",
       version: "0.1.0",
       catalog: "g1",

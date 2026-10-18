@@ -20,6 +20,8 @@ export const INPUT_HEADER = "X-Nyte-Input";
 /** Names the response header carrying the id of the host that answered, `X-Nyte-Host: <hostId>`, on every response a listener sends, so a client compares it with `expect.hostId` on its first answer (§43a, §43j). */
 export const HOST_HEADER = "X-Nyte-Host";
 
+export const OPERATIONS_HEADER = "X-Nyte-Operations";
+
 const DATA = 0;
 
 const CONTROL = 1;

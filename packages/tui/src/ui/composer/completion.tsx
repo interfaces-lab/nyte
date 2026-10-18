@@ -23,6 +23,7 @@ const EMPTY: Readonly<Record<CompletionModel["token"]["trigger"], string>> = {
   "/": "no matching commands",
   "@": "no matching files or folders",
   cd: "no matching directories",
+  argument: "no suggestions",
 };
 
 export function CompletionMenu(props: { readonly model: CompletionModel }): JSX.Element {

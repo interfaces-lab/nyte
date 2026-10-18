@@ -99,11 +99,6 @@ function deviceToken(transport: Transport, kept: string | undefined): string {
   return token;
 }
 
-/**
- * Reads the host's first view from a `connection.watch` it leaves open, its
- * frames replayed from that first one, so the client's host watch continues
- * this stream instead of opening a second.
- */
 async function firstView(
   transport: Transport,
 ): Promise<{ readonly view: HostViewWire; readonly frames: AsyncIterator<Json> }> {
@@ -143,7 +138,11 @@ function replayFirst(first: Json, rest: AsyncIterator<Json>): AsyncIterator<Json
   };
 }
 
-async function verifyIdentity(url: string, send: typeof fetch, expected: HostId): Promise<void> {
+async function verifyIdentity(
+  url: string,
+  send: (url: string, init?: RequestInit) => Promise<Response>,
+  expected: HostId,
+): Promise<void> {
   const nonce = crypto.randomUUID();
   let response: Response;
 

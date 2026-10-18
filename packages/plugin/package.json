@@ -48,7 +48,134 @@
     "./question/schema": "./src/question/schema.ts"
   },
   "publishConfig": {
-    "access": "public"
+    "exports": {
+      "./core": {
+        "types": "./dist/src/core.d.ts",
+        "import": "./dist/src/core.js"
+      },
+      "./core/approvals": {
+        "types": "./dist/src/approvals/approvals.d.ts",
+        "import": "./dist/src/approvals/approvals.js"
+      },
+      "./core/acp": {
+        "types": "./dist/src/acp/index.d.ts",
+        "import": "./dist/src/acp/index.js"
+      },
+      "./core/bash-description": {
+        "types": "./dist/src/bash-description.d.ts",
+        "import": "./dist/src/bash-description.js"
+      },
+      "./core/browser-tools": {
+        "types": "./dist/src/browser-tools.d.ts",
+        "import": "./dist/src/browser-tools.js"
+      },
+      "./core/canvas": {
+        "types": "./dist/src/canvas/canvas.d.ts",
+        "import": "./dist/src/canvas/canvas.js"
+      },
+      "./core/canvas-compile": {
+        "types": "./dist/src/canvas/canvas-compile.d.ts",
+        "import": "./dist/src/canvas/canvas-compile.js"
+      },
+      "./core/canvas-preview": {
+        "types": "./dist/src/canvas/canvas-preview.d.ts",
+        "import": "./dist/src/canvas/canvas-preview.js"
+      },
+      "./core/claude-code": {
+        "types": "./dist/examples/claude-code/index.d.ts",
+        "import": "./dist/examples/claude-code/index.js"
+      },
+      "./core/claude-code-sdk": {
+        "types": "./dist/src/claude-code-sdk/index.d.ts",
+        "import": "./dist/src/claude-code-sdk/index.js"
+      },
+      "./core/codemode": {
+        "types": "./dist/src/codemode.d.ts",
+        "import": "./dist/src/codemode.js"
+      },
+      "./core/codemode-runtime": {
+        "types": "./dist/src/codemode-runtime.d.ts",
+        "import": "./dist/src/codemode-runtime.js"
+      },
+      "./core/codemode-worker": {
+        "types": "./dist/src/codemode-worker.d.ts",
+        "import": "./dist/src/codemode-worker.js"
+      },
+      "./core/openai-astra-context": {
+        "types": "./dist/src/openai-astra-context.d.ts",
+        "import": "./dist/src/openai-astra-context.js"
+      },
+      "./core/openai-compaction": {
+        "types": "./dist/src/openai-compaction.d.ts",
+        "import": "./dist/src/openai-compaction.js"
+      },
+      "./core/question": {
+        "types": "./dist/src/question/question.d.ts",
+        "import": "./dist/src/question/question.js"
+      },
+      "./core/rename": {
+        "types": "./dist/src/rename.d.ts",
+        "import": "./dist/src/rename.js"
+      },
+      "./core/telemetry": {
+        "types": "./dist/src/telemetry.d.ts",
+        "import": "./dist/src/telemetry.js"
+      },
+      "./core/web-search": {
+        "types": "./dist/src/web-search.d.ts",
+        "import": "./dist/src/web-search.js"
+      },
+      "./client": {
+        "types": "./dist/src/client.d.ts",
+        "import": "./dist/src/client.js"
+      },
+      "./client/mount": {
+        "types": "./dist/src/client/mount.d.ts",
+        "import": "./dist/src/client/mount.js"
+      },
+      "./client/notifications": {
+        "types": "./dist/src/client/notifications.d.ts",
+        "import": "./dist/src/client/notifications.js"
+      },
+      "./client/presentation": {
+        "types": "./dist/src/client/presentation.d.ts",
+        "import": "./dist/src/client/presentation.js"
+      },
+      "./client/questions": {
+        "types": "./dist/src/question/client/questions.d.ts",
+        "import": "./dist/src/question/client/questions.js"
+      },
+      "./client/questions-tui": {
+        "types": "./dist/src/question/client/questions-tui.d.ts",
+        "import": "./dist/src/question/client/questions-tui.js"
+      },
+      "./client/transcript": {
+        "types": "./dist/src/client/transcript.d.ts",
+        "import": "./dist/src/client/transcript.js"
+      },
+      "./client/transcript-tui": {
+        "types": "./dist/src/client/transcript-tui.d.ts",
+        "import": "./dist/src/client/transcript-tui.js"
+      },
+      "./approvals/schema": {
+        "types": "./dist/src/approvals/schema.d.ts",
+        "import": "./dist/src/approvals/schema.js"
+      },
+      "./canvas/protocol": {
+        "types": "./dist/src/canvas/canvas-protocol.d.ts",
+        "import": "./dist/src/canvas/canvas-protocol.js"
+      },
+      "./canvas/schema": {
+        "types": "./dist/src/canvas/schema.d.ts",
+        "import": "./dist/src/canvas/schema.js"
+      },
+      "./question/schema": {
+        "types": "./dist/src/question/schema.d.ts",
+        "import": "./dist/src/question/schema.js"
+      }
+    },
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -74,12 +201,12 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@opentui/core": "^0.6.5",
+    "@opentui/core": "^0.6.6",
     "@types/node": "^26.6.5",
     "@types/react": "19.3.0",
     "react": "19.3.0",
     "typescript": "6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@opentui/core": "^0.6.5",

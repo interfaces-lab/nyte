@@ -19,6 +19,7 @@ import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SiteLandingRouteImport } from './routes/_site/_landing'
 import { Route as SiteLegalRouteImport } from './routes/_site/_legal'
 import { Route as ApiSearchRouteImport } from './routes/api/search'
+import { Route as ApiSearchRecordsRouteImport } from './routes/api/search-records'
 import { Route as LlmsDotmdxSplatRouteImport } from './routes/llms[.]mdx/$'
 import { Route as OgSplatRouteImport } from './routes/og/$'
 import { Route as SiteLandingIndexRouteImport } from './routes/_site/_landing/index'
@@ -77,6 +78,11 @@ const SiteLegalRoute = SiteLegalRouteImport.update({
 const ApiSearchRoute = ApiSearchRouteImport.update({
   id: '/api/search',
   path: '/api/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSearchRecordsRoute = ApiSearchRecordsRouteImport.update({
+  id: '/api/search-records',
+  path: '/api/search-records',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LlmsDotmdxSplatRoute = LlmsDotmdxSplatRouteImport.update({
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/search-records': typeof ApiSearchRecordsRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
   '/hero-2': typeof SiteLandingHero2Route
@@ -170,6 +177,7 @@ export interface FileRoutesByTo {
   '/robots.txt': typeof RobotsDottxtRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/api/search': typeof ApiSearchRoute
+  '/api/search-records': typeof ApiSearchRecordsRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
   '/hero-2': typeof SiteLandingHero2Route
@@ -194,6 +202,7 @@ export interface FileRoutesById {
   '/_site/_landing': typeof SiteLandingRouteWithChildren
   '/_site/_legal': typeof SiteLegalRouteWithChildren
   '/api/search': typeof ApiSearchRoute
+  '/api/search-records': typeof ApiSearchRecordsRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
   '/_site/_landing/hero-2': typeof SiteLandingHero2Route
@@ -218,6 +227,7 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/sitemap.xml'
     | '/api/search'
+    | '/api/search-records'
     | '/llms.mdx/$'
     | '/og/$'
     | '/hero-2'
@@ -239,6 +249,7 @@ export interface FileRouteTypes {
     | '/robots.txt'
     | '/sitemap.xml'
     | '/api/search'
+    | '/api/search-records'
     | '/llms.mdx/$'
     | '/og/$'
     | '/hero-2'
@@ -262,6 +273,7 @@ export interface FileRouteTypes {
     | '/_site/_landing'
     | '/_site/_legal'
     | '/api/search'
+    | '/api/search-records'
     | '/llms.mdx/$'
     | '/og/$'
     | '/_site/_landing/hero-2'
@@ -285,6 +297,7 @@ export interface RootRouteChildren {
   RobotsDottxtRoute: typeof RobotsDottxtRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ApiSearchRoute: typeof ApiSearchRoute
+  ApiSearchRecordsRoute: typeof ApiSearchRecordsRoute
   LlmsDotmdxSplatRoute: typeof LlmsDotmdxSplatRoute
   OgSplatRoute: typeof OgSplatRoute
 }
@@ -359,6 +372,13 @@ declare module '@tanstack/react-router' {
       path: '/api/search'
       fullPath: '/api/search'
       preLoaderRoute: typeof ApiSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/search-records': {
+      id: '/api/search-records'
+      path: '/api/search-records'
+      fullPath: '/api/search-records'
+      preLoaderRoute: typeof ApiSearchRecordsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/llms.mdx/$': {
@@ -509,6 +529,7 @@ const rootRouteChildren: RootRouteChildren = {
   RobotsDottxtRoute: RobotsDottxtRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ApiSearchRoute: ApiSearchRoute,
+  ApiSearchRecordsRoute: ApiSearchRecordsRoute,
   LlmsDotmdxSplatRoute: LlmsDotmdxSplatRoute,
   OgSplatRoute: OgSplatRoute,
 }

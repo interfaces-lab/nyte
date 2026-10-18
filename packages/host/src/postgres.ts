@@ -190,6 +190,10 @@ function postgresTarget(pool: PostgresPool): MigrationTarget {
           }
 
           for (const created of change.creates) {
+            await client.query(
+              "INSERT INTO objects (id, body) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL",
+              [created.target, created.body],
+            );
             const revision = mintRevision();
 
             const { rows } = await client.query(

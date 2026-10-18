@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import process from "node:process";
 import { ConnectRuntime, hostShare, machineName } from "@nyte-ai/connect/host";
@@ -9,9 +9,14 @@ import { serviceBuild } from "./build.ts";
 import { IDLE_GRACE_MS, Lifetime, REAL_TIMERS, terminate } from "./lifetime.ts";
 import type { LifetimeOptions } from "./lifetime.ts";
 import { portConflict, probePort, SERVICE_HOSTNAME } from "./port.ts";
-import { acquireLock, removeRegistration, writeRegistration } from "./registration.ts";
+import {
+  acquireLock,
+  removeRegistration,
+  watchReplacement,
+  writeRegistration,
+} from "./registration.ts";
 import type { Registration } from "./registration.ts";
-import { AttachmentSchema, SERVICE_ROUTES } from "./routes.ts";
+import { AttachmentSchema, SERVICE_ROUTES, serviceRoutes } from "./routes.ts";
 import type { ServiceEvent } from "./routes.ts";
 import { unitInstalled } from "./supervisor.ts";
 
@@ -20,10 +25,8 @@ export interface StartServiceOptions {
   readonly home: string;
   readonly port: number;
   readonly version: string;
-  /** The id of the code the service runs, which goes into its build; see `serviceBuild`. */
   readonly code?: string;
   readonly connect: HostConnectConfig | undefined;
-  /** When the service stops on its own; by default `IDLE_GRACE_MS`, real timers, and `terminate`. */
   readonly lifetime?: Partial<LifetimeOptions>;
 }
 
@@ -60,7 +63,6 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
     throw cause;
   });
   const token = randomBytes(32).toString("base64url");
-  const digest = sha256(`Bearer ${token}`);
 
   const connect = new ConnectRuntime({
     config: options.connect,
@@ -72,8 +74,15 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
 
   const sharing = new Sharing(connect, hostShare(host));
 
+  const timing = {
+    grace: IDLE_GRACE_MS,
+    timers: REAL_TIMERS,
+    idle: terminate,
+    ...options.lifetime,
+  };
+
   const lifetime = new Lifetime(
-    { grace: IDLE_GRACE_MS, timers: REAL_TIMERS, idle: terminate, ...options.lifetime },
+    timing,
     () => working(host),
     async () => (await unitInstalled(home)) || (await connect.view()).kind === "linked",
   );
@@ -85,18 +94,9 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       .listen({
         transport: { kind: "http", hostname: SERVICE_HOSTNAME, port },
         auth: { kind: "token", token },
-        before: (request) => {
-          const { pathname } = new URL(request.url);
-
-          if (!pathname.startsWith(SERVICE_ROUTES.prefix)) return undefined;
-
-          const presented = request.headers.get("authorization");
-
-          if (presented === null || !timingSafeEqual(sha256(presented), digest))
-            return Response.json({ message: "Unauthorized" }, { status: 401 });
-
-          return route(request, pathname, connect, sharing, lifetime);
-        },
+        before: serviceRoutes(token, (request, pathname) =>
+          route(request, pathname, connect, sharing, lifetime),
+        ),
       })
       .catch(async (cause: unknown) => {
         const held = port === 0 ? undefined : portConflict(port, await probePort(port));
@@ -115,6 +115,12 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
     };
 
     await writeRegistration(home, registration);
+
+    const unwatch = watchReplacement(home, registration, () => {
+      lifetime.close();
+      timing.idle();
+    });
+
     const opened = listener;
     let closing: Promise<void> | undefined;
 
@@ -122,11 +128,13 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       registration,
       close() {
         closing ??= (async () => {
-          await removeRegistration(home, registration.pid);
+          unwatch();
+          await removeRegistration(home, registration);
           lifetime.close();
           sharing.close();
           await connect.close();
           await opened.close();
+          await stopHostJobs(host);
           await host.close();
           await lock.release();
         })();
@@ -153,34 +161,33 @@ async function route(
   sharing: Sharing,
   lifetime: Lifetime,
 ): Promise<Response> {
-  if (request.method === "GET" && pathname === SERVICE_ROUTES.attach) {
-    const query = new URL(request.url).searchParams;
-
-    const attachment = {
-      pid: Number(query.get("pid")),
-      startedAt: Number(query.get("startedAt")),
-      build: query.get("build"),
-    };
-
-    return Value.Check(AttachmentSchema, attachment)
-      ? lifetime.attach(attachment, request.signal)
-      : Response.json(
-          { message: "An attachment names its pid, start and build." },
-          { status: 400 },
-        );
-  }
+  if (request.method === "GET" && pathname === SERVICE_ROUTES.attach)
+    return attachClient(request, lifetime);
 
   if (request.method === "GET" && pathname === SERVICE_ROUTES.clients)
     return Response.json(await lifetime.clients());
 
   if (request.method === "POST" && pathname === SERVICE_ROUTES.retire) {
-    const busy = await lifetime.retire(Number(new URL(request.url).searchParams.get("pid")));
+    const query = new URL(request.url).searchParams;
+    const busy = await lifetime.retire(
+      Number(query.get("pid")),
+      query.get("operations") ?? undefined,
+    );
 
     return busy === undefined
       ? new Response(null, { status: 202 })
       : Response.json(busy, { status: 409 });
   }
 
+  return connectRoutes(request, pathname, connect, sharing);
+}
+
+export async function connectRoutes(
+  request: Request,
+  pathname: string,
+  connect: ConnectRuntime,
+  sharing: Sharing,
+): Promise<Response> {
   if (request.method === "GET" && pathname === SERVICE_ROUTES.connect)
     return Response.json(await connect.view());
 
@@ -203,7 +210,22 @@ async function route(
   return Response.json({ message: "Not found" }, { status: 404 });
 }
 
-class Sharing {
+export function attachClient(request: Request, lifetime: Lifetime): Response {
+  const query = new URL(request.url).searchParams;
+
+  const attachment = {
+    pid: Number(query.get("pid")),
+    startedAt: Number(query.get("startedAt")),
+    build: query.get("build"),
+    follows: query.get("follows") === "1",
+  };
+
+  return Value.Check(AttachmentSchema, attachment)
+    ? lifetime.attach(attachment, request.signal)
+    : Response.json({ message: "An attachment names its pid, start and build." }, { status: 400 });
+}
+
+export class Sharing {
   readonly #connect: ConnectRuntime;
   readonly #share: ConnectShare;
   readonly #streams = new Set<(event: ServiceEvent) => void>();
@@ -313,7 +335,22 @@ class Sharing {
   }
 }
 
-/** Whether the host has work an idle stop would interrupt: a job (pty or not) still running, or a run driving or retrying in any session. A run waiting on an answer is durable and resumes in the next service. */
+export async function stopHostJobs(host: Host): Promise<void> {
+  for (const { id } of await host.workspaces.list()) {
+    const workspace = host.workspace(id);
+    const running = (await workspace.jobs.list()).filter((job) => job.state.kind === "running");
+
+    await Promise.all(
+      running.map((job) =>
+        workspace
+          .job(job.id)
+          .stop()
+          .catch(() => undefined),
+      ),
+    );
+  }
+}
+
 async function working(host: Host): Promise<boolean> {
   for (const workspace of await host.workspaces.list()) {
     const jobs = await host.workspace(workspace.id).jobs.list();
@@ -336,10 +373,6 @@ async function working(host: Host): Promise<boolean> {
     if (page.next === null) return false;
     page = await host.sessions.list({ parents, cursor: page.next });
   }
-}
-
-function sha256(text: string): Buffer {
-  return createHash("sha256").update(text).digest();
 }
 
 function describeError(error: unknown): string {

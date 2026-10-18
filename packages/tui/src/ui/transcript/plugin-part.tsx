@@ -4,6 +4,7 @@ import type { Renderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
 import { createMemo, ErrorBoundary, on, onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import { readRawPart } from "@nyte-ai/plugin/client/presentation";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS } from "../../lib/constants.ts";
@@ -39,8 +40,8 @@ export function PluginPart(props: { readonly message: PartMessage }): JSX.Elemen
 
     if (!isPart(message, canvas))
       return (
-        <text id={`part:${message.id}`} fg={app.kit.theme().dim} wrapMode="word">
-          {`[${message.partKind}]`}
+        <text id={`part:${message.id}`} fg={app.kit.theme().dim} wrapMode="none" truncate>
+          {`[${message.partKind}] ${readRawPart(message).body.replaceAll(/\s+/gu, " ").trim()}`}
         </text>
       );
 

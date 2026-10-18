@@ -2,34 +2,23 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openHost } from "@nyte-ai/host";
-import { fakeModels } from "@nyte-ai/host/bench";
-import type { Reply, Request } from "@nyte-ai/host/bench";
+import { fakeModels } from "@nyte-ai/bench";
+import type { Reply, Request } from "@nyte-ai/bench";
 import { TITLE_PROMPT } from "@nyte-ai/plugin/core/rename";
 import { findService, startService, stopService } from "@nyte-ai/service";
 import { VERSION } from "../src/version.ts";
 
-/** The answer of the project plugin `serveForBinary` writes when asked for one. */
 export const PLUGIN_ANSWER = "QA plugin answered";
 
-/** A Nyte service in this process over the fake provider, registered in its own HOME. */
 export interface TestService extends AsyncDisposable {
   readonly cwd: string;
-  /** Queues answers for the binary's runs, in order; session titles are answered apart. */
   reply(...replies: readonly Reply[]): void;
-  /** Every request but the title requests. */
   readonly requests: readonly Request[];
-  /** The binary's whole environment: never merge the caller's into it. */
   readonly env: Readonly<Record<string, string>>;
-  /** How many requests the service saw end because their client went away. */
   disconnects(): number;
-  /** Stops the service, as `nyte service stop` or a nyte of another build replacing it does. */
   stop(): Promise<void>;
 }
 
-/**
- * Returns the code id `binary` was built with: the third part of the build `nyte service status`
- * names when no service runs. A service started with it registers the build the binary expects.
- */
 export async function readBinaryCode(binary: string): Promise<string | undefined> {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-binary-code-")));
 
@@ -52,12 +41,6 @@ export async function readBinaryCode(binary: string): Promise<string | undefined
   }
 }
 
-/**
- * Starts the service the compiled binary finds through `~/.nyte/service.json`, so every
- * binary command connects here, to a real host over the fake provider, instead of starting
- * its own. Its build carries `code`, the binary's code id. With `plugin`, the workspace holds
- * a project plugin, which the folder's trust decision gates.
- */
 export async function serveForBinary(options: {
   readonly plugin: boolean;
   readonly code: string | undefined;
@@ -139,22 +122,19 @@ export async function serveForBinary(options: {
     env,
     async [Symbol.asyncDispose]() {
       await service.close();
+      await stopService(home);
       await rm(root, { recursive: true, force: true });
     },
   };
 }
 
-/** An isolated HOME with no service registered: the binary starts its own there, as on a fresh machine. */
 export interface FreshHome extends AsyncDisposable {
   readonly cwd: string;
-  /** `$NYTE_HOME`, where the TUI keeps its settings and first-frame record. */
   readonly nyteHome: string;
-  /** Where the service the binary starts registers itself once it listens. */
   readonly registration: string;
   readonly env: Readonly<Record<string, string>>;
 }
 
-/** Disposing waits for the service the binary started to register, stops it, and removes the HOME. */
 export async function freshHome(): Promise<FreshHome> {
   const { root, home, cwd, env } = await isolate();
   const registration = join(home, ".nyte", "service.json");
@@ -174,7 +154,7 @@ export async function freshHome(): Promise<FreshHome> {
   };
 }
 
-async function isolate() {
+export async function isolate() {
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-binary-")));
   const home = join(root, "home");
   const cwd = join(root, "workspace");

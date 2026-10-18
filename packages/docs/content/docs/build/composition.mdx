@@ -1,132 +1,117 @@
 ---
 title: Build an agent app
-description: Copy a host, a web app, or a terminal interface and change it from there
+description: A chat app in the framework you already use, backed by a Nyte host on your machine.
 ---
 
-## Make an API call
+## Create the project
 
-```ts title="host.ts"
-import { sqliteStore } from "@nyte-ai/host";
-import { chatOnlyProvider } from "@nyte-ai/host/providers";
-import { sdk } from "@nyte-ai/sdk";
-
-const store = sqliteStore({ path: "./agent.db" });
-const host = await sdk.open({
-  store,
-  plugins: [{ id: "chat-only", environment: chatOnlyProvider() }],
-  workspace: { kind: "chat-only", locator: null },
-});
-
-const { session, receipt } = await host.sessions.start({
-  configuration: { model: { provider: "openai-codex", id: "{{modelId}}" } },
-  content: "Hello",
-});
-const end = await receipt.settled();
-const view = await session.view();
-
-console.log(end.kind, JSON.stringify(view.messages, null, 2));
-
-await host.close();
-await store.close();
-```
-
-`sdk.open` composes a host in this process and runs its sessions there. `sessions.start` stores the
-session with its first message in one step and returns a receipt: admission, not an answer. Later
-messages go through `session.send`, which returns the same kind of receipt. `settled()` waits for how the run ended:
-`completed`, `stopped` or `failed`. `view()` is one snapshot of what a client draws: `messages`,
-`turns`, `execution`, `background` and `changes`. For a live view, use `watch()` as in
-[Make a web app](#make-a-web-app). The store is yours, so close it after the host.
-
-The host keeps provider credentials in its store, encrypted with the key in `~/.nyte/secret.key`.
-Sign in once per store, before the first send:
-
-```ts title="host.ts"
-import process from "node:process";
-import { createInterface } from "node:readline/promises";
-
-const catalog = await host.models.list();
-
-if (
-  catalog.providers.find((provider) => provider.id === "openai-codex")?.credential === "missing"
-) {
-  const prompt = createInterface({ input: process.stdin, output: process.stdout });
-  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
-
-  for await (const step of login.steps()) {
-    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
-    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
-    if (step.kind === "failed") throw new Error(step.reason);
-  }
-
-  prompt.close();
-}
-```
-
-`plugins` lists the host's core plugins, with exactly one environment provider per workspace
-kind.
-
-To work in a project folder, serve it with the local provider:
-
-```ts title="host.ts"
-import { sqliteStore } from "@nyte-ai/host"; // [!code --]
-import { chatOnlyProvider } from "@nyte-ai/host/providers"; // [!code --]
-import { localProvider, sqliteStore } from "@nyte-ai/host"; // [!code ++]
-import process from "node:process"; // [!code ++]
-
-const host = await sdk.open({
-  store,
-  plugins: [{ id: "chat-only", environment: chatOnlyProvider() }], // [!code --]
-  workspace: { kind: "chat-only", locator: null }, // [!code --]
-  plugins: [{ id: "local", environment: localProvider() }], // [!code ++]
-  workspace: { kind: "local", path: process.cwd() }, // [!code ++]
-});
-```
-
-There is no trust step. A registered workspace runs, and the folder's own plugins, skills and
-instructions load with it: `.nyte/plugins`, `.nyte/skills`, `.agents/skills`, `.nyte/prompts`,
-`AGENTS.md` and `CLAUDE.md`. The agent gets unrestricted tools in that folder. It isn't a sandbox,
-and Nyte doesn't ask per tool call.
-
-## Make a web app
-
-The SDK packages aren't on npm yet. The install commands below work once they publish under `@next`.
-
-The host needs Node 26.4 or later.
-
-### Vite
-
-Create a React app and install the public SDK packages:
+<CodeBlockTabs defaultValue="Vite" groupId="framework">
+<CodeBlockTabsList>
+<CodeBlockTabsTrigger value="Vite">Vite</CodeBlockTabsTrigger>
+<CodeBlockTabsTrigger value="Next.js">Next.js</CodeBlockTabsTrigger>
+<CodeBlockTabsTrigger value="Svelte">Svelte</CodeBlockTabsTrigger>
+<CodeBlockTabsTrigger value="Vue">Vue</CodeBlockTabsTrigger>
+<CodeBlockTabsTrigger value="Nuxt">Nuxt</CodeBlockTabsTrigger>
+<CodeBlockTabsTrigger value="Solid">Solid</CodeBlockTabsTrigger>
+</CodeBlockTabsList>
+<CodeBlockTab value="Vite">
 
 ```sh
-pnpm create vite chat-web --template react-ts
-cd chat-web
-pnpm install
-pnpm add @nyte-ai/sdk@next @nyte-ai/host@next @nyte-ai/plugin@next
+pnpm create vite chat --template react-ts
+cd chat
+pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
 ```
 
-#### Run the host
+</CodeBlockTab>
+<CodeBlockTab value="Next.js">
 
-This is a separate Node process, not code for Vite to bundle. It serves only the API on port 8787.
+```sh
+pnpm create next-app@latest chat --yes
+cd chat
+pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
+```
 
-```ts title="chat-web/server.ts"
+</CodeBlockTab>
+<CodeBlockTab value="Svelte">
+
+```sh
+pnpm create vite chat --template svelte-ts
+cd chat
+pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
+```
+
+</CodeBlockTab>
+<CodeBlockTab value="Vue">
+
+```sh
+pnpm create vite chat --template vue-ts
+cd chat
+pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
+```
+
+</CodeBlockTab>
+<CodeBlockTab value="Nuxt">
+
+```sh
+pnpm create nuxt@latest chat
+cd chat
+pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
+```
+
+</CodeBlockTab>
+<CodeBlockTab value="Solid">
+
+```sh
+pnpm create vite chat --template solid-ts
+cd chat
+pnpm add @nyte-ai/sdk @nyte-ai/host @nyte-ai/plugin @nyte-ai/schema
+```
+
+</CodeBlockTab>
+</CodeBlockTabs>
+
+## Add the files
+
+<GroupPanel groupId="framework" value="Vite" defaultValue="Vite">
+
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.tsx` replaces the template's app with the chat, and `src/api.ts` connects it to the host. `useSyncExternalStore` reads the session, so React re-renders whenever the conversation changes.
+
+```ts tab="server.ts"
 import process from "node:process";
+import { createInterface } from "node:readline/promises";
 import { sqliteStore } from "@nyte-ai/host";
-import { chatOnlyProvider } from "@nyte-ai/host/providers";
+import { asId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk";
+import type { Host } from "@nyte-ai/sdk";
 
 const store = sqliteStore({ path: "./agent.db" });
-const host = await sdk.open({
-  store,
-  plugins: [{ id: "chat-only", environment: chatOnlyProvider() }],
-  workspace: { kind: "chat-only", locator: null },
-});
+const host = await sdk.open({ store });
 
-await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+const { providers } = await host.models.list();
+
+if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
+  await signIn(host);
+}
+
+const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+
+if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
 
 const listener = await host.listen({
-  transport: { kind: "http", port: 8787 },
-  auth: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
-  origins: ["http://localhost:5173", "http://localhost:3000"],
+  // No port: the OS picks a free one, and the line below prints it.
+  transport: { kind: "http" },
+  auth: {
+    kind: "custom",
+    // Runs on every request and says who is calling. This one lets everyone in as the same user.
+    authorize: () => ({
+      // Principal ids are branded strings; asId turns "you" into one.
+      principal: asId<"principal">("you"),
+      // participant can start and use sessions. Owner calls, such as model sign-in, are refused.
+      authority: new Set(["participant"]),
+    }),
+  },
+  // The pages allowed to call the host: the address your dev server prints.
+  origins: ["http://localhost:5173"],
 });
 
 console.log("Listening on", listener.address);
@@ -135,249 +120,873 @@ process.once("SIGINT", async () => {
   await host.close();
   await store.close();
 });
-```
 
-`listen` binds `127.0.0.1` and refuses a token shorter than 16 characters. The host runs the
-sessions it serves; `close()` closes its listeners first. Sign in against this store as in
-[Make an API call](#make-an-api-call) before the first chat.
+async function signIn(host: Host) {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
 
-From `chat-web`, generate a host token and start the host:
-
-```sh
-export NYTE_TOKEN="$(node -e 'console.log(crypto.randomUUID())')"
-printf '%s\n' "$NYTE_TOKEN"
-node server.ts
-```
-
-#### Render the chat
-
-Replace the generated `src/App.tsx`. Enter the token printed by the host and a first message; that
-submit starts the session.
-`watch()` yields the whole view on every change, and resumes from where it stopped when the link
-drops.
-
-```tsx title="chat-web/src/App.tsx"
-import { isPart, text } from "@nyte-ai/plugin/client";
-import { sdk } from "@nyte-ai/sdk";
-import type { Session, SessionView, UserContent } from "@nyte-ai/sdk";
-import { useEffect, useState } from "react";
-
-function contentText(content: UserContent) {
-  return typeof content === "string"
-    ? content
-    : content.map((block) => (block.kind === "text" ? block.text : "")).join("");
-}
-
-export default function App() {
-  const [token, setToken] = useState("");
-  const [session, setSession] = useState<Session>();
-  const [view, setView] = useState<SessionView>();
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (session === undefined) return;
-    const views = session.watch()[Symbol.asyncIterator]();
-    let open = true;
-
-    void (async () => {
-      for (let next = await views.next(); open && next.done !== true; next = await views.next())
-        setView(next.value);
-    })().catch((cause: unknown) => {
-      if (open) setError(cause instanceof Error ? cause.message : String(cause));
-    });
-
-    return () => {
-      open = false;
-      void views.return?.();
-    };
-  }, [session]);
-
-  async function submit() {
-    if (!input.trim()) return;
-    setBusy(true);
-    setError("");
-    try {
-      if (session === undefined) {
-        const connection = await sdk.connect({
-          url: "http://127.0.0.1:8787",
-          credentials: { kind: "token", token },
-        });
-        setSession((await connection.sessions.start({ content: input })).session);
-      } else {
-        await session.send(input, { delivery: "queue" });
-      }
-      setInput("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
+  for await (const step of login.steps()) {
+    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
+    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+    if (step.kind === "choose") {
+      for (const option of step.options) console.log(`${option.id}: ${option.label}`);
+      await login.answer(await prompt.question(`${step.message} `));
     }
+    if (step.kind === "failed") throw new Error(step.reason);
   }
 
-  const lastRun = view?.execution.kind === "idle" ? view.execution.lastRun : null;
+  prompt.close();
+}
+```
+
+```tsx tab="src/App.tsx"
+import { isPart, text } from "@nyte-ai/plugin/client";
+import type { Session } from "@nyte-ai/sdk/client";
+import { useState, useSyncExternalStore } from "react";
+import { startChat } from "./api";
+
+export default function App() {
+  const [session, setSession] = useState<Session>();
+
+  return session ? (
+    <Chat session={session} />
+  ) : (
+    <Composer onSend={async (content) => setSession(await startChat(content))} />
+  );
+}
+
+function Chat({ session }: { session: Session }) {
+  const view = useSyncExternalStore(session.subscribe, session.current);
 
   return (
     <main>
-      <h1>Chat</h1>
       {view?.messages.map((message) =>
         message.kind === "user" ? (
-          <p key={message.id} style={{ whiteSpace: "pre-wrap" }}>
-            <strong>You: </strong>
-            {contentText(message.content)}
-            {message.status.kind === "landed" ? "" : ` (${message.status.kind})`}
-          </p>
+          <p key={message.id}>You: {typeof message.content === "string" ? message.content : ""}</p>
         ) : isPart(message, text) ? (
-          <p key={message.id} style={{ whiteSpace: "pre-wrap" }}>
-            <strong>AI: </strong>
-            {message.state.markdown}
-          </p>
+          <p key={message.id}>{message.state.markdown}</p>
         ) : null,
       )}
-      {lastRun?.end.kind === "failed" && <p role="alert">{lastRun.end.failure.message}</p>}
-      {error && <p role="alert">{error}</p>}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-      >
-        {session === undefined && (
-          <label>
-            Host token
-            <input
-              type="password"
-              value={token}
-              disabled={busy}
-              onChange={(event) => setToken(event.target.value)}
-              required
-              minLength={16}
-            />
-          </label>
-        )}
-        <label>
-          Message
-          <input
-            value={input}
-            disabled={busy || (session !== undefined && view === undefined)}
-            onChange={(event) => setInput(event.target.value)}
-            required
-          />
-        </label>
-        <button disabled={busy || (session !== undefined && view === undefined)}>
-          {session === undefined ? "Start chat" : "Send"}
-        </button>
-      </form>
+      <Composer onSend={(content) => session.send(content)} />
     </main>
+  );
+}
+
+function Composer({ onSend }: { onSend: (content: string) => Promise<unknown> }) {
+  return (
+    <form
+      action={async (form) => {
+        await onSend(String(form.get("content")));
+      }}
+    >
+      <input name="content" aria-label="Message" required />
+      <button>Send</button>
+    </form>
   );
 }
 ```
 
-In another terminal, from `chat-web`:
+```ts tab="src/api.ts"
+import { sdk } from "@nyte-ai/sdk/client";
+import type { Session } from "@nyte-ai/sdk/client";
 
-```sh
-pnpm dev --host localhost --port 5173 --strictPort
+export async function startChat(content: string): Promise<Session> {
+  const connection = await sdk.connect({
+    // The address `node server.ts` printed.
+    url: "http://127.0.0.1:PORT",
+    // No headers: the host lets this page in by its origin.
+    credentials: { kind: "custom", headers: () => ({}) },
+  });
+  const { session } = await connection.sessions.start({ content });
+
+  return session;
+}
 ```
 
-Open `http://localhost:5173`. The host stores conversation history, so the browser sends only the
-new message, not the whole transcript. This example starts a new session with each first message. Save `session.id` and reopen it with `connection.session(id)` after a reload.
+</GroupPanel>
+<GroupPanel groupId="framework" value="Next.js" defaultValue="Vite">
 
-A sent message is in `view.messages` at once, `unsent` until the host admits it, then `pending`
-and `landed`. The sdk mints its id before the network and resends it under that id after a failed
-request, so it lands once. This example leaves out tool rendering: every other part has a
-`partKind`, a `state` and a `status` for a renderer to draw.
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `app/page.tsx` replaces the starter page. It's a client component because it keeps the session in state, and `app/api.ts` imports only `@nyte-ai/sdk/client`, so server rendering never loads the host. `useSyncExternalStore` re-renders the page whenever the conversation changes.
 
-### Next.js
+```ts tab="server.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+import { sqliteStore } from "@nyte-ai/host";
+import { asId } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
+import type { Host } from "@nyte-ai/sdk";
 
-Keep the same host running. In a separate directory, create a standalone Next.js app, choose the
-App Router without a `src` directory, and install the browser packages:
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({ store });
 
-```sh
-pnpm create next-app chat-next
-cd chat-next
-pnpm add @nyte-ai/sdk@next @nyte-ai/plugin@next
+const { providers } = await host.models.list();
+
+if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
+  await signIn(host);
+}
+
+const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+
+if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+
+const listener = await host.listen({
+  // No port: the OS picks a free one, and the line below prints it.
+  transport: { kind: "http" },
+  auth: {
+    kind: "custom",
+    // Runs on every request and says who is calling. This one lets everyone in as the same user.
+    authorize: () => ({
+      // Principal ids are branded strings; asId turns "you" into one.
+      principal: asId<"principal">("you"),
+      // participant can start and use sessions. Owner calls, such as model sign-in, are refused.
+      authority: new Set(["participant"]),
+    }),
+  },
+  // The pages allowed to call the host: the address your dev server prints.
+  origins: ["http://localhost:3000"],
+});
+
+console.log("Listening on", listener.address);
+
+process.once("SIGINT", async () => {
+  await host.close();
+  await store.close();
+});
+
+async function signIn(host: Host) {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
+
+  for await (const step of login.steps()) {
+    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
+    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+    if (step.kind === "choose") {
+      for (const option of step.options) console.log(`${option.id}: ${option.label}`);
+      await login.answer(await prompt.question(`${step.message} `));
+    }
+    if (step.kind === "failed") throw new Error(step.reason);
+  }
+
+  prompt.close();
+}
 ```
 
-Copy the Vite `App.tsx` to `chat-next/app/page.tsx` and add `"use client";` before its imports.
-Keep the generated root layout and Next config. The public release will ship compiled JavaScript
-and type declarations, so it will not need `transpilePackages`.
+```tsx tab="app/page.tsx"
+"use client";
 
-```sh
-pnpm dev --hostname localhost --port 3000
+import { isPart, text } from "@nyte-ai/plugin/client";
+import type { Session } from "@nyte-ai/sdk/client";
+import { useState, useSyncExternalStore } from "react";
+import { startChat } from "./api";
+
+export default function App() {
+  const [session, setSession] = useState<Session>();
+
+  return session ? (
+    <Chat session={session} />
+  ) : (
+    <Composer onSend={async (content) => setSession(await startChat(content))} />
+  );
+}
+
+function Chat({ session }: { session: Session }) {
+  const view = useSyncExternalStore(session.subscribe, session.current);
+
+  return (
+    <main>
+      {view?.messages.map((message) =>
+        message.kind === "user" ? (
+          <p key={message.id}>You: {typeof message.content === "string" ? message.content : ""}</p>
+        ) : isPart(message, text) ? (
+          <p key={message.id}>{message.state.markdown}</p>
+        ) : null,
+      )}
+      <Composer onSend={(content) => session.send(content)} />
+    </main>
+  );
+}
+
+function Composer({ onSend }: { onSend: (content: string) => Promise<unknown> }) {
+  return (
+    <form
+      action={async (form) => {
+        await onSend(String(form.get("content")));
+      }}
+    >
+      <input name="content" aria-label="Message" required />
+      <button>Send</button>
+    </form>
+  );
+}
 ```
 
-Open `http://localhost:3000` and enter the same host token. There is no Next.js API route in this
-version. Both frontends call the same long-running host, which owns execution and storage. A
-serverless request handler would not keep it running after the request ends. For that deployment
-model, start with the
-[Vercel template](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/vercel/README.md).
+```ts tab="app/api.ts"
+import { sdk } from "@nyte-ai/sdk/client";
+import type { Session } from "@nyte-ai/sdk/client";
 
-### Before deploying
+export async function startChat(content: string): Promise<Session> {
+  const connection = await sdk.connect({
+    // The address `node server.ts` printed.
+    url: "http://127.0.0.1:PORT",
+    // No headers: the host lets this page in by its origin.
+    credentials: { kind: "custom", headers: () => ({}) },
+  });
+  const { session } = await connection.sessions.start({ content });
 
-The loopback URLs and token entry above are for local development. For a deployed frontend, use
-an HTTPS host URL and allow its exact origin in `origins`. Never put provider credentials or a
-shared host token in `VITE_*` or `NEXT_PUBLIC_*` variables; those values go into the browser
-bundle. The token grants full access to this host, not just one session. For one principal per
-device, mint a code with `host.principals.pair({ authority })` and connect with
-`credentials: { kind: "pairing", code }`; the device token it yields is `connection.credential`.
-Behind your own sign-in, `auth: { kind: "custom", authorize }` maps each request to a principal and
-its authority. Nyte's SDK protocol is not the AI SDK UI message protocol, so `useChat` needs an
-adapter rather than pointing directly at these endpoints.
+  return session;
+}
+```
 
-## Make a TUI
+</GroupPanel>
+<GroupPanel groupId="framework" value="Svelte" defaultValue="Vite">
 
-Keep the host and render the session yourself. There is nothing to fold and nothing to retry:
-`sessions.start` retries under the session id it minted, `watch()` yields the view, and `send`
-journals each later message before it reaches the wire.
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.svelte` replaces the template's component, and `src/api.ts` connects it to the host. The `$effect` subscribes once a session starts and returns the unsubscribe, so Svelte cleans it up.
+
+```ts tab="server.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+import { sqliteStore } from "@nyte-ai/host";
+import { asId } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
+import type { Host } from "@nyte-ai/sdk";
+
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({ store });
+
+const { providers } = await host.models.list();
+
+if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
+  await signIn(host);
+}
+
+const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+
+if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+
+const listener = await host.listen({
+  // No port: the OS picks a free one, and the line below prints it.
+  transport: { kind: "http" },
+  auth: {
+    kind: "custom",
+    // Runs on every request and says who is calling. This one lets everyone in as the same user.
+    authorize: () => ({
+      // Principal ids are branded strings; asId turns "you" into one.
+      principal: asId<"principal">("you"),
+      // participant can start and use sessions. Owner calls, such as model sign-in, are refused.
+      authority: new Set(["participant"]),
+    }),
+  },
+  // The pages allowed to call the host: the address your dev server prints.
+  origins: ["http://localhost:5173"],
+});
+
+console.log("Listening on", listener.address);
+
+process.once("SIGINT", async () => {
+  await host.close();
+  await store.close();
+});
+
+async function signIn(host: Host) {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
+
+  for await (const step of login.steps()) {
+    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
+    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+    if (step.kind === "choose") {
+      for (const option of step.options) console.log(`${option.id}: ${option.label}`);
+      await login.answer(await prompt.question(`${step.message} `));
+    }
+    if (step.kind === "failed") throw new Error(step.reason);
+  }
+
+  prompt.close();
+}
+```
+
+```svelte tab="src/App.svelte"
+<script lang="ts">
+  import { isPart, text } from "@nyte-ai/plugin/client";
+  import type { Session, SessionView } from "@nyte-ai/sdk/client";
+  import { startChat } from "./api";
+
+  let session = $state<Session>();
+  let view = $state<SessionView>();
+  let draft = $state("");
+
+  $effect(() => {
+    const chat = session;
+
+    return chat?.subscribe(() => (view = chat.current()));
+  });
+
+  async function send(event: SubmitEvent) {
+    event.preventDefault();
+    const content = draft;
+
+    draft = "";
+    if (session) await session.send(content);
+    else session = await startChat(content);
+  }
+</script>
+
+<main>
+  {#each view?.messages ?? [] as message (message.id)}
+    {#if message.kind === "user"}
+      <p>You: {typeof message.content === "string" ? message.content : ""}</p>
+    {:else if isPart(message, text)}
+      <p>{message.state.markdown}</p>
+    {/if}
+  {/each}
+  <form onsubmit={send}>
+    <input bind:value={draft} aria-label="Message" required />
+    <button>Send</button>
+  </form>
+</main>
+```
+
+```ts tab="src/api.ts"
+import { sdk } from "@nyte-ai/sdk/client";
+import type { Session } from "@nyte-ai/sdk/client";
+
+export async function startChat(content: string): Promise<Session> {
+  const connection = await sdk.connect({
+    // The address `node server.ts` printed.
+    url: "http://127.0.0.1:PORT",
+    // No headers: the host lets this page in by its origin.
+    credentials: { kind: "custom", headers: () => ({}) },
+  });
+  const { session } = await connection.sessions.start({ content });
+
+  return session;
+}
+```
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Vue" defaultValue="Vite">
+
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.vue` replaces the template's component, and `src/api.ts` connects it to the host. `watchEffect` subscribes once a session starts and `onCleanup` unsubscribes. The view is a `shallowRef` because each change replaces it whole.
+
+```ts tab="server.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+import { sqliteStore } from "@nyte-ai/host";
+import { asId } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
+import type { Host } from "@nyte-ai/sdk";
+
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({ store });
+
+const { providers } = await host.models.list();
+
+if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
+  await signIn(host);
+}
+
+const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+
+if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+
+const listener = await host.listen({
+  // No port: the OS picks a free one, and the line below prints it.
+  transport: { kind: "http" },
+  auth: {
+    kind: "custom",
+    // Runs on every request and says who is calling. This one lets everyone in as the same user.
+    authorize: () => ({
+      // Principal ids are branded strings; asId turns "you" into one.
+      principal: asId<"principal">("you"),
+      // participant can start and use sessions. Owner calls, such as model sign-in, are refused.
+      authority: new Set(["participant"]),
+    }),
+  },
+  // The pages allowed to call the host: the address your dev server prints.
+  origins: ["http://localhost:5173"],
+});
+
+console.log("Listening on", listener.address);
+
+process.once("SIGINT", async () => {
+  await host.close();
+  await store.close();
+});
+
+async function signIn(host: Host) {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
+
+  for await (const step of login.steps()) {
+    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
+    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+    if (step.kind === "choose") {
+      for (const option of step.options) console.log(`${option.id}: ${option.label}`);
+      await login.answer(await prompt.question(`${step.message} `));
+    }
+    if (step.kind === "failed") throw new Error(step.reason);
+  }
+
+  prompt.close();
+}
+```
+
+```vue tab="src/App.vue"
+<script setup lang="ts">
+import { isPart, text } from "@nyte-ai/plugin/client";
+import type { Session, SessionView } from "@nyte-ai/sdk/client";
+import { ref, shallowRef, watchEffect } from "vue";
+import { startChat } from "./api";
+
+const session = shallowRef<Session>();
+const view = shallowRef<SessionView>();
+const draft = ref("");
+
+watchEffect((onCleanup) => {
+  const chat = session.value;
+
+  if (chat) onCleanup(chat.subscribe(() => (view.value = chat.current())));
+});
+
+async function send() {
+  const content = draft.value;
+
+  draft.value = "";
+  if (session.value) await session.value.send(content);
+  else session.value = await startChat(content);
+}
+</script>
+
+<template>
+  <main>
+    <template v-for="message in view?.messages ?? []" :key="message.id">
+      <p v-if="message.kind === 'user'">
+        You: {{ typeof message.content === "string" ? message.content : "" }}
+      </p>
+      <p v-else-if="isPart(message, text)">{{ message.state.markdown }}</p>
+    </template>
+    <form @submit.prevent="send">
+      <input v-model="draft" aria-label="Message" required />
+      <button>Send</button>
+    </form>
+  </main>
+</template>
+```
+
+```ts tab="src/api.ts"
+import { sdk } from "@nyte-ai/sdk/client";
+import type { Session } from "@nyte-ai/sdk/client";
+
+export async function startChat(content: string): Promise<Session> {
+  const connection = await sdk.connect({
+    // The address `node server.ts` printed.
+    url: "http://127.0.0.1:PORT",
+    // No headers: the host lets this page in by its origin.
+    credentials: { kind: "custom", headers: () => ({}) },
+  });
+  const { session } = await connection.sessions.start({ content });
+
+  return session;
+}
+```
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Nuxt" defaultValue="Vite">
+
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `app/app.vue` replaces the starter's root component, and `app/api.ts` connects it to the host. Nuxt renders the page on the server first; the session starts only when you send, in the browser, and `app/api.ts` imports only `@nyte-ai/sdk/client`, so the server never loads the host.
+
+```ts tab="server.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+import { sqliteStore } from "@nyte-ai/host";
+import { asId } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
+import type { Host } from "@nyte-ai/sdk";
+
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({ store });
+
+const { providers } = await host.models.list();
+
+if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
+  await signIn(host);
+}
+
+const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+
+if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+
+const listener = await host.listen({
+  // No port: the OS picks a free one, and the line below prints it.
+  transport: { kind: "http" },
+  auth: {
+    kind: "custom",
+    // Runs on every request and says who is calling. This one lets everyone in as the same user.
+    authorize: () => ({
+      // Principal ids are branded strings; asId turns "you" into one.
+      principal: asId<"principal">("you"),
+      // participant can start and use sessions. Owner calls, such as model sign-in, are refused.
+      authority: new Set(["participant"]),
+    }),
+  },
+  // The pages allowed to call the host: the address your dev server prints.
+  origins: ["http://localhost:3000"],
+});
+
+console.log("Listening on", listener.address);
+
+process.once("SIGINT", async () => {
+  await host.close();
+  await store.close();
+});
+
+async function signIn(host: Host) {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
+
+  for await (const step of login.steps()) {
+    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
+    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+    if (step.kind === "choose") {
+      for (const option of step.options) console.log(`${option.id}: ${option.label}`);
+      await login.answer(await prompt.question(`${step.message} `));
+    }
+    if (step.kind === "failed") throw new Error(step.reason);
+  }
+
+  prompt.close();
+}
+```
+
+```vue tab="app/app.vue"
+<script setup lang="ts">
+import { isPart, text } from "@nyte-ai/plugin/client";
+import type { Session, SessionView } from "@nyte-ai/sdk/client";
+import { ref, shallowRef, watchEffect } from "vue";
+import { startChat } from "./api";
+
+const session = shallowRef<Session>();
+const view = shallowRef<SessionView>();
+const draft = ref("");
+
+watchEffect((onCleanup) => {
+  const chat = session.value;
+
+  if (chat) onCleanup(chat.subscribe(() => (view.value = chat.current())));
+});
+
+async function send() {
+  const content = draft.value;
+
+  draft.value = "";
+  if (session.value) await session.value.send(content);
+  else session.value = await startChat(content);
+}
+</script>
+
+<template>
+  <main>
+    <template v-for="message in view?.messages ?? []" :key="message.id">
+      <p v-if="message.kind === 'user'">
+        You: {{ typeof message.content === "string" ? message.content : "" }}
+      </p>
+      <p v-else-if="isPart(message, text)">{{ message.state.markdown }}</p>
+    </template>
+    <form @submit.prevent="send">
+      <input v-model="draft" aria-label="Message" required />
+      <button>Send</button>
+    </form>
+  </main>
+</template>
+```
+
+```ts tab="app/api.ts"
+import { sdk } from "@nyte-ai/sdk/client";
+import type { Session } from "@nyte-ai/sdk/client";
+
+export async function startChat(content: string): Promise<Session> {
+  const connection = await sdk.connect({
+    // The address `node server.ts` printed.
+    url: "http://127.0.0.1:PORT",
+    // No headers: the host lets this page in by its origin.
+    credentials: { kind: "custom", headers: () => ({}) },
+  });
+  const { session } = await connection.sessions.start({ content });
+
+  return session;
+}
+```
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Solid" defaultValue="Vite">
+
+`server.ts` goes at the project root and runs the agent: the model login, the sessions and the tools. `src/App.tsx` replaces the template's app with the chat, and `src/api.ts` connects it to the host. `from` turns the session's `subscribe` into a signal and unsubscribes when the chat unmounts.
+
+```ts tab="server.ts"
+import process from "node:process";
+import { createInterface } from "node:readline/promises";
+import { sqliteStore } from "@nyte-ai/host";
+import { asId } from "@nyte-ai/schema";
+import { sdk } from "@nyte-ai/sdk";
+import type { Host } from "@nyte-ai/sdk";
+
+const store = sqliteStore({ path: "./agent.db" });
+const host = await sdk.open({ store });
+
+const { providers } = await host.models.list();
+
+if (providers.find((provider) => provider.id === "openai-codex")?.credential === "missing") {
+  await signIn(host);
+}
+
+const chosen = await host.models.setDefault({ provider: "openai-codex", id: "{{modelId}}" });
+
+if (chosen.kind !== "set") throw new Error("That model isn't in your account's catalog.");
+
+const listener = await host.listen({
+  // No port: the OS picks a free one, and the line below prints it.
+  transport: { kind: "http" },
+  auth: {
+    kind: "custom",
+    // Runs on every request and says who is calling. This one lets everyone in as the same user.
+    authorize: () => ({
+      // Principal ids are branded strings; asId turns "you" into one.
+      principal: asId<"principal">("you"),
+      // participant can start and use sessions. Owner calls, such as model sign-in, are refused.
+      authority: new Set(["participant"]),
+    }),
+  },
+  // The pages allowed to call the host: the address your dev server prints.
+  origins: ["http://localhost:5173"],
+});
+
+console.log("Listening on", listener.address);
+
+process.once("SIGINT", async () => {
+  await host.close();
+  await store.close();
+});
+
+async function signIn(host: Host) {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const login = host.models.login({ provider: "openai-codex", method: { kind: "oauth" } });
+
+  for await (const step of login.steps()) {
+    if (step.kind === "open") console.log("Sign in at", step.url, step.code ?? "");
+    if (step.kind === "paste") await login.answer(await prompt.question(`${step.message} `));
+    if (step.kind === "choose") {
+      for (const option of step.options) console.log(`${option.id}: ${option.label}`);
+      await login.answer(await prompt.question(`${step.message} `));
+    }
+    if (step.kind === "failed") throw new Error(step.reason);
+  }
+
+  prompt.close();
+}
+```
+
+```tsx tab="src/App.tsx"
+import { isPart, text } from "@nyte-ai/plugin/client";
+import type { Session, SessionView } from "@nyte-ai/sdk/client";
+import { createSignal, For, from, Show } from "solid-js";
+import { startChat } from "./api";
+
+export default function App() {
+  const [session, setSession] = createSignal<Session>();
+
+  return (
+    <Show
+      when={session()}
+      fallback={<Composer onSend={async (content) => setSession(await startChat(content))} />}
+    >
+      {(chat) => <Chat session={chat()} />}
+    </Show>
+  );
+}
+
+function Chat(props: { session: Session }) {
+  const view = from<SessionView | undefined>((set) =>
+    props.session.subscribe(() => set(() => props.session.current())),
+  );
+
+  return (
+    <main>
+      <For each={view()?.messages}>
+        {(message) =>
+          message.kind === "user" ? (
+            <p>You: {typeof message.content === "string" ? message.content : ""}</p>
+          ) : isPart(message, text) ? (
+            <p>{message.state.markdown}</p>
+          ) : null
+        }
+      </For>
+      <Composer onSend={(content) => props.session.send(content)} />
+    </main>
+  );
+}
+
+function Composer(props: { onSend: (content: string) => Promise<unknown> }) {
+  return (
+    <form
+      onSubmit={async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const content = String(new FormData(form).get("content"));
+
+        form.reset();
+        await props.onSend(content);
+      }}
+    >
+      <input name="content" aria-label="Message" required />
+      <button>Send</button>
+    </form>
+  );
+}
+```
+
+```ts tab="src/api.ts"
+import { sdk } from "@nyte-ai/sdk/client";
+import type { Session } from "@nyte-ai/sdk/client";
+
+export async function startChat(content: string): Promise<Session> {
+  const connection = await sdk.connect({
+    // The address `node server.ts` printed.
+    url: "http://127.0.0.1:PORT",
+    // No headers: the host lets this page in by its origin.
+    credentials: { kind: "custom", headers: () => ({}) },
+  });
+  const { session } = await connection.sessions.start({ content });
+
+  return session;
+}
+```
+
+</GroupPanel>
+
+## Run it
+
+The host needs Node 26.4 or later:
+
+```sh
+node server.ts
+```
+
+The first run signs you in to your OpenAI account in the terminal. The login is saved in
+`agent.db`, encrypted with the key in `~/.nyte/secret.key`, so later runs skip it. Copy the address
+it prints into `api.ts`; the OS picks a new port each time the host starts.
+
+```sh
+pnpm dev
+```
+
+<GroupPanel groupId="framework" value="Vite" defaultValue="Vite">
+
+Then start your dev server in a second terminal. Vite prints `http://localhost:5173`, the origin `server.ts` already allows.
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Next.js" defaultValue="Vite">
+
+Then start your dev server in a second terminal. Next.js prints `http://localhost:3000`, the origin `server.ts` already allows.
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Svelte" defaultValue="Vite">
+
+Then start your dev server in a second terminal. Vite prints `http://localhost:5173`, the origin `server.ts` already allows.
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Vue" defaultValue="Vite">
+
+Then start your dev server in a second terminal. Vite prints `http://localhost:5173`, the origin `server.ts` already allows.
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Nuxt" defaultValue="Vite">
+
+Then start your dev server in a second terminal. Nuxt prints `http://localhost:3000`, the origin `server.ts` already allows.
+
+</GroupPanel>
+<GroupPanel groupId="framework" value="Solid" defaultValue="Vite">
+
+Then start your dev server in a second terminal. Vite prints `http://localhost:5173`, the origin `server.ts` already allows.
+
+</GroupPanel>
+
+Open that address and send a message. The answer streams in as the host writes it. Before you put
+this online, replace `authorize` with your own sign-in; see [Before you deploy](#before-you-deploy).
+
+This chat draws your messages and the text answers. Tool calls and other parts are skipped here;
+[Render a session](/docs/sdk/guides/render-a-session#draw-the-messages) shows how to draw them.
+
+## Or a terminal app
+
+The store works outside a browser too. Run this beside the host, with your question as the argument:
 
 ```ts title="tui.ts"
 import process from "node:process";
-import { sdk } from "@nyte-ai/sdk";
-import type { SessionView } from "@nyte-ai/sdk";
+import { isPart, text } from "@nyte-ai/plugin/core";
+import { sdk } from "@nyte-ai/sdk/client";
 
 const connection = await sdk.connect({
-  url: "http://127.0.0.1:8787",
-  credentials: { kind: "token", token: process.env.NYTE_TOKEN ?? "" },
+  // The address `node server.ts` printed.
+  url: "http://127.0.0.1:PORT",
+  credentials: { kind: "custom", headers: () => ({}) },
 });
-const { session } = await connection.sessions.start({ content: "Explain this repository" });
+const { session } = await connection.sessions.start({ content: process.argv[2] ?? "Hello" });
 
-const draw = (view: SessionView) =>
-  console.log(view.turns.length, "turns,", view.execution.kind, "execution");
+session.subscribe(() => {
+  const answer = session.current()?.messages.findLast((message) => isPart(message, text));
 
-for await (const view of session.watch()) draw(view);
+  if (answer === undefined || !isPart(answer, text)) return;
+  console.clear();
+  console.log(answer.state.markdown);
+});
 ```
 
-The sdk owns both directions. Reading, `watch()` resumes from its last position when the link
-drops, so nothing is missed or repeated. Writing, `send` mints the message id, writes it to the
-journal, and shows it `unsent`; on acknowledgement the entry is removed. If the client dies in
-between, the next `connect` resends each entry under the same id, and the host admits it or
-replays the receipt it already has.
+```sh
+node tui.ts "What does this project do?"
+```
 
-`delivery: "steer"`, the default, joins the live run at its next boundary, and `"queue"` waits
-for the current run to end; either starts a run when the head is idle. `"attach"` rides with the
-next turn; a subagent's or background job's report also wakes a head whose last run completed,
-but not one that was stopped or failed. The journal is in memory by default. For messages that
-should survive a restart, pass `journal` to `connect`: an object with `load`, `put` and `remove`
-over your own storage. To edit a message, `send(content, { replace: id })`.
+## The folder it works in
 
-## Or extend what's already there
+The agent works in the folder you start the host from, and its tools run there without asking
+first. It isn't a sandbox. Pass `workspace: { kind: "local", path }` to `sdk.open` to pick another
+folder.
 
-To change what a client does, write a plugin. Core plugins from `@nyte-ai/plugin/core` add tools,
-parts, commands, settings and hooks to sessions. Client plugins from `@nyte-ai/plugin/client` add
-renderers, commands, settings, keybindings and client hooks; each declares the frameworks it
-renders for, and the client mounts what it can. The supplied renderers are in
-`@nyte-ai/plugin/client/transcript` and `@nyte-ai/plugin/client/transcript-tui`. Question UI is defined by its own client plugins, `@nyte-ai/plugin/client/questions` and `@nyte-ai/plugin/client/questions-tui`.
+The folder's own instructions and extensions, such as `AGENTS.md`, `CLAUDE.md`, `.nyte/skills`,
+`.agents/skills`, `.nyte/prompts` and `.nyte/plugins`, load only once you trust the folder:
 
-## What there is to copy
+```ts
+const added = await host.workspaces.add({ kind: "local", path: process.cwd() });
 
-| Path                                  | What runs                                                       |
-| ------------------------------------- | --------------------------------------------------------------- |
-| `packages/host/src/deploy/cloudflare` | One host in a SQLite-backed Durable Object, run from its alarm  |
-| `packages/host/src/deploy/vercel`     | A Nitro app over PostgreSQL whose heads run as Vercel workflows |
-| `packages/demo/website`               | Static interface previews, not a live agent                     |
+if (added.kind === "added" || added.kind === "exists") {
+  await host.workspace(added.workspace).update({ projectResources: true });
+}
+```
 
-The Cloudflare host is chat only, with no files or processes; the Vercel one runs tools in a
-sandbox you supply. Setup is in the
-[Cloudflare guide](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/cloudflare/README.md)
-and the [Vercel guide](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/vercel/README.md).
+The decision is saved for the folder and the folders below it. To have tool calls ask first, run
+`host.settings.apply("permissions", "ask")`. The desktop app and the terminal show those requests;
+this chat doesn't, so leave it at the default while you build.
+
+## Before you deploy
+
+- Replace `authorize` with your own sign-in. It receives each `Request`, so it can read your session
+  cookie and return that user as the principal, or `{ deny: "unauthorized" }`.
+- Serve the host over HTTPS, and list your site's exact origin in `origins`.
+- To give each device its own revocable credential instead, use
+  [pairing](/docs/sdk/guides/choose-an-entry-point#give-each-device-its-own-credential).
+
+The host is a long-running process. A serverless function can't be one, because it stops when the
+request ends; for serverless, start from the Vercel template below.
+
+## Deploy it
+
+| Template                                                                                                     | What runs                                                       |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| [Cloudflare](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/cloudflare/README.md) | One host in a SQLite-backed Durable Object, chat only           |
+| [Vercel](https://github.com/interfaces-lab/nyte/blob/main/packages/host/src/deploy/vercel/README.md)         | A Nitro app over PostgreSQL, with tools in a sandbox you supply |
+
+## Extend it
+
+Plugins change what the agent can do and how clients draw it. A core plugin adds tools, parts,
+commands, settings and hooks, and loads in the host. A client plugin adds renderers, commands,
+settings and keybindings, and loads in the app.
+[Give the agent a tool](/docs/sdk/examples#give-the-agent-a-tool) is a complete core plugin.

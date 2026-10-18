@@ -1,97 +1,42 @@
+import type * as PageTree from "fumadocs-core/page-tree";
 import type { AdvancedIndex } from "fumadocs-core/search/server";
-import { pageSchema } from "fumadocs-core/source/schema";
-import { defineCollections } from "fumadocs-mdx/macro";
+import { loader } from "fumadocs-core/source";
+import { defineDocs } from "fumadocs-mdx/macro";
 import type { MDXContent } from "mdx/types";
-import type { TocEntry } from "~/components/site/toc";
+import type { TocEntry } from "~/components/site/sidebar";
 import { designRoute, docsRoute } from "./shared";
 
-const docsCollection = defineCollections({
-  type: "doc",
+/**
+ * Each site's order lives in its content folder's `meta.json` files: the root
+ * one lists pages and folders, `---Label---` starts a sidebar section, and
+ * `...folder` inlines a folder in the order of its own `meta.json`.
+ */
+const docsContent = defineDocs({
   dir: "content/docs",
-  schema: pageSchema,
-  postprocess: {
-    includeProcessedMarkdown: true,
-  },
+  docs: { postprocess: { includeProcessedMarkdown: true } },
 });
 
-const designCollection = defineCollections({
-  type: "doc",
+const designContent = defineDocs({
   dir: "content/design",
-  schema: pageSchema,
-  postprocess: {
-    includeProcessedMarkdown: true,
+  docs: { postprocess: { includeProcessedMarkdown: true } },
+});
+
+const docsSource = loader({ baseUrl: docsRoute, source: docsContent.toFumadocsSource() });
+
+/** Design pages are flat, so `foundations/colors` is `/design/colors`. */
+const designSource = loader({
+  baseUrl: designRoute,
+  source: designContent.toFumadocsSource(),
+  slugs: (file) => {
+    const parts = file.path.replace(/\.mdx$/, "").split("/");
+
+    if (parts.length === 1) return parts[0] === "index" ? [] : parts;
+
+    return parts.at(-1) === "index" ? parts.slice(-2, -1) : parts.slice(-1);
   },
 });
 
-type Entry = (typeof docsCollection.entries)[number];
-
-interface Section {
-  label?: string;
-  files: string[];
-}
-
-const docsOutline: Section[] = [{ files: ["index", "remote-access", "build/composition"] }];
-
-const designOutline: Section[] = [
-  { files: ["index"] },
-  {
-    label: "Foundations",
-    files: [
-      "foundations/colors",
-      "foundations/radius",
-      "foundations/spacing",
-      "foundations/typography",
-      "foundations/shadows",
-      "foundations/motion",
-      "foundations/tokens",
-      "foundations/theming",
-      "foundations/focus",
-      "foundations/icons",
-    ],
-  },
-  {
-    label: "Components",
-    files: [
-      "components/index",
-      "components/alert-dialog",
-      "components/autocomplete",
-      "components/attachment",
-      "components/avatar",
-      "components/bubble",
-      "components/button",
-      "components/chart",
-      "components/checkbox",
-      "components/collapsible",
-      "components/command",
-      "components/context-menu",
-      "components/dialog",
-      "components/icon",
-      "components/input",
-      "components/kbd",
-      "components/marker",
-      "components/menu",
-      "components/message",
-      "components/message-scroller",
-      "components/meter",
-      "components/number-field",
-      "components/popover",
-      "components/preview-card",
-      "components/questionnaire",
-      "components/row",
-      "components/select",
-      "components/slider",
-      "components/spinner",
-      "components/switch",
-      "components/tabs",
-      "components/textarea",
-      "components/toast",
-      "components/toggle",
-      "components/toggle-group",
-      "components/toolbar",
-      "components/tooltip",
-    ],
-  },
-];
+type Source = typeof docsSource;
 
 export interface NavItem {
   title: string;
@@ -125,83 +70,95 @@ interface Site {
   byPath: Map<string, DocPage>;
 }
 
-/** Docs pages nest by folder; design pages are flat, so `foundations/colors` is `/design/colors`. */
-function nestedSlugs(file: string): string[] {
-  const parts = file.split("/");
-  return parts.at(-1) === "index" ? parts.slice(0, -1) : parts;
+/** The page tree as sidebar sections: a separator starts one, and folders flatten into it. */
+function readSections(tree: PageTree.Root): { label?: string; urls: string[] }[] {
+  const sections: { label?: string; urls: string[] }[] = [{ urls: [] }];
+
+  const visit = (nodes: readonly PageTree.Node[]) => {
+    for (const node of nodes) {
+      if (node.type === "separator") {
+        sections.push({
+          label: typeof node.name === "string" ? node.name : undefined,
+          urls: [],
+        });
+      } else if (node.type === "page") {
+        sections.at(-1)?.urls.push(node.url);
+      } else {
+        if (node.index) sections.at(-1)?.urls.push(node.index.url);
+        visit(node.children);
+      }
+    }
+  };
+
+  visit(tree.children);
+
+  return sections.filter((section) => section.urls.length > 0);
 }
 
-function flatSlugs(file: string): string[] {
-  if (file === "index") return [];
-  const parts = file.split("/");
-  return parts.at(-1) === "index" ? parts.slice(0, -1) : parts.slice(-1);
-}
+function build(source: Source): Site {
+  const byUrl = new Map(source.getPages().map((page) => [page.url, page]));
+  const sections = readSections(source.pageTree);
 
-function build(
-  route: string,
-  outline: Section[],
-  collectionEntries: readonly Entry[],
-  slugsFor: (file: string) => string[],
-): Site {
-  const entries = new Map(
-    collectionEntries.map((entry) => [entry.info.path.replace(/\.mdx$/, ""), entry]),
-  );
-  const placed = outline.flatMap((section) =>
-    section.files.map((file) => {
-      const entry = entries.get(file);
-      if (!entry) throw new Error(`The ${route} outline lists ${file}, which has no MDX file`);
-      entries.delete(file);
-      const slugs = slugsFor(file);
-      const item: NavItem = { title: entry.title, href: [route, ...slugs].join("/") };
-      return { entry, section, slugs, item };
+  const placed = sections.flatMap((section) =>
+    section.urls.map((url) => {
+      const page = byUrl.get(url);
+
+      if (!page) throw new Error(`The page tree lists ${url}, which has no page`);
+      byUrl.delete(url);
+
+      return { page, section, item: { title: page.data.title, href: page.url } };
     }),
   );
-  if (entries.size > 0)
-    throw new Error(`Add to the ${route} outline: ${[...entries.keys()].join(", ")}`);
 
-  const pages = placed.map(({ entry, section, slugs, item }, index): DocPage => ({
-    slugs,
-    url: item.href,
-    title: entry.title,
-    description: entry.description,
-    Body: entry.body,
-    toc: entry.toc,
+  if (byUrl.size > 0)
+    throw new Error(
+      `Add to a meta.json: ${[...byUrl.values()].map((page) => page.path).join(", ")}`,
+    );
+
+  const pages = placed.map(({ page, section }, index): DocPage => ({
+    slugs: page.slugs,
+    url: page.url,
+    title: page.data.title,
+    description: page.data.description,
+    Body: page.data.body,
+    toc: page.data.toc,
     section: section.label,
     previous: placed[index - 1]?.item,
     next: placed[index + 1]?.item,
-    imageUrl: `/og${item.href}/image.png`,
-    markdownUrl: `/llms.mdx${item.href}/content.md`,
-    text: async () => `# ${entry.title} (${item.href})\n\n${await entry.getText("processed")}`,
-  }));
-
-  const sections = outline.map((section): NavSection => {
-    const [first, ...rest] = placed
-      .filter((page) => page.section === section)
-      .map((page) => page.item);
-    if (!first) throw new Error(`The ${route} outline section ${section.label} is empty`);
-    return { label: section.label, items: [first, ...rest] };
-  });
-
-  const searchIndexes = placed.map(({ entry, item }): AdvancedIndex => ({
-    id: item.href,
-    url: item.href,
-    title: entry.title,
-    description: entry.description,
-    structuredData: entry.structuredData,
+    imageUrl: `/og${page.url}/image.png`,
+    markdownUrl: `/llms.mdx${page.url}/content.md`,
+    text: async () =>
+      `# ${page.data.title} (${page.url})\n\n${await page.data.getText("processed")}`,
   }));
 
   return {
     pages,
-    sections,
-    searchIndexes,
+    sections: sections.flatMap((section): NavSection[] => {
+      const [first, ...rest] = placed.flatMap(({ section: placedIn, item }) => {
+        if (placedIn !== section) return [];
+
+        return [item.title === section.label ? { ...item, title: "Overview" } : item];
+      });
+
+      return first ? [{ label: section.label, items: [first, ...rest] }] : [];
+    }),
+    searchIndexes: placed.map(({ page }): AdvancedIndex => ({
+      id: page.url,
+      url: page.url,
+      title: page.data.title,
+      description: page.data.description,
+      structuredData: page.data.structuredData,
+    })),
     byPath: new Map(pages.map((page) => [page.slugs.join("/"), page])),
   };
 }
 
-const docs = build(docsRoute, docsOutline, docsCollection.entries, nestedSlugs);
-const design = build(designRoute, designOutline, designCollection.entries, flatSlugs);
+const docs = build(docsSource);
+
+const design = build(designSource);
 
 export const docsNav: readonly NavSection[] = docs.sections;
+
 export const designNav: readonly NavSection[] = design.sections;
 
 export function allDocs(): readonly DocPage[] {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import process from "node:process";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -9,6 +10,10 @@ import { callIpc } from "../ipc-call.ts";
 import { decodeCallRequest } from "../ipc-inputs.ts";
 import { CALL_CHANNEL } from "../../shared/ipc.ts";
 import type { CallRequest, CallOutput } from "../../shared/ipc.ts";
+
+process.stdin.on("close", () => app.exit(1));
+
+process.stdin.resume();
 
 const directory = process.argv[2];
 

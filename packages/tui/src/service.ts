@@ -1,3 +1,4 @@
+import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import process from "node:process";
 import type { ConnectView } from "@nyte-ai/connect";
@@ -5,8 +6,10 @@ import { asId } from "@nyte-ai/schema";
 import { sdk } from "@nyte-ai/sdk/client";
 import type { Connection } from "@nyte-ai/sdk";
 import {
+  commandLink,
   ensureService,
   findService,
+  followService,
   installService,
   logPath,
   readSupervision,
@@ -16,7 +19,14 @@ import {
   stopService,
   uninstallService,
 } from "@nyte-ai/service";
-import type { Registration, ServiceClient, Supervision, Supervisor } from "@nyte-ai/service";
+import type {
+  Following,
+  Registration,
+  ServiceClient,
+  Stopped,
+  Supervision,
+  Supervisor,
+} from "@nyte-ai/service";
 import { readCodeId } from "./code-id.ts";
 import { compiled } from "./compiled.ts";
 import { HostFailure, startHostThread } from "./hosting.ts";
@@ -24,10 +34,15 @@ import type { RemoteFacts } from "./model/state.ts";
 import { VERSION } from "./version.ts";
 
 export interface ServiceSession {
-  readonly registration: Registration;
   readonly connection: Connection;
-  /** Resolves once the service stops, or a nyte of another build replaces it; `connection` can't reach it again. */
-  readonly lost: Promise<void>;
+  readonly following: Following;
+}
+
+export interface LocalServiceOptions {
+  readonly home: string;
+  readonly version: string;
+  readonly code?: string;
+  readonly command: readonly [string, ...string[]];
 }
 
 function servicePort(
@@ -43,35 +58,93 @@ function servicePort(
   return port;
 }
 
-function serviceCommand(): [string, ...string[]] {
+async function serviceCommand(home: string): Promise<[string, ...string[]]> {
   const script = process.argv[1];
 
-  return compiled || script === undefined
-    ? [process.execPath, "service", "run"]
-    : [process.execPath, script, "service", "run"];
+  if (!compiled && script !== undefined) return [process.execPath, script, "service", "run"];
+  const link = commandLink(home);
+
+  const [linked, running] = await Promise.all([
+    realpath(link).catch(() => undefined),
+    realpath(process.execPath),
+  ]);
+
+  return [linked === running ? link : process.execPath, "service", "run"];
 }
 
-export async function ensureLocalService(lost?: () => void): Promise<Registration> {
-  return ensureService({
-    home: homedir(),
-    version: VERSION,
-    code: await readCodeId(),
-    command: serviceCommand(),
-    lost,
-  });
+export async function localServiceOptions(): Promise<LocalServiceOptions> {
+  const home = homedir();
+
+  return { home, version: VERSION, code: await readCodeId(), command: await serviceCommand(home) };
 }
 
-export async function connectLocalService(): Promise<ServiceSession> {
-  const lost = Promise.withResolvers<void>();
-  const registration = await ensureLocalService(lost.resolve);
+export async function ensureLocalService(): Promise<Registration> {
+  return ensureService(await localServiceOptions());
+}
+
+export async function connectLocalService(options?: LocalServiceOptions): Promise<ServiceSession> {
+  const following = followService(options ?? (await localServiceOptions()));
+  const first = await following.first;
 
   const connection = await sdk.connect({
-    url: registration.url,
-    credentials: { kind: "token", token: registration.token },
-    expect: { hostId: asId(registration.hostId) },
+    url: first.url,
+    credentials: { kind: "token", token: first.token },
+    expect: { hostId: asId(first.hostId) },
+    fetch: (resource, init) => fetchFollowing(following, resource, init),
   });
 
-  return { registration, connection, lost: lost.promise };
+  return { connection, following };
+}
+
+function fetchFollowing(
+  following: Following,
+  resource: string,
+  init: RequestInit | undefined,
+): Promise<Response> {
+  const current = following.current();
+
+  if (current === undefined) return fetch(resource, init);
+  const requested = new URL(resource);
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${current.token}`);
+
+  return fetch(new URL(`${requested.pathname}${requested.search}`, current.url), {
+    ...init,
+    headers,
+  });
+}
+
+export function followRemote(
+  following: Following,
+  signal: AbortSignal,
+  report: (remote: RemoteFacts) => void,
+  failed: (cause: unknown) => void,
+): void {
+  let watching: AbortController | undefined;
+
+  const start = (registration: Registration): void => {
+    watching?.abort();
+    const controller = new AbortController();
+    watching = controller;
+    void watchRemote(registration, AbortSignal.any([signal, controller.signal]), report).catch(
+      (cause: unknown) => {
+        if (!controller.signal.aborted && !signal.aborted) failed(cause);
+      },
+    );
+  };
+
+  const current = following.current();
+
+  if (current !== undefined) start(current);
+  const leave = following.subscribe(start);
+  signal.addEventListener(
+    "abort",
+    () => {
+      leave();
+      watching?.abort();
+    },
+    { once: true },
+  );
 }
 
 interface Output {
@@ -91,7 +164,11 @@ export async function serviceCommandMain(
     case "status": {
       if (rest.length > 0) throw new Error("Usage: nyte service status");
       const [running, supervision] = await Promise.all([findService(home), readSupervision(home)]);
-      const installed = describeSupervision(supervision, running?.pid);
+      const installed = describeSupervision(
+        supervision,
+        running === undefined || running.owner !== undefined ? undefined : running.pid,
+      );
+
       const build = await serviceBuild(VERSION, await readCodeId());
 
       if (running === undefined) {
@@ -106,12 +183,15 @@ export async function serviceCommandMain(
         return;
       }
 
-      const header = [
-        `Nyte service ${running.version} at ${running.url} (pid ${String(running.pid)})`,
-        installed,
-      ];
+      const header = [describeRunning(running), installed];
 
-      if (running.version !== build) {
+      if (running.owner === "serve") {
+        output.write(lines(header));
+
+        return;
+      }
+
+      if (running.owner !== "desktop" && running.version !== build) {
         output.write(
           lines([...header, `This nyte is build ${build}; its next command replaces the service.`]),
         );
@@ -121,23 +201,28 @@ export async function serviceCommandMain(
 
       const clients = await serviceClients(running);
 
-      output.write(
-        lines([
-          ...header,
-          clients.length === 0
-            ? "No clients attached."
-            : `${String(clients.length)} ${clients.length === 1 ? "client" : "clients"} attached:`,
-          ...clients.map(describeClient),
-        ]),
-      );
+      output.write(lines([...header, ...describeClients(clients)]));
 
       return;
     }
 
     case "stop": {
       if (rest.length > 0) throw new Error("Usage: nyte service stop");
+      const report = await stopService(home);
+      const supervision = await readSupervision(home);
+
+      const restarts =
+        supervision.kind === "installed" &&
+        report.some((entry) => entry.kind === "stopped" && entry.owner === "service")
+          ? `It's installed as ${unitName(supervision.supervisor)}, so it starts again at login; \`nyte service uninstall\` keeps it stopped.`
+          : undefined;
+
       output.write(
-        (await stopService(home)) ? "Stopped the Nyte service.\n" : "Nyte service isn't running.\n",
+        lines(
+          report.length === 0
+            ? ["Nyte service isn't running."]
+            : [...report.flatMap(describeStopped), restarts],
+        ),
       );
 
       return;
@@ -146,12 +231,7 @@ export async function serviceCommandMain(
     case "install": {
       if (rest.length > 0) throw new Error("Usage: nyte service install");
 
-      const installed = await installService({
-        home,
-        version: VERSION,
-        code: await readCodeId(),
-        command: serviceCommand(),
-      });
+      const installed = await installService(await localServiceOptions());
 
       output.write(
         installed.kind === "unchanged"
@@ -180,11 +260,76 @@ export async function serviceCommandMain(
   }
 }
 
+function describeRunning(running: Registration): string {
+  const where = `${running.version} at ${running.url} (pid ${String(running.pid)})`;
+
+  switch (running.owner) {
+    case "desktop":
+      return `Nyte.app ${where} has your chats open; nyte uses it instead of the service while it runs.`;
+    case "serve":
+      return `\`nyte serve\` ${where} has your chats open in ${running.folder}; stop it with \`nyte service stop\` before another nyte can use them.`;
+    case "service":
+    case undefined:
+      return `Nyte service ${where}`;
+    default: {
+      const _exhaustive: never = running;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function describeClients(clients: readonly ServiceClient[]): readonly string[] {
+  return [
+    clients.length === 0
+      ? "No clients attached."
+      : `${String(clients.length)} ${clients.length === 1 ? "client" : "clients"} attached:`,
+    ...clients.map(describeClient),
+  ];
+}
+
+function describeStopped(entry: Stopped): readonly string[] {
+  switch (entry.kind) {
+    case "stopped": {
+      const what =
+        entry.owner === "serve" ? "`nyte serve`" : `the Nyte service (pid ${String(entry.pid)})`;
+
+      const ended =
+        entry.how === "exited"
+          ? `Stopped ${what}.`
+          : `Killed ${what} after it ignored SIGTERM for 5 s.`;
+
+      return entry.orphans === 0
+        ? [ended]
+        : [
+            `${ended} Killed ${String(entry.orphans)} ${entry.orphans === 1 ? "process" : "processes"} it left behind.`,
+          ];
+    }
+    case "owner":
+      return [
+        `${entry.how === "exited" ? "Stopped" : "Killed"} the Nyte process holding the store (pid ${String(entry.pid)}, ${entry.program}).`,
+      ];
+    case "held":
+      return [
+        `Something that isn't Nyte holds the store (pid ${String(entry.pid)}, ${entry.program}); nyte left it alone.`,
+      ];
+    case "desktop":
+      return [
+        `Nyte.app (pid ${String(entry.registration.pid)}) has your chats open; quit it to close them.`,
+        ...describeClients(entry.clients),
+      ];
+    default: {
+      const _exhaustive: never = entry;
+
+      return _exhaustive;
+    }
+  }
+}
+
 function unitName(supervisor: Supervisor): string {
   return `${supervisor.kind === "launchd" ? "a launch agent" : "a systemd user unit"} at ${supervisor.unit}`;
 }
 
-/** The status line on how the service is installed, given the pid of the running service; none where it can't be. */
 function describeSupervision(
   supervision: Supervision,
   running: number | undefined,
@@ -198,7 +343,7 @@ function describeSupervision(
       const { supervisor, pid } = supervision;
 
       return running === undefined || pid === running
-        ? `Installed as ${unitName(supervisor)}.`
+        ? `Installed as ${unitName(supervisor)}; it starts at login and comes back after a crash.`
         : `Installed as ${unitName(supervisor)}, but ${supervisor.kind} isn't supervising this service; run \`nyte service install\` to hand it over.`;
     }
     default: {
@@ -222,18 +367,22 @@ async function runService(
     (cause: unknown) => {
       if (!(cause instanceof HostFailure)) throw cause;
 
+      if (cause.reason === "store-owned" || cause.reason === "service-running") {
+        output.error(`error: ${cause.message}`);
+
+        return null;
+      }
+
       if (cause.reason === "port-in-use")
         throw new Error(
           `${cause.message} Free it, or ${args.length === 0 ? "set NYTE_SERVICE_PORT to" : "pass"} another port.`,
         );
 
-      if (cause.reason === "service-running")
-        throw new Error(`${cause.message} Stop it with \`nyte service stop\`.`);
-
       throw cause;
     },
   );
 
+  if (service === null) return;
   output.write(`Nyte service at ${service.address} (pid ${String(process.pid)})\n`);
 
   const stopped = new Promise((done) => signal.addEventListener("abort", done, { once: true }));

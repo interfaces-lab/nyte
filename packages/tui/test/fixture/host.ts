@@ -4,8 +4,8 @@ import { dev } from "@nyte-ai/core";
 import { composeHost } from "@nyte-ai/core/server";
 import { memoryStore } from "@nyte-ai/core/store";
 import type { ExecutionEnv, GitHubAccountApi, Plugin } from "@nyte-ai/core";
-import { chatOnly, fakeModels, testModel } from "@nyte-ai/host/bench";
-import type { FakeModels } from "@nyte-ai/host/bench";
+import { chatOnly, fakeModels, testModel } from "@nyte-ai/bench";
+import type { FakeModels } from "@nyte-ai/bench";
 import questionPlugin from "@nyte-ai/plugin/core/question";
 import { asId } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
@@ -29,15 +29,10 @@ export interface TestHost extends AsyncDisposable {
 
 export async function openTestHost(options?: {
   readonly plugins?: readonly Plugin<"core">[];
-  /** The workspace's environment plugin, of kind `chat-only`; default one whose files and processes refuse. */
   readonly environment?: Plugin<"core">;
-  /** The fake provider's catalog; default one model `model` without thinking levels. */
   readonly models?: readonly ReturnType<typeof testModel>[];
-  /** The machine's GitHub CLI login the host serves; default none. */
   readonly github?: GitHubAccountApi;
-  /** The host's default workspace, which `environment` provides; default a `chat-only` one. */
   readonly workspace?: WorkspaceTarget;
-  /** Imports a trusted workspace's project plugins; default none load. */
   readonly loadPlugins?: (paths: readonly string[]) => Promise<readonly Plugin<"core">[]>;
 }): Promise<TestHost> {
   dev.off();
@@ -88,10 +83,6 @@ export async function until<T>(
   }
 }
 
-/**
- * A `chat-only` environment like the default one, but whose files read from disk by absolute
- * path and whose processes run `exec`.
- */
 export function testEnvironment(exec: ExecutionEnv["exec"]): Plugin<"core"> {
   const base = chatOnly.environment;
 

@@ -6,7 +6,8 @@ import type { SessionInfo } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { SubagentCallView } from "./subagent-call.tsx";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
-import { TurnView } from "./turn-view.tsx";
+import { transcriptRows } from "./transcript-rows.ts";
+import { TurnItemView } from "./turn-view.tsx";
 import { endedTurn, sessionRow, settledTool } from "../../test/view-fixtures.ts";
 
 vi.hoisted(() => {
@@ -56,15 +57,28 @@ test("a create call finds its child by the call that made it", () => {
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <SubagentSessionsProvider value={{ children: [childSession], open: () => {} }}>
-        <TurnView
-          turn={turn}
-          continuations={[]}
-          density="compact"
-          cwd={undefined}
-          changes={[]}
-          onOpenChanges={() => {}}
-          running={false}
-        />
+        {transcriptRows({
+          loading: false,
+          failed: false,
+          turns: [turn],
+          changes: [],
+          landing: [],
+          held: false,
+          retrying: undefined,
+          working: false,
+          running: false,
+        }).map((row) =>
+          row.kind === "part" ? (
+            <TurnItemView
+              key={row.messageId}
+              row={row}
+              running={false}
+              density="compact"
+              cwd={undefined}
+              onOpenChanges={() => {}}
+            />
+          ) : null,
+        )}
       </SubagentSessionsProvider>
     </QueryClientProvider>,
   );

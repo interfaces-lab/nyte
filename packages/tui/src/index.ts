@@ -28,7 +28,7 @@ import { cliLoginDriver } from "./interaction.ts";
 import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
-import { addFolder, flagConfiguration, targetSession } from "./run.ts";
+import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
 import { connectLocalService, serviceCommandMain } from "./service.ts";
 import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
@@ -331,6 +331,7 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
       );
   }
 
+  if (flags.trust !== undefined) await trustFolder(host, flags.resume, process.cwd(), flags.trust);
   const resumed = await targetSession(host, flags.resume);
   signal.throwIfAborted();
   const content = flags.rest.join(" ");

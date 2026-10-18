@@ -254,6 +254,7 @@ function reduceKind(dialog: Dialog, command: DialogCommand): DialogStep<Dialog> 
 export function placement(dialog: Dialog, task: Task | null): "slot" | "screen" {
   switch (dialog.kind) {
     case "list":
+      return dialog.purpose.kind === "trust" && dialog.purpose.gate ? "screen" : "slot";
     case "model":
     case "tree":
     case "auth":

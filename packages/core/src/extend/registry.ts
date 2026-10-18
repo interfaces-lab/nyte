@@ -1,10 +1,10 @@
-import { asId, SdkError } from "@nyte-ai/schema";
+import { asId, CLIENT_COMMAND_NAMES, COMMAND_NAME, SdkError } from "@nyte-ai/schema";
 import type {
   CatalogGeneration,
+  CommandCompletion,
   CommandInfo,
   CommandOutcome,
   Disposer,
-  Json,
   JsonSchema,
   Schema,
   SessionCatalogView,
@@ -24,6 +24,7 @@ import type {
 } from "../contract/kernel.ts";
 import type {
   Command,
+  PluginApi,
   Registries,
   Registry,
   RegistryDraft,
@@ -34,7 +35,7 @@ import type {
 import { sendNow } from "../engine/admission.ts";
 import { MAIN } from "../store/session.ts";
 import { callable } from "../util/callable.ts";
-import { check, convertJsonSchema } from "../util/json-schema.ts";
+import { convertJsonSchema } from "../util/json-schema.ts";
 import { stepPluginApi } from "./plugin-api.ts";
 import { settingInfos } from "./setting-layers.ts";
 
@@ -106,7 +107,8 @@ export function createRegistrySet(input: {
     skills: createRegistry({ key: (skill) => skill.name, onChange: reload }),
     parts: createRegistry({ key: (definition) => definition.kind, onChange: reload }),
     commands: createRegistry({
-      key: (command, owner) => `${owner}/${command.name}`,
+      key: (command) => command.name,
+      refuse: refuseCommandName,
       onChange: reload,
     }),
     settings: { ...settings, ...reading("core") },
@@ -158,6 +160,8 @@ export function createRegistrySet(input: {
 function createRegistry<T, Handle = Disposer>(input: {
   key(item: T, owner: string): string;
   handle?(item: T, owner: string): Handle;
+  /** Why an item can't be registered at all, or `undefined` when it can. */
+  refuse?(item: T): string | undefined;
   readonly overrides?: boolean;
   onChange(): void;
 }): CoreRegistry<T, Handle> {
@@ -277,11 +281,36 @@ function createRegistry<T, Handle = Disposer>(input: {
         }
       }
 
+      for (const [key, entry] of draft) {
+        const refusal = input.refuse?.(entry.item);
+
+        if (refusal === undefined) continue;
+        draft.delete(key);
+        issues.push({
+          owner: entry.owner,
+          issue: {
+            severity: "error",
+            path: [key],
+            message: refusal,
+            source: { plugin: entry.owner },
+          },
+        });
+      }
+
       materialized = [...draft.values()];
 
       return issues;
     },
   };
+}
+
+function refuseCommandName(command: Command): string | undefined {
+  if (!COMMAND_NAME.test(command.name))
+    return `The command name ${command.name} can't be typed after "/": use lowercase letters, digits and "-".`;
+
+  return CLIENT_COMMAND_NAMES.some((name) => name === command.name)
+    ? `/${command.name} is a built-in command; give the plugin's command another name.`
+    : undefined;
 }
 
 function createRegistryDraft<T>(draft: Map<string, Entry<T>>, owner: string): RegistryDraft<T> {
@@ -336,24 +365,17 @@ export function skillInfos(registries: RegistrySet): readonly SkillInfo[] {
 }
 
 export function commandInfos(registries: RegistrySet): readonly CommandInfo[] {
-  return registries.commands.entries().flatMap(({ item, owner }): readonly CommandInfo[] => {
-    const args = item.arguments === undefined ? null : converted(item.arguments, "input");
-
-    if (args === undefined) return [];
-
-    return [
-      {
-        name: `${owner}/${item.name}`,
-        owner,
-        side: "core",
-        title: item.title,
-        description: item.description,
-        arguments: args,
-        category: item.category,
-        keywords: item.keywords,
-      },
-    ];
-  });
+  return registries.commands.entries().map(({ item, owner }) => ({
+    name: item.name,
+    owner,
+    side: "core",
+    title: item.title,
+    description: item.description,
+    takesText: item.takesText === true || item.complete !== undefined,
+    completes: item.complete !== undefined,
+    category: item.category,
+    keywords: item.keywords,
+  }));
 }
 
 export function publishCatalog(kernel: Kernel, session: SessionId): Promise<void> {
@@ -436,13 +458,31 @@ export async function runCommand(
   context: ConnectionContext,
   session: SessionId,
   name: string,
-  args: Json | undefined,
+  text: string,
 ): Promise<CommandOutcome> {
   const runtime = kernel.plugins.runtime(session);
   const release = runtime.hold();
 
   try {
-    return await runHeld(kernel, context, session, runtime, name, args);
+    return await runHeld(kernel, context, session, runtime, name, text);
+  } finally {
+    release();
+  }
+}
+
+/** Asks a chat's command `name` what may follow `prefix`, holding its plugins meanwhile. */
+export async function completeSessionCommand(
+  kernel: Kernel,
+  context: ConnectionContext,
+  session: SessionId,
+  name: string,
+  prefix: string,
+): Promise<readonly CommandCompletion[]> {
+  const runtime = kernel.plugins.runtime(session);
+  const release = runtime.hold();
+
+  try {
+    return await completeCommand(kernel, context, session, runtime, name, prefix);
   } finally {
     release();
   }
@@ -454,12 +494,12 @@ async function runHeld(
   session: SessionId,
   runtime: PluginRuntime,
   name: string,
-  args: Json | undefined,
+  text: string,
 ): Promise<CommandOutcome> {
-  const invoked = await invokeCommand(kernel, context, session, runtime, name, args);
+  const invoked = await invokeCommand(kernel, context, session, runtime, name, text);
 
   if (invoked.kind !== "returned") return invoked;
-  const { result, command, owner } = invoked;
+  const { result, command } = invoked;
 
   if (typeof result === "string") return { kind: "ran", output: result };
 
@@ -472,7 +512,7 @@ async function runHeld(
       context,
       content: result.prompt,
       options: {
-        source: { kind: "action", label: command.title, command: `${owner}/${command.name}` },
+        source: { kind: "action", label: command.title, command: command.name },
       },
     });
 
@@ -482,49 +522,86 @@ async function runHeld(
   }
 }
 
-/** Finds command `name`, its owner's qualified name first, checks `args` and runs it. */
+/** Finds command `name` and runs it with `text`. */
 export async function invokeCommand(
   kernel: Kernel,
   context: ConnectionContext,
   session: SessionId,
   plugins: Pick<PluginRuntime, "registries" | "api">,
   name: string,
-  args: Json | undefined,
+  text: string,
 ): Promise<
   | {
       readonly kind: "returned";
       readonly result: Awaited<ReturnType<Command["run"]>>;
       readonly command: Command;
-      readonly owner: string;
     }
-  | Extract<CommandOutcome, { readonly kind: "invalid" | "unknown" | "failed" }>
+  | Extract<CommandOutcome, { readonly kind: "unknown" | "failed" }>
 > {
-  const entries = plugins.registries.commands.entries();
-  const qualified = entries.filter((entry) => `${entry.owner}/${entry.item.name}` === name);
-  const bare = entries.filter((entry) => entry.item.name === name);
-  const [found] = qualified.length === 1 ? qualified : bare.length === 1 ? bare : [];
-  const api = found === undefined ? undefined : plugins.api(found.owner);
+  const found = findCommand(kernel, context, session, plugins, name);
 
-  if (found === undefined || api === undefined) return { kind: "unknown" };
-  const { item: command, owner } = found;
-  let input: unknown = args;
-
-  if (command.arguments !== undefined) {
-    const checked = await check(command.arguments, args);
-
-    if (checked.kind === "invalid") return { kind: "invalid", issues: checked.issues };
-    input = checked.value;
-  }
+  if (found === undefined) return { kind: "unknown" };
+  const { command, api } = found;
 
   try {
-    const result = await command.run(input, {
+    const result = await command.run(text.trim(), {
       signal: api.signal,
-      api: context === CORE_CONTEXT ? api : stepPluginApi(kernel, api, context, session),
+      api,
       caller: context.principal,
     });
 
-    return { kind: "returned", result, command, owner };
+    return { kind: "returned", result, command };
   } catch (error) {
     return { kind: "failed", message: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** Asks command `name` what may follow `prefix`: none from a command that is missing or suggests nothing, and none, reported to its plugin, from one that throws. */
+export async function completeCommand(
+  kernel: Kernel,
+  context: ConnectionContext,
+  session: SessionId,
+  plugins: Pick<PluginRuntime, "registries" | "api">,
+  name: string,
+  prefix: string,
+): Promise<readonly CommandCompletion[]> {
+  const found = findCommand(kernel, context, session, plugins, name);
+
+  if (found?.command.complete === undefined) return [];
+  const { api } = found;
+
+  try {
+    return await found.command.complete(prefix, { signal: api.signal, api });
+  } catch (error) {
+    api.report({
+      severity: "warning",
+      path: ["commands", name, "complete"],
+      message: `Suggesting text for /${name} failed: ${error instanceof Error ? error.message : String(error)}`,
+      source: { plugin: found.owner },
+    });
+
+    return [];
+  }
+}
+
+/** Finds command `name` and the api it runs with, under the caller's authority. */
+function findCommand(
+  kernel: Kernel,
+  context: ConnectionContext,
+  session: SessionId,
+  plugins: Pick<PluginRuntime, "registries" | "api">,
+  name: string,
+):
+  | { readonly command: Command; readonly owner: string; readonly api: PluginApi<"core"> }
+  | undefined {
+  const found = plugins.registries.commands.entries().find((entry) => entry.item.name === name);
+  const api = found === undefined ? undefined : plugins.api(found.owner);
+
+  if (found === undefined || api === undefined) return undefined;
+
+  return {
+    command: found.item,
+    owner: found.owner,
+    api: context === CORE_CONTEXT ? api : stepPluginApi(kernel, api, context, session),
+  };
 }

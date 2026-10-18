@@ -1,5 +1,4 @@
 import { Type } from "typebox";
-import { ValidationIssueType } from "./errors.ts";
 import { idSchema } from "./ids.ts";
 import { JsonObjectType, JsonType, withJson } from "./json.ts";
 import { PositionType, UserContentType } from "./messages.ts";
@@ -38,18 +37,66 @@ export const SessionInfoType = Type.Object({
 
 export type SessionInfo = Decoded<typeof SessionInfoType>;
 
+/**
+ * The slash names Nyte's own clients keep for their built-in commands and
+ * aliases. The host refuses a plugin command that takes one, so a client never
+ * hides it behind its own.
+ */
+export const CLIENT_COMMAND_NAMES = [
+  "accounts",
+  "cd",
+  "compact",
+  "continue",
+  "edit",
+  "help",
+  "login",
+  "logout",
+  "mcp",
+  "new",
+  "plugins",
+  "pr",
+  "quit",
+  "reload",
+  "resume",
+  "sessions",
+  "settings",
+  "skills",
+  "tasks",
+  "tree",
+  "trust",
+  "update",
+  "usage",
+] as const;
+
+export type ClientCommandName = (typeof CLIENT_COMMAND_NAMES)[number];
+
+/** A name a user can type after `/` in every client: lowercase ASCII letters, digits and `-`, not starting with `-`. */
+export const COMMAND_NAME = /^[a-z0-9][a-z0-9-]*$/u;
+
 export const CommandInfoType = Type.Object({
   name: Type.String(),
   owner: Type.String(),
   side: Type.Enum(["core", "client"]),
   title: Type.String(),
   description: Type.String(),
-  arguments: nullable(JsonObjectType),
+  /** Picking the command waits for text after its name instead of running it at once. */
+  takesText: Type.Boolean(),
+  /** The command suggests that text: ask `completeCommand` as it is typed. */
+  completes: Type.Boolean(),
   category: Type.Optional(Type.String()),
   keywords: Type.Optional(Type.Array(Type.String())),
 });
 
 export type CommandInfo = Decoded<typeof CommandInfoType>;
+
+/** One suggestion for the text after a command's name: picking it replaces that text with `value`. */
+export const CommandCompletionType = Type.Object({
+  value: Type.String(),
+  label: Type.String(),
+  description: Type.Optional(Type.String()),
+});
+
+export type CommandCompletion = Decoded<typeof CommandCompletionType>;
 
 export const SettingInfoType = Type.Object({
   id: Type.String(),
@@ -120,7 +167,6 @@ export type WorkspaceCatalogView = Decoded<typeof WorkspaceCatalogViewType>;
 export const CommandOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("ran"), output: nullable(Type.String()) }),
   Type.Object({ kind: Type.Literal("sent"), receipt: idSchema<"receipt">() }),
-  Type.Object({ kind: Type.Literal("invalid"), issues: Type.Array(ValidationIssueType) }),
   Type.Object({ kind: Type.Literal("unknown") }),
   Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
 ]);
@@ -131,7 +177,6 @@ export type CommandOutcome = Decoded<typeof CommandOutcomeType>;
 export const WorkspaceCommandOutcomeType = Type.Union([
   Type.Object({ kind: Type.Literal("ran"), output: nullable(Type.String()) }),
   Type.Object({ kind: Type.Literal("prompt"), content: UserContentType }),
-  Type.Object({ kind: Type.Literal("invalid"), issues: Type.Array(ValidationIssueType) }),
   Type.Object({ kind: Type.Literal("unknown") }),
   Type.Object({ kind: Type.Literal("failed"), message: Type.String() }),
 ]);
@@ -173,6 +218,10 @@ export const SessionCatalogViewSchema: Schema<SessionCatalogView> = standard(
 );
 
 export const CommandOutcomeSchema: Schema<CommandOutcome> = standard(CommandOutcomeType);
+
+export const CommandCompletionsSchema: Schema<readonly CommandCompletion[]> = standard(
+  Type.Array(CommandCompletionType),
+);
 
 export const WorkspaceCommandOutcomeSchema: Schema<WorkspaceCommandOutcome> = standard(
   WorkspaceCommandOutcomeType,

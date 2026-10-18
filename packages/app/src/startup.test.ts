@@ -16,16 +16,16 @@ function settled(kind: "failed" | "connected"): Promise<void> {
   });
 }
 
-test("the interface mounts while the host connection never settles, and connects once it has committed", async () => {
-  const mounted = Promise.withResolvers<() => void>();
+test("the host connection opens at once and the interface mounts while it never settles", async () => {
+  const mounted = Promise.withResolvers<void>();
   const order: string[] = [];
 
   startRendererStartup({
     fonts: ['13px "Inter Variable"'],
     router: { load: async () => void order.push("route") },
-    mountShell: (committed) => {
+    mountShell: () => {
       order.push("mount");
-      mounted.resolve(committed);
+      mounted.resolve();
     },
     connect: () => {
       order.push("connect");
@@ -35,10 +35,8 @@ test("the interface mounts while the host connection never settles, and connects
     showError: () => assert.fail("startup should succeed"),
   });
 
-  const committed = await mounted.promise;
-  assert.deepEqual(order, ["route", "mount"]);
-  committed();
-  assert.deepEqual(order, ["route", "mount", "connect"]);
+  await mounted.promise;
+  assert.deepEqual(order, ["connect", "route", "mount"]);
   assert.equal(startupConnection.read().kind, "connecting");
 });
 
@@ -49,7 +47,7 @@ test("a failed connection leaves the shell mounted and retries on request", asyn
   startRendererStartup({
     fonts: [],
     router: { load: async () => undefined },
-    mountShell: (committed) => committed(),
+    mountShell: () => undefined,
     connect: async () => {
       attempts += 1;
 

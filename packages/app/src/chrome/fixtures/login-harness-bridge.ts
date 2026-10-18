@@ -38,11 +38,9 @@ export interface HarnessFailures {
   readonly clipboard: boolean;
 }
 
-/** What the test drives from Node through `page.evaluate`. */
 interface LoginHarness {
   readonly calls: readonly RecordedHostCall[];
   readonly clipboard: readonly string[];
-  /** Which boundary calls refuse from now on. */
   setFailures(failures: Partial<HarnessFailures>): void;
   setCatalog(catalog: Omit<ModelCatalogView, "generation">): void;
   setEndpoint(url: string): void;
@@ -74,6 +72,7 @@ let catalog: ModelCatalogView = {
 const hostView = (): HostView => ({
   id: asId<"host">("harness"),
   link: { kind: "connected" },
+  operations: null,
   name: "Harness",
   platform: "darwin",
   version: "0",

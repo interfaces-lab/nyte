@@ -51,7 +51,8 @@ export function SiteNav() {
             <ThemeToggle />
             <SiteSearch />
             <SiteMobileNav
-              sections={[productSection, otherSite, ...sections]}
+              docs={sections}
+              site={[productSection, otherSite]}
               githubHref={githubUrl}
             />
           </div>

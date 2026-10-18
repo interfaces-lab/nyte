@@ -5,7 +5,8 @@ import {
   RESTAURANT_PROMPT,
   restaurantHome,
   restaurantScript,
-} from "@nyte-ai/host/bench";
+  simulate,
+} from "@nyte-ai/bench";
 import { clearSpans, enableTracing } from "@nyte-ai/sdk/client";
 import { followedSession } from "../../src/model/state.ts";
 import { shownAt, startTui } from "../harness/tui.ts";
@@ -13,7 +14,6 @@ import {
   epochNow,
   lastTrace,
   machineLoad,
-  openScenarioHost,
   overBudget,
   round,
   saveFrame,
@@ -40,7 +40,7 @@ test("scenario U from the keyboard: typed while the host opens, skill, places MC
   });
 
   const fake = fakeModels({ fallback: turns.answer });
-  await using scenario = await openScenarioHost({ fake, home: home.home });
+  await using scenario = await simulate({ models: fake.models, home: home.home });
 
   await using tui = await startTui({
     host: scenario.host,

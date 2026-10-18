@@ -19,8 +19,8 @@ import {
   lastUserText,
   testModel,
   titleReply,
-} from "@nyte-ai/host/bench";
-import type { CiRepo, Reply, Request, Script } from "@nyte-ai/host/bench";
+} from "@nyte-ai/bench";
+import type { CiRepo, Reply, Request, Script } from "@nyte-ai/bench";
 import { contentText, getCurrentTools, normalizeContext } from "@nyte-ai/schema/model";
 import type {
   AssistantMessage,
@@ -37,7 +37,6 @@ import { Value } from "typebox/value";
 import { scriptedReply } from "../src/main/fixtures/e2e-models.ts";
 import { inspectProcessTree, survivors } from "./process-tree.ts";
 
-/** The id both builds list the scripted model under, as an Anthropic model. */
 const POLISH_MODEL = "scripted-polish";
 
 const BlockSchema = Type.Object({
@@ -106,7 +105,6 @@ function assistantMessage(content: AssistantMessage["content"]): AssistantMessag
   };
 }
 
-/** Reads an Anthropic Messages request back into the transcript the scripted model answers. */
 function readTranscript(body: Static<typeof MessagesRequestSchema>) {
   const names = new Map<string, string>();
   const messages: Message[] = [];
@@ -178,7 +176,6 @@ function stopReason(event: Extract<AssistantMessageEvent, { type: "done" }>): st
   return event.reason === "length" ? "max_tokens" : "end_turn";
 }
 
-/** Streams one scripted answer as the Anthropic Messages API's server-sent events. */
 async function streamAnswer(
   events: AsyncIterable<AssistantMessageEvent>,
   response: ServerResponse,
@@ -305,21 +302,13 @@ function readBody(request: IncomingMessage): Promise<string> {
   });
 }
 
-/** The scripted model served over HTTP as an Anthropic endpoint, so a packaged build of any revision can call it. */
 export interface ScriptedEndpoint {
   readonly origin: string;
-  /** How many model requests it answered. */
   readonly answered: () => number;
-  /** While offline, every request's connection is cut before it is answered, as an unreachable provider does. */
   offline: boolean;
   close(): Promise<void>;
 }
 
-/**
- * Serves `answer` as the Anthropic Messages API at `/v1/messages`, through the
- * bench's `fakeModels` stream, so its pacing, holds and errors match the
- * desktop e2e catalog. `/catalog/anthropic.json` lists the one model.
- */
 export async function serveScriptedModel(
   answer: (request: Request) => Reply,
 ): Promise<ScriptedEndpoint> {
@@ -392,7 +381,6 @@ export async function serveScriptedModel(
   return endpoint;
 }
 
-/** The scripted model as an Anthropic catalog row whose requests go to `origin`. */
 export function polishModel(origin: string) {
   return testModel(POLISH_MODEL, {
     name: "Scripted",
@@ -402,20 +390,12 @@ export function polishModel(origin: string) {
   });
 }
 
-/** Whether `request` belongs to a chat that opened with `prompt`. */
 function opensWith(request: Request, prompt: string): boolean {
   const first = request.context.messages.find((message) => message.role === "user");
 
   return first?.role === "user" && contentText(first.content, "") === prompt;
 }
 
-/**
- * Scenarios U and D and the e2e catalog's commands, answered for a home at
- * `home` whose canvas links point at `places`: a chat opening with the CI
- * prompt follows `ciScript`, one opening with the restaurant prompt
- * `restaurantReplies`, and anything else `scriptedReply` (`/hold`, `/error`,
- * `/long <n>`, echo).
- */
 export function polishAnswers(home: string, places: string): (request: Request) => Reply {
   const restaurant = restaurantReplies({ skill: restaurantSkill(home), origin: places });
   let ci: Script | undefined;
@@ -443,11 +423,9 @@ export function polishAnswers(home: string, places: string): (request: Request) 
   };
 }
 
-/** The home both builds open: scenarios U and D's servers, skills and repo, and the scripted model as the only Anthropic model. */
 export interface PolishHome extends AsyncDisposable {
   readonly home: string;
   readonly repo: CiRepo;
-  /** The local site the restaurant canvas links to. */
   readonly places: string;
 }
 
@@ -455,14 +433,6 @@ const McpFileSchema = Type.Object({
   mcpServers: Type.Record(Type.String(), Type.Record(Type.String(), Type.Unknown())),
 });
 
-/**
- * Builds the polish home under `parent`: scenario D's home, repo and CI server,
- * scenario U's places server, skill and site, an empty `.zshrc`, a `bin`
- * holding only `node`, both builds' MCP files (`mcp.json` on this branch,
- * `nyte.json`'s `mcp` before it), and the models store listing the scripted
- * model at `model` as Anthropic's only model, checked now so no build
- * refreshes it.
- */
 export async function polishHome(parent: string, model: string): Promise<PolishHome> {
   const repo = await pushedCiRepo(parent);
   const scenario = await ciHome({ route: "mcp", root: parent });
@@ -503,27 +473,17 @@ export async function polishHome(parent: string, model: string): Promise<PolishH
 
 const KEPT = ["SHELL", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL", "TERM"];
 
-/** A packaged build launched over a polish home. */
 export interface PackagedDesktop {
   readonly application: ElectronApplication;
   readonly page: Page;
   readonly output: readonly string[];
-  /** Quits the app and throws if any process of its tree outlives it by 5 s. */
   close(): Promise<void>;
 }
 
-/**
- * Launches the packaged `executable` with `home` as HOME (so a build that
- * ignores `--user-data-dir` still keeps its profile inside it), an Anthropic
- * key, the scripted catalog's URL, and a PATH of the home's `bin` and the
- * system folders, so no agent on the developer's PATH joins the catalog,
- * and waits for its shell.
- */
 export async function launchPackaged(input: {
   readonly executable: string;
   readonly home: string;
   readonly model: string;
-  /** Runs on the first window before its shell shows, as the loading state. */
   readonly onWindow?: (shown: { application: ElectronApplication; page: Page }) => Promise<void>;
 }): Promise<PackagedDesktop> {
   const kept = Object.fromEntries(

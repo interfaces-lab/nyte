@@ -44,12 +44,14 @@ export function ContextSelector({
   value,
   icon,
   active,
+  footer,
   children,
 }: {
   readonly action: (typeof clientActions)["selectWorkspace" | "selectEnvironment"];
   readonly value: string;
   readonly icon?: IconProps["name"];
   readonly active: boolean;
+  readonly footer?: ReactNode;
   readonly children: ReactNode;
 }) {
   const mac = nyte.platform === "darwin";
@@ -110,7 +112,7 @@ export function ContextSelector({
           <ContextHint label={action.label} value={value} keys={clientActionKeys(action, mac)} />
         </TooltipContent>
       </Tooltip>
-      <MenuContent side="top" xstyle={contextStyles.menu}>
+      <MenuContent side="top" footer={footer} xstyle={contextStyles.menu}>
         {children}
       </MenuContent>
     </Menu>

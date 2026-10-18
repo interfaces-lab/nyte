@@ -4,7 +4,7 @@ import type { Listener, Store } from "@nyte-ai/core";
 import { decodeError, errorStatus } from "@nyte-ai/protocol";
 import { afterEach, assert, describe, expect, it } from "vitest";
 import { listenFetch } from "../src/listen-fetch.ts";
-import { fakeModels, open } from "../src/bench/fake-models.ts";
+import { fakeModels, open } from "./fixtures/fake-models.ts";
 import { endless } from "./endless.ts";
 
 const TOKEN = "a-token-of-at-least-16";

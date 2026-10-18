@@ -9,6 +9,7 @@ import {
 import type { MutationState } from "@tanstack/react-query";
 import { useMemo, useSyncExternalStore } from "react";
 import { asId, ModelRefType } from "@nyte-ai/schema";
+import type { ClientCommandName } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import { toast } from "@nyte-ai/ui/toast";
 import type {
@@ -35,6 +36,7 @@ import type {
   WorkspaceId,
   WorkspaceInfo,
 } from "@nyte-ai/sdk";
+import { operationsDigest } from "@nyte-ai/sdk";
 import { keys } from "./query-keys.ts";
 import { missingAsNull } from "./route-session.ts";
 import { SessionActions } from "./session-actions.ts";
@@ -56,6 +58,7 @@ import {
   connected,
   currentConnection,
   directoryWatch,
+  findListedSession,
   gitStatusWatch,
   hostWatch,
   jobsWatch,
@@ -127,7 +130,6 @@ function newestCatalogQuery() {
     .at(0);
 }
 
-/** The newest catalog any generation answered: a live one, or the last run's seed until one does. */
 export function newestModelCatalog(): ModelCatalogView | undefined {
   const newest = newestCatalogQuery();
 
@@ -142,11 +144,6 @@ function cachedModelCatalog(previous: ModelCatalogView | undefined): ModelCatalo
 
 const DEFAULT_MODEL_MUTATION = ["catalog", "default"] as const;
 
-/**
- * The catalog a new chat's start checks its model against, once the host
- * answers: the newest live answer, or a fresh read when only the last run's
- * seed is cached. A pick still being saved outranks the host's default.
- */
 export async function readStartCatalog(): Promise<DesktopCatalog> {
   const newest = newestCatalogQuery();
 
@@ -171,9 +168,8 @@ export function selectedWorkspaceId(): WorkspaceId | undefined {
   return queryClient.getQueryData<HostState>(keys.host)?.workspace?.id;
 }
 
-/** The folder a chat lives in: null for Home, undefined until the directory and folders load. */
 export function sessionFolderPath(sessionId: SessionId): string | null | undefined {
-  const session = directoryWatch("all").value?.find((candidate) => candidate.id === sessionId);
+  const session = findListedSession(sessionId);
   const workspaces = queryClient.getQueryData<readonly WorkspaceInfo[]>(keys.workspaces);
 
   if (session === undefined || workspaces === undefined) return undefined;
@@ -209,10 +205,6 @@ export async function workspaceGit(): Promise<GitApi> {
 export const readSession = async (sessionId: SessionId) =>
   (await connected()).session(sessionId).info();
 
-/**
- * A window opens on Home, so its host state is known before the host answers.
- * It never fetches on its own: `loadLocalResources` and workspace events write it.
- */
 const OPENING_HOST_STATE: HostState = { workspace: undefined };
 
 export function useHostState() {
@@ -259,7 +251,6 @@ export function useRemoteAccessState(active: boolean) {
 
 export interface RailWorkspace extends SelectedWorkspace {
   readonly available: boolean;
-  /** The folder this worktree was made from and its branch; null for a folder the user added. */
   readonly worktree: { readonly source: WorkspaceId; readonly branch: string } | null;
 }
 
@@ -295,7 +286,6 @@ export function useWorkspaces() {
   });
 }
 
-/** Drop a workspace from the rail. Forgetting the selected workspace returns the view to Home. */
 export function useForgetWorkspace() {
   const client = useQueryClient();
 
@@ -327,10 +317,9 @@ export function useForgetWorkspace() {
   });
 }
 
-/** The live directory's roots; until it arrives, the ones the last run recorded. */
 function useRootSessions(): readonly SessionInfo[] | undefined {
   const projection = useSessionProjection();
-  const all = useWatch(directoryWatch("all")).value;
+  const roots = useWatch(directoryWatch("roots")).value;
 
   const recorded = useQuery<readonly SessionInfo[]>({
     queryKey: keys.firstFrameRoots,
@@ -338,10 +327,10 @@ function useRootSessions(): readonly SessionInfo[] | undefined {
   }).data;
 
   return useMemo(() => {
-    if (all !== undefined) return projection.list(all.filter((session) => session.parent === null));
+    const listed = roots ?? recorded;
 
-    return recorded === undefined ? undefined : projection.list(recorded);
-  }, [all, projection, recorded]);
+    return listed === undefined ? undefined : projection.list(listed);
+  }, [roots, projection, recorded]);
 }
 
 const NO_SESSIONS: ReadonlySet<SessionId> = new Set();
@@ -401,11 +390,14 @@ export function useSessionSearch(search: string, enabled = true) {
   );
 }
 
-/** A chat's info: its session directory row, or a host read once the directory has answered without it. */
 export function useSession(sessionId: SessionId | undefined) {
   const projection = useSessionProjection();
-  const directory = useWatch(directoryWatch("all"));
-  const listed = directory.value?.find((session) => session.id === sessionId);
+  const directory = useWatch(directoryWatch("roots"));
+  const recent = useWatch(directoryWatch("all"));
+
+  const listed =
+    directory.value?.find((session) => session.id === sessionId) ??
+    recent.value?.find((session) => session.id === sessionId);
 
   const read = useQuery({
     queryKey: keys.session(sessionId ?? asId<"session">("")),
@@ -424,7 +416,6 @@ export function useSession(sessionId: SessionId | undefined) {
   };
 }
 
-/** The session's live view with the watch's failure and a retry. */
 export function useSessionState(sessionId: SessionId | undefined) {
   return useWatch(sessionId === undefined ? undefined : sessionWatch(sessionId));
 }
@@ -433,7 +424,6 @@ export function useSessionView(sessionId: SessionId | undefined): SessionView | 
   return useSessionState(sessionId).value;
 }
 
-/** What a running session is doing now, in words; re-renders only when the words change. */
 export function useSessionActivity(
   sessionId: SessionId | undefined,
   cwd: string | undefined,
@@ -581,12 +571,6 @@ async function scanFiles(): Promise<readonly MentionFile[]> {
   return entries;
 }
 
-/**
- * Rereads the repository and the files under it: the git status watch reopens,
- * which makes the host read status afresh, and every git query (changes, log,
- * refs, run changes), the file list and open file documents refetch. Resolves
- * once the active queries have refetched.
- */
 export async function refreshVcs(): Promise<void> {
   const workspace = selectedWorkspaceId();
 
@@ -623,7 +607,6 @@ export function useMentionFiles(enabled: boolean) {
   return useQuery(mentionFilesOptions(enabled));
 }
 
-/** The plugin commands and skills a new chat in the open workspace would offer. */
 export function useWorkspaceCatalog() {
   const host = useHostState();
   const workspace = host.data.workspace?.id;
@@ -714,9 +697,27 @@ export function useSaveWorkspaceFile() {
   });
 }
 
-/** The SDK's link to the host: connected, reconnecting after a loss, or closed for good. */
 export function useHostLink() {
   return useWatchSelect(hostWatch("host"), (state) => state.value?.link);
+}
+
+export function useHostRelease(): { readonly version: string } | undefined {
+  const operations = useWatchSelect(hostWatch("host"), (state) => state.value?.operations);
+  const version = useWatchSelect(hostWatch("host"), (state) => state.value?.version);
+
+  const own = useQuery({
+    queryKey: keys.clientOperations,
+    queryFn: operationsDigest,
+    staleTime: Number.POSITIVE_INFINITY,
+  }).data;
+
+  return operations !== undefined &&
+    operations !== null &&
+    own !== undefined &&
+    operations !== own &&
+    version !== undefined
+    ? { version }
+    : undefined;
 }
 
 function useCatalogGeneration(): string {
@@ -745,10 +746,6 @@ export function useCatalog(_sessionId?: SessionId) {
   });
 }
 
-/**
- * Registered desktop history has no usage watch. Refresh on each visit or
- * manually, not on a timer: the host walks stored commits for every read.
- */
 export function usageReportOptions(untilDay: string) {
   return {
     queryKey: keys.usage(untilDay),
@@ -767,7 +764,6 @@ export function usageReportOptions(untilDay: string) {
 interface UsageQueryView {
   readonly report: UsageSnapshot | undefined;
   readonly error: Error | null;
-  /** No report yet. Distinct from refreshing one that is already on screen. */
   readonly isPending: boolean;
   readonly isFetching: boolean;
   readonly refresh: () => void;
@@ -801,12 +797,13 @@ export function useAccountLimits() {
 }
 
 export const COMPACT_COMMAND = {
-  name: "compact",
+  name: "compact" satisfies ClientCommandName,
   owner: "",
   side: "client",
   title: "Compact",
   description: "Summarize the chat to free up context",
-  arguments: null,
+  takesText: false,
+  completes: false,
 } satisfies CommandInfo;
 
 export function usePluginCatalog(sessionId?: SessionId) {
@@ -854,10 +851,6 @@ export function commitHostWorkspace(workspace: SelectedWorkspace | undefined): v
 
 let connecting: Promise<Connection> | undefined;
 
-/**
- * Connect to this window's host once. A failed attempt is forgotten, so the
- * next call tries again.
- */
 export function connectLocalHost(): Promise<Connection> {
   const current = currentConnection();
 
@@ -879,18 +872,10 @@ export function connectLocalHost(): Promise<Connection> {
   return connecting;
 }
 
-/**
- * Refill the workspace caches after a host transition. Every read waits for
- * the connection on its own and runs alongside the others. The workspace
- * queries are reset after the host state is committed, not removed: a removed
- * query cancels its fetch silently and strands the components still
- * observing it on a pending result, while a reset one refetches for its
- * mounted observers against the new workspace.
- */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
   const host = hostWatch("host");
-  const directory = directoryWatch("all");
+  const directory = directoryWatch("roots");
 
   const [state, workspaces, catalog] = await Promise.all([
     readHost(),

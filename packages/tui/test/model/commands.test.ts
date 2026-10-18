@@ -5,7 +5,7 @@ import { liveChoices } from "../../src/model/choices.ts";
 import { commandRegistry, resolveCommand, slashNamespace } from "../../src/model/commands.ts";
 import type { Intent } from "../../src/model/msg.ts";
 import { buildView } from "../fixture/view.ts";
-import { ready } from "./support.ts";
+import { play, ready, S1, typed } from "./support.ts";
 
 function command(name: string, side: CommandInfo["side"]): CommandInfo {
   return {
@@ -14,7 +14,8 @@ function command(name: string, side: CommandInfo["side"]): CommandInfo {
     side,
     title: name,
     description: `${name} command`,
-    arguments: null,
+    takesText: false,
+    completes: false,
   };
 }
 
@@ -206,5 +207,48 @@ describe("palette", () => {
     expect(ids).toContain("cmd:qa-probe");
     expect(ids).not.toContain("cmd:review");
     expect(ids).toContain("action:chat.thinking.cycle");
+  });
+});
+
+describe("command text suggestions", () => {
+  test("a command that suggests its text asks as it is typed, and Tab takes a suggestion", () => {
+    const withKey: SessionView = {
+      ...base,
+      catalog: {
+        ...base.catalog,
+        commands: [
+          {
+            name: "websearch-key",
+            owner: "web-search",
+            side: "core",
+            title: "Key",
+            description: "Key",
+            takesText: true,
+            completes: true,
+          },
+        ],
+      },
+    };
+    const asked = play(ready(withKey), typed("/websearch-key ta"));
+
+    expect(asked.effects).toContainEqual({
+      kind: "complete-command",
+      session: S1,
+      name: "websearch-key",
+      prefix: "ta",
+    });
+
+    const filled = play(
+      asked.state,
+      {
+        kind: "command-completed",
+        name: "websearch-key",
+        prefix: "ta",
+        items: [{ value: "tavily ", label: "tavily" }],
+      },
+      { kind: "completion", action: { kind: "fill" } },
+    );
+
+    expect(filled.state.local.draft.text).toBe("/websearch-key tavily ");
   });
 });

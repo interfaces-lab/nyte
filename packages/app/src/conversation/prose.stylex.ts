@@ -1,10 +1,8 @@
-/** Rendered markdown and its code blocks. */
 import { create } from "@stylexjs/stylex";
 import { media, radius, space } from "@nyte-ai/ui/styles/schema.stylex";
 import { conversation } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, type } from "@nyte-ai/ui/styles/vars.stylex";
 
-/** The ring around a code surface; prose, the composer, and diffs each draw this one. */
 const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
 
 export const proseStyles = create({
@@ -15,7 +13,6 @@ export const proseStyles = create({
     overflowWrap: "anywhere",
     userSelect: "text",
   },
-  measure: { width: "100%", maxWidth: conversation.proseMeasure },
   paragraph: {
     marginInline: 0,
     marginBlockStart: {
@@ -101,10 +98,6 @@ export const proseStyles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
-  /**
-   * A web link carries an underline as well as its colour: the link ink sits
-   * under 3:1 against body text, so colour alone would not mark it.
-   */
   webLink: {
     textDecorationLine: "underline",
     textDecorationColor: {
@@ -139,7 +132,6 @@ export const proseStyles = create({
   },
   rule: {
     width: "100%",
-    maxWidth: conversation.proseMeasure,
     height: 1,
     marginBlock: space.s2,
     borderStyle: "none",
@@ -151,11 +143,6 @@ export const proseStyles = create({
     width: "100%",
     maxWidth: "100%",
     overflowX: "auto",
-    /**
-     * A horizontal scroller must not become a vertical one: `overflow-x: auto`
-     * alone computes `overflow-y` to `auto`, which latches the wheel and stops
-     * the conversation under the reader. The transcript owns vertical scroll.
-     */
     overflowY: "hidden",
     borderRadius: radius.control,
     boxShadow: CODE_RING,

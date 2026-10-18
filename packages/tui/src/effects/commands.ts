@@ -168,6 +168,7 @@ export async function checkTrust(
   const found = await context.ports.host.trustInfo(effect.workspace).catch((error: unknown) => {
     if (effect.ask === "always") throw error;
     context.ports.log.write("trust", error);
+    context.dispatch({ kind: "trust-settled", workspace: effect.workspace });
 
     return null;
   });
@@ -182,7 +183,12 @@ export async function checkTrust(
 }
 
 export async function setTrust(effect: Of<"set-trust">, context: HandlerContext): Promise<void> {
-  await context.ports.host.trust(effect.workspace, effect.value);
+  try {
+    await context.ports.host.trust(effect.workspace, effect.value);
+  } finally {
+    context.dispatch({ kind: "trust-settled", workspace: effect.workspace });
+  }
+
   const { chat } = context.read().facts;
 
   if (
@@ -244,6 +250,24 @@ export async function runCommand(
   else settleCommand(outcome, effect, context);
 }
 
+/** Asks the followed chat, or a blank chat's folder, what may follow a command's name, for the menu still showing that text. */
+export async function completeCommand(
+  effect: Of<"complete-command">,
+  context: HandlerContext,
+): Promise<void> {
+  const { ports, read, dispatch } = context;
+  const { chat } = read().facts;
+
+  const items =
+    chat?.kind === "blank" && chat.id === effect.session
+      ? await ports.host
+          .workspace(await blankWorkspace(chat, context))
+          .completeCommand(effect.name, effect.prefix)
+      : await ports.host.session(effect.session).completeCommand(effect.name, effect.prefix);
+
+  dispatch({ kind: "command-completed", name: effect.name, prefix: effect.prefix, items });
+}
+
 function settleCommand(
   outcome: Exclude<CommandOutcome | WorkspaceCommandOutcome, { readonly kind: "prompt" }>,
   effect: Of<"run-command">,
@@ -256,10 +280,6 @@ function settleCommand(
       return;
     case "sent":
       return;
-    case "invalid":
-      throw new Error(
-        outcome.issues.map((issue) => issue.message).join("; ") || "Invalid argument",
-      );
     case "unknown":
       dispatch({
         kind: "command-unknown",

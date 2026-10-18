@@ -5,7 +5,14 @@ import { dev } from "@nyte-ai/core";
 import { TOKEN, TOKEN_AUTHORITY } from "@nyte-ai/core/server";
 import type { Connection, ListenOptions, Listener } from "@nyte-ai/core";
 import type { ServedHost, Verdict } from "@nyte-ai/core/server";
-import { HOST_HEADER, asSdkError, encodeError, errorStatus } from "@nyte-ai/protocol";
+import {
+  HOST_HEADER,
+  OPERATIONS_HEADER,
+  asSdkError,
+  encodeError,
+  errorStatus,
+  operationsDigest,
+} from "@nyte-ai/protocol";
 import { createHandler } from "./serve/handler.ts";
 import type { HandlerOptions } from "./serve/handler.ts";
 
@@ -15,7 +22,6 @@ type Cached = {
   dispose: Disposer;
 };
 
-/** Returns one request on its way through the handler: the request as forwarded, the controller tied into its signal and, for the dev line, the principal it authenticated as. The flight holds the request because undici's `Request` follows the signal it was given only while the request object lives. */
 type Flight = {
   readonly request: Request;
   readonly controller: AbortController;
@@ -40,6 +46,7 @@ export async function listenFetch(
   if (auth.kind === "token" && auth.token.length < 16)
     throw new SdkError("invalid", "A listener token needs at least 16 characters.");
   const { server } = host;
+  const operations = await operationsDigest();
   const cache = new Map<string, Cached>();
   const devices = new Map<string, Device>();
   const streams = new Map<PrincipalId, Set<Flight>>();
@@ -239,7 +246,7 @@ export async function listenFetch(
     return origin !== null && (options.origins ?? []).includes(origin)
       ? {
           "Access-Control-Allow-Origin": origin,
-          "Access-Control-Expose-Headers": HOST_HEADER,
+          "Access-Control-Expose-Headers": `${HOST_HEADER}, ${OPERATIONS_HEADER}`,
           Vary: "Origin",
         }
       : {};
@@ -309,7 +316,7 @@ export async function listenFetch(
       ms: Date.now() - started,
     });
 
-    return withHost(response, server.hostId);
+    return withHost(response, server.hostId, operations);
   };
 
   const execution = options.execution ?? { kind: "run", coverage: { kind: "all" } };
@@ -342,7 +349,6 @@ export async function listenFetch(
   return { address: null, fetch, disconnectClients, close, [Symbol.asyncDispose]: close };
 }
 
-/** Returns the response with `done` called once when its body ends, errors or is cancelled, or at once when it has none. The transformer is a plain object rather than a literal argument because the DOM lib's `Transformer` has no `cancel` yet, so this file also compiles in a DOM program. */
 function landing(response: Response, done: () => void): Response {
   if (response.body === null) {
     done();
@@ -358,10 +364,10 @@ function landing(response: Response, done: () => void): Response {
   );
 }
 
-/** Returns the response with `X-Nyte-Host` set to the host's id, rebuilt around the same body because a `Response` from elsewhere may hold immutable headers. */
-function withHost(response: Response, hostId: string): Response {
+function withHost(response: Response, hostId: string, operations: string): Response {
   const headers = new Headers(response.headers);
   headers.set(HOST_HEADER, hostId);
+  headers.set(OPERATIONS_HEADER, operations);
 
   return new Response(response.body, {
     status: response.status,

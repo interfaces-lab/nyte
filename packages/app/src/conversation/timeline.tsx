@@ -1,5 +1,5 @@
 import { props } from "@stylexjs/stylex";
-import type { SessionId, SessionView, UserContent } from "@nyte-ai/sdk";
+import type { SessionId, UserContent } from "@nyte-ai/sdk";
 import { useCallback } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
@@ -10,7 +10,7 @@ import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "./subagent-call.tsx";
 import { TranscriptContent } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
-import { TurnView, UserMessageView } from "./turn-view.tsx";
+import { TurnItemView, UserMessageView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker, TurnChangesTarget } from "./turn-view.tsx";
 import { estimateRowSize } from "./transcript-rows.ts";
 import type { TranscriptRow } from "./transcript-rows.ts";
@@ -21,21 +21,18 @@ type EditUserMessage = (
   choice: BranchModelChoice,
 ) => Promise<void>;
 
-/** The session's rows mapped onto the scroller's items and the row surfaces. */
 export function Timeline({
   ready,
   rows,
   working,
   settledWork,
   cwd,
-  changes,
   branchModel,
   onEditUser,
   onOpenChanges,
   onRetry,
 }: {
   readonly sessionId: SessionId;
-  readonly changes: SessionView["changes"];
   readonly ready: boolean;
   readonly rows: readonly TranscriptRow[];
   readonly working: boolean;
@@ -72,18 +69,21 @@ export function Timeline({
               </Button>
             </StatusMarker>
           );
-        case "turn":
+        case "part":
+        case "step":
+        case "agents":
+        case "response":
+        case "failure":
+        case "changes":
           return (
-            <TurnView
-              turn={row.turn}
-              continuations={row.continuations}
+            <TurnItemView
+              row={row}
+              running={(row.kind === "step" || row.kind === "changes") && row.trailing && working}
               density={density}
               cwd={cwd}
-              changes={changes}
               onEditUser={onEditUser}
               branchModel={branchModel}
               onOpenChanges={onOpenChanges}
-              running={row.trailing && working}
             />
           );
 
@@ -130,18 +130,7 @@ export function Timeline({
         }
       }
     },
-    [
-      branchModel,
-      changes,
-      cwd,
-      density,
-      onEditUser,
-      onOpenChanges,
-      onRetry,
-      rows,
-      settledWork,
-      working,
-    ],
+    [branchModel, cwd, density, onEditUser, onOpenChanges, onRetry, rows, settledWork, working],
   );
 
   return (

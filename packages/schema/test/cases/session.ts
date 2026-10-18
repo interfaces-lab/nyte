@@ -3,6 +3,7 @@ import {
   AgentInfoSchema,
   AuthoritySchema,
   CommandInfoSchema,
+  CommandCompletionsSchema,
   CommandOutcomeSchema,
   CommitBodySchema,
   ConfigureOutcomeSchema,
@@ -113,8 +114,13 @@ export const sessionCases = {
   SessionCatalogViewSchema: sample(SessionCatalogViewSchema, catalog, { commands: [] }),
   CommandOutcomeSchema: sample(
     CommandOutcomeSchema,
-    { kind: "invalid", issues: [issue] },
+    { kind: "failed", message: "Exploded." },
     { kind: "sent" },
+  ),
+  CommandCompletionsSchema: sample(
+    CommandCompletionsSchema,
+    [{ value: "tavily ", label: "tavily", description: "Tavily" }],
+    [{ value: "tavily " }],
   ),
   WorkspaceCommandOutcomeSchema: sample(
     WorkspaceCommandOutcomeSchema,

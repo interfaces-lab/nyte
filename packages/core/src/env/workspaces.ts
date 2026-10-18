@@ -15,7 +15,7 @@ import type {
 } from "@nyte-ai/schema";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
-import { decodeRunRecord, decodeWorkspaceRecord } from "../contract/records.ts";
+import { decodeRunRecord } from "../contract/records.ts";
 import type { WorkspaceRecord } from "../contract/records.ts";
 import type {
   HeldEntry,
@@ -45,8 +45,8 @@ import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { inspectWorkspaceAvailability, readWorkspace, workspaceRecords } from "./environment.ts";
 import { mcpApi } from "./mcp.ts";
-import { readTrustResolver } from "./trust.ts";
-import type { TrustResolver } from "./trust.ts";
+import { decideTrust, readFolderTrust } from "./trust.ts";
+import type { FolderTrust } from "./trust.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
 const PATCH_READ_MAX = 32;
@@ -75,7 +75,7 @@ export function createWorkspaces(
   return {
     async list() {
       const records = await workspaceRecords(kernel.store);
-      const trust = await readTrustResolver(kernel);
+      const trust = await readFolderTrust(kernel);
       const infos = await Promise.all(
         records.map((record) => workspaceInfo(kernel, record.id, trust)),
       );
@@ -127,7 +127,6 @@ export function createWorkspaces(
           id,
           target,
           identity: inspected.identity,
-          projectResources: options?.projectResources ?? null,
           projectSources: inspected.projectSources,
           addedBy: context.principal,
           createdAt: Date.now(),
@@ -143,7 +142,12 @@ export function createWorkspaces(
         ]);
 
         if (outcome.kind === "stale") return STALE;
-        changed(kernel, id);
+
+        if (options?.projectResources === undefined) changed(kernel, id);
+        else {
+          await decideTrust(kernel, record, options.projectResources);
+          await trustChanged(kernel);
+        }
 
         return { kind: "added", workspace: id };
       });
@@ -177,7 +181,7 @@ export function workspaceHandle(
   context: Pick<ConnectionContext, "origin">,
   id: WorkspaceId,
   client: object | null = null,
-): Omit<Workspace, "catalog" | "command"> {
+): Omit<Workspace, "catalog" | "command" | "completeCommand"> {
   const viewing = async (): Promise<SessionId | null> => {
     const origin = context.origin;
 
@@ -228,27 +232,6 @@ export function workspaceHandle(
       ? kernel.environments.workspaceCapabilities(id, holder)
       : kernel.environments.capabilities(session, holder);
   };
-
-  const rewrite = (what: string, change: (record: WorkspaceRecord) => WorkspaceRecord) =>
-    attempt<{ readonly kind: "updated" } | { readonly kind: "missing" }>(what, async () => {
-      const found = await load(
-        kernel.store,
-        await kernel.store.refs.get(workspaceRef(id)),
-        decodeWorkspaceRecord,
-      );
-
-      if (found === null) return { kind: "missing" };
-
-      const outcome = await commit(kernel, [
-        {
-          name: workspaceRef(id),
-          target: await put(kernel.store, "workspace", change(found.record)),
-          expect: found.ref.revision,
-        },
-      ]);
-
-      return outcome.kind === "set" ? { kind: "updated" } : STALE;
-    });
 
   return {
     id,
@@ -313,16 +296,16 @@ export function workspaceHandle(
       });
     },
     async update(patch) {
-      const outcome = await rewrite(`Updating ${id}`, (record) => ({
-        ...record,
-        projectResources:
-          patch.projectResources === undefined ? record.projectResources : patch.projectResources,
-      }));
+      const record = await readWorkspace(kernel.store, id);
 
-      if (outcome.kind === "updated" && patch.projectResources !== undefined)
+      if (record === null) return { kind: "missing" };
+
+      if (patch.projectResources !== undefined) {
+        await decideTrust(kernel, record, patch.projectResources);
         await trustChanged(kernel);
+      }
 
-      return outcome;
+      return { kind: "updated" };
     },
     async reload() {
       if ((await readWorkspace(kernel.store, id)) === null) return { kind: "missing" };
@@ -369,7 +352,7 @@ export function workspaceHandle(
 async function workspaceInfo(
   kernel: Kernel,
   id: WorkspaceId,
-  trust?: TrustResolver,
+  trust?: FolderTrust,
 ): Promise<WorkspaceInfo | null> {
   const record = await readWorkspace(kernel.store, id);
 
@@ -387,14 +370,23 @@ async function workspaceInfo(
     target: record.target,
     identity: record.identity,
     availability,
-    projectResources: record.projectResources,
-    trusted: (trust ?? (await readTrustResolver(kernel)))(record),
+    ...(await workspaceTrust(kernel, record, trust)),
     projectSources: record.projectSources,
     addedBy: record.addedBy,
     sessions: sessions.length,
     writers: runs.flat().map((run) => run.record.view.id),
     isolation: record.isolation,
   };
+}
+
+async function workspaceTrust(
+  kernel: Kernel,
+  record: WorkspaceRecord,
+  given: FolderTrust | undefined,
+): Promise<Pick<WorkspaceInfo, "projectResources" | "trusted">> {
+  const trust = given ?? (await readFolderTrust(kernel));
+
+  return { projectResources: trust.decided(record), trusted: trust.trusted(record) };
 }
 
 export async function sessionsOn(

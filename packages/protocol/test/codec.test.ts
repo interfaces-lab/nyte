@@ -169,7 +169,7 @@ describe("codec", () => {
     expect(JSON.stringify(encodeOutput("git.patches", patches))).toContain('"__proto__":{"path"');
   });
 
-  it("skips an array record of an unknown kind and ignores unknown fields when decoding", () => {
+  it("skips an array record of an unknown kind, or one it cannot read, and keeps unknown fields when decoding", () => {
     const frame = [
       { path: "a.ts", version: null, kind: "created", rename: "b.ts" },
       { path: "c.ts", version: null, kind: "renamed" },
@@ -180,6 +180,12 @@ describe("codec", () => {
       { path: "a.ts", version: null, kind: "created", rename: "b.ts" },
       { path: "d.ts", version: null, kind: "removed" },
     ]);
-    expect(() => decodeOutput("files.watch", [{ path: "a.ts" }])).toThrow(SdkError);
+    expect(
+      decodeOutput("files.watch", [
+        { path: "a.ts" },
+        { path: "d.ts", version: null, kind: "removed" },
+      ]),
+    ).toEqual([{ path: "d.ts", version: null, kind: "removed" }]);
+    expect(() => decodeOutput("receipt.status", { kind: "settled" })).toThrow(SdkError);
   });
 });

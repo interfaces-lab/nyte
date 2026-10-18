@@ -44,7 +44,118 @@
     "./auth/oauth/anthropic": "./src/auth/oauth/anthropic.ts"
   },
   "publishConfig": {
-    "access": "public"
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "import": "./dist/src/index.js"
+      },
+      "./auth/context": {
+        "types": "./dist/src/auth/context.d.ts",
+        "import": "./dist/src/auth/context.js"
+      },
+      "./auth/helpers": {
+        "types": "./dist/src/auth/helpers.d.ts",
+        "import": "./dist/src/auth/helpers.js"
+      },
+      "./auth/types": {
+        "types": "./dist/src/auth/types.d.ts",
+        "import": "./dist/src/auth/types.js"
+      },
+      "./auth/credential-store": {
+        "types": "./dist/src/auth/credential-store.d.ts",
+        "import": "./dist/src/auth/credential-store.js"
+      },
+      "./auth/oauth/github-copilot": {
+        "types": "./dist/src/auth/oauth/github-copilot.d.ts",
+        "import": "./dist/src/auth/oauth/github-copilot.js"
+      },
+      "./auth/oauth/openai-codex": {
+        "types": "./dist/src/auth/oauth/openai-codex.d.ts",
+        "import": "./dist/src/auth/oauth/openai-codex.js"
+      },
+      "./auth/store": {
+        "types": "./dist/src/auth/store.d.ts",
+        "import": "./dist/src/auth/store.js"
+      },
+      "./bun-oauth": {
+        "types": "./dist/src/bun-oauth.d.ts",
+        "import": "./dist/src/bun-oauth.js"
+      },
+      "./models": {
+        "types": "./dist/src/models.d.ts",
+        "import": "./dist/src/models.js"
+      },
+      "./providers/github-copilot": {
+        "types": "./dist/src/providers/github-copilot.d.ts",
+        "import": "./dist/src/providers/github-copilot.js"
+      },
+      "./providers/openai-codex": {
+        "types": "./dist/src/providers/openai-codex.d.ts",
+        "import": "./dist/src/providers/openai-codex.js"
+      },
+      "./providers/openrouter": {
+        "types": "./dist/src/providers/openrouter.d.ts",
+        "import": "./dist/src/providers/openrouter.js"
+      },
+      "./providers/vercel-ai-gateway": {
+        "types": "./dist/src/providers/vercel-ai-gateway.d.ts",
+        "import": "./dist/src/providers/vercel-ai-gateway.js"
+      },
+      "./session-resources": {
+        "types": "./dist/src/session-resources.d.ts",
+        "import": "./dist/src/session-resources.js"
+      },
+      "./types": {
+        "types": "./dist/src/types.d.ts",
+        "import": "./dist/src/types.js"
+      },
+      "./utils/estimate": {
+        "types": "./dist/src/utils/estimate.d.ts",
+        "import": "./dist/src/utils/estimate.js"
+      },
+      "./utils/event-stream": {
+        "types": "./dist/src/utils/event-stream.d.ts",
+        "import": "./dist/src/utils/event-stream.js"
+      },
+      "./utils/failure": {
+        "types": "./dist/src/utils/failure.d.ts",
+        "import": "./dist/src/utils/failure.js"
+      },
+      "./utils/fifo-queue": {
+        "types": "./dist/src/utils/fifo-queue.d.ts",
+        "import": "./dist/src/utils/fifo-queue.js"
+      },
+      "./utils/overflow": {
+        "types": "./dist/src/utils/overflow.d.ts",
+        "import": "./dist/src/utils/overflow.js"
+      },
+      "./utils/retry": {
+        "types": "./dist/src/utils/retry.d.ts",
+        "import": "./dist/src/utils/retry.js"
+      },
+      "./utils/text": {
+        "types": "./dist/src/utils/text.d.ts",
+        "import": "./dist/src/utils/text.js"
+      },
+      "./utils/transcript": {
+        "types": "./dist/src/utils/transcript.d.ts",
+        "import": "./dist/src/utils/transcript.js"
+      },
+      "./utils/uuid": {
+        "types": "./dist/src/utils/uuid.d.ts",
+        "import": "./dist/src/utils/uuid.js"
+      },
+      "./utils/validation": {
+        "types": "./dist/src/utils/validation.d.ts",
+        "import": "./dist/src/utils/validation.js"
+      },
+      "./auth/oauth/anthropic": {
+        "types": "./dist/src/auth/oauth/anthropic.d.ts",
+        "import": "./dist/src/auth/oauth/anthropic.js"
+      }
+    },
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -65,7 +176,7 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typescript": "6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=26.4.0"

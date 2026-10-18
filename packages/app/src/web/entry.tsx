@@ -1,4 +1,3 @@
-/** The browser entry. The bridge goes in before `theme/boot.ts` or any screen reads it. */
 import "./install.ts";
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
@@ -45,11 +44,6 @@ const router = createAppRouter({ history: createBrowserHistory() });
 
 const root = createRoot(container);
 
-/**
- * Mount the interface for `connection`, then run `open` under it: it installs
- * the connection when the shell mounted ahead of it, and does nothing when
- * the connection is already open.
- */
 function mountApp(
   connection: Connection,
   mount: (shell: ReactNode) => void,
@@ -77,15 +71,13 @@ function mountApp(
   startRendererStartup({
     fonts: ['13px "Inter Variable"', '12px "JetBrains Mono Variable"'],
     router,
-    mountShell: (mounted) => {
+    mountShell: () =>
       mount(
         <StrictMode>
           <App appIcon="/icon.svg" router={router} />
           <AddFolderDialogHost />
         </StrictMode>,
-      );
-      mounted();
-    },
+      ),
     connect: () =>
       open()
         .then(loadLocalResources)
@@ -101,7 +93,6 @@ function mountApp(
   });
 }
 
-/** A connection that is already open: the last run's snapshot fills in while the host is read. */
 function start(
   connection: Connection,
   mount: (shell: ReactNode) => void = (shell) => root.render(shell),
@@ -125,12 +116,6 @@ function showConnectScreen(initial?: Connection, failure?: ConnectFailure): void
   );
 }
 
-/**
- * A refused saved token never works again: a local or Tailscale token ends with
- * its share, and a removed device's token stays revoked, so it is forgotten.
- * Another host behind the address makes the last run's snapshot someone
- * else's, so it goes too.
- */
 function refuse(connection: Connection, fromLink: boolean, cause: unknown): void {
   const refused = connectionProblem(cause).kind === "authentication";
 
@@ -143,12 +128,6 @@ function refuse(connection: Connection, fromLink: boolean, cause: unknown): void
   );
 }
 
-/**
- * A saved connection with a snapshot from the last run mounts at once and
- * connects underneath: the draft and the sidebar never wait for the network.
- * A refused token or another host's answer still leaves for the connect
- * screen; a network failure keeps the shell and offers a retry.
- */
 async function resume(connection: Connection, fromLink: boolean): Promise<void> {
   if (fromLink) await releaseStoredAccountDevice(accountConfig);
 

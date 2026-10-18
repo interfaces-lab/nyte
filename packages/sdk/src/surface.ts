@@ -98,6 +98,7 @@ export type {
   Capability,
   CatalogGeneration,
   ChangeSet,
+  CommandCompletion,
   CommandInfo,
   CommandOutcome,
   CommitBody,
@@ -278,7 +279,9 @@ export type {
   WriteOutcome,
 } from "@nyte-ai/schema";
 
-export { dev } from "@nyte-ai/core";
+export { dev, watchStore } from "@nyte-ai/core";
+
+export type { WatchStore } from "@nyte-ai/core";
 
 export {
   clearSpans,
@@ -295,6 +298,8 @@ export {
 export type { EndSpan, Span, SpanDetail, SpanName } from "@nyte-ai/core";
 
 export { SdkError } from "@nyte-ai/schema";
+
+export { operationsDigest } from "@nyte-ai/protocol";
 
 export { pagedViews } from "./history.ts";
 

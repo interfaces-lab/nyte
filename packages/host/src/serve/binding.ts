@@ -268,7 +268,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "session.update": ({ session: id, patch }) => session(id).update(patch),
     "session.remove": ({ session: id }) => session(id).remove(),
     "session.stop": ({ session: id }) => session(id).stop(),
-    "session.command": ({ session: id, name, args }) => session(id).command(name, args),
+    "session.command": ({ session: id, name, text }) => session(id).command(name, text),
+    "session.completeCommand": ({ session: id, name, prefix }) =>
+      session(id).completeCommand(name, prefix),
 
     "head.send": async ({ session: id, head, content, options }) => {
       const receipt = await session(id).head(head).send(content, options);
@@ -352,7 +354,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
 
     "workspace.info": ({ workspace: id }) => workspace(id).info(),
     "workspace.catalog": ({ workspace: id }) => workspace(id).catalog(),
-    "workspace.command": ({ workspace: id, name, args }) => workspace(id).command(name, args),
+    "workspace.command": ({ workspace: id, name, text }) => workspace(id).command(name, text),
+    "workspace.completeCommand": ({ workspace: id, name, prefix }) =>
+      workspace(id).completeCommand(name, prefix),
     "workspace.watch": async ({ workspace: id }) => workspace(id).watch(),
     "mcp.watch": async ({ workspace: id }) => workspace(id).mcp.watch(),
     "mcp.reconnect": ({ workspace: id, server }) => workspace(id).mcp.reconnect(server),

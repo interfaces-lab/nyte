@@ -5,7 +5,6 @@ import {
   MenuItem,
   MenuRadioGroup,
   MenuRadioItem,
-  MenuSeparator,
   MenuSub,
   MenuSubContent,
   MenuSubTrigger,
@@ -14,10 +13,17 @@ import { useGitHub, useGitHubState } from "../chrome/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import { clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
-import { useHostState, useVcsSnapshot, useWorkspaces } from "../queries.ts";
+import {
+  useHostState,
+  useVcsSnapshot,
+  useWorkspaceSessionDirectory,
+  useWorkspaces,
+} from "../queries.ts";
 import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
 import { EnvironmentMenu } from "./environment-menu.tsx";
+
+const INLINE_FOLDERS = 5;
 
 export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const host = useHostState();
@@ -44,24 +50,67 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
 
   const openFolder = folderPicker();
 
-  const recentWorkspaces = (workspaces.data ?? []).filter(
-    (candidate) => candidate.path !== workspace?.path,
+  const directories = useWorkspaceSessionDirectory().data ?? [];
+  const lastActivity = new Map<string, number>();
+
+  for (const { workspacePath, sessions } of directories) {
+    if (workspacePath === null) continue;
+
+    for (const session of sessions)
+      lastActivity.set(
+        workspacePath,
+        Math.max(session.lastActivityAt, lastActivity.get(workspacePath) ?? 0),
+      );
+  }
+
+  const folders = [
+    ...new Map(
+      (workspaces.data ?? [])
+        .filter(
+          (candidate) =>
+            candidate.available &&
+            candidate.worktree === null &&
+            candidate.path !== workspace?.path,
+        )
+        .map((candidate) => [candidate.path, candidate]),
+    ).values(),
+  ].toSorted(
+    (left, right) => (lastActivity.get(right.path) ?? 0) - (lastActivity.get(left.path) ?? 0),
   );
 
-  const workspaceItems = recentWorkspaces.map((candidate) => (
+  const nameCounts = new Map<string, number>();
+
+  for (const folder of folders) nameCounts.set(folder.name, (nameCounts.get(folder.name) ?? 0) + 1);
+
+  const workspaceItems = folders.map((folder) => (
     <MenuRadioItem
-      key={candidate.path}
-      value={candidate.path}
+      key={folder.path}
+      value={folder.path}
       icon="folder"
-      disabled={candidate.available === false}
+      meta={
+        (nameCounts.get(folder.name) ?? 0) > 1
+          ? folder.path.split(/[\\/]/u).filter(Boolean).at(-2)
+          : undefined
+      }
     >
-      <span title={candidate.path}>{candidate.name}</span>
+      <span title={folder.path}>{folder.name}</span>
     </MenuRadioItem>
   ));
 
   return (
     <div {...props(contextStyles.row)}>
-      <ContextSelector action={clientActions.selectWorkspace} value={workspaceName} active={active}>
+      <ContextSelector
+        action={clientActions.selectWorkspace}
+        value={workspaceName}
+        active={active}
+        footer={
+          openFolder === undefined ? undefined : (
+            <MenuItem icon="folder-add" onClick={openFolder}>
+              Open Folder…
+            </MenuItem>
+          )
+        }
+      >
         <MenuRadioGroup
           value={workspace?.path ?? "home"}
           onValueChange={(value) => {
@@ -86,24 +135,16 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
           {workspaceItems.length > 0 && (
             <MenuGroup>
               <MenuGroupLabel>Recent Workspaces</MenuGroupLabel>
-              {workspaceItems.slice(0, 8)}
+              {workspaceItems.slice(0, INLINE_FOLDERS)}
             </MenuGroup>
           )}
-          {workspaceItems.length > 8 && (
+          {workspaceItems.length > INLINE_FOLDERS && (
             <MenuSub>
               <MenuSubTrigger icon="folder">More Workspaces</MenuSubTrigger>
-              <MenuSubContent>{workspaceItems.slice(8)}</MenuSubContent>
+              <MenuSubContent>{workspaceItems.slice(INLINE_FOLDERS)}</MenuSubContent>
             </MenuSub>
           )}
         </MenuRadioGroup>
-        {openFolder !== undefined && (
-          <>
-            <MenuSeparator />
-            <MenuItem icon="folder-add" onClick={openFolder}>
-              Open Folder…
-            </MenuItem>
-          </>
-        )}
       </ContextSelector>
       {branch !== undefined && (
         <span {...props(contextStyles.readout, contextStyles.controlLayout)}>

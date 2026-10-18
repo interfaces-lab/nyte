@@ -1,93 +1,138 @@
-import { useState } from "react";
-import { create } from "@stylexjs/stylex";
-import { Dialog } from "@nyte-ai/ui/dialog";
-import { motion } from "@nyte-ai/ui/styles/vars.stylex";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+import { useLocation } from "@tanstack/react-router";
 import { IconBarsTwo, IconCrossSmall } from "central-icons";
 import { HrefLink } from "~/components/site/href-link";
-import type { NavSection } from "~/lib/docs";
+import { DocNav } from "~/components/site/sidebar";
+import { findPage, type NavSection } from "~/lib/docs";
 
-const styles = create({
-  popup: {
-    top: "calc(var(--site-nav-height) + 8px)",
-    right: "var(--site-pad)",
-    left: "var(--site-pad)",
-    gap: 0,
-    width: "auto",
-    maxHeight: "min(72dvh, calc(100dvh - var(--site-nav-height) - 32px))",
-    padding: 8,
-    overscrollBehavior: "contain",
-    transform: "none",
-    opacity: {
-      default: 1,
-      "[data-starting-style]": 0,
-      "[data-ending-style]": 0,
-    },
-    translate: {
-      default: "0 0",
-      "[data-starting-style]": "0 -8px",
-      "[data-ending-style]": "0 -8px",
-    },
-    transitionProperty: "opacity, translate",
-    transitionDuration: {
-      default: motion.durationNormal,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
-  },
-});
+const subscribeToNothing = () => () => undefined;
 
-const linkClass =
-  "block rounded-lg px-3 py-2 text-[15px] text-muted-foreground hover:bg-fill-hover hover:text-foreground";
+const siteLinkClass =
+  "block rounded-full px-2.5 py-1.5 text-muted-foreground hover:bg-foreground/5 hover:text-foreground";
 
+/**
+ * The phone menu fills the screen beneath the sticky nav, which stays on top
+ * with its close control, the way a native sheet keeps its toolbar. While it
+ * is open, `html[data-menu-open]` locks the page and drops the nav's
+ * over-the-plate colours. It remembers the page it was opened on, so
+ * navigating anywhere else closes it.
+ */
 export function SiteMobileNav({
-  sections,
+  docs,
+  site,
   githubHref,
 }: {
-  sections: readonly NavSection[];
+  docs: readonly NavSection[];
+  site: readonly NavSection[];
   githubHref: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const close = () => setOpen(false);
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const [openedOn, setOpenedOn] = useState<string | null>(null);
+  const open = openedOn === pathname;
+
+  const onClient = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  );
+
+  const toggle = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const toc = findPage(pathname)?.toc.filter((entry) => entry.depth === 2) ?? [];
+  const close = () => setOpenedOn(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const root = document.documentElement;
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpenedOn(null);
+      toggle.current?.focus();
+    };
+
+    root.dataset.menuOpen = "";
+    panel.current?.focus();
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      delete root.dataset.menuOpen;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
-    <Dialog.Root modal={false} onOpenChange={setOpen} open={open}>
-      <Dialog.Trigger
-        aria-label="Open navigation"
-        className="group hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-[10px] bg-fill-selected text-foreground hover:bg-foreground/10 max-lg:inline-flex hero:text-white"
+    <>
+      <button
+        ref={toggle}
+        type="button"
+        aria-label={open ? "Close navigation" : "Open navigation"}
+        aria-expanded={open}
+        aria-controls="site-menu"
+        data-open={open || undefined}
+        className="group hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-full bg-fill-selected text-foreground hover:bg-foreground/10 max-lg:inline-flex hero:text-white"
+        onClick={() => setOpenedOn(open ? null : pathname)}
       >
-        <span className="group-data-popup-open:hidden">
-          <IconBarsTwo size={16} />
-        </span>
-        <span className="hidden group-data-popup-open:inline-flex">
-          <IconCrossSmall size={16} />
-        </span>
-      </Dialog.Trigger>
-      <Dialog.Popup xstyle={styles.popup}>
-        <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-        <nav className="flex min-h-0 flex-col gap-4 overflow-y-auto" aria-label="Site">
-          {sections.map((section) => (
-            <div key={section.label ?? section.items[0].href}>
-              {section.label ? (
-                <h2 className="px-3 pb-1 text-[14px] text-tertiary-foreground">{section.label}</h2>
-              ) : null}
-              {section.items.map((item) => (
-                <HrefLink key={item.href} href={item.href} className={linkClass} onClick={close}>
-                  {item.title}
-                </HrefLink>
-              ))}
-            </div>
-          ))}
-          <a
-            href={githubHref}
-            target="_blank"
-            rel="noreferrer"
-            className={linkClass}
-            onClick={close}
-          >
-            GitHub
-          </a>
-        </nav>
-      </Dialog.Popup>
-    </Dialog.Root>
+        {open ? <IconCrossSmall size={16} /> : <IconBarsTwo size={16} />}
+      </button>
+      {onClient
+        ? createPortal(
+            <div
+              ref={panel}
+              id="site-menu"
+              aria-label="Navigation"
+              tabIndex={-1}
+              inert={!open}
+              data-open={open || undefined}
+              className="site-menu lg:hidden"
+            >
+              <div className="mx-auto flex w-full max-w-xl flex-col gap-8">
+                <DocNav
+                  className="flex flex-col gap-6 text-lg/7"
+                  sections={docs}
+                  toc={toc}
+                  onNavigate={close}
+                />
+                <nav
+                  className="flex flex-col gap-6 border-t border-border-subtle pt-6 text-lg/7"
+                  aria-label="Site"
+                >
+                  {site.map((section) => (
+                    <div key={section.label ?? section.items[0].href}>
+                      {section.label ? (
+                        <h2 className="px-2.5 pb-1 font-normal text-tertiary-foreground">
+                          {section.label}
+                        </h2>
+                      ) : null}
+                      {section.items.map((item) => (
+                        <HrefLink
+                          key={item.href}
+                          href={item.href}
+                          className={siteLinkClass}
+                          onClick={close}
+                        >
+                          {item.title}
+                        </HrefLink>
+                      ))}
+                    </div>
+                  ))}
+                  <a
+                    href={githubHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={siteLinkClass}
+                    onClick={close}
+                  >
+                    GitHub
+                  </a>
+                </nav>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }

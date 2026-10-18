@@ -148,6 +148,7 @@ export interface Local {
   readonly escapeArmedAt: number | null;
   readonly transcript: TranscriptLocal;
   readonly submissions: readonly Submission[];
+  readonly settlingTrust: readonly WorkspaceId[];
   readonly sequence: number;
   readonly pasteGeneration: number;
   readonly pasting: number;
@@ -316,6 +317,7 @@ export function initialState(bootstrap: Bootstrap): State {
         disclosures: new Set(),
       },
       submissions: [],
+      settlingTrust: [],
       sequence: 0,
       pasteGeneration: 0,
       pasting: 0,
@@ -330,6 +332,18 @@ export function initialState(bootstrap: Bootstrap): State {
 /** The workspace a chat starts in or runs in. */
 export function chatFolder(chat: Chat): ChatFolder {
   return chat.kind === "blank" ? chat.folder : { kind: "folder", id: chat.info.workspace };
+}
+
+export function awaitingTrust(state: State, workspace: WorkspaceId): boolean {
+  return (
+    state.local.settlingTrust.includes(workspace) ||
+    state.local.dialogs.some(
+      (dialog) =>
+        dialog.kind === "list" &&
+        dialog.purpose.kind === "trust" &&
+        dialog.purpose.workspace === workspace,
+    )
+  );
 }
 
 /** The started session on screen, or `null` while the chat is blank or opening. */

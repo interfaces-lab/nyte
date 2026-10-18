@@ -6,7 +6,6 @@ import "@nyte-ai/app/theme/boot.ts";
 import "@nyte-ai/app/theme/focus-modality.ts";
 import "@nyte-ai/app/theme/global.css";
 import { StrictMode, startTransition } from "react";
-import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
@@ -19,9 +18,9 @@ import {
   startRendererStartup,
   StartupFailure,
   startWindowTabs,
+  windowContentReady,
   windowTabRoute,
 } from "@nyte-ai/app";
-import { useMountEffect } from "@nyte-ai/app/use-mount-effect.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
 
@@ -39,14 +38,19 @@ if (container === null) throw new Error("Missing #root");
 
 const root = createRoot(container);
 
-/** Main keeps the window hidden until the interface has drawn its first frame. */
+const shellReady = Promise.withResolvers<void>();
+
 const firstFrame = new PerformanceObserver((list) => {
   if (list.getEntriesByName("nyte:shell-ready").length === 0) return;
   firstFrame.disconnect();
-  window.nyte.windowPainted();
+  shellReady.resolve();
 });
 
 firstFrame.observe({ entryTypes: ["mark"] });
+
+void shellReady.promise
+  .then(windowContentReady)
+  .then(() => requestAnimationFrame(() => setTimeout(() => window.nyte.windowPainted(), 0)));
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {
@@ -65,27 +69,14 @@ focusManager.setEventListener((setFocused) => {
   };
 });
 
-/** Calls `onMount` once its tree has committed. It sits outside StrictMode, which would call it twice. */
-function Mounted({ onMount, children }: { onMount: () => void; children: ReactNode }): ReactNode {
-  useMountEffect(onMount);
-
-  return children;
-}
-
-/**
- * Renders the interface as a transition, which React renders in slices that yield to the
- * browser, so the shell's first mount is no long task. `mounted` runs once it has committed.
- */
-function mountShell(mounted: () => void): void {
+function mountShell(): void {
   startTransition(() =>
     root.render(
-      <Mounted onMount={mounted}>
-        <StrictMode>
-          <AccountProvider>
-            <App appIcon={appIcon} router={router} />
-          </AccountProvider>
-        </StrictMode>
-      </Mounted>,
+      <StrictMode>
+        <AccountProvider>
+          <App appIcon={appIcon} router={router} />
+        </AccountProvider>
+      </StrictMode>,
     ),
   );
 }

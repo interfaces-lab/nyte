@@ -1,5 +1,6 @@
 import fuzzysort from "fuzzysort";
-import { completionTrigger } from "@nyte-ai/plugin/client/presentation";
+import type { CommandCompletion } from "@nyte-ai/sdk";
+import { completionTrigger, findCommandArgument } from "@nyte-ai/plugin/client/presentation";
 import { directoryCompletionQuery } from "../lib/directory-completion.ts";
 import { acceptSlashCommand, slashCommandLabel, slashCompletion } from "../lib/slash.ts";
 import type { SlashCommand } from "../lib/slash.ts";
@@ -13,6 +14,7 @@ export type CompletionState =
       readonly highlighted: number;
       readonly directories: { readonly path: string; readonly entries: readonly string[] } | null;
       readonly explicit: MentionFile | null;
+      readonly suggestions: readonly CommandCompletion[] | null;
     };
 
 export interface MentionFile {
@@ -21,12 +23,20 @@ export interface MentionFile {
   readonly label: string;
 }
 
-export interface CompletionToken {
-  readonly trigger: "/" | "@" | "cd";
-  readonly query: string;
-  readonly from: number;
-  readonly to: number;
-}
+export type CompletionToken =
+  | {
+      readonly trigger: "/" | "@" | "cd";
+      readonly query: string;
+      readonly from: number;
+      readonly to: number;
+    }
+  | {
+      readonly trigger: "argument";
+      readonly command: string;
+      readonly query: string;
+      readonly from: number;
+      readonly to: number;
+    };
 
 export interface CompletionModel {
   readonly token: CompletionToken;
@@ -41,7 +51,7 @@ export interface CompletionItem {
   readonly id: string;
   readonly label: string;
   readonly detail: string;
-  readonly kind: "action" | "setting" | "skill" | "plugin" | "file" | "directory";
+  readonly kind: "action" | "setting" | "skill" | "plugin" | "file" | "directory" | "argument";
 }
 
 interface CompletionSources {
@@ -84,11 +94,24 @@ function tokenKey(token: CompletionToken): string {
   return `${token.trigger}:${String(token.from)}`;
 }
 
-export function completionToken(draft: Pick<Draft, "text" | "cursor">): CompletionToken | null {
+export function completionToken(
+  draft: Pick<Draft, "text" | "cursor">,
+  completing: ReadonlySet<string>,
+): CompletionToken | null {
   const directory = directoryCompletionQuery(draft.text, draft.cursor);
 
   if (directory !== undefined)
     return { trigger: "cd", query: directory.path, from: directory.start, to: directory.end };
+  const argument = findCommandArgument(draft.text, draft.cursor);
+
+  if (argument !== undefined && completing.has(argument.command))
+    return {
+      trigger: "argument",
+      command: argument.command,
+      query: argument.query,
+      from: argument.start,
+      to: draft.text.length,
+    };
   const trigger = completionTrigger(draft.text, draft.cursor);
 
   if (trigger === undefined) return null;
@@ -99,21 +122,27 @@ export function completionToken(draft: Pick<Draft, "text" | "cursor">): Completi
 export function nextCompletion(
   state: CompletionState,
   draft: Pick<Draft, "text" | "cursor">,
+  completing: ReadonlySet<string>,
 ): CompletionState {
   if (draft.text.startsWith("!")) return CLOSED;
-  const token = completionToken(draft);
+  const token = completionToken(draft, completing);
 
   if (token === null) return CLOSED;
+  const opened: CompletionState = {
+    kind: "open",
+    token,
+    highlighted: 0,
+    directories: null,
+    explicit: null,
+    suggestions: null,
+  };
 
-  if (state.kind === "closed")
-    return state.dismissed === tokenKey(token)
-      ? state
-      : { kind: "open", token, highlighted: 0, directories: null, explicit: null };
+  if (state.kind === "closed") return state.dismissed === tokenKey(token) ? state : opened;
 
   if (tokenKey(state.token) === tokenKey(token) && state.token.query === token.query)
     return { ...state, token };
 
-  return { kind: "open", token, highlighted: 0, directories: null, explicit: null };
+  return opened;
 }
 
 export function dismissCompletion(state: CompletionState): CompletionState {
@@ -208,8 +237,19 @@ function itemsFor(
             detail: "",
             kind: "directory",
           }));
+    case "argument":
+      if (state.suggestions === null) return "loading";
+
+      return state.suggestions.length === 0
+        ? null
+        : state.suggestions.map((suggestion) => ({
+            id: suggestion.value,
+            label: suggestion.label,
+            detail: suggestion.description ?? "",
+            kind: "argument",
+          }));
     default: {
-      const _exhaustive: never = state.token.trigger;
+      const _exhaustive: never = state.token;
 
       return _exhaustive;
     }
@@ -270,7 +310,8 @@ export function completionEdit(
   if (model.token.trigger === "@")
     return { kind: "file", from, to, path: item.id, directory: item.id.endsWith("/") };
 
-  if (model.token.trigger === "cd") return { kind: "replace", from, to, text: item.id };
+  if (model.token.trigger === "cd" || model.token.trigger === "argument")
+    return { kind: "replace", from, to, text: item.id };
   const command = sources.commands.find((candidate) => candidate.name === item.id);
 
   if (command === undefined) return null;

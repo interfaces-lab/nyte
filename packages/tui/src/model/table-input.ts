@@ -10,7 +10,7 @@ import { queueRows } from "./queue.ts";
 import type { QueueRow } from "./queue.ts";
 import { currentQuestion } from "./question.ts";
 import type { QuestionModel } from "./question.ts";
-import { followedSession } from "./state.ts";
+import { awaitingTrust, followedSession } from "./state.ts";
 import type { Draft, FollowedSession, ShellJob, State, Submission } from "./state.ts";
 
 /** What the interaction table decides each command from. */
@@ -170,11 +170,17 @@ export function tableInputFor(state: State, dialog: Dialog | null): TableInput {
   };
 }
 
-/** The messages sent to the blank chat on screen while they wait for the host to open, oldest first. */
+/** The messages sent to the blank chat on screen while they wait for the host to open or for the folder's trust, oldest first. */
 export function waitingMessages(state: State): readonly Submission[] {
   const { chat } = state.facts;
 
-  if (chat?.kind !== "blank" || state.facts.host === "open") return [];
+  if (chat?.kind !== "blank") return [];
+
+  if (
+    state.facts.host === "open" &&
+    (chat.folder.kind !== "folder" || !awaitingTrust(state, chat.folder.id))
+  )
+    return [];
 
   return state.local.submissions.filter((sent) => sent.session === chat.id);
 }

@@ -1,0 +1,128 @@
+---
+title: Shared concepts
+description: The rules every SDK call follows for handles, errors, outcomes, ids and revisions.
+---
+
+## Handles bind without I/O
+
+Getting a handle by id never touches the network:
+
+- `connection.session(id)` and `connection.workspace(id)`
+- `session.head(name)`, `session.run(id)`, `session.receipt(id)` and `session.part(id)`
+- `workspace.job(id)`
+
+The handle's methods check that the thing exists when you call them. Save an id, rebuild the handle
+after a reload, and call it.
+
+```ts
+import { asId } from "@nyte-ai/schema";
+
+const session = connection.session(asId<"session">(savedId));
+const info = await session.info();
+```
+
+## Ids are typed
+
+Ids are strings with a brand, so a `SessionId` can't be passed where a `RunId` is expected. Ids that
+come back from the SDK already carry their brand. Wrap one you stored yourself with
+`asId<"session">(value)`; the name in angle brackets is the kind of id. Head names are ids too:
+`asId<"head">("try-sqlite")`.
+
+## Errors and outcomes
+
+An SDK call fails in one of two ways.
+
+**It throws `SdkError`** when the call couldn't be made: bad credentials, no authority, an id that
+doesn't exist, invalid input, a lost connection, or a bug in the host. Every `SdkError` has a `code`
+to branch on.
+
+**It returns an outcome** when the call was made and the answer is one of several expected results.
+Outcomes are objects with a `kind`, such as `{ kind: "busy", run }` from a merge or
+`{ kind: "unknown-model", model }` from `configure`. TypeScript makes you handle each one.
+
+```ts
+import { SdkError } from "@nyte-ai/sdk";
+
+try {
+  await connection.session(asId<"session">(savedId)).view();
+} catch (cause) {
+  if (cause instanceof SdkError && cause.code === "unknown") forget(savedId);
+  else throw cause;
+}
+```
+
+Catch `SdkError` where your app talks to people, and keep its `code`. Wrapping every call in another
+result type adds nothing.
+
+| Code              | Thrown when                                                                    |
+| ----------------- | ------------------------------------------------------------------------------ |
+| `unauthenticated` | The credential is missing, wrong or revoked                                    |
+| `denied`          | The principal lacks the authority, or the target refuses changes from a client |
+| `unknown`         | The id names nothing on this host                                              |
+| `invalid`         | The input failed validation. `issues` lists each problem with its path         |
+| `stale`           | The state you based the call on has changed, or a different host answered      |
+| `unavailable`     | The capability or entry point doesn't exist here, or the host is closed        |
+| `internal`        | The host hit a defect. `correlation` names the log entry                       |
+
+`SdkError` also carries `hostId`, the host that raised it, or `null` when no host answered.
+
+## Retrying is safe
+
+Every write that can be retried takes an id. The same id with the same input returns the first
+result instead of acting twice:
+
+- `sessions.start({ id })` names the chat, its first message and its receipt.
+- `send(content, { id })` names the receipt.
+
+The SDK mints these ids before the request and resends under them after a failure, so most code
+never passes one. Pass one to retry across your own process restart.
+
+## Revisions guard concurrent changes
+
+Views and trees carry a `revision`. Pass it back as `expect` to make a change conditional on what
+you saw:
+
+- `send(content, { replace, expect })` for edits
+- `move(position, { expect })`
+- `heads.merge(name, { expect })` and `heads.remove(name, { expect })`
+
+When the head has moved since, the call returns or settles `stale` with the current revision and
+changes nothing. Read again and decide. Parts use the same idea with a number:
+`part.update(next, { version })`.
+
+## Views are folded by the host
+
+The host turns a session's events into a `SessionView`. `watch()` yields a whole view each time, so
+a client never merges events or streamed text itself. After a reconnect, the stream starts again
+from the current view.
+
+## Capabilities are values
+
+A workspace's files, git, GitHub and browser can each be missing. Each is a capability you check
+before using:
+
+```ts
+const git = await workspace.git();
+
+if (git.kind !== "available") return git.reason;
+
+const status = await git.api.status();
+```
+
+Besides `available`, a capability is `unsupported` when the environment has no such thing, such as
+git in a chat-only host. It is `denied` when this principal can't use it, and `unavailable`, with a
+`retry` hint of `allowed` or `manual`, when it should exist but can't be reached right now.
+
+## Authority
+
+Each connection belongs to a principal with a set of authorities:
+
+| Authority     | Covers                                                                              |
+| ------------- | ----------------------------------------------------------------------------------- |
+| `participant` | Sessions, files, the browser, and reading git and GitHub                            |
+| `owner`       | Model logins and accounts, settings, adding workspaces, MCP, writing git and GitHub |
+| `maintenance` | Replacing plugins, and listing, pairing and revoking principals                     |
+
+The `Host` that `sdk.open` returns has all three. A listener token grants `participant` and
+`owner`. A paired device gets the set passed to `principals.pair`. A call outside the principal's
+authority throws `SdkError("denied")`.

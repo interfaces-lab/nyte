@@ -95,9 +95,7 @@ export function useComposerSubmit({
   ): Promise<boolean> => {
     if (line === undefined) return send(content);
 
-    const outcome = await client
-      .session(sessionId)
-      .command(line.name, line.argument === "" ? undefined : line.argument);
+    const outcome = await client.session(sessionId).command(line.name, line.argument);
 
     switch (outcome.kind) {
       case "ran":
@@ -108,10 +106,6 @@ export function useComposerSubmit({
         return true;
       case "unknown":
         return send(content);
-      case "invalid":
-        reportError(outcome.issues[0]?.message ?? "The host refused that command's input.");
-
-        return false;
       case "failed":
         reportError(outcome.message);
 

@@ -5,7 +5,7 @@ import { decodeWorkspaceRecord, envelope, workspaceRef } from "@nyte-ai/core/sto
 import type { WorkspaceRecord } from "@nyte-ai/core/store";
 import { asId } from "@nyte-ai/schema";
 import { afterEach, assert, expect, it } from "vitest";
-import { fakeModels } from "../src/bench/fake-models.ts";
+import { fakeModels } from "./fixtures/fake-models.ts";
 import { sha256 } from "../src/hash.ts";
 import { folderIdentity } from "../src/local/identity.ts";
 import { localProvider } from "../src/local/provider.ts";
@@ -36,7 +36,6 @@ it("reopens proven legacy workspaces without moving chats or trusting replacemen
     id: asId("legacy"),
     target: { kind: "local", path: project },
     identity: legacyIdentity,
-    projectResources: false,
     projectSources: ["AGENTS.md"],
     addedBy: asId("original-owner"),
     createdAt: Date.now(),
@@ -112,7 +111,6 @@ it("reopens proven legacy workspaces without moving chats or trusting replacemen
         id: "legacy",
         identity: modernIdentity,
         availability: { kind: "available" },
-        projectResources: false,
         projectSources: ["AGENTS.md"],
         addedBy: "original-owner",
       });
@@ -182,7 +180,6 @@ it("converges concurrent migrations and skips scanning after the atomic marker",
     id,
     target: { kind: "local", path: home },
     identity: asId(sha256(`${metadata.dev}:${metadata.ino}`)),
-    projectResources: true,
     projectSources: [],
     addedBy: asId("owner"),
     createdAt: Date.now(),
@@ -277,7 +274,6 @@ it("retries an unavailable legacy folder without scanning completed workspaces",
     id: asId("offline"),
     target: { kind: "local", path: project },
     identity: asId(sha256(`${metadata.dev}:${metadata.ino}`)),
-    projectResources: false,
     projectSources: ["AGENTS.md"],
     addedBy: asId("owner"),
     createdAt: Date.now(),
@@ -343,7 +339,6 @@ it("finishes when a pending workspace is forgotten", async () => {
               id: asId("forgotten"),
               target: { kind: "local", path: join(home, "missing") },
               identity: asId("legacy-identity"),
-              projectResources: false,
               projectSources: [],
               addedBy: asId("owner"),
               createdAt: Date.now(),

@@ -19,7 +19,7 @@ import {
   submitTrace,
   timeKeyToFrame,
 } from "@nyte-ai/app/e2e/scenario-d";
-import { CI_PROMPT, readPrintedSpans, readSpanFile } from "@nyte-ai/host/bench";
+import { CI_PROMPT, readPrintedSpans, readSpanFile } from "@nyte-ai/bench";
 import { launchDesktop } from "./launch.ts";
 import { ciDesktopHome, readCiRequests } from "./scenario-d-home.ts";
 import { chatPane, composer, messages } from "./ui.ts";
@@ -36,13 +36,6 @@ function changes(page: Page): Locator {
   return workbench(page).getByRole("region", { name: "Workspace changes" });
 }
 
-/**
- * The frame a resume must bring back, as the accessibility tree of the
- * transcript and the workbench and as the pixels of both. The chat pane's
- * live status is left out: it announces the last response as it finished,
- * which a resumed window has not heard. The composer is masked, its drawn
- * caret blinking.
- */
 async function captureFrame(page: Page): Promise<{ aria: string; image: Buffer }> {
   return {
     aria: `${await messages(page).ariaSnapshot()}\n${await workbench(page).ariaSnapshot()}`,
@@ -52,7 +45,6 @@ async function captureFrame(page: Page): Promise<{ aria: string; image: Buffer }
   };
 }
 
-/** Dismisses the live notifications a finished run raised, which a resumed window never shows. */
 async function dismissNotifications(page: Page): Promise<void> {
   const notices = page.getByRole("region", { name: "Notifications" }).getByRole("dialog");
 

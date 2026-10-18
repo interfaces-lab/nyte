@@ -8,12 +8,15 @@ import {
   JobViewType,
   OutputFrameSchema,
 } from "../../jobs.ts";
-import { JsonType } from "../../json.ts";
 import { McpChangeSchema, McpServerConfigType, McpViewSchema } from "../../mcp.ts";
 import { nullable } from "../nullable.ts";
 import { CapabilityWireSchema } from "../../primitives.ts";
 import { stopOutcomeSchema } from "../../runs.ts";
-import { WorkspaceCatalogViewType, WorkspaceCommandOutcomeSchema } from "../../sessions.ts";
+import {
+  CommandCompletionsSchema,
+  WorkspaceCatalogViewType,
+  WorkspaceCommandOutcomeSchema,
+} from "../../sessions.ts";
 import { WorkspaceInfoSchema } from "../../workspaces.ts";
 import { NOTHING, ON_WORKSPACE, wireObject, wireSchema, WORKSPACE } from "./fields.ts";
 import type { OperationRows } from "./fields.ts";
@@ -61,8 +64,14 @@ export const WORKSPACE_OPERATIONS = {
   "workspace.command": {
     ...PARTICIPANT,
     kind: "command",
-    input: wireObject({ ...WORKSPACE, name: Type.String(), args: Type.Optional(JsonType) }),
+    input: wireObject({ ...WORKSPACE, name: Type.String(), text: Type.String() }),
     output: WorkspaceCommandOutcomeSchema,
+  },
+  "workspace.completeCommand": {
+    ...PARTICIPANT,
+    kind: "query",
+    input: wireObject({ ...WORKSPACE, name: Type.String(), prefix: Type.String() }),
+    output: CommandCompletionsSchema,
   },
   "mcp.watch": { ...OWNER, kind: "watch", input: ON_WORKSPACE, output: McpViewSchema },
   "mcp.reconnect": { ...OWNER, kind: "command", input: ON_SERVER, output: McpChangeSchema },

@@ -1,10 +1,13 @@
 import { Link } from "@tanstack/react-router";
+import { use } from "react";
 import type { ReactNode } from "react";
 import type { NavItem } from "~/lib/docs";
-import { Toc, type TocEntry } from "./toc";
+import { DocSections } from "./frame";
+import { DocNav, type TocEntry } from "./sidebar";
 
 function PagerLink({ target, dir }: { target?: NavItem; dir: "previous" | "next" }) {
   if (!target) return null;
+
   return (
     <Link to={target.href} data-dir={dir}>
       <span className="doc-eyebrow">{dir === "previous" ? "Previous" : "Next"}</span>
@@ -14,8 +17,8 @@ function PagerLink({ target, dir }: { target?: NavItem; dir: "previous" | "next"
 }
 
 /**
- * One doc page: eyebrow, title, lede, and any header actions, then the
- * prose, the pager, and the on-this-page rail.
+ * One doc page: the frame's sidebar with this page's sections under its row,
+ * then eyebrow, title, lede, and any header actions, the prose, and the pager.
  */
 export function DocArticle({
   eyebrow,
@@ -38,6 +41,11 @@ export function DocArticle({
 }) {
   return (
     <>
+      <DocNav
+        className="doc-side hidden flex-col gap-5 text-sm/5 lg:flex"
+        sections={use(DocSections)}
+        toc={toc.filter((entry) => entry.depth === 2)}
+      />
       <main className="doc-main min-w-0">
         <article className="doc-article">
           <header className="doc-head">
@@ -55,7 +63,6 @@ export function DocArticle({
           ) : null}
         </article>
       </main>
-      <Toc entries={toc.filter((entry) => entry.depth <= 3)} />
     </>
   );
 }

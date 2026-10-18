@@ -23,7 +23,28 @@
     "./client": "./src/index.client.ts"
   },
   "publishConfig": {
-    "access": "public"
+    "exports": {
+      ".": {
+        "react-native": {
+          "types": "./dist/src/index.web.d.ts",
+          "import": "./dist/src/index.web.js"
+        },
+        "browser": {
+          "types": "./dist/src/index.web.d.ts",
+          "import": "./dist/src/index.web.js"
+        },
+        "default": {
+          "types": "./dist/src/index.d.ts",
+          "import": "./dist/src/index.js"
+        }
+      },
+      "./client": {
+        "types": "./dist/src/index.client.d.ts",
+        "import": "./dist/src/index.client.js"
+      }
+    },
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -38,9 +59,10 @@
     "@nyte-ai/schema": "workspace:*"
   },
   "devDependencies": {
+    "@nyte-ai/bench": "workspace:*",
     "@types/node": "^26.6.5",
     "typescript": "6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=26.4.0"

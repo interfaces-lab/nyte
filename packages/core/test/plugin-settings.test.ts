@@ -120,7 +120,7 @@ describe("settings", () => {
       },
     );
 
-    expect(await session.command("ping")).toEqual({ kind: "ran", output: "pong" });
+    expect(await session.command("ping", "")).toEqual({ kind: "ran", output: "pong" });
     expect((await session.view()).catalog.settings).toEqual([
       expect.objectContaining({ id: "volume", value: 4, from: "session" }),
     ]);

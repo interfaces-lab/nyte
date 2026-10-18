@@ -10,7 +10,7 @@ import type {
 import { draftContent, pendingUploads } from "../model/draft.ts";
 import type { DraftSnapshot } from "../model/draft.ts";
 import { indexSkills } from "../model/commands.ts";
-import { rowStatus } from "../model/state.ts";
+import { awaitingTrust, rowStatus } from "../model/state.ts";
 import type { BlankChat, Submission } from "../model/state.ts";
 import { availableModels, findModel } from "../lib/catalog.ts";
 import { errorMessage } from "../lib/format.ts";
@@ -61,6 +61,12 @@ export async function submit(
 
   try {
     await Promise.allSettled(scope.pastes);
+    const { chat: current } = read().facts;
+
+    if (current?.kind === "session" && current.id === followed.id)
+      await trustAnswered(current.info.workspace, context);
+
+    if (context.signal.aborted) return;
 
     if (scope.followed !== followed) {
       refuse("The chat changed before the message was sent.");
@@ -136,6 +142,13 @@ async function start(
   try {
     await Promise.allSettled(scope.pastes);
     const workspace = await blankWorkspace(chat, context);
+    await trustAnswered(workspace, context);
+
+    if (
+      context.signal.aborted ||
+      !read().local.submissions.some((sent) => sent.id === submission.id)
+    )
+      return false;
     const port = ports.host.workspace(workspace);
 
     const content = await prepare(submission.snapshot, {
@@ -241,6 +254,23 @@ async function startChat(
     };
 
   return ports.host.start({ id: chat.id, workspace, selection, content });
+}
+
+function trustAnswered(workspace: WorkspaceId, context: HandlerContext): Promise<void> {
+  const { read, scope, signal } = context;
+
+  return new Promise((resolve) => {
+    const check = (): void => {
+      if (!signal.aborted && awaitingTrust(read(), workspace)) return;
+      scope.changes.delete(check);
+      signal.removeEventListener("abort", check);
+      resolve();
+    };
+
+    scope.changes.add(check);
+    signal.addEventListener("abort", check, { once: true });
+    check();
+  });
 }
 
 function refuseSubmission(submission: Submission, reason: string, context: HandlerContext): void {

@@ -16,8 +16,8 @@ import {
   localWorktrees,
 } from "../src/index.ts";
 import { findExecutable } from "../src/local/command.ts";
-import { fakeModels } from "../src/bench/fake-models.ts";
-import type { Reply, Request } from "../src/bench/fake-models.ts";
+import { fakeModels } from "./fixtures/fake-models.ts";
+import type { Reply, Request } from "./fixtures/fake-models.ts";
 
 const hasGit = (await findExecutable("git")) !== null;
 

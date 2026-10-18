@@ -3,12 +3,17 @@ import { createSocket } from "node:dgram";
 import { writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import process from "node:process";
 import { app } from "electron";
 import { readCanvasFixture } from "@nyte-ai/canvas/fixtures";
 import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { offscreenCanvasPreviewer } from "../canvas-preview.ts";
 import { registerRenderer } from "../renderer.ts";
+
+process.stdin.on("close", () => app.exit(1));
+
+process.stdin.resume();
 
 const directory = process.argv[2];
 
@@ -37,7 +42,6 @@ registerRenderer({ scheme, frontendApiHost: undefined, shellRoot });
 
 const preview = offscreenCanvasPreviewer(scheme, shellRoot, join(directory, "driver.cjs"));
 
-/** Previews the sandbox probe twice against local STUN and TURN listeners: what it reached each time, and what reached them. */
 async function probe() {
   const udp = createSocket("udp4");
   let packets = 0;
@@ -80,7 +84,6 @@ async function probe() {
   return { reports, traffic: { packets, connections } };
 }
 
-/** Previews the fixture folder's main.tsx and its files offscreen in the scheme-served shell, in both themes, then a canvas that hangs its renderer and one after it, then the sandbox probe. */
 async function run(): Promise<void> {
   const { source, files } = await readCanvasFixture(fixture);
   const compiled = await compileCanvas(source, files);

@@ -1,3 +1,4 @@
+import type { WorkspaceId } from "@nyte-ai/sdk";
 import { availableModels, clampThinking, findModel, modelId } from "../../lib/catalog.ts";
 import { shortId } from "../../lib/format.ts";
 import { landingMessages } from "../../lib/view-helpers.ts";
@@ -210,9 +211,10 @@ export const sessionHandlers = {
     );
   },
   "set-trust": (state, msg) => ({
-    state,
+    state: withLocal(state, { settlingTrust: [...state.local.settlingTrust, msg.workspace] }),
     effects: [{ kind: "set-trust", workspace: msg.workspace, value: msg.value }],
   }),
+  "trust-settled": (state, msg) => stay(trustSettled(state, msg.workspace)),
   "apply-setting": (state, msg) => {
     const followed = state.facts.chat;
 
@@ -287,7 +289,7 @@ export const sessionHandlers = {
           kind: "run-command",
           session: chat.id,
           name: msg.name,
-          argument: msg.argument === "" ? null : msg.argument,
+          argument: msg.argument,
           delivery: msg.delivery ?? (busy(state) ? followUpDelivery(state) : "queue"),
         },
       ],
@@ -322,7 +324,9 @@ export const sessionHandlers = {
   "effect-failed": (state, msg, now) =>
     stay(withNotice(released(state, msg.effect), `error: ${msg.message}`, "error", now)),
   inform: (state, msg, now) => stay(withNotice(state, msg.text, msg.tone, now)),
-  "trust-loaded": (state, msg, now, reduce) => {
+  "trust-loaded": (current, msg, now, reduce) => {
+    const state = msg.ask === "always" ? current : trustSettled(current, msg.workspace);
+
     if (msg.home)
       return msg.ask === "always"
         ? stay(
@@ -338,7 +342,7 @@ export const sessionHandlers = {
     const folder = state.facts.chat === null ? null : chatFolder(state.facts.chat);
 
     if (
-      msg.ask === "if-needed" &&
+      msg.ask !== "always" &&
       (msg.trusted !== null ||
         msg.sources.length === 0 ||
         folder?.kind !== "folder" ||
@@ -349,12 +353,29 @@ export const sessionHandlers = {
 
     return openDialog(
       state,
-      { kind: "list", purpose: { kind: "trust", workspace, path, decision, sources } },
+      {
+        kind: "list",
+        purpose: {
+          kind: "trust",
+          workspace,
+          path,
+          decision,
+          sources,
+          gate: msg.ask === "at-launch",
+        },
+      },
       now,
       reduce,
     );
   },
 } satisfies SomeHandlers;
+
+function trustSettled(state: State, workspace: WorkspaceId): State {
+  const { settlingTrust } = state.local;
+  const index = settlingTrust.findIndex((pending) => pending === workspace);
+
+  return index < 0 ? state : withLocal(state, { settlingTrust: settlingTrust.toSpliced(index, 1) });
+}
 
 function configure(state: State, selection: Partial<Selection>, now: number): Step {
   const followed = state.facts.chat;

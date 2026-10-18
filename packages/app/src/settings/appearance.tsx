@@ -1,11 +1,10 @@
-/** Settings that affect the renderer's palette, typography, and conversation density. */
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Slider } from "@nyte-ai/ui/slider";
 import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore, type ReactElement } from "react";
 import { nyte } from "../nyte.ts";
-import { preferences, useSetting } from "../preferences/index.ts";
+import { CHAT_WIDTH, preferences, useSetting } from "../preferences/index.ts";
 import { subscribeSystemTransparency, systemReducesTransparency } from "../theme/appearance.ts";
 import {
   codeFontFamily,
@@ -32,6 +31,7 @@ import {
   StepsRow,
   SwitchRow,
 } from "./rows.tsx";
+import { settingsStyles } from "./settings.stylex.ts";
 
 const THEMES = [
   { value: "system", label: "System" },
@@ -160,6 +160,35 @@ function IntensityRow(): ReactElement {
   );
 }
 
+function ChatWidthRow(): ReactElement {
+  const width = useSetting(preferences.chatWidth);
+
+  return (
+    <SettingsRow title="Chat width" description="The widest a conversation grows">
+      <span {...props(settingsStyles.steps)}>
+        <Slider.Root
+          min={CHAT_WIDTH.min}
+          max={CHAT_WIDTH.max}
+          step={CHAT_WIDTH.step}
+          value={width}
+          xstyle={settingsStyles.stepsSlider}
+          onValueChange={(next) => preferences.chatWidth.set(next)}
+        >
+          <Slider.Control>
+            <Slider.Track>
+              <Slider.Thumb aria-label="Chat width" aria-valuetext={`${String(width)} pixels`} />
+            </Slider.Track>
+          </Slider.Control>
+        </Slider.Root>
+        <span aria-hidden="true" {...props(settingsStyles.stepsLabels)}>
+          <span>{CHAT_WIDTH.min}px</span>
+          <span>{CHAT_WIDTH.max}px</span>
+        </span>
+      </span>
+    </SettingsRow>
+  );
+}
+
 function ReduceTransparencyRow(): ReactElement {
   const reduced = useSetting(preferences.reduceTransparency);
 
@@ -240,7 +269,6 @@ function FontFamilyRows(): ReactElement {
   );
 }
 
-/** `-webkit-font-smoothing` only does anything on macOS. */
 function FontSmoothingRow(): ReactElement | null {
   const smoothing = useSetting(preferences.fontSmoothing);
 
@@ -281,6 +309,7 @@ export function AppearanceSettings(): ReactElement {
           description="Compact previews the step that's running. Detailed keeps finished steps open"
           options={DENSITIES}
         />
+        <ChatWidthRow />
         <SwitchRow
           setting={preferences.codeBlockWordWrap}
           title="Code block word wrap"

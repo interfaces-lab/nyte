@@ -1,6 +1,10 @@
+import { FileTypeIconSprite } from "@nyte-ai/app/components/file-type-icon.tsx";
+import { createContext } from "react";
 import type { ReactNode } from "react";
 import type { NavSection } from "~/lib/docs";
-import { Sidebar } from "./sidebar";
+
+/** The frame's sidebar sections; `DocArticle` draws them beside the page, with its headings. */
+export const DocSections = createContext<readonly NavSection[]>([]);
 
 /** The docs frame under the site nav: sidebar, then the page. */
 export function DocFrame({
@@ -12,9 +16,9 @@ export function DocFrame({
 }) {
   return (
     <div className="doc flex min-w-0 flex-1 flex-col">
+      <FileTypeIconSprite />
       <div className="doc-frame">
-        <Sidebar sections={sections} />
-        {children}
+        <DocSections value={sections}>{children}</DocSections>
       </div>
     </div>
   );

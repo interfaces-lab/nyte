@@ -1,4 +1,4 @@
-import { decodeCallRecord, decodeRunRecord, parseSessionRef } from "@nyte-ai/core/store";
+import { decodeCallRecord, decodeRunRecord, parseSessionRef, trustRef } from "@nyte-ai/core/store";
 import type { CallRecord } from "@nyte-ai/core/store";
 import {
   compile,
@@ -8,6 +8,7 @@ import {
   JsonType,
   ToolCallType,
   withJson,
+  WorkspaceTargetType,
   writePatch,
 } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
@@ -185,6 +186,21 @@ export const MAPPING = [
     change: "creates fold_checkpoints (sqlite only)",
     covers: ["from 16"],
   },
+  {
+    version: 18,
+    step: "2026-10-17-folder-trust",
+    target: "refs",
+    change:
+      "adds `trust/<folder key>` for each folder a workspace record without `isolation` decided with a boolean `projectResources` (as the record reads once step 6 ran), unless the ref exists: a trust record `{ target, trusted }` with a local path's trailing slashes dropped, written at the deciding record's `at`; among records of one folder the greatest `at` wins, then a decline",
+    covers: ["from 17", "added trust/*/"],
+  },
+  {
+    version: 19,
+    step: "2026-10-17-workspace-trust-moved",
+    target: "workspace records",
+    change: "`projectResources` is removed",
+    covers: ["from 18", "field workspace /body/projectResources"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
@@ -195,6 +211,8 @@ function decisionType<T extends TSchema>(value: T) {
     Type.Object({ action: Type.Literal("error"), message: Type.String() }),
   ]);
 }
+
+const WORKSPACE_TARGET = compile(withJson(WorkspaceTargetType));
 
 /** A before_tool hook call's result as store version 13 decoded it: a `modify` holds the whole changed ToolCall. */
 const OLD_TOOL_DECISION = compile(withJson(decisionType(ToolCallType)));
@@ -325,12 +343,10 @@ function migrateBody(from: number, kind: Json | undefined, body: JsonObject): Js
     case "principals":
       return runs(from, 2) ? migratePrincipals(body) : body;
     case "workspace": {
-      const trusted =
-        runs(from, 6) && body.projectResources === true
-          ? { ...body, projectResources: null }
-          : body;
+      const trusted = workspaceTrustAt6(from, body);
+      const isolated = runs(from, 16) ? withDefaults(trusted, { isolation: null }) : trusted;
 
-      return runs(from, 16) ? withDefaults(trusted, { isolation: null }) : trusted;
+      return runs(from, 19) ? without(isolated, ["projectResources"]) : isolated;
     }
     case "part": {
       const state = body.state;
@@ -349,6 +365,59 @@ function migrateBody(from: number, kind: Json | undefined, body: JsonObject): Js
     default:
       return body;
   }
+}
+
+function workspaceTrustAt6(from: number, body: JsonObject): JsonObject {
+  return runs(from, 6) && body.projectResources === true
+    ? { ...body, projectResources: null }
+    : body;
+}
+
+/**
+ * The `trust/` refs a store stamped `from` adds by `MAPPING`'s step 18, each
+ * with the record it points at, from the store's workspace records as they
+ * stood before migration.
+ */
+export async function folderTrustRecords(
+  from: number,
+  workspaces: readonly Json[],
+): Promise<ReadonlyMap<string, Json>> {
+  const chosen = new Map<string, { readonly at: number; readonly record: Json }>();
+
+  if (!runs(from, 18)) return chosen;
+
+  for (const object of workspaces) {
+    if (!isJsonObject(object) || object.kind !== "workspace" || !isJsonObject(object.body))
+      continue;
+    const body = workspaceTrustAt6(from, object.body);
+    const { target, projectResources } = body;
+
+    if (
+      typeof projectResources !== "boolean" ||
+      (body.isolation ?? null) !== null ||
+      !isJsonObject(target) ||
+      typeof target.kind !== "string"
+    )
+      continue;
+
+    const folder =
+      typeof target.path === "string"
+        ? { kind: target.kind, path: target.path.replace(/\/+$/u, "") }
+        : target;
+
+    if (!WORKSPACE_TARGET.Check(folder)) continue;
+    const name = await trustRef(WORKSPACE_TARGET.Decode(folder));
+    const at = typeof object.at === "number" ? object.at : 0;
+    const kept = chosen.get(name);
+
+    if (kept === undefined || at > kept.at || (at === kept.at && !projectResources))
+      chosen.set(name, {
+        at,
+        record: { kind: "trust", at, body: { target: folder, trusted: projectResources } },
+      });
+  }
+
+  return new Map([...chosen].map(([name, { record }]) => [name, record]));
 }
 
 /** The record a stored record becomes when a store stamped `from` migrates, by `MAPPING`. */

@@ -40,6 +40,7 @@ import { identitySigner } from "./identity-key.ts";
 import { readErrorCode } from "./local/tree.ts";
 import { localGitHubAccount } from "./local/github.ts";
 import { localProvider } from "./local/provider.ts";
+import { importLegacyTrust } from "./local/legacy-trust.ts";
 import { migrateLocalWorkspaceIdentities } from "./local/workspace-migration.ts";
 import { listen } from "./listen.ts";
 import { createMcpHub } from "./mcp/hub.ts";
@@ -136,7 +137,12 @@ async function composeOpen(
       nyteModels({ store, secrets, home, providers: [claudeCode.provider, acp.provider] }),
     filePlugins(home),
     settingsSeed(home),
-    usesLocalProvider ? store.open().then(migrateLocalWorkspaceIdentities) : undefined,
+    usesLocalProvider
+      ? store.open().then(async (connection) => {
+          await migrateLocalWorkspaceIdentities(connection);
+          await importLegacyTrust(connection, home);
+        })
+      : undefined,
   ]);
 
   const builtins = [

@@ -15,12 +15,6 @@ export type ViewCommand = Extract<
   "reload" | "hard-reload" | "toggle-devtools" | "zoom-reset" | "zoom-in" | "zoom-out"
 >;
 
-/**
- * The menu bar. A window command whose key the renderer owns shows its
- * shortcut and runs on click, but leaves the key to the page, which knows when
- * an editor, a terminal or a browser page wants it instead. ⌘W closes a tab,
- * so closing the window takes Shift.
- */
 export function applicationMenuTemplate(options: {
   platform: NodeJS.Platform;
   name: string;
@@ -28,7 +22,6 @@ export function applicationMenuTemplate(options: {
   dispatch: (command: AppMenuCommand) => void;
   newWindow: () => void;
   view: (command: ViewCommand, window: BaseWindow | undefined) => void;
-  /** Development builds add Reload, Force Reload and the window's developer tools to View. */
   developer: boolean;
 }): MenuItemConstructorOptions[] {
   const about = {
@@ -66,6 +59,8 @@ export function applicationMenuTemplate(options: {
 
   const update = { id: "check-for-updates", label: "Check for Updates…" };
 
+  const installCli = { id: "install-cli", label: "Install Command-Line Tool…", visible: false };
+
   const view = (
     label: string,
     accelerator: string,
@@ -85,6 +80,7 @@ export function applicationMenuTemplate(options: {
             submenu: [
               about,
               { ...update, icon: nativeImage.createMenuSymbol("arrow.down.circle") },
+              { ...installCli, icon: nativeImage.createMenuSymbol("terminal") },
               { type: "separator" },
               { ...settings, icon: nativeImage.createMenuSymbol("gearshape") },
               { type: "separator" },
@@ -117,6 +113,7 @@ export function applicationMenuTemplate(options: {
               action(clientActions.closeTab),
               { type: "separator" },
               settings,
+              installCli,
               { type: "separator" },
               { role: "quit" },
             ],
@@ -174,7 +171,6 @@ export function applicationMenuTemplate(options: {
   ];
 }
 
-/** Menu actions can reopen a closed window before its renderer has subscribed. */
 export function createMenuCommandDelivery(options: {
   openWindow: () => void;
   send: (command: AppMenuCommand) => void;
@@ -254,7 +250,6 @@ interface KeyMenuItem<Item> {
   readonly enabled: boolean;
   readonly visible: boolean;
   readonly accelerator: string | null | undefined;
-  /** False for a shortcut the menu only shows; the page keeps that key. */
   readonly registerAccelerator?: boolean;
   readonly submenu?: KeyMenu<Item> | null;
 }

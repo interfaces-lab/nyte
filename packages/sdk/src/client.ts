@@ -8,7 +8,7 @@ import type {
   PrincipalId,
   SessionId,
 } from "@nyte-ai/schema";
-import { dev, followTrace, traced } from "@nyte-ai/core";
+import { dev, followTrace, traced, watchStore } from "@nyte-ai/core";
 import type { Connection, Head, PluginFile, RequestJournal, Session } from "@nyte-ai/core";
 import type { Transport } from "@nyte-ai/protocol";
 import { createHeadViews, watchHead, watchHost, withUnsent } from "./watch.ts";
@@ -166,7 +166,9 @@ function sessionHandle(bound: Bound, session: SessionId): Session {
     update: (patch) => rows.call("session.update", { session, patch }),
     remove: () => rows.call("session.remove", { session }),
     stop: () => rows.call("session.stop", { session }),
-    command: (name, args) => rows.call("session.command", { session, name, args }),
+    command: (name, text) => rows.call("session.command", { session, name, text }),
+    completeCommand: (name, prefix) =>
+      rows.call("session.completeCommand", { session, name, prefix }),
     parts: {
       async create(kind, input) {
         const { part } = await rows.call("parts.create", {
@@ -216,6 +218,7 @@ function headHandle(bound: Bound, session: SessionId, head: HeadName): Head {
       return withUnsent(view, journal.unsent(session, head), (id) => ids.has(id));
     },
     watch: (options) => watchHead(bound.views, journal, { session, head, options }),
+    ...watchStore(() => watchHead(bound.views, journal, { session, head })),
     history: (input) => rows.call("head.history", { session, head, ...input }),
     tree: () => rows.call("head.tree", { session, head }),
     async move(position, options) {

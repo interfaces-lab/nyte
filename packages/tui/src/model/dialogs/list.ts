@@ -83,6 +83,8 @@ export type ListPurpose =
       readonly path: string;
       readonly decision: boolean | null;
       readonly sources: readonly string[];
+      /** Asked before the chat it launched in opens: the whole screen, with Quit. */
+      readonly gate: boolean;
     };
 
 interface ListAction {
@@ -136,6 +138,8 @@ export function cancelLabel(purpose: ListPurpose): string {
   if (purpose.kind === "setting" || purpose.kind === "summary") return "back";
 
   if (purpose.kind === "tasks" && purpose.section === "finished") return "back";
+
+  if (purpose.kind === "trust" && purpose.gate) return "quit";
 
   return "close";
 }
@@ -219,8 +223,20 @@ function accept(dialog: ListDialog, action: ChatCommand | null): DialogStep<List
   };
 }
 
+/** The launch trust gate's way out: closing it quits, so the folder's chat never opens undecided. */
+function quit(dialog: ListDialog): DialogStep<ListDialog> {
+  return {
+    dialog,
+    intents: [{ kind: "choose", dialog: dialog.id, choice: "quit", typed: null, action: null }],
+    push: null,
+  };
+}
+
 export function reduceList(dialog: ListDialog, command: DialogCommand): DialogStep<ListDialog> {
-  if (command.kind === "close") return { dialog: null, intents: [], push: null };
+  const quits = dialog.purpose.kind === "trust" && dialog.purpose.gate;
+
+  if (command.kind === "close")
+    return quits ? quit(dialog) : { dialog: null, intents: [], push: null };
 
   if (dialog.busy) return unchanged(dialog);
 
@@ -279,7 +295,7 @@ export function reduceList(dialog: ListDialog, command: DialogCommand): DialogSt
           push: null,
         };
 
-      return { dialog: null, intents: [], push: null };
+      return quits ? quit(dialog) : { dialog: null, intents: [], push: null };
     case "picker.accept":
       return accept(dialog, null);
     case "picker.previous":

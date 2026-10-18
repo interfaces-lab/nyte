@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { ConnectLinkFailureSchema, ConnectViewSchema } from "@nyte-ai/connect";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -21,16 +22,22 @@ export const ServiceEventSchema = Type.Union([
 
 export type ServiceEvent = Static<typeof ServiceEventSchema>;
 
-/** A client process holding an attachment open: its pid, when the process started (ms since the epoch), and the build it expects. */
 export const AttachmentSchema = Type.Object({
   pid: Type.Integer({ minimum: 1 }),
   startedAt: Type.Number(),
   build: Type.String(),
+  follows: Type.Boolean(),
 });
 
 export type Attachment = Static<typeof AttachmentSchema>;
 
-/** An attached client as `nyte service status` lists it: the attachment plus the process's terminal, null when it has none. */
+export const HandoffSchema = Type.Object({
+  kind: Type.Literal("retiring"),
+  to: Type.Literal("desktop"),
+});
+
+export type Handoff = Static<typeof HandoffSchema>;
+
 export const ServiceClientSchema = Type.Object({
   ...AttachmentSchema.properties,
   tty: Type.Union([Type.String(), Type.Null()]),
@@ -38,10 +45,33 @@ export const ServiceClientSchema = Type.Object({
 
 export type ServiceClient = Static<typeof ServiceClientSchema>;
 
-/** Why a service refused to retire: how many clients other than the caller are attached, and whether a run or job is working. */
 export const BusySchema = Type.Object({
   clients: Type.Integer({ minimum: 0 }),
   working: Type.Boolean(),
 });
 
 export type Busy = Static<typeof BusySchema>;
+
+export function serviceRoutes(
+  token: string,
+  route: (request: Request, pathname: string) => Promise<Response>,
+): (request: Request) => Response | Promise<Response> | undefined {
+  const digest = sha256(`Bearer ${token}`);
+
+  return (request) => {
+    const { pathname } = new URL(request.url);
+
+    if (!pathname.startsWith(SERVICE_ROUTES.prefix)) return undefined;
+
+    const presented = request.headers.get("authorization");
+
+    if (presented === null || !timingSafeEqual(sha256(presented), digest))
+      return Response.json({ message: "Unauthorized" }, { status: 401 });
+
+    return route(request, pathname);
+  };
+}
+
+function sha256(text: string): Buffer {
+  return createHash("sha256").update(text).digest();
+}

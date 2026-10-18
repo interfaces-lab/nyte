@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "source": {
+    "kind": "synthesized",
+    "from": [
+      "https://platform.openai.com/docs/api-reference/responses-streaming",
+      "https://github.com/openai/codex/blob/main/codex-rs/core/src/client.rs"
+    ]
+  },
+  "exchanges": [
+    {
+      "transport": "websocket",
+      "url": "wss://chatgpt.com/backend-api/codex/responses",
+      "headers": {
+        "authorization": "[REDACTED]",
+        "chatgpt-account-id": "[REDACTED]",
+        "openai-beta": "responses_websockets=2026-02-06"
+      },
+      "frames": [
+        {
+          "from": "client",
+          "data": "{\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Say hello.\",\"type\":\"input_text\"}],\"role\":\"user\"}],\"instructions\":\"<volatile>\",\"model\":\"gpt-5.1-codex\",\"parallel_tool_calls\":true,\"prompt_cache_key\":\"<volatile>\",\"reasoning\":{\"effort\":\"minimal\",\"summary\":\"auto\"},\"store\":false,\"stream\":true,\"text\":{\"verbosity\":\"low\"},\"tool_choice\":\"auto\",\"tools\":\"<volatile>\",\"type\":\"response.create\"}"
+        },
+        {
+          "from": "server",
+          "data": "{\"type\":\"response.created\",\"response\":{\"id\":\"resp_codex_synth\",\"status\":\"in_progress\"}}"
+        },
+        {
+          "from": "server",
+          "data": "{\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_codex_synth\",\"type\":\"message\",\"status\":\"in_progress\",\"role\":\"assistant\",\"content\":[]}}"
+        },
+        {
+          "from": "server",
+          "data": "{\"type\":\"response.content_part.added\",\"item_id\":\"msg_codex_synth\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\"}}"
+        },
+        {
+          "from": "server",
+          "data": "{\"type\":\"response.output_text.delta\",\"item_id\":\"msg_codex_synth\",\"output_index\":0,\"content_index\":0,\"delta\":\"Hello\"}"
+        },
+        {
+          "from": "server",
+          "data": "{\"type\":\"response.output_text.delta\",\"item_id\":\"msg_codex_synth\",\"output_index\":0,\"content_index\":0,\"delta\":\" from Codex.\"}"
+        },
+        {
+          "from": "server",
+          "data": "{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_codex_synth\",\"type\":\"message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello from Codex.\"}]}}"
+        },
+        {
+          "from": "server",
+          "data": "{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_codex_synth\",\"status\":\"completed\",\"end_turn\":true,\"usage\":{\"input_tokens\":1500,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":6,\"total_tokens\":1506}}}"
+        }
+      ]
+    }
+  ]
+}

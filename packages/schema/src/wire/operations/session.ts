@@ -18,6 +18,7 @@ import { nullable } from "../nullable.ts";
 import { actOutcomeSchema, PlacementType } from "../../parts.ts";
 import { RunEndSchema, RunEndType, stopOutcomeSchema } from "../../runs.ts";
 import {
+  CommandCompletionsSchema,
   CommandOutcomeSchema,
   RemoveSessionOutcomeSchema,
   SessionInfoSchema,
@@ -96,9 +97,15 @@ export const SESSION_OPERATIONS = {
     input: wireObject({
       ...SESSION,
       name: Type.String(),
-      args: Type.Optional(JsonType),
+      text: Type.String(),
     }),
     output: CommandOutcomeSchema,
+  },
+  "session.completeCommand": {
+    ...PARTICIPANT,
+    kind: "query",
+    input: wireObject({ ...SESSION, name: Type.String(), prefix: Type.String() }),
+    output: CommandCompletionsSchema,
   },
   "head.send": {
     ...PARTICIPANT,

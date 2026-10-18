@@ -85,6 +85,7 @@ export const SettingOutcomeSchema: Schema<SettingOutcome> = standard(SettingOutc
 /** A host as the client holds it: the wire view, its authority as a set and without the connection's principal. */
 export type HostView = Omit<HostViewWire, "authority" | "principal"> & {
   readonly authority: ReadonlySet<Authority>;
+  readonly operations: string | null;
 };
 
 /** How the client proves who it is: a credential the wire carries, or headers a `custom` source computes. */

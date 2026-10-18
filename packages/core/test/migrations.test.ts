@@ -171,7 +171,9 @@ it("keeps an older store's ended runs' last snapshot records under their ended r
     },
   });
 
-  expect(created).toEqual([{ name: endedRunRef(session.id, run.id), target: lastId }]);
+  expect(created).toEqual([
+    { name: endedRunRef(session.id, run.id), target: lastId, body: JSON.stringify(last) },
+  ]);
 });
 
 it("moves a tool call's name and args to its part alone, which recovery then replays", async () => {

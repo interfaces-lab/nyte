@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import process from "node:process";
 import { afterEach, test, vi } from "vitest";
 import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, sqliteStore } from "@nyte-ai/host";
-import { fakeModels } from "@nyte-ai/host/bench";
+import { fakeModels } from "@nyte-ai/bench";
 import { isPart, text } from "@nyte-ai/plugin/core";
 import { sdk } from "@nyte-ai/sdk";
 import type { Connection } from "@nyte-ai/sdk";
@@ -273,3 +275,36 @@ test("a key login over the loopback listener connects the provider, and the reop
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test("the host waits for a store another process holds, says so, and opens once it is let go", async () => {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-held-")));
+  await mkdir(join(home, ".nyte"), { recursive: true });
+
+  const holder = spawn(
+    process.execPath,
+    [join(import.meta.dirname, "fixtures", "hold-store.ts"), join(home, ".nyte", "nyte.db")],
+    { stdio: ["pipe", "pipe", "ignore"] },
+  );
+
+  await new Promise<void>((resolve) => holder.stdout.once("data", () => resolve()));
+  const statuses: string[] = [];
+
+  try {
+    const made = await desktop({
+      home,
+      emitHostEvent: (event) => {
+        if (event.kind !== "status") return;
+        statuses.push(event.message);
+
+        if (/Another Nyte process/u.test(event.message)) holder.kill("SIGKILL");
+      },
+    });
+
+    assert.ok(await made.host.host());
+    assert.match(statuses[0] ?? "", /Another Nyte process \(pid \d+, .*has .*nyte\.db open/u);
+    assert.equal(statuses.at(-1), "Nyte opened your chats.");
+  } finally {
+    holder.kill("SIGKILL");
+    await rm(home, { recursive: true, force: true });
+  }
+}, 30_000);

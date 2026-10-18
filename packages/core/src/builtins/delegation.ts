@@ -128,7 +128,11 @@ const task: ToolDefinition<Infer<typeof taskParameters>> = {
     });
 
     if (run === null) return reply(`Subagent ${child.id} did not start the task.`);
-    const outcome = await invocation.wait({ kind: "run", session: child.id, run });
+    const outcome = await invocation.wait({
+      kind: "any",
+      targets: [{ kind: "run", session: child.id, run }],
+      untilInput: true,
+    });
     const answer = await readSubagentReply(child, run, outcome);
     const worktree = await describeWorktree(invocation, child);
 
@@ -221,13 +225,15 @@ const awaitChild: ToolDefinition<Infer<typeof awaitParameters>> = {
       );
     }
 
+    const targets = [{ kind: "run", session: child.id, run }] as const;
+
     const outcome = await invocation.wait(
       args.timeout === undefined
-        ? { kind: "run", session: child.id, run }
+        ? { kind: "any", targets, untilInput: true }
         : {
-            kind: "run",
-            session: child.id,
-            run,
+            kind: "any",
+            targets,
+            untilInput: true,
             deadline: invocation.now() + args.timeout * 1000,
           },
     );

@@ -1,14 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
-/**
- * A fake ACP agent over stdio: newline-delimited JSON-RPC, no dependencies.
- * "tools" in a prompt runs a turn with two tool calls that ask permission;
- * "move" asks to move a file from the session's folder to /etc, offering
- * only allow_always with "always"; "wait" streams a line and holds the turn
- * until the client cancels it.
- * Every message the client sends is appended to $ACP_LOG.
- */
 const log = (entry) => {
   if (process.env.ACP_LOG) appendFileSync(process.env.ACP_LOG, `${JSON.stringify(entry)}\n`);
 };
@@ -193,4 +185,6 @@ async function receive(line) {
   }
 }
 
-createInterface({ input: process.stdin }).on("line", (line) => void receive(line));
+createInterface({ input: process.stdin })
+  .on("line", (line) => void receive(line))
+  .on("close", () => process.exit(0));

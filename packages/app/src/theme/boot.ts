@@ -1,8 +1,3 @@
-/**
- * Applies the appearance preferences to the static HTML shell before first
- * paint, and again whenever one changes in any window. Keeping it in the boot
- * entry avoids an inline script that the CSP would block.
- */
 import { applyDisplayMode, applyTint } from "@nyte-ai/ui/appearance";
 import { nyte } from "../nyte.ts";
 import { preferences } from "../preferences/index.ts";
@@ -17,7 +12,6 @@ import { codeFontFamily, localFontFamily, uiFontFamily } from "./fonts.ts";
 
 const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-/** What `apply` reads. A new CSS-backed preference edits both. */
 const APPLIED = [
   preferences.theme,
   preferences.pointerCursors,
@@ -30,6 +24,7 @@ const APPLIED = [
   preferences.fontSmoothing,
   preferences.reduceTransparency,
   preferences.codeBlockWordWrap,
+  preferences.chatWidth,
 ] as const;
 
 function apply(): void {
@@ -57,6 +52,7 @@ function apply(): void {
   root.style.setProperty("--nyte-font-size-code", `${String(preferences.codeFontSize.get())}px`);
   root.style.setProperty("--nyte-font-smoothing", antialiased ? "antialiased" : "auto");
   root.style.setProperty("--nyte-moz-font-smoothing", antialiased ? "grayscale" : "auto");
+  root.style.setProperty("--nyte-conversation-measure", `${String(preferences.chatWidth.get())}px`);
 }
 
 apply();

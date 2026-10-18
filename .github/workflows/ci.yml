@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -39,14 +42,114 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm --dir packages/tui verify:targets
-      - run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - run: pnpm exec turbo test
-      - run: pnpm --dir packages/tui test:binary
+      - name: Verify compiled binary and service lifecycle
+        run: pnpm --dir packages/tui test:binary
 
-  e2e-web:
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+  affected:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      filter: ${{ steps.scope.outputs.filter }}
+      web: ${{ steps.scope.outputs.web }}
+      desktop: ${{ steps.scope.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - name: Find affected packages
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          turbo="npx --yes turbo@$(node -p 'require("./package.json").devDependencies.turbo.replace(/^\^/, "")')"
+          filter=""
+          if [ "$EVENT" = pull_request ]; then filter="--affected"; fi
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+          $turbo ls $filter --output=json > packages.json
+          node -e '
+            const { packages } = JSON.parse(require("node:fs").readFileSync("packages.json", "utf8"));
+            const names = new Set(packages.items.map((item) => item.name));
+            console.error(`${packages.count} packages: ${[...names].join(" ")}`);
+            console.log(`web=${names.has("@nyte-ai/app")}`);
+            console.log(`desktop=${names.has("@nyte-ai/desktop")}`);
+          ' >> "$GITHUB_OUTPUT"
+
+  unit:
+    name: unit (${{ matrix.os }})
+    needs: affected
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: blacksmith-8vcpu-ubuntu-2404
+          - os: macos
+            runner: blacksmith-6vcpu-macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     env:
       CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-unit-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', 'tsconfig.base.json') }}
+          restore-keys: turbo-unit-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - name: Install Linux test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep xvfb
+          pnpm --dir packages/app exec playwright install-deps chromium
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Install macOS test dependencies
+        if: runner.os == 'macOS'
+        run: command -v rg || brew install ripgrep
+      - name: Run unit tests
+        timeout-minutes: 35
+        env:
+          FILTER: ${{ needs.affected.outputs.filter }}
+        run: |
+          display=""
+          if [ "$RUNNER_OS" = Linux ]; then display="xvfb-run --auto-servernum"; fi
+          $display pnpm exec turbo run test $FILTER --concurrency=3
+
+  e2e-web:
+    name: e2e web (${{ matrix.leg.name }})
+    needs: affected
+    if: needs.affected.outputs.web == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        leg:
+          - name: 1 of 2
+            args: --project=web --shard=1/2
+          - name: 2 of 2
+            args: --project=web --shard=2/2
+          - name: timed
+            args: --project=timed --no-deps
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 30
+    env:
+      CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+      CI: true
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -58,4 +161,84 @@ jobs:
       - run: pnpm --dir packages/app exec playwright install --with-deps chromium
       - run: pnpm --dir packages/canvas build
       - run: pnpm --dir packages/app build
-      - run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts e2e/web/workspace.spec.ts
+      - name: Run web e2e against the built app
+        run: pnpm --dir packages/app exec playwright test --config e2e/playwright.config.ts ${{ matrix.leg.args }}
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-web-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: |
+            packages/app/e2e/test-results
+            packages/app/e2e/playwright-report
+          retention-days: 7
+
+  e2e-desktop:
+    name: e2e desktop (${{ matrix.shard }})
+    needs: affected
+    if: needs.affected.outputs.desktop == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/3, 2/3, 3/3]
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    timeout-minutes: 45
+    env:
+      CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+      CI: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: pnpm install --frozen-lockfile
+      - name: Install Electron system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          pnpm --dir packages/app exec playwright install-deps chromium
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build the app and run desktop e2e against it
+        run: xvfb-run --auto-servernum pnpm --dir packages/desktop e2e --shard=${{ matrix.shard }} --grep-invert "polish evidence"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: e2e-desktop-${{ strategy.job-index }}-${{ github.run_attempt }}
+          path: |
+            packages/desktop/e2e/test-results
+            packages/desktop/e2e/playwright-report
+          retention-days: 7
+
+  startup-bench:
+    needs: affected
+    if: github.event_name != 'pull_request' && needs.affected.outputs.desktop == 'true'
+    runs-on: blacksmith-6vcpu-macos-15
+    continue-on-error: true
+    timeout-minutes: 45
+    env:
+      CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir packages/desktop package:app
+      - name: Report startup against its budgets
+        run: pnpm bench:desktop --exe packages/desktop/dist/mac-arm64/Nyte.app/Contents/MacOS/Nyte --runs 3 --out startup-bench.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: startup-bench-${{ github.run_attempt }}
+          path: startup-bench.json
+          retention-days: 30

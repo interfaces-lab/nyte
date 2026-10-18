@@ -15,7 +15,7 @@
 import { definePart, isPart, text, tool } from "@nyte-ai/core";
 import { memoryStore } from "@nyte-ai/core/store";
 import { asId, asSeq, standard } from "@nyte-ai/schema";
-import { createSendJournal, pagedViews, sdk, SdkError } from "@nyte-ai/sdk";
+import { createSendJournal, pagedViews, sdk, SdkError, watchStore } from "@nyte-ai/sdk";
 import type {
   Connection,
   ConnectOptions,
@@ -37,9 +37,12 @@ import type {
   Session,
   SessionEvent,
   SessionId,
+  SessionInfo,
+  SessionView,
   Store,
   ToolDefinition,
   ToolInvocation,
+  WatchStore,
   Workspace,
 } from "@nyte-ai/sdk";
 import { Type } from "typebox";
@@ -202,6 +205,24 @@ export async function readConversation(head: Head) {
   );
 
   return { view, answers, tools };
+}
+
+/**
+ * A head is also a store: `subscribe` calls back on every change and `current`
+ * reads the latest view, the shape React's useSyncExternalStore, Svelte, Vue
+ * and Solid read. The first listener opens a watch and the last one closes it.
+ * `watchStore` gives any other watch, such as the session list, the same shape.
+ */
+export function followHead(head: Head, draw: (view: SessionView) => void): () => void {
+  return head.subscribe(() => {
+    const view = head.current();
+
+    if (view !== undefined) draw(view);
+  });
+}
+
+export function sessionListStore(connection: Connection): WatchStore<readonly SessionInfo[]> {
+  return watchStore(() => connection.sessions.watch());
 }
 
 export async function readOlderMessages(head: Head) {

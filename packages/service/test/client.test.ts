@@ -15,11 +15,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureService,
   readRegistration,
+  retireService,
   serviceBuild,
   serviceConnect,
   stopService,
 } from "../src/index.ts";
 import type { Registration } from "../src/index.ts";
+import { descendants } from "../src/client.ts";
 import { alive, lockHolder } from "../src/registration.ts";
 import { SERVICE_ROUTES } from "../src/routes.ts";
 
@@ -35,7 +37,6 @@ function fakeService(
   return [process.execPath, FAKE_SERVICE, build, String(delay), mode];
 }
 
-/** Starts a fake service directly and waits until it registers. */
 async function runFake(
   home: string,
   command: readonly [string, ...string[]],
@@ -225,6 +226,106 @@ describe("ensureService", () => {
   });
 });
 
+describe("retireService", () => {
+  let home = "";
+
+  beforeEach(async () => {
+    home = await realpath(await mkdtemp(join(tmpdir(), "nyte-service-")));
+  });
+
+  afterEach(async () => {
+    const registered = await readRegistration(home);
+
+    if (registered !== undefined && alive(registered.pid)) process.kill(registered.pid, "SIGKILL");
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it("finds none without a registration that answers", async () => {
+    expect(await retireService(home)).toEqual({ kind: "none" });
+  });
+
+  it("stops an idle service of any build", async () => {
+    const running = await runFake(home, fakeService(await serviceBuild("v1", undefined), 0));
+
+    expect(await retireService(home)).toEqual({ kind: "stopped", registration: running });
+    expect(alive(running.pid)).toBe(false);
+  });
+
+  it("stops a service that predates the retire route with SIGTERM", async () => {
+    const stale = await runFake(home, fakeService("v1", 0, "stale"));
+
+    expect((await retireService(home)).kind).toBe("stopped");
+    expect(alive(stale.pid)).toBe(false);
+  });
+
+  it("keeps a service a client uses and says so", async () => {
+    const running = await runFake(home, fakeService(await serviceBuild("v1", undefined), 0));
+    const other = new URL(SERVICE_ROUTES.attach, running.url);
+    other.searchParams.set("pid", String(process.ppid));
+    const held = new AbortController();
+    await fetch(other, { signal: held.signal });
+
+    expect(await retireService(home)).toEqual({
+      kind: "busy",
+      registration: running,
+      busy: { clients: 1, working: false },
+    });
+    expect(alive(running.pid)).toBe(true);
+    held.abort();
+  });
+});
+
+describe("stopService", () => {
+  let home = "";
+
+  beforeEach(async () => {
+    home = await realpath(await mkdtemp(join(tmpdir(), "nyte-service-")));
+  });
+
+  afterEach(async () => {
+    const registered = await readRegistration(home);
+
+    if (registered !== undefined && alive(registered.pid)) process.kill(registered.pid, "SIGKILL");
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it("reports nothing to stop", async () => {
+    expect(await stopService(home)).toEqual([]);
+  });
+
+  it("stops a service that answers SIGTERM and says so", async () => {
+    const running = await runFake(home, fakeService("v1", 0));
+
+    expect(await stopService(home)).toEqual([
+      { kind: "stopped", owner: "service", pid: running.pid, how: "exited", orphans: 0 },
+    ]);
+    expect(alive(running.pid)).toBe(false);
+  });
+
+  it(
+    "kills a service that ignores SIGTERM, and the child it would leave behind",
+    { timeout: 15_000 },
+    async () => {
+      const stubborn = await runFake(home, fakeService("v1", 0, "stubborn"));
+
+      let children = await descendants(stubborn.pid);
+
+      while (children.length === 0) {
+        await sleep(20);
+        children = await descendants(stubborn.pid);
+      }
+
+      expect(await stopService(home)).toEqual([
+        { kind: "stopped", owner: "service", pid: stubborn.pid, how: "killed", orphans: 0 },
+      ]);
+      expect(alive(stubborn.pid)).toBe(false);
+      await sleep(50);
+
+      for (const child of children) expect(alive(child)).toBe(false);
+    },
+  );
+});
+
 describe("serviceConnect", () => {
   const token = "t".repeat(32);
 
@@ -312,8 +413,6 @@ describe("serviceConnect", () => {
       new AbortController().signal,
     );
 
-    await expect(refused[Symbol.asyncIterator]().next()).rejects.toThrow(
-      "The Nyte service answered 401.",
-    );
+    await expect(refused[Symbol.asyncIterator]().next()).rejects.toThrow("Unauthorized");
   });
 });

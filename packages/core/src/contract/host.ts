@@ -126,7 +126,7 @@ export interface ConnectOptions {
   readonly credentials: CredentialSource;
   readonly expect?: { readonly hostId: HostId };
   readonly journal?: RequestJournal;
-  readonly fetch?: typeof fetch;
+  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 }
 
 export interface RequestJournal {

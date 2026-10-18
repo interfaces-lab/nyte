@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { chatOnly } from "@nyte-ai/host/bench";
+import { chatOnly } from "@nyte-ai/bench";
 import type { GitHubAccountState, GitHubApi, GitHubState, Plugin } from "@nyte-ai/sdk";
 import { openTestHost } from "../fixture/host.ts";
 import { belowComposer, startTui } from "../harness/tui.ts";
@@ -34,7 +34,6 @@ const refuse = async (): Promise<never> => {
   throw new Error("Not scripted.");
 };
 
-/** The default `chat-only` environment, serving GitHub as `state` answers. */
 function gitHubEnvironment(state: () => GitHubState): Plugin<"core"> {
   const base = chatOnly.environment;
 

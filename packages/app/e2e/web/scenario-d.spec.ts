@@ -3,7 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
-import { CI_PROMPT, lastToolText, readSpanFile } from "@nyte-ai/host/bench";
+import { CI_PROMPT, lastToolText, readSpanFile } from "@nyte-ai/bench";
 import { enableTracing, readSpans } from "@nyte-ai/sdk";
 import { collectErrors } from "../utils/errors.ts";
 import {
@@ -44,7 +44,6 @@ async function selectScope(page: Page, current: RegExp, next: RegExp): Promise<v
   await expect(changes(page).getByRole("button", { name: next })).toBeVisible();
 }
 
-/** Dismisses the live notifications a finished run raised, which a reloaded page never shows. */
 async function dismissNotifications(page: Page): Promise<void> {
   const notices = page.getByRole("region", { name: "Notifications" }).getByRole("dialog");
 
@@ -56,12 +55,6 @@ async function dismissNotifications(page: Page): Promise<void> {
   }
 }
 
-/**
- * The transcript and the Changes panel as the accessibility tree, and the
- * main region's pixels with the composer's blinking caret masked. The
- * sidebar is left out: the open chat keeps the shelf it was opened on until
- * it is left, so a reload lists the finished chat under Done.
- */
 async function captureFrame(page: Page): Promise<{ aria: string; image: Buffer }> {
   return {
     aria: `${await messages(page).ariaSnapshot()}\n${await changes(page).ariaSnapshot()}`,

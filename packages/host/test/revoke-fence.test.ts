@@ -4,7 +4,7 @@ import type { Store } from "@nyte-ai/core";
 import { hostPrincipalsRef, memoryStore } from "@nyte-ai/core/store";
 import { assert, describe, expect, it } from "vitest";
 import { listen } from "../src/index.ts";
-import { fakeModels, open } from "../src/bench/fake-models.ts";
+import { fakeModels, open } from "./fixtures/fake-models.ts";
 
 const main: HeadName = asId("main");
 

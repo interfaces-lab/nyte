@@ -1,4 +1,4 @@
-import { SdkError } from "@nyte-ai/sdk";
+import { SdkError, watchStore } from "@nyte-ai/sdk";
 import type {
   Connection,
   GitHubAccountApi,
@@ -117,6 +117,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
         return last;
       },
       watch: () => stream?.watch() ?? replay(views ?? []),
+      ...watchStore(() => stream?.watch() ?? replay(views ?? [])),
       history: refuse,
       tree: refuse,
       move: refuse,
@@ -134,6 +135,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
       remove: refuse,
       stop: refuse,
       command: refuse,
+      completeCommand: refuse,
       parts: { create: refuse },
       part: (part) => ({ id: part, update: refuse, act: refuse, answer: refuse, close: refuse }),
     };
@@ -158,6 +160,7 @@ export function scriptedConnection(script: ConnectionScript = {}): {
     reload: refuse,
     catalog: refuse,
     command: refuse,
+    completeCommand: refuse,
     jobs: { start: refuse, recover: refuse, list: refuse, watch: refused },
     job: (job: JobId) => ({
       id: job,
