@@ -79,8 +79,15 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
-      - run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - run: pnpm exec turbo test
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep xvfb
+          pnpm --dir packages/app exec playwright install-deps chromium
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - run: xvfb-run --auto-servernum pnpm exec turbo run test --concurrency=3
       - run: pnpm sdk:pack
       - run: pnpm sdk:verify
 

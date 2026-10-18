@@ -118,7 +118,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ripgrep xvfb
           pnpm --dir packages/app exec playwright install-deps chromium
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - name: Install macOS test dependencies
         if: runner.os == 'macOS'
         run: command -v rg || brew install ripgrep
@@ -201,7 +203,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
           pnpm --dir packages/app exec playwright install-deps chromium
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - name: Build the app and run desktop e2e against it
         run: xvfb-run --auto-servernum pnpm --dir packages/desktop e2e --shard=${{ matrix.shard }} --grep-invert "polish evidence"
       - uses: actions/upload-artifact@v7
