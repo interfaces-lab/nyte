@@ -12,6 +12,9 @@ concurrency:
   group: changesets-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+
 jobs:
   status:
     if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
