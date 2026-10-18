@@ -84,6 +84,7 @@ ${setup}
 const { app, BrowserWindow } = require("electron");
 const { writeFileSync } = require("node:fs");
 setInterval(() => { try { process.kill(${process.pid}, 0); } catch { app.exit(1); } }, 1000).unref();
+app.commandLine.appendSwitch("blink-settings", ${JSON.stringify(pointer === "coarse" ? "primaryPointerType=2,availablePointerTypes=2,primaryHoverType=1,availableHoverTypes=1" : "primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2")});
 app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: ${JSON.stringify(studio || process.platform !== "darwin")},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });
@@ -103,8 +104,6 @@ app.whenReady().then(async () => {
     await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
       features: [
         { name: "prefers-reduced-motion", value: "reduce" },
-        { name: "pointer", value: ${JSON.stringify(pointer)} },
-        { name: "hover", value: ${JSON.stringify(pointer === "coarse" ? "none" : "hover")} },
       ],
     });
     await window.webContents.debugger.sendCommand("Emulation.setTouchEmulationEnabled", {
