@@ -21,6 +21,7 @@ import {
   expectCors,
   broker,
   withWorkerdRelay,
+  answerUntilReset,
 } from "./relay-fixture.ts";
 
 withWorkerdRelay();
@@ -491,9 +492,6 @@ describe("phone requests", () => {
 
     for (const abort of aborts) abort.abort();
     await Promise.all(pending);
-    const reset = new Set<string>();
-
-    while (reset.size < opened.length) reset.add((await desktop.next("reset")).ch);
-    expect([...reset].sort()).toEqual([...opened].sort());
+    await answerUntilReset(desktop, opened, "send");
   });
 });

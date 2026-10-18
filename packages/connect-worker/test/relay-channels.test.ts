@@ -22,6 +22,7 @@ import {
   expectCors,
   broker,
   withWorkerdRelay,
+  answerUntilReset,
 } from "./relay-fixture.ts";
 
 withWorkerdRelay();
@@ -199,7 +200,7 @@ describe("cancellation and revocation", () => {
     const { ch } = await desktop.next("open");
     abort.abort();
     await answer;
-    await desktop.next("reset", (reset) => reset.ch === ch);
+    await answerUntilReset(desktop, [ch], "send");
   });
 
   it.each([undefined, "https://app.nyte.sh"])(
@@ -230,7 +231,7 @@ describe("cancellation and revocation", () => {
       expect(new TextDecoder().decode((await reader?.read())?.value)).toBe("data: one\n\n");
       if (origin !== undefined) expectCors(response, origin, RELAY_EXPOSED);
       abort.abort();
-      await desktop.next("reset", (reset) => reset.ch === ch);
+      await answerUntilReset(desktop, [ch], "sent");
     },
   );
 
