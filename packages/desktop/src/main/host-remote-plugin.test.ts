@@ -30,6 +30,9 @@ import type { DesktopHost } from "./host.ts";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { testDesktop } from "./fixtures/desktop-host.ts";
 
+/** Nyte offers no Cloudflare tunnel on Windows: `findCloudflared` finds none and the connector needs `/bin/sh` and process groups. */
+const cloudflareTest = test.skipIf(process.platform === "win32");
+
 const HOSTNAME = "nyte.example.test";
 
 const ORIGIN = `https://${HOSTNAME}`;
@@ -232,118 +235,130 @@ async function stored(setup: Fixture): Promise<string> {
   return readFile(join(setup.state, "cloudflare-tunnel.json"), "utf8");
 }
 
-test("only paired devices get in; refusals are what the server answers, and no secret reaches the renderer", async () => {
-  const setup = await fixture();
-  const { host, events } = await desktop(setup);
-  const secret = await configure(host, setup);
-  await serve(host);
+cloudflareTest(
+  "only paired devices get in; refusals are what the server answers, and no secret reaches the renderer",
+  async () => {
+    const setup = await fixture();
+    const { host, events } = await desktop(setup);
+    const secret = await configure(host, setup);
+    await serve(host);
 
-  const state = await host.call(1, "host.remote.state", undefined);
-  assert.equal(state.kind === "serving" && state.address, ORIGIN);
+    const state = await host.call(1, "host.remote.state", undefined);
+    assert.equal(state.kind === "serving" && state.address, ORIGIN);
 
-  const anonymous = await info(setup);
-  assert.deepEqual(anonymous, { status: 401, code: "unauthenticated" });
-  const wrong = await info(setup, bearer("x".repeat(43)));
-  assert.deepEqual(wrong, { status: 403, code: "denied" });
+    const anonymous = await info(setup);
+    assert.deepEqual(anonymous, { status: 401, code: "unauthenticated" });
+    const wrong = await info(setup, bearer("x".repeat(43)));
+    assert.deepEqual(wrong, { status: 403, code: "denied" });
 
-  const pairing = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Phone" });
-  assert.equal(pairing.address, ORIGIN);
-  const changes = () => events.filter((event) => event.kind === "remote_access_changed").length;
-  const beforeClaim = changes();
+    const pairing = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Phone" });
+    assert.equal(pairing.address, ORIGIN);
+    const changes = () => events.filter((event) => event.kind === "remote_access_changed").length;
+    const beforeClaim = changes();
 
-  const fromPage = await fetch(`http://127.0.0.1:${String(setup.port)}/sessions.list`, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...bearer(pairing.token), origin: ORIGIN },
-    body: "{}",
-  });
+    const fromPage = await fetch(`http://127.0.0.1:${String(setup.port)}/sessions.list`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...bearer(pairing.token), origin: ORIGIN },
+      body: "{}",
+    });
 
-  assert.equal(fromPage.status, 200);
-  assert.equal(fromPage.headers.get("access-control-allow-origin"), ORIGIN);
-  assert.equal(
-    changes(),
-    beforeClaim + 1,
-    "Settings hears the claim; nothing else would tell it the device stopped waiting",
-  );
+    assert.equal(fromPage.status, 200);
+    assert.equal(fromPage.headers.get("access-control-allow-origin"), ORIGIN);
+    assert.equal(
+      changes(),
+      beforeClaim + 1,
+      "Settings hears the claim; nothing else would tell it the device stopped waiting",
+    );
 
-  const foreign = await info(setup, {
-    ...bearer(pairing.token),
-    origin: "https://elsewhere.example",
-  });
+    const foreign = await info(setup, {
+      ...bearer(pairing.token),
+      origin: "https://elsewhere.example",
+    });
 
-  assert.deepEqual(foreign, { status: 403, code: "denied" });
+    assert.deepEqual(foreign, { status: 403, code: "denied" });
 
-  const device = await sdk.connect({
-    url: `http://127.0.0.1:${String(setup.port)}`,
-    credentials: { kind: "token", token: pairing.token },
-  });
+    const device = await sdk.connect({
+      url: `http://127.0.0.1:${String(setup.port)}`,
+      credentials: { kind: "token", token: pairing.token },
+    });
 
-  assert.equal(device.hostId, (await host.host()).hostId);
-  await device.close();
+    assert.equal(device.hostId, (await host.host()).hostId);
+    await device.close();
 
-  const file = await stored(setup);
-  assert.equal((await stat(join(setup.state, "cloudflare-tunnel.json"))).mode & 0o777, 0o600);
-  assert.equal(file.includes(pairing.token), false);
-  const after = await host.call(1, "host.remote.state", undefined);
-  assert.equal(after.cloudflare.kind, "configured");
+    const file = await stored(setup);
+    assert.equal((await stat(join(setup.state, "cloudflare-tunnel.json"))).mode & 0o777, 0o600);
+    assert.equal(file.includes(pairing.token), false);
+    const after = await host.call(1, "host.remote.state", undefined);
+    assert.equal(after.cloudflare.kind, "configured");
 
-  if (after.cloudflare.kind !== "configured") return;
-  assert.deepEqual(
-    after.cloudflare.devices.map((device) => [device.name, device.state.kind]),
-    [["Phone", "paired"]],
-  );
+    if (after.cloudflare.kind !== "configured") return;
+    assert.deepEqual(
+      after.cloudflare.devices.map((device) => [device.name, device.state.kind]),
+      [["Phone", "paired"]],
+    );
 
-  const renderer = JSON.stringify([after, events]);
+    const renderer = JSON.stringify([after, events]);
 
-  for (const hidden of [secret, pairing.token, LEAK])
-    assert.equal(renderer.includes(hidden), false);
-});
+    for (const hidden of [secret, pairing.token, LEAK])
+      assert.equal(renderer.includes(hidden), false);
+  },
+);
 
-test("revoking refuses that device on the same port while other devices keep their access", async () => {
-  const setup = await fixture();
-  const { host } = await desktop(setup);
-  await configure(host, setup);
-  await serve(host);
+cloudflareTest(
+  "revoking refuses that device on the same port while other devices keep their access",
+  async () => {
+    const setup = await fixture();
+    const { host } = await desktop(setup);
+    await configure(host, setup);
+    await serve(host);
 
-  const [first, second] = [
-    await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Revoked" }),
-    await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Kept" }),
-  ];
+    const [first, second] = [
+      await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Revoked" }),
+      await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Kept" }),
+    ];
 
-  assert.equal((await info(setup, bearer(first.token))).status, 200);
-  assert.equal((await info(setup, bearer(second.token))).status, 200);
-  const [connector] = await pids(setup);
+    assert.equal((await info(setup, bearer(first.token))).status, 200);
+    assert.equal((await info(setup, bearer(second.token))).status, 200);
+    const [connector] = await pids(setup);
 
-  await host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: first.deviceId });
+    await host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: first.deviceId });
 
-  assert.deepEqual(await info(setup, bearer(first.token)), { status: 403, code: "denied" });
-  assert.equal((await info(setup, bearer(second.token))).status, 200);
-  assert.deepEqual(
-    await pids(setup),
-    [connector],
-    "same listener, same connector: the port was never released",
-  );
-  assert.equal(connector !== undefined && alive(connector), true);
-});
+    assert.deepEqual(await info(setup, bearer(first.token)), { status: 403, code: "denied" });
+    assert.equal((await info(setup, bearer(second.token))).status, 200);
+    assert.deepEqual(
+      await pids(setup),
+      [connector],
+      "same listener, same connector: the port was never released",
+    );
+    assert.equal(connector !== undefined && alive(connector), true);
+  },
+);
 
-test("a waiting code revoked while its first request is in flight stays revoked", async () => {
-  const setup = await fixture();
-  const { host } = await desktop(setup);
-  await configure(host, setup);
-  await serve(host);
+cloudflareTest(
+  "a waiting code revoked while its first request is in flight stays revoked",
+  async () => {
+    const setup = await fixture();
+    const { host } = await desktop(setup);
+    await configure(host, setup);
+    await serve(host);
 
-  for (let round = 0; round < 5; round += 1) {
-    const pairing = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Race" });
-    await Promise.all([
-      info(setup, bearer(pairing.token)).catch(() => undefined),
-      host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: pairing.deviceId }),
-    ]);
-    assert.deepEqual(await info(setup, bearer(pairing.token)), { status: 403, code: "denied" });
-  }
+    for (let round = 0; round < 5; round += 1) {
+      const pairing = await host.call(1, "host.remote.pair", {
+        plugin: "cloudflare",
+        name: "Race",
+      });
+      await Promise.all([
+        info(setup, bearer(pairing.token)).catch(() => undefined),
+        host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: pairing.deviceId }),
+      ]);
+      assert.deepEqual(await info(setup, bearer(pairing.token)), { status: 403, code: "denied" });
+    }
 
-  assert.equal(JSON.parse(await stored(setup)).devices.length, 0);
-});
+    assert.equal(JSON.parse(await stored(setup)).devices.length, 0);
+  },
+);
 
-test("pairing waits for a connected tunnel", async () => {
+cloudflareTest("pairing waits for a connected tunnel", async () => {
   const setup = await fixture({ gate: "routes" });
   const { host } = await desktop(setup);
   await configure(host, setup);
@@ -359,47 +374,53 @@ test("pairing waits for a connected tunnel", async () => {
   });
 });
 
-test("paired devices outlive the desktop process: Start brings them back without pairing", async () => {
-  const setup = await fixture();
-  const first = await desktop(setup);
-  await configure(first.host, setup);
-  await serve(first.host);
+cloudflareTest(
+  "paired devices outlive the desktop process: Start brings them back without pairing",
+  async () => {
+    const setup = await fixture();
+    const first = await desktop(setup);
+    await configure(first.host, setup);
+    await serve(first.host);
 
-  const pairing = await first.host.call(1, "host.remote.pair", {
-    plugin: "cloudflare",
-    name: "Phone",
-  });
+    const pairing = await first.host.call(1, "host.remote.pair", {
+      plugin: "cloudflare",
+      name: "Phone",
+    });
 
-  assert.equal((await info(setup, bearer(pairing.token))).status, 200);
-  await first.host.close();
-  assert.equal(await portAccepts(setup.port), false);
+    assert.equal((await info(setup, bearer(pairing.token))).status, 200);
+    await first.host.close();
+    assert.equal(await portAccepts(setup.port), false);
 
-  const second = await desktop(setup);
-  assert.equal((await second.host.call(1, "host.remote.state", undefined)).kind, "off");
-  await serve(second.host);
-  assert.equal((await info(setup, bearer(pairing.token))).status, 200);
-});
+    const second = await desktop(setup);
+    assert.equal((await second.host.call(1, "host.remote.state", undefined)).kind, "off");
+    await serve(second.host);
+    assert.equal((await info(setup, bearer(pairing.token))).status, 200);
+  },
+);
 
-test("stop ends the connector while the port is still held, then releases it", async () => {
-  const setup = await fixture();
-  const { host } = await desktop(setup);
-  await configure(host, setup);
-  await serve(host);
-  const [connector] = await pids(setup);
+cloudflareTest(
+  "stop ends the connector while the port is still held, then releases it",
+  async () => {
+    const setup = await fixture();
+    const { host } = await desktop(setup);
+    await configure(host, setup);
+    await serve(host);
+    const [connector] = await pids(setup);
 
-  await host.call(1, "host.remote.stop", undefined);
+    await host.call(1, "host.remote.stop", undefined);
 
-  assert.equal((await readFile(join(setup.root, "at-term"), "utf8")).trim(), "open");
-  assert.equal(connector !== undefined && alive(connector), false);
-  assert.equal(await portAccepts(setup.port), false);
-  const state = await host.call(1, "host.remote.state", undefined);
-  assert.equal(
-    state.cloudflare.kind === "configured" && state.cloudflare.connection.kind,
-    "stopped",
-  );
-});
+    assert.equal((await readFile(join(setup.root, "at-term"), "utf8")).trim(), "open");
+    assert.equal(connector !== undefined && alive(connector), false);
+    assert.equal(await portAccepts(setup.port), false);
+    const state = await host.call(1, "host.remote.state", undefined);
+    assert.equal(
+      state.cloudflare.kind === "configured" && state.cloudflare.connection.kind,
+      "stopped",
+    );
+  },
+);
 
-test("a port already in use fails the start before any connector runs", async () => {
+cloudflareTest("a port already in use fails the start before any connector runs", async () => {
   const setup = await fixture();
   const { host } = await desktop(setup);
   await configure(host, setup);
@@ -414,7 +435,7 @@ test("a port already in use fails the start before any connector runs", async ()
   assert.equal((await host.call(1, "host.remote.state", undefined)).kind, "off");
 });
 
-test("closing during startup leaves no listener and no connector", async () => {
+cloudflareTest("closing during startup leaves no listener and no connector", async () => {
   const setup = await fixture();
   const { host } = await desktop(setup);
   await configure(host, setup);
@@ -432,94 +453,103 @@ test("closing during startup leaves no listener and no connector", async () => {
   for (const pid of await pids(setup)) await vi.waitFor(() => assert.equal(alive(pid), false));
 });
 
-test("once the settings cannot be written, no token is accepted and remote access stops", async () => {
-  const setup = await fixture();
-  const { host } = await desktop(setup);
-  await configure(host, setup);
-  await serve(host);
-  const paired = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Paired" });
-  assert.equal((await info(setup, bearer(paired.token))).status, 200);
-  const waiting = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Waiting" });
-  const before = await stored(setup);
-
-  await chmod(setup.state, 0o500);
-  assert.deepEqual(
-    await info(setup, bearer(waiting.token)),
-    { status: 403, code: "denied" },
-    "the waiting device's claim cannot be written, so it is refused",
-  );
-  assert.deepEqual(
-    await info(setup, bearer(paired.token)),
-    { status: 403, code: "denied" },
-    "and so is everyone after it",
-  );
-
-  await assert.rejects(
-    host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: paired.deviceId }),
-    {
-      message:
-        "Nyte can't read or write ~/.nyte/cloudflare-tunnel.json. Fix or remove it, then restart Nyte.",
-    },
-  );
-  const state: RemoteAccessState = await host.call(1, "host.remote.state", undefined);
-  assert.equal(state.kind, "off");
-  assert.deepEqual(state.cloudflare, { kind: "unavailable" });
-  assert.equal(await portAccepts(setup.port), false);
-  await chmod(setup.state, 0o700);
-  assert.equal(await stored(setup), before);
-  const leftovers = (await readdir(setup.state)).filter((name) => name.endsWith(".tmp"));
-  assert.deepEqual(leftovers, []);
-});
-
-test("settings are checked before saving and locked while serving; a new hostname drops devices", async () => {
-  const setup = await fixture();
-  const { host } = await desktop(setup);
-
-  const invalid = (input: { hostname?: string; tunnelToken?: string }) =>
-    host.call(1, "host.remote.configure", {
+cloudflareTest(
+  "once the settings cannot be written, no token is accepted and remote access stops",
+  async () => {
+    const setup = await fixture();
+    const { host } = await desktop(setup);
+    await configure(host, setup);
+    await serve(host);
+    const paired = await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Paired" });
+    assert.equal((await info(setup, bearer(paired.token))).status, 200);
+    const waiting = await host.call(1, "host.remote.pair", {
       plugin: "cloudflare",
-      hostname: input.hostname ?? HOSTNAME,
+      name: "Waiting",
+    });
+    const before = await stored(setup);
+
+    await chmod(setup.state, 0o500);
+    assert.deepEqual(
+      await info(setup, bearer(waiting.token)),
+      { status: 403, code: "denied" },
+      "the waiting device's claim cannot be written, so it is refused",
+    );
+    assert.deepEqual(
+      await info(setup, bearer(paired.token)),
+      { status: 403, code: "denied" },
+      "and so is everyone after it",
+    );
+
+    await assert.rejects(
+      host.call(1, "host.remote.revoke", { plugin: "cloudflare", deviceId: paired.deviceId }),
+      {
+        message:
+          "Nyte can't read or write ~/.nyte/cloudflare-tunnel.json. Fix or remove it, then restart Nyte.",
+      },
+    );
+    const state: RemoteAccessState = await host.call(1, "host.remote.state", undefined);
+    assert.equal(state.kind, "off");
+    assert.deepEqual(state.cloudflare, { kind: "unavailable" });
+    assert.equal(await portAccepts(setup.port), false);
+    await chmod(setup.state, 0o700);
+    assert.equal(await stored(setup), before);
+    const leftovers = (await readdir(setup.state)).filter((name) => name.endsWith(".tmp"));
+    assert.deepEqual(leftovers, []);
+  },
+);
+
+cloudflareTest(
+  "settings are checked before saving and locked while serving; a new hostname drops devices",
+  async () => {
+    const setup = await fixture();
+    const { host } = await desktop(setup);
+
+    const invalid = (input: { hostname?: string; tunnelToken?: string }) =>
+      host.call(1, "host.remote.configure", {
+        plugin: "cloudflare",
+        hostname: input.hostname ?? HOSTNAME,
+        port: setup.port,
+        tunnelToken: input.tunnelToken ?? tunnelToken(),
+      });
+
+    await assert.rejects(invalid({ hostname: "https://nyte.example.test/" }), {
+      message: "Enter the public hostname alone, such as nyte.example.com.",
+    });
+    let padded = tunnelToken();
+
+    for (let account = "a"; !padded.endsWith("="); account += "a") padded = tunnelToken(account);
+
+    for (const bad of [
+      "not-a-token",
+      padded.replace(/=+$/u, ""),
+      encodeToken({ a: "account", s: "not base64!", t: randomUUID() }),
+      encodeToken({ a: "account", s: randomBytes(32).toString("base64"), t: "not-a-uuid" }),
+    ]) {
+      await assert.rejects(invalid({ tunnelToken: bad }), {
+        message: "That isn't a tunnel token. Copy it again from the tunnel's page in Cloudflare.",
+      });
+    }
+
+    assert.equal(existsSync(join(setup.state, "cloudflare-tunnel.json")), false);
+
+    await configure(host, setup);
+    await serve(host);
+    await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Phone" });
+    await assert.rejects(configure(host, setup), {
+      message: "Stop remote access over Cloudflare first.",
+    });
+    await host.call(1, "host.remote.stop", undefined);
+
+    await configure(host, setup);
+    assert.equal(JSON.parse(await stored(setup)).devices.length, 1);
+    await host.call(1, "host.remote.configure", {
+      plugin: "cloudflare",
+      hostname: "other.example.test",
       port: setup.port,
-      tunnelToken: input.tunnelToken ?? tunnelToken(),
+      tunnelToken: tunnelToken(),
     });
-
-  await assert.rejects(invalid({ hostname: "https://nyte.example.test/" }), {
-    message: "Enter the public hostname alone, such as nyte.example.com.",
-  });
-  let padded = tunnelToken();
-
-  for (let account = "a"; !padded.endsWith("="); account += "a") padded = tunnelToken(account);
-
-  for (const bad of [
-    "not-a-token",
-    padded.replace(/=+$/u, ""),
-    encodeToken({ a: "account", s: "not base64!", t: randomUUID() }),
-    encodeToken({ a: "account", s: randomBytes(32).toString("base64"), t: "not-a-uuid" }),
-  ]) {
-    await assert.rejects(invalid({ tunnelToken: bad }), {
-      message: "That isn't a tunnel token. Copy it again from the tunnel's page in Cloudflare.",
-    });
-  }
-
-  assert.equal(existsSync(join(setup.state, "cloudflare-tunnel.json")), false);
-
-  await configure(host, setup);
-  await serve(host);
-  await host.call(1, "host.remote.pair", { plugin: "cloudflare", name: "Phone" });
-  await assert.rejects(configure(host, setup), {
-    message: "Stop remote access over Cloudflare first.",
-  });
-  await host.call(1, "host.remote.stop", undefined);
-
-  await configure(host, setup);
-  assert.equal(JSON.parse(await stored(setup)).devices.length, 1);
-  await host.call(1, "host.remote.configure", {
-    plugin: "cloudflare",
-    hostname: "other.example.test",
-    port: setup.port,
-    tunnelToken: tunnelToken(),
-  });
-  assert.equal(JSON.parse(await stored(setup)).devices.length, 0);
-  await host.call(1, "host.remote.clear", { plugin: "cloudflare" });
-  assert.equal(existsSync(join(setup.state, "cloudflare-tunnel.json")), false);
-});
+    assert.equal(JSON.parse(await stored(setup)).devices.length, 0);
+    await host.call(1, "host.remote.clear", { plugin: "cloudflare" });
+    assert.equal(existsSync(join(setup.state, "cloudflare-tunnel.json")), false);
+  },
+);

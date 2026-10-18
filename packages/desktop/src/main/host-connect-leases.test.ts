@@ -70,7 +70,11 @@ test("a linked Mac serves only leased devices, and no session secret reaches dis
   assert.deepEqual(await info(setup, phone.token), allowed);
 
   const file = await stored(setup);
-  assert.equal((await stat(join(setup.state, "connect.json"))).mode & 0o777, 0o600);
+
+  if (process.platform !== "win32") {
+    assert.equal((await stat(join(setup.state, "connect.json"))).mode & 0o777, 0o600);
+  }
+
   const parsed = JSON.parse(file);
   assert.equal(file.includes(SESSION_JWT), false);
   assert.equal(file.includes(phone.token), false);

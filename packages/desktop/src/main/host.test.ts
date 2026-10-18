@@ -210,6 +210,7 @@ test("a window reopening on a chat answers its state with the chat's folder sele
 
 test("a key login over the loopback listener connects the provider, and the reopened home keeps it without reading the key", async () => {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-login-")));
+  onTestFinished(() => rm(home, { recursive: true, force: true }));
   const store = sqliteStore({ path: join(home, "credentials.db") });
   const file = defaultSecrets(home);
   let reads = 0;
@@ -276,7 +277,6 @@ test("a key login over the loopback listener connects the provider, and the reop
     assert.equal(reads, written);
   } finally {
     await store.close();
-    await rm(home, { recursive: true, force: true });
   }
 });
 

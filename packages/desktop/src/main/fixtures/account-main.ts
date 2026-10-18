@@ -14,10 +14,9 @@ import { registerAccount } from "../account.ts";
 import { AccountCancelled } from "../account-session.ts";
 import { AccountStore } from "../account-store.ts";
 import { registerRenderer } from "../renderer.ts";
+import { exitWithParent } from "./exit-with-parent.ts";
 
-process.stdin.on("close", () => app.exit(1));
-
-process.stdin.resume();
+exitWithParent();
 
 const directory = process.argv[2];
 

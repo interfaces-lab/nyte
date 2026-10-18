@@ -87,7 +87,8 @@ test("each change builds on the last, and a fresh store reads what was written",
   assert.deepEqual(store.snapshot(), { kind: "ready", file: expected });
   assert.deepEqual(await new ConnectStore(path).read(), { kind: "ready", file: expected });
   assert.deepEqual(JSON.parse(await readFile(path, "utf8")), expected);
-  assert.equal((await stat(path)).mode & 0o777, 0o600);
+
+  if (process.platform !== "win32") assert.equal((await stat(path)).mode & 0o777, 0o600);
 });
 
 test("a failed write fails the store for good and leaves the file as it was", async () => {
@@ -98,6 +99,7 @@ test("a failed write fails the store for good and leaves the file as it was", as
   const before = await readFile(path, "utf8");
 
   await chmod(root, 0o500);
+  await chmod(path, 0o400);
   await assert.rejects(
     store.update((file) => ({ file: { ...file, enabled: false }, result: undefined })),
     ConnectStoreFailed,
