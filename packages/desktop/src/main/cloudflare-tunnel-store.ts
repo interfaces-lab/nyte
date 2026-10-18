@@ -9,10 +9,10 @@
  * written makes the store `failed` for the life of the process: nothing is
  * accepted and nothing is overwritten until the user fixes it and restarts.
  */
-import { open, readFile, rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { serial } from "@nyte-ai/schema/serial";
 import { dirname } from "node:path";
-import { writePrivateFile } from "@nyte-ai/connect/private-file";
+import { syncDirectory, writePrivateFile } from "@nyte-ai/connect/private-file";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
@@ -68,16 +68,6 @@ export class TunnelStoreFailed extends Error {
   constructor() {
     super("The Cloudflare tunnel settings could not be read or written");
     this.name = "TunnelStoreFailed";
-  }
-}
-
-async function syncDirectory(path: string): Promise<void> {
-  const handle = await open(path, "r");
-
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
   }
 }
 
