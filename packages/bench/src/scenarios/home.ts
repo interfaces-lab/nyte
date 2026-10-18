@@ -64,14 +64,24 @@ export async function scenarioHome(input: {
 }
 
 export async function nodeShim(folder: string, name: string, script: string): Promise<string> {
-  const path = join(folder, name);
   await mkdir(folder, { recursive: true });
+  const electron = process.versions.electron !== undefined;
 
-  const electron = process.versions.electron === undefined ? "" : "ELECTRON_RUN_AS_NODE=1 ";
+  if (process.platform === "win32") {
+    const path = join(folder, `${name}.cmd`);
+    await writeFile(
+      path,
+      `@echo off\r\n${electron ? "set ELECTRON_RUN_AS_NODE=1\r\n" : ""}"${process.execPath}" "${script}" %*\r\n`,
+    );
+
+    return path;
+  }
+
+  const path = join(folder, name);
 
   await writeFile(
     path,
-    `#!/bin/sh\n${electron}exec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`,
+    `#!/bin/sh\n${electron ? "ELECTRON_RUN_AS_NODE=1 " : ""}exec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`,
   );
   await chmod(path, 0o755);
 

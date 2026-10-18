@@ -21,8 +21,15 @@ import type { SimulationOutcome } from "../src/index.ts";
 const run = promisify(execFile);
 
 async function descendants(): Promise<readonly string[]> {
-  const { stdout } = await run("ps", ["-axo", "pid=,ppid=,command="]);
-  const rows = stdout.split("\n").flatMap((line) => {
+  const { stdout } =
+    process.platform === "win32"
+      ? await run("powershell.exe", [
+          "-NoProfile",
+          "-Command",
+          'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)" }',
+        ])
+      : await run("ps", ["-axo", "pid=,ppid=,command="]);
+  const rows = stdout.split(/\r?\n/u).flatMap((line) => {
     const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
 
     return match === null
@@ -35,7 +42,12 @@ async function descendants(): Promise<readonly string[]> {
     grown = false;
 
     for (const row of rows)
-      if (tree.has(row.ppid) && !tree.has(row.pid) && !row.command.startsWith("ps ")) {
+      if (
+        tree.has(row.ppid) &&
+        !tree.has(row.pid) &&
+        !row.command.startsWith("ps ") &&
+        !row.command.includes("Win32_Process")
+      ) {
         tree.add(row.pid);
         grown = true;
       }
