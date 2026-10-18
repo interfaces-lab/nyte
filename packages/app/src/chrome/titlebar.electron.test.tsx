@@ -25,13 +25,14 @@ beforeAll(async () => {
   directory = root;
   await mkdir(join(root, "home"));
   await mkdir(join(root, "app-data"));
-  await symlink(join(desktop, "resources"), join(root, "resources"), "dir");
+  await symlink(join(desktop, "resources"), join(root, "resources"), "junction");
   const rendererAtAppPath = join(root, "out");
-  await symlink(join(desktop, "out"), rendererAtAppPath, "dir");
+  await symlink(join(desktop, "out"), rendererAtAppPath, "junction");
   execFileSync("pnpm", ["exec", "electron-vite", "build"], {
     cwd: desktop,
     timeout: 180_000,
     stdio: "pipe",
+    shell: process.platform === "win32",
   });
   const entry = join(root, "main.cjs");
   await writeFile(
