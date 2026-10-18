@@ -50,7 +50,7 @@ export async function listWorktrees(
     const path = fields.find((field) => field.startsWith("worktree "))?.slice(9);
     const branch = fields.find((field) => field.startsWith("branch refs/heads/"))?.slice(18);
 
-    return path === undefined ? [] : [{ path, branch: branch ?? null }];
+    return path === undefined ? [] : [{ path: resolve(path), branch: branch ?? null }];
   });
 }
 

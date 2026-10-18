@@ -14,7 +14,7 @@ import {
   tracing,
 } from "@nyte-ai/core";
 import type { EndSpan, ExecutionEnv, Job } from "@nyte-ai/core";
-import { findExecutable, spawnCommand } from "./command.ts";
+import { findExecutable, killTree, spawnCommand } from "./command.ts";
 
 type PtyModule = {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
@@ -229,12 +229,13 @@ async function pipe(
       },
     });
   child.stdin?.on("error", () => undefined);
-  child.on("close", (code) => finish(code));
+  let killed = false;
+  child.on("close", (code) => finish(killed ? null : code));
   child.on("exit", (code) => {
     setTimeout(() => {
       child.stdout?.destroy();
       child.stderr?.destroy();
-      finish(code);
+      finish(killed ? null : code);
     }, CLOSE_GRACE_MS).unref();
   });
 
@@ -250,11 +251,9 @@ async function pipe(
     resize: () => false,
     idle: () => false,
     kill(signal) {
-      if (windows && child.pid !== undefined) {
-        spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-          stdio: "ignore",
-          windowsHide: true,
-        }).on("error", () => child.kill(signal));
+      if (windows) {
+        killed = true;
+        killTree(child, signal);
 
         return;
       }

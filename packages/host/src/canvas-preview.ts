@@ -27,6 +27,7 @@ import type {
 import { Type } from "typebox";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
+import { killTree } from "./local/command.ts";
 
 const ORIGIN = "https://canvas.preview/";
 
@@ -312,12 +313,12 @@ function stop(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
 
   return new Promise((resolve) => {
-    const kill = setTimeout(() => child.kill("SIGKILL"), 2000);
+    const kill = setTimeout(() => killTree(child, "SIGKILL"), 2000);
     child.once("exit", () => {
       clearTimeout(kill);
       resolve();
     });
-    child.kill();
+    killTree(child, "SIGTERM");
   });
 }
 
@@ -396,7 +397,7 @@ export function chromiumCanvasPreview(
       }
     } finally {
       await stop(child);
-      await rm(profile, { recursive: true, force: true });
+      await rm(profile, { recursive: true, force: true, maxRetries: 10 });
     }
   };
 }

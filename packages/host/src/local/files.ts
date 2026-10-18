@@ -590,6 +590,7 @@ async function* grep(
   } finally {
     lines.close();
     child.kill();
+    await closed;
   }
 }
 

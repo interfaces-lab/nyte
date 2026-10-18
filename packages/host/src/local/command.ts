@@ -91,6 +91,20 @@ export function spawnCommand(
   });
 }
 
+/** Ends `child` with `signal`; on Windows, which has no signals, it ends the child's whole process tree with `taskkill /T /F`, as `kill` alone would leave what a batch file or a shell started running. */
+export function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32" || child.pid === undefined) {
+    child.kill(signal);
+
+    return;
+  }
+
+  spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+    stdio: "ignore",
+    windowsHide: true,
+  }).on("error", () => child.kill(signal));
+}
+
 const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
 
 function escapeCommand(command: string): string {
