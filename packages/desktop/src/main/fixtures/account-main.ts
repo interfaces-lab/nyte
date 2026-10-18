@@ -297,7 +297,8 @@ async function run(): Promise<void> {
       (await openSecret(secrets, kept.sealed).catch(() => "")) === "client.two"
     );
   }, "The new token was not sealed to disk");
-  assert.equal((await stat(saved)).mode & 0o777, 0o600);
+
+  if (process.platform !== "win32") assert.equal((await stat(saved)).mode & 0o777, 0o600);
 
   const redirectUrl = `${scheme}://${ACCOUNT_HOST}/`;
 
