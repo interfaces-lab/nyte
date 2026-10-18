@@ -59,7 +59,13 @@ async function raster(sample: Element) {
   );
 
   try {
+    const loaded = new Promise((resolve, reject) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", reject, { once: true });
+    });
+
     image.src = url;
+    await loaded;
     await image.decode();
     const canvas = document.createElement("canvas");
     canvas.width = 16;

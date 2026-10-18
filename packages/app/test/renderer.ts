@@ -125,8 +125,10 @@ app.whenReady().then(async () => {
     await window.webContents.debugger.sendCommand("Runtime.addBinding", { name: "rendererCapture" });
     window.webContents.debugger.on("message", async (_event, method, params) => {
       if (method !== "Runtime.bindingCalled" || params.name !== "rendererCapture") return;
-      const image = await window.webContents.capturePage();
-      writeFileSync(${JSON.stringify(join(captures ?? directory, "/"))} + params.payload + ".png", image.toPNG());
+      if (${JSON.stringify(captures !== undefined)}) {
+        const image = await window.webContents.capturePage();
+        writeFileSync(${JSON.stringify(join(captures ?? directory, "/"))} + params.payload + ".png", image.toPNG());
+      }
       await window.webContents.executeJavaScript('document.dispatchEvent(new Event("renderer-captured"))');
     });
     window.webContents.debugger.on("message", async (_event, method, params) => {
@@ -151,7 +153,11 @@ app.whenReady().then(async () => {
       throw new Error("Expected the Electron executable path");
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    await execute(electron, [join(directory, "main.cjs")], { env, timeout: studio ? 0 : 40_000 });
+    await execute(electron, [join(directory, "main.cjs")], {
+      env,
+      timeout: studio ? 0 : 40_000,
+      killSignal: "SIGKILL",
+    });
 
     return await readFile(join(directory, "result.txt"), "utf8");
   } finally {
