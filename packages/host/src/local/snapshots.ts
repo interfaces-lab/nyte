@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   ChangeSet,
@@ -132,7 +132,9 @@ export function localSnapshots(
     if (ran === null || ran.code !== 0) return null;
     const [root, gitDir, prefix = ""] = ran.stdout.toString("utf8").split("\n");
 
-    return root === undefined || gitDir === undefined ? null : { root, gitDir, prefix };
+    return root === undefined || gitDir === undefined
+      ? null
+      : { root: resolve(root), gitDir: resolve(gitDir), prefix };
   };
 
   const repository = (): Promise<Repository | null> => {

@@ -477,8 +477,13 @@ describe.skipIf(!hasGit)("localGit", () => {
     sh(root, "commit", "-q", "-m", "ignore");
     await mkdir(join(root, "out"));
     const log = join(await folder(), "git.log");
-    const wrapper = join(await folder(), "git");
-    await writeFile(wrapper, `#!/bin/sh\necho "$*" >> '${log}'\nexec git "$@"\n`);
+    const wrapper = join(await folder(), process.platform === "win32" ? "git.cmd" : "git");
+    await writeFile(
+      wrapper,
+      process.platform === "win32"
+        ? `@echo %*>> "${log}"\n@git %*\n`
+        : `#!/bin/sh\necho "$*" >> '${log}'\nexec git "$@"\n`,
+    );
     await chmod(wrapper, 0o755);
     const git = localGit(localEnv(root), { git: wrapper });
     const runs = async (): Promise<readonly string[]> =>

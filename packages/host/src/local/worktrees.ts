@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, realpath, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { SdkError } from "@nyte-ai/schema";
 import type { WorkspaceTarget } from "@nyte-ai/schema";
 import type { WorktreeProvider } from "@nyte-ai/core";
@@ -147,7 +147,7 @@ export function localWorktrees(options?: {
       const branch = `nyte/${slug}`;
       const below = (root: string): WorkspaceTarget => ({
         kind: "local",
-        path: repo.prefix === "" ? root : join(root, repo.prefix).replace(/\/+$/u, ""),
+        path: resolve(root, repo.prefix),
       });
 
       const listed = (await listWorktrees(repo.root, options)).find(
@@ -224,7 +224,7 @@ async function readRepository(git: Git, cwd: string): Promise<Repository | null>
 
   return root === undefined || gitDir === undefined || root === ""
     ? null
-    : { root, gitDir, prefix };
+    : { root: resolve(root), gitDir: resolve(gitDir), prefix };
 }
 
 function worktreeSlug(name: string, title: string | null): string {

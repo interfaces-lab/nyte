@@ -1,5 +1,5 @@
 import { lstat, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   BlameView,
@@ -101,7 +101,12 @@ export function localGit(env: ExecutionEnv, options?: { readonly git?: string })
 
     return root === undefined || gitDir === undefined
       ? null
-      : { root, gitDir, commonDir: commonDir || gitDir, prefix };
+      : {
+          root: resolve(root),
+          gitDir: resolve(gitDir),
+          commonDir: resolve(commonDir || gitDir),
+          prefix,
+        };
   };
 
   const repository = async (): Promise<Repository | null> => {

@@ -21,6 +21,8 @@ async function folder(): Promise<string> {
 
 const decoder = new TextDecoder();
 
+const windows = process.platform === "win32";
+
 async function read(
   job: Job,
 ): Promise<{ readonly text: string; readonly frames: readonly OutputFrame[] }> {
@@ -46,10 +48,12 @@ const ptyLoads =
 describe("localExec over pipes", () => {
   it("runs a string through the shell in the root, interleaving stdout and stderr, then exit", async () => {
     const root = await folder();
-    const job = await localExec(root)("pwd; echo out; echo err 1>&2; exit 3");
+    const job = await localExec(root)(
+      windows ? "cd& echo out& 1>&2 echo err& exit 3" : "pwd; echo out; echo err 1>&2; exit 3",
+    );
     const { text, frames } = await read(job);
 
-    expect(text).toBe(`${root}\nout\nerr\n`);
+    expect(text).toBe(windows ? `${root}\r\nout\r\nerr\r\n` : `${root}\nout\nerr\n`);
     expect(frames.at(-1)).toEqual({ kind: "exit", code: 3 });
     expect(await job.settled()).toEqual({ kind: "exited", code: 3, reason: "exited" });
     expect(job.key).toBeNull();
@@ -62,10 +66,13 @@ describe("localExec over pipes", () => {
     const exec = localExec(root);
     await (await exec(["mkdir", "sub"])).settled();
 
-    const job = await exec(["sh", "-c", 'printf "%s %s" "$PWD" "$NYTE_TEST"'], {
-      cwd: "sub",
-      env: { NYTE_TEST: "yes" },
-    });
+    const job = await exec(
+      [process.execPath, "-e", "process.stdout.write(`${process.cwd()} ${process.env.NYTE_TEST}`)"],
+      {
+        cwd: "sub",
+        env: { NYTE_TEST: "yes" },
+      },
+    );
 
     expect((await read(job)).text).toBe(`${join(root, "sub")} yes`);
     await expect(exec(["definitely-not-a-program-nyte"])).rejects.toMatchObject({
@@ -81,9 +88,12 @@ describe("localExec over pipes", () => {
     expect((await read(job)).text).toBe("typed line\n");
   });
 
-  it("stops with SIGTERM to the process group, SIGKILL after the grace, and reports terminated", async () => {
+  it("stops the process group and reports terminated", async () => {
     const exec = localExec(await folder());
-    const job = await exec("sleep 30 & sleep 30; wait");
+
+    const job = await exec(
+      windows ? 'node -e "setTimeout(() => {}, 30000)"' : "sleep 30 & sleep 30; wait",
+    );
     const started = Date.now();
 
     expect(await job.stop()).toEqual({
@@ -92,18 +102,25 @@ describe("localExec over pipes", () => {
     });
     expect(Date.now() - started).toBeLessThan(1_500);
     expect(await job.stop()).toMatchObject({ kind: "settled" });
+  });
 
-    const stubborn = await exec(["sh", "-c", "trap '' TERM; echo ready; sleep 30"]);
-    const reader = stubborn.output()[Symbol.asyncIterator]();
-    await reader.next();
-    const before = Date.now();
+  it.skipIf(windows)(
+    "sends SIGTERM first and SIGKILL after the grace",
+    async () => {
+      const exec = localExec(await folder());
+      const stubborn = await exec(["sh", "-c", "trap '' TERM; echo ready; sleep 30"]);
+      const reader = stubborn.output()[Symbol.asyncIterator]();
+      await reader.next();
+      const before = Date.now();
 
-    expect(await stubborn.stop()).toMatchObject({
-      kind: "settled",
-      outcome: { reason: "terminated" },
-    });
-    expect(Date.now() - before).toBeGreaterThanOrEqual(1_900);
-  }, 10_000);
+      expect(await stubborn.stop()).toMatchObject({
+        kind: "settled",
+        outcome: { reason: "terminated" },
+      });
+      expect(Date.now() - before).toBeGreaterThanOrEqual(1_900);
+    },
+    10_000,
+  );
 
   it("stops when the call's signal aborts, and refuses an aborted signal", async () => {
     const exec = localExec(await folder());
@@ -118,7 +135,9 @@ describe("localExec over pipes", () => {
   });
 
   it("rejects an aborted settled wait without stopping the process", async () => {
-    const job = await localExec(await folder())("sleep 0.3; echo done");
+    const job = await localExec(await folder())(
+      "node -e \"setTimeout(() => console.log('done'), 300)\"",
+    );
     const controller = new AbortController();
     const waiting = job.settled({ signal: controller.signal });
     controller.abort();
@@ -177,7 +196,7 @@ describe("localExec over pipes", () => {
   it("detaches readers on close and on the environment's signal, leaving the process running", async () => {
     const environment = new AbortController();
     const exec = localExec(await folder(), { signal: environment.signal });
-    const job = await exec("sleep 0.4; echo late");
+    const job = await exec("node -e \"setTimeout(() => console.log('late'), 400)\"");
     const first = job.output()[Symbol.asyncIterator]();
     const pending = first.next();
     await job.close();
@@ -210,9 +229,10 @@ describe("localExec where the pty module does not load (§41a)", () => {
         });
     }
 
-    expect((await read(await localExec(root, { loadPty: failing })("echo piped"))).text).toBe(
-      "piped\n",
-    );
+    expect(
+      (await read(await localExec(root, { loadPty: failing })("node -e \"console.log('piped')\"")))
+        .text,
+    ).toBe("piped\n");
   });
 });
 

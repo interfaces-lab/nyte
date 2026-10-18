@@ -357,9 +357,11 @@ describe("sqliteStore", () => {
   it("brings another host's commits on the same file to a polling host's directory and head watch", async () => {
     const path = join(await folder(), "nyte.db");
 
+    await using stores = new AsyncDisposableStack();
+
     const host = (poll?: number) =>
       composeHost({
-        store: sqliteStore({ path }),
+        store: stores.adopt(sqliteStore({ path }), (store) => store.close()),
         models: fakeModels().models,
         plugins: [chatOnly],
         workspace: { kind: "chat-only", locator: null },
