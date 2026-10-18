@@ -10,10 +10,9 @@ import { callIpc } from "../ipc-call.ts";
 import { decodeCallRequest } from "../ipc-inputs.ts";
 import { CALL_CHANNEL } from "../../shared/ipc.ts";
 import type { CallRequest, CallOutput } from "../../shared/ipc.ts";
+import { exitWithParent } from "./exit-with-parent.ts";
 
-process.stdin.on("close", () => app.exit(1));
-
-process.stdin.resume();
+exitWithParent();
 
 const directory = process.argv[2];
 

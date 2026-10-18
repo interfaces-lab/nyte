@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import { afterEach, test, vi } from "vitest";
+import { afterEach, onTestFinished, test, vi } from "vitest";
 import { createModels } from "@nyte-ai/ai/models";
 import { credentialStore, defaultSecrets, sqliteStore } from "@nyte-ai/host";
 import { fakeModels } from "@nyte-ai/bench";
@@ -209,6 +210,7 @@ test("a window reopening on a chat answers its state with the chat's folder sele
 
 test("a key login over the loopback listener connects the provider, and the reopened home keeps it without reading the key", async () => {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-login-")));
+  onTestFinished(() => rm(home, { recursive: true, force: true }));
   const store = sqliteStore({ path: join(home, "credentials.db") });
   const file = defaultSecrets(home);
   let reads = 0;
@@ -263,7 +265,10 @@ test("a key login over the loopback listener connects the provider, and the reop
     await first.close();
     const written = reads;
     assert.ok(written > 0);
-    assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
+
+    if (process.platform !== "win32") {
+      assert.equal((await stat(join(home, ".nyte", "secret.key"))).mode & 0o777, 0o600);
+    }
 
     const second = await desktop({ home, models: models() });
     const again = await connectLocal(second);
@@ -272,12 +277,12 @@ test("a key login over the loopback listener connects the provider, and the reop
     assert.equal(reads, written);
   } finally {
     await store.close();
-    await rm(home, { recursive: true, force: true });
   }
 });
 
 test("the host waits for a store another process holds, says so, and opens once it is let go", async () => {
   const home = await realpath(await mkdtemp(join(tmpdir(), "nyte-desktop-held-")));
+  onTestFinished(() => rm(home, { recursive: true, force: true }));
   await mkdir(join(home, ".nyte"), { recursive: true });
 
   const holder = spawn(
@@ -304,7 +309,9 @@ test("the host waits for a store another process holds, says so, and opens once 
     assert.match(statuses[0] ?? "", /Another Nyte process \(pid \d+, .*has .*nyte\.db open/u);
     assert.equal(statuses.at(-1), "Nyte opened your chats.");
   } finally {
+    const exited = holder.exitCode !== null || holder.signalCode !== null;
     holder.kill("SIGKILL");
-    await rm(home, { recursive: true, force: true });
+
+    if (!exited) await once(holder, "exit");
   }
 }, 30_000);

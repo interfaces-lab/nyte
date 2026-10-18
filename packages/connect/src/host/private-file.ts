@@ -30,8 +30,10 @@ export async function writePrivateFile(input: {
   await syncDirectory(directory);
 }
 
-async function syncDirectory(path: string): Promise<void> {
+/** Flush a directory entry change to disk; Windows cannot fsync a directory, and NTFS journals renames. */
+export async function syncDirectory(path: string): Promise<void> {
   if (process.platform === "win32") return;
+
   const handle = await open(path, "r");
 
   try {

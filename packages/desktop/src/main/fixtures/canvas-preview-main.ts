@@ -10,10 +10,9 @@ import { compileCanvas } from "@nyte-ai/plugin/core/canvas-compile";
 import { ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { offscreenCanvasPreviewer } from "../canvas-preview.ts";
 import { registerRenderer } from "../renderer.ts";
+import { exitWithParent } from "./exit-with-parent.ts";
 
-process.stdin.on("close", () => app.exit(1));
-
-process.stdin.resume();
+exitWithParent();
 
 const directory = process.argv[2];
 
@@ -31,6 +30,8 @@ assert.ok(
 );
 
 app.setPath("userData", join(directory, "profile"));
+
+app.commandLine.appendSwitch("use-fake-device-for-media-stream");
 
 app.on("window-all-closed", () => undefined);
 
