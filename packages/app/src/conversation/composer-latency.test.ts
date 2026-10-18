@@ -86,7 +86,7 @@ window.nyte = stub();
     app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
     app.setPath("sessionData", ${JSON.stringify(join(directory, "session"))});
     app.whenReady().then(async () => {
-      const window = new BrowserWindow({ show: false, width: 900, height: 700, webPreferences: { backgroundThrottling: false } });
+      const window = new BrowserWindow({ show: ${JSON.stringify(process.platform !== "darwin")}, width: 900, height: 700, webPreferences: { backgroundThrottling: false } });
       try {
         await window.loadFile(${JSON.stringify(join(directory, "index.html"))});
         const result = await window.webContents.executeJavaScript('(async () => { try { return JSON.stringify(await LatencyTest.run(' + (process.argv[2] === "streaming") + ')); } catch (error) { return error.stack; } })()');

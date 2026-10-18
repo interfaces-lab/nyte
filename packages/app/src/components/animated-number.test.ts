@@ -57,7 +57,7 @@ beforeAll(async () => {
     app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
     app.setPath("sessionData", ${JSON.stringify(join(directory, "session"))});
     app.whenReady().then(async () => {
-      const window = new BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } });
+      const window = new BrowserWindow({ show: ${JSON.stringify(process.platform !== "darwin")}, webPreferences: { backgroundThrottling: false } });
       try {
         await window.loadFile(${JSON.stringify(join(directory, "index.html"))});
         window.webContents.debugger.attach("1.3");

@@ -86,7 +86,7 @@ const { writeFileSync } = require("node:fs");
 setInterval(() => { try { process.kill(${process.pid}, 0); } catch { app.exit(1); } }, 1000).unref();
 app.setPath("userData", ${JSON.stringify(join(directory, "profile"))});
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({ show: ${JSON.stringify(studio)},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });
+  const window = new BrowserWindow({ show: ${JSON.stringify(studio || process.platform !== "darwin")},${studio ? " width: 1280, height: 860," : ""} webPreferences: { backgroundThrottling: false } });
   try {
     await window.loadFile(${JSON.stringify(join(directory, "index.html"))});
     if (${JSON.stringify(studio)}) {
