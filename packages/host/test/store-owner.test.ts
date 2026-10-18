@@ -17,7 +17,11 @@ const folders: string[] = [];
 const children: ChildProcess[] = [];
 
 afterEach(async () => {
-  for (const child of children.splice(0)) if (child.exitCode === null) child.kill("SIGKILL");
+  for (const child of children.splice(0))
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+      await once(child, "exit");
+    }
   await Promise.all(folders.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 

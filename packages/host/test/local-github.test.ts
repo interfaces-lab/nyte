@@ -24,7 +24,8 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
 
-  for (const made of folders.splice(0)) await rm(made, { recursive: true, force: true });
+  for (const made of folders.splice(0))
+    await rm(made, { recursive: true, force: true, maxRetries: 10 });
 });
 
 async function folder(): Promise<string> {

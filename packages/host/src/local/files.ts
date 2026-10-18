@@ -167,7 +167,7 @@ export function localFiles(
       if (stats === null) return null;
 
       if (stats.isSymbolicLink()) {
-        const link = await readlink(target);
+        const link = await readLink(target);
 
         return { kind: "symlink", size: stats.size, version: hashVersion(link), target: link };
       }
@@ -218,7 +218,7 @@ export function localFiles(
 
       const current =
         (await currentVersion(target)) ??
-        (link.isSymbolicLink() ? hashVersion(await readlink(target)) : null);
+        (link.isSymbolicLink() ? hashVersion(await readLink(target)) : null);
 
       if (removeOptions?.expect !== undefined && removeOptions.expect !== current)
         return { kind: "stale", current };
@@ -324,6 +324,10 @@ async function currentVersion(path: string): Promise<FileVersion | null> {
   if (stats === null) return null;
 
   return stats.isDirectory() ? directoryVersion(path) : hashFile(path).catch(missing);
+}
+
+async function readLink(path: string): Promise<string> {
+  return (await readlink(path)).split(sep).join("/");
 }
 
 async function resolveLink(path: string): Promise<string> {
@@ -529,7 +533,7 @@ function rejectFailure(code: number | null, stderr: string): void {
 }
 
 function ripgrepPath(path: string): string {
-  return path.replace(/^\.\//, "").split(sep).join("/");
+  return path.split(sep).join("/").replace(/^\.\//, "");
 }
 
 async function* grep(
@@ -586,6 +590,7 @@ async function* grep(
   } finally {
     lines.close();
     child.kill();
+    await closed;
   }
 }
 

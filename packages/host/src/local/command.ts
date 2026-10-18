@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { constants } from "node:fs";
 import { access, stat } from "node:fs/promises";
-import { delimiter, isAbsolute, join } from "node:path";
+import { delimiter, extname, isAbsolute, join } from "node:path";
 import { SdkError } from "@nyte-ai/schema";
 import { processEnvironment } from "@nyte-ai/core";
 
@@ -25,9 +26,10 @@ export async function run(
   },
 ): Promise<Ran> {
   await processEnvironment();
+  const resolved = process.platform === "win32" ? ((await findExecutable(file)) ?? file) : file;
 
   return new Promise((resolve, reject) => {
-    const child = spawn(file, args, {
+    const child = spawnCommand(resolved, args, {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
@@ -44,7 +46,7 @@ export async function run(
     child.on("error", (error) =>
       reject(new SdkError("unavailable", `Cannot run ${file}: ${error.message}`)),
     );
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
       if (truncated) return;
       size += chunk.byteLength;
 
@@ -58,8 +60,8 @@ export async function run(
 
       stdout.push(chunk);
     });
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-    child.stdin.on("error", () => undefined);
+    child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.stdin?.on("error", () => undefined);
     child.on("close", (code) =>
       resolve({
         code,
@@ -68,22 +70,72 @@ export async function run(
         truncated,
       }),
     );
-    child.stdin.end(options.input);
+    child.stdin?.end(options.input);
   });
+}
+
+/** Spawns `file` as `spawn` does, except that on Windows a `.cmd` or `.bat` file runs through `cmd.exe` with its arguments escaped, as Node no longer starts batch files without a shell. */
+export function spawnCommand(
+  file: string,
+  args: readonly string[],
+  options: SpawnOptions,
+): ChildProcess {
+  if (process.platform !== "win32" || !/\.(cmd|bat)$/i.test(file))
+    return spawn(file, args, options);
+  const shim = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i.test(file);
+  const line = [escapeCommand(file), ...args.map((arg) => escapeArgument(arg, shim))].join(" ");
+
+  return spawn(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `"${line}"`], {
+    ...options,
+    windowsVerbatimArguments: true,
+  });
+}
+
+/** Ends `child` with `signal`; on Windows, which has no signals, it ends the child's whole process tree with `taskkill /T /F`, as `kill` alone would leave what a batch file or a shell started running. */
+export function killTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform !== "win32" || child.pid === undefined) {
+    child.kill(signal);
+
+    return;
+  }
+
+  spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+    stdio: "ignore",
+    windowsHide: true,
+  }).on("error", () => child.kill(signal));
+}
+
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g;
+
+function escapeCommand(command: string): string {
+  return command.replace(CMD_META, "^$1");
+}
+
+function escapeArgument(argument: string, twice: boolean): string {
+  const quoted = `"${argument.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")}"`;
+  const escaped = quoted.replace(CMD_META, "^$1");
+
+  return twice ? escaped.replace(CMD_META, "^$1") : escaped;
 }
 
 export async function findExecutable(
   name: string,
   directories: readonly string[] = [],
 ): Promise<string | null> {
-  if (isAbsolute(name)) return (await executable(name)) ? name : null;
-  await processEnvironment();
-  const path = (process.env.PATH ?? "").split(delimiter).filter((entry) => entry !== "");
+  const pathext = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").filter((ext) => ext !== "");
 
   const extensions =
-    process.platform === "win32"
-      ? ["", ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")]
-      : [""];
+    process.platform !== "win32" ? [""] : extname(name) === "" ? pathext : ["", ...pathext];
+
+  if (isAbsolute(name)) {
+    for (const extension of extensions)
+      if (await executable(`${name}${extension}`)) return `${name}${extension}`;
+
+    return null;
+  }
+
+  await processEnvironment();
+  const path = (process.env.PATH ?? "").split(delimiter).filter((entry) => entry !== "");
 
   for (const directory of [...directories, ...path])
     for (const extension of extensions) {

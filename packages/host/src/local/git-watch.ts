@@ -1,4 +1,5 @@
-import { isAbsolute, relative, sep } from "node:path";
+import { lstat } from "node:fs/promises";
+import { isAbsolute, join, relative, sep } from "node:path";
 import type { Disposer, GitStatus } from "@nyte-ai/schema";
 import type { FeedSink } from "./feed.ts";
 import { createIgnores, watchTree } from "./tree.ts";
@@ -33,7 +34,7 @@ const GIT_STATE = new Set([
   "rebase-apply",
 ]);
 
-/** Returns the status watch `localGit` shares among its watchers: the first subscriber starts it and the last one stops it, and each gets the status at once, then again whenever a change could move it. A recursive `fs.watch` on the workspace hears worktree paths that `.gitignore` and `.git/info/exclude` do not ignore, and, in the git directory and the common directory, only HEAD, the index, branch and remote refs, `packed-refs`, `config` and the merge, cherry-pick, revert and rebase state, so object writes, logs and Nyte's snapshot refs read nothing; the `.git` entry itself appearing or going drops the remembered repository and starts over. Only where `fs.watch` is unavailable does it poll, every 2 s. */
+/** Returns the status watch `localGit` shares among its watchers: the first subscriber starts it and the last one stops it, and each gets the status at once, then again whenever a change could move it. A recursive `fs.watch` on the workspace hears worktree paths that `.gitignore` and `.git/info/exclude` do not ignore, and, in the git directory and the common directory, only HEAD, the index, branch and remote refs, `packed-refs`, `config` and the merge, cherry-pick, revert and rebase state, so object writes, logs and Nyte's snapshot refs read nothing; the `.git` entry itself appearing or going (not a change inside it, which Windows also reports on the folder) drops the remembered repository and starts over. Only where `fs.watch` is unavailable does it poll, every 2 s. */
 export function createWatcher(
   cwd: string,
   read: () => Promise<GitStatus>,
@@ -88,7 +89,10 @@ export function createWatcher(
       );
     };
 
-    void repository().then((repo) => {
+    const gitEntry = async (): Promise<boolean> =>
+      (await lstat(join(cwd, ".git")).catch(() => null)) !== null;
+
+    void Promise.all([repository(), gitEntry()]).then(([repo, hadGit]) => {
       if (stopped) return;
       const insideGitDir = repo === null ? null : pathInside(cwd, repo.gitDir);
       const ignores = repo === null ? null : createIgnores(repo.root);
@@ -99,7 +103,11 @@ export function createWatcher(
         let found: "none" | "status" = "none";
 
         for (const path of paths) {
-          if (path === ".git") return "repository";
+          if (path === ".git") {
+            if ((await gitEntry()) !== hadGit) return "repository";
+
+            continue;
+          }
 
           if (repo === null || ignores === null) continue;
 
@@ -115,7 +123,10 @@ export function createWatcher(
           if (path.endsWith(".gitignore"))
             ignores.forget(`${repo.prefix}${path}`.split("/").slice(0, -1).join("/"));
 
-          if (found === "none" && !(await ignores.ignored(`${repo.prefix}${path}`, false)))
+          if (found !== "none") continue;
+          const directory = (await lstat(join(cwd, path)).catch(() => null))?.isDirectory();
+
+          if (!(await ignores.ignored(`${repo.prefix}${path}`, directory === true)))
             found = "status";
         }
 
@@ -175,7 +186,6 @@ function movesStatus(path: string): boolean {
   return (
     path === "" ||
     GIT_STATE.has(top) ||
-    path === "refs" ||
     path.startsWith("refs/heads/") ||
     path.startsWith("refs/remotes/")
   );

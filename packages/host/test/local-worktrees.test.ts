@@ -26,7 +26,8 @@ const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYS
 const folders: string[] = [];
 
 afterEach(async () => {
-  for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true });
+  for (const folder of folders.splice(0))
+    await rm(folder, { recursive: true, force: true, maxRetries: 10 });
 });
 
 async function folder(): Promise<string> {
@@ -62,6 +63,7 @@ async function repository(): Promise<string> {
   sh(root, "init", "-q", "-b", "main");
   sh(root, "config", "user.name", "Ada");
   sh(root, "config", "user.email", "ada@example.com");
+  sh(root, "config", "core.autocrlf", "false");
   await writeFile(join(root, ".gitignore"), "dist/\n.env\n");
   await writeFile(join(root, "a.txt"), "one\n");
   await writeFile(join(root, "gone.txt"), "bye\n");
@@ -127,7 +129,7 @@ describe.skipIf(!hasGit)("localWorktrees", () => {
     );
 
     expect(made.branch).toMatch(/^nyte\/[0-9a-f]{8}$/);
-    expect(readPath(made.target)).toMatch(/\/project\/[0-9a-f]{8}\/app$/);
+    expect(readPath(made.target)).toMatch(/[\\/]project[\\/][0-9a-f]{8}[\\/]app$/);
     expect(await readFile(join(readPath(made.target), "main.ts"), "utf8")).toBe("export {};\n");
   });
 

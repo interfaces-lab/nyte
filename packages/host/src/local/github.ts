@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import type { ChildProcess } from "node:child_process";
 import { Type } from "typebox";
@@ -17,7 +16,7 @@ import type {
 } from "@nyte-ai/schema";
 import { dev } from "@nyte-ai/core";
 import type { ExecutionEnv, GitHubAccountApi, GitHubApi } from "@nyte-ai/core";
-import { findExecutable, run } from "./command.ts";
+import { findExecutable, killTree, run, spawnCommand } from "./command.ts";
 
 const ENV = {
   GH_PROMPT_DISABLED: "1",
@@ -255,7 +254,7 @@ function startSignIn(file: string, cwd: string, ended: () => void): SignIn {
   let verificationUri: string | undefined;
   let done = false;
 
-  const child: ChildProcess = spawn(
+  const child: ChildProcess = spawnCommand(
     file,
     [
       "auth",
@@ -278,7 +277,7 @@ function startSignIn(file: string, cwd: string, ended: () => void): SignIn {
     child.stdout?.destroy();
     child.stderr?.destroy();
 
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (child.exitCode === null && child.signalCode === null) killTree(child, "SIGKILL");
     started.resolve(start);
     ended();
   };
