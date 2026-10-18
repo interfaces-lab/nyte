@@ -1,15 +1,16 @@
 import { execFile } from "node:child_process";
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { builtinModules, createRequire } from "node:module";
+import { builtinModules } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { build } from "vite";
 import { expect, test } from "vitest";
+import { electronExecutable } from "./fixtures/electron.ts";
 
 const execute = promisify(execFile);
 
@@ -74,17 +75,9 @@ test.skipIf(!built).for(["scheme", "web"] as const)(
         join(directory, "package.json"),
         JSON.stringify({ name: "nyte-canvas-shell-test", main: "main.cjs" }),
       );
-      const require = createRequire(import.meta.url);
-      const electronDirectory = dirname(require.resolve("electron/package.json"));
-
-      const executable = join(
-        electronDirectory,
-        "dist",
-        (await readFile(join(electronDirectory, "path.txt"), "utf8")).trim(),
-      );
 
       const { stderr } = await execute(
-        executable,
+        electronExecutable,
         [
           directory,
           directory,

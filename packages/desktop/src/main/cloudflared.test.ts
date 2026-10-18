@@ -19,6 +19,9 @@ import {
 } from "./cloudflared.ts";
 import type { ConnectorTiming } from "./cloudflared.ts";
 
+/** The connector supervises cloudflared through `/bin/sh` and process groups; Nyte offers no Cloudflare tunnel on Windows. */
+const connectorTest = test.skipIf(process.platform === "win32");
+
 const HOSTNAME = "nyte.example.test";
 
 const PORT = 47_123;
@@ -187,79 +190,89 @@ async function firstStart(root: string): Promise<Start> {
   });
 }
 
-test("cloudflared gets a fixed environment, the token outside argv, and an explicit config", async () => {
-  vi.stubEnv("TUNNEL_LOGLEVEL", "debug");
-  vi.stubEnv("TUNNEL_LOGFILE", "/tmp/should-not-exist.log");
-  vi.stubEnv("TUNNEL_ORIGIN_CERT", "/tmp/cert.pem");
-  const fixture = await standIn();
-  connector(fixture).start();
-  const { argv, env } = await firstStart(fixture.root);
-  const config = join(fixture.directory, "config.yml");
+connectorTest(
+  "cloudflared gets a fixed environment, the token outside argv, and an explicit config",
+  async () => {
+    vi.stubEnv("TUNNEL_LOGLEVEL", "debug");
+    vi.stubEnv("TUNNEL_LOGFILE", "/tmp/should-not-exist.log");
+    vi.stubEnv("TUNNEL_ORIGIN_CERT", "/tmp/cert.pem");
+    const fixture = await standIn();
+    connector(fixture).start();
+    const { argv, env } = await firstStart(fixture.root);
+    const config = join(fixture.directory, "config.yml");
 
-  assert.equal(argv.includes(TOKEN), false);
-  assert.deepEqual(argv, [
-    "tunnel",
-    "--config",
-    config,
-    "--no-autoupdate",
-    "--output",
-    "json",
-    "--loglevel",
-    "info",
-    "--transport-loglevel",
-    "warn",
-    "--metrics",
-    "127.0.0.1:0",
-    "--management-diagnostics=false",
-    "--grace-period",
-    "2s",
-    "run",
-  ]);
-  assert.equal(env["TUNNEL_TOKEN"], TOKEN);
-  assert.equal(env["HOME"], fixture.directory);
-  assert.deepEqual(
-    Object.keys(env).filter((key) => key.startsWith("TUNNEL_")),
-    ["TUNNEL_TOKEN"],
-  );
-  assert.equal((await stat(config)).mode & 0o777, 0o600);
-  assert.equal((await stat(fixture.directory)).mode & 0o777, 0o700);
-  assert.match(await readFile(config, "utf8"), /^loglevel: info$/mu);
-});
+    assert.equal(argv.includes(TOKEN), false);
+    assert.deepEqual(argv, [
+      "tunnel",
+      "--config",
+      config,
+      "--no-autoupdate",
+      "--output",
+      "json",
+      "--loglevel",
+      "info",
+      "--transport-loglevel",
+      "warn",
+      "--metrics",
+      "127.0.0.1:0",
+      "--management-diagnostics=false",
+      "--grace-period",
+      "2s",
+      "run",
+    ]);
+    assert.equal(env["TUNNEL_TOKEN"], TOKEN);
+    assert.equal(env["HOME"], fixture.directory);
+    assert.deepEqual(
+      Object.keys(env).filter((key) => key.startsWith("TUNNEL_")),
+      ["TUNNEL_TOKEN"],
+    );
+    assert.equal((await stat(config)).mode & 0o777, 0o600);
+    assert.equal((await stat(fixture.directory)).mode & 0o777, 0o700);
+    assert.match(await readFile(config, "utf8"), /^loglevel: info$/mu);
+  },
+);
 
-test("connected waits for verified routes and follows connections as they drop", async () => {
-  const fixture = await standIn({
-    steps: [
-      REGISTERED,
-      { kind: "await", file: "routes" },
-      OVERLONG,
-      ROUTED,
-      { kind: "await", file: "drop" },
-      line({ message: "Connection terminated", connIndex: 0 }),
-      { kind: "await", file: "back" },
-      REGISTERED,
-    ],
-  });
+connectorTest(
+  "connected waits for verified routes and follows connections as they drop",
+  async () => {
+    const fixture = await standIn({
+      steps: [
+        REGISTERED,
+        { kind: "await", file: "routes" },
+        OVERLONG,
+        ROUTED,
+        { kind: "await", file: "drop" },
+        line({ message: "Connection terminated", connIndex: 0 }),
+        { kind: "await", file: "back" },
+        REGISTERED,
+      ],
+    });
 
-  const tunnel = connector(fixture);
-  assert.deepEqual(tunnel.status(), { kind: "stopped" });
-  tunnel.start();
-  await firstStart(fixture.root);
-  assert.deepEqual(tunnel.status(), { kind: "connecting" });
+    const tunnel = connector(fixture);
+    assert.deepEqual(tunnel.status(), { kind: "stopped" });
+    tunnel.start();
+    await firstStart(fixture.root);
+    assert.deepEqual(tunnel.status(), { kind: "connecting" });
 
-  await writeFile(join(fixture.root, "routes"), "");
-  await vi.waitFor(() => assert.deepEqual(tunnel.status(), { kind: "connected", connections: 1 }));
+    await writeFile(join(fixture.root, "routes"), "");
+    await vi.waitFor(() =>
+      assert.deepEqual(tunnel.status(), { kind: "connected", connections: 1 }),
+    );
 
-  await writeFile(join(fixture.root, "drop"), "");
-  await vi.waitFor(() => assert.deepEqual(tunnel.status(), { kind: "connecting" }));
+    await writeFile(join(fixture.root, "drop"), "");
+    await vi.waitFor(() => assert.deepEqual(tunnel.status(), { kind: "connecting" }));
 
-  await writeFile(join(fixture.root, "back"), "");
-  await vi.waitFor(() => assert.deepEqual(tunnel.status(), { kind: "connected", connections: 1 }));
+    await writeFile(join(fixture.root, "back"), "");
+    await vi.waitFor(() =>
+      assert.deepEqual(tunnel.status(), { kind: "connected", connections: 1 }),
+    );
 
-  await tunnel.stop();
-  assert.deepEqual(tunnel.status(), { kind: "stopped" });
-});
+    await tunnel.stop();
+    assert.deepEqual(tunnel.status(), { kind: "stopped" });
+  },
+);
 
-test("routes to anything besides this listener end the connector for good", async () => {
+connectorTest("routes to anything besides this listener end the connector for good", async () => {
   const fixture = await standIn({
     steps: [
       REGISTERED,
@@ -283,7 +296,7 @@ test("routes to anything besides this listener end the connector for good", asyn
   assert.equal((await starts(fixture.root)).length, 1);
 });
 
-test("a connection whose routes never arrive is ended", async () => {
+connectorTest("a connection whose routes never arrive is ended", async () => {
   const fixture = await standIn({ steps: [REGISTERED] });
   const tunnel = connector(fixture, { ...FAST, ingressTimeoutMs: 100 });
   tunnel.start();
@@ -295,7 +308,7 @@ test("a connection whose routes never arrive is ended", async () => {
   await vi.waitFor(() => assert.equal(alive(pid), false));
 });
 
-test("an unexpected exit is retried within the limit, then reported", async () => {
+connectorTest("an unexpected exit is retried within the limit, then reported", async () => {
   const fixture = await standIn({ steps: [{ kind: "exit", code: 1 }] });
   const tunnel = connector(fixture);
   tunnel.start();
@@ -304,7 +317,7 @@ test("an unexpected exit is retried within the limit, then reported", async () =
   assert.equal((await starts(fixture.root)).length, 1 + FAST.retryDelaysMs.length);
 });
 
-test("stop ends a cloudflared that ignores SIGTERM by its deadline", async () => {
+connectorTest("stop ends a cloudflared that ignores SIGTERM by its deadline", async () => {
   const fixture = await standIn({ steps: [], ignoreTerm: true });
   const tunnel = connector(fixture, { ...FAST, stopTimeoutMs: 300 });
   tunnel.start();
@@ -316,7 +329,7 @@ test("stop ends a cloudflared that ignores SIGTERM by its deadline", async () =>
   await vi.waitFor(() => assert.equal(alive(pid), false));
 });
 
-test("a supervisor killed on its own still takes cloudflared with it", async () => {
+connectorTest("a supervisor killed on its own still takes cloudflared with it", async () => {
   const fixture = await standIn();
   const tunnel = connector(fixture, { ...FAST, retryDelaysMs: [60_000] });
   tunnel.start();
@@ -333,21 +346,24 @@ test("a supervisor killed on its own still takes cloudflared with it", async () 
   await vi.waitFor(() => assert.equal(tunnel.status().kind, "retrying"));
 });
 
-test("stop does not resolve while a cloudflared outlives its killed supervisor", async () => {
-  const fixture = await standIn({ steps: [], ignoreTerm: true });
-  const tunnel = connector(fixture, { ...FAST, retryDelaysMs: [60_000] });
-  tunnel.start();
-  const { pid } = await firstStart(fixture.root);
+connectorTest(
+  "stop does not resolve while a cloudflared outlives its killed supervisor",
+  async () => {
+    const fixture = await standIn({ steps: [], ignoreTerm: true });
+    const tunnel = connector(fixture, { ...FAST, retryDelaysMs: [60_000] });
+    tunnel.start();
+    const { pid } = await firstStart(fixture.root);
 
-  const supervisor = Number(
-    execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8" }).trim(),
-  );
+    const supervisor = Number(
+      execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8" }).trim(),
+    );
 
-  process.kill(supervisor, "SIGKILL");
-  await tunnel.stop();
+    process.kill(supervisor, "SIGKILL");
+    await tunnel.stop();
 
-  assert.equal(running(pid), false);
-});
+    assert.equal(running(pid), false);
+  },
+);
 
 test.skipIf(process.platform === "win32")(
   "cloudflared ends when the process that started it is killed",

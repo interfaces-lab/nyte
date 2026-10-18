@@ -32,6 +32,8 @@ assert.ok(
 
 app.setPath("userData", join(directory, "profile"));
 
+app.commandLine.appendSwitch("use-fake-device-for-media-stream");
+
 app.on("window-all-closed", () => undefined);
 
 const scheme = ACCOUNT_SCHEMES.development;
