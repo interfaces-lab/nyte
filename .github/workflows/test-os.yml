@@ -1,0 +1,65 @@
+name: Test on one OS
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: The runner OS
+        type: choice
+        options: [linux, windows, macos]
+        default: windows
+      filter:
+        description: Turbo filters, such as --filter=@nyte-ai/core
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ inputs.os }}, ${{ inputs.filter }})
+    runs-on: ${{ inputs.os == 'linux' && 'blacksmith-8vcpu-ubuntu-2404' || inputs.os == 'windows' && 'blacksmith-4vcpu-windows-2025' || 'blacksmith-6vcpu-macos-15' }}
+    timeout-minutes: 45
+    env:
+      CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: pnpm install --frozen-lockfile
+      - name: Install Linux test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep xvfb
+          pnpm --dir packages/app exec playwright install-deps chromium
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - name: Install macOS test dependencies
+        if: runner.os == 'macOS'
+        run: command -v rg || brew install ripgrep
+      - name: Install Windows test dependencies
+        if: runner.os == 'Windows'
+        run: command -v rg || choco install ripgrep -y --no-progress
+      - name: Configure git identity
+        run: |
+          git config --global user.email "ci@nyte.sh"
+          git config --global user.name "nyte-ci"
+      - name: Run tests
+        env:
+          FILTER: ${{ inputs.filter }}
+        run: |
+          display=""
+          if [ "$RUNNER_OS" = Linux ]; then display="xvfb-run --auto-servernum"; fi
+          $display pnpm exec turbo run test $FILTER --concurrency=1 --continue --output-logs=full --log-order=grouped
