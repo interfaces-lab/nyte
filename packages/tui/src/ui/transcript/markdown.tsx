@@ -11,6 +11,7 @@ import type { JSX } from "@opentui/solid";
 import { createMemo, Index, Match, Show, Switch } from "solid-js";
 import type { Accessor } from "solid-js";
 import { useApp } from "../../app/context.tsx";
+import { linkFilePaths } from "../../lib/file-links.ts";
 import { Mermaid } from "./mermaid.tsx";
 
 type Segment = MarkdownSegment | MermaidSegment;
@@ -96,9 +97,15 @@ export function Markdown(props: {
   readonly streaming: boolean;
   readonly subtle: boolean;
 }): JSX.Element {
-  const { kit } = useApp();
+  const { kit, screen } = useApp();
   const segments = createMemo(() => splitMermaid(props.content));
   const syntaxStyle = (): SyntaxStyle => (props.subtle ? kit.syntax().subtle : kit.syntax().normal);
+
+  const linked = (text: string): string => {
+    const root = screen().fileRoot;
+
+    return root === null ? text : linkFilePaths(text, root);
+  };
 
   return (
     <box id={props.id} flexDirection="column" width="100%" gap={1}>
@@ -118,7 +125,7 @@ export function Markdown(props: {
                 <Show when={syntaxStyle()} keyed>
                   {(style: SyntaxStyle) => (
                     <markdown
-                      content={block().text}
+                      content={linked(block().text)}
                       syntaxStyle={style}
                       fg={props.subtle ? kit.theme().dim : kit.theme().foreground}
                       streaming={props.streaming && index === segments().length - 1}

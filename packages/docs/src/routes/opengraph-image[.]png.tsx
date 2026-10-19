@@ -54,7 +54,7 @@ export const Route = createFileRoute("/opengraph-image.png")({
                   <span>This one is mine.</span>
                 </div>
                 <div style={{ fontSize: 26, color: "rgb(255 255 255 / 0.72)" }}>
-                  Built like git. Runs on your laptop and at the edge.
+                  Runs on your laptop and at the edge.
                 </div>
               </div>
             </div>

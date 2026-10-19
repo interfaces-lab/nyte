@@ -1,5 +1,10 @@
 import { Type } from "typebox";
-import { ChangeSetSchema, DiffOptionsType, PatchSetWireSchema } from "../../git.ts";
+import {
+  ChangeSetSchema,
+  ChangeSourceType,
+  DiffOptionsType,
+  PatchSetWireSchema,
+} from "../../git.ts";
 import { idSchema } from "../../ids.ts";
 import {
   JobEndSchema,
@@ -126,7 +131,7 @@ export const WORKSPACE_OPERATIONS = {
   "workspace.changes": {
     ...PARTICIPANT,
     kind: "query",
-    input: wireObject({ ...WORKSPACE, run: idSchema<"run">() }),
+    input: wireObject({ ...WORKSPACE, source: ChangeSourceType }),
     output: ChangeSetSchema,
   },
   "workspace.patches": {
@@ -134,7 +139,7 @@ export const WORKSPACE_OPERATIONS = {
     kind: "stream",
     input: wireObject({
       ...WORKSPACE,
-      run: idSchema<"run">(),
+      source: ChangeSourceType,
       paths: Type.Array(Type.String()),
       options: Type.Optional(DiffOptionsType),
     }),

@@ -5,7 +5,7 @@ import { createRunner } from "../../src/effects/runner.ts";
 import type { Runner } from "../../src/effects/runner.ts";
 import type { Msg } from "../../src/model/msg.ts";
 import { followedSession } from "../../src/model/state.ts";
-import type { FollowedSession, State, Submission } from "../../src/model/state.ts";
+import type { State, Submission } from "../../src/model/state.ts";
 import { until } from "../fixture/host.ts";
 import { fakeHost, fakePorts } from "../fixture/ports.ts";
 import type { FakePorts } from "../fixture/ports.ts";
@@ -423,38 +423,10 @@ test("configure goes through the configurator: the session port receives the pat
     session: asId("s1"),
     selection: { model: { provider: "test", id: "model-fast" }, effort: "high", fast: true },
   });
-
-  expect(app.ports.host.defaults).toEqual([{ provider: "test", id: "model-fast" }]);
 });
 
-function remembering(level: Thinking, session: FollowedSession | null = null): State {
-  const state = buildState(session);
-
-  return { ...state, facts: { ...state.facts, settings: { ...SETTINGS, thinkingLevel: level } } };
-}
-
-test("an acknowledged thinking level is saved as the default; a model-only choice saves none", async () => {
-  const app = harness(buildState(followed(PENDING)));
-  app.ports.host.addSession("s1");
-  app.runner.run({ kind: "follow", target: asId("s1"), announce: false });
-  await app.runner.settled();
-  app.runner.run({
-    kind: "configure",
-    session: asId("s1"),
-    selection: { model: { provider: "test", id: "model-fast" } },
-  });
-  await app.runner.settled();
-  app.runner.run({ kind: "configure", session: asId("s1"), selection: { effort: "high" } });
-  await app.runner.settled();
-
-  const saved = await app.received("settings");
-  expect(saved.settings.thinkingLevel).toBe("high");
-  expect(app.ports.settings.read("/tmp").settings).toMatchObject({ thinkingLevel: "high" });
-  expect(app.dispatched.filter((msg) => msg.kind === "settings")).toHaveLength(1);
-});
-
-test("/new opens a blank chat at the remembered level, clamped to its model, and creates no session", async () => {
-  const app = harness(remembering("xhigh", followed(LANDED)));
+test("/new opens a blank chat at its model's default level and creates no session", async () => {
+  const app = harness(buildState(followed(LANDED)));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   await app.runner.settled();
 
@@ -463,31 +435,20 @@ test("/new opens a blank chat at the remembered level, clamped to its model, and
     chat: {
       kind: "blank",
       folder: { kind: "folder", id: asId("workspace") },
-      selection: { effort: "high" },
+      selection: { model: { id: "model" }, effort: "low" },
     },
   });
   expect(app.ports.host.starts).toEqual([]);
 });
 
-test("without a remembered level a blank chat takes the level core would give its model", async () => {
-  const app = harness(buildState(followed(LANDED)));
-  app.runner.run({ kind: "follow", target: "new", announce: false });
-  await app.runner.settled();
-
-  expect(app.dispatched[0]).toMatchObject({
-    kind: "blank-opened",
-    chat: { selection: { model: { id: "model" }, effort: "low" } },
-  });
-});
-
-test("at boot --effort wins over the remembered level, and a resumed session keeps its own", async () => {
+test("at boot --effort wins over the model's default level, and a resumed session keeps its own", async () => {
   const blanks: readonly { readonly effort: Thinking | null; readonly shown: Thinking }[] = [
     { effort: null, shown: "low" },
     { effort: "high", shown: "high" },
   ];
 
   for (const blank of blanks) {
-    const app = harness(remembering("low"));
+    const app = harness(buildState(null));
     app.runner.boot({
       home: "/tmp",
       cwd: "/tmp",
@@ -502,7 +463,7 @@ test("at boot --effort wins over the remembered level, and a resumed session kee
     expect(app.ports.host.starts).toEqual([]);
   }
 
-  const app = harness(remembering("high"));
+  const app = harness(buildState(null));
   app.runner.boot({
     home: "/tmp",
     cwd: "/tmp",

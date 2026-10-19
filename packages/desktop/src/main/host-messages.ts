@@ -15,15 +15,10 @@ import type { RpcMessage } from "./host-rpc.ts";
 export interface HostProcessOptions {
   readonly home: string;
   readonly version: string;
-  readonly rendererOrigin: string;
   readonly account: AccountState | null;
   readonly openDelayMs: number | undefined;
-  readonly endpoint?: HostEndpoint;
-}
-
-export interface HostEndpoint {
-  readonly url: string;
-  readonly token: string;
+  /** The token windows already hold, kept so a restarted host accepts them. */
+  readonly token?: string;
 }
 
 export type HostAsk =
@@ -52,6 +47,8 @@ export type MainMessage =
   | { readonly kind: "release"; readonly window: HostWindow }
   | { readonly kind: "resume" }
   | { readonly kind: "account"; readonly state: AccountState }
+  /** Carries a window's MessagePort for the host to serve. */
+  | { readonly kind: "port" }
   | { readonly kind: "close" };
 
 export type HostMessage =

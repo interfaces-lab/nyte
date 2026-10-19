@@ -63,7 +63,7 @@ import { createPageTable } from "./env/browser.ts";
 import { createEnvironmentRegistry } from "./env/environment.ts";
 import { readMcpWorkspace } from "./env/mcp.ts";
 import { createWorkspaces, createWorkspaceState } from "./env/workspaces.ts";
-import { createConfigurationResolver, createModelsApi } from "./extend/models.ts";
+import { createConfigurationResolver, createModelsApi, rememberChoice } from "./extend/models.ts";
 import { pluginSecrets } from "./extend/plugin-api.ts";
 import {
   checkPlugins,
@@ -458,6 +458,9 @@ export function createKernel(input: KernelOptions): Kernel {
         models === undefined
           ? async () => unavailable("resolveConfiguration")
           : createConfigurationResolver(kernel, models));
+    },
+    rememberChoice: async (choice, scope) => {
+      if (models !== undefined) await rememberChoice(kernel, models, choice, scope);
     },
     get waits() {
       return (waits ??= createWaitRegistry(kernel, (session, call) =>

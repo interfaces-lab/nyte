@@ -7,9 +7,9 @@ import { openTestHost } from "../fixture/host.ts";
 import { belowComposer, composerShows, startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 
-async function answered(tui: Tui, text: string): Promise<void> {
+async function answered(tui: Tui, text: string, question = "hi nyte"): Promise<void> {
   tui.fixture.reply({ content: [{ type: "text", text }] });
-  await tui.send("hi nyte");
+  await tui.send(question);
   await tui.frame((frame) => frame.includes(text));
   await tui.state((store) => store.screen().run.kind === "idle");
 }
@@ -167,6 +167,98 @@ test("/tree opens under the composer, Enter on the latest message says it is alr
   await tui.frame(
     (frame) => !frame.includes("Chat Tree") && composerShows(frame, COMPOSER_PLACEHOLDER),
   );
+});
+
+/** The tree's visible rows, from the pointer column, between its filter line and its `(n/total)` footer. */
+function treeWindow(frame: string): string[] {
+  const lines = frame.split("\n").map((line) => line.trimEnd());
+  const title = lines.find((line) => line.trim() === "Chat Tree") ?? "";
+  const margin = title.length - title.trimStart().length;
+  const top = lines.findIndex((line) => line.trim() === "type to filter");
+
+  const footer = lines.findIndex(
+    (line, index) => index > top && /^\(\d+\/\d+\)/u.test(line.trim()),
+  );
+
+  return lines.slice(top + 1, footer).map((line) => line.slice(margin));
+}
+
+test("the tree holds its pointer mid-window: opened on the current message, moved by keys or the wheel, clamped at the ends", async () => {
+  await using tui = await startTui({ size: { width: 100, height: 24 } });
+  await tui.ready();
+
+  for (const turn of ["1", "2", "3", "4", "5"])
+    await answered(tui, `answer ${turn}`, `question ${turn}`);
+
+  tui.press("chat.interrupt");
+  tui.press("chat.interrupt");
+
+  expect(treeWindow(await tui.frame((frame) => frame.includes("(10/10)")))).toEqual([
+    "  • user: question 3",
+    "  • assistant: answer 3",
+    "  • user: question 4",
+    "  • assistant: answer 4",
+    "  • user: question 5",
+    "❯ • assistant: answer 5",
+  ]);
+
+  for (let press = 0; press < 5; press++) tui.press("picker.previous");
+
+  expect(treeWindow(await tui.frame((frame) => frame.includes("(5/10)")))).toEqual([
+    "  • assistant: answer 1",
+    "  • user: question 2",
+    "  • assistant: answer 2",
+    "❯ • user: question 3",
+    "  • assistant: answer 3",
+    "  • user: question 4",
+  ]);
+
+  tui.press("picker.accept");
+  await tui.frame((frame) => frame.includes("Summarize the branch you are leaving?"));
+  tui.press("picker.accept");
+  await tui.frame((frame) => composerShows(frame, "question 3"));
+  tui.press("chat.quit");
+  await tui.frame((frame) => composerShows(frame, COMPOSER_PLACEHOLDER));
+  await answered(tui, "answer 3 again", "question 3 again");
+
+  tui.press("chat.interrupt");
+  tui.press("chat.interrupt");
+  const branched = await tui.frame((frame) => frame.includes("(6/12)"));
+
+  expect(treeWindow(branched)).toEqual([
+    "  • user: question 2",
+    "  • assistant: answer 2",
+    "  ├⊟ • user: question 3 again",
+    "❯ │     • assistant: answer 3 again",
+    "  └⊟ user: question 3",
+    "        assistant: answer 3",
+  ]);
+
+  await tui.mockMouse.scroll(
+    10,
+    branched.split("\n").findIndex((line) => line.includes("• assistant: answer 3 again")),
+    "up",
+  );
+
+  expect(treeWindow(await tui.frame((frame) => frame.includes("(5/12)")))).toEqual([
+    "  • assistant: answer 1",
+    "  • user: question 2",
+    "  • assistant: answer 2",
+    "❯ ├⊟ • user: question 3 again",
+    "  │     • assistant: answer 3 again",
+    "  └⊟ user: question 3",
+  ]);
+
+  tui.press("tree.page.up");
+
+  expect(treeWindow(await tui.frame((frame) => frame.includes("(1/12)")))).toEqual([
+    "❯ • user: question 1",
+    "  • assistant: answer 1",
+    "  • user: question 2",
+    "  • assistant: answer 2",
+    "  ├⊟ • user: question 3 again",
+    "  │     • assistant: answer 3 again",
+  ]);
 });
 
 test("/accounts switches the login the next request uses, without asking the provider", async () => {

@@ -2,7 +2,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { asId } from "@nyte-ai/schema";
-import type { SessionView } from "@nyte-ai/sdk";
 import { conversationTurns } from "@nyte-ai/app/view-helpers.ts";
 import { ComposerFrame } from "@nyte-ai/app/conversation/composer-frame.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "@nyte-ai/app/conversation/composer-document.ts";
@@ -12,12 +11,11 @@ import { SubagentSessionsProvider } from "@nyte-ai/app/conversation/subagent-ses
 import { displayTranscriptParts } from "@nyte-ai/app/conversation/transcript-presentation.ts";
 import { conversationMessages, transcriptRows } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
-import { TurnItemView, UserMessageView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { ChangesCard, TurnItemView, UserMessageView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import { directorConnection, startDirector, useDirectorModel, useDirectorSession } from "./api";
 
-const CWD = "video/src/film";
-const NO_CHANGES: SessionView["changes"] = [];
+const CWD = "packages/lab/video/src/film";
 const noSubagents = { children: [], open: () => {} };
 const noop = () => {};
 
@@ -28,18 +26,18 @@ function Row({ row, working, settledWork }: { readonly row: TranscriptRow; reado
     case "agents":
     case "response":
     case "failure":
-    case "changes":
       return (
         <TurnItemView
           row={row}
-          running={(row.kind === "step" || row.kind === "changes") && row.trailing && working}
+          running={row.kind === "step" && row.trailing && working}
           density="balanced"
           cwd={CWD}
           onEditUser={async () => {}}
           branchModel={{ catalog: undefined, model: undefined, thinkingLevel: undefined, fast: false }}
-          onOpenChanges={noop}
         />
       );
+    case "changes":
+      return <ChangesCard files={row.files} onOpenChanges={noop} />;
     case "landing":
       return (
         <div {...props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}>
@@ -98,7 +96,7 @@ export function Chat({ context, frame }: { readonly context: string; readonly fr
         loading: false,
         failed: false,
         turns,
-        changes: view?.changes ?? NO_CHANGES,
+        changes: view?.changes ?? [],
         landing: messages.submitted,
         held: messages.held,
         retrying: view?.execution.kind === "retrying" ? view.execution.reason : undefined,

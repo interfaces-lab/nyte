@@ -166,10 +166,9 @@ landed reports `Already sent`.
 
 ## Thinking level
 
-Shift+Tab, `/effort` and the model picker set the level for the session's next run. The last
-level you chose is saved as `thinkingLevel` in `~/.nyte/settings.json`, and a session the TUI
-creates starts at it, clamped to the model. `--effort` overrides it for that launch; a resumed
-session keeps its own level.
+Shift+Tab, `/effort` and the model picker set the level for the session's next run. The host
+remembers the last level you chose for each model, and a new session starts at it. `--effort`
+overrides it for that launch; a resumed session keeps its own level.
 
 ## Tasks
 

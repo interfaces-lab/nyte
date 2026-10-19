@@ -23,10 +23,6 @@ import { Route as ApiSearchRecordsRouteImport } from './routes/api/search-record
 import { Route as LlmsDotmdxSplatRouteImport } from './routes/llms[.]mdx/$'
 import { Route as OgSplatRouteImport } from './routes/og/$'
 import { Route as SiteLandingIndexRouteImport } from './routes/_site/_landing/index'
-import { Route as SiteLandingHero2RouteImport } from './routes/_site/_landing/hero-2'
-import { Route as SiteLandingHero3RouteImport } from './routes/_site/_landing/hero-3'
-import { Route as SiteLandingHero4RouteImport } from './routes/_site/_landing/hero-4'
-import { Route as SiteLandingHero5RouteImport } from './routes/_site/_landing/hero-5'
 import { Route as SiteLegalPrivacyRouteImport } from './routes/_site/_legal/privacy'
 import { Route as SiteLegalTermsRouteImport } from './routes/_site/_legal/terms'
 import { Route as SiteDesignSplatRouteImport } from './routes/_site/design/$'
@@ -100,26 +96,6 @@ const SiteLandingIndexRoute = SiteLandingIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SiteLandingRoute,
 } as any)
-const SiteLandingHero2Route = SiteLandingHero2RouteImport.update({
-  id: '/hero-2',
-  path: '/hero-2',
-  getParentRoute: () => SiteLandingRoute,
-} as any)
-const SiteLandingHero3Route = SiteLandingHero3RouteImport.update({
-  id: '/hero-3',
-  path: '/hero-3',
-  getParentRoute: () => SiteLandingRoute,
-} as any)
-const SiteLandingHero4Route = SiteLandingHero4RouteImport.update({
-  id: '/hero-4',
-  path: '/hero-4',
-  getParentRoute: () => SiteLandingRoute,
-} as any)
-const SiteLandingHero5Route = SiteLandingHero5RouteImport.update({
-  id: '/hero-5',
-  path: '/hero-5',
-  getParentRoute: () => SiteLandingRoute,
-} as any)
 const SiteLegalPrivacyRoute = SiteLegalPrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
@@ -158,10 +134,6 @@ export interface FileRoutesByFullPath {
   '/api/search-records': typeof ApiSearchRecordsRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
-  '/hero-2': typeof SiteLandingHero2Route
-  '/hero-3': typeof SiteLandingHero3Route
-  '/hero-4': typeof SiteLandingHero4Route
-  '/hero-5': typeof SiteLandingHero5Route
   '/privacy': typeof SiteLegalPrivacyRoute
   '/terms': typeof SiteLegalTermsRoute
   '/design/$': typeof SiteDesignSplatRoute
@@ -180,10 +152,6 @@ export interface FileRoutesByTo {
   '/api/search-records': typeof ApiSearchRecordsRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
-  '/hero-2': typeof SiteLandingHero2Route
-  '/hero-3': typeof SiteLandingHero3Route
-  '/hero-4': typeof SiteLandingHero4Route
-  '/hero-5': typeof SiteLandingHero5Route
   '/privacy': typeof SiteLegalPrivacyRoute
   '/terms': typeof SiteLegalTermsRoute
   '/design/$': typeof SiteDesignSplatRoute
@@ -205,10 +173,6 @@ export interface FileRoutesById {
   '/api/search-records': typeof ApiSearchRecordsRoute
   '/llms.mdx/$': typeof LlmsDotmdxSplatRoute
   '/og/$': typeof OgSplatRoute
-  '/_site/_landing/hero-2': typeof SiteLandingHero2Route
-  '/_site/_landing/hero-3': typeof SiteLandingHero3Route
-  '/_site/_landing/hero-4': typeof SiteLandingHero4Route
-  '/_site/_landing/hero-5': typeof SiteLandingHero5Route
   '/_site/_legal/privacy': typeof SiteLegalPrivacyRoute
   '/_site/_legal/terms': typeof SiteLegalTermsRoute
   '/_site/design/$': typeof SiteDesignSplatRoute
@@ -230,10 +194,6 @@ export interface FileRouteTypes {
     | '/api/search-records'
     | '/llms.mdx/$'
     | '/og/$'
-    | '/hero-2'
-    | '/hero-3'
-    | '/hero-4'
-    | '/hero-5'
     | '/privacy'
     | '/terms'
     | '/design/$'
@@ -252,10 +212,6 @@ export interface FileRouteTypes {
     | '/api/search-records'
     | '/llms.mdx/$'
     | '/og/$'
-    | '/hero-2'
-    | '/hero-3'
-    | '/hero-4'
-    | '/hero-5'
     | '/privacy'
     | '/terms'
     | '/design/$'
@@ -276,10 +232,6 @@ export interface FileRouteTypes {
     | '/api/search-records'
     | '/llms.mdx/$'
     | '/og/$'
-    | '/_site/_landing/hero-2'
-    | '/_site/_landing/hero-3'
-    | '/_site/_landing/hero-4'
-    | '/_site/_landing/hero-5'
     | '/_site/_legal/privacy'
     | '/_site/_legal/terms'
     | '/_site/design/$'
@@ -402,34 +354,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SiteLandingIndexRouteImport
       parentRoute: typeof SiteLandingRoute
     }
-    '/_site/_landing/hero-2': {
-      id: '/_site/_landing/hero-2'
-      path: '/hero-2'
-      fullPath: '/hero-2'
-      preLoaderRoute: typeof SiteLandingHero2RouteImport
-      parentRoute: typeof SiteLandingRoute
-    }
-    '/_site/_landing/hero-3': {
-      id: '/_site/_landing/hero-3'
-      path: '/hero-3'
-      fullPath: '/hero-3'
-      preLoaderRoute: typeof SiteLandingHero3RouteImport
-      parentRoute: typeof SiteLandingRoute
-    }
-    '/_site/_landing/hero-4': {
-      id: '/_site/_landing/hero-4'
-      path: '/hero-4'
-      fullPath: '/hero-4'
-      preLoaderRoute: typeof SiteLandingHero4RouteImport
-      parentRoute: typeof SiteLandingRoute
-    }
-    '/_site/_landing/hero-5': {
-      id: '/_site/_landing/hero-5'
-      path: '/hero-5'
-      fullPath: '/hero-5'
-      preLoaderRoute: typeof SiteLandingHero5RouteImport
-      parentRoute: typeof SiteLandingRoute
-    }
     '/_site/_legal/privacy': {
       id: '/_site/_legal/privacy'
       path: '/privacy'
@@ -469,18 +393,10 @@ declare module '@tanstack/react-router' {
 }
 
 interface SiteLandingRouteChildren {
-  SiteLandingHero2Route: typeof SiteLandingHero2Route
-  SiteLandingHero3Route: typeof SiteLandingHero3Route
-  SiteLandingHero4Route: typeof SiteLandingHero4Route
-  SiteLandingHero5Route: typeof SiteLandingHero5Route
   SiteLandingIndexRoute: typeof SiteLandingIndexRoute
 }
 
 const SiteLandingRouteChildren: SiteLandingRouteChildren = {
-  SiteLandingHero2Route: SiteLandingHero2Route,
-  SiteLandingHero3Route: SiteLandingHero3Route,
-  SiteLandingHero4Route: SiteLandingHero4Route,
-  SiteLandingHero5Route: SiteLandingHero5Route,
   SiteLandingIndexRoute: SiteLandingIndexRoute,
 }
 

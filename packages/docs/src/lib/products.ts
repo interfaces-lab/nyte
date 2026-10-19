@@ -8,7 +8,7 @@ export interface Product {
 export const products: readonly [Product, ...Product[]] = [
   {
     title: "Core",
-    description: "Sessions built like git.",
+    description: "Sessions in SQLite or PostgreSQL.",
     href: "https://github.com/interfaces-lab/nyte/tree/main/packages/core",
   },
   {

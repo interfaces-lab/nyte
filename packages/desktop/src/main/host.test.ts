@@ -31,14 +31,14 @@ async function desktop(...input: Parameters<typeof testDesktop>): Promise<TestDe
 }
 
 async function connectLocal(made: TestDesktop): Promise<Connection> {
-  const connection = await sdk.connect(await made.host.call(1, "host.endpoint", undefined));
+  const connection = await made.connect();
 
   connections.push(connection);
 
   return connection;
 }
 
-test("the renderer reaches the host over the local listener and a chat runs there", async () => {
+test("the renderer reaches the host over its port and a chat runs there", async () => {
   const made = await desktop();
   const connection = await connectLocal(made);
   made.fake.reply({ content: [{ type: "text", text: "hello from the host" }] });
@@ -61,14 +61,10 @@ test("the renderer reaches the host over the local listener and a chat runs ther
 
 test("a wrong token is refused before anything is read", async () => {
   const made = await desktop();
-  const local = await made.host.call(1, "host.endpoint", undefined);
 
-  await assert.rejects(
-    sdk.connect({ url: local.url, credentials: { kind: "token", token: "x".repeat(43) } }),
-    {
-      code: "unauthenticated",
-    },
-  );
+  await assert.rejects(made.connect({ kind: "token", token: "x".repeat(43) }), {
+    code: "unauthenticated",
+  });
 });
 
 test("keep awake holds while a head is live and lets go when its run ends", async () => {
@@ -99,13 +95,17 @@ test("the desktop's settings reach main from the host view", async () => {
 
 test("connecting a server proves the token, pins the host that answered and remembers both", async () => {
   const server = await desktop();
-  const remote = await server.host.call(1, "host.endpoint", undefined);
+  const remote = await server.host.call(1, "host.remote.start", { reach: "local" });
   const made = await desktop();
 
-  if (remote.credentials.kind !== "token") throw new Error("The local endpoint takes a token");
+  if (remote.kind !== "serving" || remote.reach === "cloudflare")
+    throw new Error("Remote access did not start on loopback");
 
   assert.deepEqual(
-    await made.host.call(1, "host.server.connect", { baseUrl: remote.url, token: "y".repeat(43) }),
+    await made.host.call(1, "host.server.connect", {
+      baseUrl: remote.address,
+      token: "y".repeat(43),
+    }),
     {
       kind: "failed",
       message: "The server rejected this token. Update the connection token.",
@@ -114,15 +114,15 @@ test("connecting a server proves the token, pins the host that answered and reme
   assert.deepEqual(await made.host.call(1, "host.server.state", undefined), { kind: "none" });
 
   const connected = await made.host.call(1, "host.server.connect", {
-    baseUrl: remote.url,
-    token: remote.credentials.token,
+    baseUrl: remote.address,
+    token: remote.token,
   });
 
   assert.equal(connected.kind, "connected");
   assert.equal((await made.host.call(1, "host.server.state", undefined)).kind, "connected");
   assert.ok(made.events.some((event) => event.kind === "server_changed"));
   const saved = await readFile(join(made.home, ".nyte", "server.json"), "utf8");
-  assert.equal(JSON.parse(saved).hostId, remote.expect?.hostId);
+  assert.equal(JSON.parse(saved).hostId, (await server.host.host()).hostId);
 
   await server.close();
   await vi.waitFor(async () =>
@@ -236,7 +236,7 @@ test("a key login over the loopback listener connects the provider, and the reop
 
   try {
     const first = await desktop({ home, models: models() });
-    const connection = await sdk.connect(await first.host.call(1, "host.endpoint", undefined));
+    const connection = await first.connect();
     await vi.waitFor(async () => assert.equal(await credential(connection), "missing"));
 
     const login = connection.models.login({

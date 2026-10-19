@@ -25,6 +25,15 @@
     background: transparent;
   }
 
+  /*
+   * ProseMirror places this caret hack after a chip that ends a line; base.css
+   * makes every img a block, which would push the trailing break onto a line of
+   * its own. The composer turns off Tiptap's injected CSS, which carries this.
+   */
+  img.ProseMirror-separator {
+    display: inline;
+  }
+
   [data-nyte-session-drag-active],
   [data-nyte-session-drag-active] * {
     cursor: grabbing !important;

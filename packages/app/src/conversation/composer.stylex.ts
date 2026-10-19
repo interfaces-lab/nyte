@@ -580,17 +580,17 @@ export const composerStyles = create({
     paddingInline: space.s3,
     borderStyle: "none",
     outline: "none",
-    backgroundColor: {
-      default: "transparent",
-      "[aria-selected='true']": role.bgHover,
-    },
+    backgroundColor: "transparent",
     color: {
       default: role.contentSecondary,
       ":hover": { [media.hover]: role.contentPrimary },
-      "[aria-selected='true']": role.contentPrimary,
     },
     cursor: appearance.cursorInteractive,
     userSelect: "none",
+  },
+  suggestionItemHighlighted: {
+    backgroundColor: role.bgHover,
+    color: role.contentPrimary,
   },
   suggestionIcon: {
     display: "inline-flex",

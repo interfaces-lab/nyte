@@ -6,7 +6,7 @@ description: >
   follow. Use before writing or reviewing any StyleX `create()` in packages/ui, app, canvas, lab, or
   desktop renderer; when adding or changing a token, role, theme, or base.css rule; or when a style
   "doesn't apply", looks different in dark mode, or ignores an appearance setting. Not for the public
-  site's visual direction (use site-design).
+  site's visual direction.
 ---
 
 # Nyte styles

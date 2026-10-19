@@ -36,7 +36,6 @@ Add a body when the reason needs explaining. Breaking: `!` before the colon plus
 ## Skills
 
 Skills live in `.agents/skills`. Load the one that fits the task:
-- `site-design` for the public site's design, copy, or docs layout.
 - `nyte-styles` before writing or reviewing StyleX, tokens, or base.css.
 - `verify-nyte` and `browser` to prove UI changes in the web and desktop apps.
 - `typescript-best-practices`, `review-code-quality`, and `principle-*` for code and review.

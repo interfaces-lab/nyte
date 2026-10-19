@@ -19,7 +19,7 @@ export const Route = createFileRoute("/docs-preview")({
   ),
 });
 
-const purpose = "An open source agent core, built like git. Run it on your laptop or at the edge.";
+const purpose = "An open source agent core. Run it on your laptop or at the edge.";
 
 function DocsPreviewLayout({ children }: { children: ReactNode }) {
   return (

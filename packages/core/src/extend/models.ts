@@ -32,7 +32,13 @@ import type {
 import type { ModelContextPolicy, SettingDefinition } from "../contract/plugin.ts";
 import type { Refusal } from "../engine/contributions.ts";
 import { commit } from "../fold/commit.ts";
-import { MODEL_PREFERENCE, readModelSelection } from "../store/model-state.ts";
+import {
+  MODEL_PREFERENCE,
+  readModelSelection,
+  readThinkingPreference,
+  readThinkingPreferences,
+  thinkingPreferenceRef,
+} from "../store/model-state.ts";
 import { put } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { closable } from "../util/iterable.ts";
@@ -154,8 +160,9 @@ export function createModelsApi(kernel: Kernel, models: Models): ModelsApi {
 async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalogView> {
   const generation = kernel.host.current().catalog;
   const policies = staticPolicies(kernel);
-  const [preferred, credentials] = await Promise.all([
+  const [preferred, remembered, credentials] = await Promise.all([
     readModelSelection(kernel.store),
+    readThinkingPreferences(kernel.store),
     kernel.modelState.read(models),
   ]);
   const providers = models.getProviders().map((provider): ProviderRow => {
@@ -180,6 +187,7 @@ async function modelCatalog(kernel: Kernel, models: Models): Promise<ModelCatalo
             fast.get(model.id) ?? null,
             policies.get(formatModelKey(model)),
             provider.capabilities,
+            remembered.get(formatModelKey(model)),
           ),
         ),
     };
@@ -214,6 +222,7 @@ export function modelInfo(models: Models, ref: ModelRef, runtime: PluginRuntime)
     fast === undefined ? null : { provider: fast.provider, id: fast.id },
     policy,
     models.getProvider(model.provider)?.capabilities,
+    undefined,
   );
 }
 
@@ -384,13 +393,14 @@ function projectModel(
   fast: ModelRef | null,
   policy: ModelContextPolicy | undefined,
   capabilities: ModelCapabilities | undefined,
+  remembered: Thinking | undefined,
 ): ModelInfo {
   return {
     ref: { provider: model.provider, id: model.id },
     name: model.name,
     reasoning: model.reasoning,
     thinking: acceptedThinkingLevels(model),
-    defaultThinking: defaultThinkingLevel(model),
+    defaultThinking: defaultThinkingLevel(model, remembered),
     fast,
     contextWindow: policy?.contextWindow ?? model.contextWindow,
     compactAt: policy?.compactAt ?? Math.floor(model.contextWindow * 0.8),
@@ -587,7 +597,16 @@ async function resolvePatch(
 
   if (model === undefined) return { kind: "unknown-model", model: ref };
   const issues: ValidationIssue[] = [];
-  const thinking = selectThinkingLevel(model, patch.thinking, selected?.thinking);
+
+  const previous =
+    selected === null ? undefined : models.getModel(selected.model.provider, selected.model.id);
+
+  const kept =
+    previous !== undefined && formatModelKey(baseRef(previous)) === formatModelKey(baseRef(model))
+      ? selected?.thinking
+      : undefined;
+
+  const thinking = await selectThinkingLevel(kernel, model, patch.thinking, kept);
 
   if (thinking === null) issues.push(issue(["thinking"], `${ref.id} does not accept that level.`));
   const settings = { ...selected?.settings, ...patch.settings };
@@ -621,11 +640,12 @@ async function resolvePatch(
   };
 }
 
-function selectThinkingLevel(
+async function selectThinkingLevel(
+  kernel: Kernel,
   model: Model<Api>,
   given: Thinking | null | undefined,
   kept: Thinking | undefined,
-): Thinking | null {
+): Promise<Thinking | null> {
   const accepted = acceptedThinkingLevels(model);
 
   if (given !== undefined && given !== null) return accepted.includes(given) ? given : null;
@@ -633,18 +653,63 @@ function selectThinkingLevel(
   if (given === undefined && kept !== undefined)
     return accepted.includes(kept) ? kept : clampThinkingLevel(model, kept);
 
-  return defaultThinkingLevel(model);
+  return defaultThinkingLevel(model, await readThinkingPreference(kernel.store, baseRef(model)));
+}
+
+function baseRef(model: Model<Api>): ModelRef {
+  return { provider: model.provider, id: model.variant?.base ?? model.id };
 }
 
 function acceptedThinkingLevels(model: Model<Api>): Thinking[] {
   return ["off", ...getSupportedThinkingLevels(model).filter((level) => level !== "off")];
 }
 
-/** A reasoning model's lowest level above off, else off. */
-function defaultThinkingLevel(model: Model<Api>): Thinking {
-  return model.reasoning
-    ? (acceptedThinkingLevels(model).find((level) => level !== "off") ?? "off")
-    : "off";
+function defaultThinkingLevel(model: Model<Api>, remembered: Thinking | undefined): Thinking {
+  const accepted = acceptedThinkingLevels(model);
+
+  if (remembered !== undefined && accepted.includes(remembered)) return remembered;
+
+  return model.reasoning ? (accepted.find((level) => level !== "off") ?? "off") : "off";
+}
+
+export async function rememberChoice(
+  kernel: Kernel,
+  models: Models,
+  choice: Configuration,
+  scope: "model" | "thinking",
+): Promise<void> {
+  const model = models.getModel(choice.model.provider, choice.model.id);
+
+  if (model === undefined) return;
+  const base = baseRef(model);
+  const preferred = scope === "model" ? await readModelSelection(kernel.store) : null;
+
+  const updates = [
+    ...(scope === "model" &&
+    (preferred === null || formatModelKey(preferred) !== formatModelKey(choice.model))
+      ? [
+          {
+            name: MODEL_PREFERENCE,
+            target: await put(kernel.store, "kv", {
+              provider: choice.model.provider,
+              id: choice.model.id,
+            }),
+          },
+        ]
+      : []),
+    ...((await readThinkingPreference(kernel.store, base)) === choice.thinking
+      ? []
+      : [
+          {
+            name: thinkingPreferenceRef(base),
+            target: await put(kernel.store, "kv", choice.thinking),
+          },
+        ]),
+  ];
+
+  if (updates.length === 0) return;
+  await commit(kernel, updates);
+  bumpGeneration(kernel);
 }
 
 function sessionScoped(settings: readonly SettingDefinition[]): readonly SettingDefinition[] {

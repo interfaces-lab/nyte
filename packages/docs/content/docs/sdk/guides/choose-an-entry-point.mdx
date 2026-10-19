@@ -91,8 +91,8 @@ it in a `VITE_*` or `NEXT_PUBLIC_*` variable.
 
 ### Give each device its own credential
 
-Pairing mints a one-time code for one principal. The device trades it for a token of its own, which
-you can revoke without touching anyone else.
+Pairing mints a one-time code for one principal. The device trades it for a token of its own.
+Revoking that token leaves every other credential working.
 
 ```ts tab="host.ts"
 import { sdk } from "@nyte-ai/sdk";

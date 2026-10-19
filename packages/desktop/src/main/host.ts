@@ -34,6 +34,7 @@ import type {
   CallTable,
   HostCallPath,
 } from "../shared/ipc.ts";
+import { HOST_PORT_ORIGIN } from "../shared/host-port.ts";
 import type { BrowserAgent } from "./browser-agent.ts";
 import type { HostWindow } from "./host-window.ts";
 import { desktopBrowserPlugin } from "./browser-tools.ts";
@@ -41,7 +42,6 @@ import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import { DEFAULT_DESKTOP_SETTINGS } from "./desktop-settings.ts";
 import type { DesktopSettings } from "./desktop-settings.ts";
 import { desktopSettings, desktopSettingsPlugin } from "./host-settings.ts";
-import type { HostEndpoint } from "./host-messages.ts";
 import { ExpectedHostError, retainDiagnostic } from "./errors.ts";
 import { callTable } from "./ipc-call.ts";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
@@ -62,7 +62,6 @@ export interface DesktopHostDependencies {
   readonly version: string;
   readonly models?: OpenHostOptions["models"];
   readonly usageScan?: UsageScanReader;
-  readonly rendererOrigin: string;
   readonly remoteAccessPlugins?: RemoteAccessPlugins;
   readonly connect?: ConnectRuntime;
   readonly keepAwake?: (awake: boolean) => void;
@@ -70,7 +69,8 @@ export interface DesktopHostDependencies {
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
   readonly agent: BrowserAgent;
   readonly openDelayMs?: number | undefined;
-  readonly endpoint?: HostEndpoint;
+  /** The token windows hold from an earlier run of this host; default a new one. */
+  readonly token?: string;
   readonly preview?: CanvasPreviewer;
   readonly revoked?: () => void;
 }
@@ -80,7 +80,6 @@ type HostCalls = { readonly [P in HostCallPath]: CallHandler<P> };
 interface Opened {
   readonly host: Host;
   readonly listener: Listener;
-  readonly url: string;
   readonly token: string;
 }
 
@@ -380,24 +379,21 @@ export class DesktopHost {
 
     performance.mark("nyte:host-opened");
 
-    const { endpoint } = this.#deps;
-    const token = endpoint?.token ?? newToken();
+    const token = this.#deps.token ?? newToken();
 
-    const listen = (port?: number) =>
-      host.listen({
-        transport: { kind: "http", port },
-        auth: { kind: "token", token },
-        origins: [this.#deps.rendererOrigin],
-      });
-
-    const listener =
-      endpoint === undefined
-        ? await listen()
-        : await listen(Number(new URL(endpoint.url).port)).catch(() => listen());
+    const listener = await host.listen({
+      transport: { kind: "fetch" },
+      auth: { kind: "token", token },
+    });
 
     performance.mark("nyte:endpoint-ready");
 
-    return { host, listener, url: listenerAddress(listener), token };
+    return { host, listener, token };
+  }
+
+  /** Answers a window's request to the host, as `servePort` passes it on from the window's MessagePort. */
+  async fetch(request: Request): Promise<Response> {
+    return (await this.#ready()).listener.fetch(request);
   }
 
   #followView(host: Host): void {
@@ -453,9 +449,13 @@ export class DesktopHost {
 
   readonly #handlers: CallTable = {
     "host.endpoint": async () => {
-      const { host, url, token } = await this.#ready();
+      const { host, token } = await this.#ready();
 
-      return { url, credentials: { kind: "token", token }, expect: { hostId: host.hostId } };
+      return {
+        url: HOST_PORT_ORIGIN,
+        credentials: { kind: "token", token },
+        expect: { hostId: host.hostId },
+      };
     },
     "host.state": async (window) => this.#state(window),
     "host.restore": async (window, { session }) => {

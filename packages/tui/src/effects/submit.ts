@@ -127,7 +127,6 @@ export async function submit(
   }
 }
 
-/** Starts a blank chat with the submission as its first message, then follows it, and resolves whether the chat started. A message recalled while it waited for the host is not sent. A failed start leaves the chat blank, its id kept for the retry. When an earlier start already took the id, the TUI follows that chat and hands this message back to its composer. */
 async function start(
   chat: BlankChat,
   submission: Submission,
@@ -190,7 +189,6 @@ async function start(
   return true;
 }
 
-/** Starts blank chat `chat` with a command's `prompt` as its first message, then follows it; a send to the chat meanwhile waits for the start. */
 export async function startWithPrompt(
   chat: BlankChat,
   workspace: WorkspaceId,
@@ -218,7 +216,6 @@ export async function startWithPrompt(
   }
 }
 
-/** Starts blank chat `chat` in `workspace` with `content` as its first message, on the chat's model; a chat that changed or has no usable model is refused, with why. */
 async function startChat(
   chat: BlankChat,
   workspace: WorkspaceId,
@@ -237,10 +234,7 @@ async function startChat(
 
   const catalog = read().facts.catalog.catalog ?? (await ports.host.listModels());
 
-  const selection =
-    current.unresolved === true
-      ? defaultSelection(catalog, read().facts.settings.thinkingLevel)
-      : current.selection;
+  const selection = current.unresolved === true ? defaultSelection(catalog) : current.selection;
 
   if (selection === null)
     return { kind: "refused", reason: "No models are available. /login connects a provider." };

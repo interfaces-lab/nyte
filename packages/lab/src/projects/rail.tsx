@@ -1,6 +1,6 @@
 /** The projects rail: this project's agents by state, then the other projects and loose chats. */
 import { props } from "@stylexjs/stylex";
-import { useState, type ReactElement } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
@@ -9,11 +9,13 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Shelf } from "../sidebar/rail";
+import { ProjectGlyph, projectMark } from "./appearance";
 import { ProjectFolder, type FolderDesign } from "./folder";
-import { LOOSE_CHATS, OTHER_PROJECTS, type Agent } from "./timeline";
+import { LOOSE_CHATS, type Agent, type ProjectListing } from "./timeline";
 import { styles } from "./page.stylex";
 
-export const PROJECT = "Dialog surface migration";
+/** The project row's leading mark: its own appearance, or the animated folder. */
+export type ProjectMarkStyle = "appearance" | "folder";
 
 export function agentsIn(
   agents: ReadonlyMap<string, Agent>,
@@ -87,25 +89,25 @@ export function AgentRow({
 }
 
 function ProjectRow({
-  name,
-  mark,
-  working,
-  ask,
+  project,
   selected,
+  markStyle,
   folder,
+  onSelect,
 }: {
-  readonly name: string;
-  readonly mark: SessionMark;
-  readonly working: number;
-  readonly ask: string | undefined;
+  readonly project: ProjectListing;
   readonly selected: boolean;
+  readonly markStyle: ProjectMarkStyle;
   readonly folder: FolderDesign;
+  readonly onSelect: () => void;
 }): ReactElement {
   const [hovering, setHovering] = useState(false);
+  const { working, ask } = project;
+  const mark: SessionMark = projectMark(project);
 
   const titleLine = (
     <>
-      <Row.Label xstyle={sidebarStyles.sessionLabel}>{name}</Row.Label>
+      <Row.Label xstyle={sidebarStyles.sessionLabel}>{project.name}</Row.Label>
       {working > 0 && (
         <Row.Meta
           xstyle={[sidebarStyles.rowMeta, styles.projectMeta]}
@@ -131,11 +133,15 @@ function ProjectRow({
       ]}
     >
       {selected && <Row.Backdrop xstyle={sidebarStyles.sessionSelection} />}
-      <Row.Primary aria-current={selected ? "page" : undefined}>
+      <Row.Primary aria-current={selected ? "page" : undefined} onClick={onSelect}>
         <Row.Leading
           xstyle={[sidebarStyles.rowIcon, ask !== undefined && sidebarStyles.rowIconAsk]}
         >
-          <ProjectFolder design={folder} open={selected} hovering={hovering} count={working} />
+          {markStyle === "appearance" ? (
+            <ProjectGlyph appearance={project.appearance} mark={mark} surface="sidebar" />
+          ) : (
+            <ProjectFolder design={folder} open={selected} hovering={hovering} count={working} />
+          )}
         </Row.Leading>
         {ask === undefined ? (
           titleLine
@@ -153,18 +159,26 @@ function ProjectRow({
 }
 
 export function Rail({
-  mark,
-  working,
-  ask,
+  projects,
+  selectedId,
+  markStyle,
   folder,
+  switcher,
+  onSelect,
+  onNewProject,
 }: {
-  readonly mark: SessionMark;
-  readonly working: number;
-  readonly ask: string | undefined;
+  readonly projects: readonly ProjectListing[];
+  readonly selectedId: string;
+  readonly markStyle: ProjectMarkStyle;
   readonly folder: FolderDesign;
+  /** The project switcher, when it lives at the top of the rail. */
+  readonly switcher: ReactNode;
+  readonly onSelect: (id: string) => void;
+  readonly onNewProject: () => void;
 }): ReactElement {
   return (
     <nav aria-label="Sidebar" {...props(sidebarStyles.rail, styles.rail)}>
+      {switcher !== undefined && <div {...props(styles.railSwitcher)}>{switcher}</div>}
       <div {...props(sidebarStyles.primaryActions)}>
         <Row variant="nav" xstyle={sidebarStyles.navRow}>
           <Row.Leading xstyle={sidebarStyles.navLeading}>
@@ -185,25 +199,22 @@ export function Rail({
             <span {...props(sidebarStyles.sectionToggle)}>
               <span {...props(sidebarStyles.sectionLabel)}>Projects</span>
             </span>
-            <Button size="xs" iconOnly icon="folder-add" aria-label="New Project" />
+            <Button
+              size="xs"
+              iconOnly
+              icon="folder-add"
+              aria-label="New Project"
+              onClick={onNewProject}
+            />
           </div>
-          <ProjectRow
-            name={PROJECT}
-            mark={mark}
-            working={working}
-            ask={ask}
-            selected
-            folder={folder}
-          />
-          {OTHER_PROJECTS.map((project) => (
+          {projects.map((project) => (
             <ProjectRow
               key={project.id}
-              name={project.name}
-              mark={project.working > 0 ? "working" : "idle"}
-              working={project.working}
-              ask={undefined}
-              selected={false}
+              project={project}
+              selected={project.id === selectedId}
+              markStyle={markStyle}
               folder={folder}
+              onSelect={() => onSelect(project.id)}
             />
           ))}
         </section>

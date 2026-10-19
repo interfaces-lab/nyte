@@ -27,7 +27,7 @@ export async function loadHostSettings(): Promise<void> {
       staleTime: Number.POSITIVE_INFINITY,
     });
   } catch (cause) {
-    toast.add({ title: errorMessage(cause) });
+    toast.add({ type: "error", title: errorMessage(cause) });
   }
 }
 
@@ -44,7 +44,7 @@ export async function changeHostSettings(patch: HostSettingsPatch): Promise<void
   try {
     acceptHostSettings(await bridge.set(patch));
   } catch (cause) {
-    toast.add({ title: errorMessage(cause) });
+    toast.add({ type: "error", title: errorMessage(cause) });
   }
 }
 

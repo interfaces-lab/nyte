@@ -59,7 +59,6 @@ export interface FakeHost extends HostPort {
   readonly sessions: ReadonlyMap<string, FakeSession>;
   publishCatalog(catalog: ModelCatalogView): void;
   publishSessions(sessions: readonly SessionInfo[]): void;
-  readonly defaults: ModelRef[];
   readonly hostSettings: { readonly id: string; readonly value: unknown }[];
   readonly starts: Parameters<HostPort["start"]>[0][];
   readonly folders: (string | null)[];
@@ -250,7 +249,6 @@ export function fakeHost(): FakeHost {
   const catalogs = queue<Pick<HostView, "catalog" | "settings" | "version">>();
 
   const directory = queue<readonly SessionInfo[]>();
-  const defaults: ModelRef[] = [];
   const hostSettings: FakeHost["hostSettings"] = [];
   const starts: FakeHost["starts"] = [];
   const folders: FakeHost["folders"] = [];
@@ -265,7 +263,6 @@ export function fakeHost(): FakeHost {
 
   const host: FakeHost = {
     sessions,
-    defaults,
     hostSettings,
     addSession,
     starts,
@@ -314,9 +311,6 @@ export function fakeHost(): FakeHost {
     selectAccount: async () => undefined,
     usage: async () => [],
     refreshModels: async () => undefined,
-    async setDefaultModel(ref) {
-      defaults.push(ref);
-    },
     login: async () => {
       throw new Error("Login is not scripted in the fake host.");
     },

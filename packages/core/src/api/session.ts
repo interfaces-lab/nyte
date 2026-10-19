@@ -19,6 +19,7 @@ import type {
   UpdateOutcome,
   WorkspaceId,
 } from "@nyte-ai/schema";
+import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Part, PartDefinition } from "../contract/parts.ts";
@@ -338,7 +339,6 @@ export function watchSessions(
   });
 }
 
-/** Starts the chat `input` describes: one commit stores the session with its first message deciding, then before_send releases it. A replay under the same id and input returns the same chat. A chat a tool call starts, as a subagent's task, joins the trace its caller's session follows. */
 async function start(
   kernel: Kernel,
   context: ConnectionContext,
@@ -377,11 +377,11 @@ async function start(
   followTrace(id, trace);
 
   return traced("host.admit", trace, { session: id }, async () => {
-    await attempt(`Starting ${id}`, async () => {
+    const chosen = await attempt(`Starting ${id}`, async () => {
       if ((await readSession(kernel.store, id)) !== null) {
         const started = (await readReceipt(kernel.store, id, receipt))?.record;
 
-        if (started?.kind === "send" && started.digest === digest) return id;
+        if (started?.kind === "send" && started.digest === digest) return null;
 
         throw new SdkError("invalid", `Session ${id} already exists.`);
       }
@@ -448,10 +448,18 @@ async function start(
         })),
       ]);
 
-      return outcome.kind === "set" ? id : STALE;
+      return outcome.kind === "set" ? selected : STALE;
     });
 
     await releaseStart(kernel, context, id);
+
+    if (
+      chosen !== null &&
+      context !== CORE_CONTEXT &&
+      origin === null &&
+      context.authority.has("owner")
+    )
+      await kernel.rememberChoice(chosen, "model");
 
     return id;
   });

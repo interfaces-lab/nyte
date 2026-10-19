@@ -1,6 +1,7 @@
 import { mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { WriteStream } from "node:tty";
 import { afterAll, expect, test } from "bun:test";
 import type { RGBA } from "@opentui/core";
@@ -288,4 +289,42 @@ for (const [terminal, environment] of [
     expect(
       tui.captureCharFrame().includes("Open the menu (https://fixture.test/places/luigi)"),
     ).toBe(terminal === "xterm");
+  });
+
+const PATHED = "The final file is `out/film.mp4`. The old one is at `/tmp/film/old.mp4`.";
+
+for (const [terminal, environment] of [
+  ["ghostty", { TERM: "xterm-ghostty", TERM_PROGRAM: "ghostty", COLORTERM: "truecolor" }],
+  ["xterm", { TERM: "xterm-256color", COLORTERM: "truecolor" }],
+] as const)
+  test(`${terminal}: a file path in inline code ${terminal === "xterm" ? "stays plain text where the terminal takes no hyperlinks" : "links to the file under the workspace, without the closing period"}`, async () => {
+    const output = new RecordingStdout(join(OUTPUT, `file-link-${terminal}.out`), 100, 32);
+
+    await using tui = await startTui({
+      renderer: { stdout: output, bufferedOutput: "stdout", forwardEnvKeys: [], environment },
+    });
+
+    await tui.ready();
+    tui.fixture.reply({ content: [{ type: "text", text: PATHED }] });
+    await tui.send("where is the film");
+    await tui.frame((frame) => frame.includes("tmp/film/old.mp4"));
+    await tui.state((store) => store.screen().run.kind === "idle");
+    await tui.renderOnce();
+    await saveFrame(tui, `file-link-${terminal}`);
+
+    const film = pathToFileURL(join(tui.store.state().facts.workspace.cwd, "out/film.mp4")).href;
+    const written = output.text();
+
+    await saveProof(`file-link-${terminal}-output`, {
+      environment,
+      hyperlinks: tui.renderer.capabilities?.hyperlinks ?? null,
+      film: written.includes(`;${film}\x1b\\`),
+      old: written.includes(";file:///tmp/film/old.mp4\x1b\\"),
+    });
+
+    expect(written.includes(`;${film}\x1b\\`)).toBe(terminal !== "xterm");
+    expect(written.includes(";file:///tmp/film/old.mp4\x1b\\")).toBe(terminal !== "xterm");
+    expect(tui.captureCharFrame()).toContain(
+      "The final file is out/film.mp4. The old one is at /tmp/film/old.mp4.",
+    );
   });

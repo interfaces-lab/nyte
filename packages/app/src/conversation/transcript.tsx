@@ -34,7 +34,9 @@ import {
   TRANSCRIPT_PADDING_START,
 } from "./transcript-scroll.ts";
 
-const OVERSCAN = 4;
+const OVERSCAN = 2;
+
+const HISTORY_LEAD_SCREENS = 3;
 
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
@@ -120,7 +122,8 @@ interface TranscriptOptions {
   readonly paneId: PaneId;
   readonly sessionId: SessionId;
   readonly viewportRef?: (viewport: HTMLDivElement | null) => void;
-  readonly onReachStart?: () => void;
+  /** Loads older messages above the first row and resolves how many arrived: 0 once the first message is shown. */
+  readonly loadEarlier?: () => Promise<number>;
 }
 
 interface TranscriptState extends TranscriptOptions {
@@ -169,7 +172,7 @@ export function TranscriptProvider({
   paneId,
   sessionId,
   viewportRef,
-  onReachStart,
+  loadEarlier,
   children,
 }: TranscriptOptions & { readonly children: ReactNode }): ReactElement {
   const viewStore = usePaneViewStateStore();
@@ -193,7 +196,7 @@ export function TranscriptProvider({
       paneId,
       sessionId,
       viewportRef,
-      onReachStart,
+      loadEarlier,
       viewStore,
       initialPosition,
       dock,
@@ -201,7 +204,7 @@ export function TranscriptProvider({
       controlsRef,
       controls,
     }),
-    [controls, dock, initialPosition, onReachStart, paneId, sessionId, viewportRef, viewStore],
+    [controls, dock, initialPosition, loadEarlier, paneId, sessionId, viewportRef, viewStore],
   );
 
   return <TranscriptContext value={transcript}>{children}</TranscriptContext>;
@@ -222,7 +225,7 @@ export const TranscriptContent = memo(function TranscriptContent({
     paneId,
     sessionId,
     viewportRef,
-    onReachStart,
+    loadEarlier,
     viewStore,
     initialPosition,
     dock,
@@ -296,6 +299,28 @@ export const TranscriptContent = memo(function TranscriptContent({
   };
 
   const atEnd = useRef(initialPosition.kind === "end");
+  const historyLoading = useRef(false);
+
+  const loadHistory = (instance: TranscriptVirtualizer): void => {
+    const scroll = instance.scrollElement;
+
+    if (
+      loadEarlier === undefined ||
+      historyLoading.current ||
+      opening.current ||
+      scroll === null ||
+      scroll.scrollTop >= scroll.clientHeight * HISTORY_LEAD_SCREENS
+    )
+      return;
+    historyLoading.current = true;
+    void loadEarlier()
+      .finally(() => {
+        historyLoading.current = false;
+      })
+      .then((loaded) => {
+        if (loaded > 0) requestAnimationFrame(() => loadHistory(instance));
+      });
+  };
 
   const present = (instance: TranscriptVirtualizer, left = instance.getDistanceFromEnd()): void => {
     const scroll = instance.scrollElement;
@@ -312,13 +337,7 @@ export const TranscriptContent = memo(function TranscriptContent({
     atEnd.current = heldRef.current === null && left <= 1;
     syncSticky(scroll, content.current, atEnd.current);
     showScrollButton(dock, left > SCROLL_EDGE_THRESHOLD);
-
-    if (
-      !opening.current &&
-      scroll.scrollTop < scroll.clientHeight &&
-      instance.range?.startIndex === 0
-    )
-      onReachStart?.();
+    loadHistory(instance);
   };
 
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
@@ -345,7 +364,13 @@ export const TranscriptContent = memo(function TranscriptContent({
     heldRef.current = held;
   }, [held]);
 
-  useLayoutEffect(() => stretchSpans(virtualizer, sticky.ends));
+  useLayoutEffect(() => {
+    const scroll = virtualizer.scrollElement;
+    stretchSpans(virtualizer, sticky.ends);
+
+    if (scroll !== null && content.current !== null)
+      syncSticky(scroll, content.current, atEnd.current);
+  });
 
   useLayoutEffect(() => {
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {

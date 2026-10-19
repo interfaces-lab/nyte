@@ -9,11 +9,7 @@ import type { ReactElement } from "react";
 import type { Revision, SessionId, SessionInfo, SessionView, UserContent } from "@nyte-ai/sdk";
 import { Composer } from "../conversation/composer.tsx";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
-import type {
-  BranchModelChoice,
-  BranchModelPicker,
-  TurnChangesTarget,
-} from "../conversation/turn-view.tsx";
+import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
 import { observeActivation } from "../chrome/open-workspace.tsx";
 import { Input } from "@nyte-ai/ui/input";
 import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
@@ -249,10 +245,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
 
   const cwd = host.data.workspace?.path;
 
-  const loadEarlier = useCallback(
-    () => void loadEarlierMessages(sessionId, HISTORY_PAGE),
-    [sessionId],
-  );
+  const loadEarlier = useCallback(() => loadEarlierMessages(sessionId, HISTORY_PAGE), [sessionId]);
 
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
   const [column, setColumn] = useState<HTMLDivElement | null>(null);
@@ -360,7 +353,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
   );
 
   const openChanges = useCallback(
-    (target: TurnChangesTarget): void => {
+    (path: string | null): void => {
       const viewKey = workbenchViewKey(cwd);
 
       const id = workbenchController.actions.openTab({
@@ -385,10 +378,9 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
         id,
         kind: "changes",
         patch: {
-          scope: { kind: "turn", turnId: target.turnId },
-          selectedPath: target.kind === "file" ? target.path : null,
-          pathRevealRevision:
-            target.kind === "file" ? tab.pathRevealRevision + 1 : tab.pathRevealRevision,
+          scope: { kind: "thread" },
+          selectedPath: path,
+          pathRevealRevision: path === null ? tab.pathRevealRevision : tab.pathRevealRevision + 1,
           scrollTop: 0,
         },
       });
@@ -445,7 +437,7 @@ export function SessionConversation(conversation: SessionConversationProps): Rea
               paneId={paneId}
               sessionId={sessionId}
               viewportRef={setScroll}
-              onReachStart={loadEarlier}
+              loadEarlier={loadEarlier}
             >
               {presentation === "full" && <ComposerPaging column={column} />}
               {presentation === "full" && <RunAnnouncer working={working} />}

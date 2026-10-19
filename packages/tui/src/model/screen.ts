@@ -60,6 +60,8 @@ export interface ScreenModel {
   readonly welcome: boolean;
   readonly followUp: "steer" | "queue";
   readonly selectionActive: boolean;
+  /** The folder that file paths in the transcript resolve against, or `null` when the terminal can't link them. */
+  readonly fileRoot: string | null;
 }
 
 export interface PreviewModel {
@@ -220,5 +222,6 @@ export function deriveScreen(state: State, previous: ScreenModel | null): Screen
       followedShells(state).length === 0,
     followUp: input.followUp,
     selectionActive: state.facts.terminal.selection,
+    fileRoot: state.facts.terminal.hyperlinks ? state.facts.workspace.cwd : null,
   };
 }

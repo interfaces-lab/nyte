@@ -12,6 +12,7 @@ import {
 import type {
   Awaitable,
   CallId,
+  ChangeSet,
   Decision,
   DurableEvent,
   FileChange,
@@ -55,6 +56,7 @@ import {
   readTip,
   requireSession,
   STALE,
+  threadStart,
 } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { check } from "../util/json-schema.ts";
@@ -100,7 +102,8 @@ interface Settled {
     readonly removed: number;
     readonly paths: readonly string[];
   } | null;
-  readonly files: readonly FileChange[];
+  /** The session's files as they now differ from its first snapshot, or null when this call changed nothing. */
+  readonly thread: readonly FileChange[] | null;
 
   readonly snapshot: SnapshotId | null;
 }
@@ -563,11 +566,30 @@ async function conclude(
   const snapshots =
     snapshotted && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
 
-  if (snapshots === null) return { outcome, changes: null, files: [], snapshot: null };
+  if (snapshots === null) return { outcome, changes: null, thread: null, snapshot: null };
   const from = (await diffBase(kernel.store, session, run)) ?? (await snapshots.before(run));
   const to = await snapshots.after(run);
+  const files = fileChanges(await snapshots.diff(from, to));
 
-  const files = (await snapshots.diff(from, to)).files.map((file): FileChange => {
+  const thread =
+    files.length === 0
+      ? null
+      : fileChanges(await snapshots.diff((await threadStart(kernel.store, session)) ?? from, to));
+
+  return {
+    outcome,
+    changes: {
+      added: files.reduce((sum, file) => sum + file.added, 0),
+      removed: files.reduce((sum, file) => sum + file.removed, 0),
+      paths: files.map((file) => file.path),
+    },
+    thread,
+    snapshot: to,
+  };
+}
+
+function fileChanges(set: ChangeSet): readonly FileChange[] {
+  return set.files.map((file): FileChange => {
     const change: FileChange = {
       path: file.path,
       status: file.status,
@@ -577,17 +599,6 @@ async function conclude(
 
     return file.from === undefined ? change : { ...change, from: file.from };
   });
-
-  return {
-    outcome,
-    changes: {
-      added: files.reduce((sum, file) => sum + file.added, 0),
-      removed: files.reduce((sum, file) => sum + file.removed, 0),
-      paths: files.map((file) => file.path),
-    },
-    files,
-    snapshot: to,
-  };
 }
 
 async function settlement(
@@ -633,9 +644,9 @@ async function settlement(
       outcome: settled.outcome,
       changes: settled.changes,
     },
-    ...(settled.files.length === 0
+    ...(settled.thread === null
       ? []
-      : [{ head: null, kind: "changes", files: settled.files } as const]),
+      : [{ head: null, kind: "changes", files: settled.thread } as const]),
   ];
 
   if (found.record.status.kind === "failed" || found.record.status.kind === "settled")

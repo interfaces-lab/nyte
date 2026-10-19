@@ -1,3 +1,6 @@
+import type { IconName } from "@nyte-ai/ui/icon";
+import type { Tint } from "@nyte-ai/ui/surface-theme";
+
 type AgentPlace = "cloud" | "local";
 
 type AgentState = "working" | "done" | "archived";
@@ -262,10 +265,60 @@ export function projectAt(step: number): ProjectState {
   };
 }
 
-export const OTHER_PROJECTS = [
-  { id: "garden", name: "Design system gardening", working: 2 },
-  { id: "inbox", name: "Sidebar inbox", working: 0 },
-] as const;
+/** How a project is told apart at a glance: one glyph in one hue. */
+export interface Appearance {
+  readonly icon: IconName;
+  readonly tint: Tint;
+}
+
+/** What the switcher and the rail know about a project without opening it. */
+export interface ProjectListing {
+  readonly id: string;
+  readonly name: string;
+  readonly appearance: Appearance;
+  readonly working: number;
+  readonly ask: string | undefined;
+  readonly updated: string;
+  /** The coordinator's latest line, shown when the project opens. */
+  readonly brief: string;
+}
+
+export const PROJECT = "Dialog surface migration";
+
+export const PROJECT_ID = "dialogs";
+
+export const PROJECT_APPEARANCE: Appearance = { icon: "layers", tint: "blue" };
+
+export const OTHER_PROJECTS: readonly ProjectListing[] = [
+  {
+    id: "release",
+    name: "Release 0.1",
+    appearance: { icon: "bolt", tint: "purple" },
+    working: 1,
+    ask: "Ship the release notes as drafted?",
+    updated: "8m",
+    brief:
+      "The notes are drafted and the build is green. One call before tagging: ship the notes as written?",
+  },
+  {
+    id: "garden",
+    name: "Design system gardening",
+    appearance: { icon: "sparkle", tint: "green" },
+    working: 2,
+    ask: undefined,
+    updated: "12m",
+    brief: "Two agents are renaming tokens that drifted from the schema. Nothing needs you.",
+  },
+  {
+    id: "inbox",
+    name: "Sidebar inbox",
+    appearance: { icon: "inbox-empty", tint: "orange" },
+    working: 0,
+    ask: undefined,
+    updated: "2d",
+    brief: "Paused after PR #398 merged. Say what comes next and I'll pick it up.",
+  },
+];
 
 export const LOOSE_CHATS = [
   "Explain archive undo in session-actions",

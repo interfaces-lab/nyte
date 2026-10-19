@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { ALL_AUTHORITY, LOCAL, type Listener } from "@nyte-ai/core";
-import { openRepo } from "./git.ts";
+import { openRepo, type Repo } from "./git.ts";
 import { CACHE_DIR, openReviewHost, type ReviewHost } from "./host.ts";
 import { Registry } from "./registry.ts";
 import { createReviews } from "./review.ts";
@@ -9,6 +9,7 @@ import { studioRoutes } from "./studio-routes.ts";
 
 export interface Opened {
   readonly host: ReviewHost;
+  readonly repo: Repo;
   readonly server: Listener;
   readonly review: (request: Request) => Promise<Response>;
 }
@@ -49,6 +50,7 @@ async function open(): Promise<Opened> {
 
     return {
       host,
+      repo,
       server: listener,
       review: await createReviews({ host, repo, registry, log }),
     };

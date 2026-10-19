@@ -65,7 +65,14 @@ export function buildState(
   const base = initialState({
     cwd,
     settings: SETTINGS,
-    terminal: { width: 100, height: 32, theme: "dark", selection: false, dragging: false },
+    terminal: {
+      width: 100,
+      height: 32,
+      theme: "dark",
+      selection: false,
+      dragging: false,
+      hyperlinks: false,
+    },
     chat: null,
   });
 

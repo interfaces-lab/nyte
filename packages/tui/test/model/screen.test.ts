@@ -176,7 +176,14 @@ describe("hints", () => {
   test("a narrow terminal keeps only the primary hints (Ctrl+C is secondary while Esc shows)", () => {
     const narrow = play(ready(idle), {
       kind: "terminal",
-      terminal: { width: 40, height: 20, theme: "dark", selection: false, dragging: false },
+      terminal: {
+        width: 40,
+        height: 20,
+        theme: "dark",
+        selection: false,
+        dragging: false,
+        hyperlinks: false,
+      },
     }).state;
 
     expect(hints(narrow)).toBe("enter send · esc tree (twice) · ctrl+k help");
@@ -222,7 +229,14 @@ describe("hints", () => {
 
     const dragging = play(state, typed("x"), {
       kind: "terminal",
-      terminal: { width: 100, height: 32, theme: "dark", selection: true, dragging: true },
+      terminal: {
+        width: 100,
+        height: 32,
+        theme: "dark",
+        selection: true,
+        dragging: true,
+        hyperlinks: false,
+      },
     }).state;
 
     expect(deriveScreen(dragging, before).hints).toBe(before.hints);

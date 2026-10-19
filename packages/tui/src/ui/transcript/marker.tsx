@@ -4,10 +4,11 @@ import { createMemo, Match, Show, Switch } from "solid-js";
 import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
 import { useApp } from "../../app/context.tsx";
 import { omittedLabel, previewLines } from "../../lib/format.ts";
+import { Spinner } from "../chrome/spinner.tsx";
 import { Markdown } from "./markdown.tsx";
 
 type MarkerProps =
-  | { readonly variant: "default"; readonly content: string }
+  | { readonly variant: "default" | "live"; readonly content: string }
   | { readonly variant: "border"; readonly content: string; readonly summary: string };
 
 const SUMMARY_LINES = 40;
@@ -15,7 +16,7 @@ const SUMMARY_LINES = 40;
 function markerProps(message: PartMessage): MarkerProps {
   if (isPart(message, compaction))
     return message.status.kind === "live"
-      ? { variant: "default", content: "compacting context…" }
+      ? { variant: "live", content: "compacting context…" }
       : {
           variant: "border",
           content: `context compacted · ${String(message.state.tokensBefore)} tokens before`,
@@ -49,6 +50,14 @@ export function Marker(props: { readonly message: PartMessage }): JSX.Element {
         <text id={`note:${props.message.id}`} fg={kit.theme().dim} wrapMode="word">
           {marker().content}
         </text>
+      </Match>
+      <Match when={marker().variant === "live"}>
+        <box id={`note:${props.message.id}`} flexDirection="row" width="100%" height={1}>
+          <Spinner />
+          <text fg={kit.theme().dim} wrapMode="none" selectable={false}>
+            {` ${marker().content}`}
+          </text>
+        </box>
       </Match>
       <Match when={marker().variant === "border"}>
         <box

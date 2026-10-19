@@ -79,7 +79,6 @@ export interface HostPort {
   selectAccount(provider: string, account: string): Promise<void>;
   usage(): Promise<readonly ProviderUsage[]>;
   refreshModels(provider: string): Promise<void>;
-  setDefaultModel(ref: ModelRef): Promise<void>;
   login(
     provider: string | null,
     driver: LoginDriver,

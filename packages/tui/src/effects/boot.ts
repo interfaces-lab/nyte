@@ -1,7 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import type { ModelCatalogView, SessionId, Thinking } from "@nyte-ai/sdk";
-import { availableModels, clampThinking } from "../lib/catalog.ts";
-import type { ResolvedSettings } from "../lib/settings-schema.ts";
+import { availableModels, findModel } from "../lib/catalog.ts";
 import type { BlankChat, Selection } from "../model/state.ts";
 import { describeUpdateOutcome, selfUpdate } from "../update.ts";
 import { checkForUpdate } from "../version.ts";
@@ -29,17 +28,7 @@ export interface BootOptions {
   readonly effort: Thinking | null;
 }
 
-/**
- * The chat a launch draws on its first frame, before the host answers: a blank chat on the
- * model the last launch resolved, at the thinking level asked for or remembered. Without a
- * recorded model, or with one the catalog must resolve from a flag, the chat waits unresolved
- * for boot to choose. `null` when the launch resumes a session.
- */
-export function launchChat(
-  options: BootOptions,
-  recorded: Selection | null,
-  settings: ResolvedSettings,
-): BlankChat | null {
+export function launchChat(options: BootOptions, recorded: Selection | null): BlankChat | null {
   if (options.target.kind !== "new") return null;
   const id = asId<"session">(crypto.randomUUID());
   const folder = { kind: "launch-folder" } as const;
@@ -51,14 +40,10 @@ export function launchChat(
     kind: "blank",
     id,
     folder,
-    selection: { ...recorded, effort: options.effort ?? settings.thinkingLevel ?? recorded.effort },
+    selection: { ...recorded, effort: options.effort ?? recorded.effort },
   };
 }
 
-/**
- * Starts the app once the host opens: lists models, then follows the session to resume, or
- * settles the launch's blank chat on the default model and registers its folder.
- */
 export async function boot(options: BootOptions, context: HandlerContext): Promise<void> {
   const { dispatch, ports, scope } = context;
   const catalog = await ports.host.listModels();
@@ -66,8 +51,8 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   dispatch({ kind: "catalog", generation: (scope.catalogGeneration += 1), catalog });
 
   if (context.signal.aborted) return;
-  const flagged = flagSelection(options, catalog, settings.thinkingLevel);
-  const resolved = defaultSelection(catalog, settings.thinkingLevel);
+  const flagged = flagSelection(options, catalog);
+  const resolved = defaultSelection(catalog);
   const selection = flagged ?? resolved;
   const launched = context.read().facts.chat;
 
@@ -142,7 +127,6 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
   await checkUpdate(settings.autoUpdate, context);
 }
 
-/** The session to resume, or `null` for a blank chat. */
 async function resolveTarget(
   options: BootOptions,
   context: HandlerContext,
@@ -169,7 +153,6 @@ async function resolveTarget(
 function flagSelection(
   options: Pick<BootOptions, "model" | "effort">,
   catalog: ModelCatalogView,
-  remembered: Thinking | undefined,
 ): Selection | null {
   if (options.model === null && options.effort === null) return null;
 
@@ -178,8 +161,9 @@ function flagSelection(
 
   if (rest.length > 0) {
     const model = { provider, id: rest.join("/") };
+    const listed = findModel(availableModels(catalog), model);
 
-    return { model, effort: options.effort ?? remembered ?? "medium", fast: false };
+    return { model, effort: options.effort ?? listed?.defaultThinking ?? "medium", fast: false };
   }
 
   const found = availableModels(catalog).find((model) => model.ref.id === options.model);
@@ -188,9 +172,7 @@ function flagSelection(
 
   return {
     model: found.ref,
-    effort:
-      options.effort ??
-      (remembered === undefined ? found.defaultThinking : clampThinking(found, remembered)),
+    effort: options.effort ?? found.defaultThinking,
     fast: false,
   };
 }

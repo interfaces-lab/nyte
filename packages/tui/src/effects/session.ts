@@ -8,7 +8,7 @@ import type {
   Thinking,
   WorkspaceId,
 } from "@nyte-ai/sdk";
-import { availableModels, clampThinking, findModel } from "../lib/catalog.ts";
+import { availableModels, findModel } from "../lib/catalog.ts";
 import { errorMessage, shortId } from "../lib/format.ts";
 import { indexedMention } from "../model/completion.ts";
 import { chatFolder, followedSession } from "../model/state.ts";
@@ -72,19 +72,14 @@ export async function openNew(context: HandlerContext): Promise<void> {
       id: asId(crypto.randomUUID()),
       folder: chat === null ? { kind: "launch-folder" } : chatFolder(chat),
       selection:
-        (catalog === null ? null : defaultSelection(catalog, state.facts.settings.thinkingLevel)) ??
-        chat?.selection ??
-        fallback(state),
+        (catalog === null ? null : defaultSelection(catalog)) ?? chat?.selection ?? fallback(state),
     },
     context,
   );
 }
 
-export function defaultSelection(
-  catalog: ModelCatalogView,
-  remembered: Thinking | undefined,
-): Selection | null {
-  const selection = fallbackSelection(catalog, remembered ?? "off");
+export function defaultSelection(catalog: ModelCatalogView): Selection | null {
+  const selection = fallbackSelection(catalog, "off");
 
   const model =
     selection === null ? undefined : findModel(availableModels(catalog), selection.model);
@@ -93,7 +88,7 @@ export function defaultSelection(
 
   return {
     ...selection,
-    effort: remembered === undefined ? model.defaultThinking : clampThinking(model, remembered),
+    effort: model.defaultThinking,
   };
 }
 
@@ -121,17 +116,6 @@ export async function follow(
         session: id,
         selection: toSelection(selected, readCatalog(read())),
       }),
-    onAcknowledged: (choice, patch) => {
-      if (patch.model !== undefined)
-        void ports.host.setDefaultModel(choice.model).catch((error: unknown) => {
-          ports.log.write("effect", error);
-        });
-
-      if (patch.thinkingLevel !== undefined)
-        void rememberThinking(choice.thinkingLevel, context).catch((error: unknown) => {
-          ports.log.write("effect", error);
-        });
-    },
   });
 
   scope.followed = { id, port, controller, configurator };
@@ -440,12 +424,4 @@ function unavailable(
       tone: "error",
       text: `Workspace failed to activate: ${activation.message}`,
     });
-}
-
-export async function rememberThinking(level: Thinking, context: HandlerContext): Promise<void> {
-  const { ports, read, dispatch } = context;
-
-  if (read().facts.settings.thinkingLevel === level) return;
-  const settings = await ports.settings.write(read().facts.workspace.cwd, { thinkingLevel: level });
-  dispatch({ kind: "settings", settings });
 }

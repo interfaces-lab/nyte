@@ -5,7 +5,7 @@ import notifications from "../src/client/notifications.ts";
 import { clientApi } from "./client-api.ts";
 import { fakeModels, open } from "./fake-models.ts";
 
-it("notifies once when a root session's run ends and stays quiet for a child", async () => {
+it("notifies once when a root session's run fails and stays quiet for a stop or a child", async () => {
   await using host = await open(fakeModels(), []);
   const { session: root } = await host.sessions.start({ content: "Hi." });
   await root.update({ name: "Release" });
@@ -26,6 +26,7 @@ it("notifies once when a root session's run ends and stays quiet for a child", a
   } as const;
 
   await handler({ session: root.id, run: asId("r1"), end: failed }, context);
+  await handler({ session: root.id, run: asId("r3"), end: { kind: "stopped" } }, context);
   await handler({ session: child.id, run: asId("r2"), end: { kind: "stopped" } }, context);
 
   expect(notified).toEqual([

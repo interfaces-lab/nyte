@@ -14,6 +14,7 @@ import type {
   TreeView,
 } from "@nyte-ai/schema";
 import type { FoldState } from "../contract/fold.ts";
+import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { CommitRecord, PartRecord, SessionRecord } from "../contract/records.ts";
@@ -70,7 +71,23 @@ export function headHandle(
     sessionId: session,
     name: head,
     send: (content, options) => admit(kernel, { session, head, context, content, options }),
-    configure: (patch) => configure(kernel, session, head, patch),
+    async configure(patch) {
+      const outcome = await configure(kernel, session, head, patch);
+
+      if (
+        outcome.kind === "configured" &&
+        context !== CORE_CONTEXT &&
+        context.origin === null &&
+        context.authority.has("owner") &&
+        (patch.model !== undefined || patch.thinking !== undefined)
+      )
+        await kernel.rememberChoice(
+          outcome.selected,
+          patch.model === undefined ? "thinking" : "model",
+        );
+
+      return outcome;
+    },
     view: (options) => viewHead(kernel, { session, head, principal, options }),
     watch,
     ...watchStore(() => watch()),

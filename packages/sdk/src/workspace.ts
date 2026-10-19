@@ -64,9 +64,9 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
     reload: () => rows.call("workspace.reload", { workspace }),
     jobs: jobsApi(rows, workspace),
     job: (id) => jobHandle(rows, workspace, id, null),
-    changes: (run) => rows.call("workspace.changes", { workspace, run }),
-    patches: (run, paths, options) =>
-      mapped(rows.frames("workspace.patches", { workspace, run, paths, options }), patchSet),
+    changes: (source) => rows.call("workspace.changes", { workspace, source }),
+    patches: (source, paths, options) =>
+      mapped(rows.frames("workspace.patches", { workspace, source, paths, options }), patchSet),
     files: async () =>
       resolveCapability(await rows.call("workspace.files", { workspace }), () =>
         filesApi(rows, workspace),
@@ -87,8 +87,8 @@ export function workspaceHandle(rows: Rows, workspace: WorkspaceId): Workspace {
 }
 
 function filesApi(rows: Rows, workspace: WorkspaceId): FilesApi {
-  const upload = (source: AsyncIterable<Uint8Array>): Promise<BlobId> =>
-    rows.upload("files.upload", { workspace }, streamBytes(source));
+  const upload = async (source: AsyncIterable<Uint8Array>): Promise<BlobId> =>
+    rows.upload("files.upload", { workspace }, await collectBytes(source, rows.link.signal));
 
   const plan = (pending: readonly Pending[]): FileBatch => ({
     put: (input) => plan([...pending, { kind: "put", ...input }]),
@@ -303,20 +303,43 @@ function mapped<T, U>(source: AsyncIterable<T>, map: (value: T) => U): AsyncIter
   };
 }
 
-function streamBytes(source: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> {
+/** Browsers reject a streamed request body over HTTP/1.1, which local hosts speak, so an upload sends its bytes whole. */
+async function collectBytes(
+  source: AsyncIterable<Uint8Array>,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  signal.throwIfAborted();
   const iterator = source[Symbol.asyncIterator]();
+  const closed = Promise.withResolvers<never>();
 
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const next = await iterator.next();
+  const abort = (): void => {
+    closed.reject(signal.reason);
+    void iterator.return?.();
+  };
 
-      if (next.done === true) controller.close();
-      else controller.enqueue(next.value);
-    },
-    async cancel() {
-      await iterator.return?.();
-    },
-  });
+  signal.addEventListener("abort", abort, { once: true });
+  const chunks: Uint8Array[] = [];
+
+  try {
+    for (;;) {
+      const next = await Promise.race([iterator.next(), closed.promise]);
+
+      if (next.done === true) break;
+      chunks.push(next.value);
+    }
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
+
+  const joined = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return joined;
 }
 
 async function* once(bytes: Uint8Array): AsyncGenerator<Uint8Array> {

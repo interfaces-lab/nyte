@@ -7,6 +7,7 @@ const PAGES = [
   ["/tabs", "Tabs"],
   ["/changes", "Changes"],
   ["/settings", "Settings"],
+  ["/hubs", "Hubs"],
   ["/studio", "Studio"],
 ] as const;
 

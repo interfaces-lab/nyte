@@ -8,12 +8,12 @@ import {
 } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { useMemo, useSyncExternalStore } from "react";
-import { asId, ModelRefType } from "@nyte-ai/schema";
+import { asId } from "@nyte-ai/schema";
 import type { ClientCommandName } from "@nyte-ai/schema";
-import { Value } from "typebox/value";
 import { toast } from "@nyte-ai/ui/toast";
 import type {
   ChangeSet,
+  ChangeSource,
   CommandInfo,
   Connection,
   Cursor,
@@ -26,7 +26,6 @@ import type {
   ModelRef,
   PatchEntry,
   PatchSet,
-  RunId,
   SearchFrame,
   SearchInput,
   SessionId,
@@ -152,16 +151,7 @@ export async function readStartCatalog(): Promise<DesktopCatalog> {
       ? queryClient.getQueryData<ModelCatalogView>(newest.queryKey)
       : undefined;
 
-  const catalog = toDesktopCatalog(live ?? (await readModelCatalog()));
-
-  const picked = queryClient
-    .getMutationCache()
-    .findAll({ mutationKey: DEFAULT_MODEL_MUTATION, status: "pending" })
-    .at(-1)?.state.variables;
-
-  return Value.Check(ModelRefType, picked)
-    ? { ...catalog, defaults: { model: picked, thinkingLevel: undefined } }
-    : catalog;
+  return toDesktopCatalog(live ?? (await readModelCatalog()));
 }
 
 export function selectedWorkspaceId(): WorkspaceId | undefined {
@@ -496,22 +486,22 @@ export function useVcsLog(
   });
 }
 
-export function useRunChanges(input: {
+export function useRecordedChanges(input: {
   readonly workspace: WorkspaceId | undefined;
-  readonly runId: RunId | undefined;
+  readonly source: ChangeSource | undefined;
   readonly live: boolean;
   readonly enabled?: boolean;
 }) {
-  const { workspace, runId, live, enabled = true } = input;
+  const { workspace, source, live, enabled = true } = input;
 
   return useQuery<ChangeSet>({
-    queryKey: keys.runChanges(workspace, runId, live),
+    queryKey: keys.recordedChanges(workspace, source, live),
     queryFn: async () => {
-      if (workspace === undefined || runId === undefined) throw new Error("No run to compare");
+      if (workspace === undefined || source === undefined) throw new Error("Nothing to compare");
 
-      return (await connected()).workspace(workspace).changes(runId);
+      return (await connected()).workspace(workspace).changes(source);
     },
-    enabled: enabled && workspace !== undefined && runId !== undefined,
+    enabled: enabled && workspace !== undefined && source !== undefined,
     staleTime: live ? 0 : "static",
   });
 }
@@ -541,16 +531,16 @@ export async function readGitPatches(
   return firstPatches((await workspaceGit()).patches(scope, paths, { ignoreWhitespace }), paths);
 }
 
-export async function readRunPatches(
+export async function readRecordedPatches(
   workspace: WorkspaceId,
-  run: RunId,
+  source: ChangeSource,
   paths: readonly string[],
   ignoreWhitespace: boolean,
 ): Promise<readonly PatchEntry[]> {
   const current = await connected();
 
   return firstPatches(
-    current.workspace(workspace).patches(run, paths, { ignoreWhitespace }),
+    current.workspace(workspace).patches(source, paths, { ignoreWhitespace }),
     paths,
   );
 }
@@ -858,7 +848,9 @@ export function connectLocalHost(): Promise<Connection> {
 
   connecting ??= nyte.host
     .endpoint()
-    .then((endpoint) => connectHost(endpoint, { remember: nyte.host.remember }))
+    .then((endpoint) =>
+      connectHost(endpoint, { remember: nyte.host.remember, fetch: nyte.host.fetch }),
+    )
     .then((opened) => {
       performance.mark("nyte:sdk-connected");
 

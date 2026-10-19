@@ -11,19 +11,16 @@ import { errorMessage } from "../lib/format.ts";
 import { parseSettingsFile } from "../lib/settings-schema.ts";
 import type { ResolvedSettings, SettingsFile, SettingsPatch } from "../lib/settings-schema.ts";
 
-/** A settings file left out of the merge, and why. */
 export interface SettingsProblem {
   readonly path: string;
   readonly reason: string;
 }
 
-/** The merged settings, and each file that failed to parse and was left out of them. */
 export interface SettingsRead {
   readonly settings: ResolvedSettings;
   readonly invalid: readonly SettingsProblem[];
 }
 
-/** What the TUI tells the user about settings files left out of a read. */
 export function ignoredSettingsText(invalid: readonly SettingsProblem[]): string {
   return invalid.map((problem) => `Ignored ${problem.path}: ${problem.reason}`).join("\n");
 }
@@ -71,10 +68,8 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
   };
 
   const editor = global.externalEditor;
-  const thinkingLevel = project.thinkingLevel ?? global.thinkingLevel;
-  const withEditor = editor === undefined ? resolved : { ...resolved, externalEditor: editor };
 
-  return thinkingLevel === undefined ? withEditor : { ...withEditor, thinkingLevel };
+  return editor === undefined ? resolved : { ...resolved, externalEditor: editor };
 }
 
 async function writeSettingsPatch(path: string, patch: SettingsPatch): Promise<void> {
@@ -95,7 +90,6 @@ export class FileSettingsStore {
     this.globalPath = globalPath;
   }
 
-  /** Reads both files at once, so the first frame can draw with them; a file that fails to parse contributes nothing. Never throws. */
   read(cwd: string): SettingsRead {
     const global = readSettings(this.globalPath);
     const project = readSettings(projectSettingsPath(cwd));
@@ -109,12 +103,10 @@ export class FileSettingsStore {
     };
   }
 
-  /** Resolves once every write queued so far has settled. */
   settled(): Promise<void> {
     return this.writes.settled();
   }
 
-  /** Writes `patch` into the global file; refuses while that file doesn't parse, so a fix by hand isn't overwritten. */
   updateGlobal(patch: SettingsPatch): Promise<void> {
     return this.writes.run(async () => {
       const current = readSettings(this.globalPath);

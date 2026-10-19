@@ -23,8 +23,8 @@ if (created.kind !== "missing-source") {
 ```
 
 `from` is a position: `{ kind: "start" }` or `{ kind: "commit", id }`. Leave it out to fork from
-`main`'s tip. `tree()` returns a head's `tip` and every node in the tree, so you can fork another
-head's tip or any earlier commit. `create` returns `exists` when a head already has that name.
+`main`'s tip. `tree()` returns a head's `tip` and every node in the tree; pass any of them as
+`from`. `create` returns `exists` when a head already has that name.
 
 The new head inherits the history up to its position. If it should hit the same prompt cache, give
 it the source's configuration before the first send:
@@ -54,7 +54,7 @@ const merged = await session.heads.merge(name);
 ## Rewind a head
 
 `move` points a head at an earlier position. Moving to a user message puts the head on the commit
-before it and hands the message's content back, so you can put it in the composer:
+before it and returns that message's content:
 
 ```ts
 const last = view.messages.findLast((message) => message.kind === "user");

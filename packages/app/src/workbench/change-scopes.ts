@@ -1,4 +1,4 @@
-import type { GitScope, GitStatus, RunId } from "@nyte-ai/sdk";
+import type { GitScope, GitStatus, RunId, SessionView } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
 import { worktreeFiles } from "../view-helpers.ts";
@@ -86,6 +86,7 @@ export function changesScopeValue(scope: WorkbenchChangesScope): string {
     case "uncommitted":
     case "staged":
     case "unstaged":
+    case "thread":
       return scope.kind;
     case "turn":
       return `turn:${scope.turnId}`;
@@ -109,6 +110,7 @@ export function vcsRequestForScope(scope: WorkbenchChangesScope): GitScope | und
       return { kind: "unstaged" };
     case "commit":
       return { kind: "commit", commit: asId<"git-commit">(scope.oid) };
+    case "thread":
     case "turn":
       return undefined;
     default: {
@@ -193,6 +195,25 @@ export function commitScopeOptions(
   }));
 }
 
+const THREAD_LABEL = "This Chat";
+
+/** The chat's changes since its first run, counted from the session view's file list. */
+export function threadScopeOption(changes: SessionView["changes"]): ChangesScopeOption {
+  return {
+    scope: { kind: "thread" },
+    label: THREAD_LABEL,
+    detail: undefined,
+    read: {
+      kind: "ready",
+      stats: {
+        added: changes.reduce((sum, file) => sum + file.added, 0),
+        removed: changes.reduce((sum, file) => sum + file.removed, 0),
+      },
+      fileCount: changes.length,
+    },
+  };
+}
+
 export function turnScopeOption(option: TurnChangeOption): ChangesScopeOption {
   return {
     scope: option.scope,
@@ -219,6 +240,8 @@ export function changesScopeLabel(
       return "Staged";
     case "unstaged":
       return "Unstaged";
+    case "thread":
+      return THREAD_LABEL;
     case "turn":
       return "Turn";
     case "commit":

@@ -57,7 +57,7 @@ export interface Rows {
   upload<N extends CallName>(
     name: N,
     input: OperationInput<N>,
-    body: Uint8Array | ReadableStream<Uint8Array>,
+    body: Uint8Array,
   ): Promise<OperationOutput<N>>;
   bytes<N extends ByteName>(
     name: N,

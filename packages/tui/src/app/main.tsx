@@ -112,7 +112,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
   const hangUp = (): void => closing.resolve(exitStatus("SIGHUP"));
   const unwatchTerminal = watchTerminal(renderer.stdin, options.outputs ?? [], hangUp);
   const { settings, invalid } = options.ports.settings.read(options.cwd);
-  const chat = launchChat(options.boot, options.ports.firstFrame.read(), settings);
+  const chat = launchChat(options.boot, options.ports.firstFrame.read());
 
   const root = createRoot((dispose) => {
     const store = createStore({
@@ -190,7 +190,8 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
       next.height !== current.height ||
       next.theme !== current.theme ||
       next.selection !== current.selection ||
-      next.dragging !== current.dragging
+      next.dragging !== current.dragging ||
+      next.hyperlinks !== current.hyperlinks
     )
       store.dispatch({ kind: "terminal", terminal: next });
   };
@@ -205,6 +206,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 
   renderer.on(CliRenderEvents.RESIZE, syncTerminal);
   renderer.on(CliRenderEvents.THEME_MODE, syncTerminal);
+  renderer.on(CliRenderEvents.CAPABILITIES, syncTerminal);
   renderer.on(CliRenderEvents.SELECTION, onSelection);
 
   renderer.root.onMouseDown = (event) => {
@@ -230,6 +232,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
     root.sinks.dispose();
     renderer.off(CliRenderEvents.RESIZE, syncTerminal);
     renderer.off(CliRenderEvents.THEME_MODE, syncTerminal);
+    renderer.off(CliRenderEvents.CAPABILITIES, syncTerminal);
     renderer.off(CliRenderEvents.SELECTION, onSelection);
     renderer.root.onMouseDown = undefined;
     root.tickers.dispose();
@@ -478,6 +481,7 @@ function terminalFacts(renderer: CliRenderer): TerminalFacts {
     theme: renderer.themeMode,
     selection: renderer.hasSelection,
     dragging: selection?.isDragging ?? false,
+    hyperlinks: renderer.capabilities?.hyperlinks === true,
   };
 }
 

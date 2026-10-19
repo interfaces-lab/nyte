@@ -227,6 +227,7 @@ function ScopeMeta({
 
 function scopeIcon(scope: WorkbenchChangesScope): IconName {
   switch (scope.kind) {
+    case "thread":
     case "turn":
       return "git-branch";
     case "commit":
@@ -376,6 +377,8 @@ interface ChangesToolbarProps {
   readonly snapshot: GitStatus | undefined;
   readonly repository: ChangesRepository | undefined;
   readonly branch: BranchReadout | undefined;
+  /** The whole chat's changes, absent outside a chat. */
+  readonly threadOption: ChangesScopeOption | undefined;
   readonly turnOptions: readonly TurnChangeOption[];
   readonly viewOptions: ChangesViewOptions;
   readonly fileTreeVisible: boolean;
@@ -401,6 +404,7 @@ export function ChangesToolbar({
   snapshot,
   repository,
   branch,
+  threadOption,
   turnOptions,
   viewOptions,
   fileTreeVisible,
@@ -431,6 +435,7 @@ export function ChangesToolbar({
   const selectScope = (value: string): void => {
     for (const candidate of [
       ...workingTreeScopeOptions(snapshot).map((option) => option.scope),
+      ...(threadOption === undefined ? [] : [threadOption.scope]),
       ...turnOptions.map((option) => option.scope),
     ]) {
       if (changesScopeValue(candidate) === value) {
@@ -499,7 +504,8 @@ export function ChangesToolbar({
                   </MenuSubContent>
                 </MenuSub>
               )}
-              {visibleTurns.length > 0 && <MenuSeparator />}
+              {(threadOption !== undefined || visibleTurns.length > 0) && <MenuSeparator />}
+              {threadOption !== undefined && <ScopeRadioItem option={threadOption} />}
               {visibleTurns.map((option) => (
                 <MenuRadioItem
                   key={option.scope.turnId}

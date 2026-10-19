@@ -316,7 +316,10 @@ export const components = defineVars({
   "--nyte-dialog-gap": "16px",
   "--nyte-dialog-radius": "16px",
   "--nyte-toast-min-height": { default: "48px", "@media (pointer: coarse)": "64px" },
-  "--nyte-toast-close-gutter": "calc(var(--nyte-target-min) + 20px)",
+  "--nyte-toast-padding-block":
+    "calc((var(--nyte-toast-min-height) - var(--nyte-line-height-base)) / 2)",
+  "--nyte-toast-inset": "calc((var(--nyte-toast-min-height) - var(--nyte-target-min)) / 2)",
+  "--nyte-toast-overhang": "calc((var(--nyte-line-height-base) - var(--nyte-target-min)) / 2)",
   "--nyte-clipboard-preview-max-width": "360px",
   "--nyte-clipboard-preview-max-height": "240px",
   "--nyte-shape-indicator": "4px",

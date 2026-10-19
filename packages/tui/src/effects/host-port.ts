@@ -11,13 +11,6 @@ import { loginProvider, logoutProvider, runLogin } from "../services/auth.ts";
 import { TaskIndex } from "../services/task-index.ts";
 import type { HostPort, PluginsPort, SessionPort, WorkspacePort } from "./ports.ts";
 
-/**
- * The app's port to `host`, opening `folder` for new chats when it is not null. A submit is
- * traced as `composer.submit` under its receipt id, a new chat's first one under the chat's id,
- * which names its receipt, and while tracing is on each message a
- * view brings is a `client.paint` span that ends when `painted` (the renderer's next frame)
- * resolves.
- */
 export function hostPort(
   host: Connection,
   folder: string | null,
@@ -76,9 +69,6 @@ export function hostPort(
     selectAccount: (provider, account) => host.models.selectAccount(provider, account),
     usage: () => host.models.usage(),
     refreshModels: (provider) => host.models.refresh(provider),
-    async setDefaultModel(ref) {
-      await host.models.setDefault(ref);
-    },
     async login(provider, driver) {
       const found = await loginProvider({
         connection: host,

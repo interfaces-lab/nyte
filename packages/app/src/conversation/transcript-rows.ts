@@ -39,12 +39,6 @@ export type TurnItemRow =
   | (RowPlace & {
       readonly kind: "failure";
       readonly failure: Failure;
-    })
-  | (RowPlace & {
-      readonly kind: "changes";
-      readonly turn: TurnInfo["id"];
-      readonly files: SessionView["changes"];
-      readonly trailing: boolean;
     });
 
 export type TranscriptRow =
@@ -66,7 +60,14 @@ export type TranscriptRow =
       readonly kind: "live";
       readonly messageId: "row:live";
       readonly working: boolean;
-    });
+    })
+  | ChangesRow;
+
+type ChangesRow = RowPlace & {
+  readonly kind: "changes";
+  readonly messageId: "row:changes";
+  readonly files: SessionView["changes"];
+};
 
 type LandingRow = Extract<TranscriptRow, { readonly kind: "landing" }>;
 
@@ -93,6 +94,26 @@ const NO_USERS: readonly UserMessage[] = [];
 
 const landingRows = new WeakMap<UserMessage, LandingRow>();
 
+const changesRows = new WeakMap<SessionView["changes"], ChangesRow>();
+
+function changesRow(files: SessionView["changes"]): ChangesRow {
+  const known = changesRows.get(files);
+
+  if (known !== undefined) return known;
+
+  const row: ChangesRow = {
+    kind: "changes",
+    messageId: "row:changes",
+    scrollAnchor: false,
+    ...OUTSIDE,
+    files,
+  };
+
+  changesRows.set(files, row);
+
+  return row;
+}
+
 type Failure = Parameters<typeof failureNotice>[0];
 
 const itemRows = new WeakMap<Message | Failure | TurnInfo, TurnItemRow>();
@@ -103,7 +124,6 @@ const turnRows = new WeakMap<
     readonly group: string;
     readonly leads: boolean;
     readonly last: boolean;
-    readonly changes: SessionView["changes"];
     readonly rows: readonly TurnItemRow[];
   }
 >();
@@ -158,7 +178,6 @@ function keepRow(source: Message | Failure | TurnInfo, row: TurnItemRow): TurnIt
 function readTurnRows(
   turn: ConversationTurn,
   place: { readonly group: string; readonly leads: boolean; readonly last: boolean },
-  changes: SessionView["changes"],
 ): readonly TurnItemRow[] {
   const known = turnRows.get(turn);
 
@@ -166,8 +185,7 @@ function readTurnRows(
     known !== undefined &&
     known.group === place.group &&
     known.leads === place.leads &&
-    known.last === place.last &&
-    known.changes === changes
+    known.last === place.last
   )
     return known.rows;
 
@@ -268,33 +286,9 @@ function readTurnRows(
           failure: state.end.failure,
         }),
       );
-
-    const paths = new Set(
-      turn.messages.flatMap((message) =>
-        showsTool(message) && message.state.phase === "settled"
-          ? (message.state.changes?.paths ?? [])
-          : [],
-      ),
-    );
-
-    const files = paths.size === 0 ? [] : changes.filter((change) => paths.has(change.path));
-
-    if (files.length > 0)
-      rows.push(
-        keepRow(turn.info, {
-          kind: "changes",
-          messageId: `changes:${turn.info.id}`,
-          scrollAnchor: false,
-          ...at(),
-          sticky: false,
-          turn: turn.info.id,
-          files,
-          trailing: place.last,
-        }),
-      );
   }
 
-  turnRows.set(turn, { ...place, changes, rows });
+  turnRows.set(turn, { ...place, rows });
 
   return rows;
 }
@@ -366,6 +360,7 @@ export function transcriptRows({
   readonly loading: boolean;
   readonly failed: boolean;
   readonly turns: readonly ConversationTurn[];
+  /** The chat's changes since its first run, shown in one card after the last turn once nothing is working. */
   readonly changes: SessionView["changes"];
   readonly landing: readonly UserMessage[];
   readonly held: boolean;
@@ -388,11 +383,13 @@ export function transcriptRows({
       leads = true;
     }
 
-    const own = readTurnRows(turn, { group, leads, last: turn === last }, changes);
+    const own = readTurnRows(turn, { group, leads, last: turn === last });
     rows.push(...own);
 
     if (own.length > 0) leads = false;
   }
+
+  if (changes.length > 0 && !working) rows.push(changesRow(changes));
 
   for (const message of landing) rows.push(landingRow(message, running, held));
 

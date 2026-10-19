@@ -10,8 +10,8 @@ import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "./subagent-call.tsx";
 import { TranscriptContent } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
-import { TurnItemView, UserMessageView } from "./turn-view.tsx";
-import type { BranchModelChoice, BranchModelPicker, TurnChangesTarget } from "./turn-view.tsx";
+import { ChangesCard, TurnItemView, UserMessageView } from "./turn-view.tsx";
+import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
 import { estimateRowSize } from "./transcript-rows.ts";
 import type { TranscriptRow } from "./transcript-rows.ts";
 
@@ -40,7 +40,7 @@ export function Timeline({
   readonly cwd: string | undefined;
   readonly branchModel: BranchModelPicker;
   readonly onEditUser: EditUserMessage;
-  readonly onOpenChanges: (target: TurnChangesTarget) => void;
+  readonly onOpenChanges: (path: string | null) => void;
   readonly onRetry: () => void;
 }): ReactElement {
   const density = useSetting(preferences.toolCalls);
@@ -74,18 +74,18 @@ export function Timeline({
         case "agents":
         case "response":
         case "failure":
-        case "changes":
           return (
             <TurnItemView
               row={row}
-              running={(row.kind === "step" || row.kind === "changes") && row.trailing && working}
+              running={row.kind === "step" && row.trailing && working}
               density={density}
               cwd={cwd}
               onEditUser={onEditUser}
               branchModel={branchModel}
-              onOpenChanges={onOpenChanges}
             />
           );
+        case "changes":
+          return <ChangesCard files={row.files} onOpenChanges={onOpenChanges} />;
 
         case "landing": {
           const { source } = row.message;

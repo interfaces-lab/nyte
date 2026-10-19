@@ -93,6 +93,14 @@ export const GitScopeType = Type.Union([
 
 export type GitScope = Decoded<typeof GitScopeType>;
 
+/** What a workspace diff covers: one run's changes, or a session's since its first run started. */
+export const ChangeSourceType = Type.Union([
+  Type.Object({ kind: Type.Literal("run"), run: idSchema<"run">() }),
+  Type.Object({ kind: Type.Literal("session"), session: idSchema<"session">() }),
+]);
+
+export type ChangeSource = Decoded<typeof ChangeSourceType>;
+
 export const DiffOptionsType = Type.Object({ ignoreWhitespace: Type.Optional(Type.Boolean()) });
 
 export type DiffOptions = Decoded<typeof DiffOptionsType>;

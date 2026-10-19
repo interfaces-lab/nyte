@@ -10,7 +10,11 @@ import { LiveTurn, liveTurnStyles } from "@nyte-ai/app/conversation/live-turn.ts
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { SubagentSessionsProvider } from "@nyte-ai/app/conversation/subagent-sessions.ts";
 import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
-import { TurnItemView, UserMessageView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import {
+  ChangesCard,
+  TurnItemView,
+  UserMessageView,
+} from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { BranchModelPicker } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
 import { TranscriptSkeleton } from "@nyte-ai/app/screens/transcript-skeleton.tsx";
@@ -79,18 +83,18 @@ function RowView({
     case "agents":
     case "response":
     case "failure":
-    case "changes":
       return (
         <TurnItemView
           row={row}
-          running={(row.kind === "step" || row.kind === "changes") && row.trailing && working}
+          running={row.kind === "step" && row.trailing && working}
           density={density}
           cwd={CWD}
           onEditUser={editUser}
           branchModel={BRANCH_MODEL}
-          onOpenChanges={openChanges}
         />
       );
+    case "changes":
+      return <ChangesCard files={row.files} onOpenChanges={openChanges} />;
 
     case "landing":
       return (

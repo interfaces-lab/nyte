@@ -1,20 +1,7 @@
 import type { ModelInfo, Thinking } from "@nyte-ai/sdk";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
 
 export type ThinkingLevel = Thinking;
-
-/**
- * Low → high, same order the host catalog uses. A model's list is the subset
- * it supports, so the slider filters instead of assuming a fixed set of stops.
- */
-const THINKING_ORDER = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const satisfies readonly ThinkingLevel[];
 
 export const THINKING_LABELS: Readonly<Record<ThinkingLevel, string>> = {
   off: "Off",
@@ -30,20 +17,21 @@ export function thinkingLevelsFor(
   option: Pick<ModelInfo, "thinking"> | undefined,
 ): readonly ThinkingLevel[] {
   const supported = option?.thinking ?? (["off"] as const);
-  const ordered = THINKING_ORDER.filter((level) => supported.includes(level));
+  const ordered = MODEL_THINKING_LEVELS.filter((level) => supported.includes(level));
 
   return ordered.length === 0 ? ["off"] : ordered;
 }
 
 export function supportedThinkingLevel(
-  option: Pick<ModelInfo, "thinking"> | undefined,
+  option: Pick<ModelInfo, "thinking" | "defaultThinking"> | undefined,
   requested: ThinkingLevel | undefined,
 ): ThinkingLevel {
   const levels = thinkingLevelsFor(option);
 
   if (requested !== undefined && levels.includes(requested)) return requested;
 
-  if (levels.includes("medium")) return "medium";
+  if (option !== undefined && levels.includes(option.defaultThinking))
+    return option.defaultThinking;
 
   return levels[0] ?? "off";
 }

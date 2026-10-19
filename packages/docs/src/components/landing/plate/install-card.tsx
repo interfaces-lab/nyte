@@ -41,9 +41,7 @@ export function InstallCard() {
           <IconArrowDown size={16} />
           Download for Mac
         </a>
-        <p className="mt-3 text-[13px]/5 text-muted-foreground">
-          Apple Silicon. Other distributions are coming.
-        </p>
+        <p className="mt-3 text-[13px]/5 text-muted-foreground">Apple Silicon.</p>
 
         <p className="mt-12 text-[13px]/5 text-muted-foreground">
           Or install the CLI on macOS or Linux

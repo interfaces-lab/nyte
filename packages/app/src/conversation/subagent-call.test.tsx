@@ -75,7 +75,6 @@ test("a create call finds its child by the call that made it", () => {
               running={false}
               density="compact"
               cwd={undefined}
-              onOpenChanges={() => {}}
             />
           ) : null,
         )}

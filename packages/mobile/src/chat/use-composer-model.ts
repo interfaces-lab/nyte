@@ -5,11 +5,6 @@ import { openHead, type ComposerTarget } from "./composer-target.ts";
 import { useModelCatalog } from "./remote-models.ts";
 import { supportedThinkingLevel, thinkingLevelsFor, type ThinkingLevel } from "./thinking.ts";
 
-/**
- * The model and thinking level the composer sends with. A session's configuration shows until the user
- * picks; a pick on a session is applied to its head and rolled back when the host refuses it. A new
- * conversation keeps the pick and sends it with the start.
- */
 export function useComposerModel(
   client: Connection,
   target: ComposerTarget,
@@ -90,6 +85,7 @@ export function useComposerModel(
 
   const chooseModel = async (choice: ModelInfo): Promise<boolean> => {
     setModel(choice);
+    setThinking(choice.defaultThinking);
 
     if (target.kind !== "session") return true;
 
@@ -97,7 +93,7 @@ export function useComposerModel(
 
     const applied = await configure(openHead(client, target), {
       model: choice,
-      thinking: supportedThinkingLevel(choice, chosenThinking),
+      thinking: choice.defaultThinking,
     });
 
     setSelecting(false);
@@ -130,5 +126,4 @@ export function useComposerModel(
   };
 }
 
-/** What the composer reads and calls for its model and thinking pickers. */
 export type ComposerModel = ReturnType<typeof useComposerModel>;

@@ -28,6 +28,7 @@ export type WorkbenchChangesScope =
   | { readonly kind: "uncommitted" }
   | { readonly kind: "staged" }
   | { readonly kind: "unstaged" }
+  | { readonly kind: "thread" }
   | { readonly kind: "turn"; readonly turnId: TurnId }
   | { readonly kind: "commit"; readonly oid: string };
 
@@ -91,6 +92,7 @@ function sameChangesScope(left: WorkbenchChangesScope, right: WorkbenchChangesSc
     case "uncommitted":
     case "staged":
     case "unstaged":
+    case "thread":
       return right.kind === left.kind;
     case "turn":
       return right.kind === "turn" && right.turnId === left.turnId;
@@ -302,6 +304,7 @@ const persistedChangesTab = Type.Object(
       Type.Object({ kind: Type.Literal("uncommitted") }, strict),
       Type.Object({ kind: Type.Literal("staged") }, strict),
       Type.Object({ kind: Type.Literal("unstaged") }, strict),
+      Type.Object({ kind: Type.Literal("thread") }, strict),
       Type.Object({ kind: Type.Literal("turn"), turnId: idSchema<"turn">() }, strict),
       Type.Object({ kind: Type.Literal("commit"), oid: nonEmpty }, strict),
     ]),

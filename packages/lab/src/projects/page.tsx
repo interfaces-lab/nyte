@@ -1,13 +1,12 @@
 import { props } from "@stylexjs/stylex";
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import type { SessionMark } from "@nyte-ai/plugin/client/presentation";
 import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
 import { titlebarStyles } from "@nyte-ai/app/chrome/titlebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { workbenchStyles } from "@nyte-ai/app/workbench/workbench.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/styles/floating-surface.stylex";
 import { Icon, PanelToggleIcon, type IconName } from "@nyte-ai/ui/icon";
+import { Kbd } from "@nyte-ai/ui/kbd";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Switch } from "@nyte-ai/ui/switch";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -16,7 +15,19 @@ import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { Shelf } from "../sidebar/rail";
 import type { FolderDesign } from "./folder";
 import { TabStrip, type TabDesign, type TabItem } from "./tabs";
-import { projectAt, STEPS } from "./timeline";
+import {
+  LOOSE_CHATS,
+  OTHER_PROJECTS,
+  PROJECT,
+  PROJECT_APPEARANCE,
+  PROJECT_ID,
+  projectAt,
+  STEPS,
+  type Appearance,
+  type ProjectListing,
+} from "./timeline";
+import { ProjectGlyph, projectMark } from "./appearance";
+import { ProjectSwitcher, type SwitcherPlacement } from "./switcher";
 import { styles } from "./page.stylex";
 import {
   AgentPane,
@@ -29,7 +40,7 @@ import {
   PaneHeader,
   PanelSection,
 } from "./panes";
-import { AgentGlyph, AgentRow, PROJECT, Rail, agentsIn, stateLabel } from "./rail";
+import { AgentGlyph, AgentRow, Rail, agentsIn, stateLabel, type ProjectMarkStyle } from "./rail";
 import {
   COORDINATOR,
   INITIAL_TABS,
@@ -68,6 +79,21 @@ const TABS_DEFAULT: TabDesign = {
   overflow: "scroll",
   separators: true,
 };
+
+interface SwitcherDesign {
+  readonly placement: SwitcherPlacement;
+  readonly mark: ProjectMarkStyle;
+}
+
+const SWITCHER_DEFAULT: SwitcherDesign = { placement: "rail", mark: "appearance" };
+
+/** New projects take the next look in turn, so two in a row never match. */
+const NEW_LOOKS: readonly Appearance[] = [
+  { icon: "cube", tint: "teal" },
+  { icon: "globe", tint: "pink" },
+  { icon: "book", tint: "yellow" },
+  { icon: "bug", tint: "red" },
+];
 
 function Choice<Value extends string>({
   label,
@@ -113,14 +139,16 @@ export function ProjectsPage(): ReactElement {
   const [panelOpen, setPanelOpen] = useState(true);
   const [trayOpen, setTrayOpen] = useState(true);
   const [squareCorner, setSquareCorner] = useState(true);
+  const [projectId, setProjectId] = useState(PROJECT_ID);
+  const [created, setCreated] = useState<readonly ProjectListing[]>([]);
+  const [switcher, setSwitcher] = useState(SWITCHER_DEFAULT);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const project = projectAt(step);
   const working = agentsIn(project.agents, "working");
   const done = agentsIn(project.agents, "done");
   const archived = agentsIn(project.agents, "archived");
   const latest = STEPS[step]?.entries ?? [];
-
-  const mark: SessionMark =
-    project.pending !== undefined ? "waiting" : working.length > 0 ? "working" : "idle";
 
   const context = project.context.map((file) =>
     file.path === "preferences.md" && notes.length > 0
@@ -133,7 +161,23 @@ export function ProjectsPage(): ReactElement {
   const activeId =
     tabs.active === COORDINATOR || openIds.includes(tabs.active) ? tabs.active : COORDINATOR;
 
-  const activeAgent = project.agents.get(activeId);
+  const projects: readonly ProjectListing[] = [
+    {
+      id: PROJECT_ID,
+      name: PROJECT,
+      appearance: PROJECT_APPEARANCE,
+      working: working.length,
+      ask: project.pending?.question,
+      updated: "now",
+      brief: "",
+    },
+    ...OTHER_PROJECTS,
+    ...created,
+  ];
+
+  const home = projectId === PROJECT_ID;
+  const selected = projects.find((entry) => entry.id === projectId) ?? projects[0];
+  const activeAgent = home ? project.agents.get(activeId) : undefined;
   const unopened = [...project.agents.keys()].filter((id) => !openIds.includes(id));
   const orderKey = [COORDINATOR, ...openIds].join(" ");
 
@@ -142,12 +186,54 @@ export function ProjectsPage(): ReactElement {
   const close = (id: string): void => setTabs((current) => closeTab(current, id));
   const onCornerChange = useCallback((square: boolean) => setSquareCorner(square), []);
 
+  const createProject = (name: string): void => {
+    const look = NEW_LOOKS[created.length % NEW_LOOKS.length] ?? PROJECT_APPEARANCE;
+    const id = `new-${String(created.length)}`;
+
+    setCreated((current) => [
+      ...current,
+      {
+        id,
+        name: name === "" ? "Untitled project" : name,
+        appearance: look,
+        working: 0,
+        ask: undefined,
+        updated: "now",
+        brief: "Tell me what this project is for, and I'll plan the first agents.",
+      },
+    ]);
+    setProjectId(id);
+  };
+
+  const selection = {
+    board: "projects",
+    step: STEPS[step]?.label,
+    project: projectId,
+    switcher,
+    tabs: tabDesign,
+    folder,
+    sidebar: sidebarOpen,
+    panel: panelOpen,
+    openTabs: home ? [COORDINATOR, ...openIds] : [COORDINATOR],
+    activeTab: activeId,
+  };
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const meta = event.metaKey || event.ctrlKey;
       const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
 
-      if (event.altKey && event.key.toLowerCase() === "w") {
+      if (event.altKey && !event.shiftKey && event.code === "KeyP") {
+        event.preventDefault();
+        setSwitcherOpen((open) => !open);
+      } else if (event.altKey && event.key.toLowerCase() === "w") {
         event.preventDefault();
         setTabs((current) => closeTab(current, activeId));
       } else if (meta && event.shiftKey && event.key.toLowerCase() === "t") {
@@ -178,15 +264,24 @@ export function ProjectsPage(): ReactElement {
     setDraft("");
   };
 
+  const projectGlyph = (surface: "card" | "sidebar"): ReactElement | undefined =>
+    selected === undefined ? undefined : (
+      <ProjectGlyph
+        appearance={selected.appearance}
+        mark={projectMark(selected)}
+        surface={surface}
+      />
+    );
+
   const tabItems: readonly TabItem[] = [
     {
       id: COORDINATOR,
-      title: PROJECT,
-      glyph: mark === "idle" ? <Icon name="agent" size={14} /> : <StatusDot mark={mark} />,
+      title: selected?.name ?? PROJECT,
+      glyph: projectGlyph("card"),
       closable: false,
       preview: "Coordinator",
     },
-    ...openIds.flatMap((id) => {
+    ...(home ? openIds : []).flatMap((id) => {
       const agent = project.agents.get(id);
 
       return agent === undefined
@@ -203,6 +298,19 @@ export function ProjectsPage(): ReactElement {
     }),
   ];
 
+  const switcherElement = (
+    <ProjectSwitcher
+      open={switcherOpen}
+      placement={switcher.placement}
+      projects={projects}
+      currentId={projectId}
+      chats={LOOSE_CHATS}
+      onOpenChange={setSwitcherOpen}
+      onSelect={setProjectId}
+      onNewProject={createProject}
+    />
+  );
+
   return (
     <TooltipProvider>
       <div {...props(styles.window)}>
@@ -215,7 +323,11 @@ export function ProjectsPage(): ReactElement {
               <span {...props(styles.light)} />
               <span {...props(styles.light)} />
             </span>
-            <span {...props(styles.fill)} />
+            {switcher.placement === "titlebar" ? (
+              <span {...props(styles.titlebarSwitcher)}>{switcherElement}</span>
+            ) : (
+              <span {...props(styles.fill)} />
+            )}
             <span {...props(titlebarStyles.actionTrack)}>
               <Toggle
                 iconOnly
@@ -305,10 +417,13 @@ export function ProjectsPage(): ReactElement {
         <div {...props(styles.stage)}>
           {sidebarOpen && (
             <Rail
-              mark={mark}
-              working={working.length}
-              ask={project.pending?.question}
+              projects={projects}
+              selectedId={projectId}
+              markStyle={switcher.mark}
               folder={folder}
+              switcher={switcher.placement === "rail" ? switcherElement : undefined}
+              onSelect={setProjectId}
+              onNewProject={() => createProject("")}
             />
           )}
           <main
@@ -321,14 +436,30 @@ export function ProjectsPage(): ReactElement {
             <section aria-label="Project pane" {...props(styles.pane)}>
               {activeAgent !== undefined ? (
                 <AgentPane key={activeAgent.id} agent={activeAgent} />
+              ) : !home ? (
+                <>
+                  <PaneHeader title={selected?.name ?? PROJECT} place="cloud">
+                    {projectGlyph("card")}
+                  </PaneHeader>
+                  <FadedScroll reversed>
+                    <div {...props(styles.transcript)}>
+                      <EntryView
+                        entry={{ kind: "coordinator", text: selected?.brief ?? "" }}
+                        agents={new Map()}
+                        openIds={[]}
+                        pending={undefined}
+                        onAct={advance}
+                        onOpenAgent={open}
+                      />
+                    </div>
+                  </FadedScroll>
+                  <Composer value={draft} onChange={setDraft} onSend={send} />
+                </>
               ) : (
                 <>
                   <PaneHeader title={PROJECT} place="cloud">
-                    <span {...props(styles.paneGlyph)}>
-                      <Icon name="agent" size={14} label="Coordinator" />
-                    </span>
+                    {projectGlyph("card")}
                   </PaneHeader>
-                  {}
                   <FadedScroll reversed>
                     <div {...props(styles.transcript)}>
                       {project.entries.map((entry, index) => (
@@ -358,7 +489,35 @@ export function ProjectsPage(): ReactElement {
               )}
             </section>
 
-            {panelOpen && (
+            {panelOpen && !home && selected !== undefined && (
+              <aside
+                aria-label="Project"
+                {...props(workbenchStyles.panel, workbenchStyles.panelOpen, styles.panel)}
+              >
+                <div {...props(workbenchStyles.toolbar, styles.panelToolbar)}>
+                  <span {...props(styles.panelTitle)}>Project</span>
+                  <span {...props(styles.panelFacts)}>
+                    {String(selected.working)} working · updated {selected.updated}
+                  </span>
+                </div>
+                <div {...props(styles.panelScroll)}>
+                  <div {...props(workbenchStyles.rail)}>
+                    <PanelSection title="Needs you">
+                      <p {...props(styles.quiet)}>{selected.ask ?? "Nothing right now."}</p>
+                    </PanelSection>
+                    <PanelSection title="Agents" meta={`${String(selected.working)} working`}>
+                      <p {...props(styles.quiet)}>
+                        {selected.working === 0
+                          ? "None running."
+                          : `Only ${PROJECT} plays a timeline on this board.`}
+                      </p>
+                    </PanelSection>
+                  </div>
+                </div>
+              </aside>
+            )}
+
+            {panelOpen && home && (
               <aside
                 aria-label="Project"
                 {...props(workbenchStyles.panel, workbenchStyles.panelOpen, styles.panel)}
@@ -462,6 +621,18 @@ export function ProjectsPage(): ReactElement {
             </span>
             <Button
               size="xs"
+              variant="ghost"
+              icon={copied ? "checkmark" : "copy"}
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(JSON.stringify(selection, null, 2))
+                  .then(() => setCopied(true))
+              }
+            >
+              {copied ? "Copied" : "Copy JSON"}
+            </Button>
+            <Button
+              size="xs"
               iconOnly
               icon={trayOpen ? "chevron-down" : "chevron-up-down"}
               aria-label={trayOpen ? "Collapse lab controls" : "Expand lab controls"}
@@ -502,6 +673,29 @@ export function ProjectsPage(): ReactElement {
                   disabled={step === STEPS.length - 1}
                   onClick={advance}
                 />
+              </div>
+              <div role="toolbar" aria-label="Switcher" {...props(styles.trayRow)}>
+                <Choice
+                  label="Switcher"
+                  value={switcher.placement}
+                  options={[
+                    { value: "rail", label: "Top of sidebar" },
+                    { value: "titlebar", label: "Titlebar" },
+                  ]}
+                  onChange={(placement) => setSwitcher({ ...switcher, placement })}
+                />
+                <Choice
+                  label="Mark"
+                  value={switcher.mark}
+                  options={[
+                    { value: "appearance", label: "Appearance" },
+                    { value: "folder", label: "Folder" },
+                  ]}
+                  onChange={(mark) => setSwitcher({ ...switcher, mark })}
+                />
+                <span {...props(styles.trayHint)}>
+                  <Kbd keys={["⌥", "P"]} plain /> switches
+                </span>
               </div>
               <div role="toolbar" aria-label="Tabs" {...props(styles.trayRow)}>
                 <Choice

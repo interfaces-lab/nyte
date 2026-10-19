@@ -129,6 +129,8 @@ export interface TerminalFacts {
   readonly theme: ThemeMode | null;
   readonly selection: boolean;
   readonly dragging: boolean;
+  /** Whether the terminal draws OSC 8 hyperlinks. */
+  readonly hyperlinks: boolean;
 }
 
 export interface Local {

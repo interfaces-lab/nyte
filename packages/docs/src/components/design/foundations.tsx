@@ -373,9 +373,7 @@ export function TypeScale() {
     <div {...props(styles.typeList)}>
       {textStyles.map((item) => (
         <div key={item.name} {...props(styles.typeRow)}>
-          <p {...props(item.style, styles.typeSample)}>
-            Sessions outlive the process that started them
-          </p>
+          <p {...props(item.style, styles.typeSample)}>Every session is a tree of commits</p>
           <div {...props(styles.typeMeta)}>
             <code>text.{item.name}</code>
             <Value>
@@ -402,7 +400,7 @@ export function TypeWeights() {
     <div {...props(styles.typeList)}>
       {weights.map((item) => (
         <div key={item.name} {...props(styles.typeRow)}>
-          <p {...props(text.lg, styles.weight(item.style))}>Built like git</p>
+          <p {...props(text.lg, styles.weight(item.style))}>Agent core</p>
           <div {...props(styles.typeMeta)}>
             <code>type.{item.name}</code>
             <Value>{declaredToken(item.token).value}</Value>

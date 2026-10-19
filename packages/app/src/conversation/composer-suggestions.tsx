@@ -522,6 +522,8 @@ export function useComposerSuggestions({
   const [activeOption, setActiveOption] = useState<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<SuggestionMenuState>();
   const [index, setIndex] = useState(0);
+  /** The first row is Enter's target from the start, but it only highlights once the pointer or keys move to a row. */
+  const [highlighted, setHighlighted] = useState(false);
   const popupId = useId();
   const deferredQuery = useDeferredValue(menu?.query ?? "");
 
@@ -602,12 +604,16 @@ export function useComposerSuggestions({
       menu.kind === next.kind &&
       menu.start === next.start;
 
-    if (!continuesCurrentToken) setIndex(0);
+    if (!continuesCurrentToken) {
+      setIndex(0);
+      setHighlighted(false);
+    }
     setMenu(next);
   };
 
   const clampedActivate = (nextIndex: number): void => {
     if (suggestions.length === 0) return;
+    setHighlighted(true);
     setIndex(Math.max(0, Math.min(suggestions.length - 1, nextIndex)));
   };
 
@@ -839,9 +845,11 @@ export function useComposerSuggestions({
                         {...props(
                           text.base,
                           composerStyles.suggestionItem,
+                          selected && highlighted && composerStyles.suggestionItemHighlighted,
                           startsGroup && composerStyles.suggestionGroupStart,
                         )}
                         onPointerMove={() => {
+                          setHighlighted(true);
                           if (!selected) setIndex(optionIndex);
                         }}
                         onPointerDown={(event) => event.preventDefault()}
@@ -872,6 +880,7 @@ export function useComposerSuggestions({
       </Popover.Root>
       <PreviewCard
         open={
+          highlighted &&
           activeSuggestion !== undefined &&
           activeSuggestion.kind !== "argument" &&
           activeOption !== null

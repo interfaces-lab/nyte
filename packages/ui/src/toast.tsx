@@ -1,5 +1,6 @@
 import { Toast } from "@base-ui/react/toast";
 import { create, props } from "@stylexjs/stylex";
+import { useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 
 import { focus } from "./styles/a11y.stylex.ts";
@@ -23,6 +24,8 @@ const GAP = 8;
 const PEEK = 12;
 
 const EXIT = "translateY(150%)";
+
+const COPIED_MS = 1500;
 
 const styles = create({
   viewport: {
@@ -99,14 +102,16 @@ const styles = create({
     },
   },
   content: {
-    display: "flex",
-    alignItems: "center",
-    gap: space.s2,
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto auto",
+    gridTemplateAreas: `"icon title inline close" ". description description description" ". actions actions actions"`,
+    alignItems: "start",
     boxSizing: "border-box",
     height: "100%",
     minHeight: toastSchema.minHeight,
-    padding: space.s3,
-    paddingInlineEnd: toastSchema.closeGutter,
+    paddingBlock: toastSchema.paddingBlock,
+    paddingInlineStart: space.s4,
+    paddingInlineEnd: toastSchema.inset,
     overflow: "clip",
     opacity: { default: 1, "[data-behind]": 0, "[data-expanded]": 1 },
     transitionProperty: "opacity",
@@ -116,26 +121,43 @@ const styles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
-  text: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: space.s0_5 },
+  withActionsBelow: { paddingBlockEnd: toastSchema.inset },
   title: {
+    gridArea: "title",
     margin: 0,
     fontWeight: type.weightMedium,
     fontVariantNumeric: "tabular-nums",
-    textWrap: "balance",
+    textWrap: "pretty",
+    overflowWrap: "anywhere",
   },
   description: {
+    gridArea: "description",
     margin: 0,
+    marginBlockStart: space.s0_5,
     color: role.contentSecondary,
     textWrap: "pretty",
+    overflowWrap: "anywhere",
   },
   icon: {
+    gridArea: "icon",
     display: "grid",
     placeItems: "center",
-    alignSelf: "flex-start",
-    flexShrink: 0,
     width: glyph.md,
     height: type.leadingBase,
+    marginInlineEnd: space.s2,
     color: role.contentSecondary,
+  },
+  inline: {
+    gridArea: "inline",
+    marginBlock: toastSchema.overhang,
+    marginInlineStart: space.s3,
+  },
+  actions: {
+    gridArea: "actions",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: space.s1_5,
+    marginBlockStart: space.s2_5,
   },
   action: {
     display: "inline-flex",
@@ -168,11 +190,26 @@ const styles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
+  copy: {
+    display: "inline-grid",
+    backgroundColor: "transparent",
+    color: {
+      default: role.contentSecondary,
+      ":hover": { [media.hover]: role.contentPrimary },
+    },
+  },
+  copyLabel: {
+    gridArea: "1 / 1",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.s1,
+  },
+  copied: { color: role.contentPrimary },
+  hidden: { visibility: "hidden" },
   close: {
-    position: "absolute",
-    zIndex: 1,
-    insetBlockStart: space.s2,
-    insetInlineEnd: space.s2,
+    gridArea: "close",
+    marginBlock: toastSchema.overhang,
+    marginInlineStart: space.s1_5,
     display: "grid",
     placeItems: "center",
     boxSizing: "border-box",
@@ -217,39 +254,74 @@ function copyText(title: ReactNode, description: ReactNode): string | undefined 
   return typeof description === "string" ? `${title}\n${description}` : title;
 }
 
+/** Says "Copied" in place for a moment; both labels share one cell so the width holds. */
+function CopyButton({
+  value,
+  inline,
+}: {
+  readonly value: string;
+  readonly inline: boolean;
+}): ReactElement {
+  const [copied, setCopied] = useState(false);
+  const reset = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(value);
+    clearTimeout(reset.current);
+    setCopied(true);
+    reset.current = setTimeout(() => setCopied(false), COPIED_MS);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      {...props(text.sm, styles.action, styles.copy, inline && styles.inline, focus.ring)}
+    >
+      <span {...props(styles.copyLabel, copied && styles.hidden)}>Copy error</span>
+      <span {...props(styles.copyLabel, styles.copied, !copied && styles.hidden)}>
+        <Icon name="checkmark" size={12} />
+        Copied
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Error toasts offer Copy. A lone button sits inline beside the title; a
+ * description or a second button moves the buttons under the text.
+ */
 function ToastList(): ReactElement[] {
   const { toasts } = Toast.useToastManager();
 
   return toasts.map((item) => {
-    const copy = copyText(item.title, item.description);
+    const copy = item.type === "error" ? copyText(item.title, item.description) : undefined;
     const status = item.type === undefined ? undefined : STATUS_ICON.get(item.type);
+    const buttonCount = Number(item.actionProps !== undefined) + Number(copy !== undefined);
+    const below = buttonCount > 1 || (buttonCount === 1 && item.description !== undefined);
+
+    const buttons = (
+      <>
+        <Toast.Action {...props(text.sm, styles.action, !below && styles.inline, focus.ring)} />
+        {copy !== undefined && <CopyButton value={copy} inline={!below} />}
+      </>
+    );
 
     return (
       <Toast.Root key={item.id} toast={item} data-slot="toast" {...props(styles.root)}>
-        <Toast.Content {...props(text.base, styles.content)}>
+        <Toast.Content {...props(text.base, styles.content, below && styles.withActionsBelow)}>
           {status !== undefined && (
             <span {...props(status.intent, styles.icon)}>
               <Icon name={status.name} size={16} />
             </span>
           )}
-          <div {...props(styles.text)}>
-            <Toast.Title {...props(text.base, styles.title)} />
-            <Toast.Description {...props(text.sm, styles.description)} />
-          </div>
-          {copy !== undefined && (
-            <button
-              type="button"
-              aria-label="Copy notification"
-              onClick={() => void navigator.clipboard.writeText(copy)}
-              {...props(text.sm, styles.action, focus.ring)}
-            >
-              Copy
-            </button>
-          )}
-          <Toast.Action {...props(text.sm, styles.action, focus.ring)} />
+          <Toast.Title {...props(text.base, styles.title)} />
+          {!below && buttons}
           <Toast.Close aria-label="Dismiss notification" {...props(styles.close, focus.ring)}>
             <Icon name="x" size={12} />
           </Toast.Close>
+          <Toast.Description {...props(text.sm, styles.description)} />
+          {below && <div {...props(styles.actions)}>{buttons}</div>}
         </Toast.Content>
       </Toast.Root>
     );

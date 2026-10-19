@@ -656,8 +656,11 @@ export interface HostBridge {
   /**
    * Where the host's listener is and the credential to reach it with. The
    * interface connects with `sdk.connect` and holds that one connection.
+   * With `fetch`, the URL only names the origin its requests carry.
    */
   endpoint(): Promise<HostEndpoint>;
+  /** Sends the interface's requests to the host in place of fetching `endpoint().url`: the desktop carries them over a MessagePort to its host process. Absent where the endpoint is fetched over the network. */
+  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
   /** Keeps the device token a pairing connect yielded, so the next start connects with it. Absent where the credential is not paired. */
   readonly remember?: (credential: CredentialSource) => void;
   /** Installed UI and fixed-pitch families, discovered without renderer font permissions. */

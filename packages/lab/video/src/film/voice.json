@@ -1,0 +1,601 @@
+{
+ "narrator": "Sarah",
+ "lines": {
+  "blocks": {
+   "text": "We all started with blocks.",
+   "duration": 1.886,
+   "words": [
+    {
+     "text": "We",
+     "start": 0,
+     "end": 0.215
+    },
+    {
+     "text": "all",
+     "start": 0.295,
+     "end": 0.535
+    },
+    {
+     "text": "started",
+     "start": 0.695,
+     "end": 1.015
+    },
+    {
+     "text": "with",
+     "start": 1.095,
+     "end": 1.175
+    },
+    {
+     "text": "blocks.",
+     "start": 1.255,
+     "end": 1.815
+    }
+   ]
+  },
+  "stacked": {
+   "text": "Stacked them up, took them apart,",
+   "duration": 2.115,
+   "words": [
+    {
+     "text": "Stacked",
+     "start": 0,
+     "end": 0.4
+    },
+    {
+     "text": "them",
+     "start": 0.48,
+     "end": 0.56
+    },
+    {
+     "text": "up,",
+     "start": 0.64,
+     "end": 0.8
+    },
+    {
+     "text": "took",
+     "start": 1.24,
+     "end": 1.36
+    },
+    {
+     "text": "them",
+     "start": 1.4,
+     "end": 1.44
+    },
+    {
+     "text": "apart,",
+     "start": 1.52,
+     "end": 2
+    }
+   ]
+  },
+  "world": {
+   "text": "and built worlds that were ours.",
+   "duration": 2.31,
+   "words": [
+    {
+     "text": "and",
+     "start": 0,
+     "end": 0.16
+    },
+    {
+     "text": "built",
+     "start": 0.24,
+     "end": 0.48
+    },
+    {
+     "text": "worlds",
+     "start": 0.64,
+     "end": 1.16
+    },
+    {
+     "text": "that",
+     "start": 1.2,
+     "end": 1.36
+    },
+    {
+     "text": "were",
+     "start": 1.48,
+     "end": 1.6
+    },
+    {
+     "text": "ours.",
+     "start": 1.68,
+     "end": 2.24
+    }
+   ]
+  },
+  "beneath": {
+   "text": "Every block stood on the one beneath it.",
+   "duration": 2.395,
+   "words": [
+    {
+     "text": "Every",
+     "start": 0,
+     "end": 0.24
+    },
+    {
+     "text": "block",
+     "start": 0.4,
+     "end": 0.72
+    },
+    {
+     "text": "stood",
+     "start": 0.88,
+     "end": 1.04
+    },
+    {
+     "text": "on",
+     "start": 1.12,
+     "end": 1.2
+    },
+    {
+     "text": "the",
+     "start": 1.24,
+     "end": 1.28
+    },
+    {
+     "text": "one",
+     "start": 1.44,
+     "end": 1.6
+    },
+    {
+     "text": "beneath",
+     "start": 1.68,
+     "end": 2
+    },
+    {
+     "text": "it.",
+     "start": 2.08,
+     "end": 2.32
+    }
+   ]
+  },
+  "harness": {
+   "text": "In the age of AI, everyone wants to build their own harness.",
+   "duration": 4.225,
+   "words": [
+    {
+     "text": "In",
+     "start": 0,
+     "end": 0.16
+    },
+    {
+     "text": "the",
+     "start": 0.24,
+     "end": 0.32
+    },
+    {
+     "text": "age",
+     "start": 0.4,
+     "end": 0.56
+    },
+    {
+     "text": "of",
+     "start": 0.64,
+     "end": 0.8
+    },
+    {
+     "text": "AI,",
+     "start": 0.96,
+     "end": 1.68
+    },
+    {
+     "text": "everyone",
+     "start": 1.76,
+     "end": 2.24
+    },
+    {
+     "text": "wants",
+     "start": 2.32,
+     "end": 2.56
+    },
+    {
+     "text": "to",
+     "start": 2.6,
+     "end": 2.64
+    },
+    {
+     "text": "build",
+     "start": 2.72,
+     "end": 2.88
+    },
+    {
+     "text": "their",
+     "start": 3,
+     "end": 3.12
+    },
+    {
+     "text": "own",
+     "start": 3.2,
+     "end": 3.44
+    },
+    {
+     "text": "harness.",
+     "start": 3.48,
+     "end": 4.4
+    }
+   ]
+  },
+  "factory": {
+   "text": "Billion-dollar companies with whole teams trying to build a software factory.",
+   "duration": 4.674,
+   "words": [
+    {
+     "text": "Billion-dollar",
+     "start": 0,
+     "end": 0.72
+    },
+    {
+     "text": "companies",
+     "start": 0.8,
+     "end": 1.28
+    },
+    {
+     "text": "with",
+     "start": 1.36,
+     "end": 1.52
+    },
+    {
+     "text": "whole",
+     "start": 1.6,
+     "end": 1.92
+    },
+    {
+     "text": "teams",
+     "start": 2,
+     "end": 2.48
+    },
+    {
+     "text": "trying",
+     "start": 2.56,
+     "end": 2.8
+    },
+    {
+     "text": "to",
+     "start": 2.88,
+     "end": 2.96
+    },
+    {
+     "text": "build",
+     "start": 3.04,
+     "end": 3.12
+    },
+    {
+     "text": "a",
+     "start": 3.2,
+     "end": 3.28
+    },
+    {
+     "text": "software",
+     "start": 3.36,
+     "end": 3.76
+    },
+    {
+     "text": "factory.",
+     "start": 3.92,
+     "end": 4.8
+    }
+   ]
+  },
+  "foundation": {
+   "text": "No need for a foundation.",
+   "duration": 1.631,
+   "words": [
+    {
+     "text": "No",
+     "start": 0,
+     "end": 0.16
+    },
+    {
+     "text": "need",
+     "start": 0.24,
+     "end": 0.48
+    },
+    {
+     "text": "for",
+     "start": 0.56,
+     "end": 0.64
+    },
+    {
+     "text": "a",
+     "start": 0.68,
+     "end": 0.72
+    },
+    {
+     "text": "foundation.",
+     "start": 0.8,
+     "end": 1.52
+    }
+   ]
+  },
+  "consistency": {
+   "text": "No need for consistency.",
+   "duration": 1.696,
+   "words": [
+    {
+     "text": "No",
+     "start": 0,
+     "end": 0.16
+    },
+    {
+     "text": "need",
+     "start": 0.32,
+     "end": 0.48
+    },
+    {
+     "text": "for",
+     "start": 0.56,
+     "end": 0.64
+    },
+    {
+     "text": "consistency.",
+     "start": 0.72,
+     "end": 1.6
+    }
+   ]
+  },
+  "rewrite": {
+   "text": "And AI will rewrite them all.",
+   "duration": 2.24,
+   "words": [
+    {
+     "text": "And",
+     "start": 0,
+     "end": 0.24
+    },
+    {
+     "text": "AI",
+     "start": 0.32,
+     "end": 0.72
+    },
+    {
+     "text": "will",
+     "start": 0.8,
+     "end": 1.04
+    },
+    {
+     "text": "rewrite",
+     "start": 1.12,
+     "end": 1.52
+    },
+    {
+     "text": "them",
+     "start": 1.64,
+     "end": 1.76
+    },
+    {
+     "text": "all.",
+     "start": 1.84,
+     "end": 2.16
+    }
+   ]
+  },
+  "wrong": {
+   "text": "We think that's the wrong direction.",
+   "duration": 2.085,
+   "words": [
+    {
+     "text": "We",
+     "start": 0,
+     "end": 0.21
+    },
+    {
+     "text": "think",
+     "start": 0.37,
+     "end": 0.53
+    },
+    {
+     "text": "that's",
+     "start": 0.65,
+     "end": 0.85
+    },
+    {
+     "text": "the",
+     "start": 0.93,
+     "end": 1.01
+    },
+    {
+     "text": "wrong",
+     "start": 1.09,
+     "end": 1.33
+    },
+    {
+     "text": "direction.",
+     "start": 1.41,
+     "end": 2.37
+    }
+   ]
+  },
+  "nyte": {
+   "text": "Nyte is the foundation.",
+   "duration": 1.676,
+   "words": [
+    {
+     "text": "Nyte",
+     "start": 0,
+     "end": 0.48
+    },
+    {
+     "text": "is",
+     "start": 0.56,
+     "end": 0.64
+    },
+    {
+     "text": "the",
+     "start": 0.72,
+     "end": 0.8
+    },
+    {
+     "text": "foundation.",
+     "start": 1.2,
+     "end": 1.6
+    }
+   ]
+  },
+  "parts": {
+   "text": "Your skills. Your subagents. Your MCP servers. Your canvases. Your models.",
+   "duration": 6.555,
+   "words": [
+    {
+     "text": "Your",
+     "start": 0,
+     "end": 0.16
+    },
+    {
+     "text": "skills.",
+     "start": 0.32,
+     "end": 0.88
+    },
+    {
+     "text": "Your",
+     "start": 1.28,
+     "end": 1.36
+    },
+    {
+     "text": "subagents.",
+     "start": 1.52,
+     "end": 2.24
+    },
+    {
+     "text": "Your",
+     "start": 2.68,
+     "end": 2.8
+    },
+    {
+     "text": "MCP",
+     "start": 2.96,
+     "end": 3.44
+    },
+    {
+     "text": "servers.",
+     "start": 3.52,
+     "end": 4.08
+    },
+    {
+     "text": "Your",
+     "start": 4.48,
+     "end": 4.56
+    },
+    {
+     "text": "canvases.",
+     "start": 4.64,
+     "end": 5.36
+    },
+    {
+     "text": "Your",
+     "start": 5.76,
+     "end": 5.84
+    },
+    {
+     "text": "models.",
+     "start": 5.92,
+     "end": 6.48
+    }
+   ]
+  },
+  "top": {
+   "text": "Build any harness on top.",
+   "duration": 1.866,
+   "words": [
+    {
+     "text": "Build",
+     "start": 0,
+     "end": 0.24
+    },
+    {
+     "text": "any",
+     "start": 0.48,
+     "end": 0.72
+    },
+    {
+     "text": "harness",
+     "start": 0.8,
+     "end": 1.2
+    },
+    {
+     "text": "on",
+     "start": 1.28,
+     "end": 1.36
+    },
+    {
+     "text": "top.",
+     "start": 1.44,
+     "end": 1.84
+    }
+   ]
+  },
+  "machine": {
+   "text": "It runs on your machine.",
+   "duration": 1.676,
+   "words": [
+    {
+     "text": "It",
+     "start": 0,
+     "end": 0.16
+    },
+    {
+     "text": "runs",
+     "start": 0.24,
+     "end": 0.48
+    },
+    {
+     "text": "on",
+     "start": 0.56,
+     "end": 0.72
+    },
+    {
+     "text": "your",
+     "start": 0.8,
+     "end": 0.96
+    },
+    {
+     "text": "machine.",
+     "start": 1.04,
+     "end": 1.92
+    }
+   ]
+  },
+  "open": {
+   "text": "It's open source.",
+   "duration": 1.267,
+   "words": [
+    {
+     "text": "It's",
+     "start": 0,
+     "end": 0.24
+    },
+    {
+     "text": "open",
+     "start": 0.32,
+     "end": 0.56
+    },
+    {
+     "text": "source.",
+     "start": 0.72,
+     "end": 1.2
+    }
+   ]
+  },
+  "own": {
+   "text": "Build your own.",
+   "duration": 1.038,
+   "words": [
+    {
+     "text": "Build",
+     "start": 0,
+     "end": 0.32
+    },
+    {
+     "text": "your",
+     "start": 0.4,
+     "end": 0.56
+    },
+    {
+     "text": "own.",
+     "start": 0.64,
+     "end": 0.96
+    }
+   ]
+  }
+ }
+}

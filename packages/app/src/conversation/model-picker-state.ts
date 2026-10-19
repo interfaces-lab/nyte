@@ -1,7 +1,3 @@
-/**
- * Pure rules the model picker and Settings › Models share. The host already
- * decided which models are listed; this file only formats and groups.
- */
 import type { ModelRef } from "@nyte-ai/sdk";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema/model";
@@ -33,7 +29,6 @@ export function modelRefFor(option: DesktopModelOption, fast: boolean) {
   };
 }
 
-/** The catalog's name for a session's model; the raw id until the catalog loads. */
 export function modelDisplayName(
   catalog: DesktopCatalog | undefined,
   model: ModelRef | undefined,
@@ -90,30 +85,26 @@ export function supportedThinkingLevel(
 
   if (requested !== undefined && levels.includes(requested)) return requested;
 
-  if (levels.includes("medium")) return "medium";
+  if (option !== undefined && levels.includes(option.defaultThinking))
+    return option.defaultThinking;
 
   return levels[0] ?? "off";
 }
 
 interface TriggerLabel {
   readonly name: string;
-  /** Muted after the name: the reasoning level when the model has a choice, then Fast when on. */
   readonly detail: string | undefined;
 }
 
 export function modelTriggerLabel(
   option: DesktopModelOption | undefined,
-  activeReasoning: ModelThinkingLevel | undefined,
-  fastOn = false,
+  activeReasoning: ModelThinkingLevel,
+  fastOn: boolean,
 ): TriggerLabel {
   if (option === undefined) return { name: "Choose a model", detail: undefined };
   const parts: string[] = [];
 
-  if (
-    activeReasoning !== undefined &&
-    activeReasoning !== "off" &&
-    thinkingLevelsFor(option).length > 1
-  ) {
+  if (activeReasoning !== "off" && thinkingLevelsFor(option).length > 1) {
     parts.push(THINKING_LABELS[activeReasoning]);
   }
 
@@ -127,11 +118,6 @@ interface PickerGroup {
   readonly options: readonly DesktopModelOption[];
 }
 
-/**
- * Listed models grouped in provider order, plus whatever the session already
- * runs on so the chip is never empty; the group's provider state explains
- * why an unlisted model is there.
- */
 export function pickerGroups(
   catalog: DesktopCatalog,
   current: DesktopModelOption | undefined,

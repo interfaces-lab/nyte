@@ -1,5 +1,3 @@
-import { useLayoutEffect, useRef } from "react";
-
 /** The 4×4 ordered-dither matrix the site's moon uses. */
 export const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
 
@@ -137,80 +135,5 @@ export function Moon({
       <path d={shadow} opacity={earthshine} />
       <path d={lit} />
     </svg>
-  );
-}
-
-export type Rgb = readonly [number, number, number];
-
-export function rgb(hex: string): Rgb {
-  const value = Number.parseInt(hex.slice(1), 16);
-
-  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
-}
-
-interface FieldProps {
-  readonly width: number;
-  readonly height: number;
-  readonly cell: number;
-  /** Colours from 0 to 1 along the field's value. */
-  readonly stops: readonly Rgb[];
-  /** The value at cell (x, y), from 0 to 1, before dithering between neighbouring stops. */
-  readonly value: (x: number, y: number) => number;
-  readonly gap?: number;
-}
-
-/**
- * A field of square cells, each dithered between the two palette stops around
- * its value. Skies, dissolves and the dawn all come from this one surface.
- */
-export function Field({ width, height, cell, stops, value, gap = 0.12 }: FieldProps) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const columns = Math.ceil(width / cell);
-  const rows = Math.ceil(height / cell);
-
-  useLayoutEffect(() => {
-    const context = canvas.current?.getContext("2d");
-
-    if (!context) return;
-
-    const image = context.createImageData(columns, rows);
-    const last = stops.length - 1;
-
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < columns; x++) {
-        const position = Math.min(Math.max(value(x / columns, y / rows), 0), 1) * last;
-        const lower = Math.min(Math.floor(position), last);
-        const fraction = position - lower;
-        const threshold = bayer[(y % 4) * 4 + (x % 4)];
-        const stop = fraction * 16 > threshold + 0.5 ? Math.min(lower + 1, last) : lower;
-        const colour = stops[stop] ?? stops[0] ?? [0, 0, 0];
-        const offset = (y * columns + x) * 4;
-        image.data[offset] = colour[0];
-        image.data[offset + 1] = colour[1];
-        image.data[offset + 2] = colour[2];
-        image.data[offset + 3] = 255;
-      }
-    }
-
-    context.putImageData(image, 0, 0);
-  });
-
-  return (
-    <div style={{ position: "absolute", inset: 0, width, height }}>
-      <canvas
-        ref={canvas}
-        width={columns}
-        height={rows}
-        style={{ width: columns * cell, height: rows * cell, imageRendering: "pixelated" }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `linear-gradient(to right, rgb(0 0 0 / ${gap}) 1px, transparent 1px), linear-gradient(to bottom, rgb(0 0 0 / ${gap}) 1px, transparent 1px)`,
-          backgroundSize: `${cell}px ${cell}px`,
-        }}
-      />
-    </div>
   );
 }

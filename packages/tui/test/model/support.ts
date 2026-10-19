@@ -54,7 +54,14 @@ export function blank(): State {
       scrollAcceleration: false,
       followUp: "steer",
     },
-    terminal: { width: 100, height: 32, theme: "dark", selection: false, dragging: false },
+    terminal: {
+      width: 100,
+      height: 32,
+      theme: "dark",
+      selection: false,
+      dragging: false,
+      hyperlinks: false,
+    },
     chat: null,
   });
 }

@@ -49,9 +49,17 @@ export const slider = defineConsts({
   thumb: "var(--nyte-slider-thumb)",
 });
 
+/**
+ * Every part of a toast's first row centres on the title's first line box.
+ * `paddingBlock` makes a one-line toast exactly `minHeight`; controls are
+ * `target.min` tall and overhang that line box by `overhang` above and below,
+ * which leaves them `inset` from the edge.
+ */
 export const toast = defineConsts({
   minHeight: "var(--nyte-toast-min-height)",
-  closeGutter: "var(--nyte-toast-close-gutter)",
+  paddingBlock: "var(--nyte-toast-padding-block)",
+  inset: "var(--nyte-toast-inset)",
+  overhang: "var(--nyte-toast-overhang)",
 });
 
 export const clipboardPreview = defineConsts({

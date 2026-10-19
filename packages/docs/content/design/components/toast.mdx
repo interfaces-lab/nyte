@@ -15,8 +15,9 @@ import { Toaster, toast } from "@nyte-ai/ui/toast";
 - Call `toast.add` anywhere, including outside React.
 - Set `type` to `"success"`, `"error"`, or `"warning"` for a status icon.
 - Adding with an existing `id` updates that toast and refreshes its timer.
-- String titles get a Copy button. A string description joins the copied text on a new line.
+- Error toasts with a string title get a Copy error button. A string description joins the copied text on a new line.
 - Action buttons use `actionProps`. Call `toast.close(id)` in the handler to close the notification.
+- A single button sits beside the title. A description or a second button moves the buttons below the text.
 
 ## Examples
 
@@ -156,5 +157,5 @@ Each state accepts a string or an options object. `success` and `error` also acc
 - The viewport is a region named "Notifications" with `aria-live="polite"`.
 - `priority: "high"` announces a toast urgently without moving focus.
 - F6 focuses the notification stack. Hovering or focusing it pauses automatic dismissal.
-- Every close button is named "Dismiss notification". Every Copy button is named "Copy notification".
+- Every close button is named "Dismiss notification". Every Copy button is named "Copy error", then "Copied" for a moment after copying.
 - Loading toasts have no timer but can still be closed.

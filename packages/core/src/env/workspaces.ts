@@ -2,6 +2,7 @@ import { asId, SdkError } from "@nyte-ai/schema";
 import type {
   Activation,
   AddOutcome,
+  ChangeSource,
   DiffOptions,
   EnvironmentIdentity,
   FileStatus,
@@ -40,6 +41,7 @@ import {
   put,
   readSession,
   STALE,
+  threadStart,
 } from "../store/session.ts";
 import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
@@ -330,17 +332,14 @@ export function workspaceHandle(
     },
     jobs: createJobs(kernel, context, id),
     job: (job) => jobHandle(kernel, job),
-    async changes(run) {
+    async changes(source) {
       const found = await snapshots();
-      const range = await runSnapshots(kernel.store, id, run);
+      const range = await changeRange(kernel.store, id, source, found);
 
-      return found.diff(
-        range?.from ?? (await found.before(run)),
-        range?.to ?? (await found.after(run)),
-      );
+      return found.diff(range.from, range.to);
     },
-    patches(run, paths, options) {
-      return streamWorkspacePatches(kernel, { workspace: id, run, paths, options, snapshots });
+    patches(source, paths, options) {
+      return streamWorkspacePatches(kernel, { workspace: id, source, paths, options, snapshots });
     },
     files: async () => (await capabilities()).files,
     git: async () => (await capabilities()).git,
@@ -413,21 +412,19 @@ async function* streamWorkspacePatches(
   kernel: Kernel,
   input: {
     readonly workspace: WorkspaceId;
-    readonly run: RunId;
+    readonly source: ChangeSource;
     readonly paths: readonly string[];
     readonly options: DiffOptions | undefined;
     snapshots(): Promise<SnapshotsApi>;
   },
 ): AsyncGenerator<PatchSet> {
-  const { run, options } = input;
+  const { source, options } = input;
   const snapshots = await input.snapshots();
-  const range = await runSnapshots(kernel.store, input.workspace, run);
-  const from = range?.from ?? (await snapshots.before(run));
-  const to = range?.to ?? (await snapshots.after(run));
+  const { from, to } = await changeRange(kernel.store, input.workspace, source, snapshots);
   let statuses: Promise<ReadonlyMap<string, FileStatus> | null> | null = null;
 
   const caches = kernel.workspaceState.patches;
-  const key = JSON.stringify([input.workspace, run, options?.ignoreWhitespace === true]);
+  const key = JSON.stringify([input.workspace, source, options?.ignoreWhitespace === true]);
   const previous = caches.get(key);
 
   const current: PatchCache =
@@ -564,6 +561,75 @@ function limiter(size: number): <T>(work: () => Promise<T>) => Promise<T> {
       if (active < size) run();
       else queue.push(run);
     });
+}
+
+async function changeRange(
+  store: StoreConnection,
+  workspace: WorkspaceId,
+  source: ChangeSource,
+  snapshots: SnapshotsApi,
+): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId }> {
+  switch (source.kind) {
+    case "run": {
+      const range = await runSnapshots(store, workspace, source.run);
+
+      return {
+        from: range?.from ?? (await snapshots.before(source.run)),
+        to: range?.to ?? (await snapshots.after(source.run)),
+      };
+    }
+
+    case "session":
+      return sessionSnapshots(store, source.session, snapshots);
+    default: {
+      const _exhaustive: never = source;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * Where a session's changes start ({@link threadStart}) and stop:
+ * the workspace as it is now while a run is live, else the last snapshot of
+ * the run that ended last.
+ */
+async function sessionSnapshots(
+  store: StoreConnection,
+  session: SessionId,
+  snapshots: SnapshotsApi,
+): Promise<{ readonly from: SnapshotId; readonly to: SnapshotId }> {
+  const [found, from] = await Promise.all([
+    readSession(store, session),
+    threadStart(store, session),
+  ]);
+
+  if (found === null || from === null)
+    throw new SdkError(
+      "unavailable",
+      `No run of session ${session} has snapshotted its workspace.`,
+    );
+
+  const [live] = await liveRuns(store, session);
+
+  if (live !== undefined) return { from, to: await snapshots.after(live.record.view.id) };
+
+  const [last] = found.record.heads
+    .flatMap((head) => (head.lastRun === null ? [] : [head.lastRun]))
+    .toSorted((left, right) => right.endedAt - left.endedAt);
+
+  if (last === undefined) return { from, to: from };
+
+  const ended = await load(
+    store,
+    await store.refs.get(endedRunRef(session, last.id)),
+    decodeRunRecord,
+  );
+
+  return {
+    from,
+    to: ended?.record.lastSnapshot ?? ended?.record.snapshot ?? (await snapshots.after(last.id)),
+  };
 }
 
 /**

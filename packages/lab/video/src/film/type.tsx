@@ -1,15 +1,10 @@
-import "@fontsource/geist-pixel";
 import "@fontsource-variable/geist";
-import "@fontsource-variable/geist-mono";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties } from "react";
 import { Easing, interpolate, useCurrentFrame } from "remotion";
 import { ditherStyle, palette } from "./dither";
 
-export const font = {
-  pixel: "'Geist Pixel', 'Geist Variable', sans-serif",
-  sans: "'Geist Variable', sans-serif",
-  mono: "'Geist Mono Variable', monospace",
-} as const;
+/** The film's one typeface. */
+export const font = { sans: "'Geist Variable', sans-serif" } as const;
 
 export const ease = Easing.bezier(0.16, 1, 0.3, 1);
 
@@ -52,13 +47,13 @@ interface WordsProps {
 export function Words({
   words,
   size,
-  family = font.pixel,
+  family = font.sans,
   color = palette.white,
-  weight = 400,
+  weight = 500,
   exit,
   align = "left",
   leading = 1.02,
-  tracking = "-0.01em",
+  tracking = "-0.02em",
   style,
 }: WordsProps) {
   const frame = useCurrentFrame();
@@ -128,50 +123,4 @@ export function Words({
       })}
     </div>
   );
-}
-
-/** Words from one voice line, each shown on the frame it is spoken. */
-export function sentence(text: string, cues: readonly number[], breaks: readonly number[] = []) {
-  return text.split(" ").map((part, index) => ({
-    text: part,
-    from: cues[index] ?? cues[cues.length - 1] ?? 0,
-    breaks: breaks.includes(index),
-  }));
-}
-
-interface WheelProps {
-  readonly items: readonly ReactNode[];
-  /** Which item shows; a fraction is how far the next one has rolled in. */
-  readonly position: number;
-  readonly height: number;
-  readonly align?: CSSProperties["textAlign"];
-}
-
-/** A slot window: items stacked in a column that scrolls up through it. */
-export function Wheel({ items, position, height, align }: WheelProps) {
-  return (
-    <span style={{ display: "inline-block", height, overflow: "hidden", verticalAlign: "bottom" }}>
-      <span
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          transform: `translateY(${-position * height}px)`,
-        }}
-      >
-        {items.map((item, index) => (
-          <span
-            key={index}
-            style={{ height, lineHeight: `${height}px`, whiteSpace: "pre", textAlign: align }}
-          >
-            {item}
-          </span>
-        ))}
-      </span>
-    </span>
-  );
-}
-
-/** How many of `at` cues have rolled by `frame`, eased across each roll. */
-export function rolled(frame: number, at: readonly number[], duration = 12) {
-  return at.reduce((sum, from) => sum + progress(frame, from, duration), 0);
 }

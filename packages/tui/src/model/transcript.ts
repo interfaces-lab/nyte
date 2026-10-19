@@ -1,7 +1,7 @@
 import type { Execution, Failure, Message, SessionView, TurnId, TurnInfo } from "@nyte-ai/sdk";
 import { openQuestions } from "@nyte-ai/plugin/question/schema";
 import { showsTool } from "@nyte-ai/plugin/client/presentation";
-import type { PartMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { MIN_REPORTED_DURATION_MS } from "../lib/constants.ts";
 import { landingMessages, pendingReports } from "../lib/view-helpers.ts";
 import type { ShellJob, TranscriptLocal } from "./state.ts";
@@ -13,7 +13,6 @@ export type RowKey = string;
 /** One transcript row. A row carries its content, and an unchanged row keeps its identity across frames. */
 export type Row =
   | { readonly kind: "turn"; readonly key: RowKey; readonly turn: TurnModel }
-  | { readonly kind: "note"; readonly key: RowKey; readonly message: PartMessage }
   | { readonly kind: "landing"; readonly key: RowKey; readonly message: UserMessage }
   | { readonly kind: "shell"; readonly key: RowKey; readonly job: ShellJob };
 
@@ -53,8 +52,6 @@ export type TurnStatus =
 const STOPPED: Failure = { class: "aborted", message: "Run stopped." };
 
 const NO_BLOCKS: readonly Message[] = [];
-
-const NO_NOTES: readonly PartMessage[] = [];
 
 const AWAITS_DELEGATE = new WeakMap<Message, boolean>();
 
@@ -143,7 +140,6 @@ function turnRows(view: SessionView): readonly Row[] {
   const first = Math.min(firstReachedTurn(view.messages, indexes), view.turns.length - 1);
   const count = view.turns.length - Math.max(0, first);
   const blocks = Array.from({ length: count }, (): Message[] | null => null);
-  const notes = Array.from({ length: count }, (): PartMessage[] | null => null);
   let current: TurnId | null = null;
   let slot = -1;
 
@@ -159,14 +155,6 @@ function turnRows(view: SessionView): readonly Row[] {
     }
 
     if (slot < 0) continue;
-
-    if (message.kind === "part" && message.role === "note") {
-      const held = notes[slot] ?? [];
-      held.push(message);
-      notes[slot] = held;
-      continue;
-    }
-
     const held = blocks[slot] ?? [];
     held.push(message);
     blocks[slot] = held;
@@ -178,8 +166,6 @@ function turnRows(view: SessionView): readonly Row[] {
     const info = view.turns[index];
 
     if (info === undefined) continue;
-
-    for (const note of notes[index - first] ?? NO_NOTES) rows.push(messageRow(note));
     const turn = turnModel(info, blocks[index - first] ?? NO_BLOCKS, view);
 
     if (turn.blocks.length === 0 && (info.state.kind === "ended" || info.run === null)) continue;
@@ -303,16 +289,11 @@ function turnRow(turn: TurnModel): Row {
   return row;
 }
 
-function messageRow(message: PartMessage | UserMessage): Row {
+function messageRow(message: UserMessage): Row {
   const known = MESSAGE_ROWS.get(message);
 
   if (known !== undefined) return known;
-
-  const row: Row =
-    message.kind === "part"
-      ? { kind: "note", key: `note:${message.id}`, message }
-      : { kind: "landing", key: `landing:${message.id}`, message };
-
+  const row: Row = { kind: "landing", key: `landing:${message.id}`, message };
   MESSAGE_ROWS.set(message, row);
 
   return row;
@@ -360,8 +341,8 @@ export function turnStatus(
         ? { kind: "waiting", question: true }
         : { kind: "working", activity: null, startedAt };
     case "working": {
-      if (info.run === null && blocks.every((message) => message.kind === "user"))
-        return { kind: "unanswered" };
+      if (info.run === null)
+        return blocks.some((message) => message.kind === "user") ? { kind: "unanswered" } : null;
 
       if (live && execution.kind === "retrying")
         return {

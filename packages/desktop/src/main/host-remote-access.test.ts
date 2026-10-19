@@ -86,14 +86,12 @@ test("a missing or wrong token is refused", async () => {
 
 test("stopping closes the listener while the desktop keeps its own", async () => {
   const { made, address } = await serving();
-  const local = await made.host.call(1, "host.endpoint", undefined);
-
   await made.host.call(1, "host.remote.stop", undefined);
 
   await assert.rejects(fetch(`${address}/sessions.list`, { method: "POST", body: "{}" }));
   assert.equal((await made.host.call(1, "host.remote.state", undefined)).kind, "off");
-  const connection = await sdk.connect(local);
+  const connection = await made.connect();
   connections.push(connection);
-  assert.equal(connection.hostId, local.expect?.hostId);
+  assert.equal(connection.hostId, (await made.host.host()).hostId);
   assert.ok(made.events.some((event) => event.kind === "remote_access_changed"));
 });

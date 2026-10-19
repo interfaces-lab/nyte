@@ -18,6 +18,7 @@ import {
   BROWSER_BOUNDS_CHANNEL,
   BROWSER_FOCUS_CHANNEL,
   CALL_CHANNEL,
+  HOST_PORT_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
   FIRST_WINDOW_ARGUMENT,
@@ -389,19 +390,12 @@ async function installStagedCli(staged: Promise<string>): Promise<void> {
   }
 }
 
-function rendererOrigin(url: string): string {
-  const parsed = new URL(url);
-
-  return `${parsed.protocol}//${parsed.host}`;
-}
-
 function startHost(): HostProcess {
   return new HostProcess(
     join(import.meta.dirname, "host-entry.js"),
     {
       home,
       version: app.getVersion(),
-      rendererOrigin: rendererOrigin(rendererUrl),
       account: account === undefined ? null : account.state(),
       openDelayMs: hostOpenDelayMs,
     },
@@ -537,6 +531,18 @@ function registerIpc(): void {
     } catch {
       return;
     }
+  });
+
+  ipcMain.on(HOST_PORT_CHANNEL, (event, nonce: unknown) => {
+    senderWindow(event);
+
+    if (typeof nonce !== "string") return;
+    void startedHost()
+      .openPort()
+      .then((port) => {
+        if (event.sender.isDestroyed()) port?.close();
+        else event.sender.postMessage(HOST_PORT_CHANNEL, nonce, port === undefined ? [] : [port]);
+      });
   });
 
   ipcMain.handle(CALL_CHANNEL, async (event, request: CallRequest) => {

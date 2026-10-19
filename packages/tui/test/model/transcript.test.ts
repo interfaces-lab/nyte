@@ -30,17 +30,17 @@ function shell(id: string, startedAt: number): ShellJob {
 }
 
 describe("rows", () => {
-  test("turns in view order, notes before their turn, shells by start time; queued messages are not rows", () => {
+  test("turns in view order with their notes in place, shells by start time; queued messages are not rows", () => {
     const view = buildView((v) =>
       v
         .turn("t1", (t) => t.at(1_000).user("a").text("b").ended("completed"))
         .turn("t2", (t) =>
           t
             .at(5_000)
-            .part("compaction", { tokensBefore: 10, summary: null }, { id: "n1", role: "note" })
             .user("c")
             .text("d")
-            .ended("completed"),
+            .ended("completed")
+            .part("compaction", { tokensBefore: 10, summary: null }, { id: "n1", role: "note" }),
         )
         .pending("later", { schedule: { kind: "next-turn", reason: "run-ended" } })
         .live("run-t2"),
@@ -48,8 +48,12 @@ describe("rows", () => {
 
     const model = deriveTranscript(view, [shell("s1", 4_000)], LOCAL, null);
 
-    expect(model.rows.map((row) => row.key)).toEqual(["turn:t1", "shell:s1", "note:n1", "turn:t2"]);
-    expect(turnsIn(model).map((turn) => turn.blocks.length)).toEqual([2, 2]);
+    expect(model.rows.map((row) => row.key)).toEqual(["turn:t1", "shell:s1", "turn:t2"]);
+    expect(turnsIn(model)[1]?.blocks.map((message) => message.id)).toEqual([
+      expect.any(String),
+      expect.any(String),
+      "n1",
+    ]);
   });
 
   test("a turn with nothing landed yet is not a row: an ended one, or a queued message's", () => {

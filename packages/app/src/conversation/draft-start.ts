@@ -10,7 +10,6 @@ import { selectedModelOption } from "./model-picker-state.ts";
 import { startComposerChat } from "./composer-send.ts";
 import type { ComposerSendPlan } from "./composer-send.ts";
 
-/** The connection once the host answers, or undefined as soon as the draft stops holding `waiting`. */
 async function connectedWhileWaiting(
   store: SessionViewStateStore,
   draftId: string,
@@ -29,16 +28,6 @@ async function connectedWhileWaiting(
   }
 }
 
-/**
- * Starts a held draft's chat with its first message once the host answers,
- * and settles as soon as the send is withdrawn. The draft, not the screen
- * that sent it, owns the send: a remount, a move to another pane or a park
- * changes nothing here, and the chat opens in whichever pane shows the
- * draft when it starts. The model and folder are read once the host
- * answers, so a model the last run recorded but the host no longer lists is
- * refused in place, never sent. The draft's id names the chat, so a retry
- * after a failed start is the same start.
- */
 export async function startDraft(
   store: SessionViewStateStore,
   actions: Pick<PaneActions, "openDraftChat">,
@@ -50,11 +39,12 @@ export async function startDraft(
 
   if (connection === undefined || !store.commitSend(draftId, waiting)) return;
   const id = asId<"session">(draftId);
-  const composer = store.readDraft(draftId)?.composer;
+  const draft = store.readDraft(draftId);
+  const composer = draft?.composer;
 
   try {
     const catalog = await readStartCatalog();
-    const model = catalog.defaults?.model;
+    const model = draft?.choice?.model ?? catalog.defaults?.model;
 
     const listed = selectedModelOption(
       catalog.models.filter((option) => option.listed),
@@ -91,7 +81,7 @@ export async function startDraft(
       {
         id,
         ...(workspace !== undefined && { workspace }),
-        configuration: { model },
+        configuration: { model, thinking: draft?.choice?.thinking },
       },
       plan,
     );

@@ -9,6 +9,7 @@
     "build": "vite build",
     "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.node.json",
     "video": "remotion studio video/src/index.ts --public-dir video/public",
+    "video:voice": "node video/voice.ts",
     "video:render": "remotion render video/src/index.ts nyte video/out/nyte.mp4 --public-dir video/public --crf=16",
     "video:ending": "remotion render video/src/index.ts ending video/out/ending.mp4 --public-dir video/public --crf=16"
   },

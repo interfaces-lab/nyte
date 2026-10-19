@@ -116,6 +116,8 @@ export interface Kernel {
 
   readonly resolveConfiguration: ConfigurationResolver;
 
+  readonly rememberChoice: (choice: Configuration, scope: "model" | "thinking") => Promise<void>;
+
   readonly modelSteers: (model: ModelRef) => boolean;
 
   readonly waits: WaitRegistry;

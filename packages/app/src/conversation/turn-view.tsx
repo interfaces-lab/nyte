@@ -22,7 +22,6 @@ import { drawPart } from "../client-plugins.tsx";
 import { useTranscriptControls, useTranscriptScope } from "./transcript.tsx";
 import type { ModelThinkingLevel } from "@nyte-ai/schema/model";
 import { isPart, branchSummary, compaction } from "@nyte-ai/plugin/client";
-import type { ConversationTurn } from "../view-helpers.ts";
 import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../workbench/change-tree.ts";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
@@ -154,12 +153,6 @@ export interface BranchModelChoice {
 export interface BranchModelPicker extends BranchModelChoice {
   readonly catalog: DesktopCatalog | undefined;
 }
-
-type ConversationTurnId = ConversationTurn["info"]["id"];
-
-export type TurnChangesTarget =
-  | { readonly kind: "turn"; readonly turnId: ConversationTurnId }
-  | { readonly kind: "file"; readonly turnId: ConversationTurnId; readonly path: string };
 
 interface UserEditState extends BranchModelChoice {
   readonly document: ComposerDocumentState;
@@ -454,14 +447,13 @@ function HistoryDisclosure({
   );
 }
 
-function TurnChangesCard({
+export function ChangesCard({
   files,
-  onReview,
-  onOpenFile,
+  onOpenChanges,
 }: {
   readonly files: SessionView["changes"];
-  readonly onReview: () => void;
-  readonly onOpenFile: (path: string) => void;
+  /** Opens the chat's changes, at `path` when given. */
+  readonly onOpenChanges: (path: string | null) => void;
 }): ReactElement {
   const [expanded, setExpanded] = useState(false);
   const title = filesChangedLabel(files.length);
@@ -472,7 +464,12 @@ function TurnChangesCard({
     <section aria-label={title} {...props(turnStyles.changesCard)}>
       <div {...props(turnStyles.changesHeader)}>
         <span {...props(turnStyles.changesTitle)}>{title}</span>
-        <Button variant="plain" size="sm" onClick={onReview} xstyle={turnStyles.changesReview}>
+        <Button
+          variant="plain"
+          size="sm"
+          onClick={() => onOpenChanges(null)}
+          xstyle={turnStyles.changesReview}
+        >
           Review
         </Button>
       </div>
@@ -484,7 +481,7 @@ function TurnChangesCard({
                 render={
                   <Row.Primary
                     aria-label={`Open ${file.path} in Changes`}
-                    onClick={() => onOpenFile(file.path)}
+                    onClick={() => onOpenChanges(file.path)}
                   >
                     <Row.Leading xstyle={turnStyles.changesFileIcon}>
                       <FileTypeIcon path={file.path} />
@@ -631,7 +628,6 @@ export const TurnItemView = memo(function TurnItemView({
   cwd,
   onEditUser,
   branchModel,
-  onOpenChanges,
 }: {
   row: TurnItemRow;
   running: boolean;
@@ -643,7 +639,6 @@ export const TurnItemView = memo(function TurnItemView({
     choice: BranchModelChoice,
   ) => Promise<void>;
   branchModel?: BranchModelPicker;
-  onOpenChanges: (target: TurnChangesTarget) => void;
 }): ReactElement | null {
   switch (row.kind) {
     case "part":
@@ -697,14 +692,6 @@ export const TurnItemView = memo(function TurnItemView({
       );
     }
 
-    case "changes":
-      return running ? null : (
-        <TurnChangesCard
-          files={row.files}
-          onReview={() => onOpenChanges({ kind: "turn", turnId: row.turn })}
-          onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: row.turn, path })}
-        />
-      );
     default: {
       const _exhaustive: never = row;
 

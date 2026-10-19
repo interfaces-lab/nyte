@@ -98,6 +98,7 @@ export type {
   Capability,
   CatalogGeneration,
   ChangeSet,
+  ChangeSource,
   CommandCompletion,
   CommandInfo,
   CommandOutcome,

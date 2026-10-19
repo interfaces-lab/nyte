@@ -1,4 +1,3 @@
-/** A new chat in a pane: its draft composer, until the first message starts the chat. */
 import { threadStyles } from "./thread.stylex.ts";
 import { PaneHeader } from "./pane-header.tsx";
 import { props } from "@stylexjs/stylex";
@@ -36,26 +35,14 @@ import {
 import { activePane } from "../layout/pane-layout.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
-import {
-  useCatalog,
-  useHostState,
-  useMentionFiles,
-  useSetPreference,
-  useWorkspaceCatalog,
-} from "../queries.ts";
-import { pickerDefaults } from "../preference-projection.ts";
-import { selectedModelOption } from "../conversation/model-picker-state.ts";
+import { useCatalog, useHostState, useMentionFiles, useWorkspaceCatalog } from "../queries.ts";
+import { modelRefFor, selectedModelOption } from "../conversation/model-picker-state.ts";
 import { useReleaseStartupReads } from "../startup.ts";
 
 const NO_COMMANDS: readonly CommandInfo[] = [];
 
 type BlankViewUpdate = (current: BlankViewState) => BlankViewState;
 
-/**
- * A pane's new-chat draft and its writer. A detached composer can still
- * commit; its writes belong to the draft it showed, so a write for another
- * draft is dropped.
- */
 function useBlankViewBinding(
   paneId: PaneId,
 ): readonly [ChatDraft, (update: BlankViewUpdate) => void] {
@@ -84,13 +71,6 @@ function useBlankViewBinding(
   return [state, update];
 }
 
-/**
- * A new chat: the draft composer until the first message starts the chat
- * and the pane moves to it once its first view arrived. The draft's status
- * says what became of its send: held until the host connects, starting, or
- * refused or failed with the draft editable again. A failed start's raw
- * cause is diagnostic only: it rides in `title`, never in body copy.
- */
 export function BlankConversation({
   paneId,
   inputRef,
@@ -125,10 +105,13 @@ export function BlankConversation({
     [inputRef],
   );
 
-  const setPreference = useSetPreference();
-  const defaults = catalog.data?.defaults;
+  const { choice } = viewState;
 
-  const selected = selectedModelOption(catalog.data?.models ?? [], defaults?.model);
+  const selected = selectedModelOption(
+    catalog.data?.models ?? [],
+    choice?.model ?? catalog.data?.defaults?.model,
+  );
+
   const current = selected?.option;
 
   const start = (
@@ -265,22 +248,33 @@ export function BlankConversation({
               <ModelPicker
                 catalog={catalog.data}
                 current={current}
-                thinkingLevel={defaults?.thinkingLevel}
+                thinkingLevel={choice?.thinking}
                 fast={selected?.fast === true}
                 disabled={held}
                 open={pickerOpen}
                 onOpenChange={setPickerOpen}
                 onChange={(change) => {
-                  const model = pickerDefaults(
-                    {
-                      model: current,
-                      thinkingLevel: defaults?.thinkingLevel,
-                      fast: selected?.fast === true,
-                    },
-                    change,
-                  );
+                  if (change.kind === "model") {
+                    const model = { provider: change.option.provider, id: change.option.id };
+                    updateViewState((state) => ({
+                      ...state,
+                      choice: { model, thinking: undefined },
+                    }));
 
-                  if (model !== undefined) setPreference.mutate(model);
+                    return;
+                  }
+
+                  if (current === undefined) return;
+                  const fast = change.kind === "fast" ? change.enabled : selected?.fast === true;
+
+                  updateViewState((state) => ({
+                    ...state,
+                    choice: {
+                      model: modelRefFor(current, fast),
+                      thinking:
+                        change.kind === "thinking" ? change.thinkingLevel : state.choice?.thinking,
+                    },
+                  }));
                 }}
               />
             }

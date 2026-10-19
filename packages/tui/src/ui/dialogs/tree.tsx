@@ -1,14 +1,12 @@
 import { TextAttributes } from "@opentui/core";
-import type { ScrollBoxRenderable } from "@opentui/core";
 import type { JSX } from "@opentui/solid";
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { useApp } from "../../app/context.tsx";
 import { GLYPHS, keycap } from "../../lib/constants.ts";
 import type { CliTheme } from "../../lib/theme.ts";
 import { displayWidth, truncateDisplay } from "../../lib/width.ts";
 import type { TreeDialog, TreeRow } from "../../model/dialogs/tree.ts";
 import { selectedIndex, treeRows } from "../../model/dialogs/tree.ts";
-import { revealRow } from "./list.tsx";
 import {
   hint,
   joinHints,
@@ -115,6 +113,7 @@ function TreeRowView(props: {
 }
 
 export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
+  const app = useApp();
   const width = useBodyWidth();
   const cap = useRowCap();
   const tree = createMemo(() => props.dialog.tree);
@@ -127,6 +126,12 @@ export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
   );
 
   const selected = createMemo(() => selectedIndex(props.dialog, rows()));
+
+  const start = createMemo(() =>
+    Math.max(0, Math.min(selected() - Math.floor(cap() / 2), rows().length - cap())),
+  );
+
+  const shown = createMemo(() => rows().slice(start(), start() + cap()));
 
   const empty = () => {
     const loaded = tree();
@@ -160,9 +165,6 @@ export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
     return `  (${String(position)}/${String(total)})${mode}`;
   };
 
-  let scroll: ScrollBoxRenderable | undefined;
-  createEffect(on(selected, (index) => revealRow(scroll, index)));
-
   return (
     <Panel title="Chat Tree" hints={hints}>
       <Note text={help} />
@@ -173,29 +175,35 @@ export function TreeView(props: { readonly dialog: TreeDialog }): JSX.Element {
         placeholder="type to filter"
       />
       <Show when={rows().length > 0} fallback={<Note text={empty().text} tone={empty().tone} />}>
-        <scrollbox
-          ref={(box) => {
-            scroll = box;
-            const reveal = () => revealRow(box, selected());
-            box.viewport.on("resize", reveal);
-            onCleanup(() => box.viewport.off("resize", reveal));
+        <box
+          flexDirection="column"
+          flexShrink={0}
+          onMouseScroll={(event) => {
+            const direction = event.scroll?.direction;
+
+            if (direction !== "up" && direction !== "down") return;
+            event.preventDefault();
+            event.stopPropagation();
+            app.dispatch({
+              kind: "dialog",
+              command: {
+                kind: "key",
+                name: direction === "up" ? "picker.previous" : "picker.next",
+              },
+            });
           }}
-          height={Math.min(rows().length, cap())}
-          scrollX={false}
-          scrollY
-          scrollbarOptions={{ visible: false }}
         >
-          <For each={rows()}>
+          <For each={shown()}>
             {(row, index) => (
               <TreeRowView
                 row={row}
-                index={index()}
-                selected={index() === selected()}
+                index={start() + index()}
+                selected={start() + index() === selected()}
                 width={width()}
               />
             )}
           </For>
-        </scrollbox>
+        </box>
       </Show>
       <Note text={footer()} />
     </Panel>

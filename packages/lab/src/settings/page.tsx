@@ -318,7 +318,7 @@ function Sources({ setting }: { readonly setting: Setting }): ReactElement {
   );
 }
 
-function SettingRow({
+export function SettingRow({
   setting,
   annotated,
 }: {

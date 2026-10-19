@@ -561,6 +561,59 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## snapcn (`snapcndev/snapcn`)
+
+- Repository: https://github.com/snapcndev/snapcn
+- What: the launch film's Logo Flicker and Check Cycle scenes
+  (`packages/lab/video/src/snap-cn/`) are adapted from snapcn's registry
+  components at commit `47ee435f17d85f74abf48b095b40d64fc9616fb0`.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) 2026 Sri Nath (snap-cn)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Naybr, "Copyright Free Gameplay (No Commentary) - Minecraft Survival"
+
+- Source: https://www.youtube.com/watch?v=GPsGyv5zTlM, by Naybr (youtube.com/@Naybr)
+- What: the launch film opens on four shots from 0:30 to 2:30 of this video
+  (`clip` in `packages/lab/video/src/film/media.ts`). The footage is not in
+  the repository; `packages/lab/video/README.md` says how to fetch it.
+
+License: Creative Commons Attribution, as published on YouTube. The author
+allows use, modification, redistribution and monetisation, with this credit
+wherever the gameplay is used: "Gameplay – youtube.com/@Naybr".
+
+## Photographs in the launch film
+
+- Source: Wikimedia Commons; each file's author and source page are listed in
+  `photos` in `packages/lab/video/src/film/media.ts`.
+- What: eleven photographs the launch film cuts between. They are not in the
+  repository.
+
+License: every one is public domain or CC0. None requires attribution.
+
 ## Design references
 
 These credits record design sources. They do not grant a license to the

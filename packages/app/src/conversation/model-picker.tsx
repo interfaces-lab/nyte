@@ -1,10 +1,3 @@
-/**
- * The composer's model chip. The menu holds the current model's parameters:
- * Fast when the model offers it, Reasoning when it has more than one level,
- * and the model itself in a searchable submenu grouped by provider. The host
- * decides which models are listed (Settings › Models); the picker also keeps
- * whatever the session already runs on.
- */
 import {
   Autocomplete,
   AutocompleteGroup,
@@ -100,13 +93,11 @@ interface ModelPickerProps {
   fast: boolean;
   disabled?: boolean;
   loading?: boolean;
-  /** Whether the menu is open, for a parent that opens it from elsewhere; the picker keeps its own otherwise. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onChange: (change: ModelPickerChange) => void;
 }
 
-/** A model is an Autocomplete item inside a submenu, so its press must close the outer menu. */
 function ModelPickerView({
   catalog,
   current,
@@ -149,7 +140,7 @@ function ModelPickerView({
   const level = supportedThinkingLevel(current, thinkingLevel);
   const fastAvailable = current?.fastMode.kind === "available";
   const fastOn = fastAvailable && fast;
-  const label = modelTriggerLabel(current, thinkingLevel === undefined ? undefined : level, fastOn);
+  const label = modelTriggerLabel(current, level, fastOn);
   const hasParameters = fastAvailable || levels.length > 1;
 
   return (
@@ -250,7 +241,7 @@ function ModelPickerView({
                 onChange({
                   kind: "model",
                   option,
-                  thinkingLevel: supportedThinkingLevel(option, level),
+                  thinkingLevel: option.defaultThinking,
                 });
                 setOpen(false);
               }}

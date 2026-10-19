@@ -63,6 +63,7 @@ Only the reader moves Reading back to Following, through rules 3 and 4. Saving o
 
 25. Scroll-to-bottom shows when the view is more than 60px from the end.
 26. A live step-group preview follows its own tail. It pauses when the reader scrolls inside it and resumes after 10s or once the reader reaches its end.
+27. Older messages load a page at a time while the view is within three screen heights of the top. Pages keep loading until the view leaves that range or the first message shows. Loading them never moves the view.
 
 ## Open decisions
 

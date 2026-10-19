@@ -1,4 +1,4 @@
-import type { GitScope, RunId, SessionId, WorkspaceId } from "@nyte-ai/sdk";
+import type { ChangeSource, GitScope, SessionId, WorkspaceId } from "@nyte-ai/sdk";
 
 export const keys = {
   host: ["host"] as const,
@@ -26,8 +26,11 @@ export const keys = {
   ) => ["git", "changes", workspace, scope, ignoreWhitespace, revision] as const,
   gitLog: (workspace: WorkspaceId | undefined, limit: number, cursor: string | undefined) =>
     ["git", "log", workspace, limit, cursor] as const,
-  runChanges: (workspace: WorkspaceId | undefined, run: RunId | undefined, live: boolean) =>
-    ["git", "run", workspace, run, live ? "live" : "settled"] as const,
+  recordedChanges: (
+    workspace: WorkspaceId | undefined,
+    source: ChangeSource | undefined,
+    live: boolean,
+  ) => ["git", "recorded", workspace, source, live ? "live" : "settled"] as const,
   mentionFiles: ["files", "mentions"] as const,
   workspaceFile: (path: string) => ["files", "document", path] as const,
   workspaceSearch: (workspace: string, input: { readonly query: string } | undefined) =>

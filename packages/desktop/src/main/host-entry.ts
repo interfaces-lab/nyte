@@ -8,6 +8,9 @@ import type {
 } from "@nyte-ai/plugin/core/canvas-preview";
 import { openSecret, sealSecret } from "@nyte-ai/host/credentials";
 import { defaultSecrets } from "@nyte-ai/host/secrets";
+import type { MessagePortMain } from "electron";
+import { servePort } from "../shared/host-port.ts";
+import type { PortEnd } from "../shared/host-port.ts";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { readConnectConfig } from "./connect-config.ts";
@@ -96,9 +99,8 @@ function open(options: HostProcessOptions): void {
     version: options.version,
     models,
     usageScan: new UsageScanWorker(home, new URL("./usage-worker.js", import.meta.url)),
-    rendererOrigin: options.rendererOrigin,
     openDelayMs: options.openDelayMs,
-    endpoint: options.endpoint,
+    token: options.token,
     remoteAccessPlugins: { cloudflare: new CloudflareTunnelPlugin({ home: join(home, ".nyte") }) },
     connect,
     keepAwake: (awake) => post({ kind: "awake", awake }),
@@ -135,7 +137,9 @@ function open(options: HostProcessOptions): void {
 
   host.autostartConnect();
 
-  port.on("message", ({ data }: { readonly data: MainMessage }) => {
+  port.on(
+    "message",
+    ({ data, ports }: { readonly data: MainMessage; readonly ports: MessagePortMain[] }) => {
     switch (data.kind) {
       case "ask":
       case "abort":
@@ -163,6 +167,11 @@ function open(options: HostProcessOptions): void {
         });
 
         return;
+      case "port":
+        for (const received of ports)
+          servePort(mainPortEnd(received), (request) => host.fetch(request));
+
+        return;
       case "open":
         return;
       default: {
@@ -172,6 +181,18 @@ function open(options: HostProcessOptions): void {
       }
     }
   });
+}
+
+function mainPortEnd(port: MessagePortMain): PortEnd {
+  return {
+    open({ message, closed }) {
+      port.on("message", (event) => message(event.data));
+      port.once("close", closed);
+      port.start();
+    },
+    post: (message) => port.postMessage(message),
+    close: () => port.close(),
+  };
 }
 
 port.once("message", ({ data }: { readonly data: MainMessage }) => {

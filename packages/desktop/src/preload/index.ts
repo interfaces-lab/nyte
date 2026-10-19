@@ -10,6 +10,7 @@ import {
   CALL_CHANNEL,
   CANVAS_SHELL_ARGUMENT,
   HOST_EVENT_CHANNEL,
+  HOST_PORT_CHANNEL,
   FIRST_WINDOW_ARGUMENT,
   MACHINE_NAME_ARGUMENT,
   THEME_PREFERENCE_CHANNEL,
@@ -106,6 +107,7 @@ const bridge = {
       return () => ipcRenderer.removeListener(APP_MENU_COMMAND_CHANNEL, wrapped);
     },
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
+    openPort: (nonce: string) => ipcRenderer.send(HOST_PORT_CHANNEL, nonce),
     endpoint: none("host.endpoint"),
     state: none("host.state"),
     restore: object("host.restore"),
@@ -182,6 +184,11 @@ const bridge = {
 } satisfies DesktopBridge;
 
 contextBridge.exposeInMainWorld("nyte", bridge);
+
+/** Only Nyte main sends HOST_PORT_CHANNEL: the nonce a window asked with and, unless the host is stopped, its port. */
+ipcRenderer.on(HOST_PORT_CHANNEL, (event, nonce: string) => {
+  window.postMessage({ channel: HOST_PORT_CHANNEL, nonce }, "*", event.ports);
+});
 
 let windowZoomFactor: number | undefined;
 

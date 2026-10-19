@@ -101,7 +101,7 @@ export const ModelInfoType = Type.Object({
   name: Type.String(),
   reasoning: Type.Boolean(),
   thinking: Type.Array(ThinkingType),
-  /** The level a chat on this model thinks at when it names none. */
+  /** The level a chat on this model thinks at when it names none: in the catalog, the level last chosen for this model while it still accepts it, else its lowest level above off. */
   defaultThinking: ThinkingType,
   fast: nullable(ModelRefType),
   contextWindow: Type.Number(),

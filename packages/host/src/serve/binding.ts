@@ -384,9 +384,9 @@ export function bindConnection(connection: Connection, options: BindingOptions):
     "mcp.remove": ({ workspace: id, server, scope }) => workspace(id).mcp.remove(server, scope),
     "workspace.update": ({ workspace: id, patch }) => workspace(id).update(patch),
     "workspace.reload": ({ workspace: id }) => workspace(id).reload(),
-    "workspace.changes": ({ workspace: id, run }) => workspace(id).changes(run),
-    "workspace.patches": async ({ workspace: id, run, paths, options }) =>
-      mapped(workspace(id).patches(run, paths, options), patchesWire),
+    "workspace.changes": ({ workspace: id, source }) => workspace(id).changes(source),
+    "workspace.patches": async ({ workspace: id, source, paths, options }) =>
+      mapped(workspace(id).patches(source, paths, options), patchesWire),
     "workspace.files": async ({ workspace: id }) => capabilityWire(await workspace(id).files()),
     "workspace.git": async ({ workspace: id }) => capabilityWire(await workspace(id).git()),
     "workspace.github": async ({ workspace: id }) => capabilityWire(await workspace(id).github()),

@@ -302,7 +302,7 @@ async function spawnShell(connection: Connection, workspacePath: string | null):
   return { job, workspace, printed: [], length: 0 };
 }
 
-/** The workspace a terminal opened at `path` runs in: the open folder there, or the host's Home for none. */
+/** The workspace a terminal opened at `path` runs in: the available folder there, or the host's Home for none. A path can hold stale registrations of a replaced folder beside the live one. */
 async function findShellWorkspace(
   connection: Connection,
   path: string | null,
@@ -316,7 +316,8 @@ async function findShellWorkspace(
   }
 
   const found = (await connection.workspaces.list()).find(
-    (workspace) => pathOfWorkspace(workspace) === path,
+    (workspace) =>
+      pathOfWorkspace(workspace) === path && workspace.availability.kind === "available",
   );
 
   if (found === undefined) throw new Error(`${path} is not open on this host`);

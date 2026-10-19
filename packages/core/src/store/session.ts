@@ -15,6 +15,7 @@ import type {
   Revision,
   RunId,
   SessionId,
+  SnapshotId,
 } from "@nyte-ai/schema";
 import type { Kernel } from "../contract/kernel.ts";
 import {
@@ -156,6 +157,25 @@ export async function liveRuns(
   const runs = await Promise.all(refs.map((ref) => load(store, ref, decodeRunRecord)));
 
   return runs.flatMap((run) => (run === null ? [] : [run]));
+}
+
+/** The snapshot a session's changes count from: the first snapshot of its earliest run that took one, or null before any did. */
+export async function threadStart(
+  store: StoreConnection,
+  session: SessionId,
+): Promise<SnapshotId | null> {
+  const refs = await Promise.all([
+    store.refs.list(`${sessionRef(session)}/runs/`),
+    store.refs.list(`${sessionRef(session)}/ended/`),
+  ]);
+
+  const runs = await Promise.all(refs.flat().map((ref) => load(store, ref, decodeRunRecord)));
+
+  const [first] = runs
+    .flatMap((run) => (run === null || run.record.snapshot === null ? [] : [run.record]))
+    .toSorted((left, right) => left.view.startedAt - right.view.startedAt);
+
+  return first?.snapshot ?? null;
 }
 
 export async function liveRun(

@@ -20,21 +20,27 @@ export function stage(scene: Scene): Stage {
   const settledWork =
     lastTurn !== undefined && displayTranscriptParts(lastTurn.messages).at(-1)?.kind === "step";
 
-  const changes = scene.turns.flatMap((turn) =>
-    turn.messages.flatMap((message): SessionView["changes"] => {
-      if (!showsTool(message) || message.state.phase !== "settled") return [];
-      const { changes: changed, name } = message.state;
+  const changes = [
+    ...new Map(
+      scene.turns
+        .flatMap((turn) =>
+          turn.messages.flatMap((message): SessionView["changes"] => {
+            if (!showsTool(message) || message.state.phase !== "settled") return [];
+            const { changes: changed, name } = message.state;
 
-      if (changed === null) return [];
+            if (changed === null) return [];
 
-      return changed.paths.map((path) => ({
-        path,
-        status: name === "write" && changed.removed === 0 ? "added" : "modified",
-        added: changed.added,
-        removed: changed.removed,
-      }));
-    }),
-  );
+            return changed.paths.map((path) => ({
+              path,
+              status: name === "write" && changed.removed === 0 ? "added" : "modified",
+              added: changed.added,
+              removed: changed.removed,
+            }));
+          }),
+        )
+        .map((change) => [change.path, change]),
+    ).values(),
+  ];
 
   const rows = transcriptRows({
     loading: scene.loading === true,

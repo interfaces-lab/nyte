@@ -17,6 +17,9 @@ export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
 
 export const WINDOW_PAINTED_CHANNEL = "nyte:window-painted";
 
+/** The window sends a nonce; main answers on the same channel with that nonce and a MessagePort to the host, or no port when the host is stopped. */
+export const HOST_PORT_CHANNEL = "nyte:host-port";
+
 export const CANVAS_SHELL_ARGUMENT = "--nyte-canvas-shell";
 
 /** This computer's name, which main reads when it creates a window so the first frame never asks. */
@@ -97,7 +100,10 @@ export type DesktopBridge = {
   /** The interface drew its first frame, so main can show the window without a blank flash. */
   windowPainted(): void;
   readonly canvasShell?: NyteBridge["canvasShell"];
-  readonly host: Pick<
+  readonly host: {
+    /** Asks main for a port to the host; it arrives as a window `message` with `{ channel: HOST_PORT_CHANNEL, nonce }`. */
+    openPort(nonce: string): void;
+  } & Pick<
     HostBridge,
     | "onMenuCommand"
     | "setThemePreference"

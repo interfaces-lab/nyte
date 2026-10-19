@@ -28,7 +28,7 @@ export const styles = create({
     display: "flex",
     flexDirection: "column",
     width: "100%",
-    height: "100%",
+    height: "100dvh",
     minHeight: 0,
     backgroundColor: role.sidebarMaterial,
     color: role.contentPrimary,
@@ -45,6 +45,8 @@ export const styles = create({
   stage: { display: "flex", flex: 1, minHeight: 0 },
   rail: { width: sidebar.width },
   railScroll: { paddingBlockEnd: 56 },
+  railSwitcher: { paddingInline: sidebar.gutter, paddingBlockStart: space.s1_5 },
+  titlebarSwitcher: { display: "flex", flex: 1, minWidth: 0, paddingInlineEnd: 4 },
   card: {
     display: "flex",
     flex: 1,

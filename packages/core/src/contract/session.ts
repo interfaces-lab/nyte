@@ -125,7 +125,7 @@ export interface Sessions {
     readonly limit?: number;
   }): AsyncIterable<readonly SessionInfo[]>;
 
-  /** Starts a chat with its first message. One commit creates the session and admits the message, so no session exists without one; until then a client holds a draft. `id` is minted when absent and names the chat, its first message and its receipt. Pass it to key a draft or to retry: the same id and input return the same start. Other input under that id, or an id naming an existing chat, is refused as invalid. Resolves once the session's before_send hooks decided the message. A refusal, a failing hook, or a stop before the decision removes the session and throws. */
+  /** Starts a chat with its first message. One commit creates the session and admits the message, so no session exists without one; until then a client holds a draft. A person's client's `configuration` is remembered as `Head.configure` remembers it. `id` is minted when absent and names the chat, its first message and its receipt. Pass it to key a draft or to retry: the same id and input return the same start. Other input under that id, or an id naming an existing chat, is refused as invalid. Resolves once the session's before_send hooks decided the message. A refusal, a failing hook, or a stop before the decision removes the session and throws. */
   start(input: {
     readonly id?: SessionId;
     readonly name?: string;
@@ -151,6 +151,7 @@ export interface Head {
 
   send(content: UserContent, options?: SendOptions): Promise<SendReceipt>;
 
+  /** A model switch without a level lands on the new model's `defaultThinking`. From a person's client, not a tool call or plugin, an accepted model becomes the default and an accepted level its model's `defaultThinking`. */
   configure(patch: ConfigurationPatch): Promise<ConfigureOutcome>;
 
   view(options?: ViewOptions): Promise<SessionView>;

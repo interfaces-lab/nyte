@@ -1,8 +1,15 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import { chatPane, clearComposer, composer, openChat, openNewChat } from "./ui.ts";
+import { chatPane, clearComposer, composer, messages, openChat, openNewChat, send } from "./ui.ts";
 
 test.use({ chapter: "composer" });
+
+const DOT_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
 
 test("the composer journey", async ({ desktop }) => {
   const { page } = desktop;
@@ -80,4 +87,33 @@ test("the composer journey", async ({ desktop }) => {
     await page.keyboard.press("Escape");
     await expect(picker).toHaveCount(0);
   });
+});
+
+test("an attached image starts a new chat with its first message", async ({ desktop }) => {
+  const { page, application, home } = desktop;
+  const folder = join(home, "project");
+  await mkdir(folder);
+  await application.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+  }, folder);
+  await page.keyboard.press("ControlOrMeta+o");
+  await openNewChat(page);
+  await expect(page.getByRole("button", { name: "project", exact: true })).toBeVisible();
+  const pane = chatPane(page);
+  const chooser = page.waitForEvent("filechooser");
+  await pane.getByRole("button", { name: "Add to message" }).click();
+  await page.getByRole("menuitem", { name: "Attach Files…" }).click();
+  await (await chooser).setFiles({ name: "dot.png", mimeType: "image/png", buffer: DOT_PNG });
+  await expect(
+    pane
+      .getByRole("list", { name: "Image attachments" })
+      .getByRole("button", { name: "Preview dot.png" }),
+  ).toBeVisible();
+  await send(page, "Describe the dot");
+  const log = messages(page);
+  await expect(log.getByRole("paragraph")).toHaveText([
+    "Describe the dot",
+    `Echo: Describe the dot[File Image 1, ${String(DOT_PNG.byteLength)} bytes, image/png]`,
+  ]);
+  await expect(log.getByRole("img", { name: "Image 1" })).toBeVisible();
 });

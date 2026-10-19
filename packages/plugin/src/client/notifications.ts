@@ -3,8 +3,9 @@ import type { Plugin } from "@nyte-ai/plugin/client";
 
 /**
  * Tells the user when a run ends in any session this client can see:
- * finished, stopped, or failed with the reason. Sessions a parent spawned
- * stay quiet, so a delegation does not ring once per child.
+ * finished, or failed with the reason. A stopped run stays quiet because
+ * someone asked for it, and so do sessions a parent spawned, so a delegation
+ * does not ring once per child.
  *
  * @category plugins
  * @since 0.1.0
@@ -21,9 +22,8 @@ export default {
 
       if (end.kind === "completed")
         api.ui.notify({ title, message: "Run finished", level: "info" });
-      else if (end.kind === "stopped")
-        api.ui.notify({ title, message: "Run stopped", level: "warning" });
-      else api.ui.notify({ title, message: `Run failed: ${line(end)}`, level: "error" });
+      else if (end.kind === "failed")
+        api.ui.notify({ title, message: `Run failed: ${line(end)}`, level: "error" });
     },
   },
 } satisfies Plugin;

@@ -7,8 +7,6 @@ import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import type { ConversationTurn } from "@nyte-ai/app/view-helpers.ts";
 
-const openChanges = (): void => {};
-
 export function TurnRows({
   turn,
   running,
@@ -37,7 +35,6 @@ export function TurnRows({
       case "agents":
       case "response":
       case "failure":
-      case "changes":
         return [row];
       default:
         return [];
@@ -52,10 +49,9 @@ export function TurnRows({
         <TurnItemView
           key={row.messageId}
           row={row}
-          running={(row.kind === "step" || row.kind === "changes") && row.trailing && running}
+          running={row.kind === "step" && row.trailing && running}
           density={density}
           cwd={cwd}
-          onOpenChanges={openChanges}
         />
       ))}
     </div>

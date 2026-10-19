@@ -676,8 +676,10 @@
       "--nyte-switch-width-md",
       "--nyte-target-gap",
       "--nyte-target-min",
-      "--nyte-toast-close-gutter",
-      "--nyte-toast-min-height"
+      "--nyte-toast-inset",
+      "--nyte-toast-min-height",
+      "--nyte-toast-overhang",
+      "--nyte-toast-padding-block"
     ],
     "ui/src/styles/tokens.stylex.ts displayMode": ["--nyte-popup-material-filter"],
     "ui/src/styles/tokens.stylex.ts elevation": [
@@ -1005,7 +1007,7 @@
     ],
     "ui/src/styles/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
     "ui/src/styles/schema.stylex.ts target": ["gap", "min"],
-    "ui/src/styles/schema.stylex.ts toast": ["closeGutter", "minHeight"],
+    "ui/src/styles/schema.stylex.ts toast": ["inset", "minHeight", "overhang", "paddingBlock"],
     "app/src/theme/schema.stylex.ts conversation": [
       "composerExpandedRadius",
       "composerInset",

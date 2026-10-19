@@ -1,6 +1,6 @@
 import type { CredentialInfo, Models, Provider } from "@nyte-ai/ai";
-import { ModelRefType } from "@nyte-ai/schema";
-import type { ModelRef } from "@nyte-ai/schema";
+import { ModelRefType, ThinkingType } from "@nyte-ai/schema";
+import type { Json, ModelRef, Thinking } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import type { CredentialStatus, ModelState } from "../contract/host.ts";
 import { decodeKvValue } from "../contract/records.ts";
@@ -21,6 +21,46 @@ interface Slot {
 const CHECK_INTERVAL_MS = 60_000;
 
 export const MODEL_PREFERENCE = kvRef("host", "models", "default");
+
+const THINKING_PREFERENCES = kvRef("host", "models", "thinking/");
+
+export function thinkingPreferenceRef(model: ModelRef): string {
+  return `${THINKING_PREFERENCES}${model.provider}/${model.id}`;
+}
+
+export async function readThinkingPreference(
+  store: StoreConnection,
+  model: ModelRef,
+): Promise<Thinking | undefined> {
+  const ref = await store.refs.get(thinkingPreferenceRef(model));
+
+  return ref === null || ref.target === null
+    ? undefined
+    : decodeThinking(await store.objects.get(ref.target));
+}
+
+export async function readThinkingPreferences(
+  store: StoreConnection,
+): Promise<ReadonlyMap<string, Thinking>> {
+  const refs = await store.refs.list(THINKING_PREFERENCES);
+
+  const entries = await Promise.all(
+    refs.map(async (ref): Promise<readonly (readonly [string, Thinking])[]> => {
+      if (ref.target === null) return [];
+      const level = decodeThinking(await store.objects.get(ref.target));
+
+      return level === undefined ? [] : [[ref.name.slice(THINKING_PREFERENCES.length), level]];
+    }),
+  );
+
+  return new Map(entries.flat());
+}
+
+function decodeThinking(object: Json | null): Thinking | undefined {
+  const value = decodeKvValue(object);
+
+  return Value.Check(ThinkingType, value) ? value : undefined;
+}
 
 /** Reads the saved model without checking a provider. */
 export async function readModelSelection(store: StoreConnection): Promise<ModelRef | null> {

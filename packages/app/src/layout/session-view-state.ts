@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/sdk";
+import type { ModelRef, SessionId, Thinking } from "@nyte-ai/sdk";
 import { asId } from "@nyte-ai/schema";
 import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
@@ -41,21 +41,16 @@ interface SessionViewState {
   readonly split: SplitViewState | undefined;
 }
 
-export interface BlankViewState {
-  readonly composer: ComposerViewState;
+export interface DraftChoice {
+  readonly model: ModelRef;
+  readonly thinking: Thinking | undefined;
 }
 
-/**
- * Where a draft's first message stands. `waiting` holds it until the host
- * connects, and a cancel withdraws it; `starting` has gone to the host and
- * can no longer be withdrawn. `refused` and `failed` take edits again and
- * say why the last send started no chat; a refusal the user can fix by
- * choosing another model says so. Each send gets its own `waiting` object:
- * the start goes ahead only while the draft still holds that one, so a
- * cancel or a newer send withdraws it. The send belongs to the draft, not to
- * a pane: moving or parking the draft keeps it. Never persisted; a relaunch
- * shows the draft editable.
- */
+export interface BlankViewState {
+  readonly composer: ComposerViewState;
+  readonly choice: DraftChoice | undefined;
+}
+
 export type DraftStatus =
   | { readonly kind: "editing" }
   | { readonly kind: "waiting" }
@@ -67,7 +62,6 @@ export type DraftStatus =
     }
   | { readonly kind: "failed"; readonly cause: string };
 
-/** How a send ended without a chat. */
 export type DraftFailure = Extract<DraftStatus, { kind: "refused" } | { kind: "failed" }>;
 
 export interface ChatDraft extends BlankViewState {
@@ -104,7 +98,6 @@ function draftHasContent(draft: BlankViewState): boolean {
   return composerHasContent(draft.composer);
 }
 
-/** A draft lives in exactly one slot: active or parked under one pane. */
 interface PaneDraftState {
   active: ChatDraft;
   readonly parked: Map<string, ChatDraft>;
@@ -164,10 +157,6 @@ const attachmentsSchema = Type.Array(
   ),
 );
 
-/**
- * Images live under their own key, by draft and session id. Typing rewrites
- * only the text snapshot, and a store too full for an image keeps the text.
- */
 const persistedImagesSchema = Type.Object(
   {
     drafts: Type.Record(Type.String({ minLength: 1 }), attachmentsSchema),
@@ -222,6 +211,7 @@ function hydrateDraft(draft: PersistedChatDraft, images: PersistedImages | undef
     id: draft.id,
     updatedAt: draft.updatedAt,
     composer: composerView(draft.composer, images?.drafts[draft.id]),
+    choice: undefined,
     status: EDITING,
   };
 }
@@ -268,7 +258,6 @@ function readStored(persistence: Persistence, key: string): string | null {
   }
 }
 
-/** A denied or full local store must not drop the in-memory draft. */
 function writeStored(persistence: Persistence, key: string, value: string): void {
   try {
     persistence.storage.setItem(key, value);
@@ -286,7 +275,7 @@ export class SessionViewStateStore {
   readonly #persistence: Persistence | undefined;
   #publishTimer: ReturnType<typeof setTimeout> | undefined;
   #savedImages = "";
-  #revision = 0;
+  #listed: readonly ChatDraft[] | undefined;
 
   constructor(persistence?: Persistence) {
     this.#persistence = persistence;
@@ -301,7 +290,12 @@ export class SessionViewStateStore {
     return () => this.#listeners.delete(listener);
   };
 
-  readonly getSnapshot = (): number => this.#revision;
+  /** The drafts as of the last publication, the same array until the next one. */
+  readonly listedDrafts = (): readonly ChatDraft[] => {
+    this.#listed ??= this.drafts();
+
+    return this.#listed;
+  };
 
   readSession(sessionId: SessionId, paneId: PaneId): SessionViewState {
     return this.#sessions.get(sessionId) ?? defaultSessionViewState(paneId);
@@ -423,16 +417,10 @@ export class SessionViewStateStore {
     return true;
   }
 
-  /** A draft wherever it is, active or parked. */
   readDraft(draftId: string): ChatDraft | undefined {
     return this.#findDraft(draftId)?.draft;
   }
 
-  /**
-   * Holds the pane's draft, as sent, for the start of its chat; the draft
-   * stays on screen under its id until the chat opens. Refused while the
-   * draft already waits on a send or its start is under way.
-   */
   beginSend(paneId: PaneId, composer: ComposerViewState): DraftStatus | undefined {
     const drafts = this.#draftState(paneId);
     const current = drafts.active;
@@ -452,7 +440,6 @@ export class SessionViewStateStore {
     return status;
   }
 
-  /** The host connected while the draft still held `waiting`: its start goes ahead and can no longer be withdrawn. */
   commitSend(draftId: string, waiting: DraftStatus): boolean {
     if (this.#findDraft(draftId)?.draft.status !== waiting) return false;
     this.#setStatus(draftId, { kind: "starting" });
@@ -460,13 +447,11 @@ export class SessionViewStateStore {
     return true;
   }
 
-  /** Withdraws a send that still waits for the host: the draft takes edits again, as it was sent. */
   cancelSend(draftId: string): void {
     if (this.#findDraft(draftId)?.draft.status.kind !== "waiting") return;
     this.#setStatus(draftId, EDITING);
   }
 
-  /** The send started no chat: the draft takes edits again, as it was sent, and says why. */
   failSend(draftId: string, failure: DraftFailure): void {
     this.#setStatus(draftId, failure);
   }
@@ -510,6 +495,7 @@ export class SessionViewStateStore {
   #createDraft(): ChatDraft {
     return {
       composer: DEFAULT_COMPOSER_VIEW_STATE,
+      choice: undefined,
       id: crypto.randomUUID(),
       updatedAt: Date.now(),
       status: EDITING,
@@ -589,7 +575,6 @@ export class SessionViewStateStore {
     this.#persistImages(persistence);
   }
 
-  /** Attachment ids stand for the image set; while it holds, its megabytes stay unwritten. */
   #persistImages(persistence: Persistence): void {
     const images: PersistedImages = { drafts: {}, sessions: {} };
 
@@ -626,7 +611,7 @@ export class SessionViewStateStore {
     }
 
     this.#persist();
-    this.#revision += 1;
+    this.#listed = undefined;
 
     for (const listener of this.#listeners) listener();
   }

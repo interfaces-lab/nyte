@@ -14,7 +14,6 @@ import {
   openBlank,
   readSelection,
   refreshWorkspace,
-  rememberThinking,
   toSelection,
 } from "./session.ts";
 import { startWithPrompt } from "./submit.ts";
@@ -132,7 +131,6 @@ export async function configure(effect: Of<"configure">, context: HandlerContext
   if (result.kind === "failed") throw new Error(result.message);
 }
 
-/** Settles a blank chat's model and thinking level and remembers them as the next chat's defaults; the first send starts the chat with them. */
 async function configureBlank(
   effect: Of<"configure">,
   current: Selection,
@@ -149,16 +147,6 @@ async function configureBlank(
   await ports.firstFrame.write(selection).catch((error: unknown) => {
     ports.log.write("effect", error);
   });
-
-  if (patch.model !== undefined)
-    await ports.host.setDefaultModel(patch.model).catch((error: unknown) => {
-      ports.log.write("effect", error);
-    });
-
-  if (patch.thinkingLevel !== undefined)
-    await rememberThinking(patch.thinkingLevel, context).catch((error: unknown) => {
-      ports.log.write("effect", error);
-    });
 }
 
 export async function checkTrust(
@@ -199,7 +187,6 @@ export async function setTrust(effect: Of<"set-trust">, context: HandlerContext)
     await loadFolderCatalog(effect.workspace, context);
 }
 
-/** Reads the plugin commands and skills a new chat in `workspace` would offer, for the blank chat there. */
 export async function loadFolderCatalog(
   workspace: WorkspaceId,
   context: HandlerContext,
@@ -225,7 +212,6 @@ export async function applySetting(
     throw new Error(`Could not set ${effect.label}`);
 }
 
-/** Runs a plugin command in the followed chat, or in a blank chat's folder, where a command answering with a prompt starts the chat with it. */
 export async function runCommand(
   effect: Of<"run-command">,
   context: HandlerContext,
@@ -250,7 +236,6 @@ export async function runCommand(
   else settleCommand(outcome, effect, context);
 }
 
-/** Asks the followed chat, or a blank chat's folder, what may follow a command's name, for the menu still showing that text. */
 export async function completeCommand(
   effect: Of<"complete-command">,
   context: HandlerContext,

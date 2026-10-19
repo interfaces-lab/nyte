@@ -1,5 +1,5 @@
-import { app, dialog, utilityProcess } from "electron";
-import type { UtilityProcess } from "electron";
+import { app, dialog, MessageChannelMain, utilityProcess } from "electron";
+import type { MessagePortMain, UtilityProcess } from "electron";
 import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import type { CallReply, CallRequest } from "../shared/ipc.ts";
 import type { AccountState } from "./account-session.ts";
@@ -73,12 +73,20 @@ export class HostProcess {
     const { reply } = answer;
 
     if (reply.ok && reply.path === "host.endpoint" && reply.value.credentials.kind === "token")
-      this.#options = {
-        ...this.#options,
-        endpoint: { url: reply.value.url, token: reply.value.credentials.token },
-      };
+      this.#options = { ...this.#options, token: reply.value.credentials.token };
 
     return reply;
+  }
+
+  /** One end of a new channel whose other end the host serves; undefined while the host is stopped. A restarting host is waited for. */
+  async openPort(): Promise<MessagePortMain | undefined> {
+    const run = await this.#current;
+
+    if (run === undefined || !run.alive) return undefined;
+    const { port1, port2 } = new MessageChannelMain();
+    run.child.postMessage({ kind: "port" } satisfies MainMessage, [port1]);
+
+    return port2;
   }
 
   async activity(): Promise<DesktopUpdateActivity> {

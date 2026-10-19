@@ -4,7 +4,7 @@ import { githubUrl } from "~/lib/shared";
 import { AsciiArt } from "./ascii-art";
 import { ASCII_LOGOS } from "./ascii-logos";
 import { AsciiMoon } from "./ascii-moon";
-import { HARNESSES, harnessMeta } from "../hero-3/harnesses";
+import { HARNESSES, harnessMeta } from "./harnesses";
 import { BlockPrint } from "./block-print";
 import { Section, brandTileClass, tileClass } from "./section";
 

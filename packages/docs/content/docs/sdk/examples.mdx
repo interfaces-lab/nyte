@@ -129,7 +129,7 @@ await receipt.settled();
 ```
 
 `effects: "none"` says the tool doesn't write files, so the host skips the snapshot around it.
-`replay: "safe"` lets the host run the call again if a run resumes after a crash.
+`replay: "safe"` says running the call twice does no harm, so the host may repeat it after a crash.
 
 ## Chat without a folder
 

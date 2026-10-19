@@ -1,7 +1,7 @@
 import { FactWord } from "../plate/fact-word";
 import { KeyLink } from "../plate/key-link";
 import { NavSentinel } from "../plate/nav-sentinel";
-import { AsciiField } from "../hero-4/ascii-field";
+import { AsciiField } from "./ascii-field";
 
 const buttonClass =
   "inline-flex h-9 items-center gap-2.5 rounded-full pr-2 pl-4 text-[14px] font-medium outline-none transition-[background-color,scale] duration-150 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-(--hero-blue)";

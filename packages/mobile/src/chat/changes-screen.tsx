@@ -149,9 +149,9 @@ export function ChangesScreen({
       const perRun: TextPatch[][] = [];
 
       for (const run of runs) {
-        const changed = await workspace.changes(run);
+        const changed = await workspace.changes({ kind: "run", run });
         const paths = changed.files.map((file) => file.path);
-        perRun.push(await textPatches(workspace.patches(run, paths)));
+        perRun.push(await textPatches(workspace.patches({ kind: "run", run }, paths)));
       }
 
       return perRun;

@@ -99,17 +99,16 @@ export function useListReveal(): ListReveal {
  */
 export function useDrafts(): OpenDrafts {
   const store = usePaneViewStateStore();
-  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const drafts = useSyncExternalStore(store.subscribe, store.listedDrafts, store.listedDrafts);
   const { layout } = usePaneControllerSnapshot();
   const page = useStagePage();
   const pane = activePane(layout);
+  const readBlankId = (): string => store.readBlank(pane.id).id;
+  const blankId = useSyncExternalStore(store.subscribe, readBlankId, readBlankId);
 
   return {
-    drafts: store.drafts(),
-    activeDraftId:
-      page === undefined && pane.selection.kind === "blank"
-        ? store.readBlank(pane.id).id
-        : undefined,
+    drafts,
+    activeDraftId: page === undefined && pane.selection.kind === "blank" ? blankId : undefined,
   };
 }
 

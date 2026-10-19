@@ -1,7 +1,6 @@
-import type { Json, Thinking } from "@nyte-ai/sdk";
+import type { Json } from "@nyte-ai/sdk";
 import { isJsonObject } from "@nyte-ai/schema";
 import type { JsonObject } from "../json.ts";
-import { THINKING_LEVELS } from "./constants.ts";
 import { THEME_CHOICES } from "./theme.ts";
 import type { ThemeChoice } from "./theme.ts";
 
@@ -12,7 +11,6 @@ export interface SettingsFile {
   readonly copyOnSelect?: boolean;
   readonly scrollAcceleration?: boolean;
   readonly followUp?: "steer" | "queue";
-  readonly thinkingLevel?: Thinking;
 }
 
 export interface ResolvedSettings {
@@ -22,7 +20,6 @@ export interface ResolvedSettings {
   readonly copyOnSelect: boolean;
   readonly scrollAcceleration: boolean;
   readonly followUp: "steer" | "queue";
-  readonly thinkingLevel?: Thinking;
 }
 
 export type SettingsPatch = SettingsFile;
@@ -71,16 +68,6 @@ export function parseSettingsFile(value: Json, path = "settings"): SettingsFile 
     if (followUp !== "steer" && followUp !== "queue")
       throw new Error(`${path}.followUp must be steer or queue`);
     settings = { ...settings, followUp };
-  }
-
-  const thinkingLevel = value.thinkingLevel;
-
-  if (thinkingLevel !== undefined) {
-    const level = THINKING_LEVELS.find((candidate) => candidate === thinkingLevel);
-
-    if (level === undefined)
-      throw new Error(`${path}.thinkingLevel must be one of: ${THINKING_LEVELS.join(", ")}`);
-    settings = { ...settings, thinkingLevel: level };
   }
 
   const theme = value.theme;

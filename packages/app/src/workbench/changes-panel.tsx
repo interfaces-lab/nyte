@@ -9,7 +9,15 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { ReactElement } from "react";
-import type { FileStatus, LineStat, RunId, SessionId, WorkspaceId } from "@nyte-ai/sdk";
+import type {
+  ChangeSource,
+  FileStatus,
+  LineStat,
+  RunId,
+  SessionId,
+  SessionView,
+  WorkspaceId,
+} from "@nyte-ai/sdk";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { asId } from "@nyte-ai/schema";
@@ -17,9 +25,9 @@ import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import {
   readGitPatches,
-  readRunPatches,
+  readRecordedPatches,
   refreshVcs,
-  useRunChanges,
+  useRecordedChanges,
   useSession,
   useSessionView,
   useVcsChanges,
@@ -36,6 +44,7 @@ import {
   changesScopeLabel,
   changesScopeValue,
   scopeFiles,
+  threadScopeOption,
   turnChangeOptions,
   turnScopeOption,
   vcsRequestForScope,
@@ -180,6 +189,8 @@ function emptyScopeText(scope: WorkbenchChangesScope): string {
       return "Nothing is staged";
     case "unstaged":
       return "No unstaged changes";
+    case "thread":
+      return "This chat made no file changes";
     case "turn":
       return "This turn made no file changes";
     case "commit":
@@ -258,6 +269,8 @@ interface ChangesPanelViewProps extends ChangesPanelProps {
   readonly turnsError: Error | null;
   readonly liveRun: RunId | undefined;
   readonly workspace: WorkspaceId | undefined;
+  /** The chat's changes since its first run, absent outside a chat. */
+  readonly threadChanges: SessionView["changes"] | undefined;
 }
 
 /**
@@ -294,13 +307,20 @@ function ChangesPanelView({
   onScrollTop,
   onRevertPath,
   onOpenLink,
+  sessionId,
   turns,
   turnsError,
   liveRun,
   workspace,
+  threadChanges,
 }: ChangesPanelViewProps): ReactElement {
   const uiFontSize = useSetting(preferences.uiFontSize);
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
+
+  const threadOption = useMemo(
+    () => (threadChanges === undefined ? undefined : threadScopeOption(threadChanges)),
+    [threadChanges],
+  );
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
@@ -320,7 +340,21 @@ function ChangesPanelView({
       : undefined;
 
   const activeScope: WorkbenchChangesScope =
-    scope.kind === "turn" && selectedTurn === undefined ? UNCOMMITTED_SCOPE : scope;
+    (scope.kind === "turn" && selectedTurn === undefined) ||
+    (scope.kind === "thread" && sessionId === undefined)
+      ? UNCOMMITTED_SCOPE
+      : scope;
+
+  const selectedRun = selectedTurn?.run ?? undefined;
+
+  const recordedSource = useMemo((): ChangeSource | undefined => {
+    if (activeScope.kind === "thread" && sessionId !== undefined)
+      return { kind: "session", session: sessionId };
+
+    return selectedRun === undefined ? undefined : { kind: "run", run: selectedRun };
+  }, [activeScope.kind, sessionId, selectedRun]);
+
+  const recordedScope = activeScope.kind === "thread" || activeScope.kind === "turn";
 
   const activeScopeValue = changesScopeValue(activeScope);
   const repository = changesRepository(snapshot.data);
@@ -336,13 +370,15 @@ function ChangesPanelView({
   const optionsScopeId = root ?? "workspace";
   const options = useChangesViewOptions(optionsScopeId);
 
-  const workingScope = activeScope.kind !== "turn" && activeScope.kind !== "commit";
+  const workingScope = !recordedScope && activeScope.kind !== "commit";
 
   const statusFiles = useMemo(
     () =>
-      activeScope.kind === "turn" || activeScope.kind === "commit"
-        ? undefined
-        : scopeFiles(snapshot.data, activeScope.kind),
+      activeScope.kind === "uncommitted" ||
+      activeScope.kind === "staged" ||
+      activeScope.kind === "unstaged"
+        ? scopeFiles(snapshot.data, activeScope.kind)
+        : undefined,
     [snapshot.data, activeScope.kind],
   );
 
@@ -386,31 +422,32 @@ function ChangesPanelView({
     [activeScope.kind, manifest.data],
   );
 
-  const selectedRun = selectedTurn?.run ?? undefined;
-
-  const runChanges = useRunChanges({
+  const recorded = useRecordedChanges({
     workspace,
-    runId: selectedRun,
-    live: selectedRun !== undefined && selectedRun === liveRun,
+    source: recordedSource,
+    live:
+      liveRun !== undefined &&
+      (recordedSource?.kind === "session" ||
+        (recordedSource?.kind === "run" && recordedSource.run === liveRun)),
     enabled: visible,
   });
 
   const recordedRows = useMemo(
     (): readonly RecordedChangeRow[] =>
-      selectedTurn === undefined
+      !recordedScope
         ? EMPTY_RECORDED
-        : (runChanges.data?.files ?? []).map((file): RecordedChangeRow => ({
+        : (recorded.data?.files ?? []).map((file): RecordedChangeRow => ({
             source: "recorded",
             path: file.path,
             added: file.stat.kind === "text" ? file.stat.added : 0,
             removed: file.stat.kind === "text" ? file.stat.removed : 0,
           })),
-    [selectedTurn, runChanges.data],
+    [recordedScope, recorded.data],
   );
 
   const rows: readonly ChangeRow[] = workingScope
     ? workingRows
-    : selectedTurn !== undefined
+    : recordedScope
       ? recordedRows
       : commitRows;
 
@@ -448,7 +485,6 @@ function ChangesPanelView({
     return nearest.filter((path) => !collapsed.has(path));
   }, [visible, collapsedPaths, stackOrder, activePath]);
 
-  const selectedTurnId = selectedTurn?.scope.turnId;
   const { ignoreWhitespace } = options;
 
   const patchKey =
@@ -465,14 +501,14 @@ function ChangesPanelView({
   const vcsLineage = `${root ?? ""}\u0000${activeScopeValue}\u0000${whitespace}`;
 
   const patchSource = useMemo((): PatchSource | undefined => {
-    if (selectedTurnId !== undefined) {
-      if (workspace === undefined || selectedRun === undefined) return undefined;
+    if (recordedScope) {
+      if (workspace === undefined || recordedSource === undefined) return undefined;
 
       return {
-        key: `turn\u0000${selectedTurnId}\u0000${whitespace}\u0000${String(recordedVersion(recordedRows))}`,
-        lineage: `turn\u0000${selectedTurnId}\u0000${whitespace}`,
+        key: `${activeScopeValue}\u0000${whitespace}\u0000${String(recordedVersion(recordedRows))}`,
+        lineage: `${activeScopeValue}\u0000${whitespace}`,
         paths: stackOrder,
-        read: (paths) => readRunPatches(workspace, selectedRun, paths, ignoreWhitespace),
+        read: (paths) => readRecordedPatches(workspace, recordedSource, paths, ignoreWhitespace),
       };
     }
 
@@ -487,8 +523,9 @@ function ChangesPanelView({
       read: (paths) => readGitPatches(request, paths, ignoreWhitespace),
     };
   }, [
-    selectedTurnId,
-    selectedRun,
+    recordedScope,
+    recordedSource,
+    activeScopeValue,
     workspace,
     recordedRows,
     patchKey,
@@ -584,20 +621,23 @@ function ChangesPanelView({
     ? { text: "Couldn't read changes.", detail: queryError(manifest.error) }
     : undefined;
 
-  const readFailure =
-    scope.kind === "turn"
-      ? (transcriptFailure ?? vcsFailure)
-      : (manifestFailure ?? vcsFailure ?? transcriptFailure);
+  const recordedFailure = recorded.isError
+    ? { text: "Couldn't read changes.", detail: queryError(recorded.error) }
+    : undefined;
 
-  const emptyState: { readonly text: string; readonly detail?: string } =
-    selectedTurn !== undefined
-      ? { text: "This turn made no file changes" }
-      : (readFailure ?? {
-          text:
-            snapshot.data === undefined || manifest.isLoading
-              ? "Loading changes…"
-              : emptyScopeText(activeScope),
-        });
+  const emptyState: { readonly text: string; readonly detail?: string } = recordedScope
+    ? (transcriptFailure ??
+      recordedFailure ?? {
+        text: recorded.isLoading ? "Loading changes…" : emptyScopeText(activeScope),
+      })
+    : (manifestFailure ??
+      vcsFailure ??
+      transcriptFailure ?? {
+        text:
+          snapshot.data === undefined || manifest.isLoading
+            ? "Loading changes…"
+            : emptyScopeText(activeScope),
+      });
 
   const viewedScopeId = `${optionsScopeId}\u0000${activeScopeValue}`;
 
@@ -839,6 +879,7 @@ function ChangesPanelView({
         scope={activeScope}
         scopeLabel={changesScopeLabel(activeScope, [
           ...workingTreeScopeOptions(snapshot.data),
+          ...(threadOption === undefined ? [] : [threadOption]),
           ...turnOptions.map(turnScopeOption),
         ])}
         scopeStats={scopeStats}
@@ -846,6 +887,7 @@ function ChangesPanelView({
         snapshot={snapshot.data}
         repository={repository}
         branch={branchReadout(snapshot.data)}
+        threadOption={threadOption}
         turnOptions={turnOptions}
         viewOptions={options}
         fileTreeVisible={fileTreeVisible}
@@ -953,6 +995,7 @@ function SessionChangesPanel(
       turnsError={null}
       liveRun={execution === undefined || execution.kind === "idle" ? undefined : execution.run.id}
       workspace={session.data?.workspace ?? undefined}
+      threadChanges={view?.changes}
     />
   );
 }
@@ -965,6 +1008,7 @@ export function ChangesPanel(props: ChangesPanelProps): ReactElement {
       turnsError={null}
       liveRun={undefined}
       workspace={undefined}
+      threadChanges={undefined}
     />
   ) : (
     <SessionChangesPanel {...props} sessionId={props.sessionId} />

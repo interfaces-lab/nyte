@@ -9,6 +9,7 @@ import type {
   CallId,
   Capability,
   ChangeSet,
+  ChangeSource,
   CommandCompletion,
   ConsoleEntry,
   Cursor,
@@ -571,9 +572,15 @@ export interface Workspace {
 
   job(id: JobId): Job;
 
-  changes(run: RunId): Promise<ChangeSet>;
+  /** The files `source` changed: a run's from its first snapshot to its last (the workspace as it is now while it runs), a session's from its first run's first snapshot to its latest run's last (now while one runs). Throws `SdkError("unavailable")` for a session no run has snapshotted. */
+  changes(source: ChangeSource): Promise<ChangeSet>;
 
-  patches(run: RunId, paths: readonly string[], options?: DiffOptions): AsyncIterable<PatchSet>;
+  /** The patches of `paths` over the range {@link Workspace.changes} reads for `source`. */
+  patches(
+    source: ChangeSource,
+    paths: readonly string[],
+    options?: DiffOptions,
+  ): AsyncIterable<PatchSet>;
 
   files(): Promise<Capability<FilesApi>>;
 

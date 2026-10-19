@@ -24,7 +24,6 @@ interface SessionConfiguratorOptions {
   readonly configure: (patch: ConfigPatch) => Promise<ConfigureOutcome>;
   readonly readSelected: () => RunChoice;
   readonly onChange: (selected: RunChoice) => void;
-  readonly onAcknowledged: (choice: RunChoice, patch: ConfigPatch) => void;
 }
 
 interface Intent {
@@ -339,8 +338,6 @@ export class SessionConfigurator {
 
     if (result.kind === "acknowledged") {
       this.acknowledgedChoice = intent.choice;
-
-      if (!this.disposed) this.options.onAcknowledged(intent.choice, intent.patch);
     } else if (this.queue.some(configIntent)) {
       this.carried = { ...this.carried, ...intent.patch };
     } else {

@@ -392,14 +392,14 @@ describe("workspaces", () => {
     disk.put("/work/project/b.ts", "three\n");
     const handle = host.workspace(workspace);
 
-    expect(await handle.changes(run)).toMatchObject({
+    expect(await handle.changes({ kind: "run", run })).toMatchObject({
       files: [
         { path: "a.ts", status: "modified", stat: { kind: "text", added: 2, removed: 1 } },
         { path: "b.ts", status: "modified", stat: { kind: "text", added: 1, removed: 1 } },
       ],
     });
 
-    const first = await patches(handle.patches(run, ["a.ts", "b.ts"]));
+    const first = await patches(handle.patches({ kind: "run", run }, ["a.ts", "b.ts"]));
 
     expect(provider.patchReads).toEqual([["a.ts", "b.ts"]]);
     expect([...first.last.entries.values()].map((entry) => [entry.path, entry.fresh])).toEqual([
@@ -407,7 +407,7 @@ describe("workspaces", () => {
       ["b.ts", true],
     ]);
 
-    const cached = await patches(handle.patches(run, ["b.ts", "a.ts"]));
+    const cached = await patches(handle.patches({ kind: "run", run }, ["b.ts", "a.ts"]));
 
     expect(provider.patchReads).toHaveLength(1);
     expect(cached.sets).toHaveLength(1);
@@ -415,7 +415,7 @@ describe("workspaces", () => {
 
     disk.put("/work/project/a.ts", "one\nmore\nagain\n");
     disk.put("/work/project/b.ts", "two\n");
-    const moved = await patches(handle.patches(run, ["a.ts", "b.ts"]));
+    const moved = await patches(handle.patches({ kind: "run", run }, ["a.ts", "b.ts"]));
 
     expect(moved.sets[0]?.revision).not.toBe(first.last.revision);
     expect(
@@ -437,7 +437,7 @@ describe("workspaces", () => {
     await snapshots.before(run);
 
     for (const path of paths) disk.put(`/work/project/${path}`, `${path}\n`);
-    const { last } = await patches(host.workspace(workspace).patches(run, paths));
+    const { last } = await patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
 
     expect(last.entries.size).toBe(150);
     expect(provider.patchReads.map((read) => read.length)).toEqual([32, 32, 32, 32, 22]);
@@ -798,7 +798,7 @@ describe("patch reads", () => {
 
     for (const path of paths) disk.put(`/work/project/${path}`, `${path}\n`);
     provider.failPatches = (batch) => (batch.includes("f39.ts") ? "The diff timed out." : null);
-    const { last } = await patches(host.workspace(workspace).patches(run, paths));
+    const { last } = await patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
     const failed = [...last.entries.values()].filter((entry) => entry.kind === "failed");
 
     expect(last.entries.size).toBe(40);
@@ -813,7 +813,7 @@ describe("patch reads", () => {
     expect(last.entries.get("f0.ts")).toMatchObject({ kind: "text", fresh: true });
 
     provider.failPatches = null;
-    const again = await patches(host.workspace(workspace).patches(run, paths));
+    const again = await patches(host.workspace(workspace).patches({ kind: "run", run }, paths));
 
     expect(provider.patchReads.map((read) => read.length)).toEqual([32, 8, 8]);
     expect(again.last.entries.get("f39.ts")).toMatchObject({ kind: "text" });

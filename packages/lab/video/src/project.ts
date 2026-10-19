@@ -1,8 +1,9 @@
 import type { ComponentType } from "react";
-import { Ending, layers as endingLayers, length, markers as endingMarkers } from "./film/ending";
-import { Film, effects, layers as filmLayers, score } from "./film/film";
+import { cut, fps } from "./film/cut";
+import { Ending, layers as endingLayers, length as endingLength, markers as endingMarkers } from "./film/ending";
+import { Film, layers as filmLayers, score } from "./film/film";
 import type { Layer } from "./film/layer";
-import { beats, durationInFrames, fps } from "./film/timeline";
+import { narrator } from "./film/script";
 import { font } from "./film/type";
 
 export type { Layer };
@@ -49,14 +50,14 @@ export interface Source {
 export const compositions: readonly Composition[] = [
   {
     id: "nyte",
-    name: "Nyte · 60 s",
+    name: `Nyte · ${narrator.name} · ${Math.round(cut.durationInFrames / fps)} s`,
     component: Film,
     width: 1920,
     height: 1080,
     fps,
-    durationInFrames,
+    durationInFrames: cut.durationInFrames,
     layers: filmLayers,
-    markers: Object.entries(beats).map(([name, at]) => ({ name, at })),
+    markers: [...cut.lines.map((line) => ({ name: line.name, at: line.from })), { name: "lockup", at: cut.lockup }],
   },
   {
     id: "ending",
@@ -65,39 +66,34 @@ export const compositions: readonly Composition[] = [
     width: 1920,
     height: 1080,
     fps,
-    durationInFrames: length,
+    durationInFrames: endingLength,
     layers: endingLayers,
     markers: endingMarkers,
-    offset: { composition: "nyte", at: beats.dawn },
+    offset: { composition: "nyte", at: cut.lockup },
   },
 ];
 
-const uses = new Map<string, number>();
-for (const effect of effects) uses.set(effect.file, (uses.get(effect.file) ?? 0) + 1);
-
 export const footage: readonly Footage[] = [
-  { name: "score.mp3", file: score.file, kind: "audio", use: "The score, 120 BPM: a beat every 15 frames." },
-  ...[...uses].map(([file, count]) => ({
-    name: file.replace("sfx/", ""),
-    file,
-    kind: "audio" as const,
-    use: `Sound effect, ${count === 1 ? "once" : `${count} times`}.`,
-  })),
+  { name: "score.mp3", file: score.file, kind: "audio", use: "The score, generated with ElevenLabs Music in five sections that follow the film: blocks, pressure, the turn, the foundation and the resolve. 120 BPM, a beat every 15 frames; it plays under the whole film and rings out on the lockup." },
+  ...cut.lines.map((line) => ({ name: `${line.name}.wav`, file: line.file, kind: "audio" as const, use: `${narrator.name}: "${line.text}"` })),
 ];
 
 export const fonts: readonly Font[] = [
-  { name: "Geist Pixel", family: font.pixel, use: "Captions, the wheel and the name." },
-  { name: "Geist", family: font.sans, use: "The closing line." },
-  { name: "Geist Mono", family: font.mono, use: "nyte.sh." },
-  { name: "Inter", family: "'Inter Variable', sans-serif", use: "The app's own interface." },
+  { name: "Geist", family: font.sans, use: "Every word on screen: captions, statements, headlines, the sentence, the name and nyte.sh." },
 ];
 
 export const sources: readonly Source[] = [
-  { file: "video/src/film/ending.tsx", holds: "The closing shot, from dawn to the last frame." },
-  { file: "video/src/film/film.tsx", holds: "The film: strip, window, camera, captions, sound." },
-  { file: "video/src/film/timeline.ts", holds: "The beats every scene is cued from." },
-  { file: "video/src/film/chat.ts", holds: "The session the window shows, frame by frame." },
-  { file: "video/src/film/window.tsx", holds: "The app window, from the app's real parts." },
-  { file: "video/src/film/dither.tsx", holds: "Dithered sky, moon and palette." },
+  { file: "video/src/film/script.ts", holds: "The narration, line by line, and its narrator." },
+  { file: "video/voice.ts", holds: "Records the narration with ElevenLabs and trims each take clean." },
+  { file: "video/src/film/cut.ts", holds: "The film timed to the narration: every line on a beat." },
+  { file: "video/src/film/film.tsx", holds: "The film: pictures, narration, voice and score." },
+  { file: "video/src/film/scenes.tsx", holds: "The gameplay, the photographs and the product, each cut on the words that drive it." },
+  { file: "video/src/film/media.ts", holds: "The gameplay, photographs and app footage, with their sources and credits." },
+  { file: "video/src/film/frame.tsx", holds: "A region of a picture or a take, covering a box." },
+  { file: "video/src/film/words.tsx", holds: "The narration as text: captions, statements, headlines and the sentence." },
+  { file: "video/src/film/ending.tsx", holds: "The closing flicker and lockup." },
+  { file: "video/src/film/dither.tsx", holds: "Dithered dissolves, moon and palette." },
   { file: "video/src/film/type.tsx", holds: "Kinetic type, fonts and easing." },
+  { file: "video/src/snap-cn/logo-flicker.tsx", holds: "snapcn's Logo Flicker, cutting the film's pictures on the beat." },
+  { file: "video/src/snap-cn/check-cycle.tsx", holds: "snapcn's Check Cycle: \"Your ☑ …\", rolling as the narrator speaks." },
 ];

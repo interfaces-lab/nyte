@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChangesRouteImport } from './routes/changes'
+import { Route as HubsRouteImport } from './routes/hubs'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const ChangesRoute = ChangesRouteImport.update({
   id: '/changes',
   path: '/changes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HubsRoute = HubsRouteImport.update({
+  id: '/hubs',
+  path: '/hubs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsRoute = ProjectsRouteImport.update({
@@ -80,6 +86,7 @@ const CoreStudioSplatRoute = CoreStudioSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
+  '/hubs': typeof HubsRoute
   '/projects': typeof ProjectsRoute
   '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
+  '/hubs': typeof HubsRoute
   '/projects': typeof ProjectsRoute
   '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
+  '/hubs': typeof HubsRoute
   '/projects': typeof ProjectsRoute
   '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/changes'
+    | '/hubs'
     | '/projects'
     | '/review'
     | '/settings'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/changes'
+    | '/hubs'
     | '/projects'
     | '/review'
     | '/settings'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/changes'
+    | '/hubs'
     | '/projects'
     | '/review'
     | '/settings'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChangesRoute: typeof ChangesRoute
+  HubsRoute: typeof HubsRoute
   ProjectsRoute: typeof ProjectsRoute
   ReviewRoute: typeof ReviewRoute
   SettingsRoute: typeof SettingsRoute
@@ -187,6 +200,13 @@ declare module '@tanstack/react-router' {
       path: '/changes'
       fullPath: '/changes'
       preLoaderRoute: typeof ChangesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hubs': {
+      id: '/hubs'
+      path: '/hubs'
+      fullPath: '/hubs'
+      preLoaderRoute: typeof HubsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects': {
@@ -258,6 +278,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChangesRoute: ChangesRoute,
+  HubsRoute: HubsRoute,
   ProjectsRoute: ProjectsRoute,
   ReviewRoute: ReviewRoute,
   SettingsRoute: SettingsRoute,
