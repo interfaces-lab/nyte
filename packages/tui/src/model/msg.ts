@@ -243,6 +243,7 @@ export type Outcome =
       readonly text: string | null;
     }
   | { readonly kind: "editor-closed"; readonly text: string | null }
+  | { readonly kind: "draft-restored"; readonly text: string }
   | {
       readonly kind: "op-finished";
       readonly op: PendingOp["kind"];

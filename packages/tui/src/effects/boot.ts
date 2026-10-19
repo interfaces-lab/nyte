@@ -18,6 +18,7 @@ import {
 } from "./session.ts";
 
 export interface BootOptions {
+  readonly start: "launch" | "reload";
   readonly home: string;
   readonly cwd: string;
   readonly target:
@@ -124,7 +125,7 @@ export async function boot(options: BootOptions, context: HandlerContext): Promi
       text: "Not signed in. /login connects a provider.",
     });
 
-  await checkUpdate(settings.autoUpdate, context);
+  if (options.start === "launch") await checkUpdate(settings.autoUpdate, context);
 }
 
 async function resolveTarget(

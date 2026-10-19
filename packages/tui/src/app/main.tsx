@@ -1,282 +1,26 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
-import type { Writable } from "node:stream";
 import { asId } from "@nyte-ai/schema";
 import type { SessionId } from "@nyte-ai/sdk";
-import {
-  CliRenderEvents,
-  CliRenderer,
-  MouseButton,
-  NativeSession,
-  maybeMakeRenderable,
-} from "@opentui/core";
-import type { Renderable } from "@opentui/core";
-import { render } from "@opentui/solid";
-import { createRoot, createSignal } from "solid-js";
-import type { PartMessage } from "@nyte-ai/plugin/client/presentation";
-import { launchChat } from "../effects/boot.ts";
+import { CliRenderer, NativeSession } from "@opentui/core";
 import type { BootOptions } from "../effects/boot.ts";
-import { createReporter, installProcessHooks, openCrashLog } from "../effects/crash.ts";
-import { hostPort, pluginsPort } from "../effects/host-port.ts";
+import { installProcessHooks, openCrashLog } from "../effects/crash.ts";
 import { createHandle, filesPort, settingsPort, shellPort } from "../effects/local-ports.ts";
-import { ignoredSettingsText } from "../services/settings.ts";
-import type { CrashLog, HostPort, PluginsPort, Ports, TerminalPort } from "../effects/ports.ts";
-import { createRunner } from "../effects/runner.ts";
 import { terminalPort } from "../effects/terminal-port.ts";
 import { sessionRecovery } from "../flags.ts";
 import type { RunFlags } from "../flags.ts";
 import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts";
 import type { Ending } from "../lifecycle.ts";
 import { trustFolder } from "../run.ts";
-import { connectLocalHost, followRemote } from "../local-host.ts";
-import type { LocalSession } from "../local-host.ts";
-import type { Msg } from "../model/msg.ts";
-import { followedSession, initialState } from "../model/state.ts";
-import { waitingMessages } from "../model/table-input.ts";
-import type { FailureReport, TerminalFacts } from "../model/state.ts";
+import { connectLocalHost } from "../local-host.ts";
+import type { FailureReport } from "../model/state.ts";
 import { firstFramePort } from "../services/first-frame.ts";
 import { TUI_RENDERER_CONFIG } from "../services/rendering.ts";
 import { registerSyntaxParsers } from "../services/syntax-parsers.ts";
-import type { Kit } from "./context.tsx";
-import { createKit } from "./kit.ts";
-import { installKeymap } from "./keymap.ts";
-import { Root } from "./root.tsx";
-import { installSinks } from "./sinks.ts";
-import { createStore } from "./store.ts";
-import type { Store } from "./store.ts";
-import { createTickers } from "./ticker.ts";
+import { createKeymap } from "./keyboard.ts";
+import { mountApp } from "./mount.tsx";
 import { holdTypeahead } from "./typeahead.ts";
-import type { Typeahead } from "./typeahead.ts";
-
-type LocalPorts = Omit<Ports, "host" | "plugins" | "clock">;
-
-interface OpenedHost {
-  readonly host: HostPort;
-  readonly plugins: PluginsPort;
-  readonly drawPart: (message: PartMessage) => Renderable | null;
-  close(): Promise<void>;
-}
-
-export interface AppOptions {
-  readonly renderer: CliRenderer;
-  readonly ports: LocalPorts;
-  readonly cwd: string;
-  readonly boot: BootOptions;
-  readonly open: (dispatch: (msg: Msg) => void) => Promise<OpenedHost>;
-  readonly typeahead?: Typeahead;
-  readonly kit?: (kit: Kit) => Kit;
-  readonly outputs?: readonly Writable[];
-}
-
-export interface MountedApp {
-  readonly store: Store;
-  readonly closing: Promise<number>;
-  readonly report: ReturnType<typeof createReporter>;
-  startupError(): string | null;
-  close(): Promise<void>;
-}
-
-export async function mountApp(options: AppOptions): Promise<MountedApp> {
-  const { renderer } = options;
-  const controller = new AbortController();
-  const closing = Promise.withResolvers<number>();
-  const [fallen, setFallen] = createSignal<(() => void) | null>(null);
-  let startupError: string | null = null;
-  let opened: OpenedHost | null = null;
-  const hostOpened = Promise.withResolvers<void>();
-  hostOpened.promise.catch(() => undefined);
-
-  const reachable = (): OpenedHost => {
-    if (opened === null) throw new Error("The host is still opening.");
-
-    return opened;
-  };
-
-  const ports: Ports = {
-    ...options.ports,
-    clock: renderer.clock,
-    get host() {
-      return reachable().host;
-    },
-    get plugins() {
-      return reachable().plugins;
-    },
-  };
-
-  const report = createReporter(ports.log, (failure) =>
-    root.store.dispatch({ kind: "failure", failure }),
-  );
-
-  const quit = (): void => closing.resolve(0);
-  const hangUp = (): void => closing.resolve(exitStatus("SIGHUP"));
-  const unwatchTerminal = watchTerminal(renderer.stdin, options.outputs ?? [], hangUp);
-  const { settings, invalid } = options.ports.settings.read(options.cwd);
-  const chat = launchChat(options.boot, options.ports.firstFrame.read());
-
-  const root = createRoot((dispose) => {
-    const store = createStore({
-      initial: initialState({
-        cwd: options.cwd,
-        settings,
-        terminal: terminalFacts(renderer),
-        chat,
-      }),
-      now: () => renderer.clock.now(),
-      report,
-      runner: (context) =>
-        createRunner({
-          ports,
-          read: context.read,
-          signal: controller.signal,
-          opened: hostOpened.promise,
-          dispatch(msg) {
-            if (msg.kind === "effect-failed" && msg.effect === "boot") {
-              startupError = msg.message;
-              closing.resolve(1);
-            }
-
-            context.dispatch(msg);
-          },
-        }),
-    });
-
-    const sinks = installSinks(store, ports.terminal);
-    const tickers = createTickers(renderer.clock);
-
-    const kit = createKit({
-      renderer,
-      theme: sinks.theme,
-      tickers,
-      blob: (id) => ports.host.blob(id),
-      drawPart: (message) => opened?.drawPart(message) ?? null,
-      attach: {
-        composer: (port) => ports.composer.attach(port),
-        scroll: (port) => ports.scroll.attach(port),
-      },
-      report,
-    });
-
-    return { store, sinks, kit, tickers, dispose };
-  });
-
-  const { store } = root;
-
-  if (invalid.length > 0)
-    store.dispatch({
-      kind: "inform",
-      tone: "warning",
-      text: ignoredSettingsText(invalid),
-    });
-  void store.runner.exited.then(({ code }) => closing.resolve(code));
-
-  const opening = options.open(store.dispatch).then((host) => {
-    opened = host;
-    hostOpened.resolve();
-    store.dispatch({ kind: "host-opened" });
-
-    return host;
-  });
-
-  opening.catch((cause: unknown) => hostOpened.reject(cause));
-  const uninstallKeymap = installKeymap({ renderer, store, fallen, quit });
-
-  const syncTerminal = (): void => {
-    const next = terminalFacts(renderer);
-    const current = store.state().facts.terminal;
-
-    if (
-      next.width !== current.width ||
-      next.height !== current.height ||
-      next.theme !== current.theme ||
-      next.selection !== current.selection ||
-      next.dragging !== current.dragging ||
-      next.hyperlinks !== current.hyperlinks
-    )
-      store.dispatch({ kind: "terminal", terminal: next });
-  };
-
-  const onSelection = (): void => {
-    syncTerminal();
-    const text = renderer.getSelection()?.getSelectedText() ?? "";
-
-    if (store.state().facts.settings.copyOnSelect && text !== "")
-      store.dispatch({ kind: "copy-text", text });
-  };
-
-  renderer.on(CliRenderEvents.RESIZE, syncTerminal);
-  renderer.on(CliRenderEvents.THEME_MODE, syncTerminal);
-  renderer.on(CliRenderEvents.CAPABILITIES, syncTerminal);
-  renderer.on(CliRenderEvents.SELECTION, onSelection);
-
-  renderer.root.onMouseDown = (event) => {
-    if (store.state().facts.settings.copyOnSelect || event.button !== Number(MouseButton.RIGHT))
-      return;
-
-    const selection = renderer.getSelection();
-
-    const text =
-      selection === null || (selection.isStart && selection.behavior === "cell")
-        ? ""
-        : selection.getSelectedText();
-
-    if (text === "") return;
-    event.preventDefault();
-    event.stopPropagation();
-    store.dispatch({ kind: "copy-text", text });
-  };
-
-  renderer.once(CliRenderEvents.DESTROY, () => {
-    unwatchTerminal();
-    hangUp();
-    root.sinks.dispose();
-    renderer.off(CliRenderEvents.RESIZE, syncTerminal);
-    renderer.off(CliRenderEvents.THEME_MODE, syncTerminal);
-    renderer.off(CliRenderEvents.CAPABILITIES, syncTerminal);
-    renderer.off(CliRenderEvents.SELECTION, onSelection);
-    renderer.root.onMouseDown = undefined;
-    root.tickers.dispose();
-    root.kit.dispose();
-    store.dispose();
-    root.dispose();
-  });
-
-  const drawn = options.kit?.(root.kit) ?? root.kit;
-
-  await render(
-    () => (
-      <Root
-        store={store}
-        kit={drawn}
-        report={report}
-        logPath={ports.log.path}
-        quit={quit}
-        onFallen={(reset) => setFallen(() => reset)}
-      />
-    ),
-    renderer,
-  );
-
-  store.runner.boot(options.boot);
-  options.typeahead?.release();
-  store.runner.run({ kind: "refresh-workspace", cwd: options.cwd });
-
-  return {
-    store,
-    closing: closing.promise,
-    report,
-    startupError: () => startupError,
-    async close() {
-      unwatchTerminal();
-      controller.abort();
-      await store.runner.dispose();
-      root.sinks.dispose();
-      uninstallKeymap();
-      const host = await opening.catch(() => null);
-      await host?.close();
-    },
-  };
-}
 
 export async function runTui(flags: RunFlags): Promise<number> {
   const connecting = connectLocalHost();
@@ -330,12 +74,27 @@ export async function runTui(flags: RunFlags): Promise<number> {
 
   const encoder = new TextEncoder();
   const terminal = terminalPort(renderer, { write: (text) => native.write(encoder.encode(text)) });
+  const hungUp = new AbortController();
+
+  const unwatchTerminal = watchTerminal(renderer.stdin, [process.stdout, process.stderr], () =>
+    hungUp.abort(),
+  );
+
+  const { trust, resume } = flags;
+
+  const host = connecting.then(async (local) => {
+    if (trust !== undefined) await trustFolder(local.connection, resume, cwd, trust);
+
+    return { connection: local.connection, endpoint: local.endpoint, folder: cwd };
+  });
 
   const app = await mountApp({
     renderer,
+    keymap: createKeymap(renderer),
     cwd,
     typeahead,
-    outputs: [process.stdout, process.stderr],
+    hungUp: hungUp.signal,
+    host,
     ports: {
       terminal,
       composer: createHandle(),
@@ -346,11 +105,10 @@ export async function runTui(flags: RunFlags): Promise<number> {
       files: filesPort(),
       log,
     },
-    boot: { home, cwd, target: bootTarget(flags), ...flagSelection(flags) },
-    open: (dispatch) => openService({ connecting, renderer, terminal, log, cwd, flags, dispatch }),
+    boot: { start: "launch", home, cwd, target: bootTarget(flags), ...flagSelection(flags) },
   });
 
-  const unhook = installProcessHooks(app.report);
+  const unhook = installProcessHooks((origin, error) => app.report(origin, error));
 
   const lost = connecting.then(
     (local) => local.ended.then((error) => ({ error })),
@@ -368,82 +126,27 @@ export async function runTui(flags: RunFlags): Promise<number> {
   if ("error" in ending) failures.push(`error: ${ending.error.message}`);
   stopEnding();
   exitWithin(status);
-  const session = followedSession(app.store.state())?.id ?? null;
-  const waiting = waitingMessages(app.store.state()).map((sent) => sent.snapshot.text);
-  const unsent = waiting.length === 0 ? null : waiting.join("\n\n");
+  const exit = app.exit();
   await cleanup("TUI", () => app.close());
   const startupError = app.startupError();
 
   if (startupError !== null) failures.unshift(`error: ${startupError}`);
+
+  await cleanup("Host", async () => {
+    const local = await connecting.catch(() => null);
+    await local?.close();
+  });
+
+  unwatchTerminal();
   await cleanup("Clipboard", () => terminal.dispose());
   await cleanup("Terminal", async () => {
     renderer.destroy();
     await renderer.closed;
   });
   unhook();
-  process.stdout.write(
-    exitText({ session, unsent, failures, crashes: app.store.state().local.failures }),
-  );
+  process.stdout.write(exitText({ ...exit, failures }));
 
   return status === 0 && failures.length > 0 ? 1 : status;
-}
-
-async function openService(input: {
-  readonly connecting: Promise<LocalSession>;
-  readonly renderer: CliRenderer;
-  readonly terminal: TerminalPort;
-  readonly log: CrashLog;
-  readonly cwd: string;
-  readonly flags: RunFlags;
-  readonly dispatch: (msg: Msg) => void;
-}): Promise<OpenedHost> {
-  const local = await input.connecting;
-  const { connection } = local;
-  const remote = new AbortController();
-
-  const close = async (): Promise<void> => {
-    remote.abort();
-    await local.close();
-  };
-
-  const { trust, resume } = input.flags;
-
-  if (trust !== undefined)
-    await trustFolder(connection, resume, input.cwd, trust).catch(async (cause: unknown) => {
-      await close();
-
-      throw cause;
-    });
-
-  followRemote(
-    local.endpoint,
-    remote.signal,
-    (facts) => input.dispatch({ kind: "remote", remote: facts }),
-    (cause) => input.log.write("watch", cause),
-  );
-
-  const plugins = await pluginsPort(connection, {
-    notify: (title, body, sound) => input.terminal.notify(title, body, sound),
-    report: (plugin, message) =>
-      input.dispatch({ kind: "inform", tone: "error", text: `plugin ${plugin}: ${message}` }),
-  }).catch(async (cause: unknown) => {
-    await close();
-
-    throw cause;
-  });
-
-  return {
-    host: hostPort(connection, input.cwd, () => nextFrame(input.renderer)),
-    plugins,
-    drawPart: (message) => drawnPart(input.renderer, plugins.draw(message)),
-    async close() {
-      try {
-        await plugins.dispose();
-      } finally {
-        await close();
-      }
-    },
-  };
 }
 
 export function exitText(input: {
@@ -462,27 +165,6 @@ export function exitText(input: {
   ];
 
   return lines.length === 0 ? "" : `\n${lines.map((line) => `${line}\n`).join("")}`;
-}
-
-export function drawnPart(renderer: CliRenderer, drawn: unknown): Renderable | null {
-  return drawn === undefined || drawn === null ? null : maybeMakeRenderable(renderer, drawn);
-}
-
-export function nextFrame(renderer: CliRenderer): Promise<void> {
-  return new Promise((resolve) => renderer.once(CliRenderEvents.FRAME, () => resolve()));
-}
-
-function terminalFacts(renderer: CliRenderer): TerminalFacts {
-  const selection = renderer.getSelection();
-
-  return {
-    width: renderer.width,
-    height: renderer.height,
-    theme: renderer.themeMode,
-    selection: renderer.hasSelection,
-    dragging: selection?.isDragging ?? false,
-    hyperlinks: renderer.capabilities?.hyperlinks === true,
-  };
 }
 
 function bootTarget(flags: RunFlags): BootOptions["target"] {

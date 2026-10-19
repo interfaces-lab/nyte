@@ -219,6 +219,7 @@ export const composerHandlers = {
     );
   },
   "paste-resolved": (state, msg, now, reduce) => pasted(state, msg, now, reduce),
+  "draft-restored": (state, msg) => setDraft(state, { text: msg.text, parts: NO_PARTS }),
   "editor-closed": (state, msg) => {
     const next = withLocal(state, {
       pending: state.local.pending.filter((op) => op.kind !== "editor"),

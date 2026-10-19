@@ -1,13 +1,8 @@
 import { InputRenderable, TextareaRenderable } from "@opentui/core";
 import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core";
 import type { Command } from "@opentui/keymap";
-import { registerCommaBindings } from "@opentui/keymap/addons";
-import {
-  registerBaseLayoutFallback,
-  registerManagedTextareaLayer,
-} from "@opentui/keymap/addons/opentui";
+import { registerManagedTextareaLayer } from "@opentui/keymap/addons/opentui";
 import { commandBindings } from "@opentui/keymap/extras";
-import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui";
 import type { Accessor } from "solid-js";
 import { CHAT_KEYBINDS, FIELD_KEYBINDS } from "../lib/constants.ts";
 import type { ChatCommand, FieldCommand } from "../lib/constants.ts";
@@ -16,10 +11,12 @@ import type { Dialog } from "../model/dialogs/dialog.ts";
 import { FIELD_EDITS } from "../model/dialogs/field.ts";
 import { chatCommands } from "../model/interactions.ts";
 import { readDraft } from "../ui/composer/composer.tsx";
+import type { AppKeymap } from "./keyboard.ts";
 import type { Store } from "./store.ts";
 
 interface KeymapOptions {
   readonly renderer: CliRenderer;
+  readonly keymap: AppKeymap;
   readonly store: Store;
   readonly fallen: Accessor<(() => void) | null>;
   readonly quit: () => void;
@@ -33,10 +30,7 @@ interface LayerSpec {
 }
 
 export function installKeymap(options: KeymapOptions): () => void {
-  const { renderer, store, fallen } = options;
-  const keymap = createDefaultOpenTuiKeymap(renderer);
-  registerCommaBindings(keymap);
-  registerBaseLayoutFallback(keymap);
+  const { renderer, keymap, store, fallen } = options;
 
   const live = (): boolean => fallen() === null;
   const dialog = (): Dialog | null => store.screen().dialog;
@@ -264,7 +258,7 @@ export function installKeymap(options: KeymapOptions): () => void {
   };
 }
 
-function composerEditor(renderer: CliRenderer): TextareaRenderable | null {
+export function composerEditor(renderer: CliRenderer): TextareaRenderable | null {
   const editor = renderer.currentFocusedEditor;
 
   return editor instanceof TextareaRenderable && !(editor instanceof InputRenderable)
@@ -279,7 +273,6 @@ function printable(event: KeyEvent): boolean {
   return first !== undefined && first >= 32 && first !== 127;
 }
 
-/** Whether `event` copies or clears a selection: Ctrl+C (by name or, as kitty reports a non-Latin layout, by its Latin base-layout C) or Escape. */
 function selectionKey(event: KeyEvent): boolean {
   const c = event.name === "c" || event.baseCode === 99 || event.baseCode === 67;
 

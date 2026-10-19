@@ -450,6 +450,7 @@ test("at boot --effort wins over the model's default level, and a resumed sessio
   for (const blank of blanks) {
     const app = harness(buildState(null));
     app.runner.boot({
+      start: "launch",
       home: "/tmp",
       cwd: "/tmp",
       target: { kind: "new" },
@@ -465,6 +466,7 @@ test("at boot --effort wins over the model's default level, and a resumed sessio
 
   const app = harness(buildState(null));
   app.runner.boot({
+    start: "launch",
     home: "/tmp",
     cwd: "/tmp",
     target: { kind: "session", id: asId("s1") },
@@ -585,6 +587,7 @@ test("a first message sent while boot settles the launch folder registers that f
   });
 
   app.runner.boot({
+    start: "launch",
     home: "/tmp",
     cwd: "/tmp",
     target: { kind: "new" },
@@ -706,6 +709,7 @@ test("a runner stopped before the host opens drops its waiting host effects and 
   const app = harness(buildState(followed(LANDED)), new Promise(() => undefined));
   app.runner.run({ kind: "follow", target: "new", announce: false });
   app.runner.boot({
+    start: "launch",
     home: "/tmp",
     cwd: "/tmp",
     target: { kind: "new" },
@@ -771,6 +775,7 @@ test("a rename of the followed chat in the session directory reaches its info, s
   const info = followedSession(state)?.info;
 
   app.runner.boot({
+    start: "launch",
     home: "/tmp",
     cwd: "/tmp",
     target: { kind: "session", id: asId("s1") },
