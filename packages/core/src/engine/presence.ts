@@ -11,7 +11,7 @@ export const LAPSE_MS = 20_000;
 
 const FORGET_MS = 10 * 60_000;
 
-const GAP_MS = 3 * BEAT_MS;
+const GAP_MS = 2 * BEAT_MS;
 
 export interface Member {
   readonly label: string;
@@ -66,7 +66,7 @@ export async function openPresence(
   let revision = registered.revisions[0];
   const revocation = new AbortController();
   const seen = new Map<string, { revision: Revision; since: number }>();
-  let observedAt = performance.now();
+  let wroteAt = performance.now();
   let beating = false;
   let closed = false;
 
@@ -77,14 +77,14 @@ export async function openPresence(
     revocation.abort();
   };
 
-  const keepContinuity = (): number => {
+  const wrote = (): void => {
     const now = performance.now();
 
-    if (now - observedAt > GAP_MS) for (const entry of seen.values()) entry.since = now;
-    observedAt = now;
-
-    return now;
+    if (now - wroteAt > GAP_MS) for (const entry of seen.values()) entry.since = now;
+    wroteAt = now;
   };
+
+  const writable = (now: number): boolean => now - wroteAt <= GAP_MS;
 
   const observe = (instance: string, current: Revision, now: number) => {
     const known = seen.get(instance);
@@ -103,8 +103,9 @@ export async function openPresence(
     try {
       const outcome = await raw.refs.set([{ name, target, expect: revision }]);
 
-      if (outcome.kind === "set") revision = outcome.revisions[0];
-      else revoke();
+      if (outcome.kind !== "set") return revoke();
+      revision = outcome.revisions[0];
+      wrote();
     } catch (error) {
       dev("presence", "beat failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -145,8 +146,8 @@ export async function openPresence(
     revoked: revocation.signal,
     async holder(instance) {
       if (instance === input.instance) return { kind: "me" };
-      const now = keepContinuity();
       const ref = await raw.refs.get(processRef(instance));
+      const now = performance.now();
 
       if (ref === null) {
         seen.delete(instance);
@@ -154,15 +155,15 @@ export async function openPresence(
         return { kind: "absent" };
       }
 
-      const known = observe(instance, ref.revision, now);
+      const lapsed = now - observe(instance, ref.revision, now).since;
 
-      return now - known.since >= LAPSE_MS
+      return writable(now) && lapsed >= LAPSE_MS
         ? { kind: "dead", name: ref.name, expect: ref.revision }
-        : { kind: "alive", until: Date.now() + (LAPSE_MS - (now - known.since)) };
+        : { kind: "alive", until: Date.now() + Math.max(LAPSE_MS - lapsed, BEAT_MS) };
     },
     async sweep() {
-      const now = keepContinuity();
       const listed = await raw.refs.list(PROCESSES);
+      const now = performance.now();
       const present = new Set<string>();
 
       for (const ref of listed) {
@@ -172,7 +173,7 @@ export async function openPresence(
         if (instance === input.instance) continue;
         const known = observe(instance, ref.revision, now);
 
-        if (now - known.since < FORGET_MS) continue;
+        if (!writable(now) || now - known.since < FORGET_MS) continue;
         await raw.refs.set([{ name: ref.name, target: null, expect: ref.revision }]);
         seen.delete(instance);
       }
