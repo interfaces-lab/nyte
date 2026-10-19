@@ -39,7 +39,7 @@ const NEVER_STARTED: readonly [string, ...string[]] = [
   'console.error("error: The client started the service itself."); process.exit(1);',
 ];
 
-describe("the installed service", () => {
+describe.skipIf(process.platform === "win32")("the installed service", () => {
   const path = process.env["PATH"];
   let root = "";
   let home = "";
@@ -208,18 +208,21 @@ describe("renderUnit", () => {
     environment: { HOME: "/Users/a b", PATH: "/usr/bin:/bin" },
   };
 
-  it("restarts a systemd unit on failure, escaping spaces, specifiers and variables", () => {
-    const systemd = findSupervisor("/Users/a b", "linux");
+  it.skipIf(process.platform === "win32")(
+    "restarts a systemd unit on failure, escaping spaces, specifiers and variables",
+    () => {
+      const systemd = findSupervisor("/Users/a b", "linux");
 
-    if (systemd === undefined) throw new Error("Linux always has a supervisor.");
-    const unit = renderUnit(systemd, plan);
+      if (systemd === undefined) throw new Error("Linux always has a supervisor.");
+      const unit = renderUnit(systemd, plan);
 
-    expect(unit).toContain('ExecStart="/opt/nyte 1/nyte" service run 100%% $$HOME\n');
-    expect(unit).toContain('Environment="HOME=/Users/a b"\n');
-    expect(unit).toContain("Restart=on-failure\n");
-    expect(unit).toContain("WantedBy=default.target\n");
-    expect(unit).toContain("StandardOutput=append:/Users/a b/.nyte/logs/service.log\n");
-  });
+      expect(unit).toContain('ExecStart="/opt/nyte 1/nyte" service run 100%% $$HOME\n');
+      expect(unit).toContain('Environment="HOME=/Users/a b"\n');
+      expect(unit).toContain("Restart=on-failure\n");
+      expect(unit).toContain("WantedBy=default.target\n");
+      expect(unit).toContain("StandardOutput=append:/Users/a b/.nyte/logs/service.log\n");
+    },
+  );
 
   it.runIf(process.platform === "darwin")(
     "starts a launch agent at load and keeps it alive only after a failed exit",

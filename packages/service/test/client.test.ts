@@ -52,6 +52,11 @@ async function runFake(
   }
 }
 
+async function killService(pid: number): Promise<void> {
+  if (alive(pid)) process.kill(pid, "SIGKILL");
+  while (alive(pid)) await sleep(10);
+}
+
 function failingService(message: string): readonly [string, ...string[]] {
   return [process.execPath, "-e", `console.error(${JSON.stringify(message)}); process.exit(1);`];
 }
@@ -70,9 +75,9 @@ describe("ensureService", () => {
   afterEach(async () => {
     const registered = await readRegistration(home);
 
-    if (registered !== undefined && alive(registered.pid)) process.kill(registered.pid, "SIGKILL");
+    if (registered !== undefined) await killService(registered.pid);
     await stopService(home);
-    await rm(home, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true, maxRetries: 10 });
   });
 
   it("starts the service and returns the registration it renames into place", async () => {
@@ -190,7 +195,7 @@ describe("ensureService", () => {
     held.abort();
   });
 
-  it(
+  it.skipIf(process.platform === "win32")(
     "names both builds and the fix when the other build won't stop",
     { timeout: 15_000 },
     async () => {
@@ -236,8 +241,8 @@ describe("retireService", () => {
   afterEach(async () => {
     const registered = await readRegistration(home);
 
-    if (registered !== undefined && alive(registered.pid)) process.kill(registered.pid, "SIGKILL");
-    await rm(home, { recursive: true, force: true });
+    if (registered !== undefined) await killService(registered.pid);
+    await rm(home, { recursive: true, force: true, maxRetries: 10 });
   });
 
   it("finds none without a registration that answers", async () => {
@@ -285,8 +290,8 @@ describe("stopService", () => {
   afterEach(async () => {
     const registered = await readRegistration(home);
 
-    if (registered !== undefined && alive(registered.pid)) process.kill(registered.pid, "SIGKILL");
-    await rm(home, { recursive: true, force: true });
+    if (registered !== undefined) await killService(registered.pid);
+    await rm(home, { recursive: true, force: true, maxRetries: 10 });
   });
 
   it("reports nothing to stop", async () => {
@@ -297,7 +302,13 @@ describe("stopService", () => {
     const running = await runFake(home, fakeService("v1", 0));
 
     expect(await stopService(home)).toEqual([
-      { kind: "stopped", owner: "service", pid: running.pid, how: "exited", orphans: 0 },
+      {
+        kind: "stopped",
+        owner: "service",
+        pid: running.pid,
+        how: process.platform === "win32" ? "killed" : "exited",
+        orphans: 0,
+      },
     ]);
     expect(alive(running.pid)).toBe(false);
   });

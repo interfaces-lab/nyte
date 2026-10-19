@@ -421,6 +421,15 @@ export async function stopService(home: string): Promise<readonly Stopped[]> {
 async function stopProcess(
   pid: number,
 ): Promise<{ readonly how: "exited" | "killed"; readonly orphans: number }> {
+  if (process.platform === "win32") {
+    await new Promise((done) => {
+      execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, done);
+    });
+    await exited(pid);
+
+    return { how: "killed", orphans: 0 };
+  }
+
   const children = await descendants(pid);
 
   if (await terminate(pid)) return { how: "exited", orphans: await reap(children) };
@@ -449,8 +458,18 @@ function kill(pid: number, signal: NodeJS.Signals): void {
 }
 
 async function processTable(): Promise<ReadonlyMap<number, number>> {
+  const [command, ...args] =
+    process.platform === "win32"
+      ? [
+          "powershell.exe",
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId)" }',
+        ]
+      : ["ps", "-axo", "pid=,ppid="];
   const listed = await new Promise<string>((done) => {
-    execFile("ps", ["-axo", "pid=,ppid="], (_error, stdout) => done(stdout));
+    execFile(command, args, { windowsHide: true }, (_error, stdout) => done(stdout));
   });
 
   return new Map(
