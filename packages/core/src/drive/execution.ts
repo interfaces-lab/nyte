@@ -27,7 +27,10 @@ import { stopRequested } from "../engine/fence.ts";
 import { holdLease } from "../engine/lease.ts";
 import { recoverMoves } from "../engine/move.ts";
 import { begin, endRun, newRun } from "../engine/runs.ts";
+import { reapJobs } from "../engine/jobs.ts";
+import { BEAT_MS } from "../engine/presence.ts";
 import { recoverStarts } from "../engine/start.ts";
+import { crashLooping, interruption, parkedFailure } from "./interruptions.ts";
 import { earliestWake, loadWaits } from "../engine/waits.ts";
 import { commit } from "../fold/commit.ts";
 import { withFold } from "../fold/reads.ts";
@@ -63,6 +66,7 @@ export function createExecutionState(): ExecutionState {
     driving: new Map(),
     covers: new Map(),
     advancing: new Set(),
+    undrained: new Set(),
     leaseQueue: keyedSerial(),
     pending: new Map(),
     summaries: new Set(),
@@ -94,12 +98,17 @@ export async function cover(kernel: Kernel, coverage: ExecutionCoverage): Promis
       const released: Promise<void>[] = [];
 
       for (const [name, entry] of state.held) {
-        if (!entry.owners.delete(handle) || entry.owners.size > 0 || state.advancing.has(name))
+        if (
+          !entry.owners.delete(handle) ||
+          entry.owners.size > 0 ||
+          state.advancing.has(name) ||
+          state.undrained.has(name)
+        )
           continue;
         released.push(release(kernel, entry.session, entry.head));
       }
 
-      await Promise.all(released);
+      await Promise.allSettled(released);
     })();
 
     return closing;
@@ -173,6 +182,7 @@ export async function advance(
 
     if (
       claimed &&
+      !state.undrained.has(name) &&
       (report?.kind !== "continue" || (state.held.get(name)?.owners.size ?? 0) === 0)
     ) {
       await release(kernel, session, head);
@@ -192,7 +202,14 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
 
   if (due === null) return { kind: "idle" };
 
-  const run = await newRun(kernel.store, session, head, due.origin, due.input.configuration);
+  const run = await newRun(
+    kernel.store,
+    session,
+    head,
+    due.origin,
+    due.input.configuration,
+    kernel.presence?.member.capabilities ?? [],
+  );
 
   if ((await landing(kernel, session, head, due.ids, run.view.id, run.updates)).length === 0)
     return next(kernel, session, head);
@@ -201,7 +218,6 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
   return (await drive(kernel, session, head, run.view)) ?? next(kernel, session, head);
 }
 
-/** A step that throws leaves its run live with nothing driving it, so the head would show working forever: the run ends failed with the error instead. */
 async function failStep(
   kernel: Kernel,
   session: SessionId,
@@ -217,9 +233,17 @@ async function failStep(
   return next(kernel, session, head);
 }
 
-export async function repair(
+export function repair(
   kernel: Kernel,
   input: { readonly cursor?: Cursor; readonly limit: number },
+): Promise<RepairPage> {
+  return owedPage(kernel, input, true);
+}
+
+async function owedPage(
+  kernel: Kernel,
+  input: { readonly cursor?: Cursor; readonly limit: number },
+  operations: boolean,
 ): Promise<RepairPage> {
   if (input.cursor !== undefined && !input.cursor.startsWith("work:"))
     throw new SdkError("invalid", `${input.cursor} is not a recovery cursor`);
@@ -242,7 +266,7 @@ export async function repair(
     const found = await readSession(kernel.store, session);
 
     if (found !== null)
-      for (const head of await recover(kernel, session, found.record.heads))
+      for (const head of await recover(kernel, session, found.record.heads, operations))
         runnable.push({ session, head });
   }
 
@@ -261,9 +285,13 @@ async function recover(
   kernel: Kernel,
   session: SessionId,
   heads: readonly { readonly name: HeadName }[],
+  operations = true,
 ): Promise<readonly HeadName[]> {
-  await recoverMoves(kernel, session);
-  await recoverStarts(kernel, session);
+  if (operations) {
+    await recoverMoves(kernel, session);
+    await recoverStarts(kernel, session);
+  }
+
   const runnable: HeadName[] = [];
 
   for (const head of heads) if (await owed(kernel, session, head.name)) runnable.push(head.name);
@@ -374,6 +402,33 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
   };
 
   const dispose = kernel.wakes.subscribe(step);
+  let sweeping = false;
+
+  const sweep = async (): Promise<void> => {
+    if (sweeping || closed) return;
+    sweeping = true;
+
+    try {
+      await covering;
+      await kernel.presence?.sweep();
+      await kernel.waits.tick(Date.now());
+      await reapJobs(kernel);
+
+      if (coverage.kind === "all") {
+        let cursor: Cursor | undefined;
+
+        do {
+          cursor = (await owedPage(kernel, { cursor, limit: PAGE }, false)).next ?? undefined;
+        } while (cursor !== undefined && !closed);
+      }
+    } catch (error) {
+      dev("execution", "sweep failed", { error: formatError(error) });
+    } finally {
+      sweeping = false;
+    }
+  };
+
+  const sweeper = kernel.presence === null ? null : setInterval(() => void sweep(), BEAT_MS);
 
   if (coverage.kind === "all")
     void (async () => {
@@ -391,6 +446,8 @@ export function driveInProcess(kernel: Kernel, coverage: ExecutionCoverage): Own
     closing ??= (async () => {
       closed = true;
       dispose();
+
+      if (sweeper !== null) clearInterval(sweeper);
 
       if (timer !== null) clearTimeout(timer);
 
@@ -425,7 +482,6 @@ function release(kernel: Kernel, session: SessionId, head: HeadName): Promise<vo
   );
 }
 
-/** Renews the leases a cover holds between steps. Nothing runs under them, so a refusal only drops the entry (claimNow does); a step in flight renews its own lease. */
 async function renewIdle(kernel: Kernel): Promise<void> {
   const { held, advancing } = kernel.executionState;
 
@@ -460,13 +516,18 @@ async function claimNow(
   const lease = ref?.target ? decodeLease(await kernel.store.objects.get(ref.target)) : null;
   const now = Date.now();
 
-  if (
+  const foreign =
     mine === undefined &&
     lease !== null &&
-    (lease.holder !== kernel.hostId || lease.instance !== kernel.instance) &&
-    lease.expiresAt > now
-  )
+    (lease.holder !== kernel.hostId || lease.instance !== kernel.instance);
+
+  const holder =
+    !foreign || kernel.presence === null ? null : await kernel.presence.holder(lease.instance);
+
+  if (foreign && (holder === null || holder.kind === "absent") && lease.expiresAt > now)
     return { kind: "busy", until: lease.expiresAt };
+
+  if (holder?.kind === "alive") return { kind: "busy", until: holder.until };
 
   const outcome = await commit(kernel, [
     {
@@ -479,6 +540,10 @@ async function claimNow(
       ),
       expect: ref === null ? "absent" : ref.revision,
     },
+    ...(holder?.kind === "dead"
+      ? [{ name: holder.name, target: null, expect: holder.expect }]
+      : []),
+    ...(foreign ? await interruption(kernel, session, head) : []),
   ]);
 
   dev("execution", "claim", { session, head, outcome: outcome.kind });
@@ -521,6 +586,12 @@ async function settleLive(
 
   if (kernel.executionState.driving.has(run))
     return (await holding(kernel.store, session, live.record)) ?? { kind: "idle" };
+
+  if (crashLooping(live.record)) {
+    await endRun(kernel, session, run, { kind: "failed", failure: parkedFailure(live.record) });
+
+    return null;
+  }
 
   if (live.record.stopping) {
     kernel.runs.start(session, run).abort();
@@ -571,7 +642,6 @@ async function holding(
     : null;
 }
 
-/** Runs the run's owed calls that wait on nothing, once each, and names those whose input it could not read. The caller resumes again while a call is runnable (a gate answered while another call ran, or after this read, whose wake found the head busy), so the turn never goes on past a call that can run. */
 async function resume(
   kernel: Kernel,
   session: SessionId,
@@ -579,7 +649,13 @@ async function resume(
   run: RunId,
 ): Promise<{ readonly refused: Refused | null; readonly unreadable: readonly string[] }> {
   const renewal = holdHead(kernel, session, head);
-  const signal = AbortSignal.any([kernel.runs.start(session, run).signal, renewal.lease.signal]);
+
+  const signal = AbortSignal.any([
+    kernel.runs.start(session, run).signal,
+    renewal.lease.signal,
+    kernel.executionState.closing.signal,
+  ]);
+
   const runtime = kernel.plugins.runtime(session);
   const release = runtime.hold();
   const unreadable: string[] = [];
@@ -627,7 +703,6 @@ async function resume(
   return { refused, unreadable };
 }
 
-/** The run's owed calls that wait on nothing. */
 async function runnableCalls(
   store: StoreConnection,
   session: SessionId,
@@ -636,7 +711,6 @@ async function runnableCalls(
   return (await owedCalls(store, session, run)).filter((owed) => !owed.parked);
 }
 
-/** Holds a head's lease while a run is resumed or driven; `refused` says why it was lost. */
 function holdHead(kernel: Kernel, session: SessionId, head: HeadName) {
   let refused: Refused | null = null;
 
@@ -699,6 +773,9 @@ async function drive(
   });
 
   const ended = await Promise.race([turned, closed]);
+
+  if (ended === null && kernel.presence !== null)
+    kernel.executionState.undrained.add(leaseRef(session, head));
   const stopping = await stopRequested(kernel.store, session, run.id);
   const refused = renewal.refused();
 

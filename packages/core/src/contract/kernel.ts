@@ -59,6 +59,7 @@ import type {
   SettingDefinition,
   SettingsRegistry,
 } from "./plugin.ts";
+import type { Presence } from "../engine/presence.ts";
 import type { CallRecord } from "./records.ts";
 import type { Session } from "./session.ts";
 import type { StoreConnection } from "./store.ts";
@@ -78,9 +79,10 @@ export interface Kernel {
 
   readonly instance: string;
 
+  readonly presence: Presence | null;
+
   readonly poll: number | null;
 
-  /** Listeners the store poll calls when another process has committed, for readers of what the bus does not carry, such as the session directory. */
   readonly externalCommits: Set<() => void>;
 
   readonly store: StoreConnection;
@@ -89,7 +91,6 @@ export interface Kernel {
 
   readonly bus: SessionBus;
 
-  /** The one way logged events reach the bus: once each, in seq order per session. */
   readonly publisher: LogPublisher;
 
   readonly host: HostState;
@@ -115,7 +116,6 @@ export interface Kernel {
 
   readonly resolveConfiguration: ConfigurationResolver;
 
-  /** Whether `model`'s runtime takes a message sent mid-turn (`ModelCapabilities.steer`); true for a model of no known provider. */
   readonly modelSteers: (model: ModelRef) => boolean;
 
   readonly waits: WaitRegistry;
@@ -142,27 +142,20 @@ export interface Kernel {
 
   readonly mcp: McpHub | null;
 
-  /** The serving machine's GitHub CLI login, null on a host without one. */
   readonly github: GitHubAccountApi | null;
 
   readonly plugins: PluginHost;
 
-  /** Builds the public connection and session handles, so engine and plugin code never import the api layer. */
   readonly handles: Handles;
 
-  /** Removes a chat whose first message is still deciding, the way a refusal does; returns that message, or null when nothing on the chat is deciding. On the kernel so receipts reach it without importing start.ts. */
   stopStart(session: SessionId): Promise<MessageId | null>;
 }
 
-/** The host's plugins and the per-session runtimes that load them. */
 export interface PluginHost {
-  /** The first-party plugins every session loads first. */
   readonly builtins: readonly Plugin<"core">[];
 
-  /** The host's own plugins, after the built-ins; `replace` swaps them. */
   host: readonly Plugin<"core">[];
 
-  /** Where each plugin loaded from a file came from. */
   readonly sources: ReadonlyMap<
     Plugin<"core">,
     { readonly source: "user" | "project"; readonly path: string }
@@ -170,17 +163,14 @@ export interface PluginHost {
 
   readonly state: PluginState;
 
-  /** The session's runtime, installed on first use. */
   runtime(session: SessionId): PluginRuntime;
 
-  /** Installs a fresh runtime for the session over the one it has, and waits for it. */
   reload(session: SessionId): Promise<void>;
 
   runtimes(): ReadonlyMap<SessionId, PluginRuntime>;
 
   close(session: SessionId): Promise<void>;
 
-  /** The api a plugin owns in a session's runtime. */
   api(owner: string, session: SessionId): PluginApi<"core">;
 
   replace(
@@ -190,11 +180,9 @@ export interface PluginHost {
 
   check(plugins: readonly Plugin<"core">[]): ReturnType<Host["plugins"]["check"]>;
 
-  /** Imports the plugins in `paths`, through the host's plugin loader. */
   load(paths: readonly string[]): Promise<readonly Plugin<"core">[]>;
 }
 
-/** This process's activation and catalog of each session, each change published on the session's bus. */
 export interface SessionDirectory {
   activation(session: SessionId): Activation;
 
@@ -204,7 +192,6 @@ export interface SessionDirectory {
 
   setCatalog(session: SessionId, catalog: SessionCatalogView): void;
 
-  /** Drops a removed session's activation and catalog. */
   forget(session: SessionId): void;
 }
 
@@ -213,20 +200,16 @@ interface Handles {
 
   session(context: ConnectionContext, session: SessionId): Session;
 
-  /** The session handle a plugin's `activate` receives: its main head sends without waiting on the activation. */
   activationSession(context: ConnectionContext, session: SessionId): Session;
 }
 
-/** This process's abort controllers for the runs it works on. Whether a run is stopping is its record's `stopping`; this table only follows that record's logged stop fence. */
 export interface RunTable {
-  /** The controller of a run this process works on, created on first use, following the session's bus for the run's stop fence. */
   start(session: SessionId, run: RunId): AbortController;
 
   abort(run: RunId): void;
 
   signal(run: RunId): AbortSignal | null;
 
-  /** Whether the run's stop fence reached this process's bus, or its work here was aborted. */
   fenced(run: RunId): boolean;
 
   end(run: RunId): void;
@@ -307,15 +290,11 @@ export interface ParkedWait {
   readonly index: number;
 }
 
-/** Wakes parked calls: each target event offers its outcome to the waits the store-side index lists under it, and `tick` to the timers and deadlines that are due. */
 export interface WaitRegistry {
-  /** Checks a just-parked wait against what it waits on, completing it at once when that already happened. */
   park(entry: ParkedWait): Promise<void>;
 
-  /** Offers a run's end to its waiters; whether any took it. */
   runEnded(session: SessionId, run: RunId, end: RunEnd): Promise<boolean>;
 
-  /** Offers a job's end to its waiters; whether any took it. */
   jobEnded(job: JobId, end: JobEnd): Promise<boolean>;
 
   partAnswered(
@@ -326,30 +305,22 @@ export interface WaitRegistry {
 
   partClosed(session: SessionId, part: PartId): Promise<void>;
 
-  /** Ends the waits on a head that stop at its next input. */
   inputAdmitted(session: SessionId, head: HeadName, message: MessageId): Promise<void>;
 
-  /** Ends the waits a run's parked calls hold, stopped. */
   runStopped(session: SessionId, run: RunId): Promise<void>;
 
-  /** Ends a call's wait, and those of the calls nested in it, stopped. */
   callStopped(session: SessionId, call: CallId): Promise<void>;
 
-  /** Offers the timers and deadlines due at `now`. */
   tick(now: number): Promise<void>;
 
   rerun(session: SessionId, call: CallId): void;
 
-  /** After another process committed: steps the calls its wakes indexed as woken (see `loadWaits`), and resumes this process's action loops whose call it settled or whose re-run claim lapsed. A parked call is left to its index, which every process offers through. */
   refresh(): Promise<void>;
 
-  /** Registers this process's live loop for an action call, resumed when its wait completes. */
   onWoken(session: SessionId, call: CallId, resume: () => void): Disposer;
 
-  /** Calls `listener` each time this process settles the receipt, until disposed. */
   onReceipt(session: SessionId, receipt: string, listener: () => void): Disposer;
 
-  /** Tells this process's listeners of the receipt that it settled. */
   receiptSettled(session: SessionId, receipt: string): void;
 }
 
@@ -501,15 +472,14 @@ interface Held {
 
 export interface ExecutionState {
   readonly held: Map<string, Held>;
-  /** The runs this process drives a turn of, with their sessions. */
   readonly driving: Map<RunId, SessionId>;
   readonly covers: Map<object, ExecutionCoverage>;
   readonly advancing: Set<string>;
+  readonly undrained: Set<string>;
   readonly leaseQueue: KeyedSerial<string>;
   readonly pending: Map<string, boolean>;
   readonly summaries: Set<string>;
   readonly callQueue: KeyedSerial<string>;
-  /** The chats whose first message this process is deciding, each with the abort a stop or remove fires. */
   readonly starting: Map<
     SessionId,
     { readonly done: Promise<void>; readonly abort: AbortController }

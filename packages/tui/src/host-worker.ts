@@ -1,27 +1,12 @@
 import { homedir } from "node:os";
-import process from "node:process";
 import { parentPort } from "node:worker_threads";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
-import { StoreOwned } from "@nyte-ai/host";
-import {
-  PortInUse,
-  ServiceRunning,
-  portConflict,
-  probePort,
-  removeRegistration,
-  serviceBuild,
-  startService,
-  stopHostJobs,
-  watchReplacement,
-  writeRegistration,
-} from "@nyte-ai/service";
-import type { Registration } from "@nyte-ai/service";
-import { readCodeId } from "./code-id.ts";
+import { ConnectRuntime, hostShare, machineName } from "@nyte-ai/connect/host";
+import { portConflict, probePort, Sharing } from "@nyte-ai/service";
 import { readConnectConfig } from "./connect-config.ts";
 import { openTerminalHost } from "./host.ts";
 import { hostMessages } from "./hosting.ts";
 import type { HostCommand, HostFailureReason, HostReport } from "./hosting.ts";
-import { VERSION } from "./version.ts";
 
 interface Opened {
   readonly address: string;
@@ -37,6 +22,8 @@ registerBunOAuthFlows();
 const report = (message: HostReport): void => port.postMessage(message);
 
 let opening: Promise<Opened | null> = Promise.resolve(null);
+
+class PortInUse extends Error {}
 
 port.on("message", (message) => {
   if (!hostMessages.Check(message)) {
@@ -75,71 +62,70 @@ port.on("message", (message) => {
     );
 });
 
+const revoked = (): void =>
+  void opening
+    .then((opened) => opened?.close())
+    .catch(() => undefined)
+    .then(() => report({ kind: "revoked" }));
+
 async function open(command: HostCommand): Promise<Opened> {
-  const home = homedir();
+  const host = await openTerminalHost({
+    label: command.kind === "serve" ? "nyte serve" : "nyte",
+    onRevoked: revoked,
+  });
 
-  if (command.kind === "service") {
-    const service = await startService({
-      open: () => openTerminalHost(),
-      home,
-      port: command.port,
-      version: VERSION,
-      code: await readCodeId(),
-      connect: readConnectConfig(),
-    });
+  let sharing: Sharing | null = null;
 
-    return { address: service.registration.url, close: () => service.close() };
-  }
+  const connect =
+    command.kind === "local"
+      ? new ConnectRuntime({
+          config: readConnectConfig(),
+          home: `${homedir()}/.nyte`,
+          authorizer: { kind: "transaction", onOpened: () => undefined },
+          onChange: () => sharing?.changed(),
+          name: machineName(),
+        })
+      : null;
 
-  const host = await openTerminalHost();
+  sharing =
+    connect === null ? null : new Sharing({ connect, share: hostShare(host), home: homedir() });
 
   try {
     const listener = await host.listen({
-      transport: { kind: "http", port: command.port },
+      transport: {
+        kind: "http",
+        ...(command.kind === "local" && { hostname: "127.0.0.1" }),
+        port: command.port,
+      },
       auth: { kind: "token", token: command.token },
+      ...(sharing !== null && { before: sharing.routes(command.token) }),
     });
 
     if (listener.address === null) throw new Error("The listener bound no address.");
-
-    const registration: Registration = {
-      url: listener.address,
-      token: command.token,
-      pid: process.pid,
-      version: await serviceBuild(VERSION, await readCodeId()),
-      hostId: host.hostId,
-      owner: "serve",
-      folder: process.cwd(),
-    };
-
-    await writeRegistration(home, registration);
-
-    const unwatch = watchReplacement(home, registration, () =>
-      process.kill(process.pid, "SIGTERM"),
-    );
+    sharing?.start();
 
     return {
       address: listener.address,
       close: async () => {
-        unwatch();
-        await removeRegistration(home, registration);
-        await stopHostJobs(host);
+        await sharing?.close();
+        await connect?.close();
         await host.close();
       },
     };
   } catch (cause) {
+    await sharing?.close();
+    await connect?.close();
     await host.close();
-    const conflict = portConflict(command.port, await probePort(command.port));
+
+    const conflict =
+      command.port === 0 ? undefined : portConflict(command.port, await probePort(command.port));
 
     throw conflict === undefined ? cause : new PortInUse(conflict);
   }
 }
 
 function failureReason(cause: unknown): HostFailureReason {
-  if (cause instanceof PortInUse) return "port-in-use";
-
-  if (cause instanceof StoreOwned) return "store-owned";
-
-  return cause instanceof ServiceRunning ? "service-running" : "other";
+  return cause instanceof PortInUse ? "port-in-use" : "other";
 }
 
 function failureMessage(cause: unknown): string {

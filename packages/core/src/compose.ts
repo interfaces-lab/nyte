@@ -52,7 +52,9 @@ import type {
   PageTable,
 } from "./contract/workspace.ts";
 import { createExecutionState, dispatchHead, driveInProcess } from "./drive/execution.ts";
-import { createJobTable } from "./engine/jobs.ts";
+import { createJobTable, jobHandle } from "./engine/jobs.ts";
+import { openPresence } from "./engine/presence.ts";
+import type { Member } from "./engine/presence.ts";
 import { createPartDefinitions } from "./engine/part-definitions.ts";
 import { createConnectionRegistry } from "./engine/principals.ts";
 import { stopStart } from "./engine/start.ts";
@@ -97,6 +99,10 @@ export type ComposeOptions = OpenOptions & {
   readonly seed?: { readonly settings: Readonly<Record<string, Json>>; readonly path: string };
 
   readonly loadPlugins?: PluginHost["load"];
+
+  readonly member?: Member;
+
+  readonly revoked?: () => void;
 };
 
 const RUN_ALL: Kernel["execution"] = { kind: "run", coverage: { kind: "all" } };
@@ -122,16 +128,15 @@ const BUILTINS: readonly Plugin<"core">[] = [
   delegationPlugin,
 ];
 
-/** Composes a host over `options.store`, with the server port a listener serves it through. */
 export async function composeHost(options: ComposeOptions): Promise<ServedHost> {
   return (await composeServer(options)).host;
 }
 
-/** Composes a host and returns the kernel under it too, for tests that drive the kernel; everything else takes {@link composeHost}. */
 export async function composeServer(
   options: ComposeOptions,
 ): Promise<{ readonly host: ServedHost; readonly kernel: Kernel }> {
   const outcomes = checkPlugins([...BUILTINS, ...options.plugins]).plugins;
+
   const fromFile = (index: number) =>
     index < BUILTINS.length
       ? undefined
@@ -295,10 +300,18 @@ async function applySeed(kernel: Kernel, seed: NonNullable<ComposeOptions["seed"
 
 async function composeKernel(options: ComposeOptions, store: StoreConnection): Promise<Kernel> {
   const identity = await hostIdentity(store);
+  const instance = crypto.randomUUID();
+
+  const presence =
+    options.member === undefined
+      ? null
+      : await openPresence(store, { instance, holder: identity.id, member: options.member });
 
   const kernel = createKernel({
     hostId: identity.id,
-    store,
+    instance,
+    presence,
+    store: presence?.store ?? store,
     description: options.description,
     host: createHostState({
       catalog: asId<"catalog-generation">(crypto.randomUUID()),
@@ -321,6 +334,15 @@ async function composeKernel(options: ComposeOptions, store: StoreConnection): P
 
   kernel.host.update({ plugins: hostPluginRows(kernel) });
 
+  presence?.revoked.addEventListener(
+    "abort",
+    () => {
+      kernel.executionState.closing.abort();
+      options.revoked?.();
+    },
+    { once: true },
+  );
+
   return kernel;
 }
 
@@ -328,6 +350,8 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
   Partial<
     Pick<
       Kernel,
+      | "instance"
+      | "presence"
       | "execution"
       | "turn"
       | "summarize"
@@ -344,11 +368,8 @@ type KernelOptions = Pick<Kernel, "hostId" | "store" | "description" | "host"> &
     readonly pluginSources?: PluginHost["sources"];
     readonly loadPlugins?: PluginHost["load"];
     readonly poll?: number;
-    /** Backs the model ports (turn, summarize, compact, configuration, request and the models API) unless a port is given. */
     readonly models?: Models;
-    /** Builds the host's MCP hub and adds the `mcp` plugin to the builtins. */
     readonly mcp?: McpHubFactory;
-    /** The serving machine's GitHub CLI login. */
     readonly github?: GitHubAccountApi;
   };
 
@@ -383,7 +404,8 @@ export function createKernel(input: KernelOptions): Kernel {
 
   const kernel: Kernel = {
     hostId: input.hostId,
-    instance: crypto.randomUUID(),
+    instance: input.instance ?? crypto.randomUUID(),
+    presence: input.presence ?? null,
     poll: input.poll ?? null,
     externalCommits: new Set(),
     store: input.store,
@@ -531,13 +553,12 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
     asId<"workspace">(ref.name.slice("workspaces/".length)),
   );
 
-  await Promise.allSettled(
-    workspaces.flatMap((workspace) =>
-      kernel.jobs
-        .list(workspace)
-        .flatMap((job) => (job.view.state.kind === "running" ? [job.process.stop()] : [])),
-    ),
+  const running = workspaces.flatMap((workspace) =>
+    kernel.jobs.list(workspace).filter((job) => job.view.state.kind === "running"),
   );
+
+  await Promise.allSettled(running.map((job) => job.process.stop()));
+  await Promise.allSettled(running.map((job) => jobHandle(kernel, job.view.id).settled()));
 
   for (const session of sessions) await kernel.plugins.close(session);
   dropScans(kernel);
@@ -545,6 +566,15 @@ async function release(kernel: Kernel, driver: Owned | null): Promise<void> {
   for (const session of sessions) await kernel.environments.detach(session);
 
   for (const workspace of workspaces) await kernel.environments.detachWorkspace(workspace);
+  const state = kernel.executionState;
+
+  await kernel.presence?.close(
+    [...state.undrained].flatMap((name) => {
+      const held = state.held.get(name);
+
+      return held === undefined ? [] : [{ name, expect: held.revision }];
+    }),
+  );
 }
 
 async function storedIdentity(store: StoreConnection): Promise<HostIdentity | null> {

@@ -13,16 +13,15 @@ import type {
   MainAsk,
   MainMessage,
 } from "./host-messages.ts";
+import { REVOKED_EXIT } from "./host-messages.ts";
 import { Rpc } from "./host-rpc.ts";
 import type { DesktopUpdateActivity } from "./host.ts";
 import type { HostWindow } from "./host-window.ts";
 
-/** What main does with the host process's messages. */
 interface HostProcessHandlers {
   event(event: HostEvent, window: HostWindow | undefined): void;
   awake(awake: boolean): void;
   settings(settings: DesktopSettings): void;
-  /** Answers a request for the browser panel or the account; `signal` aborts when the host gives up on it. */
   answer(ask: HostAsk, signal: AbortSignal): Promise<MainAnswer>;
 }
 
@@ -33,13 +32,10 @@ const STOPPED: CallReply = {
   error: { code: "unavailable", message: STOPPED_MESSAGE },
 };
 
-/** A host that exits sooner than this after its fork crashed fast; one that ran longer starts the count again. */
 const STEADY_MS = 30_000;
 
-/** The wait before each restart after consecutive fast crashes; one more fast crash stops restarting. */
 const RESTART_DELAYS_MS = [250, 1_000, 4_000] as const;
 
-/** One forked host process and the requests in flight to it. */
 interface Run {
   readonly child: UtilityProcess;
   readonly rpc: Rpc<MainAsk, HostAnswer, HostAsk, MainAnswer>;
@@ -47,18 +43,10 @@ interface Run {
   alive: boolean;
 }
 
-/**
- * Main's handle on the host process (`host-entry.ts`): forks it at once, forwards host
- * operations and lifecycle to it, and turns its messages into window events, keep-awake and
- * settings. A host that exits on its own is forked again on the endpoint renderers already
- * hold, so their connections resume; requests in flight to the one that exited answer
- * unavailable. After repeated fast crashes it stops and offers a restart.
- */
 export class HostProcess {
   readonly #entry: string;
   readonly #handlers: HostProcessHandlers;
   #options: HostProcessOptions;
-  /** The live run, a restart's pending one, or undefined once stopped or closed. */
   #current: Promise<Run | undefined>;
   #run: Run | undefined;
   #crashes = 0;
@@ -73,7 +61,6 @@ export class HostProcess {
     this.#current = Promise.resolve(this.#run);
   }
 
-  /** Forwards one renderer request; the host process decodes and answers it. */
   async call(window: HostWindow, request: CallRequest): Promise<CallReply> {
     const run = await this.#current;
 
@@ -94,7 +81,6 @@ export class HostProcess {
     return reply;
   }
 
-  /** Running sessions and terminal commands, asked when called so a relaunch never trusts a stale count; a stopped host runs nothing. */
   async activity(): Promise<DesktopUpdateActivity> {
     const run = await this.#current;
 
@@ -113,22 +99,18 @@ export class HostProcess {
     }
   }
 
-  /** Seals `plain` under the host's secrets key; the host reads the key only when asked. */
   seal(plain: string): Promise<string> {
     return this.#secret(true, plain);
   }
 
-  /** Opens text `seal` sealed; rejects when another key sealed it or the key cannot be read. */
   open(sealed: string): Promise<string> {
     return this.#secret(false, sealed);
   }
 
-  /** The window closed or left its document: its workspace is forgotten. */
   release(window: HostWindow): void {
     this.#post({ kind: "release", window });
   }
 
-  /** The Mac woke: leases held before sleep say nothing about now. */
   resume(): void {
     this.#post({ kind: "resume" });
   }
@@ -138,7 +120,6 @@ export class HostProcess {
     this.#post({ kind: "account", state });
   }
 
-  /** Closes the host and waits for its process to exit, killing it after `limitMs`; nothing restarts it after. */
   async close(limitMs: number): Promise<void> {
     this.#closing = true;
     clearTimeout(this.#restart);
@@ -174,10 +155,13 @@ export class HostProcess {
     };
 
     child.on("message", (message: HostMessage) => this.#receive(run, message));
-    child.once("exit", () => {
+    child.once("exit", (code) => {
       run.alive = false;
       run.rpc.close(STOPPED_MESSAGE);
-      this.#exited(run, performance.now() - forkedAt);
+      this.#exited(
+        run,
+        code === REVOKED_EXIT ? Number.POSITIVE_INFINITY : performance.now() - forkedAt,
+      );
       exit.resolve();
     });
     child.postMessage({ kind: "open", options: this.#options });
@@ -185,7 +169,6 @@ export class HostProcess {
     return run;
   }
 
-  /** Forks the host again after `run` exited on its own, unless it keeps crashing as it starts. */
   #exited(run: Run, uptimeMs: number): void {
     if (this.#run !== run) return;
 

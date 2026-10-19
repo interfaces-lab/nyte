@@ -40,6 +40,7 @@ import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.
 import type { ExecutionEnv } from "../contract/workspace.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { publishPatch } from "../engine/runs.ts";
+import { hiddenOwners } from "../engine/surface.ts";
 import { toolSource } from "../extend/registry.ts";
 import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
@@ -59,7 +60,6 @@ import { dev } from "../util/dev-log.ts";
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 
-/** A `tool` call record's intent: who called it, and why the model's arguments text could not be read. Its name and args are its part's. */
 const ToolCallerType = Type.Object({
   principal: idSchema<"principal">(),
   argumentsError: Type.Optional(Type.String()),
@@ -73,15 +73,12 @@ const ToolInputType = Type.Object({
   args: JsonType,
 });
 
-/** What a call replays from: its caller, and the name and args the model asked for. */
 type ToolInput = Static<typeof ToolInputType>;
 
-/** An `intent` call record's intent: the model's call as its response asked for it, at its `position` among the response's calls, held until the step opens the call's part. */
 const ToolIntentType = Type.Object({ ...ToolInputType.properties, position: Type.Number() });
 
 export type ToolIntent = Static<typeof ToolIntentType>;
 
-/** A call a run still owes: never opened, or opened and not settled. */
 export interface OwedCall {
   readonly record: CallRecord;
   readonly parked: boolean;
@@ -116,9 +113,7 @@ interface Where {
   readonly name: string;
   readonly context: ConnectionContext;
   readonly signal: AbortSignal;
-  /** Why the model's arguments text could not be read; the call then fails without running. */
   readonly argumentsError?: string;
-  /** Set for a call nested inside one that snapshots the workspace: the parent's pair records this call's writes. */
   readonly covered?: boolean;
 }
 
@@ -138,7 +133,6 @@ const outcomes = compile(withJson(ToolOutcomeType));
 
 const liveCalls = new WeakMap<Kernel, Map<string, Set<AbortController>>>();
 
-/** The abort controllers of each call this kernel is running, which a stop aborts. */
 function runningCalls(kernel: Kernel): Map<string, Set<AbortController>> {
   const found = liveCalls.get(kernel);
 
@@ -180,7 +174,6 @@ export async function executeCall(
   }
 }
 
-/** The tool calls `run` owes, in the order they run: opened calls first, since a run opens its calls one at a time in response order, then unopened ones by their position in the response. A call is parked while it or a call nested in it waits; calls nested in another are left to their parent's replay. */
 export async function owedCalls(
   store: StoreConnection,
   session: SessionId,
@@ -217,7 +210,6 @@ export async function owedCalls(
   }));
 }
 
-/** What an owed call replays from: an unopened call's intent, or an opened call's caller with its part's name and args; null when the record or its part cannot be read. */
 export async function readToolInput(
   store: StoreConnection,
   session: SessionId,
@@ -246,7 +238,6 @@ export async function readToolInput(
     : { ...caller, name: checked.value.name, args: checked.value.args };
 }
 
-/** The call ids `id` is nested under: its proper `:`-separated prefixes. */
 function enclosingCalls(id: string): readonly string[] {
   const segments = id.split(":");
 
@@ -343,7 +334,9 @@ async function plan(
 ): Promise<Plan | typeof PARKED> {
   const { session, head, run, call, name } = where;
   const custom: ToolClass = { kind: "custom", label: name };
-  const definition = toolSource(where.runtime).get(name)?.definition;
+  const found = toolSource(where.runtime).get(name);
+  const hidden = await hiddenOwners(kernel, session, run);
+  const definition = found === undefined || hidden.has(found.owner) ? undefined : found.definition;
 
   if (definition === undefined)
     return {
@@ -421,7 +414,6 @@ async function plan(
   return { kind: "execute", definition, input: checked.value, args, class: known };
 }
 
-/** The writes that open a tool call's part with its call record: the part, running, with its created and intent events. */
 async function partOpening(
   store: StoreConnection,
   where: Where,
@@ -487,12 +479,14 @@ async function execute(
   try {
     if (snapshotted) await baseline(kernel, session, run);
 
-    const [env, found] = await Promise.all([
+    const [env, found, hidden] = await Promise.all([
       kernel.environments.attach(session),
       requireSession(kernel.store, session),
+      hiddenOwners(kernel, session, run),
     ]);
 
     const invocation = createInvocation(kernel, {
+      hidden,
       session,
       head: where.head,
       run,
@@ -757,6 +751,7 @@ export function createInvocation(
     readonly durable: Durable;
     readonly runtime: PluginRuntime;
     readonly covered: boolean;
+    readonly hidden?: ReadonlySet<string>;
   },
 ): ToolInvocation {
   const { session, head, run, call, durable, signal } = input;
@@ -822,7 +817,7 @@ export function createInvocation(
 
         return outcome.kind === "parked" ? parkStep(durable) : outcome;
       },
-      list: () => source.list(),
+      list: () => source.list().filter((info) => input.hidden?.has(info.owner) !== true),
     },
     wait: (target) => durable.wait(target),
     memo: (name, compute) => durable.memo(name, compute),

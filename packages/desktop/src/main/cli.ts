@@ -13,7 +13,10 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
-import { commandLink, unitInstalled } from "@nyte-ai/service/supervisor";
+
+function commandLink(home: string): string {
+  return join(home, ".nyte", "bin", "nyte");
+}
 
 type PathChange =
   | { readonly kind: "present"; readonly file: string }
@@ -50,8 +53,7 @@ export async function adoptStagedCli(home: string, staged: string): Promise<void
   const stages = dirname(current);
   const linked = await readlink(commandLink(home)).catch(() => undefined);
 
-  if ((await unitInstalled(home)) || linked?.startsWith(`${stages}/`) === true)
-    await linkCli(home, staged);
+  if (linked?.startsWith(`${stages}/`) === true) await linkCli(home, staged);
 
   for (const entry of await readdir(stages))
     if (join(stages, entry) !== current)

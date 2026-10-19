@@ -1,22 +1,31 @@
-/**
- * `@nyte-ai/connect/host`: the Node side of Connect, for any host that links
- * a Nyte account: the link/lease/enrollment lifecycle, its private store,
- * the broker client, the relay socket and the enrollment routes. Nothing here
- * knows about Electron or a renderer; the embedding supplies an
- * `AccountSession` and a `ConnectShare` that binds its listener.
- */
 export { AccountCancelled } from "./account.ts";
+
 export type { AccountSession, AccountState } from "./account.ts";
+
 export { ConnectError } from "./errors.ts";
+
 export { ConnectRuntime } from "./runtime.ts";
+
 export type { HostConnectConfig } from "./runtime.ts";
+
 export type { ConnectTiming } from "./context.ts";
+
 export type { LinkAuthorizer } from "./link-flow.ts";
+
 export type { ConnectShare } from "./serving.ts";
+
 export { ConnectStore, ConnectStoreFailed, EMPTY_CONNECT_FILE } from "./store.ts";
+
 export type { ConnectFile } from "./store.ts";
+
 export { RelayConnection } from "./relay.ts";
+
 export type { RelayConnectionOptions, RelayTiming } from "./relay.ts";
+
 export { bearerToken, connectRouteHandler, tokenDigest } from "./routes.ts";
+
 export { machineName } from "./machine-name.ts";
+
 export { hostShare } from "./share.ts";
+
+export { lockFile, tryLockFile } from "./file-lock.ts";

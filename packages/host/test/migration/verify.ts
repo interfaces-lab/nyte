@@ -4,10 +4,12 @@ import {
   decodeCommitRecord,
   decodeHostIdentity,
   decodeInboxRecord,
+  decodeJobRecord,
   decodeLease,
   decodeObject,
   decodePartRecord,
   decodePrincipalRecord,
+  decodeProcessRecord,
   decodeReceiptRecord,
   decodeRunRecord,
   decodeSeenRecord,
@@ -48,6 +50,8 @@ const DECODERS = new Map<string, Decode>(
     workspace: decodeWorkspaceRecord,
     trust: decodeTrustRecord,
     lease: decodeLease,
+    process: decodeProcessRecord,
+    job: decodeJobRecord,
     call: decodeCallRecord,
     principals: decodePrincipalRecord,
     identity: decodeHostIdentity,
@@ -66,7 +70,6 @@ interface LogRow {
   readonly event: string;
 }
 
-/** What `verifyMigration` found: every difference `MAPPING` does not explain in `problems`, and counts of what it checked. */
 export interface MigrationReport {
   readonly from: number;
   readonly to: number;
@@ -97,20 +100,12 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-/** The kind a field change is counted under: a call record's call kind (`call/hook`), else the record's kind. */
 function changeKind(record: Json, kind: string): string {
   return kind === "call" && isJsonObject(record) && isJsonObject(record.body)
     ? `call/${text(record.body.kind)}`
     : kind;
 }
 
-/**
- * How a before_tool hook call's stored result fared, judged by decoding it
- * rather than by the step's rewrite: a result the store-13 decoder read must
- * read today as the same decision (a `modify` as that call's args), and one it
- * could not read must be kept as it was. Null for any other record, or one
- * whose hook has not settled.
- */
 function hookDecision(
   before: Json,
   after: Json | null,
@@ -139,7 +134,6 @@ function hookDecision(
   return same ? "read alike" : "decides differently";
 }
 
-/** A changed field's path with array indexes and `nested` call keys as `*`, so a report counts fields rather than positions. */
 function fieldPattern(path: string): string {
   return path.replace(/\/nested\/[^/]+/u, "/nested/*").replace(/\/\d+(?=\/|$)/gu, "/*");
 }
@@ -157,11 +151,6 @@ function readStamp(database: DatabaseSync, schema: string): number {
       );
 }
 
-/**
- * The ended-run refs `MAPPING`'s step 15 adds to the store before migration,
- * each with the object it points at, read from that store's log and objects
- * with SQL rather than the step's own walk.
- */
 function endedRunRefs(
   database: DatabaseSync,
   refs: ReadonlyMap<string, RefRow>,
@@ -178,6 +167,7 @@ function endedRunRefs(
   const latest = database.prepare(
     "SELECT id, body FROM before.objects WHERE json_valid(body) AND CASE WHEN json_valid(body) THEN json_extract(body, '$.kind') = 'run' AND json_extract(body, '$.body.view.id') = ? AND json_type(body, '$.body.snapshot') = 'text' END ORDER BY json_extract(body, '$.at') DESC, id DESC LIMIT 1",
   );
+
   const added = new Map<string, string>();
 
   for (const [run, ended] of sessions) {
@@ -238,18 +228,6 @@ function label(event: Json): string {
     : "?";
 }
 
-/**
- * Compares a store before migration (`beforePath`, only read) with the same
- * store after it (`afterPath`): every object row kept byte for byte; every
- * ref kept, its record either untouched (same target and revision) or
- * repointed to the content-addressed id of exactly the record `MAPPING` maps
- * it to; every added ref one `MAPPING` derives, at the record of the ref it
- * derives from, and every derived ref present; every logged event at its
- * session, seq and time, its body exactly `MAPPING`'s and readable as a
- * `SessionEvent`; every record of a known kind decoding with today's
- * schemas; and the session index and pending work matching what the refs
- * project.
- */
 export async function verifyMigration(
   beforePath: string,
   afterPath: string,
@@ -280,12 +258,15 @@ export async function verifyMigration(
     );
 
     if (lostOrChanged > 0) problems.push(`${lostOrChanged} objects lost or changed`);
+
     const objectsBefore = Number(
       database.prepare("SELECT count(*) AS n FROM before.objects").get()?.n,
     );
+
     const objectsAfter = Number(
       database.prepare("SELECT count(*) AS n FROM main.objects").get()?.n,
     );
+
     const refsBefore = readRefs(database, "before");
     const refsAfter = readRefs(database, "main");
     const outcomes = new Map<string, number>();
@@ -316,6 +297,7 @@ export async function verifyMigration(
       if (decision === "decides differently" || decision === "rewrote an unreadable result")
         problems.push(`ref ${name} (before_tool hook) ${decision}`);
       else if (decision !== null) count(hookDecisions, decision);
+
       const kind =
         isJsonObject(record) && typeof record.kind === "string" ? record.kind : "no kind";
 
@@ -429,8 +411,10 @@ export async function verifyMigration(
 
     for (const [name, row] of refsAfter) {
       const record = row.body === null ? null : decodeObject(row.body);
+
       const kind =
         isJsonObject(record) && typeof record.kind === "string" ? record.kind : "no kind";
+
       const decode = DECODERS.get(kind);
 
       if (decode === undefined) count(decoded, `unchecked ${kind}`);
@@ -448,6 +432,7 @@ export async function verifyMigration(
     const indexRows = database
       .prepare("SELECT name, session, parent, sort_at, version FROM main.session_index")
       .all();
+
     const pendingRows = database.prepare("SELECT name, kind FROM main.pending_work").all();
 
     for (const row of indexRows)

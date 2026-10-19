@@ -47,6 +47,7 @@ import {
 import { check } from "../util/json-schema.ts";
 import type { StoreConnection } from "../contract/store.ts";
 import { scanResources } from "../extend/resources.ts";
+import { hiddenOwners } from "../engine/surface.ts";
 import { toolSource } from "../extend/registry.ts";
 
 interface Step {
@@ -122,11 +123,15 @@ export async function requestBody(
 
   const source = toolSource(runtime);
   const named = agent?.tools;
+  const hidden = await hiddenOwners(kernel, session, run);
 
   const tools = source
     .list()
     .filter(
-      (info) => info.exposure === "model" && (named === undefined || named.includes(info.name)),
+      (info) =>
+        info.exposure === "model" &&
+        (named === undefined || named.includes(info.name)) &&
+        (info.owner === null || !hidden.has(info.owner)),
     );
 
   return {
@@ -135,7 +140,6 @@ export async function requestBody(
   };
 }
 
-/** The context tokens a transcript fills: the provider's count up to the last response it reported on, plus an estimate of what follows it; without one, an estimate of it all. */
 export function estimateTranscriptTokens(transcript: Transcript): number {
   const estimate = estimateContextTokens(transcript.messages);
 
@@ -248,7 +252,6 @@ async function conversation(
     readonly head: HeadName;
     readonly run: RunId | null;
     readonly images: boolean;
-    /** The usage each run's latest response reported, for the runs that still know it. */
     readonly responses: ReadonlyMap<RunId, Usage>;
   },
 ): Promise<Message[]> {
@@ -257,6 +260,7 @@ async function conversation(
       state.commits,
       readPositionCommit(state.heads.get(input.head)?.info.tip ?? START),
     );
+
     const on = new Set(path);
 
     const created = new Map([...state.parts.keys()].map((id, index) => [id, index]));
@@ -517,7 +521,6 @@ async function assistantBlocks(
   };
 }
 
-/** A stored response usage as the model's message carries it. */
 function modelUsage(usage: Usage): AssistantMessage["usage"] {
   return {
     input: usage.input,
@@ -759,7 +762,6 @@ async function mentionContent(
   }
 }
 
-/** The attributes that tell the model where an excerpt's text was taken. */
 function excerptAttributes(source: ExcerptSource): string {
   const attribute = (name: string, value: string): string => `${name}="${escapeAttribute(value)}"`;
 
@@ -782,7 +784,6 @@ function excerptAttributes(source: ExcerptSource): string {
   }
 }
 
-/** An excerpt's text with every closing `</excerpt` (any case or spacing) broken as `<\/excerpt`, so text picked from a page or a terminal cannot end the excerpt and pose as the user's own words. */
 function fencedExcerpt(text: string): string {
   return text.replaceAll(/<(\s*)\/(\s*excerpt)/gi, "<$1\\/$2");
 }

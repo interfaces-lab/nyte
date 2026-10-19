@@ -10,11 +10,8 @@ export function admits(update: RefUpdate, current: Ref | undefined): boolean {
   return current?.revision === update.expect;
 }
 
-/** The fence refs `updates` need, each once: a set lands only while every one of them exists. */
 export function fenceNames(updates: readonly RefUpdate[]): readonly string[] {
-  return [
-    ...new Set(updates.flatMap((update) => (update.fence === undefined ? [] : [update.fence]))),
-  ];
+  return [...new Set(updates.flatMap((update) => update.fences ?? []))];
 }
 
 export function collectSessionEvents(
@@ -45,7 +42,6 @@ export function loggedEvent(seq: number, at: number, body: unknown): SessionEven
   return result.value;
 }
 
-/** Parses a stored object's text. `JSON.parse` builds only JSON values, so its result is `Json` without a second walk; the record decoders check the shape. */
 export function decodeObject(text: string): Json {
   return JSON.parse(text);
 }

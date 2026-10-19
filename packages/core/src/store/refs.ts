@@ -2,6 +2,7 @@ import { asId } from "@nyte-ai/schema";
 import type {
   CallId,
   HeadName,
+  JobId,
   PartId,
   PrincipalId,
   ReceiptId,
@@ -48,14 +49,16 @@ export function runRef(id: SessionId, run: RunId): string {
   return `sessions/${id}/runs/${run}`;
 }
 
-/** An ended run's last record, kept when the run snapshotted its workspace, so the changes it made stay readable once its run ref goes. */
 export function endedRunRef(id: SessionId, run: RunId): string {
   return `sessions/${id}/ended/${run}`;
 }
 
-/** A run's live ref: it exists from the run's start until its stop fence or its end, and every run-scoped write lands under it (`RefUpdate.fence`). */
 export function liveRef(id: SessionId, run: RunId): string {
   return `sessions/${id}/live/${run}`;
+}
+
+export function runCallsPrefix(id: SessionId, run: RunId): string {
+  return `sessions/${id}/calls/${run}:`;
 }
 
 export function partRef(id: SessionId, part: PartId): string {
@@ -74,12 +77,10 @@ export function workspaceRef(id: WorkspaceId): string {
   return `workspaces/${id}`;
 }
 
-/** The ref holding the trust decision for the folder `target` names; trailing slashes don't make another folder. */
 export async function trustRef(target: WorkspaceTarget): Promise<string> {
   return `trust/${await objectId(trustTarget(target))}`;
 }
 
-/** `target` as a trust decision names it: a local path without trailing slashes. */
 export function trustTarget(target: WorkspaceTarget): WorkspaceTarget {
   return "path" in target ? { kind: target.kind, path: target.path.replace(/\/+$/u, "") } : target;
 }
@@ -90,6 +91,18 @@ export function kvRef(scope: string, owner: string, key: string): string {
 
 export function leaseRef(id: SessionId, head: HeadName): string {
   return `sessions/${id}/leases/${head}`;
+}
+
+export const PROCESSES = "processes/";
+
+export function processRef(instance: string): string {
+  return `${PROCESSES}${instance}`;
+}
+
+export const JOBS = "jobs/";
+
+export function jobRef(id: JobId): string {
+  return `${JOBS}${id}`;
 }
 
 export function hostIdentityRef(): string {

@@ -3,6 +3,7 @@ import type {
   CallId,
   Disposer,
   JobEnd,
+  JobId,
   Ref,
   RefUpdate,
   RequestOptions,
@@ -12,14 +13,20 @@ import type {
   WaitTarget,
 } from "@nyte-ai/schema";
 import type { Kernel, ParkedWait, WaitRegistry } from "../contract/kernel.ts";
-import { decodeCallRecord, decodePartRecord, decodeRunRecord } from "../contract/records.ts";
-import type { CallRecord, RunRecord } from "../contract/records.ts";
+import {
+  decodeCallRecord,
+  decodeJobRecord,
+  decodePartRecord,
+  decodeRunRecord,
+} from "../contract/records.ts";
+import type { CallRecord, JobRecord, RunRecord } from "../contract/records.ts";
 import { changeCall, commit } from "../fold/commit.ts";
 import type { CallChange } from "../fold/commit.ts";
 import { readRunEnd } from "../fold/reads.ts";
 import { storedAnswer } from "../store/parts.ts";
-import { callRef, partRef, runRef } from "../store/refs.ts";
+import { callRef, jobRef, partRef, runRef } from "../store/refs.ts";
 import { load, put, readCall } from "../store/session.ts";
+import type { Found } from "../store/session.ts";
 import {
   findEarliestDeadline,
   readIndexed,
@@ -39,16 +46,6 @@ const LOST: JobEnd = { kind: "lost" };
 
 const STOPPED: WaitOutcome = { kind: "stopped" };
 
-/**
- * Returns the wait registry over the store-side wait index: a park writes one `waits/` ref per
- * target the call waits on (by run, part, job and input, and by time for timers and deadlines),
- * each pointing at the parked call record, and the wake that completes the wait deletes them in
- * the same write. Every offer is a compare-and-set on the call record that completes the wait or
- * fills its target of an `all`; an offer that finds the wait already past, or the call gone,
- * drops the index entry that led to it. A completed wait indexes the call as woken until its next
- * park or its settle, which is all a poll for other processes' wakes reads. The registry keeps no
- * copy of what is parked; only this process's live action loops are held, as resumers.
- */
 export function createWaitRegistry(
   kernel: Kernel,
   rerunAction: (session: SessionId, call: CallId) => Promise<void>,
@@ -217,9 +214,9 @@ export function createWaitRegistry(
       }
 
       case "job": {
-        const state = kernel.jobs.get(target.job)?.view.state ?? LOST;
+        const end = await jobOutcome(kernel, target.job);
 
-        return state.kind === "running" ? null : { kind: "job", job: target.job, end: state };
+        return end === null ? null : { kind: "job", job: target.job, end };
       }
 
       case "timer":
@@ -408,7 +405,6 @@ export function createWaitRegistry(
   return registry;
 }
 
-/** The `waits/` index refs that point at `session`'s calls: what they wait on (by run, part, job, input and time) and the `woken/` ones, which go with the session when it is removed. */
 export async function listSessionWaits(
   store: StoreConnection,
   session: SessionId,
@@ -418,7 +414,6 @@ export async function listSessionWaits(
   );
 }
 
-/** Reads every unsettled call in `sessions` (default all), as recovery does when a process starts covering them: a parked one is checked against what it waits on, and a woken one is stepped or run again (see `wake`). */
 export async function loadWaits(kernel: Kernel, sessions?: readonly SessionId[]): Promise<void> {
   for (const { session, record } of await pendingCalls(kernel, sessions)) {
     const entry = readParkedWait(session, record);
@@ -448,14 +443,29 @@ async function pendingCalls(
   return found.flat();
 }
 
-/** Steps an unparked call another process woke: a head's call by notifying the head, which only a covering process advances, and an action whose re-run claim lapsed by running it again. */
+export async function readJob(store: StoreConnection, id: JobId): Promise<Found<JobRecord> | null> {
+  return load(store, await store.refs.get(jobRef(id)), decodeJobRecord);
+}
+
+export async function jobOutcome(kernel: Kernel, id: JobId): Promise<JobEnd | null> {
+  const local = kernel.jobs.get(id)?.view.state;
+
+  if (local !== undefined) return local.kind === "running" ? null : local;
+  const found = await readJob(kernel.store, id);
+
+  if (found === null) return LOST;
+
+  if (found.record.end !== null) return found.record.end;
+
+  return found.record.instance === kernel.instance || kernel.presence === null ? LOST : null;
+}
+
 function wake(kernel: Kernel, session: SessionId, record: CallRecord): void {
   if (record.head === null && lapsed(kernel, record)) kernel.waits.rerun(session, record.id);
   else if (record.head !== null && record.waits.length > 0 && record.result === null)
     kernel.wakes.notify(session, record.head);
 }
 
-/** The earliest time any of `calls` waits for: a deadline, or a timer it has not had yet. */
 export async function earliestWake(
   store: StoreConnection,
   session: SessionId,

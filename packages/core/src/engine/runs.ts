@@ -47,6 +47,7 @@ export async function newRun(
   head: HeadName,
   origin: RunView["origin"],
   configuration: Configuration,
+  requires: readonly string[] = [],
 ): Promise<{ readonly view: RunView; readonly updates: readonly RefUpdate[] }> {
   const id = asId<"run">(crypto.randomUUID());
   const startedAt = Date.now();
@@ -63,6 +64,7 @@ export async function newRun(
     usage: null,
     requests: 0,
     parked: [],
+    requires: [...requires],
   };
 
   const target = await put(store, "run", record, startedAt);
@@ -212,7 +214,6 @@ export async function endRun(
   if (ended.pending.length > 0) kernel.wakes.notify(session, ended.head);
 }
 
-/** Deletes the calls an ended run recorded but never opened, and the woken index of those it woke but never stepped: nothing owes them once the run is over. */
 async function abandonedCalls(
   store: StoreConnection,
   session: SessionId,

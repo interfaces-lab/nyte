@@ -29,8 +29,8 @@ import type { RunFlags } from "../flags.ts";
 import { exitStatus, exitWithin, onEnding, watchTerminal } from "../lifecycle.ts";
 import type { Ending } from "../lifecycle.ts";
 import { trustFolder } from "../run.ts";
-import { connectLocalService, followRemote } from "../service.ts";
-import type { ServiceSession } from "../service.ts";
+import { connectLocalHost, followRemote } from "../local-host.ts";
+import type { LocalSession } from "../local-host.ts";
 import type { Msg } from "../model/msg.ts";
 import { followedSession, initialState } from "../model/state.ts";
 import { waitingMessages } from "../model/table-input.ts";
@@ -276,7 +276,7 @@ export async function mountApp(options: AppOptions): Promise<MountedApp> {
 }
 
 export async function runTui(flags: RunFlags): Promise<number> {
-  const connecting = connectLocalService();
+  const connecting = connectLocalHost();
   connecting.catch(() => undefined);
   const cwd = process.cwd();
   const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
@@ -350,7 +350,7 @@ export async function runTui(flags: RunFlags): Promise<number> {
   const unhook = installProcessHooks(app.report);
 
   const lost = connecting.then(
-    (service) => service.following.ended.then((error) => ({ error })),
+    (local) => local.ended.then((error) => ({ error })),
     () => new Promise<never>(() => undefined),
   );
 
@@ -386,7 +386,7 @@ export async function runTui(flags: RunFlags): Promise<number> {
 }
 
 async function openService(input: {
-  readonly connecting: Promise<ServiceSession>;
+  readonly connecting: Promise<LocalSession>;
   readonly renderer: CliRenderer;
   readonly terminal: TerminalPort;
   readonly log: CrashLog;
@@ -394,26 +394,14 @@ async function openService(input: {
   readonly flags: RunFlags;
   readonly dispatch: (msg: Msg) => void;
 }): Promise<OpenedHost> {
-  const { connection, following } = await input.connecting;
+  const local = await input.connecting;
+  const { connection } = local;
   const remote = new AbortController();
 
   const close = async (): Promise<void> => {
     remote.abort();
-    await connection.close();
+    await local.close();
   };
-
-  const unsubscribe = following.subscribe((registration) =>
-    input.dispatch({
-      kind: "inform",
-      tone: "info",
-      text:
-        registration.owner === "desktop"
-          ? "Nyte.app has your chats open now; this nyte follows it"
-          : "This nyte follows the Nyte service now",
-    }),
-  );
-
-  remote.signal.addEventListener("abort", unsubscribe, { once: true });
 
   const { trust, resume } = input.flags;
 
@@ -425,7 +413,7 @@ async function openService(input: {
     });
 
   followRemote(
-    following,
+    local.endpoint,
     remote.signal,
     (facts) => input.dispatch({ kind: "remote", remote: facts }),
     (cause) => input.log.write("watch", cause),

@@ -24,6 +24,7 @@ import type {
   MainAsk,
   MainMessage,
 } from "./host-messages.ts";
+import { REVOKED_EXIT } from "./host-messages.ts";
 import { Rpc } from "./host-rpc.ts";
 import { DesktopHost, throwForRenderer } from "./host.ts";
 import type { CallRoute } from "./ipc-call.ts";
@@ -105,6 +106,7 @@ function open(options: HostProcessOptions): void {
     emitHostEvent: (event, window) => post({ kind: "event", event, window }),
     agent: remoteAgent(askAgent),
     preview,
+    revoked: () => void host.close().finally(() => process.exit(REVOKED_EXIT)),
   });
 
   const secrets = defaultSecrets(home);
@@ -131,7 +133,7 @@ function open(options: HostProcessOptions): void {
     }
   };
 
-  void host.autostartConnect().catch(() => undefined);
+  host.autostartConnect();
 
   port.on("message", ({ data }: { readonly data: MainMessage }) => {
     switch (data.kind) {

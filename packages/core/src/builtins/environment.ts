@@ -110,7 +110,7 @@ const write: ToolDefinition<Infer<typeof writeParameters>, PatchEntry> = {
   parameters: writeParameters,
   output: PatchEntrySchema,
   class: (args) => ({ kind: "edit", path: args.path }),
-  replay: "safe",
+  replay: "never",
   async execute(args, invocation) {
     const { files } = invocation.env;
     const previous = await files.read(args.path);
@@ -136,7 +136,7 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
   parameters: editParameters,
   output: PatchEntrySchema,
   class: (args) => ({ kind: "edit", path: args.path }),
-  replay: "safe",
+  replay: "never",
   async execute(args, invocation) {
     const { files } = invocation.env;
     const document = await files.read(args.path);
@@ -153,6 +153,7 @@ const edit: ToolDefinition<Infer<typeof editParameters>, PatchEntry> = {
               contents.matchAll(new RegExp(`(?=${RegExp.escape(change.oldText)})`, "g")),
               (match) => match.index,
             );
+
       const [start] = starts;
 
       if (start === undefined)

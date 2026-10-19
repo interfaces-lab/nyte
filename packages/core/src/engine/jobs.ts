@@ -15,12 +15,16 @@ import { CORE_CONTEXT } from "../contract/host.ts";
 import type { ConnectionContext } from "../contract/host.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import type { Job, JobEntry, JobOutput, Jobs, JobTable } from "../contract/workspace.ts";
-import { MAIN, readSession } from "../store/session.ts";
+import { decodeJobRecord } from "../contract/records.ts";
+import type { JobRecord } from "../contract/records.ts";
+import { commit } from "../fold/commit.ts";
+import { JOBS, jobRef } from "../store/refs.ts";
+import { load, MAIN, put, readSession } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { closable } from "../util/iterable.ts";
 import { send } from "./admission.ts";
 import { recordAcquisition, recordedAcquisition } from "./durable.ts";
-import { waitFor } from "./waits.ts";
+import { readJob, waitFor } from "./waits.ts";
 
 const TAIL_BYTES = 4096;
 
@@ -28,12 +32,15 @@ const SCROLLBACK_BYTES = 256 * 1024;
 
 const READER_BYTES = 64 * 1024;
 
-/** How long a user's shell runs with no reader before it is stopped: long enough for a window to reload and re-attach. */
 const ORPHAN_MS = 60_000;
 
 const REPORT_BYTES = 4096;
 
 const ENDED_KEPT = 32;
+
+const ENDED_JOB_MS = 60 * 60_000;
+
+const LOST: JobEnd = { kind: "lost" };
 
 export function createJobTable(kernel: Kernel): JobTable {
   const entries = new Map<JobId, JobEntry>();
@@ -301,6 +308,15 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
 
   if (entry === undefined || entry.view.state.kind !== "running") return;
 
+  const recorded =
+    entry.owner === null
+      ? true
+      : await recordJobEnd(kernel, id, end).catch((error: unknown) => {
+          dev("jobs", "end not stored", { job: id, error: String(error) });
+
+          return false;
+        });
+
   kernel.jobs.update(id, (view) => ({
     ...view,
     state: end,
@@ -312,7 +328,7 @@ async function endJob(kernel: Kernel, id: JobId, end: JobEnd): Promise<void> {
   const consumed = await kernel.waits.jobEnded(id, end);
   const owner = entry.owner;
 
-  if (consumed || owner === null) return;
+  if (consumed || owner === null || !recorded) return;
 
   await send(kernel, {
     session: owner.session,
@@ -379,7 +395,6 @@ async function spawn(
       ? await kernel.environments.attachWorkspace(workspace)
       : await kernel.environments.attach(runner);
 
-  const process = await env.exec(input.command ?? [], { cwd: env.cwd, pty: input.pty });
   const own = origin !== null && input.session !== undefined && origin.session === input.session;
 
   const owner =
@@ -390,6 +405,38 @@ async function spawn(
           head: own && origin.head !== null ? origin.head : MAIN,
           startedBy: own ? origin.call : null,
         };
+
+  if (owner !== null) {
+    const reserved = await commit(kernel, [
+      {
+        name: jobRef(id),
+        target: await put(kernel.store, "job", {
+          id,
+          instance: kernel.instance,
+          workspace,
+          session: owner.session,
+          head: owner.head,
+          startedBy: owner.startedBy,
+          title: input.title ?? input.command ?? "Shell",
+          command: input.command ?? "",
+          startedAt: Date.now(),
+          end: null,
+          endedAt: null,
+        }),
+        expect: "absent",
+      },
+    ]);
+
+    if (reserved.kind !== "set") throw new SdkError("stale", `Job ${id} was already started.`);
+  }
+
+  const process = await env
+    .exec(input.command ?? [], { cwd: env.cwd, pty: input.pty })
+    .catch(async (cause: unknown) => {
+      if (owner !== null) await recordJobEnd(kernel, id, LOST).catch(() => false);
+
+      throw cause;
+    });
 
   const output = createOutput(
     input.pty !== undefined && input.session === undefined
@@ -425,6 +472,79 @@ async function spawn(
   void pump(kernel, id, process, output);
 }
 
+async function recordJobEnd(kernel: Kernel, id: JobId, end: JobEnd): Promise<boolean> {
+  for (;;) {
+    const found = await readJob(kernel.store, id);
+
+    if (found === null || found.record.end !== null) return false;
+
+    const outcome = await commit(kernel, [
+      {
+        name: jobRef(id),
+        target: await put(kernel.store, "job", { ...found.record, end }),
+        expect: found.ref.revision,
+      },
+    ]);
+
+    if (outcome.kind === "set") return true;
+  }
+}
+
+export async function reapJobs(kernel: Kernel): Promise<void> {
+  const presence = kernel.presence;
+
+  if (presence === null) return;
+
+  for (const ref of await kernel.store.refs.list(JOBS)) {
+    const found = await load(kernel.store, ref, decodeJobRecord);
+
+    if (found === null) continue;
+    const { record } = found;
+
+    if (record.end !== null) {
+      if (Date.now() - (record.endedAt ?? record.startedAt) > ENDED_JOB_MS)
+        await commit(kernel, [{ name: ref.name, target: null, expect: ref.revision }]);
+
+      continue;
+    }
+
+    if (record.instance === kernel.instance) continue;
+    const holder = await presence.holder(record.instance);
+
+    if (holder.kind !== "dead" && holder.kind !== "absent") continue;
+
+    const reaped = await commit(kernel, [
+      {
+        name: ref.name,
+        target: await put(kernel.store, "job", { ...record, end: LOST, endedAt: Date.now() }),
+        expect: ref.revision,
+      },
+      ...(holder.kind === "dead"
+        ? [{ name: holder.name, target: null, expect: holder.expect }]
+        : []),
+    ]);
+
+    if (reaped.kind !== "set") continue;
+    dev("jobs", "abandoned", { job: record.id, instance: record.instance });
+
+    if (await kernel.waits.jobEnded(record.id, LOST)) continue;
+
+    await send(kernel, {
+      session: record.session,
+      head: record.head,
+      context: CORE_CONTEXT,
+      content: abandonedReport(record),
+      options: { source: { kind: "job", job: record.id }, delivery: "attach" },
+    }).catch(() => undefined);
+  }
+}
+
+function abandonedReport(record: JobRecord): string {
+  const named = record.command === "" ? record.title : `${record.title} (${record.command})`;
+
+  return `Job ${named} was abandoned: the Nyte that ran it exited, so its output and exit status are unknown, and the command may still be running.`;
+}
+
 export async function acquire<T extends { readonly id: string }>(
   kernel: Kernel,
   step: {
@@ -454,7 +574,6 @@ export async function acquire<T extends { readonly id: string }>(
   return { kind: "recorded", id: winner };
 }
 
-/** Moves a job's process output into its readers, holding the next read while a flow-controlled output drains, until the process ends. */
 async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput): Promise<void> {
   const exited = process.settled().then(
     () => undefined,
@@ -484,15 +603,6 @@ async function pump(kernel: Kernel, id: JobId, process: Job, output: JobOutput):
   });
 }
 
-/**
- * A job's output for its readers: each reader opens on the last 256 KiB (the
- * scrollback a re-attached terminal shows) and then follows it live; the
- * view's tail is the last 4 KiB as text. A reader 64 KiB behind gets a gap,
- * unless the output is a `shell`'s (a user's pty, which no session owns):
- * then it misses nothing, `drained` holds the job's pump, and so the pty,
- * until the slowest reader is back under 64 KiB, and a shell left without a
- * reader for `ORPHAN_MS`, as when its window closed for good, is `orphaned`.
- */
 function createOutput(shell: { orphaned(): void } | null): JobOutput {
   type Reader = {
     replay: OutputFrame[];

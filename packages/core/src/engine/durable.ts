@@ -74,7 +74,6 @@ export async function runStep<T>(
     readonly part: PartId | null;
     readonly signal: AbortSignal;
 
-    /** The writes that open the step with its call record, landing under the step's run: once the run's stop fence is set they land nothing, and the step answers `fenced` as interrupted. */
     readonly opening?: {
       updates(): Promise<readonly RefUpdate[]>;
       readonly fenced: T;
@@ -142,7 +141,7 @@ export async function runStep<T>(
     return { kind: "done", value: read(record.result) };
   }
 
-  if (!opened.wrote && input.replay === "never") {
+  if (!opened.wrote && record.replay === "never") {
     return { kind: "interrupted", value: await settle({ kind: "interrupted" }) };
   }
 
@@ -275,7 +274,6 @@ export async function runAction(
   }
 }
 
-/** Extends this instance's claim to re-run a call; false once the claim is another's or the call settled. */
 async function renewRerun(kernel: Kernel, session: SessionId, call: CallId): Promise<boolean> {
   const renewed = await changeCall(kernel, session, call, async (current) =>
     current === null || current.result !== null || current.reran?.holder !== kernel.instance
@@ -564,12 +562,10 @@ async function modalsWaiting(
   return updates;
 }
 
-/** The woken index ref a call's step drops when it parks again or settles: only a call that waited before can hold one. */
 function wokenDrop(session: SessionId, current: CallRecord): readonly string[] {
   return current.waits.length === 0 ? [] : [wokenIndex(session, current.id)];
 }
 
-/** A tool call recorded with the response that asked for it, before its step opens, so a host stop in between still owes it. Its step replaces the intent with a `tool` call as if new; an intent has run nothing, so it replays safely. */
 export function intendedCall(input: {
   readonly call: CallId;
   readonly run: RunId;

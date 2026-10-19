@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
@@ -8,13 +7,11 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { openPty } from "./pty.ts";
 import type { Pty } from "./pty.ts";
-import { freshHome, PLUGIN_ANSWER, readBinaryCode, serveForBinary } from "./service.ts";
+import { freshHome, PLUGIN_ANSWER, serveForBinary } from "./service.ts";
 import type { TestService } from "./service.ts";
 
 const BINARY =
   process.env["NYTE_BINARY"] ?? fileURLToPath(new URL("../../../bin/nyte", import.meta.url));
-
-const CODE = await readBinaryCode(BINARY);
 
 const RESUME = /To resume previous session\nnyte --session=([^\n]+)\n$/u;
 
@@ -78,15 +75,6 @@ async function exitTimed(pty: Pty, from: number) {
   return { status, elapsed };
 }
 
-async function eventually(done: () => boolean, what: string): Promise<void> {
-  const deadline = performance.now() + EXIT_BUDGET_MS;
-
-  while (!done()) {
-    if (performance.now() > deadline) throw new Error(`Never saw ${what}.`);
-    await Bun.sleep(10);
-  }
-}
-
 test("--help prints plain usage and exits 0", async () => {
   const child = Bun.spawn([BINARY, "--help"], { stdout: "pipe", stderr: "pipe", env: {} });
 
@@ -95,7 +83,7 @@ test("--help prints plain usage and exits 0", async () => {
 });
 
 test("-p --json streams text while the provider still streams, then a completed result", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
+  await using service = await serveForBinary({ plugin: false });
   const release = Promise.withResolvers<void>();
   service.reply({
     content: [{ type: "text", text: "Streaming from the fake provider." }],
@@ -118,7 +106,7 @@ test("-p --json streams text while the provider still streams, then a completed 
 });
 
 test("a provider error exits 1 with a failed result", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
+  await using service = await serveForBinary({ plugin: false });
   service.reply({ error: "The fake provider failed." });
 
   const run = await print(service, ["-p", "--json", "fail please"]);
@@ -128,7 +116,7 @@ test("a provider error exits 1 with a failed result", async () => {
 });
 
 test("SIGTERM during a run exits 143 with a cancelled result", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
+  await using service = await serveForBinary({ plugin: false });
   service.reply({
     content: [{ type: "text", text: "Holding the stream open" }],
     hold: true,
@@ -158,7 +146,7 @@ test("SIGTERM during a run exits 143 with a cancelled result", async () => {
   expect(records(stdout).at(-1)).toMatchObject({ type: "result", kind: "cancelled" });
 });
 
-test("before its service is registered, the TUI paints the recorded model and keys typed at launch, and takes Enter", async () => {
+test("before its host opens, the TUI paints the recorded model and keys typed at launch, and takes Enter", async () => {
   await using home = await freshHome();
   const recorded = { model: { provider: "test", id: "recorded" }, effort: "off", fast: false };
   await writeFile(join(home.nyteHome, "tui-first-frame.json"), `${JSON.stringify(recorded)}\n`);
@@ -168,21 +156,16 @@ test("before its service is registered, the TUI paints the recorded model and ke
     (screen) => screen.text.includes("❯ hi") && screen.text.includes("│ recorded │"),
   );
   const painted = performance.now() - pty.spawnedAt;
-  const registered = existsSync(home.registration);
   pty.press("chat.submit");
   await pty.waitFor((screen) => screen.text.includes("sends when Nyte connects"));
   const accepted = performance.now() - pty.spawnedAt;
-  const registeredAtSend = existsSync(home.registration);
   console.log(
     `spawn to the composer with typed keys and the recorded model: ${painted.toFixed(0)} ms; to the sent message waiting for the host: ${accepted.toFixed(0)} ms`,
   );
-
-  expect(registered).toBe(false);
-  expect(registeredAtSend).toBe(false);
 }, 30_000);
 
 test("the TUI asks to trust a folder with project files; trusting it loads the plugin's command", async () => {
-  await using service = await serveForBinary({ plugin: true, code: CODE });
+  await using service = await serveForBinary({ plugin: true });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
 
   await pty.waitFor((screen) => screen.text.includes("Trust this folder"));
@@ -195,7 +178,7 @@ test("the TUI asks to trust a folder with project files; trusting it loads the p
 }, 30_000);
 
 test("the TUI keeps keys typed at launch, streams a reply, and prints the resume command on /quit and SIGTERM", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
+  await using service = await serveForBinary({ plugin: false });
   service.reply(
     { content: [{ type: "text", text: "Hello from the fake provider." }] },
     { content: [{ type: "text", text: "Resumed and answered." }] },
@@ -241,11 +224,10 @@ test("the TUI keeps keys typed at launch, streams a reply, and prints the resume
   expect(RESUME.exec(resumed.output())?.[1]).toBe(session);
 }, 30_000);
 
-test("closing the terminal ends the TUI within 2 s with 129, and the service sees its connection close", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
+test("closing the terminal ends the TUI within 2 s with 129", async () => {
+  await using service = await serveForBinary({ plugin: false });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
   await ready(pty);
-  const connected = service.disconnects();
 
   const from = performance.now();
   pty.hangUp();
@@ -253,11 +235,10 @@ test("closing the terminal ends the TUI within 2 s with 129, and the service see
 
   expect(status).toBe(129);
   expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
-  await eventually(() => service.disconnects() > connected, "the client's streams close");
 }, 30_000);
 
 test("SIGTERM to a TUI whose terminal already closed ends it within 2 s", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
+  await using service = await serveForBinary({ plugin: false });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
   await ready(pty);
 
@@ -271,7 +252,7 @@ test("SIGTERM to a TUI whose terminal already closed ends it within 2 s", async 
 }, 30_000);
 
 test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
+  await using service = await serveForBinary({ plugin: false });
   service.reply({ content: [{ type: "text", text: "Answered before the hangup." }] });
   await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
   await ready(pty);
@@ -287,24 +268,3 @@ test("SIGHUP ends the TUI within 2 s with 129 and prints the resume command", as
   expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
   expect(pty.output()).toMatch(RESUME);
 }, 30_000);
-
-test("the TUI follows its chat to the service it starts when its service stops", async () => {
-  await using service = await serveForBinary({ plugin: false, code: CODE });
-  service.reply({ content: [{ type: "text", text: "Answered before the restart." }] });
-  await using pty = await openPty({ binary: BINARY, cwd: service.cwd, env: service.env });
-  await ready(pty);
-  pty.type("hi nyte");
-  pty.press("chat.submit");
-  await pty.waitFor((screen) => screen.text.includes("Answered before the restart."));
-
-  await service.stop();
-  await pty.waitFor((screen) => screen.text.includes("follows the Nyte service now"));
-
-  const from = performance.now();
-  pty.signal("SIGINT");
-  const { status, elapsed } = await exitTimed(pty, from);
-
-  expect(status).toBe(130);
-  expect(elapsed).toBeLessThan(EXIT_BUDGET_MS);
-  expect(pty.output()).toMatch(RESUME);
-}, 60_000);

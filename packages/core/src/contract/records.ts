@@ -7,6 +7,7 @@ import {
   cyclicWithJson,
   HeadInfoType,
   idSchema,
+  JobEndType,
   isJsonObject,
   JsonObjectType,
   JsonType,
@@ -28,6 +29,7 @@ import type {
   CommitBody,
   Configuration,
   HeadInfo,
+  JobEnd,
   Json,
   MoveOutcome,
   PartStatus,
@@ -55,7 +57,6 @@ const HeadRecordType = record({
   lastRun: nullable(
     record({ id: idSchema<"run">(), end: typed<RunEnd>()(RunEndType), endedAt: Type.Number() }),
   ),
-  /** The usage the last run's latest response reported, which a rebuilt transcript anchors its token estimate on. */
   response: Type.Optional(typed<Usage>()(UsageType)),
 });
 
@@ -111,10 +112,11 @@ const RunRecordType = record({
   lastSnapshot: nullable(idSchema<"snapshot">()),
   usage: nullable(typed<Usage>()(UsageType)),
   requests: Type.Number(),
-  /** The usage the run's latest response reported. */
   response: Type.Optional(typed<Usage>()(UsageType)),
 
   parked: list(idSchema<"call">()),
+  interrupted: Type.Optional(record({ count: Type.Number(), mark: Type.String() })),
+  requires: Type.Optional(list(Type.String())),
 });
 
 export type RunRecord = Static<typeof RunRecordType>;
@@ -150,7 +152,6 @@ const ReceiptRecordType = Type.Union([
   record({
     ...RECEIPT,
     kind: Type.Literal("send"),
-    /** The principal a starting chat's before_send hooks decide its first message for; only that message's receipt has one. */
     principal: Type.Optional(idSchema<"principal">()),
     outcome: nullable(
       typed<Awaited<ReturnType<SendReceipt["settled"]>>>()(
@@ -187,7 +188,6 @@ const WaitOutcomeRef = Type.Unsafe<WaitOutcome>(Type.Ref("WaitOutcome"));
 
 const CallRecordType = record({
   id: idSchema<"call">(),
-  /** `intent` is a tool call recorded with the response that asked for it, before its step opens it as a `tool` call. */
   kind: Type.Enum(["tool", "action", "hook", "intent"]),
   run: nullable(idSchema<"run">()),
   head: nullable(idSchema<"head">()),
@@ -232,7 +232,6 @@ const WorkspaceRecordType = record({
 
 export type WorkspaceRecord = Static<typeof WorkspaceRecordType>;
 
-/** The user's decision for one folder's project files, at `trust/<folder key>`; folders under it inherit it. */
 const TrustRecordType = record({
   target: typed<WorkspaceTarget>()(WorkspaceTargetType),
   trusted: Type.Boolean(),
@@ -270,6 +269,33 @@ const LeaseType = record({
 
 type Lease = Static<typeof LeaseType>;
 
+const ProcessRecordType = record({
+  instance: Type.String(),
+  holder: idSchema<"host">(),
+  label: Type.String(),
+  pid: nullable(Type.Number()),
+  capabilities: list(Type.String()),
+  startedAt: Type.Number(),
+});
+
+export type ProcessRecord = Static<typeof ProcessRecordType>;
+
+const JobRecordType = record({
+  id: idSchema<"job">(),
+  instance: Type.String(),
+  workspace: idSchema<"workspace">(),
+  session: idSchema<"session">(),
+  head: idSchema<"head">(),
+  startedBy: nullable(idSchema<"call">()),
+  title: Type.String(),
+  command: Type.String(),
+  startedAt: Type.Number(),
+  end: nullable(typed<JobEnd>()(JobEndType)),
+  endedAt: nullable(Type.Number()),
+});
+
+export type JobRecord = Static<typeof JobRecordType>;
+
 const HostIdentityType = record({ id: idSchema<"host">(), createdAt: Type.Number() });
 
 export type HostIdentity = Static<typeof HostIdentityType>;
@@ -285,12 +311,13 @@ export type RecordKind =
   | "workspace"
   | "trust"
   | "lease"
+  | "process"
+  | "job"
   | "call"
   | "kv"
   | "principals"
   | "identity";
 
-/** The schema of every stored record body by envelope kind, `kv` excepted since it holds any JSON. Old stores keep old bodies, so a change here must still decode them or come with a backfill. */
 export const STORED_RECORD_TYPES = {
   session: SessionRecordType,
   commit: CommitRecordType,
@@ -302,6 +329,8 @@ export const STORED_RECORD_TYPES = {
   workspace: WorkspaceRecordType,
   trust: TrustRecordType,
   lease: LeaseType,
+  process: ProcessRecordType,
+  job: JobRecordType,
   call: CallRecordType,
   principals: PrincipalRecordType,
   identity: HostIdentityType,
@@ -342,6 +371,10 @@ export const decodePrincipalRecord: Decode<PrincipalRecord> = decoder(
 );
 
 export const decodeLease: Decode<Lease> = decoder("lease", LeaseType);
+
+export const decodeProcessRecord: Decode<ProcessRecord> = decoder("process", ProcessRecordType);
+
+export const decodeJobRecord: Decode<JobRecord> = decoder("job", JobRecordType);
 
 export const decodeHostIdentity: Decode<HostIdentity> = decoder("identity", HostIdentityType);
 

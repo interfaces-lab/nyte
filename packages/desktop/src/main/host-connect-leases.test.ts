@@ -224,7 +224,7 @@ test("devices the broker no longer has active are forgotten once their grant cou
   const fresh = randomBytes(32).toString("base64url");
 
   const second = await desktop(setup);
-  await second.host.autostartConnect();
+  second.host.autostartConnect();
   await vi.waitFor(async () => assert.deepEqual(await info(setup, kept.token), allowed));
   const freshGrant = await broker.grant({ token: fresh });
   assert.equal(
@@ -253,7 +253,7 @@ test("after a restart a recorded device is refused until a lease verifies", asyn
 
   setup.broker.leaseMode = "offline";
   const second = await desktop(setup);
-  await second.host.autostartConnect();
+  second.host.autostartConnect();
   await vi.waitFor(async () =>
     assert.equal((await linked(second.host)).connection.kind, "connected"),
   );

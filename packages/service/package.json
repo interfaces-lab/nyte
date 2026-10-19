@@ -1,12 +1,11 @@
 {
   "name": "@nyte-ai/service",
   "private": true,
-  "description": "The local Nyte service: one long-running host per user that every local client connects to, which also owns this machine's Nyte Connect link.",
+  "description": "Nyte Connect sharing for a local Nyte process: the routes its own host listener serves and the relay election that lets one process at a time carry this machine's relay.",
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./supervisor": "./src/supervisor.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",

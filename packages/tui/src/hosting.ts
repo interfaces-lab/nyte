@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { Worker } from "node:worker_threads";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -6,17 +7,13 @@ import { compiled } from "./compiled.ts";
 
 const PortType = Type.Integer({ minimum: 0, maximum: 65_535 });
 
-const HostCommandType = Type.Union([
-  Type.Object({ kind: Type.Literal("serve"), port: PortType, token: Type.String() }),
-  Type.Object({ kind: Type.Literal("service"), port: PortType }),
-]);
+const HostCommandType = Type.Object({
+  kind: Type.Union([Type.Literal("serve"), Type.Literal("local")]),
+  port: PortType,
+  token: Type.String(),
+});
 
-const HostFailureReasonType = Type.Union([
-  Type.Literal("port-in-use"),
-  Type.Literal("service-running"),
-  Type.Literal("store-owned"),
-  Type.Literal("other"),
-]);
+const HostFailureReasonType = Type.Union([Type.Literal("port-in-use"), Type.Literal("other")]);
 
 export type HostCommand = Static<typeof HostCommandType>;
 
@@ -31,6 +28,7 @@ const HostReportType = Type.Union([
     reason: HostFailureReasonType,
     message: Type.String(),
   }),
+  Type.Object({ kind: Type.Literal("revoked") }),
   Type.Object({ kind: Type.Literal("closed") }),
 ]);
 
@@ -58,23 +56,29 @@ interface HostThread {
   stop(): Promise<void>;
 }
 
-export async function startHostThread(command: HostCommand): Promise<HostThread> {
+interface Running {
+  readonly worker: Worker;
+  readonly address: string;
+  readonly closed: Promise<void>;
+}
+
+function launch(command: HostCommand, revoked: () => void, failed: (cause: Error) => void) {
   const worker = new Worker(
     compiled ? "./tui/src/host-worker.ts" : new URL("./host-worker.ts", import.meta.url),
   );
 
   const listening = Promise.withResolvers<string>();
-  const ended = Promise.withResolvers<void>();
-  let running = true;
+  const closed = Promise.withResolvers<void>();
+  let opened = false;
+  let leaving = false;
 
-  ended.promise.catch(() => undefined);
+  listening.promise.catch(() => undefined);
 
-  const fail = (cause: unknown): void => {
-    listening.reject(cause);
-
-    if (!running) return;
-    running = false;
-    ended.reject(cause);
+  const fail = (cause: Error): void => {
+    if (!opened) listening.reject(cause);
+    else if (!leaving) failed(cause);
+    leaving = true;
+    closed.resolve();
   };
 
   worker.on("message", (report) => {
@@ -85,38 +89,82 @@ export async function startHostThread(command: HostCommand): Promise<HostThread>
       return;
     }
 
-    if (report.kind === "listening") {
-      listening.resolve(report.address);
+    switch (report.kind) {
+      case "listening":
+        opened = true;
+        listening.resolve(report.address);
 
-      return;
+        return;
+      case "failed":
+        fail(new HostFailure(report.reason, report.message));
+        void worker.terminate();
+
+        return;
+      case "revoked":
+        leaving = true;
+        void worker.terminate().then(revoked);
+
+        return;
+      case "closed":
+        leaving = true;
+        closed.resolve();
+
+        return;
+      default: {
+        const _exhaustive: never = report;
+
+        fail(new Error(`The host thread reported ${JSON.stringify(_exhaustive)}.`));
+      }
     }
-
-    if (report.kind === "failed") {
-      fail(new HostFailure(report.reason, report.message));
-      void worker.terminate();
-
-      return;
-    }
-
-    running = false;
-    ended.resolve();
   });
   worker.on("error", fail);
   worker.on("exit", (code) => fail(new Error(`The host thread exited with code ${String(code)}.`)));
   worker.postMessage(command satisfies HostMessage);
 
-  const address = await listening.promise;
+  return listening.promise.then((address): Running => ({
+    worker,
+    address,
+    closed: closed.promise,
+  }));
+}
+
+export async function startHostThread(command: HostCommand): Promise<HostThread> {
+  const ended = Promise.withResolvers<void>();
+  ended.promise.catch(() => undefined);
+  let stopping = false;
+  let current: Running;
+
+  const failed = (cause: Error): void => {
+    if (!stopping) ended.reject(cause);
+  };
+
+  const reopen = (): void => {
+    if (stopping) return;
+    const port = Number(new URL(current.address).port);
+
+    void launch({ ...command, port }, reopen, failed).then(
+      (running) => {
+        current = running;
+
+        if (stopping) void running.worker.terminate();
+      },
+      (cause: unknown) => failed(cause instanceof Error ? cause : new Error(String(cause))),
+    );
+  };
+
+  current = await launch(command, reopen, failed);
 
   return {
-    address,
+    address: current.address,
     ended: ended.promise,
     async stop() {
-      if (running) {
-        worker.postMessage({ kind: "stop" } satisfies HostMessage);
-        await ended.promise;
-      }
-
-      await worker.terminate();
+      stopping = true;
+      current.worker.postMessage({ kind: "stop" } satisfies HostMessage);
+      const timer = setTimeout(() => void current.worker.terminate(), 10_000);
+      await Promise.race([current.closed, once(current.worker, "exit")]);
+      clearTimeout(timer);
+      await current.worker.terminate();
+      ended.resolve();
     },
   };
 }

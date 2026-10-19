@@ -53,45 +53,17 @@ const RELOAD_DEBOUNCE_MS = 250;
 
 const STORE_POLL_MS = 500;
 
-/**
- * Describes what `openHost` takes: `OpenOptions` with `store`, `workspace`,
- * `models` and `plugins` optional, `secrets` defaulting to this machine's key,
- * and the home directory holding `.nyte`. Every `OpenOptions` is one, so the
- * sdk's Node `open` passes its options straight through.
- */
 export type OpenHostOptions = Omit<OpenOptions, "store" | "workspace" | "models" | "plugins"> & {
-  /** The host's store; absent, `sqliteStore` at `<home>/.nyte/nyte.db`, which the host then closes with itself (§51c). */
   readonly store?: Store;
-  /** Where a root session acts when `create` names none; default the local folder `process.cwd()` (§51c). */
   readonly workspace?: WorkspaceTarget;
-  /** The `@nyte-ai/ai` catalog; absent, `nyteModels` over this host's encrypted credential store (§42e). */
   readonly models?: Models;
-  /** Core plugins loaded after the first-party built-ins and before the plugin files; default none. One with a built-in's id replaces that built-in, as a bundled client's `codemode` runtime does, and a `local` environment provider among them replaces the default one. */
   readonly plugins?: readonly Plugin<"core">[];
-  /** The directory whose `.nyte` holds the store, settings, plugins, secrets key and identity key; default `os.homedir()`. */
   readonly home?: string;
-  /** The login shell the default local provider's pty jobs run, read at each start; absent or null is `$SHELL`. */
   readonly shell?: () => string | null;
+  readonly label?: string;
+  readonly onRevoked?: () => void;
 };
 
-/**
- * Opens the Node host the sdk's Node `open` calls: `composeHost` with
- * `home` (default `os.homedir()`), `store` (default `<home>/.nyte/nyte.db`,
- * checked every 500 ms for another process's commits, which are then read so
- * a second process on the file sees the first one's runs live),
- * `workspace` (default the local folder `process.cwd()`), `secrets` (default
- * `defaultSecrets(home)`), `models` (default `nyteModels`), `localProvider`
- * unless a plugin provides the `local` environment, every first-party plugin
- * of `@nyte-ai/plugin` that `plugins` does not replace by id, then `plugins`
- * and `filePlugins`' files, `settingsSeed`'s seed and
- * `hostDescription()`; each file that did not load becomes a
- * `server.report` row. The host's `loadPlugins` is `pluginLoader` over
- * the plugin directories (§47l), which `watchPlugins` watches for hot reload
- * (§49a). `listen` defaults `identity` to `identitySigner(host.hostId, home)`
- * and `describe` to the description; nothing here reads the secrets key, even
- * with a credential stored (§50d, §55). `close()` stops the watch, closes the
- * open listeners, the host, then a store it opened.
- */
 export async function openHost(options: OpenHostOptions): Promise<Host> {
   const home = options.home ?? homedir();
   const workspace = options.workspace ?? { kind: "local", path: process.cwd() };
@@ -156,7 +128,6 @@ async function composeOpen(
     openaiAstraContext,
     telemetry,
     canvas,
-    browserTools,
     claudeCode.plugin,
     acp.plugin,
   ];
@@ -185,7 +156,19 @@ async function composeOpen(
     home,
     description,
     ...(settings.seed === null ? {} : { seed: settings.seed }),
-    ...(owned === null ? {} : { poll: STORE_POLL_MS }),
+    ...(owned === null
+      ? {}
+      : {
+          poll: STORE_POLL_MS,
+          member: {
+            label: options.label ?? "nyte",
+            pid: process.pid,
+            capabilities: given.some((plugin) => plugin.id === browserTools.id)
+              ? [browserTools.id]
+              : [],
+          },
+          revoked: options.onRevoked,
+        }),
   });
 
   projectDirs = async () =>
@@ -281,7 +264,6 @@ async function nyteModels(input: {
   readonly store: Store;
   readonly secrets: SecretsSource;
   readonly home: string;
-  /** Providers beside Nyte's catalog, each refreshed offline at open. */
   readonly providers: readonly Provider[];
 }): Promise<Models> {
   const credentials = credentialStore(input.store, input.secrets);
@@ -302,6 +284,7 @@ async function nyteModels(input: {
   });
 
   for (const provider of [...nyteProviders(), ...input.providers]) models.setProvider(provider);
+
   const [stored, selected] = await Promise.all([
     credentials.list(),
     input.store.open().then(readModelSelection),

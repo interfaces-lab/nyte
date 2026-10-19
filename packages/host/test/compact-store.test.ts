@@ -77,7 +77,10 @@ it("rewrites cumulative changes events to the deltas that fold to the same list,
   const session = await withHost(path, async (host) => {
     const { session: started } = await host.sessions.start({ name: "Edits", content: "Hi." });
 
-    expect(compact(path)).toMatchObject({ status: 1, stderr: expect.stringContaining("pid") });
+    expect(compact(path)).toMatchObject({
+      status: 1,
+      stderr: expect.stringContaining("Quit every nyte and Nyte.app"),
+    });
 
     return started;
   });

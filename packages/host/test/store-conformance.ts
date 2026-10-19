@@ -31,6 +31,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
     it("indexes current session roots with keyset pages and versions for every session write", async () => {
       const { objects, refs, sessions } = await connect();
+
       const body = {
         name: null,
         parent: null,
@@ -43,11 +44,14 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
         heads: [],
         prompt: null,
       };
+
       const first = await objects.put(envelope("session", { ...body, id: "a" }, 1));
       const second = await objects.put(envelope("session", { ...body, id: "b" }, 1));
+
       const child = await objects.put(
         envelope("session", { ...body, id: "c", parent: "a", lastActivityAt: 20 }, 1),
       );
+
       await refs.set([
         { name: "sessions/a", target: first },
         { name: "sessions/b", target: second },
@@ -89,6 +93,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
 
     it("finds only outstanding work, including archived sessions, and removes settled receipts atomically", async () => {
       const { objects, refs, sessions } = await connect();
+
       for (const id of ["a", "b", "idle"]) {
         const target = await objects.put(
           envelope(
@@ -109,11 +114,14 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
             1,
           ),
         );
+
         await refs.set([{ name: `sessions/${id}`, target }]);
       }
+
       const pending = await objects.put(
         envelope("receipt", { id: "r", digest: "d", kind: "move", outcome: null }, 1),
       );
+
       const settled = await objects.put(
         envelope(
           "receipt",
@@ -126,6 +134,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
           1,
         ),
       );
+
       await refs.set([
         { name: "sessions/a/receipts/r", target: pending },
         { name: "sessions/b/receipts/r", target: pending },
@@ -253,7 +262,7 @@ export function storeConformance(name: string, open: () => Promise<Store>): void
       const target = await objects.put("value");
       const live = "sessions/s1/live/r1";
       await refs.set([{ name: live, target }]);
-      const part = { name: "sessions/s1/parts/p1", target, fence: live, events: [moved] };
+      const part = { name: "sessions/s1/parts/p1", target, fences: [live], events: [moved] };
 
       expect((await refs.set([part])).kind).toBe("set");
       await refs.set([{ name: live, target: null }]);

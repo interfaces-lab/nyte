@@ -8,12 +8,14 @@ import type { Host, OpenHostOptions } from "@nyte-ai/sdk";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 
 export function openTerminalHost(
-  execution: OpenHostOptions["execution"] = { kind: "run", coverage: { kind: "all" } },
+  options: Pick<OpenHostOptions, "execution" | "label" | "onRevoked"> = {},
 ): Promise<Host> {
   if (process.env.NYTE_DEV_LOG !== undefined) dev.forward(process.env.NYTE_DEV_LOG, "tui");
 
   return sdk.open({
     plugins: [codemodePlugin(codemodeRuntimeOptions()), canvasPlugin(chromiumCanvasPreview(files))],
-    execution,
+    execution: options.execution ?? { kind: "run", coverage: { kind: "all" } },
+    label: options.label,
+    onRevoked: options.onRevoked,
   });
 }

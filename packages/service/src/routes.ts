@@ -9,48 +9,16 @@ export const SERVICE_ROUTES = {
   watch: "/_nyte/service/connect/watch",
   share: "/_nyte/service/connect/share",
   unlink: "/_nyte/service/connect/unlink",
-  attach: "/_nyte/service/attach",
-  clients: "/_nyte/service/clients",
-  retire: "/_nyte/service/retire",
 } as const;
 
 export const ServiceEventSchema = Type.Union([
   Type.Object({ kind: Type.Literal("view"), view: ConnectViewSchema }),
   Type.Object({ kind: Type.Literal("link_failed"), reason: ConnectLinkFailureSchema }),
   Type.Object({ kind: Type.Literal("error"), message: Type.String() }),
+  Type.Object({ kind: Type.Literal("relay"), holder: Type.Boolean() }),
 ]);
 
 export type ServiceEvent = Static<typeof ServiceEventSchema>;
-
-export const AttachmentSchema = Type.Object({
-  pid: Type.Integer({ minimum: 1 }),
-  startedAt: Type.Number(),
-  build: Type.String(),
-  follows: Type.Boolean(),
-});
-
-export type Attachment = Static<typeof AttachmentSchema>;
-
-export const HandoffSchema = Type.Object({
-  kind: Type.Literal("retiring"),
-  to: Type.Literal("desktop"),
-});
-
-export type Handoff = Static<typeof HandoffSchema>;
-
-export const ServiceClientSchema = Type.Object({
-  ...AttachmentSchema.properties,
-  tty: Type.Union([Type.String(), Type.Null()]),
-});
-
-export type ServiceClient = Static<typeof ServiceClientSchema>;
-
-export const BusySchema = Type.Object({
-  clients: Type.Integer({ minimum: 0 }),
-  working: Type.Boolean(),
-});
-
-export type Busy = Static<typeof BusySchema>;
 
 export function serviceRoutes(
   token: string,

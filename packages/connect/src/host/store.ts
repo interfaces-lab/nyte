@@ -1,4 +1,4 @@
-import { open } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 import { serial } from "@nyte-ai/schema/serial";
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
@@ -16,15 +16,13 @@ import {
 } from "../index.ts";
 import { PrivateJwk } from "../signing.ts";
 import { storeFailed } from "./errors.ts";
+import { lockFile } from "./file-lock.ts";
 import { writePrivateFile } from "./private-file.ts";
 
-/** Local revocations whose broker revoke has not been confirmed. */
 export const REVOCATION_LIMIT = 64;
 
-/** Enrollment ids consumed and not yet expired. */
 export const CONSUMED_LIMIT = 256;
 
-/** Unlinks the broker has not confirmed. */
 export const UNLINK_LIMIT = 8;
 
 const strict = <P extends TProperties>(properties: P) =>
@@ -131,17 +129,12 @@ export class ConnectStoreFailed extends Error {
   }
 }
 
-/**
- * The Connect state file as every part of the runtime reads and changes it. `origin` is the
- * broker this build talks to, so a link through any other is not current; `onFailed` runs when a
- * `change` fails, before the caller hears `storeFailed`.
- */
 export class ConnectStore {
   private readonly path: string;
   private readonly origin: string | undefined;
   private readonly onFailed: () => void;
-  private loading: Promise<ConnectRead> | undefined;
   private loaded: ConnectRead | undefined;
+  private seen: string | null = null;
   private readonly writes = serial();
 
   constructor(
@@ -153,24 +146,21 @@ export class ConnectStore {
     this.onFailed = owner.onFailed ?? (() => undefined);
   }
 
-  /** The file as the last write left it; the disk is read once. */
   async read(): Promise<ConnectRead> {
-    this.loading ??= this.load().then((read) => {
-      this.loaded ??= read;
+    const key = await fileKey(this.path);
 
-      return read;
-    });
-    const first = await this.loading;
+    if (this.loaded !== undefined && key === this.seen) return this.loaded;
+    const read = await this.load();
+    this.loaded = read;
+    this.seen = key;
 
-    return this.loaded ?? first;
+    return read;
   }
 
-  /** What the last read or write left, without waiting; undefined before the first read. */
   snapshot(): ConnectRead | undefined {
     return this.loaded;
   }
 
-  /** The file, or `storeFailed` when it cannot be used. */
   async ready(): Promise<ConnectFile> {
     const read = await this.read();
 
@@ -179,12 +169,10 @@ export class ConnectStore {
     return read.file;
   }
 
-  /** The file as the last read or write left it, without waiting; undefined before the first read or after a failure. */
   loadedFile(): ConnectFile | undefined {
     return this.loaded?.kind === "ready" ? this.loaded.file : undefined;
   }
 
-  /** The stored link when it is the one for `environmentId` through this build's broker. */
   currentLink(environmentId: string): StoredLink | undefined {
     const link = this.loadedFile()?.link ?? null;
 
@@ -193,7 +181,6 @@ export class ConnectStore {
       : undefined;
   }
 
-  /** Applies `change` as `update` does; a failure runs `onFailed` and rejects with `storeFailed`. */
   async change(change: (file: ConnectFile) => ConnectFile): Promise<void> {
     try {
       await this.update((file) => ({ file: change(file), result: undefined }));
@@ -204,71 +191,88 @@ export class ConnectStore {
     }
   }
 
-  /**
-   * Apply `change` to the file as every earlier change left it, then persist.
-   * Changes run one at a time. A failed write fails the store for good.
-   */
   update<T>(
     change: (file: ConnectFile) => { readonly file: ConnectFile; readonly result: T },
   ): Promise<T> {
     return this.writes.run(async () => {
-      const loaded = await this.read();
-
-      if (loaded.kind === "failed") throw new ConnectStoreFailed();
-      const next = change(loaded.file);
-
-      if (next.file === loaded.file) return next.result;
-
-      if (!connectFile.Check(next.file)) throw new ConnectStoreFailed();
-
-      try {
-        await writePrivateFile({
-          path: this.path,
-          text: `${JSON.stringify(next.file, null, 2)}\n`,
-        });
-      } catch {
+      const release = await lockFile(`${this.path}.lock`).catch(() => {
         this.loaded = { kind: "failed" };
         throw new ConnectStoreFailed();
+      });
+
+      try {
+        const loaded = await this.read();
+
+        if (loaded.kind === "failed") throw new ConnectStoreFailed();
+        const next = change(loaded.file);
+
+        if (next.file === loaded.file) return next.result;
+
+        if (!connectFile.Check(next.file)) throw new ConnectStoreFailed();
+
+        try {
+          await writePrivateFile({
+            path: this.path,
+            text: `${JSON.stringify(next.file, null, 2)}\n`,
+          });
+        } catch {
+          this.loaded = { kind: "failed" };
+          throw new ConnectStoreFailed();
+        }
+
+        this.loaded = { kind: "ready", file: next.file };
+        this.seen = await fileKey(this.path);
+
+        return next.result;
+      } finally {
+        release();
       }
-
-      this.loaded = { kind: "ready", file: next.file };
-
-      return next.result;
     });
   }
 
-  /** Settles once every change queued so far, and any queued while waiting, has landed or failed. */
   async idle(): Promise<void> {
     while (this.writes.busy) await this.writes.settled();
   }
 
   private async load(): Promise<ConnectRead> {
-    let text: string;
+    return readConnectFile(this.path);
+  }
+}
+
+async function fileKey(path: string): Promise<string | null> {
+  const stats = await stat(path).catch(() => null);
+
+  return stats === null
+    ? null
+    : `${String(stats.ino)}:${String(stats.mtimeMs)}:${String(stats.size)}`;
+}
+
+async function readConnectFile(path: string): Promise<ConnectRead> {
+  let text: string;
+
+  try {
+    const handle = await open(path, "r");
 
     try {
-      const handle = await open(this.path, "r");
+      const stats = await handle.stat();
 
-      try {
-        const stats = await handle.stat();
-
-        if (process.platform !== "win32" && (!stats.isFile() || (stats.mode & 0o077) !== 0)) {
-          return { kind: "failed" };
-        }
-
-        text = await handle.readFile("utf8");
-      } finally {
-        await handle.close();
+      if (process.platform !== "win32" && (!stats.isFile() || (stats.mode & 0o077) !== 0)) {
+        return { kind: "failed" };
       }
-    } catch (cause) {
-      return cause instanceof Error && "code" in cause && cause.code === "ENOENT"
-        ? { kind: "ready", file: EMPTY_CONNECT_FILE }
-        : { kind: "failed" };
-    }
 
-    try {
-      return { kind: "ready", file: connectFile.Parse(JSON.parse(text)) };
-    } catch {
-      return { kind: "failed" };
+      text = await handle.readFile("utf8");
+    } finally {
+      await handle.close();
     }
+  } catch (cause) {
+    return cause instanceof Error && "code" in cause && cause.code === "ENOENT"
+      ? { kind: "ready", file: EMPTY_CONNECT_FILE }
+      : { kind: "failed" };
+  }
+
+  try {
+    return { kind: "ready", file: connectFile.Parse(JSON.parse(text)) };
+  } catch {
+    return { kind: "failed" };
   }
 }

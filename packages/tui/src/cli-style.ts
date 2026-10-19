@@ -1,15 +1,8 @@
-/**
- * Styling for the command surface outside the TUI: help, login, logout,
- * status, update, errors. Builders take an explicit `color` flag so tests
- * assert plain strings; the thin wrappers read the terminal lazily. Piped or
- * redirected output stays unstyled, so scripts keep parsing bare text.
- */
 import process from "node:process";
 import { GLYPHS, THINKING_LEVELS } from "./lib/constants.ts";
 import type { UpdateOutcome } from "./update.ts";
 import { VERSION } from "./version.ts";
 
-/** True only for an interactive terminal that has not opted out of color. */
 export function ansiEnabled(stream: Pick<NodeJS.WriteStream, "isTTY"> = process.stdout): boolean {
   if (!stream.isTTY) return false;
   const noColor = process.env["NO_COLOR"];
@@ -39,7 +32,6 @@ export function cyan(text: string, color: boolean = ansiEnabled()): string {
   return paint(color, SGR.cyan, text);
 }
 
-/** How a finished step reads. One vocabulary for glyphs, colors, and exit codes. */
 type Severity = "ok" | "warn" | "fail";
 
 interface SeverityStyle {
@@ -53,7 +45,6 @@ const SEVERITY_STYLE: Readonly<Record<Severity, SeverityStyle>> = {
   fail: { glyph: GLYPHS.cross, code: SGR.red },
 };
 
-/** The gutter glyph for a finished step: ✓ done, ● needs attention, ✗ failed. */
 export function statusGlyph(severity: Severity, color: boolean): string {
   const { glyph, code } = SEVERITY_STYLE[severity];
 
@@ -84,7 +75,6 @@ interface AlignedRow {
 
 const COLUMN_GAP = 2;
 
-/** `label  detail` rows sharing one detail column. A row with no detail is just its label. */
 export function alignedRows(
   rows: readonly AlignedRow[],
   color: boolean,
@@ -100,7 +90,6 @@ export function alignedRows(
   });
 }
 
-/** Widest command label in the help screen, so both sections share a column. */
 const HELP_LABEL_WIDTH = 29;
 
 const HELP_COMMANDS: readonly AlignedRow[] = [
@@ -115,10 +104,6 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   },
   { label: "nyte serve [--port <n>] [--token <t>]", detail: "serve this folder over HTTP" },
   { label: "nyte account [status|unlink]", detail: "share this machine with your Nyte account" },
-  {
-    label: "nyte service [status|stop|install|uninstall|run]",
-    detail: "manage the background service",
-  },
   { label: "nyte mcp <add|remove|list|login|logout>", detail: "manage MCP servers" },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
@@ -132,7 +117,6 @@ const HELP_FLAGS: readonly AlignedRow[] = [
   { label: "--trust, --no-trust", detail: "save whether this folder's project files load" },
 ];
 
-/** The `--help` screen. Colored on a TTY, plain otherwise. */
 export function renderHelp(color: boolean = ansiEnabled()): string {
   return [
     `${paint(color, SGR.bold, "nyte")} ${paint(color, SGR.dim, `v${VERSION} · durable agent sessions in your terminal`)}`,
@@ -158,7 +142,7 @@ export function renderHelp(color: boolean = ansiEnabled()): string {
 }
 
 export function renderCommandHelp(
-  command: "login" | "logout" | "update" | "status" | "serve" | "account" | "service" | "mcp",
+  command: "login" | "logout" | "update" | "status" | "serve" | "account" | "mcp",
 ): string {
   switch (command) {
     case "login":
@@ -202,22 +186,11 @@ export function renderCommandHelp(
     case "account":
       return [
         "Usage: nyte account [status | unlink]",
-        "Share this machine with your Nyte account until Ctrl-C. Separate from `nyte login`, which signs in a model provider.",
+        "Link this machine to your Nyte account; every nyte and Nyte.app then shares it while one runs.",
+        "Separate from `nyte login`, which signs in a model provider.",
         "Not linked yet: opens the approval page in your browser and prints the code to enter there.",
         "status prints the link and its devices; unlink removes this machine from the account.",
         "Example: nyte account",
-      ].join("\n");
-    case "service":
-      return [
-        "Usage: nyte service [status | stop | install | uninstall | run [--port <n>]]",
-        "Every nyte command shares one background service, started on first use. It stops 5 minutes",
-        "after the last client leaves, unless it's installed or this machine is linked to a Nyte account.",
-        "status prints its address, pid, clients and whether it's installed; stop stops it;",
-        "run keeps it in the foreground.",
-        "install runs it as a launch agent (macOS) or systemd user unit (Linux): it starts at login,",
-        "restarts after a crash, and logs to ~/.nyte/logs/service.log. uninstall removes it.",
-        "It listens on a free 127.0.0.1 port; NYTE_SERVICE_PORT or --port pins one.",
-        "Example: nyte service status",
       ].join("\n");
     case "mcp":
       return [
@@ -234,8 +207,8 @@ export function renderCommandHelp(
         "--header KEY=VALUE, --bearer-token-env-var <NAME>, --oauth-client-id <id>,",
         "--oauth-client-secret <secret>, --oauth-callback-port <n>, --oauth-client-name <name>,",
         "--exposure direct|deferred|codemode|codemode-deferred|hidden, --description <text>.",
-        "${VAR} in env, headers and secrets comes from the environment Nyte runs in, so export it and",
-        "run `nyte service stop` before it applies. --bearer-token-env-var keeps a token out of the file.",
+        "${VAR} in env, headers and secrets comes from the environment Nyte runs in, so export it",
+        "before nyte starts. --bearer-token-env-var keeps a token out of the file.",
         "list exits 1 when an entry is invalid or an enabled server is not connected.",
         "login without a name needs an interactive terminal; over SSH, paste the URL the browser ends on.",
         "Examples: nyte mcp add docs --url https://example.com/mcp",

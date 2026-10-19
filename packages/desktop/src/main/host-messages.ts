@@ -61,3 +61,5 @@ export type HostMessage =
   | { readonly kind: "mark"; readonly name: string; readonly at: number }
   | RpcMessage<HostAsk, HostAnswer>
   | { readonly kind: "closed" };
+
+export const REVOKED_EXIT = 75;

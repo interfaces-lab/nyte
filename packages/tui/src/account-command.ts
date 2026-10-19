@@ -8,7 +8,8 @@ import type {
 import { serviceConnect } from "@nyte-ai/service";
 import open from "open";
 import { alignedRows, ansiEnabled } from "./cli-style.ts";
-import { ensureLocalService } from "./service.ts";
+import { connectLocalHost } from "./local-host.ts";
+import type { LocalSession } from "./local-host.ts";
 
 interface Output {
   readonly write: (text: string) => void;
@@ -42,8 +43,22 @@ export async function accountCommand(
   }
 }
 
-async function share(signal: AbortSignal, output: Output): Promise<void> {
-  const connect = serviceConnect(await ensureLocalService());
+async function withLocal<T>(act: (local: LocalSession) => Promise<T>): Promise<T> {
+  const local = await connectLocalHost();
+
+  try {
+    return await act(local);
+  } finally {
+    await local.close();
+  }
+}
+
+function share(signal: AbortSignal, output: Output): Promise<void> {
+  return withLocal((local) => shareFrom(local, signal, output));
+}
+
+async function shareFrom(local: LocalSession, signal: AbortSignal, output: Output): Promise<void> {
+  const connect = serviceConnect(local.endpoint);
   const browser = Boolean(process.stdin.isTTY && process.stdout.isTTY);
   let shownCode = "";
   let introduced = false;
@@ -53,6 +68,8 @@ async function share(signal: AbortSignal, output: Output): Promise<void> {
     if (event.kind === "error") throw new Error(event.message);
 
     if (event.kind === "link_failed") throw new Error(linkFailureMessage(event.reason));
+
+    if (event.kind === "relay") continue;
     const { view } = event;
 
     if (view.kind === "unavailable") throw new Error(unavailableMessage(view.reason));
@@ -90,12 +107,12 @@ async function share(signal: AbortSignal, output: Output): Promise<void> {
     }
   }
 
-  if (!signal.aborted) throw new Error("The Nyte service stopped. Run `nyte account` again.");
+  if (!signal.aborted) throw new Error("This nyte's host stopped. Run `nyte account` again.");
   output.write(introduced ? "Stopped sharing.\n" : "Cancelled. Nothing was linked.\n");
 }
 
 async function status(output: Output): Promise<void> {
-  const view = await serviceConnect(await ensureLocalService()).view();
+  const view = await withLocal((local) => serviceConnect(local.endpoint).view());
 
   if (view.kind === "unavailable") throw new Error(unavailableMessage(view.reason));
 
@@ -123,8 +140,12 @@ async function status(output: Output): Promise<void> {
   );
 }
 
-async function unlink(output: Output): Promise<void> {
-  const connect = serviceConnect(await ensureLocalService());
+function unlink(output: Output): Promise<void> {
+  return withLocal((local) => unlinkFrom(local, output));
+}
+
+async function unlinkFrom(local: LocalSession, output: Output): Promise<void> {
+  const connect = serviceConnect(local.endpoint);
   const before = await connect.view();
 
   if (before.kind === "unavailable") throw new Error(unavailableMessage(before.reason));
@@ -139,7 +160,7 @@ async function unlink(output: Output): Promise<void> {
 
   output.write(
     after.kind === "unlinked" && after.notice.kind === "unlink_pending"
-      ? "Unlinked here. Nyte Connect hasn't confirmed yet; the service retries.\n"
+      ? "Unlinked here. Nyte Connect hasn't confirmed yet; the next nyte retries.\n"
       : `Unlinked from ${before.owner.label}.\n`,
   );
 }
@@ -208,11 +229,11 @@ function relayLine(view: Linked): string {
 function unavailableMessage(reason: ConnectUnavailable): string {
   switch (reason) {
     case "not_configured":
-      return "NYTE_CONNECT_ORIGIN isn't a valid Nyte Connect origin. Use an https:// origin with no path or unset it, then run `nyte service stop`.";
+      return "NYTE_CONNECT_ORIGIN isn't a valid Nyte Connect origin. Use an https:// origin with no path or unset it, then run nyte again.";
     case "store_failed":
       return "Can't read ~/.nyte/connect.json. Remove it to start over.";
     case "origin_changed":
-      return "This machine is linked through another Nyte Connect origin. Set NYTE_CONNECT_ORIGIN to it, run `nyte service stop`, then `nyte account unlink`.";
+      return "This machine is linked through another Nyte Connect origin. Set NYTE_CONNECT_ORIGIN to it, then run `nyte account unlink`.";
     default: {
       const _exhaustive: never = reason;
 

@@ -17,35 +17,22 @@ import type { ConnectShare, ServingOwner } from "./serving.ts";
 import { ConnectStore } from "./store.ts";
 import { BrokerKeyring, LinkTrust } from "./tokens.ts";
 
-/** The broker this runtime talks to. A desktop build adds its Clerk configuration beside it. */
 export interface HostConnectConfig {
-  /** A canonical `https://` origin: the broker and its relay. */
   readonly origin: string;
 }
 
 interface ConnectRuntimeOptions {
-  /** Absent in a build without the public connect configuration. */
   readonly config: HostConnectConfig | undefined;
-  /** `~/.nyte`, where the store lives unless `storePath` says otherwise. */
   readonly home: string;
-  /** The Connect state file; default `<home>/connect.json`. A host profile passes its own. */
   readonly storePath?: string;
   readonly authorizer: LinkAuthorizer | undefined;
-  /** Something Settings shows has changed. Carries nothing itself. */
   readonly onChange: () => void;
-  /** This Mac's name at the broker; defaults to the host name. */
   readonly name?: string;
   readonly fetch?: BrokerFetch;
   readonly dial?: RelayDial;
   readonly timing?: Partial<ConnectTiming>;
 }
 
-/**
- * The account remote access lifecycle of one host: linking, serving the
- * linked environment, and the device and unlink work owed to the broker.
- * Changes to the link and to serving run one at a time; access is refused at
- * once, before the change that refuses it lands.
- */
 export class ConnectRuntime {
   private readonly options: ConnectRuntimeOptions;
   private readonly timing: ConnectTiming;
@@ -176,10 +163,6 @@ export class ConnectRuntime {
     };
   }
 
-  /**
-   * Open the sign-in dialog, then register this Mac with the broker. The
-   * answer says how it ended; a failure is in `linking`, not thrown.
-   */
   async link(): Promise<ConnectView> {
     await this.requireUsable();
 
@@ -189,15 +172,13 @@ export class ConnectRuntime {
     return this.view();
   }
 
-  /** The user gives the link up: the attempt ends and an open transaction is cancelled at the broker. */
   cancel(): Promise<void> {
     return this.links.cancel();
   }
 
-  /** Persist the toggle. On serves through `share`; off stops at once. */
   async setEnabled(input: {
     readonly enabled: boolean;
-    readonly share: ConnectShare;
+    readonly share: ConnectShare | null;
   }): Promise<ConnectView> {
     await this.requireUsable();
 
@@ -219,7 +200,7 @@ export class ConnectRuntime {
         );
 
         try {
-          await this.startServing(input.share);
+          if (input.share !== null) await this.startServing(input.share);
         } catch (cause) {
           await this.store
             .change((current) => ({ ...current, enabled: false }))
@@ -253,11 +234,10 @@ export class ConnectRuntime {
     return this.view();
   }
 
-  /**
-   * Serve if the user left it on, after the first window prepared its target.
-   * A target that is not trusted, or anything else in the way, leaves it off
-   * for this run without asking.
-   */
+  retryUnlinks(): Promise<void> {
+    return this.outbox.retryUnlinks();
+  }
+
   async autostart(share: ConnectShare): Promise<void> {
     void this.outbox.retryUnlinks();
 
@@ -272,11 +252,6 @@ export class ConnectRuntime {
     this.changed();
   }
 
-  /**
-   * Refuse every account device and stop serving, forget the link and its
-   * devices here, then remove the environment at the broker. A broker that
-   * cannot be reached is retried on later runs with the key kept for it.
-   */
   async unlink(): Promise<void> {
     await this.cancel();
     await this.queueUnlink(undefined);
@@ -284,18 +259,11 @@ export class ConnectRuntime {
     await this.outbox.retryUnlinks();
   }
 
-  /** Refuse the device here at once and close every stream, then revoke it at the broker. */
   async revokeDevice(input: { readonly deviceId: string }): Promise<void> {
     await this.requireUsable();
     await this.forgetDevice(input.deviceId, "revoke");
   }
 
-  /**
-   * Show the sign-in dialog. While a link or another open is waiting on it,
-   * only bring its window forward: a new token request would cancel theirs.
-   * Signed in, there is nothing to show; signed out, ask for a token so the
-   * user can sign in, and drop it unused.
-   */
   async openAccount(): Promise<void> {
     const { account } = this;
 
@@ -322,7 +290,6 @@ export class ConnectRuntime {
     }
   }
 
-  /** Sign out of the account here. The link and remote access are unchanged. */
   async signOut(): Promise<void> {
     const { account } = this;
 
@@ -332,16 +299,10 @@ export class ConnectRuntime {
     this.changed();
   }
 
-  /** Tell Settings the account state changed. */
   accountChanged(): void {
     this.changed();
   }
 
-  /**
-   * After sleep the held lease says nothing about now: refuse every device and
-   * close their streams until a fresh lease arrives. The relay socket is
-   * likely dead too, so it dials again now.
-   */
   resume(): void {
     const serving = this.serving;
 
@@ -349,12 +310,6 @@ export class ConnectRuntime {
     serving.resume();
   }
 
-  /**
-   * Stop serving for this run. The link, devices, and toggle stay as they are.
-   * Every caller waits on the same teardown: access is refused at once, the
-   * link attempt and the cleanup it started settle, and the last write lands
-   * before any caller hears it is closed.
-   */
   close(): Promise<void> {
     this.closing ??= this.shutDown();
 
@@ -375,7 +330,6 @@ export class ConnectRuntime {
     await this.account?.close();
   }
 
-  /** Unlink as the user would; with `expected`, only while that environment is still the link. */
   private async queueUnlink(expected: string | undefined): Promise<void> {
     this.denyAll();
     await this.operations.run(async () => {
@@ -469,7 +423,6 @@ export class ConnectRuntime {
     else serving.disconnectClients();
   }
 
-  /** Whether `serving` is still the session this runtime serves through, with a usable store. */
   private current(serving: ServingSession): boolean {
     return (
       this.serving === serving &&
@@ -570,7 +523,6 @@ export class ConnectRuntime {
       .catch(() => undefined);
   }
 
-  /** The link is gone or replaced: forget what it taught, and any notice about the last one. */
   private forgetLink(): void {
     this.trust.forget();
     this.notice = { kind: "none" };

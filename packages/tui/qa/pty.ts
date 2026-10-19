@@ -10,21 +10,16 @@ import type { Ending } from "../src/lifecycle.ts";
 
 const WAIT_MS = 15_000;
 
-/** The compiled binary on a real PTY, its screen parsed by OpenTUI's terminal emulator. */
 export interface Pty extends AsyncDisposable {
-  /** `performance.now()` just after the binary was spawned. */
+  readonly pid: number;
   readonly spawnedAt: number;
   screen(): EmbeddedTerminalScreen;
-  /** Sends the first key bound to `command`, encoded for the modes the binary negotiated. */
   press(command: ChatCommand): void;
   type(text: string): void;
   waitFor(predicate: (screen: EmbeddedTerminalScreen) => boolean): Promise<EmbeddedTerminalScreen>;
   signal(name: Ending): void;
-  /** Closes the PTY's master, as a terminal app does when its tab closes: the binary's input ends and its writes fail. */
   hangUp(): void;
-  /** The exit status; Bun reports a signal as 128 plus its number, as a shell does. */
   exited(): Promise<number>;
-  /** Everything the binary wrote, without escape sequences; the exit text is at its end. */
   output(): string;
 }
 
@@ -35,7 +30,6 @@ export async function openPty(options: {
   readonly env: Readonly<Record<string, string>>;
   readonly width?: number;
   readonly height?: number;
-  /** Written to the PTY right after spawn, before the binary has read anything. */
   readonly typed?: string;
 }): Promise<Pty> {
   const width = options.width ?? 100;
@@ -101,6 +95,7 @@ export async function openPty(options: {
   };
 
   return {
+    pid: child.pid,
     spawnedAt,
     screen: () => emulator.screen(),
     press(command) {

@@ -10,13 +10,6 @@ import type { McpServerEntry } from "./config.ts";
 import { createAuthProvider, oauthKey, oauthStore } from "./oauth.ts";
 import type { McpOAuthSettings } from "./oauth.ts";
 
-/**
- * Opens the transport to one server for one workspace. A url server that
- * needs OAuth sends its stored tokens; when it needs a new sign-in the
- * connection fails with `McpOAuthAuthorizationRequiredError`, after passing
- * the server's challenge to `challenged`. Throws when the entry cannot be
- * started, such as a missing `${VAR}`.
- */
 export type McpConnector = (
   entry: McpServerEntry,
   context: {
@@ -27,11 +20,6 @@ export type McpConnector = (
   },
 ) => McpTransport;
 
-/**
- * Runs stdio servers on this machine, in `cwd` resolved against the
- * workspace folder, and connects to url servers over streamable HTTP. A url
- * server without an `Authorization` header signs in with OAuth.
- */
 export const connectServer: McpConnector = (entry, context) => {
   const { transport } = entry;
 
@@ -65,7 +53,6 @@ export const connectServer: McpConnector = (entry, context) => {
   });
 };
 
-/** A server's OAuth options with `${VAR}`s in `clientSecret` resolved. */
 export function oauthSettings(config: McpOAuthConfig, server: string): McpOAuthSettings {
   const { clientSecret, authServerMetadataUrl, ...rest } = config;
 
@@ -95,7 +82,7 @@ function expand(values: Readonly<Record<string, string>>, server: string): Recor
 
         if (found === undefined)
           throw new Error(
-            `${server} needs the environment variable ${name}. Set it where Nyte runs, then restart Nyte (for the CLI, \`nyte service stop\`).`,
+            `${server} needs the environment variable ${name}. Set it where Nyte runs, then restart Nyte.`,
           );
 
         return found;

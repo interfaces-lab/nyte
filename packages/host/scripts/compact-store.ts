@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import { decodeObject, loggedEvent, STORE_VERSION } from "@nyte-ai/core/store";
 import { isJsonObject } from "@nyte-ai/schema";
 import type { FileChange, Seq } from "@nyte-ai/schema";
-import { claimStore } from "../src/store-owner.ts";
 import { parseNumber, parseText } from "../src/store-rows.ts";
 
 interface Rewrite {
@@ -92,7 +91,7 @@ function lockStore(): DatabaseSync {
     database.close();
 
     throw new Error(
-      `Another process has ${path} open. Quit Nyte and its service, then run this again.`,
+      `Another process has ${path} open. Quit every nyte and Nyte.app, then run this again.`,
       { cause },
     );
   }
@@ -198,18 +197,12 @@ function compact(database: DatabaseSync): void {
 
 function run(): void {
   if (!existsSync(path)) throw new Error(`No store at ${path}.`);
-  const release = claimStore(path);
+  const database = lockStore();
 
   try {
-    const database = lockStore();
-
-    try {
-      compact(database);
-    } finally {
-      database.close();
-    }
+    compact(database);
   } finally {
-    release();
+    database.close();
   }
 }
 

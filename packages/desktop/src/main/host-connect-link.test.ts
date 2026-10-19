@@ -213,7 +213,7 @@ test("a linked Mac keeps serving with its machine key when the sign-in dialog is
   await first.host.close();
 
   const second = await desktop(setup, { account: undefined });
-  await second.host.autostartConnect();
+  second.host.autostartConnect();
   await vi.waitFor(async () => assert.deepEqual(await info(setup, phone.token), allowed));
   const current = await linked(second.host);
   assert.deepEqual(current.account, { kind: "unavailable" });
@@ -260,7 +260,7 @@ test("unlink refuses at once, closes the relay, and retries the broker on a late
 
   broker.offline = false;
   const second = await desktop(setup);
-  await second.host.autostartConnect();
+  second.host.autostartConnect();
   await vi.waitFor(async () => {
     const current = await view(second.host);
     assert.ok(current.kind === "unlinked" && current.notice.kind === "none");
@@ -430,7 +430,7 @@ test("a malformed machine key on disk keeps a restart off the broker and the rel
   const auths = setup.relay.auths;
 
   const { host } = await desktop(setup);
-  await host.autostartConnect();
+  host.autostartConnect();
   await sleep(300);
   assert.deepEqual(await view(host), { kind: "unavailable", reason: "store_failed" });
   await assert.rejects(host.call(1, "host.connect.setEnabled", { enabled: true }));

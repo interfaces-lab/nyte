@@ -29,7 +29,7 @@ import type { UpdateProgress } from "./update.ts";
 import { VERSION, checkForUpdate } from "./version.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
 import { addFolder, flagConfiguration, targetSession, trustFolder } from "./run.ts";
-import { connectLocalService, serviceCommandMain } from "./service.ts";
+import { connectLocalHost } from "./local-host.ts";
 import { onEnding } from "./lifecycle.ts";
 import { printRun } from "./print.ts";
 import type { PrintOutcome } from "./print.ts";
@@ -66,10 +66,10 @@ function untilInterrupted(): AbortSignal {
 }
 
 async function openHost(): Promise<Connection> {
-  const { connection } = await connectLocalService();
-  invocation.defer(() => connection.close());
+  const local = await connectLocalHost();
+  invocation.defer(() => local.close());
 
-  return connection;
+  return local.connection;
 }
 
 function parseAuthArgs(command: "login" | "logout", args: readonly string[]) {
@@ -168,7 +168,6 @@ async function authenticate(command: "login" | "logout", args: readonly string[]
   console.log("  run `nyte` to start");
 }
 
-/** Runs `nyte update`. On a terminal the percent rows overwrite one line; piped, they stay discrete lines a log can read. */
 async function update(args: readonly string[]): Promise<void> {
   const options = parseUpdateArgs(args);
 
@@ -351,7 +350,6 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
   return printRun({ session, receipt, json: flags.json, quiet: flags.quiet, output, signal });
 }
 
-/** Runs one command. After the TUI it exits explicitly, because Bun's watch mode outlives `main`. */
 async function main(): Promise<PrintOutcome | undefined> {
   signal.throwIfAborted();
   const command = invocationArgs[0];
@@ -377,7 +375,6 @@ async function main(): Promise<PrintOutcome | undefined> {
     command === "update" ||
     command === "serve" ||
     command === "account" ||
-    command === "service" ||
     command === "mcp"
   ) {
     if (invocationArgs.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
@@ -438,10 +435,8 @@ async function main(): Promise<PrintOutcome | undefined> {
   }
 
   if (command === "service") {
-    await serviceCommandMain(
-      invocationArgs.slice(1),
-      invocationArgs[1] === "run" ? untilInterrupted() : signal,
-      output,
+    output.error(
+      "The Nyte service is gone: every nyte and Nyte.app opens your chats itself, so there is nothing to start or stop.\n",
     );
 
     return undefined;
