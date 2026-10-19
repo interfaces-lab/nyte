@@ -4,9 +4,9 @@ import { defaultClientConditions } from "vite";
 import { configDefaults, defineConfig } from "vitest/config";
 
 // Each of these drives its own Electron; run side by side they starve each other of frames.
-const electronTests = globSync("{src,test}/**/*.test.{ts,tsx}").filter((file) =>
-  /testRenderer|from "electron"/u.test(readFileSync(file, "utf8")),
-);
+const electronTests = globSync("{src,test}/**/*.test.{ts,tsx}")
+  .filter((file) => /testRenderer|from "electron"/u.test(readFileSync(file, "utf8")))
+  .map((file) => file.replaceAll("\\", "/"));
 
 export default defineConfig({
   // Compile renderer styles without starting StyleX's CSS hot-reload timer in Vitest.
