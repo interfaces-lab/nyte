@@ -436,6 +436,7 @@ function admit(
     covered: event.covered,
     configuration: event.configuration,
     replaced: event.replaced,
+    requires: event.requires ?? null,
     landed: null,
   });
 

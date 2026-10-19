@@ -93,6 +93,7 @@ export interface FoldInput {
   readonly covered: boolean;
   readonly configuration: Configuration;
   readonly replaced: { readonly previous: MessageId; readonly stopped: RunId | null } | null;
+  readonly requires: readonly string[] | null;
   readonly landed: { readonly commit: CommitId; readonly run: RunId | null } | null;
 }
 

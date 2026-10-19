@@ -121,6 +121,7 @@ const FoldCheckpointType = Type.Object({
         replaced: nullable(
           Type.Object({ previous: message, stopped: nullable(idSchema<"run">()) }),
         ),
+        requires: nullable(list(Type.String())),
         landed: nullable(
           Type.Object({ commit: idSchema<"commit">(), run: nullable(idSchema<"run">()) }),
         ),

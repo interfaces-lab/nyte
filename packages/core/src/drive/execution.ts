@@ -208,7 +208,7 @@ async function step(kernel: Kernel, session: SessionId, head: HeadName): Promise
     head,
     due.origin,
     due.input.configuration,
-    kernel.presence?.member.capabilities ?? [],
+    due.input.requires ?? kernel.presence?.member.capabilities ?? [],
   );
 
   if ((await landing(kernel, session, head, due.ids, run.view.id, run.updates)).length === 0)

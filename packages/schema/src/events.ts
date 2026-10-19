@@ -92,6 +92,7 @@ function durableEvent<Common extends TProperties>(common: Common) {
       covered: Type.Boolean(),
       configuration: ConfigurationType,
       replaced: REPLACED,
+      requires: Type.Optional(Type.Array(Type.String())),
     }),
     Type.Object({
       ...common,

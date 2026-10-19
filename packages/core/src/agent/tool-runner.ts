@@ -40,7 +40,7 @@ import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.
 import type { ExecutionEnv } from "../contract/workspace.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { publishPatch } from "../engine/runs.ts";
-import { hiddenOwners } from "../engine/surface.ts";
+import { hiddenOwners, missingCapabilities } from "../engine/surface.ts";
 import { toolSource } from "../extend/registry.ts";
 import { commit } from "../fold/commit.ts";
 import { settling } from "../store/parts.ts";
@@ -338,13 +338,20 @@ async function plan(
   const hidden = await hiddenOwners(kernel, session, run);
   const definition = found === undefined || hidden.has(found.owner) ? undefined : found.definition;
 
-  if (definition === undefined)
+  if (definition === undefined) {
+    const missing = found === undefined ? await missingCapabilities(kernel, session, run) : [];
+
     return {
       kind: "settle",
-      outcome: failed(`No tool is named ${name}.`),
+      outcome: failed(
+        missing.length === 0
+          ? `No tool is named ${name}.`
+          : `${name} isn't available here: this chat uses ${missing.join(", ")}, which only Nyte.app has. Open Nyte.app to continue.`,
+      ),
       args: where.args,
       class: custom,
     };
+  }
 
   if (where.argumentsError !== undefined)
     return {

@@ -156,19 +156,13 @@ async function composeOpen(
     home,
     description,
     ...(settings.seed === null ? {} : { seed: settings.seed }),
-    ...(owned === null
-      ? {}
-      : {
-          poll: STORE_POLL_MS,
-          member: {
-            label: options.label ?? "nyte",
-            pid: process.pid,
-            capabilities: given.some((plugin) => plugin.id === browserTools.id)
-              ? [browserTools.id]
-              : [],
-          },
-          revoked: options.onRevoked,
-        }),
+    ...(owned === null ? {} : { poll: STORE_POLL_MS }),
+    member: {
+      label: options.label ?? "nyte",
+      pid: process.pid,
+      capabilities: given.some((plugin) => plugin.id === browserTools.id) ? [browserTools.id] : [],
+    },
+    revoked: options.onRevoked,
   });
 
   projectDirs = async () =>

@@ -318,7 +318,7 @@ async function admit(sending: Sending): Promise<SendReceipt> {
     });
 
     const outcome = await commit(kernel, [
-      await admitted(kernel.store, session, head, inbox, [...inbox.messages, message.id], message),
+      await admitted(kernel, session, head, inbox, [...inbox.messages, message.id], message),
       await pendingReceipt(kernel.store, session, id, digest, "absent"),
     ]);
 
@@ -380,7 +380,7 @@ async function revise(sending: Sending, target: MessageId, keyed: Keyed): Promis
 
     const outcome = await commit(kernel, [
       await admitted(
-        kernel.store,
+        kernel,
         session,
         head,
         inbox,
@@ -512,7 +512,7 @@ async function editGated(
         events: [{ head, kind: "head", from: checked.tip.id, to: parent, reason: "moved" }],
       },
       await admitted(
-        kernel.store,
+        kernel,
         session,
         head,
         checked.inbox,
@@ -568,14 +568,7 @@ async function editGated(
           const record = await message(stopped, inbox.messages.length);
 
           return [
-            await admitted(
-              kernel.store,
-              session,
-              head,
-              inbox,
-              [...inbox.messages, record.id],
-              record,
-            ),
+            await admitted(kernel, session, head, inbox, [...inbox.messages, record.id], record),
             { name: receipt.ref.name, target: receipt.ref.target, expect: receipt.ref.revision },
           ];
         },
@@ -644,7 +637,7 @@ export async function admitDeciding(
 
   return [
     await admitted(
-      kernel.store,
+      kernel,
       session,
       MAIN,
       await readInbox(kernel.store, session, MAIN),
@@ -719,7 +712,7 @@ export async function readmitDeciding(
     });
 
     const outcome = await commit(kernel, [
-      await admitted(kernel.store, session, MAIN, inbox, inbox.messages, message),
+      await admitted(kernel, session, MAIN, inbox, inbox.messages, message),
     ]);
 
     if (outcome.kind === "stale") return STALE;
@@ -900,7 +893,7 @@ async function resolve(
 }
 
 async function admitted(
-  store: StoreConnection,
+  kernel: Kernel,
   session: SessionId,
   head: HeadName,
   inbox: Inbox,
@@ -916,7 +909,7 @@ async function admitted(
 
   return {
     name: inboxRef(session, head),
-    target: await put(store, "inbox", { messages, pendingInput }),
+    target: await put(kernel.store, "inbox", { messages, pendingInput }),
     expect: readRefExpectation(inbox.ref),
     events: [
       {
@@ -931,6 +924,7 @@ async function admitted(
         covered: message.covered,
         configuration: message.configuration,
         replaced: message.replaced,
+        requires: [...(kernel.presence?.member.capabilities ?? [])],
       },
     ],
   };
