@@ -20,6 +20,8 @@ declare global {
 
 const ELECTRON_CHROMIUM = 152 << 16;
 
+export const NO_MOUSE = "The host has no mouse to hover or point finely with";
+
 export async function testRenderer(
   entry: URL,
   setup = "",
@@ -29,12 +31,14 @@ export async function testRenderer(
     forcePseudoSelector = "button",
     studio = false,
     captures,
+    mouse = false,
   }: {
     pointer?: "fine" | "coarse";
     forcePseudoClasses?: readonly string[];
     forcePseudoSelector?: string;
     studio?: boolean;
     captures?: string;
+    mouse?: boolean;
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
@@ -95,6 +99,11 @@ app.whenReady().then(async () => {
         app.exit(0);
       });
       await window.webContents.executeJavaScript("RendererTest.studio()");
+      return;
+    }
+    if (${JSON.stringify(mouse)} && !(await window.webContents.executeJavaScript('matchMedia("(any-pointer: fine) and (any-hover: hover)").matches'))) {
+      writeFileSync(${JSON.stringify(join(directory, "result.txt"))}, ${JSON.stringify(NO_MOUSE)});
+      app.exit(0);
       return;
     }
     window.webContents.debugger.attach("1.3");
