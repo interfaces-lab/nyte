@@ -4,7 +4,6 @@ import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
-import { hashSourceTree } from "../src/code-id.ts";
 import { VERSION } from "../src/version.ts";
 import { codemodePlugin } from "./codemode-plugin.ts";
 import { BINARY_ENTRYPOINTS, binaryDefines } from "./defines.ts";
@@ -37,7 +36,7 @@ try {
     root: packages,
     target: "bun",
     plugins: [solidPlugin, codemodePlugin],
-    define: binaryDefines(process.env, await hashSourceTree(packages)),
+    define: binaryDefines(process.env),
     format: "esm",
     bytecode: true,
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },
