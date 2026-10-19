@@ -138,6 +138,7 @@ jobs:
           security unlock-keychain -p "$password" "$keychain"
           security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$CSC_KEY_PASSWORD" -f pkcs12 -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           codesign --force --sign "Developer ID Application" --keychain "$keychain" --options runtime --timestamp --entitlements packages/tui/entitlements.plist bin/nyte
           codesign --verify --strict --verbose=2 bin/nyte
           key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
