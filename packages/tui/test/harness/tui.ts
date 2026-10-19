@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import type { Connection } from "@nyte-ai/sdk";
+import { CodeRenderable } from "@opentui/core";
+import type { Renderable } from "@opentui/core";
 import { createTestRenderer, ManualClock, TestRecorder } from "@opentui/core/testing";
 import type { TestRendererOptions, TestRendererSetup } from "@opentui/core/testing";
 import type { Kit } from "../../src/app/context.tsx";
@@ -76,6 +78,8 @@ export interface Tui extends TestRendererSetup {
   /** Renders until the frame satisfies `predicate` and returns it. */
   frame(predicate: (frame: string) => boolean): Promise<string>;
   state(predicate: (store: Store) => boolean): Promise<void>;
+  /** Renders until no code block is still waiting on its syntax highlight. */
+  highlighted(): Promise<void>;
   ready(): Promise<void>;
 }
 
@@ -222,6 +226,7 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     until,
     frame,
     state,
+    highlighted: () => until(() => !highlighting(setup.renderer.root)),
     async ready() {
       await state(
         (store) => store.state().facts.catalog.catalog !== null && store.screen().blocked === null,
@@ -230,6 +235,12 @@ export async function startTui(options: TuiOptions = {}): Promise<Tui> {
     dispose,
     [Symbol.asyncDispose]: dispose,
   };
+}
+
+function highlighting(node: Renderable): boolean {
+  if (node instanceof CodeRenderable && node.isHighlighting) return true;
+
+  return node.getChildren().some((child) => highlighting(child));
 }
 
 /** The composer's row reads `❯ text…` inside its border. */
