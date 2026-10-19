@@ -10,6 +10,7 @@ test(
       "window.nyte = { sessions: {} };",
       { mouse: true },
     );
+
     skip(result === NO_MOUSE, NO_MOUSE);
     expect(result).toBe("passed");
   },

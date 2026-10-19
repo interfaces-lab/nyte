@@ -101,6 +101,9 @@ app.whenReady().then(async () => {
       await window.webContents.executeJavaScript("RendererTest.studio()");
       return;
     }
+    if (${JSON.stringify(process.platform !== "darwin")}) {
+      await window.webContents.executeJavaScript('new Promise((resolve) => { let settled = setTimeout(resolve, 100); addEventListener("resize", () => { clearTimeout(settled); settled = setTimeout(resolve, 100); }); })');
+    }
     if (${JSON.stringify(mouse)} && !(await window.webContents.executeJavaScript('matchMedia("(any-pointer: fine) and (any-hover: hover)").matches'))) {
       writeFileSync(${JSON.stringify(join(directory, "result.txt"))}, ${JSON.stringify(NO_MOUSE)});
       app.exit(0);
