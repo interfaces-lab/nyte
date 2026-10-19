@@ -1,8 +1,9 @@
 # TUI
 
 - Terminal rendering and keyboard interaction live here; session behavior belongs in core.
-- The interactive app is a Solid app on `@opentui/solid`, started by `runTui` in `src/app/main.tsx`. Print mode (`print.ts`, `print-invocation.ts`) and the CLI (`index.ts`, `flags.ts`, `run.ts`) stay outside it.
+- The interactive app is a Solid app on `@opentui/solid`. `runTui` in `src/app/main.tsx` owns what lives as long as the process: the terminal, the renderer, the keymap, the host thread, local ports and signal and crash hooks. It mounts the app with `mountApp` from `src/app/mount.tsx`, whose `close()` releases everything the mount added and leaves the host open. Print mode (`print.ts`, `print-invocation.ts`) and the CLI (`index.ts`, `flags.ts`, `run.ts`) stay outside it.
 - `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`, starting at `src/index.ts`, to bytecode so launch skips parsing; from source, `src/binary.ts` installs the same transform before loading the app.
+- `pnpm dev:tui [directory]` runs `src/index.ts` from source with `dev/preload.ts`, in the directory given or the one pnpm ran in. `dev/reload.ts` replaces `src/app/mount.tsx` with a mount that loads it through Vite's module runner and remounts on save, carrying the followed chat and the draft. A failed reload keeps the running UI. Packages in its `DURABLE` list, the process's own files and the host's load once; a change to them says to restart. `NYTE_RELOAD=off` runs from source without reloading. Nothing under `dev/` reaches the binary.
 
 ## Architecture
 
