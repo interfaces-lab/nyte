@@ -313,17 +313,18 @@ for (const [terminal, environment] of [
     await saveFrame(tui, `file-link-${terminal}`);
 
     const film = pathToFileURL(join(tui.store.state().facts.workspace.cwd, "out/film.mp4")).href;
+    const old = pathToFileURL("/tmp/film/old.mp4").href;
     const written = output.text();
 
     await saveProof(`file-link-${terminal}-output`, {
       environment,
       hyperlinks: tui.renderer.capabilities?.hyperlinks ?? null,
       film: written.includes(`;${film}\x1b\\`),
-      old: written.includes(";file:///tmp/film/old.mp4\x1b\\"),
+      old: written.includes(`;${old}\x1b\\`),
     });
 
     expect(written.includes(`;${film}\x1b\\`)).toBe(terminal !== "xterm");
-    expect(written.includes(";file:///tmp/film/old.mp4\x1b\\")).toBe(terminal !== "xterm");
+    expect(written.includes(`;${old}\x1b\\`)).toBe(terminal !== "xterm");
     expect(tui.captureCharFrame()).toContain(
       "The final file is out/film.mp4. The old one is at /tmp/film/old.mp4.",
     );

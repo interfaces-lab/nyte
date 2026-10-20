@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import solidPlugin from "@opentui/solid/bun-plugin";
 import { Glob } from "bun";
 import { expect, test } from "bun:test";
@@ -18,7 +18,9 @@ interface Import {
 const STATEMENT = /^\s*(import|export)\s+(type\s+)?(?:([^"';]*?)\s+from\s+)?["']([^"']+)["']/gmu;
 
 function sources(dir: string): readonly string[] {
-  return [...new Glob(`${dir}/**/*.{ts,tsx}`).scanSync(SRC)];
+  return [...new Glob(`${dir}/**/*.{ts,tsx}`).scanSync(SRC)].map((file) =>
+    file.replaceAll(sep, "/"),
+  );
 }
 
 function readImports(file: string): readonly Import[] {
@@ -43,7 +45,7 @@ function readImports(file: string): readonly Import[] {
           .some((binding) => binding !== "" && !binding.startsWith("type ")));
 
     const target = spec.startsWith(".")
-      ? relative(SRC, resolve(dirname(join(SRC, file)), spec))
+      ? relative(SRC, resolve(dirname(join(SRC, file)), spec)).replaceAll(sep, "/")
       : null;
 
     return { file, spec, value, target };
