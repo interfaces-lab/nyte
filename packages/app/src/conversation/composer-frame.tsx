@@ -255,7 +255,7 @@ export function ComposerFrame({
           action,
           deliveryChoices,
           editing?.kind === "queued" ? editing.delivery : undefined,
-          busy && editing === undefined ? runningMessagePreference : "queue",
+          busy && editing === undefined ? runningMessagePreference : "steer",
         ),
         currentDocument,
       ),

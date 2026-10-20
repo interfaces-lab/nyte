@@ -185,6 +185,12 @@ const joined: UserStatus = {
   covered: true,
 };
 
+const idle: UserStatus = {
+  kind: "pending",
+  schedule: { kind: "next-turn", reason: "idle" },
+  covered: true,
+};
+
 const later: UserStatus = {
   kind: "pending",
   schedule: { kind: "next-turn", reason: "requested" },
@@ -195,8 +201,15 @@ it("keeps a steer out of the queue from its send until it joins the run", () => 
   const messages = [
     sent("steer sending", "steer", sending),
     sent("steer joined", "steer", joined),
+    sent("steer idle", "steer", idle),
+    sent("steer changed model", "steer", {
+      kind: "pending",
+      schedule: { kind: "next-turn", reason: "configuration" },
+      covered: true,
+    }),
     sent("steer retrying", "steer", retrying),
     sent("queue sending", "queue", sending),
+    sent("queue idle", "queue", idle),
     sent("queue later", "queue", later),
     sent("report", "attach", later, { kind: "child", session: asId("child"), end: "completed" }),
   ];
@@ -204,6 +217,12 @@ it("keeps a steer out of the queue from its send until it joins the run", () => 
   const queued = (busy: boolean) =>
     messages.flatMap((message) => (waitsInQueue(message, busy) ? [message.id] : []));
 
-  expect(queued(true)).toEqual(["steer retrying", "queue sending", "queue later"]);
+  expect(queued(true)).toEqual([
+    "steer changed model",
+    "steer retrying",
+    "queue sending",
+    "queue idle",
+    "queue later",
+  ]);
   expect(queued(false)).toEqual(["steer retrying"]);
 });

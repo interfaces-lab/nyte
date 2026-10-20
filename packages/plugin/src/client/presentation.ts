@@ -122,8 +122,8 @@ export function showsReport(message: UserMessage): message is ReportMessage {
 type PendingStatus = Extract<UserStatus, { readonly kind: "pending" }>;
 
 /**
- * A message that waits in the queue: unsent, or pending for a later turn. A steer joining the
- * live run is never one.
+ * A message that waits in the queue: unsent, or pending for a later turn. A pending steer sent
+ * while idle or joining the live run is never one.
  *
  * @category presentation
  */
@@ -137,8 +137,8 @@ export type QueuedMessage = UserMessage & {
 
 /**
  * Whether a message waits in the queue rather than showing in the transcript. A retrying send
- * always waits. On an idle chat nothing else does; on a running one everything but a steer and a
- * report does, so a steer shows in the transcript from its send until it joins the run.
+ * always waits. Reports, joined steers and steers sent while idle stay in the transcript.
+ * Other messages wait only while a run is active.
  *
  * @category presentation
  */
@@ -153,7 +153,15 @@ export function waitsInQueue(message: UserMessage, running: boolean): message is
     case "unsent":
       return status.retrying !== null || (running && message.delivery !== "steer");
     case "pending":
-      return running && status.schedule.kind !== "joined";
+      return (
+        running &&
+        status.schedule.kind !== "joined" &&
+        !(
+          message.delivery === "steer" &&
+          status.schedule.kind === "next-turn" &&
+          status.schedule.reason === "idle"
+        )
+      );
     default: {
       const _exhaustive: never = status;
 

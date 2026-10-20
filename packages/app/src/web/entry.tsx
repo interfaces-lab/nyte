@@ -166,9 +166,16 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
 const accountDevice =
   accountConfig === undefined ? undefined : readAccountDevice(sessionStorage, accountConfig);
 
-const known = pairing ?? (accountDevice === undefined ? loadConnection() : undefined);
+const known =
+  pairing?.kind === "valid"
+    ? pairing.connection
+    : accountDevice === undefined
+      ? loadConnection()
+      : undefined;
 
 if (location.pathname === "/link" && accountConfig !== undefined) {
   root.render(<LinkScreen config={accountConfig} />);
+} else if (pairing?.kind === "invalid") {
+  showConnectScreen(pairing.connection, { kind: "problem", message: pairing.message });
 } else if (known === undefined) showConnectScreen();
 else void resume(known, pairing !== undefined);

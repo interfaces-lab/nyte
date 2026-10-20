@@ -10,7 +10,7 @@ function label(schedule: ScheduleSpec, covered = true): string | null {
     v
       .turn("t1", (t) => t.user("go"))
       .live()
-      .pending("x", { schedule, covered }),
+      .pending("x", { schedule, covered }, { delivery: "queue" }),
   );
 
   const [row] = queueRows(followed(view), null);
@@ -65,7 +65,7 @@ describe("rows", () => {
     const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go").ended("completed"))
-        .pending("mine", { schedule: { kind: "next-turn", reason: "idle" } })
+        .pending("mine", { schedule: { kind: "next-turn", reason: "idle" } }, { delivery: "queue" })
         .report({ child: "s9" }, "all done")
         .live("run-2"),
     );
@@ -79,7 +79,7 @@ describe("rows", () => {
         .pending(
           "a long prebuilt prompt",
           { schedule: { kind: "next-turn", reason: "idle" } },
-          { source: { kind: "action", label: "Fix lint" } },
+          { delivery: "queue", source: { kind: "action", label: "Fix lint" } },
         )
         .live("run-1"),
     );
@@ -116,22 +116,25 @@ describe("rows", () => {
         .live()
         .pending("a", { schedule: { kind: "joined", run: "run-t1" } })
         .pending("b", { schedule: { kind: "next-turn", reason: "run-ended" } })
-        .unsent("c"),
+        .unsent("c")
+        .pending("d", { schedule: { kind: "next-turn", reason: "idle" } }),
     );
 
     const rows = queueRows(followed(view), null);
 
     expect(rows.map((row) => row.text)).toEqual(["b"]);
     expect(queuedCount(rows)).toBe(1);
-    expect(promptMessages(view).map((message) => message.content)).toEqual(["a", "c"]);
+    expect(promptMessages(view).map((message) => message.content)).toEqual(["a", "c", "d"]);
   });
 
   test("a file mention in a queued message shows as its marker", () => {
     const view = buildView((v) =>
       v
-        .pending("look @file:///w/a.ts", {
-          schedule: { kind: "next-turn", reason: "idle" },
-        })
+        .pending(
+          "look @file:///w/a.ts",
+          { schedule: { kind: "next-turn", reason: "idle" } },
+          { delivery: "queue" },
+        )
         .live("run-1"),
     );
 

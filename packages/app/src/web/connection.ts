@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { errorMessage } from "../errors.ts";
 import type { Connection } from "./bridge.ts";
 
 const STORAGE_KEY = "nyte:connection";
@@ -92,7 +93,11 @@ export function forgetConnection(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-export function readPairingRequest(url: URL): Connection | undefined {
+export type PairingRequest =
+  | { readonly kind: "valid"; readonly connection: Connection }
+  | { readonly kind: "invalid"; readonly connection: Connection; readonly message: string };
+
+export function readPairingRequest(url: URL): PairingRequest | undefined {
   if (url.pathname !== "/pair") return undefined;
   const fragment = new URLSearchParams(url.hash.slice(1));
   const host = fragment.get("host");
@@ -100,10 +105,11 @@ export function readPairingRequest(url: URL): Connection | undefined {
   history.replaceState(null, "", "/");
 
   if (host === null || token === null) return undefined;
+  const connection = { url: host, token };
 
   try {
-    return parseConnection({ url: host, token });
-  } catch {
-    return undefined;
+    return { kind: "valid", connection: parseConnection(connection) };
+  } catch (cause) {
+    return { kind: "invalid", connection, message: errorMessage(cause) };
   }
 }

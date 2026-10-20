@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="color-scheme" content="dark" />
+    <title>Nyte · Open Graph image</title>
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <style>
+      @font-face {
+        font-family: Inter;
+        src: url("og/inter-latin.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: block;
+      }
+
+      @font-face {
+        font-family: "Geist Pixel";
+        src: url("og/geist-pixel-square.woff2") format("woff2");
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+      }
+
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        --paper: #080c1b;
+        --ink: #f4f5ff;
+        --muted: #a3aec8;
+        --accent: #c1d0f6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: grid;
+        min-block-size: 100svh;
+        margin: 0;
+        place-items: center;
+        background: #040611;
+        color: var(--ink);
+      }
+
+      .og {
+        position: relative;
+        isolation: isolate;
+        inline-size: 1200px;
+        block-size: 630px;
+        overflow: hidden;
+        background:
+          radial-gradient(ellipse at 79% 49%, #28385d66, transparent 52%),
+          radial-gradient(ellipse at 100% 100%, #24326833, transparent 55%), var(--paper);
+      }
+
+      .og::before {
+        position: absolute;
+        z-index: -1;
+        inset: 0;
+        background-image: radial-gradient(#b9caff30 0.7px, transparent 0.7px);
+        background-size: 16px 16px;
+        content: "";
+        mask-image:
+          linear-gradient(90deg, transparent 35%, #000 90%),
+          linear-gradient(0deg, transparent, #000 20%, #000 80%, transparent);
+        mask-composite: intersect;
+      }
+
+      .brand {
+        position: absolute;
+        inset-block-start: 48px;
+        inset-inline-start: 58px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 32px;
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        line-height: 40px;
+      }
+
+      .brand img {
+        inline-size: 50px;
+        block-size: 50px;
+        margin-inline-start: -5px;
+      }
+
+      .copy {
+        position: absolute;
+        inset-block-start: 194px;
+        inset-inline-start: 64px;
+      }
+
+      h1 {
+        margin: 0;
+        font-family: "Geist Pixel", ui-monospace, monospace;
+        font-size: 80px;
+        font-weight: 400;
+        letter-spacing: -0.065em;
+        line-height: 1.1;
+      }
+
+      h1 span {
+        display: block;
+        color: var(--accent);
+      }
+
+      .description {
+        margin-block: 26px 0;
+        color: var(--muted);
+        font-size: 20px;
+        font-weight: 400;
+        letter-spacing: -0.025em;
+        line-height: 30px;
+      }
+
+      .moon {
+        position: absolute;
+        inset-block-start: 134px;
+        inset-inline-end: 72px;
+        inline-size: 408px;
+        block-size: 408px;
+        filter: drop-shadow(0 0 32px #a2bcff14);
+      }
+
+      .address {
+        position: absolute;
+        inset-block-end: 55px;
+        inset-inline-start: 64px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin: 0;
+        color: var(--accent);
+        font-size: 18px;
+        letter-spacing: -0.02em;
+        line-height: 24px;
+      }
+
+      .address svg {
+        inline-size: 18px;
+        block-size: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.5;
+      }
+
+      @media (width < 1200px) {
+        .og {
+          zoom: calc(100vw / 1200px);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="og" aria-label="Nyte. Your agents. Anywhere. app.nyte.sh">
+      <div class="brand">
+        <img src="icon.svg" alt="" width="50" height="50" />
+        Nyte
+      </div>
+
+      <div class="copy">
+        <h1>Your agents.<span>Anywhere.</span></h1>
+        <p class="description">Connect to your machine.<br />Keep building from anywhere.</p>
+      </div>
+
+      <img class="moon" src="og/moon.svg" alt="" width="408" height="408" />
+
+      <p class="address">
+        app.nyte.sh
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M5 19 19 5M5 5h14v14" />
+        </svg>
+      </p>
+    </main>
+  </body>
+</html>

@@ -58,8 +58,8 @@ test("the pairing link carries the address and token in its fragment only", asyn
   const { made, address, token } = await serving();
   const state = await made.host.call(1, "host.remote.state", undefined);
 
-  if (state.kind !== "serving" || state.reach === "cloudflare")
-    throw new Error("Remote access is not serving a token");
+  if (state.kind !== "serving" || state.reach !== "local")
+    throw new Error("Remote access is not serving a pairing link");
   const link = new URL(state.pairingUrl);
 
   assert.equal(link.search, "");
