@@ -2,8 +2,8 @@
 
 - Terminal rendering and keyboard interaction live here; session behavior belongs in core.
 - The interactive app is a Solid app on `@opentui/solid`. `runTui` in `src/app/main.tsx` owns what lives as long as the process: the terminal, the renderer, the keymap, the host thread, local ports and signal and crash hooks. It mounts the app with `mountApp` from `src/app/mount.tsx`, whose `close()` releases everything the mount added and leaves the host open. Print mode (`print.ts`, `print-invocation.ts`) and the CLI (`index.ts`, `flags.ts`, `run.ts`) stay outside it.
-- `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`, starting at `src/index.ts`, to bytecode so launch skips parsing; from source, `src/binary.ts` installs the same transform before loading the app.
-- `pnpm dev:tui [directory]` runs `src/index.ts` from source with `dev/preload.ts`, in the directory given or the one pnpm ran in. `dev/reload.ts` replaces `src/app/mount.tsx` with a mount that loads it through Vite's module runner and remounts on save, carrying the followed chat and the draft. A failed reload keeps the running UI. Packages in its `DURABLE` list, the process's own files and the host's load once; a change to them says to restart. `NYTE_RELOAD=off` runs from source without reloading. Nothing under `dev/` reaches the binary.
+- `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`, starting at `src/index.ts`, to bytecode in `dist/nyte` so launch skips parsing. Builds never touch the `nyte` a terminal runs: only `pnpm install:nyte` copies `dist/nyte` to `~/.nyte/bin/nyte`; from source, `src/binary.ts` installs the same transform before loading the app.
+- `pnpm dev:tui [directory]` runs `src/index.ts` from source with `dev/preload.ts`, in the directory given or the one pnpm ran in. `dev/reload.ts` replaces `src/app/mount.tsx` with a mount that loads it through Vite's module runner and remounts on save, carrying the followed chat and the draft. A failed reload keeps the running UI. Packages in its `DURABLE` list, the process's own files and the host's load once; a change to them says to restart. `NYTE_RELOAD=off` runs from source without reloading. A source run keeps its chats in `~/.nyte/nyte-dev.db`, so unfinished store changes never reach `nyte.db`; set `NYTE_DB` to choose another file. Nothing under `dev/` reaches the binary.
 
 ## Architecture
 
@@ -44,5 +44,5 @@ Native resources (`SyntaxStyle`, `TextBuffer`) take `renderer.nativeScene` as ow
 From the repository root:
 
 - Tests: `pnpm --dir packages/tui test`.
-- The compiled binary: `pnpm --dir packages/tui test:binary` (builds `bin/nyte` first; set `NYTE_BINARY` to test another build).
+- The compiled binary: `pnpm --dir packages/tui test:binary` (builds `dist/nyte` first; set `NYTE_BINARY` to test another build).
 - Types: `pnpm --dir packages/tui typecheck`.

@@ -11,6 +11,7 @@ const inherited = new Map(
     "HOME",
     "USERPROFILE",
     "NYTE_HOME",
+    "NYTE_DB",
     "NYTE_BIN_DIR",
     "CLAUDE_CONFIG_DIR",
     "CODEX_HOME",

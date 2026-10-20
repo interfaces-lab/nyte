@@ -1,9 +1,12 @@
 import { statSync } from "node:fs";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import process from "node:process";
 import { plugin } from "bun";
 import { ensureSolidTransformPlugin } from "@opentui/solid/bun-plugin";
 import { reloadingMount } from "./reload.ts";
+
+process.env["NYTE_DB"] ??= join(homedir(), ".nyte", "nyte-dev.db");
 
 if (process.env["NYTE_RELOAD"] !== "off")
   plugin({

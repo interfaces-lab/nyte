@@ -43,6 +43,11 @@ const BACKUPS_KEPT = 3;
 const PUT_BODY =
   "INSERT INTO objects (id, body) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET body = excluded.body WHERE objects.body IS NULL";
 
+/** The local store's file: `NYTE_DB` when set, so a source run keeps its own chats, else `.nyte/nyte.db` under `home`. */
+export function storePath(home: string): string {
+  return process.env["NYTE_DB"] ?? join(home, ".nyte", "nyte.db");
+}
+
 export function sqliteStore(input: { readonly path: string } | { readonly memory: true }): Store {
   let database: DatabaseSync | null = null;
   let opening: Promise<StoreConnection> | null = null;

@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   decodeObject,
@@ -17,6 +16,7 @@ import type {
   UsageTotals,
   UsageWindow,
 } from "./usage-types.ts";
+import { storePath } from "./sqlite.ts";
 import { cacheSavings, usageTokens } from "./usage-summary.ts";
 import { decodeEvent, parseNumber, parseText } from "./store-rows.ts";
 
@@ -129,6 +129,7 @@ export function projectUsageReport(
 
       for (const spend of session.records) {
         const { usage } = spend;
+
         const amounts = [
           usage.total,
           usage.input,
@@ -201,7 +202,7 @@ export function projectUsageReport(
 
 export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
   const readAt = Date.now();
-  const path = join(home, ".nyte", "nyte.db");
+  const path = storePath(home);
 
   if (!existsSync(path)) return projectUsageReport([], window, readAt);
   let database: DatabaseSync | undefined;
@@ -268,11 +269,13 @@ export function readNyteUsage(home: string, window: UsageWindow): UsageReport {
       const session = parseSessionRef(`sessions/${parseText(row.session) ?? ""}`);
 
       if (session === null) throw new Error("Cannot read usage session.");
+
       const event = decodeEvent(
         parseNumber(row.seq),
         parseNumber(row.at),
         parseText(row.event) ?? "",
       );
+
       let heads = models.get(session);
 
       if (heads === undefined) {

@@ -1,7 +1,7 @@
 import { watch } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import process from "node:process";
 import type { Models, Provider } from "@nyte-ai/ai";
 import { defaultProviderAuthContext } from "@nyte-ai/ai/auth/context";
@@ -47,7 +47,7 @@ import { createMcpHub } from "./mcp/hub.ts";
 import { loadPluginDirectory, pluginLoader } from "./plugins/loader.ts";
 import { defaultSecrets } from "./secrets.ts";
 import type { SecretsSource } from "./secrets.ts";
-import { sqliteStore } from "./sqlite.ts";
+import { sqliteStore, storePath } from "./sqlite.ts";
 
 const RELOAD_DEBOUNCE_MS = 250;
 
@@ -81,9 +81,10 @@ export async function openHost(options: OpenHostOptions): Promise<Host> {
 }
 
 async function defaultStore(home: string): Promise<Store> {
-  await mkdir(join(home, ".nyte"), { recursive: true, mode: 0o700 });
+  const path = storePath(home);
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
 
-  return sqliteStore({ path: join(home, ".nyte", "nyte.db") });
+  return sqliteStore({ path });
 }
 
 async function composeOpen(

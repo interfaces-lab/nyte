@@ -1,5 +1,4 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   decodeCallRecord,
@@ -24,6 +23,7 @@ import {
 import type { RecordKind } from "@nyte-ai/core/store";
 import { compile, isJsonObject, SessionEventType, withJson } from "@nyte-ai/schema";
 import type { Json } from "@nyte-ai/schema";
+import { storePath } from "../src/sqlite.ts";
 
 type Decode = (object: Json | null) => object | null;
 
@@ -57,7 +57,7 @@ interface Failure {
   readonly reasons: readonly string[];
 }
 
-const path = process.argv[2] ?? join(homedir(), ".nyte", "nyte.db");
+const path = process.argv[2] ?? storePath(homedir());
 
 const database = new DatabaseSync(path, { readOnly: true });
 

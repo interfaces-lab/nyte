@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
@@ -94,7 +95,14 @@ if (import.meta.main) {
       "--watch",
       ...process.argv.slice(2),
     ],
-    { stdio: "inherit", env: { ...process.env, ELECTRON_EXEC_PATH: prepareDevElectron() } },
+    {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        NYTE_DB: process.env["NYTE_DB"] ?? join(homedir(), ".nyte", "nyte-dev.db"),
+        ELECTRON_EXEC_PATH: prepareDevElectron(),
+      },
+    },
   );
 
   const interrupt = () => child.kill("SIGINT");
