@@ -32,6 +32,7 @@ export async function testRenderer(
     studio = false,
     captures,
     mouse = false,
+    motion = "reduce",
   }: {
     pointer?: "fine" | "coarse";
     forcePseudoClasses?: readonly string[];
@@ -39,6 +40,7 @@ export async function testRenderer(
     studio?: boolean;
     captures?: string;
     mouse?: boolean;
+    motion?: "reduce" | "no-preference";
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
@@ -114,7 +116,7 @@ app.whenReady().then(async () => {
     await window.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
     await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
       features: [
-        { name: "prefers-reduced-motion", value: "reduce" },
+        { name: "prefers-reduced-motion", value: ${JSON.stringify(motion)} },
         { name: "pointer", value: ${JSON.stringify(pointer)} },
         { name: "hover", value: ${JSON.stringify(pointer === "coarse" ? "none" : "hover")} },
       ],

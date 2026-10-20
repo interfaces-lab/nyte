@@ -12,6 +12,8 @@ const CELLS = 5;
 
 const PITCH = 3;
 
+const SIZE = CELLS * PITCH;
+
 const FRAME_COUNT = 16;
 
 const FRAME_MS = 100;
@@ -27,12 +29,14 @@ const DISC = Array.from({ length: CELLS * CELLS }, (_, index) => {
   return { x, y, nx, ny, depth: 1 - nx * nx - ny * ny };
 }).filter((cell) => cell.depth > 0);
 
-const square = (cell: { readonly x: number; readonly y: number }) =>
-  `M${cell.x * PITCH} ${cell.y * PITCH}h${PITCH - 1}v${PITCH - 1}h-${PITCH - 1}z`;
+const FRAMES = Array.from({ length: FRAME_COUNT }, (_, frame) => frame);
 
-const OUTLINE = DISC.map(square).join("");
+const square = (frame: number) => (cell: { readonly x: number; readonly y: number }) =>
+  `M${frame * SIZE + cell.x * PITCH} ${cell.y * PITCH}h${PITCH - 1}v${PITCH - 1}h-${PITCH - 1}z`;
 
-const FRAMES = Array.from({ length: FRAME_COUNT }, (_, frame) => {
+const OUTLINE = FRAMES.flatMap((frame) => DISC.map(square(frame))).join("");
+
+const LIT = FRAMES.flatMap((frame) => {
   const angle = (frame / FRAME_COUNT) * Math.PI * 2;
 
   return DISC.filter((cell) => {
@@ -40,30 +44,37 @@ const FRAMES = Array.from({ length: FRAME_COUNT }, (_, frame) => {
       Math.sin(angle) * cell.nx - 0.18 * cell.ny - Math.cos(angle) * Math.sqrt(cell.depth);
 
     return shade * 16 > BAYER[(cell.y % 4) * 4 + (cell.x % 4)] + 0.5;
-  })
-    .map(square)
-    .join("");
-});
+  }).map(square(frame));
+}).join("");
 
 const STILL_FRAME = 6;
 
-const lit = keyframes({ "0%": { opacity: 1 }, "6.25%": { opacity: 0 }, "100%": { opacity: 0 } });
+const shift = (frame: number) => `translateX(${(-100 * frame) / FRAME_COUNT}%)`;
+
+const phases = keyframes({ from: { transform: shift(0) }, to: { transform: shift(FRAME_COUNT) } });
 
 const styles = create({
-  root: { flexShrink: 0, width: glyph.box, height: glyph.box, color: "inherit" },
-  earthshine: { opacity: 0.22 },
-  frame: {
-    opacity: 0,
-    animationName: { default: lit, "@media (prefers-reduced-motion: reduce)": "none" },
-    animationDuration: `${LOOP_MS}ms`,
-    animationTimingFunction: "step-end",
-    animationIterationCount: "infinite",
-    animationFillMode: "both",
+  root: {
+    display: "inline-block",
+    flexShrink: 0,
+    width: glyph.box,
+    height: glyph.box,
+    overflow: "hidden",
+    color: "inherit",
   },
-  still: { opacity: { default: 0, "@media (prefers-reduced-motion: reduce)": 1 } },
-  delay: (frame: number) => ({
-    animationDelay: `calc(${frame * FRAME_MS - LOOP_MS}ms - var(--moon-sync, 0ms))`,
-  }),
+  strip: {
+    display: "block",
+    width: `${FRAME_COUNT * 100}%`,
+    height: "100%",
+    transform: { default: null, "@media (prefers-reduced-motion: reduce)": shift(STILL_FRAME) },
+    animationName: { default: phases, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationDuration: `${LOOP_MS}ms`,
+    animationTimingFunction: `steps(${FRAME_COUNT})`,
+    animationIterationCount: "infinite",
+    animationDelay: "calc(0ms - var(--moon-sync, 0ms))",
+  },
+  sprite: { display: "block", width: "100%", height: "100%" },
+  earthshine: { opacity: 0.22 },
 });
 
 export interface SpinnerProps {
@@ -73,30 +84,30 @@ export interface SpinnerProps {
 }
 
 export function Spinner({ className, style, xstyle }: SpinnerProps = {}): ReactElement {
-  const root = useRef<SVGSVGElement>(null);
+  const root = useRef<HTMLSpanElement>(null);
 
   useLayoutEffect(() => {
     root.current?.style.setProperty("--moon-sync", `${performance.now() % LOOP_MS}ms`);
   }, []);
 
   return (
-    <svg
+    <span
       ref={root}
       aria-hidden="true"
-      viewBox={`0 0 ${CELLS * PITCH} ${CELLS * PITCH}`}
-      fill="currentColor"
-      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- React's name for the SVG shape-rendering attribute
-      shapeRendering="crispEdges"
       {...mergeStyleProps(props(styles.root, xstyle), className, style)}
     >
-      <path d={OUTLINE} {...props(styles.earthshine)} />
-      {FRAMES.map((d, frame) => (
-        <path
-          key={frame}
-          d={d}
-          {...props(styles.frame, frame === STILL_FRAME && styles.still, styles.delay(frame))}
-        />
-      ))}
-    </svg>
+      <span {...props(styles.strip)}>
+        <svg
+          viewBox={`0 0 ${FRAME_COUNT * SIZE} ${SIZE}`}
+          fill="currentColor"
+          // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- React's name for the SVG shape-rendering attribute
+          shapeRendering="crispEdges"
+          {...props(styles.sprite)}
+        >
+          <path d={OUTLINE} {...props(styles.earthshine)} />
+          <path d={LIT} />
+        </svg>
+      </span>
+    </span>
   );
 }
