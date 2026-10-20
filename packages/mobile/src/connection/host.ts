@@ -1,5 +1,5 @@
 import { sdk, SdkError } from "@nyte-ai/sdk";
-import type { Connection as HostConnection, CredentialSource } from "@nyte-ai/sdk";
+import type { Connection as HostConnection } from "@nyte-ai/sdk";
 import { fetch } from "expo/fetch";
 import { deleteItemAsync, getItemAsync, setItemAsync } from "expo-secure-store";
 import { createMMKV } from "react-native-mmkv";
@@ -50,15 +50,8 @@ const verified = new WeakMap<SavedConnection, VerifiedHost>();
 
 let adoptions = 0;
 
-function withCredential(saved: SavedConnection, credential: CredentialSource): SavedConnection {
-  if (credential.kind !== "token" || credential.token === saved.connection.token) return saved;
-
-  return { ...saved, connection: { ...saved.connection, token: credential.token } };
-}
-
 export async function verifyHost(input: {
   readonly saved: SavedConnection;
-  readonly credentials?: CredentialSource;
   readonly repair: boolean;
   readonly signal: AbortSignal;
 }): Promise<HostVerification> {
@@ -79,7 +72,7 @@ export async function verifyHost(input: {
   try {
     connection = await sdk.connect({
       url: saved.connection.url,
-      credentials: input.credentials ?? { kind: "token", token: saved.connection.token },
+      credentials: { kind: "token", token: saved.connection.token },
       journal: createJournal(journals, JSON.stringify(route)),
       fetch: hostFetch(saved),
     });
@@ -121,7 +114,7 @@ export async function verifyHost(input: {
 
   const host: VerifiedHost = {
     connection,
-    saved: withCredential(saved, connection.credential),
+    saved,
     scope: JSON.stringify(["host", connection.hostId, ...principal]),
     key: String(adoptions),
   };
@@ -139,13 +132,9 @@ export async function connectHost(input: {
   readonly signal: AbortSignal;
 }): Promise<ConnectResult> {
   const { signal } = input;
-  const { token } = input.connection;
-  const current = connectionStore.getSnapshot();
-  const kept = current.kind === "saved" && current.saved.connection.token === token;
 
   const result = await verifyHost({
     saved: { kind: "manual", connection: input.connection },
-    credentials: kept ? { kind: "token", token } : { kind: "pairing", code: token },
     repair: input.repair,
     signal,
   });
