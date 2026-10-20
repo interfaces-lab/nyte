@@ -65,7 +65,6 @@ test("a create call finds its child by the call that made it", () => {
           prompts: [],
           held: false,
           retrying: undefined,
-          running: false,
         }).map((row) =>
           row.kind === "part" ? (
             <TurnItemView

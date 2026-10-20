@@ -50,7 +50,6 @@ export function stage(scene: Scene): Stage {
     prompts,
     held: scene.execution?.kind === "idle" && scene.execution.lastRun?.end.kind !== "completed",
     retrying: scene.execution?.kind === "retrying" ? scene.execution.reason : undefined,
-    running,
   });
 
   return { rows, working, settledWork };

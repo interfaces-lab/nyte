@@ -26,7 +26,6 @@ export function TurnRows({
     prompts: [],
     held: false,
     retrying: undefined,
-    running,
   }).flatMap((row): readonly TurnItemRow[] => {
     switch (row.kind) {
       case "part":

@@ -210,7 +210,6 @@ export function transcriptRows({
   prompts,
   held,
   retrying,
-  running,
 }: {
   readonly loading: boolean;
   readonly failed: boolean;
@@ -219,7 +218,6 @@ export function transcriptRows({
   readonly prompts: readonly UserMessage[];
   readonly held: boolean;
   readonly retrying: string | undefined;
-  readonly running: boolean;
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
 
@@ -321,7 +319,6 @@ function project(state: SessionState, previous: Projection | undefined): Project
     prompts: messages.prompts,
     held: messages.held,
     retrying: runState(view).retrying,
-    running: messages.running,
   });
 
   const layouts = rows.map(({ key, scrollAnchor, group, leads, sticky }) => ({
