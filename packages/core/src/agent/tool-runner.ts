@@ -40,6 +40,7 @@ import { decodePartRecord, decodeRunRecord } from "../contract/records.ts";
 import type { CallRecord, PartRecord } from "../contract/records.ts";
 import type { Durable, ToolDefinition, ToolInvocation } from "../contract/tools.ts";
 import type { ExecutionEnv } from "../contract/workspace.ts";
+import { anotherChatLive, ownedChanges, readAttributedPaths } from "../env/session-changes.ts";
 import { signalsPark, parkStep, runStep } from "../engine/durable.ts";
 import { publishPatch } from "../engine/runs.ts";
 import { hiddenOwners, missingCapabilities } from "../engine/surface.ts";
@@ -57,7 +58,6 @@ import {
   readTip,
   requireSession,
   STALE,
-  threadStart,
 } from "../store/session.ts";
 import { dev } from "../util/dev-log.ts";
 import { check } from "../util/json-schema.ts";
@@ -99,15 +99,21 @@ type Plan = { readonly args: Json; readonly class: ToolClass } & (
 interface Settled {
   readonly outcome: ToolOutcome;
   readonly files: readonly FileChange[] | null;
-  /** The session's files as they now differ from its first snapshot, or null when this call changed nothing. */
+  /** The session's own files as they now differ from its first snapshot, or null when this call changed nothing. */
   readonly thread: readonly FileChange[] | null;
 
   readonly snapshot: SnapshotId | null;
+  /** The workspace file the call edits, its changes kept to it; null when it names none. */
+  readonly path: string | null;
+  /** Files changed while another chat shared the folder and the call named none, so none were charged to it. */
+  readonly unattributed: boolean;
 }
 
 type ToolBaseline = {
   readonly snapshot: SnapshotId;
   readonly seq: Seq;
+  /** Whether another session in the workspace had a live run as the call started. */
+  readonly contended: boolean;
 };
 
 interface Where {
@@ -320,7 +326,7 @@ async function perform(
           }
         : async () => planned.outcome,
     async settle(ended) {
-      concluded ??= conclude(kernel, where, ended, before);
+      concluded ??= conclude(kernel, where, ended, before, planned.class);
       const settled = await concluded;
 
       return {
@@ -570,6 +576,7 @@ async function conclude(
   where: Where & { readonly runtime: PluginRuntime },
   ended: StepEnd<ToolOutcome>,
   before: ToolBaseline | null,
+  toolClass: ToolClass,
 ): Promise<Settled> {
   const { session, head, run } = where;
 
@@ -583,53 +590,52 @@ async function conclude(
     before !== null && ended.kind === "done" ? await kernel.environments.snapshots(session) : null;
 
   if (snapshots === null || before === null)
-    return { outcome, files: null, thread: null, snapshot: null };
-  const from = before.snapshot;
+    return { outcome, files: null, thread: null, snapshot: null, path: null, unattributed: false };
   const to = await snapshots.after(run);
-  const files = fileChanges(await snapshots.diff(from, to));
+  const [changed, path] = await Promise.all([
+    snapshots.diff(before.snapshot, to).then(fileChanges),
+    editedPath(kernel, session, toolClass),
+  ]);
+
+  const unattributed =
+    path === null &&
+    changed.length > 0 &&
+    (before.contended || (await anotherChatLive(kernel.store, session)));
+
+  const files = unattributed
+    ? []
+    : changed.filter((file) => path === null || file.path === path || file.from === path);
 
   const thread =
-    files.length === 0
+    files.length === 0 && !unattributed
       ? null
-      : fileChanges(await snapshots.diff((await threadStart(kernel.store, session)) ?? from, to));
+      : fileChanges(
+          await ownedChanges(
+            kernel.store,
+            snapshots,
+            session,
+            to,
+            files.map((file) => file.path),
+          ),
+        );
 
-  return {
-    outcome,
-    files,
-    thread,
-    snapshot: to,
-  };
+  return { outcome, files, thread, snapshot: to, path, unattributed };
 }
 
-async function readCountedPaths(
-  store: StoreConnection,
-  where: Where,
-  after: Seq,
-): Promise<ReadonlySet<string>> {
-  const through = await store.refs.tail(where.session);
-  const paths = new Set<string>();
-  let cursor = after;
+/** The workspace-relative file an edit names, or null when the call names none inside the workspace. */
+async function editedPath(
+  kernel: Kernel,
+  session: SessionId,
+  toolClass: ToolClass,
+): Promise<string | null> {
+  if (toolClass.kind !== "edit") return null;
 
-  while (cursor < through) {
-    const events = await store.refs.log(where.session, cursor, 256);
+  if (!/^(?:[\\/]|[A-Za-z]:)/.test(toolClass.path)) return toolClass.path.replace(/^\.\//, "");
+  const root = (await kernel.environments.attach(session)).cwd.replace(/[\\/]+$/, "");
 
-    for (const event of events)
-      if (
-        event.seq <= through &&
-        event.kind === "call" &&
-        event.change === "settled" &&
-        event.head === where.head &&
-        event.call !== where.call
-      )
-        for (const path of event.changes?.paths ?? []) paths.add(path);
-
-    const last = events.at(-1);
-
-    if (last === undefined) break;
-    cursor = last.seq;
-  }
-
-  return paths;
+  return toolClass.path.startsWith(`${root}/`) || toolClass.path.startsWith(`${root}\\`)
+    ? toolClass.path.slice(root.length + 1).replaceAll("\\", "/")
+    : null;
 }
 
 function fileChanges(set: ChangeSet): readonly FileChange[] {
@@ -664,7 +670,14 @@ async function settlement(
   if (found === null) return [];
 
   const counted =
-    before === null ? new Set<string>() : await readCountedPaths(store, where, before.seq);
+    before === null || settled.path !== null
+      ? new Set<string>()
+      : await readAttributedPaths(
+          store,
+          session,
+          before.seq,
+          (event) => event.head === head && event.call !== call,
+        );
 
   const files = settled.files?.filter((file) => !counted.has(file.path));
 
@@ -675,6 +688,7 @@ async function settlement(
           added: files.reduce((sum, file) => sum + file.added, 0),
           removed: files.reduce((sum, file) => sum + file.removed, 0),
           paths: files.map((file) => file.path),
+          ...(settled.unattributed && { unattributed: true as const }),
         };
 
   const at = Date.now();
@@ -745,7 +759,10 @@ async function baseline(
 
   if (snapshots === null) return null;
   const seq = await kernel.store.refs.tail(session);
-  const before = await snapshots.after(run);
+  const [before, contended] = await Promise.all([
+    snapshots.after(run),
+    anotherChatLive(kernel.store, session),
+  ]);
 
   await attempt(`Recording run ${run}'s snapshot`, async () => {
     const found = await load(
@@ -767,7 +784,7 @@ async function baseline(
     return outcome.kind === "set" ? undefined : STALE;
   });
 
-  return { snapshot: before, seq };
+  return { snapshot: before, seq, contended };
 }
 
 async function nextBase(

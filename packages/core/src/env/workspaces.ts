@@ -47,6 +47,7 @@ import { objectId } from "../util/content.ts";
 import { closable, coalesce, latest } from "../util/iterable.ts";
 import { inspectWorkspaceAvailability, readWorkspace, workspaceRecords } from "./environment.ts";
 import { mcpApi } from "./mcp.ts";
+import { ownedChanges, readAttributedPaths } from "./session-changes.ts";
 import { decideTrust, readFolderTrust } from "./trust.ts";
 import type { FolderTrust } from "./trust.ts";
 import type { StoreConnection } from "../contract/store.ts";
@@ -336,7 +337,9 @@ export function workspaceHandle(
       const found = await snapshots();
       const range = await changeRange(kernel.store, id, source, found);
 
-      return found.diff(range.from, range.to);
+      return source.kind === "session"
+        ? ownedChanges(kernel.store, found, source.session, range.to)
+        : found.diff(range.from, range.to);
     },
     patches(source, paths, options) {
       return streamWorkspacePatches(kernel, { workspace: id, source, paths, options, snapshots });
@@ -439,7 +442,12 @@ async function* streamWorkspacePatches(
   }
 
   const held = previous === current ? null : (previous ?? null);
-  const paths = [...new Set(input.paths)];
+  const attributed =
+    source.kind === "session" ? await readAttributedPaths(kernel.store, source.session) : null;
+
+  const paths = [...new Set(input.paths)].filter(
+    (path) => attributed === null || attributed.has(path),
+  );
   const unread = paths.filter((path) => !current.slots.has(path));
   const limit = limiter(PATCH_READS);
   const mine = new Map<string, PatchSlot>();
