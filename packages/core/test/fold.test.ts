@@ -258,6 +258,37 @@ function turn(message: string, run: string, parent: string | null): readonly Dur
   ];
 }
 
+function answers(run: string, count: number, parent: string): readonly DurableEvent[] {
+  return Array.from({ length: count }, (_, index) => {
+    const part = `${run}:${String(index + 1)}:0`;
+
+    return [
+      created(part, "text", "answer", run, { markdown: "", signature: null }),
+      settled(part, `c-${part}`, 0),
+      partCommit(`c-${part}`, part, index === 0 ? parent : `c-${run}:${String(index)}:0`, run),
+    ];
+  }).flat();
+}
+
+function longTurn(
+  message: string,
+  run: string,
+  parent: string | null,
+  size: number,
+  done: boolean,
+): readonly DurableEvent[] {
+  const commit = `c-${message}`;
+
+  return [
+    admitted(message),
+    landed(message, commit, run),
+    userCommit(commit, message, parent),
+    started(run, message, 0),
+    ...answers(run, size - 1, commit),
+    ...(done ? [ended(run)] : []),
+  ];
+}
+
 describe("fold", () => {
   it("folds a scripted turn into the view a client draws", () => {
     const empty = emptyFold({ session, principal: ada });
@@ -394,6 +425,7 @@ describe("fold", () => {
           status: { kind: "settled", commit: "c3", endedAt: 14 },
         },
       ],
+      leadingPrompt: null,
       parts: [],
       turns: [
         {
@@ -489,7 +521,7 @@ describe("fold", () => {
     expect(fold(elsewhere, append("missing", "x"))).toBe(elsewhere);
   });
 
-  it("carries the tail and the turns its messages belong to", () => {
+  it("carries exactly the tail, the prompt of the turn it cuts, and the turns its messages belong to", () => {
     const state = play(
       emptyFold({ session, principal: ada }),
       opened(main),
@@ -498,16 +530,136 @@ describe("fold", () => {
     );
 
     const whole = project(state, main);
+    const lead = (tail: number) => project(state, main, { tail }).leadingPrompt?.id ?? null;
 
     expect(ids(whole)).toEqual(["m1", "r1:1:0", "m2", "r2:1:0"]);
+    expect(whole.leadingPrompt).toBeNull();
     expect(ids(project(state, main, { tail: 3 }))).toEqual(["r1:1:0", "m2", "r2:1:0"]);
+    expect(lead(3)).toBe("m1");
     expect(ids(project(state, main, { tail: 2 }))).toEqual(["m2", "r2:1:0"]);
+    expect(lead(2)).toBeNull();
+    expect(ids(project(state, main, { tail: 1 }))).toEqual(["r2:1:0"]);
+    expect(lead(1)).toBe("m2");
+    expect(project(state, main, { tail: 1 }).leadingPrompt).toBe(whole.messages[2]);
     expect(whole.turns.map((info) => info.id)).toEqual(["m1", "m2"]);
     expect(project(state, main, { tail: 3 }).turns).toBe(whole.turns);
     expect(project(state, main, { tail: 2 }).turns).toEqual([whole.turns[1]]);
     expect(project(state, main, { tail: 2 })).toBe(project(state, main, { tail: 2 }));
-    expect(project(state, main, { tail: 0 })).toMatchObject({ messages: [], turns: [] });
+    expect(project(state, main, { tail: 0 })).toMatchObject({
+      messages: [],
+      leadingPrompt: null,
+      turns: [],
+    });
+    expect(project(state, side, { tail: 40 })).toMatchObject({ messages: [], leadingPrompt: null });
     expect(whole.usage).toEqual({ ...usage, input: 20, output: 10, total: 30 });
+  });
+
+  it.each([
+    { size: 39, first: "r1:1:0", prompt: "m1", turns: ["m1", "m2"] },
+    { size: 40, first: "m2", prompt: null, turns: ["m2"] },
+    { size: 41, first: "r2:1:0", prompt: "m2", turns: ["m2"] },
+    { size: 602, first: "r2:562:0", prompt: "m2", turns: ["m2"] },
+  ])(
+    "opens a live $size-message turn with 40 contiguous messages and the prompt they cut",
+    ({ size, first, prompt, turns }) => {
+      const state = play(
+        emptyFold({ session, principal: ada }),
+        opened(main),
+        ...turn("m1", "r1", null),
+        ...longTurn("m2", "r2", "c-r1:1:0", size, false),
+      );
+
+      const view = project(state, main, { tail: 40 });
+      const every = ids(project(state, main, { tail: 1_000 }));
+
+      expect(every).toHaveLength(size + 2);
+      expect(view.messages).toHaveLength(40);
+      expect(view.messages[0]?.id).toBe(first);
+      expect(view.messages.at(-1)?.id).toBe(`r2:${String(size - 1)}:0`);
+      expect(ids(view)).toEqual(every.slice(-40));
+      expect(view.leadingPrompt?.id ?? null).toBe(prompt);
+      expect(view.leadingPrompt?.content ?? null).toBe(prompt === null ? null : `Say ${prompt}.`);
+      expect(view.turns.map((info) => info.id)).toEqual(turns);
+    },
+  );
+
+  it("names the prompt of whichever turn the cutoff falls in when several turns straddle it", () => {
+    const state = play(
+      emptyFold({ session, principal: ada }),
+      opened(main),
+      ...longTurn("m1", "r1", null, 15, true),
+      ...longTurn("m2", "r2", "c-r1:14:0", 15, true),
+      ...longTurn("m3", "r3", "c-r2:14:0", 15, true),
+    );
+
+    const window = (tail: number) => {
+      const view = project(state, main, { tail });
+
+      return {
+        first: view.messages[0]?.id,
+        prompt: view.leadingPrompt?.id ?? null,
+        turns: view.turns.map((info) => info.id),
+      };
+    };
+
+    expect(window(40)).toEqual({ first: "r1:5:0", prompt: "m1", turns: ["m1", "m2", "m3"] });
+    expect(window(31)).toEqual({ first: "r1:14:0", prompt: "m1", turns: ["m1", "m2", "m3"] });
+    expect(window(30)).toEqual({ first: "m2", prompt: null, turns: ["m2", "m3"] });
+    expect(window(16)).toEqual({ first: "r2:14:0", prompt: "m2", turns: ["m2", "m3"] });
+    expect(window(45)).toEqual({ first: "m1", prompt: null, turns: ["m1", "m2", "m3"] });
+  });
+
+  it("invents no prompt for a turn no message started", () => {
+    const state = play(
+      emptyFold({ session, principal: ada }),
+      opened(main),
+      ...turn("m1", "r1", null),
+      {
+        head: main,
+        kind: "run",
+        run: asId("r2"),
+        change: "started",
+        view: {
+          id: asId("r2"),
+          head: main,
+          startedAt: 1,
+          attempt: 1,
+          configuration,
+          origin: { kind: "continuation", from: "wake" },
+        },
+      },
+      ...answers("r2", 5, "c-r1:1:0"),
+    );
+
+    const view = project(state, main, { tail: 3 });
+
+    expect(ids(view)).toEqual(["r2:3:0", "r2:4:0", "r2:5:0"]);
+    expect(view.leadingPrompt).toBeNull();
+    expect(view.turns.map((info) => info.id)).toEqual(["run:r2"]);
+  });
+
+  it("keeps the same leading prompt while the turn it leads streams on", () => {
+    const opening = play(
+      emptyFold({ session, principal: ada }),
+      opened(main),
+      ...longTurn("m1", "r1", null, 602, false),
+    );
+
+    const streaming = play(
+      opening,
+      created("r1:live", "text", "answer", "r1", { markdown: "", signature: null }),
+      append("r1:live", "Hel"),
+    );
+
+    const grown = play(streaming, append("r1:live", "lo."));
+    const before = project(streaming, main, { tail: 40 });
+    const after = project(grown, main, { tail: 40 });
+
+    expect(before.messages[0]?.id).toBe("r1:563:0");
+    expect(after.messages.at(-1)).toMatchObject({ id: "r1:live", state: { markdown: "Hello." } });
+    expect(after.leadingPrompt?.id).toBe("m1");
+    expect(after.leadingPrompt).toBe(before.leadingPrompt);
+    expect(after.leadingPrompt).toBe(project(opening, main, { tail: 40 }).leadingPrompt);
   });
 
   it("marks a head unread for the fold's principal only", () => {

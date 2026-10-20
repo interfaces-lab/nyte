@@ -26,6 +26,7 @@ function view(messages: readonly Message[]): SessionView {
     seq: asSeq(1),
     activation: { kind: "active" },
     messages,
+    leadingPrompt: null,
     parts: [],
     turns: [],
     usage: USAGE,
@@ -45,7 +46,9 @@ test("a chat pages in earlier messages while it is watched, and none once nobody
   installConnection(
     scriptedConnection({
       views: new Map([[session, [view([prompt("latest")])]]]),
-      session: () => ({ history: async () => ({ messages: [prompt("older")], turns: [] }) }),
+      session: () => ({
+        history: async () => ({ messages: [prompt("older")], leadingPrompt: null, turns: [] }),
+      }),
     }).connection,
   );
 

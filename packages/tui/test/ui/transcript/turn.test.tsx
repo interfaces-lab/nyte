@@ -40,6 +40,31 @@ function transcript(app: App) {
 }
 
 describe("turn", () => {
+  test("a turn the window cut after its prompt shows the prompt, then that earlier steps are not shown", async () => {
+    const whole = buildView((v) =>
+      v.turn("t1", (t) => t.user("Fix the build").text("first").text("latest").ended("completed")),
+    );
+
+    const [prompt, , ...rest] = whole.messages;
+
+    if (prompt?.kind !== "user") throw new Error("The fixture's turn starts with its prompt");
+
+    await using app = await renderWithApp(
+      buildState(followed({ ...whole, messages: rest, leadingPrompt: prompt })),
+      transcript,
+    );
+
+    const turn = app.renderer.root.findDescendantById("turn:t1");
+
+    expect(turn?.getChildren().map((block) => block.id)).toEqual([
+      "user:m1",
+      "earlier:t1",
+      "text:m3",
+      "status:t1",
+    ]);
+    expect(app.captureCharFrame()).toContain("earlier steps not shown");
+  });
+
   test("an action shows its label and never its prompt", async () => {
     const view = buildView((v) =>
       v.turn("t1", (t) => t.action("Fix lint", "Please run the linter and fix").ended("completed")),

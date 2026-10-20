@@ -267,7 +267,7 @@ export function turn(
     },
   };
 
-  return { info, messages };
+  return { info, messages, clipped: false };
 }
 
 export const RUN_VIEW: RunView = {

@@ -100,5 +100,6 @@ export function endedTurn(
       ...change,
     },
     messages,
+    clipped: false,
   };
 }

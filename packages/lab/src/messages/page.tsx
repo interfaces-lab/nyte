@@ -94,6 +94,8 @@ function RowView({
 
     case "prompt":
       return <TurnItemView row={row} running={false} density={density} cwd={CWD} />;
+    case "earlier":
+      return <StatusMarker>Show Earlier Steps</StatusMarker>;
     case "retry":
       return (
         <StatusMarker role="status" variant="retrying" title={row.message}>

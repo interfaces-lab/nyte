@@ -37,6 +37,8 @@ export interface TurnModel {
   readonly info: TurnInfo;
   readonly blocks: readonly Message[];
   readonly status: TurnStatus | null;
+  /** Whether steps between the turn's prompt and its next block are not loaded. */
+  readonly clipped: boolean;
 }
 
 export type TurnStatus =
@@ -151,7 +153,9 @@ function turnRows(view: SessionView): readonly Row[] {
   let current: TurnId | null = null;
   let slot = -1;
 
-  for (const message of view.messages) {
+  for (const message of view.leadingPrompt === null
+    ? view.messages
+    : [view.leadingPrompt, ...view.messages]) {
     if (message.kind === "user" && message.status.kind !== "landed") continue;
 
     if (message.kind === "part" && message.partKind === "tool" && awaitsDelegate(message)) continue;
@@ -239,13 +243,14 @@ function turnModel(info: TurnInfo, built: readonly Message[], view: SessionView)
       ? before.blocks
       : built;
 
-  if (before !== undefined && before.blocks === blocks && info.state.kind === "ended")
-    return before;
+  const clipped = view.leadingPrompt?.turn === info.id;
+  const kept = before !== undefined && before.blocks === blocks && before.clipped === clipped;
+
+  if (kept && info.state.kind === "ended") return before;
   const status = turnStatus(info, blocks, view);
 
-  if (before !== undefined && before.blocks === blocks && sameStatus(before.status, status))
-    return before;
-  const model = { info, blocks, status };
+  if (kept && sameStatus(before.status, status)) return before;
+  const model = { info, blocks, status, clipped };
   TURN_MODELS.set(info, model);
 
   return model;

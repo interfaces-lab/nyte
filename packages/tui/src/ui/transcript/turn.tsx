@@ -36,7 +36,8 @@ type Prose = PartMessage & { readonly state: { readonly markdown: string } };
 
 type Segment =
   | { readonly kind: "message"; readonly key: string; readonly message: Message }
-  | { readonly kind: "agents"; readonly key: string; readonly messages: readonly Message[] };
+  | { readonly kind: "agents"; readonly key: string; readonly messages: readonly Message[] }
+  | { readonly kind: "earlier"; readonly key: string };
 
 function startsAgent(message: Message): boolean {
   if (!showsTool(message)) return false;
@@ -127,6 +128,8 @@ function AgentGroup(props: { readonly messages: readonly Message[] }): JSX.Eleme
 }
 
 function SegmentView(props: { readonly segment: Accessor<Segment> }): JSX.Element {
+  const app = useApp();
+
   const single = createMemo(() => {
     const current = props.segment();
 
@@ -147,6 +150,17 @@ function SegmentView(props: { readonly segment: Accessor<Segment> }): JSX.Elemen
       <Match when={group()}>
         {(messages: Accessor<readonly Message[]>) => <AgentGroup messages={messages()} />}
       </Match>
+      <Match when={props.segment().kind === "earlier"}>
+        <text
+          id={props.segment().key}
+          fg={app.kit.theme().dim}
+          wrapMode="none"
+          truncate
+          selectable={false}
+        >
+          earlier steps not shown
+        </text>
+      </Match>
     </Switch>
   );
 }
@@ -156,7 +170,14 @@ export function TurnView(props: {
   readonly ref?: (node: BoxRenderable) => void;
 }): JSX.Element {
   const id = props.turn().info.id;
-  const segments = createMemo(() => segment(props.turn().blocks));
+
+  const segments = createMemo(() => {
+    const { blocks, clipped } = props.turn();
+
+    return segment(blocks).flatMap((entry, index): readonly Segment[] =>
+      clipped && index === 0 ? [entry, { kind: "earlier", key: `earlier:${id}` }] : [entry],
+    );
+  });
 
   return (
     <Column id={`turn:${id}`} ref={props.ref}>

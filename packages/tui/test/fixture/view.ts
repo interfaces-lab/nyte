@@ -325,6 +325,7 @@ export function buildView(build: (view: ViewBuilder) => ViewBuilder): SessionVie
     seq: asSeq(messages.length),
     activation: { kind: "active" },
     messages,
+    leadingPrompt: null,
     parts,
     turns,
     usage: { ...USAGE, input: 0, output: 0, total: 0 },

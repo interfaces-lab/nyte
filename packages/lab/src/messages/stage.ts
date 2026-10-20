@@ -106,6 +106,8 @@ function rowLines(row: TranscriptRow, working: boolean): readonly string[] {
 
     case "failure":
       return [`  failure ${row.failure.class}`];
+    case "earlier":
+      return ["  earlier steps"];
     case "changes":
       return working ? [] : [`  changes ×${String(row.files.length)}`];
     default: {

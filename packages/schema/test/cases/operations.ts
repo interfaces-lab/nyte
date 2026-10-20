@@ -27,6 +27,7 @@ import {
   catalog,
   sendOptions,
   userMessage,
+  partMessage,
   turnInfo,
   sessionInput,
   headInput,
@@ -245,8 +246,8 @@ export const operations = {
   ),
   "head.history output": operation(
     OPERATIONS["head.history"].output,
-    { messages: [userMessage], turns: [turnInfo] },
-    { messages: [{ id: message }], turns: [] },
+    { messages: [partMessage], leadingPrompt: userMessage, turns: [turnInfo] },
+    { messages: [{ id: message }], leadingPrompt: null, turns: [] },
   ),
   "head.tree input": operation(OPERATIONS["head.tree"].input, headInput, { head }),
   "head.move input": operation(

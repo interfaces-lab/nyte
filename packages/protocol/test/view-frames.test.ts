@@ -5,7 +5,7 @@ import { applyViewFrame, decodeOutput, encodeOutput, viewFrames } from "../src/i
 
 const turn = asId<"turn">("t1");
 
-function user(id: string): Message {
+function user(id: string): Extract<Message, { readonly kind: "user" }> {
   return {
     id: asId(id),
     turn,
@@ -41,6 +41,7 @@ const base: SessionView = {
   seq: asSeq(1),
   activation: { kind: "active" },
   messages: [user("m1"), user("m2")],
+  leadingPrompt: null,
   parts: [],
   turns: [],
   usage: {
@@ -110,6 +111,31 @@ describe("view frames", () => {
       revision: "r2",
       messages: { runs: [], items: [] },
     });
+  });
+
+  it("sends the leading prompt once when it changes, leaves it out while it holds, and clears it with null", async () => {
+    const [m1, m2] = base.messages;
+    assert(m1 !== undefined && m2 !== undefined);
+    const led = { ...base, seq: asSeq(2), leadingPrompt: user("m0") };
+    const streaming = { ...led, seq: asSeq(3), messages: [m1, m2, answer("Hel", 1)] };
+    const grown = { ...streaming, seq: asSeq(4), messages: [m1, m2, answer("Hello.", 2)] };
+    const cleared = { ...grown, seq: asSeq(5), leadingPrompt: null };
+    const views = [base, led, streaming, grown, cleared];
+    const frames = await sent(views);
+    const shown: SessionView[] = [];
+
+    for (const frame of frames) shown.push(applyViewFrame(shown.at(-1) ?? null, frame));
+
+    expect(shown).toEqual(views);
+    expect(frames[1]).toEqual({ kind: "delta", seq: 2, leadingPrompt: user("m0") });
+    expect(frames[3]).toEqual({
+      kind: "delta",
+      seq: 4,
+      appends: [{ at: 2, append: "lo.", version: 2 }],
+    });
+    expect(frames[4]).toEqual({ kind: "delta", seq: 5, leadingPrompt: null });
+    expect(shown[3]?.leadingPrompt).toBe(shown[1]?.leadingPrompt);
+    expect(shown[4]?.leadingPrompt).toBeNull();
   });
 
   it("keeps the client's own items for every item a delta copies", async () => {

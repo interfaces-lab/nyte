@@ -181,6 +181,7 @@ function view(
     seq: asSeq(1),
     activation: { kind: "active" },
     messages: [...messages, ...extra],
+    leadingPrompt: null,
     parts: [],
     turns: [...turns, ...extraTurns],
     usage: USAGE,

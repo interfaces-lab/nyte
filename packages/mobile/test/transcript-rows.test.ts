@@ -32,12 +32,16 @@ function part<K extends PartDefinition>(
 
 const untouched = { count: 0, paths: [] };
 
-function view(messages: readonly Message[]): SessionView {
+function view(
+  messages: readonly Message[],
+  leadingPrompt: SessionView["leadingPrompt"] = null,
+): SessionView {
   return {
     revision: asId<"revision">("r1"),
     seq: asSeq(0),
     activation: { kind: "active" },
     messages,
+    leadingPrompt,
     parts: [],
     turns: [
       {
@@ -98,6 +102,28 @@ const usage: CanvasState = {
 };
 
 describe("conversationRows", () => {
+  it("leads a turn its window cut with the prompt the view carries beside it and marks its earlier steps as not shown", () => {
+    const rows = conversationRows(
+      view([part("text-1", text, { markdown: "Done.", signature: null })], {
+        id: asId<"message">("prompt-1"),
+        turn,
+        at: 0,
+        kind: "user",
+        content: "Fix it.",
+        source: { kind: "user" },
+        delivery: "steer",
+        status: { kind: "landed", commit: asId<"commit">("prompt-1"), run: null, replaced: null },
+        siblings: { index: 0, count: 1, ids: [] },
+      }),
+    );
+
+    expect(rows.slice(0, 3)).toEqual([
+      { kind: "user", id: "submission:prompt-1", content: "Fix it.", delivery: "sent" },
+      { kind: "marker", id: "earlier:turn-1", text: "Earlier steps not shown" },
+      { kind: "assistant", id: "text-1", text: "Done.", streaming: false },
+    ]);
+  });
+
   it("draws a canvas part as a canvas row carrying its part id and state", () => {
     const rows = conversationRows(
       view([

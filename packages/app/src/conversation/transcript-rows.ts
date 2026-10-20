@@ -39,6 +39,9 @@ export type TurnItemRow =
   | (RowLayout & { readonly kind: "response"; readonly messages: readonly TextMessage[] })
   | (RowLayout & { readonly kind: "failure"; readonly failure: Failure });
 
+/** Marks the steps of a turn between its prompt and its first loaded message as not loaded. */
+type EarlierRow = RowLayout & { readonly kind: "earlier" };
+
 export type PromptRow = RowLayout & {
   readonly kind: "prompt";
   readonly message: UserMessage;
@@ -50,6 +53,7 @@ export type TranscriptRow =
   | (RowLayout & { readonly kind: "skeleton" })
   | (RowLayout & { readonly kind: "error" })
   | TurnItemRow
+  | EarlierRow
   | PromptRow
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
   | (RowLayout & {
@@ -109,7 +113,7 @@ function turnRows(
   turn: TurnMessages,
   place: { readonly group: string; readonly leads: boolean; readonly last: boolean },
 ) {
-  const rows: TurnItemRow[] = [];
+  const rows: (TurnItemRow | EarlierRow)[] = [];
   const { state } = turn.info;
 
   const at = (): Pick<RowLayout, "group" | "leads"> => ({
@@ -132,6 +136,15 @@ function turnRows(
         sticky: sticksToTop(message),
         message,
       });
+
+      if (turn.clipped && index === 0)
+        rows.push({
+          kind: "earlier",
+          key: `earlier:${turn.info.id}`,
+          scrollAnchor: false,
+          ...at(),
+          sticky: false,
+        });
       continue;
     }
 
@@ -388,6 +401,7 @@ function streamed(previous: Projection, state: SessionState): Projection | undef
     state.error !== previous.state.error ||
     after.seq < before.seq ||
     after.turns !== before.turns ||
+    after.leadingPrompt !== before.leadingPrompt ||
     after.changes !== before.changes ||
     after.messages.length !== before.messages.length
   )
@@ -501,6 +515,7 @@ function rowEstimate(
     case "error":
     case "retry":
     case "failure":
+    case "earlier":
       return BANNER_ESTIMATE;
     case "prompt":
       return USER_ROW_ESTIMATE;

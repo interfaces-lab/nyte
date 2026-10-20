@@ -459,3 +459,51 @@ describe("client send journal", () => {
     await expect.poll(() => journal.load()).toEqual([]);
   });
 });
+
+it("leaves a send the host admitted but never answered to the clipped prompt that shows it, once, and lands it there", async () => {
+  const host = await open();
+  const journal = createSendJournal();
+  const connection = await client(host, journal);
+  const session = await settledChat(host, connection);
+  let sends = 0;
+
+  host.fake.reply({
+    content: [1, 2, 3, 4, 5].map((index) => ({ type: "text" as const, text: `a${String(index)}` })),
+  });
+
+  host.intercept(async (request, next) => {
+    if (readOperation(request) !== "head.send") return next(request);
+    sends += 1;
+
+    if (sends === 1) await next(request);
+
+    throw new TypeError("fetch failed");
+  });
+
+  void connection
+    .session(session.id)
+    .send("Clipped.")
+    .catch(() => undefined);
+
+  const clipped = await until(
+    connection.session(session.id).watch({ tail: 2 }),
+    (view) => view.execution.kind === "idle" && view.leadingPrompt !== null,
+  );
+
+  expect(clipped.leadingPrompt).toMatchObject({ content: "Clipped.", status: { kind: "landed" } });
+  expect(clipped.messages.map((message) => message.kind)).toEqual(["part", "part"]);
+  expect(await journal.load()).toHaveLength(1);
+
+  await connection.close();
+  host.intercept(null);
+  const reconnected = await client(host, journal);
+  const watching = reconnected.session(session.id).watch({ tail: 2 })[Symbol.asyncIterator]();
+  const first = await watching.next();
+
+  await expect.poll(() => journal.load(), { timeout: 3_000 }).toEqual([]);
+  await watching.return?.();
+  assert(first.done !== true);
+  const landed = first.value;
+  expect(landed.messages.map((message) => message.kind)).toEqual(["part", "part"]);
+  expect(landed.leadingPrompt?.id).toBe(clipped.leadingPrompt?.id);
+});

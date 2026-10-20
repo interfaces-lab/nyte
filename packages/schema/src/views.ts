@@ -41,20 +41,22 @@ export const UserStatusType = Type.Union([
 
 export type UserStatus = Decoded<typeof UserStatusType>;
 
-export const MessageType = Type.Union([
-  Type.Object({
-    ...MESSAGE,
-    kind: Type.Literal("user"),
-    content: UserContentType,
-    source: MessageSourceType,
-    delivery: DeliveryType,
-    status: UserStatusType,
-    siblings: Type.Object({
-      index: Type.Number(),
-      count: Type.Number(),
-      ids: Type.Array(idSchema<"commit">()),
-    }),
+const UserMessageType = Type.Object({
+  ...MESSAGE,
+  kind: Type.Literal("user"),
+  content: UserContentType,
+  source: MessageSourceType,
+  delivery: DeliveryType,
+  status: UserStatusType,
+  siblings: Type.Object({
+    index: Type.Number(),
+    count: Type.Number(),
+    ids: Type.Array(idSchema<"commit">()),
   }),
+});
+
+export const MessageType = Type.Union([
+  UserMessageType,
   Type.Object({
     ...MESSAGE,
     kind: Type.Literal("part"),
@@ -105,6 +107,7 @@ export const SessionViewType = Type.Object({
   seq: SeqType,
   activation: ActivationType,
   messages: Type.Array(MessageType),
+  leadingPrompt: nullable(UserMessageType),
   parts: Type.Array(PartViewType),
   turns: Type.Array(TurnInfoType),
   usage: UsageType,
@@ -120,15 +123,16 @@ export const SessionViewType = Type.Object({
   catalog: SessionCatalogViewType,
 });
 
-/** A head's view: its last `tail` messages, the turns those messages belong to from the earliest one on (older turns arrive with older messages through `head.history`), and `usage`, the sum of every completed run on the head's history. */
+/** A head's view: its last `tail` messages, at most `tail` and contiguous; `leadingPrompt`, the prompt of the earliest turn among them when that prompt is before them, else null; the turns those messages belong to from the earliest one on (older turns and the messages between `leadingPrompt` and `messages` arrive through `head.history`); and `usage`, the sum of every completed run on the head's history. */
 export type SessionView = Decoded<typeof SessionViewType>;
 
 export const HistoryPageType = Type.Object({
   messages: Type.Array(MessageType),
+  leadingPrompt: nullable(UserMessageType),
   turns: Type.Array(TurnInfoType),
 });
 
-/** Messages before a view's window, with the turns they belong to. */
+/** Messages before a view's window, with the turns they belong to and `leadingPrompt`, the prompt of the earliest of those turns when it is before `messages`, else null. */
 export type HistoryPage = Decoded<typeof HistoryPageType>;
 
 const VIEW = SessionViewType.properties;
@@ -155,6 +159,7 @@ export const ViewFrameType = Type.Union([
     activation: Type.Optional(VIEW.activation),
     messages: Type.Optional(viewSplice(MessageType)),
     appends: Type.Optional(Type.Array(ViewAppendType)),
+    leadingPrompt: Type.Optional(VIEW.leadingPrompt),
     parts: Type.Optional(viewSplice(PartViewType)),
     turns: Type.Optional(viewSplice(TurnInfoType)),
     usage: Type.Optional(VIEW.usage),
@@ -168,7 +173,7 @@ export const ViewFrameType = Type.Union([
   }),
 ]);
 
-/** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged. */
+/** One frame of a head's watch on the wire: the whole view first, then each later view as what changed since the frame before it, an absent field unchanged; a null `leadingPrompt` clears it. */
 export type ViewFrame = Decoded<typeof ViewFrameType>;
 
 export const ViewOptionsSchema: Schema<ViewOptions> = standard(ViewOptionsType);

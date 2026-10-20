@@ -114,6 +114,7 @@ const unchanged = {
   revision: asId<"revision">("r1"),
   seq: asSeq(1),
   activation: { kind: "active" },
+  leadingPrompt: null,
   parts: [],
   turns: infos,
   usage: USAGE,

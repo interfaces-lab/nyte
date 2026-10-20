@@ -90,6 +90,7 @@ function view(parts: readonly PartView[]): SessionView {
     seq: asSeq(1),
     activation: { kind: "active" },
     messages: [prompt],
+    leadingPrompt: null,
     parts,
     turns: [
       endedTurn([], {

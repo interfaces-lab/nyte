@@ -16,6 +16,14 @@ function turnsIn(model: TranscriptModel): readonly TurnModel[] {
   return model.rows.flatMap((row) => (row.kind === "turn" ? [row.turn] : []));
 }
 
+function summary(model: TranscriptModel) {
+  return turnsIn(model).map((turn) => ({
+    clipped: turn.clipped,
+    first: turn.blocks[0]?.kind,
+    blocks: turn.blocks.length,
+  }));
+}
+
 function shell(id: string, startedAt: number): ShellJob {
   return {
     id,
@@ -30,6 +38,26 @@ function shell(id: string, startedAt: number): ShellJob {
 }
 
 describe("rows", () => {
+  test("a turn the window cut after its prompt starts with that prompt and is marked clipped until the prompt is among the messages", () => {
+    const whole = buildView((v) =>
+      v.turn("t1", (t) =>
+        t.at(1_000).user("ask").text("one").text("two").text("three").ended("completed"),
+      ),
+    );
+
+    const [prompt, , ...rest] = whole.messages;
+
+    if (prompt?.kind !== "user") throw new Error("The fixture's turn starts with its prompt");
+    const cut = { ...whole, messages: rest, leadingPrompt: prompt };
+
+    expect(summary(deriveTranscript(cut, [], LOCAL, null))).toEqual([
+      { clipped: true, first: "user", blocks: 3 },
+    ]);
+    expect(summary(deriveTranscript(whole, [], LOCAL, null))).toEqual([
+      { clipped: false, first: "user", blocks: 4 },
+    ]);
+  });
+
   test("turns in view order with their notes in place, shells by start time; queued messages are not rows", () => {
     const view = buildView((v) =>
       v

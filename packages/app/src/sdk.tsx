@@ -390,18 +390,17 @@ function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
+function keepItem<T>(shown: T | undefined, next: T): T {
+  return shown !== undefined && JSON.stringify(shown) === JSON.stringify(next) ? shown : next;
+}
+
 function keepItems<T>(
   shown: readonly T[],
   next: readonly T[],
   key: (item: T) => string,
 ): readonly T[] {
   const known = new Map(shown.map((item) => [key(item), item]));
-
-  const items = next.map((item) => {
-    const kept = known.get(key(item));
-
-    return kept !== undefined && JSON.stringify(kept) === JSON.stringify(item) ? kept : item;
-  });
+  const items = next.map((item) => keepItem(known.get(key(item)), item));
 
   return items.length === shown.length && items.every((item, index) => item === shown[index])
     ? shown
@@ -412,6 +411,7 @@ function keepShown(shown: SessionView, next: SessionView): SessionView {
   return {
     ...next,
     messages: keepItems(shown.messages, next.messages, (message) => message.id),
+    leadingPrompt: keepItem(shown.leadingPrompt, next.leadingPrompt),
     turns: keepItems(shown.turns, next.turns, (turn) => turn.id),
     changes: keepItems(shown.changes, next.changes, (change) => change.path),
   };

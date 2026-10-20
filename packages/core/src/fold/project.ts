@@ -56,14 +56,16 @@ export function project(state: FoldState, head: HeadName, options?: ViewOptions)
 
   const messages = readMessageTail(folded.messages, tail);
   const turns = frozen(folded.turns);
+  const path = state[INDEX].paths.get(head);
 
   const view: SessionView = {
     revision: folded.revision,
     seq: state.seq,
     activation: state.activation,
     messages,
+    leadingPrompt: findLeadingPrompt(path, folded.messages.length - messages.length),
     parts: state.partViews,
-    turns: readTurnWindow(turns, state[INDEX].paths.get(head), messages),
+    turns: readTurnWindow(turns, path, messages),
     usage: sumCompletedUsage(turns),
     execution: folded.info.execution,
     background: folded.background,
@@ -138,6 +140,21 @@ function readMessageTail(messages: readonly Message[], tail: number): readonly M
   tails.set(messages, known);
 
   return slice;
+}
+
+/** The prompt of the turn the message at `start` of `path` belongs to, when that prompt is on `path` before `start`; found through the path's indexes, never by walking its messages. */
+export function findLeadingPrompt(
+  path: Path | undefined,
+  start: number,
+): SessionView["leadingPrompt"] {
+  const first = path?.messages[start];
+
+  if (path === undefined || first === undefined) return null;
+  const prompt = path.turns[path.turnAt.get(first.turn) ?? -1]?.prompt ?? null;
+  const at = prompt === null ? undefined : path.at.get(prompt);
+  const message = at === undefined || at >= start ? undefined : path.messages[at];
+
+  return message?.kind === "user" ? message : null;
 }
 
 /** The turns `messages` belong to, from the earliest one on, reusing the head's last window from the same turn when it holds the same turns. */

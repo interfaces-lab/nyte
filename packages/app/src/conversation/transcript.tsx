@@ -156,7 +156,7 @@ export function useTranscriptControls(): TranscriptControls {
 }
 
 export function useTranscriptScope():
-  | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore">
+  | Pick<TranscriptState, "paneId" | "sessionId" | "viewStore" | "loadEarlier">
   | undefined {
   return useContext(TranscriptContext) ?? undefined;
 }

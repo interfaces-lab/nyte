@@ -12,7 +12,7 @@ import { INDEX } from "../contract/fold.ts";
 import type { FoldState } from "../contract/fold.ts";
 import type { Kernel } from "../contract/kernel.ts";
 import { closable, coalesce, DONE, latest } from "../util/iterable.ts";
-import { project, readSeenCommit } from "./project.ts";
+import { findLeadingPrompt, project, readSeenCommit } from "./project.ts";
 import { seenWriter } from "./seen.ts";
 
 export function watchHead(
@@ -94,7 +94,7 @@ export async function viewHead(
   }
 }
 
-/** The `limit` messages of a head before `before`, with the turns they belong to. */
+/** The `limit` messages of a head before `before`, with the turns they belong to and the prompt of the earliest of those turns when it is before them. */
 export async function historyHead(
   kernel: Kernel,
   input: {
@@ -116,8 +116,9 @@ export async function historyHead(
     const end = messages.findIndex((message) => message.id === input.before);
 
     if (folded === undefined || path === undefined || end < 0 || input.limit <= 0)
-      return { messages: [], turns: [] };
-    const page = messages.slice(Math.max(0, end - input.limit), end);
+      return { messages: [], leadingPrompt: null, turns: [] };
+    const start = Math.max(0, end - input.limit);
+    const page = messages.slice(start, end);
 
     const positions = [
       ...new Set(page.flatMap((message) => path.turnAt.get(message.turn) ?? [])),
@@ -125,6 +126,7 @@ export async function historyHead(
 
     return {
       messages: page,
+      leadingPrompt: findLeadingPrompt(path, start),
       turns: positions.flatMap((position) => folded.turns[position] ?? []),
     };
   } finally {

@@ -139,6 +139,7 @@ export const sessionCases = {
     {
       kind: "delta",
       seq: asSeq(5),
+      leadingPrompt: null,
       execution: { kind: "idle", lastRun: null },
       turns: { runs: [-1, 1], items: [turnInfo] },
       changes: { runs: [], items: [] },
@@ -158,7 +159,8 @@ export const sessionCases = {
       revision,
       seq: asSeq(4),
       activation: { kind: "active" },
-      messages: [userMessage, partMessage],
+      messages: [partMessage],
+      leadingPrompt: userMessage,
       parts: [
         {
           id: part,
@@ -184,8 +186,8 @@ export const sessionCases = {
   ),
   HistoryPageSchema: sample(
     HistoryPageSchema,
-    { messages: [userMessage], turns: [turnInfo] },
-    { messages: [userMessage] },
+    { messages: [partMessage], leadingPrompt: userMessage, turns: [turnInfo] },
+    { messages: [partMessage], leadingPrompt: partMessage, turns: [turnInfo] },
   ),
   TreeNodeSchema: sample(
     TreeNodeSchema,

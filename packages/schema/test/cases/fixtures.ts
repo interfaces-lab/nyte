@@ -304,7 +304,7 @@ export const sendOptions: SendOptions = {
   id: receipt,
 };
 
-export const userMessage: Message = {
+export const userMessage: Extract<Message, { readonly kind: "user" }> = {
   id: message,
   turn,
   at: 1,

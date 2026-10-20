@@ -186,6 +186,8 @@ export function journalLoop(rows: Rows, journal: RequestJournal): JournalLoop {
       if (held.size === 0) return;
       const ids = new Set(view.messages.map((message) => message.id));
 
+      if (view.leadingPrompt !== null) ids.add(view.leadingPrompt.id);
+
       for (const [receipt, current] of held) {
         const { answered, answeredAfter, entry } = current;
 

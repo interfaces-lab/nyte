@@ -13,3 +13,7 @@ export { pollStore, publishSet } from "./fold/watch.ts";
 export { main, setup } from "./harness.ts";
 
 export type { Script, Turn } from "./harness.ts";
+
+export { emptyFold, fold } from "./fold/fold.ts";
+
+export { project } from "./fold/project.ts";

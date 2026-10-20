@@ -2,7 +2,7 @@ import type { Message, SessionView, TurnInfo, ViewOptions } from "@nyte-ai/schem
 import type { Head } from "@nyte-ai/core";
 import { pushed } from "./watch.ts";
 
-/** A head's views with its older messages paged in on demand: each view's `messages` are the pages `earlier` loaded, then the messages the watch carries, and its `turns` the pages' turns before the watch's. A view whose messages and turns are the ones the view before it carried keeps that view's arrays. Iterate it once. */
+/** A head's views with its older messages paged in on demand: each view's `messages` are the pages `earlier` loaded, then the messages the watch carries, its `turns` the pages' turns before the watch's, and its `leadingPrompt` the prompt of the turn its first message belongs to when that prompt is not among its messages. A view whose messages and turns are the ones the view before it carried keeps that view's arrays. Iterate it once. */
 export interface PagedViews extends AsyncIterable<SessionView> {
   /** Loads up to `limit` messages before the oldest one shown into the views, and resolves how many came: 0 once the head's first message is shown, asking the host only the first time. A call while one loads waits for that one. */
   earlier(limit: number): Promise<number>;
@@ -14,9 +14,13 @@ export interface PagedViews extends AsyncIterable<SessionView> {
  * leave the watch's window stay; a view whose first message was never shown
  * (the head moved, or the window jumped past the pages) drops the pages.
  */
-export function pagedViews(head: Head, options?: ViewOptions): PagedViews {
+export function pagedViews(
+  head: Pick<Head, "watch" | "history">,
+  options?: ViewOptions,
+): PagedViews {
   let pages: readonly Message[] = [];
   let turns: readonly TurnInfo[] = [];
+  let leadingPrompt: SessionView["leadingPrompt"] = null;
   let latest: SessionView | null = null;
   let shown: SessionView | null = null;
   let push: ((view: SessionView) => void) | null = null;
@@ -33,12 +37,16 @@ export function pagedViews(head: Head, options?: ViewOptions): PagedViews {
       const kept =
         first === undefined ? -1 : before.findIndex((message) => message.id === first.id);
       pages = kept < 0 ? [] : before.slice(0, kept);
+      leadingPrompt = shown?.leadingPrompt ?? null;
       const paged = new Set(pages.map((message) => message.turn));
       turns = (shown?.turns ?? []).filter((turn) => paged.has(turn.id));
     }
 
+    if (view.leadingPrompt !== null && view.leadingPrompt.id === leadingPrompt?.id)
+      leadingPrompt = view.leadingPrompt;
+
     latest = view;
-    shown = pages.length === 0 ? view : withPages(view, pages, turns, previous);
+    shown = pages.length === 0 ? view : withPages(view, { pages, turns, leadingPrompt }, previous);
     push?.(shown);
   };
 
@@ -59,7 +67,8 @@ export function pagedViews(head: Head, options?: ViewOptions): PagedViews {
     const known = new Set(turns.map((turn) => turn.id));
     pages = [...page.messages, ...pages];
     turns = [...page.turns.filter((turn) => !known.has(turn.id)), ...turns];
-    shown = withPages(current, pages, turns, null);
+    leadingPrompt = page.leadingPrompt;
+    shown = withPages(current, { pages, turns, leadingPrompt }, null);
     push?.(shown);
 
     return page.messages.length;
@@ -103,8 +112,7 @@ export function pagedViews(head: Head, options?: ViewOptions): PagedViews {
 
 function withPages(
   view: SessionView,
-  pages: readonly Message[],
-  turns: readonly TurnInfo[],
+  paged: Pick<SessionView, "turns" | "leadingPrompt"> & { readonly pages: readonly Message[] },
   previous: { readonly view: SessionView; readonly shown: SessionView } | null,
 ): SessionView {
   return {
@@ -112,9 +120,12 @@ function withPages(
     messages:
       previous?.view.messages === view.messages
         ? previous.shown.messages
-        : [...pages, ...view.messages],
+        : [...paged.pages, ...view.messages],
+    leadingPrompt: paged.leadingPrompt,
     turns:
-      previous?.view.turns === view.turns ? previous.shown.turns : pagedTurns(turns, view.turns),
+      previous?.view.turns === view.turns
+        ? previous.shown.turns
+        : pagedTurns(paged.turns, view.turns),
   };
 }
 

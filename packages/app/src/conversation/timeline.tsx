@@ -1,6 +1,6 @@
 import { props } from "@stylexjs/stylex";
 import type { SessionView, UserContent } from "@nyte-ai/sdk";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -11,7 +11,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "./subagent-call.tsx";
-import { TranscriptContent } from "./transcript.tsx";
+import { TranscriptContent, useTranscriptScope } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ChangesCard, TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
@@ -34,6 +34,27 @@ interface RowContext {
   readonly onEditUser: EditUserMessage;
   readonly onOpenChanges: (path: string | null) => void;
   readonly onRetry: () => void;
+}
+
+function EarlierSteps(): ReactElement {
+  const loadEarlier = useTranscriptScope()?.loadEarlier;
+  const [showing, setShowing] = useState(false);
+
+  return (
+    <StatusMarker>
+      <Button
+        variant="text"
+        disabled={loadEarlier === undefined || showing}
+        onClick={() => {
+          if (loadEarlier === undefined) return;
+          setShowing(true);
+          void loadEarlier().finally(() => setShowing(false));
+        }}
+      >
+        Show Earlier Steps
+      </Button>
+    </StatusMarker>
+  );
 }
 
 const TranscriptRowView = memo(function TranscriptRowView({
@@ -79,6 +100,8 @@ const TranscriptRowView = memo(function TranscriptRowView({
           branchModel={branchModel}
         />
       );
+    case "earlier":
+      return <EarlierSteps />;
     case "changes":
       return working ? null : <ChangesCard files={row.files} onOpenChanges={onOpenChanges} />;
 

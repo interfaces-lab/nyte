@@ -112,6 +112,7 @@ function view(
     seq: asSeq(1),
     activation: { kind: "active" },
     messages: [prompt, reply, ...extra],
+    leadingPrompt: null,
     parts,
     turns: [
       endedTurn([], {

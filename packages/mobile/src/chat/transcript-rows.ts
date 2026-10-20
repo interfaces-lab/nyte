@@ -104,6 +104,15 @@ export function conversationRows(view: SessionView): ChatRow[] {
       });
   };
 
+  const lead = view.leadingPrompt;
+  const leadRow = lead === null ? undefined : messageRow(lead);
+
+  if (lead !== null) {
+    if (leadRow !== undefined) rows.push(leadRow);
+    rows.push({ kind: "marker", id: `earlier:${lead.turn}`, text: "Earlier steps not shown" });
+    turn = lead.turn;
+  }
+
   for (const message of view.messages) {
     if (message.turn !== turn) {
       closeTurn();

@@ -45,7 +45,7 @@ function cut(
         };
   });
 
-  return { info: { ...turn.info, state }, messages };
+  return { info: { ...turn.info, state }, messages, clipped: false };
 }
 
 /** What has played so far; the newest call runs until the next part lands. */
@@ -296,6 +296,7 @@ export function demoTurn({
         },
         ...parts,
       ],
+      clipped: false,
     },
     shown: 1,
   };
