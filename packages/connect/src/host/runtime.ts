@@ -48,6 +48,7 @@ export class ConnectRuntime {
   private epoch = 0;
   private serving: ServingSession | undefined;
   private readonly accountOpens = new Set<AbortController>();
+  private readonly linkCalls = new Set<Promise<unknown>>();
   private notice: ConnectNotice = { kind: "none" };
   private closed = false;
   private closing: Promise<void> | undefined;
@@ -163,7 +164,16 @@ export class ConnectRuntime {
     };
   }
 
-  async link(): Promise<ConnectView> {
+  link(): Promise<ConnectView> {
+    const call = this.linkAndView();
+    const settled = call.catch(() => undefined);
+    this.linkCalls.add(settled);
+    void settled.then(() => this.linkCalls.delete(settled));
+
+    return call;
+  }
+
+  private async linkAndView(): Promise<ConnectView> {
     await this.requireUsable();
 
     if (this.options.authorizer === undefined) throw unavailable();
@@ -323,6 +333,7 @@ export class ConnectRuntime {
 
     for (const controller of this.accountOpens) controller.abort();
     await linking;
+    await Promise.all(this.linkCalls);
     this.lifetime.abort();
     await this.operations.run(() => this.stopServing());
     await this.outbox.close();

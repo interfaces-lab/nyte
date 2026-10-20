@@ -19,6 +19,8 @@ const NOWHERE = "socks5://127.0.0.1:9";
 
 const VIEWPORT_LIMIT = 4_096;
 
+const CAPTURE_ATTEMPTS = 3;
+
 const ViewportSide = Type.Integer({ minimum: 1, maximum: VIEWPORT_LIMIT });
 
 const DriverOutcome = Type.Union([
@@ -124,6 +126,24 @@ function painted(window: BrowserWindow): Promise<void> {
   });
 }
 
+/** Viz fails a copy of a surface it has no frame for yet with `UnknownVizError`; a later frame copies. */
+async function capture(window: BrowserWindow): Promise<Uint8Array> {
+  for (let attempt = 1; ; attempt += 1) {
+    await painted(window);
+
+    try {
+      return new Uint8Array((await window.webContents.capturePage()).toPNG());
+    } catch (error) {
+      if (
+        attempt === CAPTURE_ATTEMPTS ||
+        !(error instanceof Error) ||
+        error.message !== "UnknownVizError"
+      )
+        throw error;
+    }
+  }
+}
+
 export function offscreenCanvasPreviewer(
   scheme: ReturnType<typeof accountScheme>,
   root: string,
@@ -158,8 +178,7 @@ async function previewOffscreen(
   });
 
   contents.ipc.handle(CANVAS_PREVIEW_CHANNELS.capture, async () => {
-    await painted(window);
-    png = new Uint8Array((await contents.capturePage()).toPNG());
+    png = await capture(window);
 
     return png;
   });
