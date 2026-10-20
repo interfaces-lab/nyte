@@ -42,19 +42,16 @@ export const Route = createFileRoute("/opengraph-image.png")({
               <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
                 <div
                   style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    fontSize: 76,
+                    fontSize: 56,
                     fontWeight: 500,
-                    lineHeight: 1.02,
+                    lineHeight: 1.08,
                     letterSpacing: "-0.03em",
                   }}
                 >
-                  <span>Many agents ship code.</span>
-                  <span>This one is mine.</span>
+                  Nyte is your foundation for building AI frameworks and agents.
                 </div>
                 <div style={{ fontSize: 26, color: "rgb(255 255 255 / 0.72)" }}>
-                  Runs on your laptop and at the edge.
+                  Build locally, deploy anywhere.
                 </div>
               </div>
             </div>
