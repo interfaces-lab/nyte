@@ -99,20 +99,17 @@ type Plan = { readonly args: Json; readonly class: ToolClass } & (
 interface Settled {
   readonly outcome: ToolOutcome;
   readonly files: readonly FileChange[] | null;
-  /** The session's own files as they now differ from its first snapshot, or null when this call changed nothing. */
+  /** The session's files as they now differ from its first snapshot, or null when this call changed nothing. */
   readonly thread: readonly FileChange[] | null;
 
   readonly snapshot: SnapshotId | null;
-  /** The workspace file the call edits, its changes kept to it; null when it names none. */
   readonly path: string | null;
-  /** Files changed while another chat shared the folder and the call named none, so none were charged to it. */
   readonly unattributed: boolean;
 }
 
 type ToolBaseline = {
   readonly snapshot: SnapshotId;
   readonly seq: Seq;
-  /** Whether another session in the workspace had a live run as the call started. */
   readonly contended: boolean;
 };
 
@@ -622,7 +619,6 @@ async function conclude(
   return { outcome, files, thread, snapshot: to, path, unattributed };
 }
 
-/** The workspace-relative file an edit names, or null when the call names none inside the workspace. */
 async function editedPath(
   kernel: Kernel,
   session: SessionId,
