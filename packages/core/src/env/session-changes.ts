@@ -6,7 +6,6 @@ import { listSessionRecords, liveRuns, threadStart } from "../store/session.ts";
 
 const LOG_PAGE = 256;
 
-/** The paths `session`'s calls settled after `after` were charged with, from the calls `charged` accepts. */
 export async function readAttributedPaths(
   store: StoreConnection,
   session: SessionId,
@@ -39,7 +38,6 @@ export async function readAttributedPaths(
   return paths;
 }
 
-/** The session's files as they differ at `to` from its first snapshot, kept to those its calls were charged with and `extra`. */
 export async function ownedChanges(
   store: StoreConnection,
   snapshots: SnapshotsApi,
@@ -63,7 +61,6 @@ export async function ownedChanges(
   };
 }
 
-/** Whether a chat outside `session` and its subagents has a live run in its workspace, so the folder's changes may be that chat's. */
 export async function anotherChatLive(
   store: StoreConnection,
   session: SessionId,
