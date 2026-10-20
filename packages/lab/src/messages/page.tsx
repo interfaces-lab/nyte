@@ -6,15 +6,11 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { radius } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
-import { LiveTurn, liveTurnStyles } from "@nyte-ai/app/conversation/live-turn.tsx";
+import { LiveTurn } from "@nyte-ai/app/conversation/live-turn.tsx";
 import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { SubagentSessionsProvider } from "@nyte-ai/app/conversation/subagent-sessions.ts";
 import type { TranscriptRow } from "@nyte-ai/app/conversation/transcript-rows.ts";
-import {
-  ChangesCard,
-  TurnItemView,
-  UserMessageView,
-} from "@nyte-ai/app/conversation/turn-view.tsx";
+import { ChangesCard, TurnItemView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { BranchModelPicker } from "@nyte-ai/app/conversation/turn-view.tsx";
 import type { ToolCallDensity } from "@nyte-ai/app/preferences/index.ts";
 import { TranscriptSkeleton } from "@nyte-ai/app/screens/transcript-skeleton.tsx";
@@ -97,18 +93,7 @@ function RowView({
       return working ? null : <ChangesCard files={row.files} onOpenChanges={openChanges} />;
 
     case "prompt":
-      return (
-        <div
-          title={row.pending ? "Lands at the next response" : undefined}
-          {...props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}
-        >
-          <UserMessageView
-            content={
-              row.message.source.kind === "action" ? row.message.source.label : row.message.content
-            }
-          />
-        </div>
-      );
+      return <TurnItemView row={row} running={false} density={density} cwd={CWD} />;
     case "retry":
       return (
         <StatusMarker role="status" variant="retrying" title={row.message}>

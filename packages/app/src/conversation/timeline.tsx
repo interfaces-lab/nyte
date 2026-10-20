@@ -13,7 +13,7 @@ import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
 import { SubagentReportLine } from "./subagent-call.tsx";
 import { TranscriptContent } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
-import { ChangesCard, TurnItemView, UserMessageView } from "./turn-view.tsx";
+import { ChangesCard, TurnItemView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker } from "./turn-view.tsx";
 import { estimateRowSize } from "./transcript-rows.ts";
 import type { TranscriptProjector } from "./transcript-rows.ts";
@@ -92,18 +92,7 @@ const TranscriptRowView = memo(function TranscriptRowView({
           </div>
         );
 
-      return (
-        <div
-          title={row.pending ? "Lands at the next response" : undefined}
-          {...props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}
-        >
-          <UserMessageView
-            content={
-              row.message.source.kind === "action" ? row.message.source.label : row.message.content
-            }
-          />
-        </div>
-      );
+      return <TurnItemView row={row} running={false} density={density} cwd={cwd} />;
     }
 
     case "retry":

@@ -565,17 +565,28 @@ async function checkRules(): Promise<string> {
 
     step = "3, 1-4, 17";
     await toEnd();
-    await streamFrames(8, checkFollowing);
 
     const latest = first(
       Array.from(stage.log.querySelectorAll<HTMLElement>("[data-sticky-user-message]")).at(-1),
       "the latest prompt",
     );
 
+    for (let frame = 0; frame < 8; frame += 1) {
+      const top = measureTop(latest);
+      const scrolled = stage.viewport.scrollTop;
+      await streamFrames(1, checkFollowing);
+      const rise = top - measureTop(latest);
+      expectRule(
+        "17",
+        rise >= -1 && rise <= stage.viewport.scrollTop - scrolled + 1,
+        `the latest prompt jumped from ${String(top)} to ${String(measureTop(latest))}`,
+      );
+    }
+
     expectRule(
       "17",
-      latest.dataset.stickyDisabled === "true" && measureTop(latest) < -1,
-      `the latest prompt sits at ${String(measureTop(latest))}`,
+      Math.abs(measureTop(latest)) <= 2 && latest.dataset.stickyActive === "true",
+      `the latest prompt sits at ${String(measureTop(latest))} at the end`,
     );
 
     step = "8";

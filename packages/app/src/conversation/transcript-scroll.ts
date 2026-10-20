@@ -14,30 +14,14 @@ export function topIn(viewport: HTMLElement, element: Element): number {
   return element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
 }
 
-export function syncSticky(viewport: HTMLElement, content: HTMLElement, following: boolean): void {
+export function syncSticky(viewport: HTMLElement, content: HTMLElement): void {
   const prompts = content.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
   const edge = viewport.getBoundingClientRect().top;
   let active: HTMLElement | undefined;
 
-  for (const [index, prompt] of prompts.entries()) {
+  for (const prompt of prompts) {
     const rect = prompt.getBoundingClientRect();
-
-    const naturalTop =
-      prompt.previousElementSibling?.getBoundingClientRect().bottom ??
-      prompt.parentElement?.getBoundingClientRect().top ??
-      rect.top;
-
-    const rowBottom =
-      prompt.closest("[data-turn-span], [data-row-key]")?.getBoundingClientRect().bottom ??
-      rect.bottom;
-
-    const eligible =
-      rect.height < viewport.clientHeight &&
-      !(
-        following &&
-        index === prompts.length - 1 &&
-        rowBottom - naturalTop - rect.height >= viewport.clientHeight
-      );
+    const eligible = rect.height < viewport.clientHeight;
 
     setDataState(prompt, "stickyDisabled", !eligible);
 

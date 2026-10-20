@@ -41,7 +41,7 @@ Only the reader moves Reading back to Following, through rules 3 and 4. Saving o
 ## Sticky prompts
 
 16. The prompt of the turn being read sticks to the top.
-17. While Following, the latest prompt scrolls away once its reply is taller than the viewport.
+17. Following sticks prompts the same way Reading does: the latest prompt stays at the top until its turn ends, even at the end of the chat. Sending, streaming, or a turn ending never makes a prompt jump on or off the top.
 18. A prompt taller than the viewport never sticks.
 
 ## Row identity

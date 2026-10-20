@@ -38,16 +38,18 @@ export type TurnItemRow =
   | (RowLayout & { readonly kind: "response"; readonly messages: readonly TextMessage[] })
   | (RowLayout & { readonly kind: "failure"; readonly failure: Failure });
 
+export type PromptRow = RowLayout & {
+  readonly kind: "prompt";
+  readonly message: UserMessage;
+  readonly pending: boolean;
+  readonly held: boolean;
+};
+
 export type TranscriptRow =
   | (RowLayout & { readonly kind: "skeleton" })
   | (RowLayout & { readonly kind: "error" })
   | TurnItemRow
-  | (RowLayout & {
-      readonly kind: "prompt";
-      readonly message: UserMessage;
-      readonly pending: boolean;
-      readonly held: boolean;
-    })
+  | PromptRow
   | (RowLayout & { readonly kind: "retry"; readonly message: string })
   | (RowLayout & {
       readonly kind: "live";
@@ -126,6 +128,13 @@ export function conversationMessages(view: SessionView | undefined) {
   };
 }
 
+/** A user's prompt is drawn sticky from the moment it is sent, so its row keeps one DOM shape when it joins its turn; only inside a turn does it stick. */
+function sticksToTop(message: Message): boolean {
+  return (
+    message.kind === "user" && message.source.kind !== "child" && message.source.kind !== "job"
+  );
+}
+
 function turnRows(
   turn: TurnMessages,
   place: { readonly group: string; readonly leads: boolean; readonly last: boolean },
@@ -150,10 +159,7 @@ function turnRows(
         key: message.kind === "user" ? `prompt:${message.id}` : message.id,
         scrollAnchor: message.kind === "user",
         ...at(),
-        sticky:
-          message.kind === "user" &&
-          message.source.kind !== "child" &&
-          message.source.kind !== "job",
+        sticky: sticksToTop(message),
         message,
       });
       continue;
@@ -266,6 +272,7 @@ export function transcriptRows({
       key: `prompt:${message.id}`,
       ...OUTSIDE,
       scrollAnchor: true,
+      sticky: sticksToTop(message),
       message,
       pending: running,
       held,

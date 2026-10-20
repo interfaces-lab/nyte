@@ -1,16 +1,8 @@
-import { create, keyframes, props } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";
-import { motion } from "@nyte-ai/ui/styles/vars.stylex";
 import type { ToolCallDensity } from "../preferences/index.ts";
 import { StepGroupView } from "./step-group.tsx";
-
-const PENDING_OPACITY = 0.6;
-
-const pendingIn = keyframes({
-  from: { opacity: 0, transform: "translateY(4px)" },
-  to: { opacity: PENDING_OPACITY, transform: "translateY(0)" },
-});
 
 export const liveTurnStyles = create({
   root: {
@@ -19,15 +11,6 @@ export const liveTurnStyles = create({
     gap: conversation.rowGap,
     width: "100%",
     minWidth: 0,
-  },
-  pending: {
-    opacity: PENDING_OPACITY,
-    animationName: {
-      default: pendingIn,
-      "@media (prefers-reduced-motion: reduce)": "none",
-    },
-    animationDuration: "180ms",
-    animationTimingFunction: motion.easeOut,
   },
 });
 

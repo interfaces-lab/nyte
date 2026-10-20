@@ -330,7 +330,7 @@ export const TranscriptContent = memo(function TranscriptContent({
     }
 
     atEnd.current = heldRef.current === null && left <= 1;
-    syncSticky(scroll, content.current, atEnd.current);
+    syncSticky(scroll, content.current);
     showScrollButton(dock, left > SCROLL_EDGE_THRESHOLD);
     loadHistory(instance);
   };
@@ -365,8 +365,7 @@ export const TranscriptContent = memo(function TranscriptContent({
     const scroll = virtualizer.scrollElement;
     stretchSpans(virtualizer, sticky.ends);
 
-    if (scroll !== null && content.current !== null)
-      syncSticky(scroll, content.current, atEnd.current);
+    if (scroll !== null && content.current !== null) syncSticky(scroll, content.current);
   }, [sticky, virtualRows, virtualizer]);
 
   useLayoutEffect(() => {
