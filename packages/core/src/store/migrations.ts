@@ -682,6 +682,13 @@ const workspaceTrustMoved: RewriteStep = {
   },
 };
 
+/** Holds version 20, which an unreleased build spent adding `snapshot` to session records before that field was dropped: a store it ran on keeps a `snapshot` nothing reads, and any other store gains nothing. */
+const sessionSnapshotDropped: SchemaStep = {
+  kind: "schema",
+  name: "2026-10-18-session-snapshot-dropped",
+  sql: { sqlite: [], postgres: [] },
+};
+
 const STORE_STEPS: readonly StoreStep[] = [
   baseline,
   recordFields,
@@ -702,6 +709,7 @@ const STORE_STEPS: readonly StoreStep[] = [
   foldCheckpoints,
   folderTrust,
   workspaceTrustMoved,
+  sessionSnapshotDropped,
 ];
 
 export const STORE_VERSION: number = STORE_STEPS.length;

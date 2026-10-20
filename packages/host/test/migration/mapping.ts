@@ -201,6 +201,13 @@ export const MAPPING = [
     change: "`projectResources` is removed",
     covers: ["from 18", "field workspace /body/projectResources"],
   },
+  {
+    version: 20,
+    step: "2026-10-18-session-snapshot-dropped",
+    target: "tables",
+    change: "nothing",
+    covers: ["from 19"],
+  },
 ] as const;
 
 function decisionType<T extends TSchema>(value: T) {
