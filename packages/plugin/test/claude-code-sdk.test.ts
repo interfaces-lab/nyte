@@ -350,8 +350,10 @@ async function openClaude(start: StartQuery, plugins: readonly Plugin<"core">[])
 it("runs a Nyte tool Claude Code calls through the nyte MCP server as the session's own call", async () => {
   let listed: Json = null;
   let called: Json = null;
+  let options: Options | undefined;
 
   const claude = fakeClaude(async (fake) => {
+    options = fake.options;
     await fake.prompt();
     listed = await fake.mcp("tools/list", {});
     fake.emit(begin(), ...toolUse(0, "toolu_note", "mcp__nyte__note", { text: "hi" }));
@@ -379,8 +381,15 @@ it("runs a Nyte tool Claude Code calls through the nyte MCP server as the sessio
         name: "note",
         inputSchema: expect.objectContaining({ type: "object" }),
       }),
+      expect.objectContaining({
+        name: "bash",
+        inputSchema: expect.objectContaining({
+          properties: expect.objectContaining({ background: expect.any(Object) }),
+        }),
+      }),
     ]),
   });
+  expect(options).toMatchObject({ disallowedTools: ["Bash"], allowedTools: ["Grep", "Glob"] });
   expect(called).toEqual({ content: [{ type: "text", text: "Pinned hi." }], isError: false });
 
   const calls = (await session.view()).messages.filter((message) => isPart(message, tool));

@@ -63,7 +63,6 @@ const CLAUDE_CODE_HAS_ITS_OWN = new Set([
   "write",
   "edit",
   "list",
-  "bash",
   "web_search",
   "question",
 ]);
