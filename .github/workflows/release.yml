@@ -12,6 +12,10 @@ on:
         description: The version to release or resume, without the leading v
         type: string
         required: true
+      skip_verify:
+        description: Skip quality checks and tests for this release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -74,15 +78,17 @@ jobs:
               exit 1
             fi
           done
-      - run: pnpm sdk:check
-      - run: pnpm format
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm build
-      - run: command -v rg || brew install ripgrep
-      - run: pnpm exec turbo run test --concurrency=3 --continue
-      - run: pnpm sdk:pack
-      - run: pnpm sdk:verify
+      - if: ${{ !inputs.skip_verify }}
+        run: |
+          pnpm sdk:check
+          pnpm format
+          pnpm lint
+          pnpm typecheck
+          pnpm build
+          command -v rg || brew install ripgrep
+          pnpm exec turbo run test --concurrency=3 --continue
+          pnpm sdk:pack
+          pnpm sdk:verify
 
   tui:
     needs: verify
