@@ -23,6 +23,7 @@ import {
   workbenchViewKey,
   WORKBENCH_CHAT_TAB,
 } from "../workbench/controller.ts";
+import type { WorkbenchViewKey } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { clientCapabilities } from "../client-actions.ts";
 
@@ -94,18 +95,74 @@ function DropPreview({
   );
 }
 
-export function SessionScreen(): ReactElement {
+function SessionPanes({
+  viewKey,
+  maximized,
+  floatingMount,
+}: {
+  readonly viewKey: WorkbenchViewKey;
+  readonly maximized: boolean;
+  readonly floatingMount: HTMLDivElement | null;
+}): ReactElement {
   const { layout } = usePaneControllerSnapshot();
-  const host = useHostState();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [floatingMount, setFloatingMount] = useState<HTMLDivElement | null>(null);
-  const workbench = useWorkbenchSnapshot();
   const dropTarget = useSessionDropTarget();
   const [dragRatio, setDragRatio] = useState<number | undefined>();
   const panes = orderedPanes(layout);
   const leading = panes[0] ?? activePane(layout);
   const trailing = layout.kind === "split" ? panes[1] : undefined;
-  const activeSelection = activePane(layout).selection;
+
+  return (
+    <div
+      ref={containerRef}
+      id={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
+      role={maximized ? "tabpanel" : undefined}
+      aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
+      {...props(
+        sessionScreenStyles.panes,
+        layout.kind === "split" &&
+          (layout.direction === "right"
+            ? sessionScreenStyles.splitRight
+            : sessionScreenStyles.splitDown),
+      )}
+    >
+      <PaneHost
+        key={leading.id}
+        pane={leading}
+        floatingMount={floatingMount}
+        position={
+          layout.kind === "single"
+            ? { kind: "single" }
+            : { kind: "leading", ratio: dragRatio ?? layout.ratio }
+        }
+      />
+      {layout.kind === "split" && trailing !== undefined && (
+        <SplitSash
+          key="pane-sash"
+          direction={layout.direction}
+          ratio={layout.ratio}
+          dragRatio={dragRatio}
+          onDragRatio={setDragRatio}
+          containerRef={containerRef}
+        />
+      )}
+      {layout.kind === "split" && trailing !== undefined && (
+        <PaneHost
+          key={trailing.id}
+          pane={trailing}
+          position={{ kind: "trailing" }}
+          floatingMount={floatingMount}
+        />
+      )}
+      {dropTarget !== undefined && <DropPreview layout={layout} target={dropTarget} />}
+    </div>
+  );
+}
+
+export function SessionScreen(): ReactElement {
+  const host = useHostState();
+  const [floatingMount, setFloatingMount] = useState<HTMLDivElement | null>(null);
+  const workbench = useWorkbenchSnapshot();
   const workspacePath = host.data.workspace?.path;
 
   const viewKey = workbenchViewKey(workspacePath);
@@ -124,53 +181,8 @@ export function SessionScreen(): ReactElement {
   return (
     <div {...props(sessionScreenStyles.stage)}>
       <FileTypeIconSprite />
-      <div
-        ref={containerRef}
-        id={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
-        role={maximized ? "tabpanel" : undefined}
-        aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
-        {...props(
-          sessionScreenStyles.panes,
-          layout.kind === "split" &&
-            (layout.direction === "right"
-              ? sessionScreenStyles.splitRight
-              : sessionScreenStyles.splitDown),
-        )}
-      >
-        <PaneHost
-          key={leading.id}
-          pane={leading}
-          floatingMount={paneFloatingMount}
-          position={
-            layout.kind === "single"
-              ? { kind: "single" }
-              : { kind: "leading", ratio: dragRatio ?? layout.ratio }
-          }
-        />
-        {layout.kind === "split" && trailing !== undefined && (
-          <SplitSash
-            key="pane-sash"
-            direction={layout.direction}
-            ratio={layout.ratio}
-            dragRatio={dragRatio}
-            onDragRatio={setDragRatio}
-            containerRef={containerRef}
-          />
-        )}
-        {layout.kind === "split" && trailing !== undefined && (
-          <PaneHost
-            key={trailing.id}
-            pane={trailing}
-            position={{ kind: "trailing" }}
-            floatingMount={paneFloatingMount}
-          />
-        )}
-        {dropTarget !== undefined && <DropPreview layout={layout} target={dropTarget} />}
-      </div>
-      <Workbench
-        workspacePath={workspacePath}
-        sessionId={activeSelection.kind === "session" ? activeSelection.sessionId : undefined}
-      />
+      <SessionPanes viewKey={viewKey} maximized={maximized} floatingMount={paneFloatingMount} />
+      <Workbench workspacePath={workspacePath} />
       <div ref={setFloatingMount} {...props(sessionScreenStyles.floatingMount)} />
     </div>
   );

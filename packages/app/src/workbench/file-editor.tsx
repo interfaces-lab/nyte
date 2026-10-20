@@ -9,6 +9,7 @@ import {
   useCallback,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -79,6 +80,8 @@ ${PIERRE_TOKEN_CSS}
   color: var(--diffs-fg-number);
 }
 `;
+
+const EDITOR_LAYOUT = { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 };
 
 function createEditor<EType extends EditorType>(
   editorType: EType,
@@ -197,7 +200,8 @@ function DiskSync({ path }: { readonly path: string }): null {
 export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   const document = useWorkspaceFile(input.file.path);
 
-  if (document.data?.kind === "text") return <TextFileEditor {...input} document={document.data} />;
+  if (document.data?.kind === "text")
+    return <TextFileEditor {...input} document={document.data} reload={document.refetch} />;
 
   return (
     <div
@@ -218,14 +222,18 @@ export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   );
 }
 
-function TextFileEditor({
+export function TextFileEditor({
   ref,
   viewKey,
   file,
   active,
   autoSave,
   document,
-}: FileEditorProps & { readonly document: TextFile }): ReactElement {
+  reload,
+}: FileEditorProps & {
+  readonly document: TextFile;
+  readonly reload: ReturnType<typeof useWorkspaceFile>["refetch"];
+}): ReactElement {
   const { navigationRevision } = file;
 
   const [buffer] = useState(() =>
@@ -253,10 +261,15 @@ function TextFileEditor({
   });
 
   const appliedNavigation = useRef(-1);
-  const [clickedLine, setClickedLine] = useState({ line: file.line ?? 1, navigationRevision });
 
-  const line =
-    clickedLine.navigationRevision === navigationRevision ? clickedLine.line : (file.line ?? 1);
+  const [clicked, setClicked] = useState<{
+    readonly line: number | undefined;
+    readonly revision: number;
+  }>({ line: undefined, revision: navigationRevision });
+
+  if (clicked.revision !== navigationRevision)
+    setClicked({ line: undefined, revision: navigationRevision });
+  const line = clicked.line ?? file.line ?? 1;
 
   const theme = useSetting(preferences.theme);
   const codeFont = useSetting(preferences.codeFont);
@@ -266,8 +279,22 @@ function TextFileEditor({
   const gitBlame = useSetting(preferences.fileGitBlame);
   const formatOnSave = useSetting(preferences.fileFormatOnSave);
   const saveFile = useSaveWorkspaceFile();
-  const disk = useWorkspaceFile(file.path);
   const dirty = snapshot.contents !== snapshot.savedContents;
+
+  const viewOptions = useMemo(
+    () => ({
+      theme: PIERRE_THEME,
+      themeType: theme,
+      unsafeCSS: EDITOR_CSS,
+      disableFileHeader: true,
+      layout: EDITOR_LAYOUT,
+      disableLineNumbers: !lineNumbers,
+      overflow: wordWrap ? ("wrap" as const) : ("scroll" as const),
+      onLineClick: (event: { readonly lineNumber: number }) =>
+        setClicked((current) => ({ ...current, line: event.lineNumber })),
+    }),
+    [lineNumbers, theme, wordWrap],
+  );
 
   const blame = useQuery({
     queryKey: ["files", "blame", file.path, snapshot.version],
@@ -416,12 +443,12 @@ function TextFileEditor({
     const editor = viewer.current?.getEditor(file.path);
 
     if (editor !== undefined) attachEditor(editor);
-  });
+  }, [active, attachEditor, file.column, file.length, file.line, file.path, navigationRevision]);
 
   const discard = async (): Promise<void> => {
     if (buffer.getSnapshot().status.kind === "saving")
       throw new Error("Wait for the current save to finish.");
-    const result = await disk.refetch();
+    const result = await reload();
 
     if (result.error !== null) throw result.error;
 
@@ -510,17 +537,7 @@ function TextFileEditor({
               ownsVerticalViewport: true,
               onAttach: attachEditor,
             }}
-            options={{
-              theme: PIERRE_THEME,
-              themeType: theme,
-              unsafeCSS: EDITOR_CSS,
-              disableFileHeader: true,
-              layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
-              disableLineNumbers: !lineNumbers,
-              overflow: wordWrap ? "wrap" : "scroll",
-              onLineClick: (event) =>
-                setClickedLine({ line: event.lineNumber, navigationRevision }),
-            }}
+            options={viewOptions}
             className={props(diffStyles.patch, styles.code).className}
             onItemEditChange={(event) => buffer.edit(event.file.contents)}
           />

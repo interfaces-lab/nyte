@@ -29,13 +29,14 @@ import {
   refreshVcs,
   useRecordedChanges,
   useSession,
-  useSessionView,
   useVcsChanges,
   useVcsSnapshot,
   workspaceGit,
 } from "../queries.ts";
 import { conversationTurns } from "../view-helpers.ts";
-import type { TurnMessages } from "../view-helpers.ts";
+import { sessionWatch, useWatchSelect } from "../sdk.tsx";
+import { usePaneControllerSnapshot } from "../layout/pane-context.tsx";
+import { activeSelection } from "../layout/pane-layout.ts";
 import { space } from "@nyte-ai/ui/styles/schema.stylex";
 import { role, type } from "@nyte-ai/ui/styles/vars.stylex";
 import {
@@ -44,12 +45,14 @@ import {
   changesScopeLabel,
   changesScopeValue,
   scopeFiles,
+  sameTurnOptions,
   sessionScopeOption,
   turnChangeOptions,
   turnScopeOption,
   vcsRequestForScope,
   workingTreeScopeOptions,
 } from "./change-scopes.ts";
+import type { TurnChangeOption } from "./change-scopes.ts";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
@@ -80,7 +83,7 @@ interface RecordedChangeRow {
 
 type ChangeRow = VcsChangeRow | RecordedChangeRow;
 
-const EMPTY_TURNS: readonly TurnMessages[] = [];
+const NO_TURN_OPTIONS: readonly TurnChangeOption[] = [];
 
 const EMPTY_ROWS: readonly VcsChangeRow[] = [];
 
@@ -234,7 +237,6 @@ function focusFileFilter(field: HTMLInputElement | null): void {
 
 interface ChangesPanelProps {
   readonly visible?: boolean;
-  readonly sessionId: SessionId | undefined;
   readonly scope: WorkbenchChangesScope;
   readonly selectedPath: string | undefined;
   readonly revealPathRevision: number;
@@ -250,7 +252,8 @@ interface ChangesPanelProps {
 }
 
 interface ChangesPanelViewProps extends ChangesPanelProps {
-  readonly turns: readonly TurnMessages[];
+  readonly sessionId: SessionId | undefined;
+  readonly turnOptions: readonly TurnChangeOption[];
   readonly turnsError: Error | null;
   readonly liveRun: RunId | undefined;
   readonly workspace: WorkspaceId | undefined;
@@ -272,14 +275,13 @@ function ChangesPanelView({
   onRevertPath,
   onOpenLink,
   sessionId,
-  turns,
+  turnOptions,
   turnsError,
   liveRun,
   workspace,
   sessionChanges,
 }: ChangesPanelViewProps): ReactElement {
   const uiFontSize = useSetting(preferences.uiFontSize);
-  const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
 
   const sessionOption = useMemo(
     () => (sessionChanges === undefined ? undefined : sessionScopeOption(sessionChanges)),
@@ -893,6 +895,12 @@ function ChangesPanelView({
               items={sections}
               collapsedPaths={collapsedPaths}
               onToggleCollapsed={toggleCollapsedPath}
+              onExpand={(path) =>
+                setCollapsedSections((current) => ({
+                  ...current,
+                  paths: current.paths.filter((entry) => entry !== path),
+                }))
+              }
               scrollTop={scrollTop}
               focusPath={activePath}
               focusRevision={
@@ -943,36 +951,48 @@ function ChangesPanelView({
 function SessionChangesPanel(
   props: ChangesPanelProps & { readonly sessionId: SessionId },
 ): ReactElement {
-  const view = useSessionView(props.sessionId);
-  const session = useSession(props.sessionId);
+  const store = sessionWatch(props.sessionId);
 
-  const turns = useMemo(() => (view === undefined ? EMPTY_TURNS : conversationTurns(view)), [view]);
+  const turnOptions = useWatchSelect(
+    store,
+    ({ value }) =>
+      value === undefined ? NO_TURN_OPTIONS : turnChangeOptions(conversationTurns(value)),
+    sameTurnOptions,
+  );
 
-  const execution = view?.execution;
+  const liveRun = useWatchSelect(store, ({ value }) =>
+    value === undefined || value.execution.kind === "idle" ? undefined : value.execution.run.id,
+  );
+
+  const sessionChanges = useWatchSelect(store, ({ value }) => value?.changes);
+  const workspace = useSession(props.sessionId, (session) => session.workspace);
 
   return (
     <ChangesPanelView
       {...props}
-      turns={turns}
+      turnOptions={turnOptions}
       turnsError={null}
-      liveRun={execution === undefined || execution.kind === "idle" ? undefined : execution.run.id}
-      workspace={session.data?.workspace ?? undefined}
-      sessionChanges={view?.changes}
+      liveRun={liveRun}
+      workspace={workspace.data ?? undefined}
+      sessionChanges={sessionChanges}
     />
   );
 }
 
 export function ChangesPanel(props: ChangesPanelProps): ReactElement {
-  return props.sessionId === undefined ? (
+  const selection = activeSelection(usePaneControllerSnapshot().layout);
+
+  return selection.kind !== "session" ? (
     <ChangesPanelView
       {...props}
-      turns={EMPTY_TURNS}
+      sessionId={undefined}
+      turnOptions={NO_TURN_OPTIONS}
       turnsError={null}
       liveRun={undefined}
       workspace={undefined}
       sessionChanges={undefined}
     />
   ) : (
-    <SessionChangesPanel {...props} sessionId={props.sessionId} />
+    <SessionChangesPanel {...props} sessionId={selection.sessionId} />
   );
 }

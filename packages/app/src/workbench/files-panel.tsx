@@ -283,9 +283,8 @@ export function FilesPanel({
   );
 
   const revealed = useRef(0);
+  useLayoutEffect(() => model.resetPaths(paths), [model, paths]);
   useLayoutEffect(() => {
-    model.resetPaths(paths);
-
     if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
     const item = model.getItem(tabs.revealPath);
 

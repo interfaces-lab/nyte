@@ -2,7 +2,6 @@ import { workbenchStyles } from "./workbench.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/sdk";
 import { clientCapabilities } from "../client-actions.ts";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
@@ -49,6 +48,8 @@ import { Deferred, loadDeferred } from "../deferred.tsx";
 import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
+import { usePaneControllerSnapshot } from "../layout/pane-context.tsx";
+import { activeSelection } from "../layout/pane-layout.ts";
 
 const MOUNTED_VIEWS = 3;
 
@@ -174,7 +175,6 @@ function FloatingWorkbenchPanel({
   viewKey,
   view,
   scope,
-  sessionId,
   workspaceName,
   workspacePath,
   capabilities,
@@ -182,11 +182,12 @@ function FloatingWorkbenchPanel({
   readonly viewKey: WorkbenchViewKey;
   readonly view: WorkbenchViewState;
   readonly scope: WorkbenchScope;
-  readonly sessionId: SessionId | undefined;
   readonly workspaceName: string | undefined;
   readonly workspacePath: string | null;
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
+  const selection = activeSelection(usePaneControllerSnapshot().layout);
+  const sessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);
   const project = scope.kind === "project";
@@ -321,7 +322,6 @@ function CompactWorkbenchBar({
 function PanelContent({
   tab,
   viewKey,
-  sessionId,
   visible,
   workspacePath,
   workspaceActive,
@@ -330,7 +330,6 @@ function PanelContent({
 }: {
   readonly tab: WorkbenchTab;
   readonly viewKey: WorkbenchViewKey;
-  readonly sessionId: SessionId | undefined;
   readonly visible: boolean;
   readonly workspacePath: string | null;
   readonly workspaceActive: boolean;
@@ -360,7 +359,6 @@ function PanelContent({
           {({ ChangesPanel }) => (
             <ChangesPanel
               visible={visible}
-              sessionId={sessionId}
               scope={tab.scope}
               selectedPath={tab.selectedPath ?? undefined}
               revealPathRevision={tab.pathRevealRevision}
@@ -472,7 +470,6 @@ function WorkbenchViewHost({
   view,
   current,
   scope,
-  sessionId,
   stageWidth,
   workspaceName,
   workspacePath,
@@ -482,7 +479,6 @@ function WorkbenchViewHost({
   readonly view: WorkbenchViewState;
   readonly current: boolean;
   readonly scope: WorkbenchScope;
-  readonly sessionId: SessionId | undefined;
   readonly stageWidth: number;
   readonly workspaceName: string | undefined;
   readonly workspacePath: string | null;
@@ -619,7 +615,6 @@ function WorkbenchViewHost({
         <PanelContent
           tab={tab}
           viewKey={viewKey}
-          sessionId={sessionId}
           visible={visible}
           workspacePath={workspacePath}
           workspaceActive={current}
@@ -662,7 +657,6 @@ function WorkbenchViewHost({
             viewKey={viewKey}
             view={view}
             scope={scope}
-            sessionId={sessionId}
             workspaceName={workspaceName}
             workspacePath={workspacePath}
             capabilities={capabilities}
@@ -717,12 +711,11 @@ function WorkbenchViewHost({
   );
 }
 
-interface WorkbenchProps {
+export function Workbench({
+  workspacePath,
+}: {
   readonly workspacePath: string | undefined;
-  readonly sessionId: SessionId | undefined;
-}
-
-export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactElement {
+}): ReactElement {
   const host = useHostState();
   const capabilities = clientCapabilities(nyte.host);
   const rootRef = useRef<HTMLElement>(null);
@@ -776,7 +769,6 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
             view={snapshot.views.get(key) ?? workbenchController.getView(key)}
             current={current}
             scope={current ? workbenchScope(viewWorkspacePath) : { kind: "pathless" }}
-            sessionId={current ? sessionId : undefined}
             stageWidth={stageWidth}
             workspaceName={host.data.workspace?.name}
             capabilities={capabilities}

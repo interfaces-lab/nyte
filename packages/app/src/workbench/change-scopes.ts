@@ -63,6 +63,29 @@ export function turnChangeOptions(turns: readonly TurnMessages[]): readonly Turn
     .reverse();
 }
 
+export function sameTurnOptions(
+  previous: readonly TurnChangeOption[],
+  next: readonly TurnChangeOption[],
+): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((option, index) => {
+      const other = next[index];
+
+      return (
+        other !== undefined &&
+        option.scope.turnId === other.scope.turnId &&
+        option.run === other.run &&
+        option.label === other.label &&
+        option.stats.added === other.stats.added &&
+        option.stats.removed === other.stats.removed &&
+        option.files.length === other.files.length &&
+        option.files.every((file, at) => other.files[at] === file)
+      );
+    })
+  );
+}
+
 export function turnHasChanges(option: TurnChangeOption): boolean {
   return option.files.length > 0;
 }
