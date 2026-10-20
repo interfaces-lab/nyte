@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures.ts";
-import { leaveSettings, openSettings, settingsNav, sidebar } from "./ui.ts";
+import { leaveSettings, mac, openSettings, settingsNav, sidebar } from "./ui.ts";
 
 test.use({ chapter: "settings" });
 
@@ -61,7 +61,11 @@ test("the settings journey", async ({ desktop }) => {
       "aria-valuenow",
       "0",
     );
-    await expect(page.getByRole("switch", { name: "Font smoothing" })).toBeChecked();
+    const fontSmoothing = page.getByRole("switch", { name: "Font smoothing" });
+
+    if (mac) await expect(fontSmoothing).toBeChecked();
+    else await expect(fontSmoothing).toHaveCount(0);
+
     await expect(page.getByRole("switch", { name: "Reduce transparency" })).not.toBeChecked();
 
     const uiFontSize = page.getByRole("textbox", { name: "UI font size" });

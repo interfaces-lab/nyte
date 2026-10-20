@@ -1,6 +1,16 @@
 import { FIXTURES } from "./baseline.ts";
 import { expect, test } from "./fixtures.ts";
-import { chatPane, chatRow, chatTab, openChat, revealChat, sidebar } from "./ui.ts";
+import {
+  chatPane,
+  chatRow,
+  chatTab,
+  menuShortcut,
+  openChat,
+  primaryKey,
+  revealChat,
+  shiftKey,
+  sidebar,
+} from "./ui.ts";
 
 test.use({ chapter: "navigation" });
 
@@ -43,8 +53,12 @@ test("the navigation journey", async ({ desktop }) => {
   await test.step("Chat actions offers the two splits", async () => {
     await page.getByRole("button", { name: "Chat actions" }).click();
     const menu = page.getByRole("menu", { name: "Chat actions" });
-    await expect(menu.getByRole("menuitem", { name: "Split Down ⇧⌘D" })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Split Right ⌘D" })).toBeVisible();
+    await expect(
+      menu.getByRole("menuitem", { name: `Split Down ${menuShortcut(shiftKey, primaryKey, "D")}` }),
+    ).toBeVisible();
+    await expect(
+      menu.getByRole("menuitem", { name: `Split Right ${menuShortcut(primaryKey, "D")}` }),
+    ).toBeVisible();
     await expect(menu.getByRole("menuitem")).toHaveCount(2);
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
@@ -70,7 +84,9 @@ test("the navigation journey", async ({ desktop }) => {
   });
 
   await test.step("Search lists recent chats and actions, filters by category and opens a result", async () => {
-    await sidebar(page).getByRole("button", { name: "Search ⌘ K" }).click();
+    await sidebar(page)
+      .getByRole("button", { name: `Search ${primaryKey} K` })
+      .click();
     const dialog = page.getByRole("dialog", { name: "Search chats and actions" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("combobox", { name: "Search" })).toBeFocused();
@@ -81,8 +97,8 @@ test("the navigation journey", async ({ desktop }) => {
     const actions = results.getByRole("group", { name: "Actions" });
 
     for (const name of [
-      "New Chat ⌘ N",
-      "Open Folder… ⌘ O",
+      `New Chat ${primaryKey} N`,
+      `Open Folder… ${primaryKey} O`,
       "General Settings",
       "Appearance",
       "Providers",
@@ -112,7 +128,7 @@ test("the navigation journey", async ({ desktop }) => {
   });
 
   await test.step("Escape closes Search without changing the tab", async () => {
-    await page.keyboard.press("Meta+k");
+    await page.keyboard.press("ControlOrMeta+k");
     const dialog = page.getByRole("dialog", { name: "Search chats and actions" });
     await expect(dialog).toBeVisible();
     await page.keyboard.press("Escape");

@@ -1,6 +1,16 @@
 import { expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
+export const mac = process.platform === "darwin";
+
+export const primaryKey = mac ? "⌘" : "Ctrl";
+
+export const shiftKey = mac ? "⇧" : "Shift";
+
+export function menuShortcut(...keys: readonly string[]): string {
+  return keys.join(mac ? "" : "+");
+}
+
 export function sidebar(page: Page): Locator {
   return page.getByRole("navigation", { name: "Sessions and workspaces" });
 }
@@ -57,7 +67,9 @@ export async function clearComposer(page: Page): Promise<void> {
 }
 
 export async function openNewChat(page: Page): Promise<void> {
-  await sidebar(page).getByRole("button", { name: "New Chat ⌘ N" }).click();
+  await sidebar(page)
+    .getByRole("button", { name: `New Chat ${primaryKey} N` })
+    .click();
   await expect(chatTab(page, "New chat")).toHaveAttribute("aria-selected", "true");
   await expect(composer(page)).toHaveAttribute("data-placeholder", /^Ask Nyte/u);
 }
