@@ -20,7 +20,6 @@ function lineIndex(frame: string, text: string): number {
 const everySchedule = buildView((v) =>
   v
     .turn("t1", (t) => t.user("hi").tool("bash", { running: true }), { run: "r1" })
-    .pending("join me", { schedule: { kind: "joined", run: "r1" } })
     .pending("asked for later", { schedule: { kind: "next-turn", reason: "requested" } })
     .pending("when idle", { schedule: { kind: "next-turn", reason: "idle" } })
     .pending("after the run", { schedule: { kind: "next-turn", reason: "run-ended" } })
@@ -30,7 +29,7 @@ const everySchedule = buildView((v) =>
       schedule: { kind: "next-turn", reason: "requested" },
       covered: false,
     })
-    .unsent("on its way")
+    .unsent("on its way", { delivery: "queue" })
     .unsent("trying again", { retrying: { at: 5_000, reason: "offline" } })
     .report({ child: "s9" }, "all done")
     .live(),
@@ -51,7 +50,6 @@ describe("labels", () => {
     await using app = await mount(ready(everySchedule), () => <QueueRows />, SIZE);
     const frame = app.captureCharFrame();
 
-    expect(findRow(frame, "join me")).toContain("steer · next response");
     expect(findRow(frame, "asked for later")).toContain("queued");
     expect(findRow(frame, "when idle")).toContain("next");
     expect(findRow(frame, "after the run")).toContain("after this run");

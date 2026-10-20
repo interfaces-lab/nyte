@@ -1,5 +1,6 @@
 import { asId } from "@nyte-ai/schema";
 import { describe, expect, test } from "bun:test";
+import { promptMessages } from "../../src/lib/view-helpers.ts";
 import { placeLabel, queuedCount, queueRows } from "../../src/model/queue.ts";
 import type { ScheduleSpec } from "../fixture/view.ts";
 import { followed, buildView } from "../fixture/view.ts";
@@ -31,7 +32,6 @@ describe("labels follow the schedule, never the delivery", () => {
   });
 
   test.each([
-    [{ kind: "joined", run: "run-t1" }, "steer · next response"],
     [{ kind: "next-turn", reason: "requested" }, "queued"],
     [{ kind: "next-turn", reason: "idle" }, "next"],
     [{ kind: "next-turn", reason: "run-ended" }, "after this run"],
@@ -42,13 +42,13 @@ describe("labels follow the schedule, never the delivery", () => {
   });
 
   test("a pending message no host covers waits for a host", () => {
-    expect(label({ kind: "joined", run: "run-t1" }, false)).toBe("waiting for a host");
+    expect(label({ kind: "next-turn", reason: "requested" }, false)).toBe("waiting for a host");
   });
 
   test("an unsent message is sending, or retrying with its reason", () => {
     const view = buildView((v) =>
       v
-        .unsent("a")
+        .unsent("a", { delivery: "queue" })
         .unsent("b", { retrying: { at: 9_000, reason: "offline" } })
         .live("run-1"),
     );
@@ -93,7 +93,7 @@ describe("rows", () => {
     const view = buildView((v) =>
       v
         .pending("one", { schedule: { kind: "next-turn", reason: "run-ended" } }, { id: "m1" })
-        .pending("two", { schedule: { kind: "joined", run: "run-1" } }, { id: "m2" })
+        .pending("two", { schedule: { kind: "next-turn", reason: "requested" } }, { id: "m2" })
         .live("run-1"),
     );
 
@@ -109,7 +109,7 @@ describe("rows", () => {
     ]);
   });
 
-  test("the footer counts rows waiting for a later run, not the ones joining this run", () => {
+  test("a steer on its way to this run or joining it is no queue row", () => {
     const view = buildView((v) =>
       v
         .turn("t1", (t) => t.user("go"))
@@ -119,7 +119,11 @@ describe("rows", () => {
         .unsent("c"),
     );
 
-    expect(queuedCount(queueRows(followed(view), null))).toBe(1);
+    const rows = queueRows(followed(view), null);
+
+    expect(rows.map((row) => row.text)).toEqual(["b"]);
+    expect(queuedCount(rows)).toBe(1);
+    expect(promptMessages(view).map((message) => message.content)).toEqual(["a", "c"]);
   });
 
   test("a file mention in a queued message shows as its marker", () => {

@@ -1,6 +1,6 @@
-import type { Delivery, MessageId, RunId, Schedule } from "@nyte-ai/sdk";
+import type { Delivery, MessageId, Schedule } from "@nyte-ai/sdk";
 import { shownContent } from "@nyte-ai/plugin/client/presentation";
-import type { UserMessage } from "@nyte-ai/plugin/client/presentation";
+import type { QueuedMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
 import { queuedMessages } from "../lib/view-helpers.ts";
 import { draftFromContent } from "./draft.ts";
 import type { FollowedSession, State } from "./state.ts";
@@ -16,7 +16,6 @@ export interface QueueRow {
 }
 
 export type Place =
-  | { readonly kind: "joining"; readonly run: RunId }
   | {
       readonly kind: "next-turn";
       readonly reason: Extract<Schedule, { readonly kind: "next-turn" }>["reason"];
@@ -26,7 +25,7 @@ export type Place =
   | { readonly kind: "uncovered" }
   | { readonly kind: "deciding" };
 
-function placeMessage(message: UserMessage): Place {
+function placeMessage(message: QueuedMessage): Place {
   const { status } = message;
 
   if (status.kind === "unsent")
@@ -36,12 +35,10 @@ function placeMessage(message: UserMessage): Place {
       reason: status.retrying?.reason ?? null,
     };
 
-  if (status.kind !== "pending" || !status.covered) return { kind: "uncovered" };
+  if (!status.covered) return { kind: "uncovered" };
   const { schedule } = status;
 
   switch (schedule.kind) {
-    case "joined":
-      return { kind: "joining", run: schedule.run };
     case "next-turn":
       return { kind: "next-turn", reason: schedule.reason };
     case "attached":
@@ -107,8 +104,6 @@ function nextTurnLabel(reason: Extract<Place, { kind: "next-turn" }>["reason"]):
 
 export function placeLabel(place: Place): string {
   switch (place.kind) {
-    case "joining":
-      return "steer · next response";
     case "next-turn":
       return nextTurnLabel(place.reason);
     case "attached":

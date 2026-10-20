@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { listen } from "@nyte-ai/host";
 import { sdk } from "@nyte-ai/sdk/client";
 import { openTestHost } from "../fixture/host.ts";
+import { followedSession } from "../../src/model/state.ts";
 import { composerShows, shownAt, startTui } from "../harness/tui.ts";
 import type { Tui } from "../harness/tui.ts";
 import { SAMPLE_ANSWER, saveFrame, saveProof } from "./scenario.ts";
@@ -51,6 +52,55 @@ test("streaming: a reply mid-stream shows its text and the working row", async (
   expect(tui.store.screen().run.kind).not.toBe("idle");
   held.resolve();
   await tui.state((store) => store.screen().run.kind === "idle");
+});
+
+test("steering: a message sent mid-run is a pending prompt from its send, never a queue row", async () => {
+  await using tui = await startTui();
+  await tui.ready();
+  const held = Promise.withResolvers<void>();
+  tui.fixture.reply({
+    content: [{ type: "text", text: SAMPLE_ANSWER }],
+    tokens: 8,
+    until: held.promise,
+  });
+  await tui.send("show me the plan");
+  await tui.frame((frame) => frame.includes("another step"));
+  tui.fixture.reply({ content: [{ type: "text", text: "Switched to tabs." }] });
+
+  const steer = "use tabs instead";
+  const queued: string[] = [];
+
+  const pendingPrompt = (): boolean =>
+    tui.store
+      .screen()
+      .transcript.rows.some(
+        (row) => row.kind === "prompt" && row.pending && row.message.content === steer,
+      );
+
+  await tui.send(steer);
+  await tui.until(() => {
+    if (tui.store.screen().queue.some((row) => row.text === steer)) queued.push(steer);
+
+    return (
+      pendingPrompt() &&
+      followedSession(tui.store.state())?.view?.messages.some(
+        (message) =>
+          message.kind === "user" &&
+          message.content === steer &&
+          message.status.kind === "pending" &&
+          message.status.schedule.kind === "joined",
+      ) === true
+    );
+  });
+  await saveFrame(tui, "state-steering");
+
+  expect(queued).toEqual([]);
+  held.resolve();
+  await tui.frame((frame) => frame.includes("Switched to tabs."));
+  await tui.state((store) => store.screen().run.kind === "idle");
+
+  expect(queued).toEqual([]);
+  expect(pendingPrompt()).toBe(false);
 });
 
 test("error, transient: a provider overload shows its retry", async () => {

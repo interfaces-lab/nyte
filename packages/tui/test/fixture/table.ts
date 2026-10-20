@@ -24,7 +24,7 @@ export interface TableSpec {
   readonly followUp?: "steer" | "queue";
   readonly queue?: readonly {
     readonly id: string;
-    readonly place: "joining" | "next-turn" | "sending" | "uncovered";
+    readonly place: "next-turn" | "sending" | "uncovered";
   }[];
   readonly tasks?: number;
   readonly row?: Draft["row"];
@@ -45,10 +45,8 @@ function buildRun(spec: TableSpec["run"]): RunModel {
   }
 }
 
-function buildPlace(place: "joining" | "next-turn" | "sending" | "uncovered"): Place {
+function buildPlace(place: "next-turn" | "sending" | "uncovered"): Place {
   switch (place) {
-    case "joining":
-      return { kind: "joining", run: asId("r1") };
     case "next-turn":
       return { kind: "next-turn", reason: "run-ended" };
     case "sending":

@@ -302,14 +302,14 @@ describe("busy", () => {
     expect(interactions[ENTER].label).toBe("queue");
   });
 
-  test("Enter on an empty draft promotes the first row that has not joined the run", () => {
+  test("Enter on an empty draft promotes the first row a host covers", () => {
     expect(
       at(
         {
           run: "working",
           followUp: "queue",
           queue: [
-            { id: "m1", place: "joining" },
+            { id: "m1", place: "uncovered" },
             { id: "m2", place: "next-turn" },
           ],
         },

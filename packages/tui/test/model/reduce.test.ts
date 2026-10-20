@@ -24,6 +24,11 @@ const queued = buildView((v) =>
       { schedule: { kind: "next-turn", reason: "run-ended" } },
       { id: "m3", delivery: "queue" },
     )
+    .pending(
+      "third",
+      { schedule: { kind: "next-turn", reason: "run-ended" } },
+      { id: "m5", delivery: "queue" },
+    )
     .unsent("sending", { id: "m4" }),
 );
 
@@ -56,7 +61,7 @@ describe("queue operations", () => {
     );
   });
 
-  test("promote revises a waiting row to steer in place, never one already joining", () => {
+  test("promote revises a waiting row to steer in place, never a steer joining the run", () => {
     const state = ready(queued);
 
     expect(play(state, { kind: "promote", message: asId("m3") }).effects).toEqual([
@@ -74,9 +79,9 @@ describe("queue operations", () => {
 
   test("reorder positions against the one inbox order", () => {
     const state = ready(queued);
-    const revise = (message: string, to: Parameters<typeof reduce>[1]) => play(state, to).effects;
+    const revise = (to: Parameters<typeof reduce>[1]) => play(state, to).effects;
 
-    expect(revise("m3", { kind: "reorder", message: asId("m3"), to: "earlier" })).toMatchObject([
+    expect(revise({ kind: "reorder", message: asId("m3"), to: "earlier" })).toMatchObject([
       {
         kind: "revise",
         message: "m3",
@@ -84,22 +89,21 @@ describe("queue operations", () => {
         position: { kind: "before", message: "m2" },
       },
     ]);
-    expect(revise("m1", { kind: "reorder", message: asId("m1"), to: "later" })).toMatchObject([
-      { kind: "revise", message: "m1", position: { kind: "before", message: "m3" } },
+    expect(revise({ kind: "reorder", message: asId("m2"), to: "later" })).toMatchObject([
+      { kind: "revise", message: "m2", position: { kind: "before", message: "m5" } },
     ]);
-    expect(revise("m2", { kind: "reorder", message: asId("m2"), to: "later" })).toMatchObject([
+    expect(revise({ kind: "reorder", message: asId("m3"), to: "later" })).toMatchObject([
+      { kind: "revise", message: "m3", position: { kind: "last" } },
+    ]);
+    expect(revise({ kind: "reorder", message: asId("m2"), to: "earlier" })).toEqual([]);
+    expect(
+      revise({ kind: "reorder", message: asId("m3"), to: { before: asId("m2") } }),
+    ).toMatchObject([{ kind: "revise", position: { kind: "before", message: "m2" } }]);
+    expect(revise({ kind: "reorder", message: asId("m2"), to: { before: null } })).toMatchObject([
       { kind: "revise", message: "m2", position: { kind: "last" } },
     ]);
-    expect(revise("m1", { kind: "reorder", message: asId("m1"), to: "earlier" })).toEqual([]);
-    expect(
-      revise("m1", { kind: "reorder", message: asId("m1"), to: { before: asId("m3") } }),
-    ).toMatchObject([{ kind: "revise", position: { kind: "before", message: "m3" } }]);
-    expect(
-      revise("m1", { kind: "reorder", message: asId("m1"), to: { before: null } }),
-    ).toMatchObject([{ kind: "revise", message: "m1", position: { kind: "last" } }]);
-    expect(revise("m3", { kind: "reorder", message: asId("m3"), to: { before: null } })).toEqual(
-      [],
-    );
+    expect(revise({ kind: "reorder", message: asId("m5"), to: { before: null } })).toEqual([]);
+    expect(revise({ kind: "reorder", message: asId("m1"), to: "later" })).toEqual([]);
   });
 
   test("editing a queued message loads it, saving revises it with replace, the old draft comes back", () => {

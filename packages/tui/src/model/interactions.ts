@@ -79,11 +79,7 @@ function busyDelivery(followUp: "steer" | "queue", alternate: boolean): Delivery
 }
 
 function promotable(queue: readonly QueueRow[]): QueueRow | null {
-  return (
-    queue.find(
-      (row) => row.withdrawable && row.place.kind !== "joining" && row.place.kind !== "uncovered",
-    ) ?? null
-  );
+  return queue.find((row) => row.withdrawable && row.place.kind !== "uncovered") ?? null;
 }
 
 export function blockedReason(blocked: Blocked): string {

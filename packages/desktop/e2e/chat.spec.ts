@@ -95,6 +95,43 @@ test("a held response can be stopped", async ({ desktop }, testInfo) => {
   });
 });
 
+test("a steer sent during a response shows in the transcript, never in the queue", async ({
+  desktop,
+}, testInfo) => {
+  const { page } = desktop;
+  await openNewChat(page);
+  await send(page, "/hold");
+  await expect(messages(page).getByRole("paragraph").last()).toContainText("Holding");
+  await page.evaluate(() => {
+    const tray = 'section[aria-label="Queued messages"]';
+
+    new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes) {
+          const queued =
+            (record.target instanceof Element && record.target.closest(tray) !== null) ||
+            (node instanceof Element && (node.matches(tray) || node.querySelector(tray) !== null));
+
+          if (queued && node.textContent?.includes("Steer in") === true)
+            document.body.dataset.queuedSteer = "seen";
+        }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+
+  const field = composer(page);
+  await field.fill("Steer in");
+  await field.press("Enter");
+  await expect(messages(page).getByRole("paragraph").filter({ hasText: "Steer in" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Queued messages" })).toHaveCount(0);
+  await expect(page.locator("body")).not.toHaveAttribute("data-queued-steer", "seen");
+  await testInfo.attach("steer-pending", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
+  await chatPane(page).getByRole("button", { name: "Stop response" }).click();
+  await expect(messages(page).getByRole("paragraph").last()).toHaveText("Echo: Steer in");
+});
+
 test("a refused turn shows the provider's error", async ({ desktop }) => {
   const { page } = desktop;
   await openNewChat(page);

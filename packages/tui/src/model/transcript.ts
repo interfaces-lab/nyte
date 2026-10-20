@@ -10,10 +10,18 @@ import type { MountWindow } from "./window.ts";
 
 export type RowKey = string;
 
+/** A message not yet in its turn; `pending` while a run is live, until the message joins it. */
+export interface PromptRow {
+  readonly kind: "prompt";
+  readonly key: RowKey;
+  readonly message: UserMessage;
+  readonly pending: boolean;
+}
+
 /** One transcript row. A row carries its content, and an unchanged row keeps its identity across frames. */
 export type Row =
   | { readonly kind: "turn"; readonly key: RowKey; readonly turn: TurnModel }
-  | { readonly kind: "prompt"; readonly key: RowKey; readonly message: UserMessage }
+  | PromptRow
   | { readonly kind: "shell"; readonly key: RowKey; readonly job: ShellJob };
 
 export interface TranscriptModel {
@@ -172,8 +180,10 @@ function turnRows(view: SessionView): readonly Row[] {
     rows.push(turnRow(turn));
   }
 
+  const pending = view.execution.kind !== "idle";
+
   for (const message of [...promptMessages(view), ...pendingReports(view)])
-    rows.push(messageRow(message));
+    rows.push(messageRow(message, pending));
 
   return rows;
 }
@@ -289,11 +299,11 @@ function turnRow(turn: TurnModel): Row {
   return row;
 }
 
-function messageRow(message: UserMessage): Row {
+function messageRow(message: UserMessage, pending: boolean): Row {
   const known = MESSAGE_ROWS.get(message);
 
-  if (known !== undefined) return known;
-  const row: Row = { kind: "prompt", key: `prompt:${message.id}`, message };
+  if (known?.kind === "prompt" && known.pending === pending) return known;
+  const row: Row = { kind: "prompt", key: `prompt:${message.id}`, message, pending };
   MESSAGE_ROWS.set(message, row);
 
   return row;

@@ -42,9 +42,6 @@ export const queueHandlers = {
     queued(state, msg, now, (row, message, session) => {
       if (!row.withdrawable) return refuse(state, "That message is still sending", now, "info");
 
-      if (row.place.kind === "joining")
-        return refuse(state, "That message already joins this run", now, "info");
-
       return {
         state,
         effects: [

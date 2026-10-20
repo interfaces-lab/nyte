@@ -1,6 +1,10 @@
 import type { Message, SessionView } from "@nyte-ai/sdk";
-import { showsReport } from "@nyte-ai/plugin/client/presentation";
-import type { ReportMessage, UserMessage } from "@nyte-ai/plugin/client/presentation";
+import { showsReport, waitsInQueue } from "@nyte-ai/plugin/client/presentation";
+import type {
+  QueuedMessage,
+  ReportMessage,
+  UserMessage,
+} from "@nyte-ai/plugin/client/presentation";
 
 const UNLANDED = new WeakMap<readonly Message[], readonly UserMessage[]>();
 
@@ -18,23 +22,19 @@ function unlandedMessages(messages: readonly Message[]): readonly UserMessage[] 
   return unlanded;
 }
 
-function landsNow(message: UserMessage, view: SessionView): boolean {
-  return (
-    view.execution.kind === "idle" &&
-    (message.status.kind === "pending" ||
-      (message.status.kind === "unsent" && message.status.retrying === null))
-  );
-}
+export function queuedMessages(view: SessionView): readonly QueuedMessage[] {
+  const running = view.execution.kind !== "idle";
 
-export function queuedMessages(view: SessionView): readonly UserMessage[] {
-  return unlandedMessages(view.messages).filter(
-    (message) => !showsReport(message) && !landsNow(message, view),
+  return unlandedMessages(view.messages).filter((message): message is QueuedMessage =>
+    waitsInQueue(message, running),
   );
 }
 
 export function promptMessages(view: SessionView): readonly UserMessage[] {
+  const running = view.execution.kind !== "idle";
+
   return unlandedMessages(view.messages).filter(
-    (message) => !showsReport(message) && landsNow(message, view),
+    (message) => !showsReport(message) && !waitsInQueue(message, running),
   );
 }
 

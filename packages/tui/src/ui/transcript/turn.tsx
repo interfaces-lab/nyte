@@ -120,7 +120,7 @@ function AgentGroup(props: { readonly messages: readonly Message[] }): JSX.Eleme
         <span style={{ fg: app.kit.theme().dim }}>{header().tail}</span>
       </text>
       <Keyed each={props.messages} by={(message) => message.id}>
-        {(message) => <MessageView message={message} />}
+        {(message) => <MessageView message={message} pending={false} />}
       </Keyed>
     </box>
   );
@@ -142,7 +142,7 @@ function SegmentView(props: { readonly segment: Accessor<Segment> }): JSX.Elemen
   return (
     <Switch>
       <Match when={single()}>
-        {(message: Accessor<Message>) => <MessageView message={message} />}
+        {(message: Accessor<Message>) => <MessageView message={message} pending={false} />}
       </Match>
       <Match when={group()}>
         {(messages: Accessor<readonly Message[]>) => <AgentGroup messages={messages()} />}
@@ -198,7 +198,10 @@ function readPart(message: Message): PartMessage | undefined {
   return message.kind === "part" ? message : undefined;
 }
 
-export function MessageView(props: { readonly message: Accessor<Message> }): JSX.Element {
+export function MessageView(props: {
+  readonly message: Accessor<Message>;
+  readonly pending: boolean;
+}): JSX.Element {
   const scope = useTranscript();
   const expanded = createMemo(() => scope.model().toolOutput === "expanded");
 
@@ -208,7 +211,9 @@ export function MessageView(props: { readonly message: Accessor<Message> }): JSX
         {(report: Accessor<ReportMessage>) => <ReportBlock message={report()} />}
       </Match>
       <Match when={readUser(props.message())}>
-        {(user: Accessor<UserMessage>) => <UserMessageView message={user()} />}
+        {(user: Accessor<UserMessage>) => (
+          <UserMessageView message={user()} pending={props.pending} />
+        )}
       </Match>
       <Match when={readTool(props.message())}>
         {(tool: Accessor<ToolMessage>) => <ToolCard message={tool()} expanded={expanded()} />}

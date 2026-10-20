@@ -73,7 +73,10 @@ function ImageBody(props: { readonly image: AttachedFile }): JSX.Element {
   );
 }
 
-export function UserMessageView(props: { readonly message: UserMessage }): JSX.Element {
+export function UserMessageView(props: {
+  readonly message: UserMessage;
+  readonly pending: boolean;
+}): JSX.Element {
   const app = useApp();
   const scope = useTranscript();
   const theme = (): ReturnType<typeof app.kit.theme> => app.kit.theme();
@@ -115,7 +118,7 @@ export function UserMessageView(props: { readonly message: UserMessage }): JSX.E
     >
       <Show when={presentation().text !== ""}>
         <text
-          fg={theme().foreground}
+          fg={props.pending ? theme().dim : theme().foreground}
           wrapMode="word"
           selectionBg={theme().selectionBackground}
           selectionFg={theme().selectionForeground}

@@ -1,4 +1,5 @@
 import type { Message, SessionView } from "@nyte-ai/sdk";
+import { waitsInQueue } from "@nyte-ai/plugin/client/presentation";
 import type {
   failureNotice,
   TextMessage,
@@ -84,47 +85,16 @@ export function conversationMessages(view: SessionView | undefined) {
     (message): message is UserMessage => message.kind === "user" && !turns.has(message.turn),
   );
 
-  const prompts = users.filter((message) => {
-    switch (message.status.kind) {
-      case "unsent":
-        return message.status.retrying === null && !running;
-      case "pending":
-        return (
-          !running ||
-          message.status.schedule.kind === "joined" ||
-          message.source.kind === "child" ||
-          message.source.kind === "job"
-        );
-      case "landed":
-        return true;
-      default: {
-        const _exhaustive: never = message.status;
+  const prompts = users.filter((message) => !waitsInQueue(message, running));
 
-        return _exhaustive;
-      }
-    }
-  });
+  const waiting = users.filter((message) => waitsInQueue(message, running));
 
   return {
     running,
     held,
     prompts: present(prompts),
-    queued: present(
-      users.filter(
-        (message) =>
-          running &&
-          message.status.kind === "pending" &&
-          message.status.schedule.kind !== "joined" &&
-          message.source.kind !== "child" &&
-          message.source.kind !== "job",
-      ),
-    ),
-    unsent: present(
-      users.filter(
-        (message) =>
-          message.status.kind === "unsent" && (message.status.retrying !== null || running),
-      ),
-    ),
+    queued: present(waiting.filter((message) => message.status.kind === "pending")),
+    unsent: present(waiting.filter((message) => message.status.kind === "unsent")),
   };
 }
 

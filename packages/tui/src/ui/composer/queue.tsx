@@ -42,8 +42,6 @@ interface RowMark {
 
 function placeMark(place: Place, theme: CliTheme): RowMark {
   switch (place.kind) {
-    case "joining":
-      return { glyph: GLYPHS.steer, tone: theme.accent };
     case "next-turn":
     case "attached":
       return { glyph: GLYPHS.queue, tone: theme.warning };
