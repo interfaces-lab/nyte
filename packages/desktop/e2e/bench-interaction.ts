@@ -15,15 +15,18 @@ import { e2eModels, scriptedReply } from "../src/main/fixtures/e2e-models.ts";
 import { FIXTURES, prepareHome } from "./baseline.ts";
 import { keystrokeMeasure, typeAndMeasure } from "./keystrokes.ts";
 import { polishModel, serveScriptedModel } from "./polish-fixture.ts";
-import { inspectProcessTree } from "./process-tree.ts";
+import { cpuSeconds, inspectProcessTree, treeTotals } from "./process-tree.ts";
 import {
   chatRow,
+  chooseScripted,
   clearComposer,
-  leaveSettings,
+  closeWorkbenchTabs,
+  connectAnthropic,
+  loadAllMessages,
   messages,
   openNewChat,
+  revealRow,
   send,
-  sidebar,
 } from "./ui.ts";
 
 const timeout = 60_000;
@@ -32,7 +35,7 @@ const MIB = 1_024 * 1_024;
 
 const streamDeltas = 300;
 
-const streamEnd = "Stream end marker.";
+const streamEnds = { "/bench-stream": "Stream end marker.", "/bench-scale": "Scale end marker." };
 
 const metricFields = [
   { key: "openTranscriptMs", label: "Open the 2,000-message chat", unit: "ms", max: 100 },
@@ -41,6 +44,10 @@ const metricFields = [
   { key: "streamFrameP95Ms", label: "Frame time p95, streaming", unit: "ms", max: 16.7 * 1.5 },
   { key: "streamFrameMaxMs", label: "Longest frame, streaming", unit: "ms", max: null },
   { key: "streamLongFrames", label: "Long animation frames, streaming", unit: "count", max: 0 },
+  { key: "shortStreamScriptUs", label: "Script per delta, 50-message chat", unit: "µs", max: null },
+  { key: "streamScriptUs", label: "Script per delta, 2,000-message chat", unit: "µs", max: null },
+  { key: "streamScriptExtraUs", label: "  extra per delta, 2,000 vs 50", unit: "µs", max: 200 },
+  { key: "streamScriptGrowth", label: "  2,000 vs 50 messages", unit: "%", max: null },
   { key: "scrollFps", label: "Scroll FPS", unit: "fps", min: 55 },
   { key: "scrollFrameP95Ms", label: "Frame time p95, scrolling", unit: "ms", max: 16.7 * 1.5 },
   { key: "browserColdMs", label: "Browser panel, cold", unit: "ms", max: null },
@@ -63,6 +70,9 @@ const metricFields = [
   },
   { key: "switchNodeGrowth", label: "DOM node growth, 50 switches", unit: "count", max: 2_000 },
   { key: "switchProcessGrowth", label: "Process growth, 50 switches", unit: "count", max: 0 },
+  { key: "distinctHeapPerChat", label: "Heap per chat, first 20 chats", unit: "bytes", max: null },
+  { key: "laterHeapPerChat", label: "Heap per chat, next 20 chats", unit: "bytes", max: null },
+  { key: "laterHeapShare", label: "  next 20 vs first 20", unit: "%", max: 25 },
   { key: "soakStalls", label: "Soak turns that stalled", unit: "count", max: 0 },
   { key: "soakHeapSlope", label: "Renderer heap per soak turn", unit: "bytes", max: 64 * 1_024 },
   { key: "soakHeapGrowth", label: "Renderer heap growth, soak", unit: "bytes", max: null },
@@ -71,15 +81,22 @@ const metricFields = [
 
 type MetricKey = (typeof metricFields)[number]["key"];
 
+const distinctChats = 40;
+
+const distinctTurns = 40;
+
+const ChatSchema = Type.Object({
+  title: Type.String(),
+  lastMessage: Type.String(),
+});
+
 const SeededSchema = Type.Object({
   directory: Type.String(),
   home: Type.String(),
   profile: Type.String(),
-  transcript: Type.Object({
-    title: Type.String(),
-    lastMessage: Type.String(),
-    turns: Type.Number(),
-  }),
+  transcript: ChatSchema,
+  shortTranscript: ChatSchema,
+  distinctChats: Type.Array(ChatSchema),
   others: Type.Array(Type.String()),
 });
 
@@ -144,6 +161,24 @@ function readOptions() {
 
 type Options = NonNullable<ReturnType<typeof readOptions>>;
 
+async function seedChat(
+  host: Awaited<ReturnType<typeof sdk.open>>,
+  title: string,
+  turns: number,
+): Promise<Type.Static<typeof ChatSchema>> {
+  const prompt = (turn: number) => `${title}, turn ${turn} of ${turns}`;
+  const { session, receipt } = await host.sessions.start({ name: title, content: prompt(1) });
+
+  for (let turn = 1; turn <= turns; turn++) {
+    const outcome = await (turn === 1 ? receipt : await session.send(prompt(turn))).settled();
+
+    if (outcome.kind !== "completed")
+      throw new Error(`Seeding ${title}, turn ${turn} failed: ${outcome.kind}`);
+  }
+
+  return { title, lastMessage: `Echo: ${prompt(turns)}` };
+}
+
 async function seedHome(directory: string, turns: number): Promise<Fixture> {
   dev.off();
   const prepared = await prepareHome(directory);
@@ -154,36 +189,29 @@ async function seedHome(directory: string, turns: number): Promise<Fixture> {
     models: e2eModels().models,
   });
 
-  const title = `Transcript ${turns * 2}`;
-
   try {
-    const { session, receipt } = await host.sessions.start({
-      name: title,
-      content: `Turn 1 of ${turns}`,
-    });
+    const transcript = await seedChat(host, `Transcript ${turns * 2}`, turns);
+    const shortTranscript = await seedChat(host, "Transcript 50", 25);
+    const distinct: Type.Static<typeof ChatSchema>[] = [];
 
-    for (let turn = 1; turn <= turns; turn++) {
-      const outcome = await (
-        turn === 1 ? receipt : await session.send(`Turn ${turn} of ${turns}`)
-      ).settled();
+    for (let chat = 1; chat <= distinctChats; chat++)
+      distinct.push(await seedChat(host, `Chat ${chat} of ${distinctChats}`, distinctTurns));
 
-      if (outcome.kind !== "completed")
-        throw new Error(`Seeding turn ${turn} failed: ${outcome.kind}`);
-    }
+    const profile = join(directory, "profile");
+    await mkdir(profile, { recursive: true, mode: 0o700 });
+
+    return {
+      directory,
+      home: prepared.home,
+      profile,
+      transcript,
+      shortTranscript,
+      distinctChats: distinct,
+      others: Object.values(FIXTURES),
+    };
   } finally {
     await host.close();
   }
-
-  const profile = join(directory, "profile");
-  await mkdir(profile, { recursive: true, mode: 0o700 });
-
-  return {
-    directory,
-    home: prepared.home,
-    profile,
-    transcript: { title, lastMessage: `Echo: Turn ${turns} of ${turns}`, turns },
-    others: Object.values(FIXTURES),
-  };
 }
 
 async function allowScriptedModel(home: string, origin: string): Promise<void> {
@@ -303,19 +331,6 @@ async function pointerTime(page: Page): Promise<number> {
   );
 }
 
-async function revealRow(page: Page, title: string): Promise<void> {
-  const row = chatRow(page, title);
-
-  if (await row.isVisible()) return;
-  const done = sidebar(page).getByRole("button", { name: /^Done ?\d+$/u });
-
-  if ((await done.getAttribute("aria-expanded")) !== "true") await done.click();
-  const more = sidebar(page).getByRole("button", { name: /^Show \d+ More$/iu });
-
-  if (!(await row.isVisible()) && (await more.isVisible())) await more.click();
-  await row.waitFor();
-}
-
 async function switchTo(page: Page, title: string, lastMessage: string): Promise<number> {
   await revealRow(page, title);
   await armPointer(page);
@@ -376,45 +391,6 @@ function percentile(values: readonly number[], share: number): number {
   return sorted[Math.max(0, Math.ceil(sorted.length * share) - 1)] ?? Number.NaN;
 }
 
-async function connectAnthropic(page: Page): Promise<void> {
-  await page.keyboard.press("ControlOrMeta+,");
-  await page.getByRole("link", { name: "Providers", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Providers", level: 1 })).toBeVisible();
-  const offer = page.getByText("Claude models from Anthropic");
-  await offer
-    .or(page.getByText("Anthropic", { exact: true }))
-    .first()
-    .waitFor();
-
-  if (await offer.isVisible()) {
-    await offer.locator("xpath=ancestor::*[.//button][1]").getByRole("button").first().click();
-    await page.getByRole("menuitem", { name: /API Key/u }).click();
-    await page.getByPlaceholder(/API key/iu).fill("sk-ant-api03-bench");
-    await page.keyboard.press("Enter");
-    await expect(offer).toBeHidden({ timeout });
-  }
-
-  await leaveSettings(page);
-}
-
-async function chooseScripted(page: Page): Promise<void> {
-  const picker = page.getByRole("form", { name: "Message composer" }).getByRole("button", {
-    name: /Scripted|Choose a model|model/iu,
-  });
-
-  if ((await picker.first().textContent())?.includes("Scripted")) return;
-  await picker.first().click();
-  const scripted = page.getByRole("option", { name: /^Scripted/u });
-  const submenu = page.getByRole("menuitem", { name: /^Model/u });
-
-  await scripted.or(submenu).first().waitFor();
-
-  if (!(await scripted.isVisible())) await submenu.hover();
-  await scripted.click();
-  await page.keyboard.press("Escape");
-  await expect(picker.first()).toContainText("Scripted");
-}
-
 async function heap(cdp: CDPSession) {
   await cdp.send("HeapProfiler.collectGarbage");
   const usage = await cdp.send("Runtime.getHeapUsage");
@@ -423,10 +399,30 @@ async function heap(cdp: CDPSession) {
   return { heap: usage.usedSize, nodes: counters.nodes, listeners: counters.jsEventListeners };
 }
 
-async function treeTotals(application: ElectronApplication) {
-  const tree = (await inspectProcessTree(application.process().pid)) ?? [];
+async function scriptMs(cdp: CDPSession): Promise<number> {
+  const { metrics } = await cdp.send("Performance.getMetrics");
 
-  return { processes: tree.length, rss: tree.reduce((total, row) => total + row.residentBytes, 0) };
+  return (metrics.find((metric) => metric.name === "ScriptDuration")?.value ?? Number.NaN) * 1_000;
+}
+
+async function streamAnswer(
+  page: Page,
+  cdp: CDPSession,
+  model: Awaited<ReturnType<typeof serveScripted>>,
+  command: keyof typeof streamEnds,
+) {
+  const streamed = model.nextStream();
+  const stop = await recordFrames(page);
+  const since = Value.Parse(Type.Number(), await page.evaluate(() => performance.now()));
+  const scriptBefore = await scriptMs(cdp);
+  await send(page, command);
+  const window = await streamed;
+  await page.waitForTimeout(300);
+  const intervals = await stop();
+  await expect(messages(page)).toContainText(streamEnds[command], { timeout });
+  const scriptUsPerDelta = (((await scriptMs(cdp)) - scriptBefore) / streamDeltas) * 1_000;
+
+  return { window, intervals, since, scriptUsPerDelta };
 }
 
 async function appMetrics(application: ElectronApplication) {
@@ -437,27 +433,6 @@ async function appMetrics(application: ElectronApplication) {
       wakeups: entry.cpu.idleWakeupsPerSecond,
       cpu: entry.cpu.percentCPUUsage,
     })),
-  );
-}
-
-async function cpuSeconds(
-  root: number | undefined,
-): Promise<ReadonlyMap<number, { command: string; seconds: number }>> {
-  const tree = new Set((await inspectProcessTree(root))?.map((row) => row.pid) ?? []);
-  const { stdout } = await promisify(execFile)("ps", ["-A", "-o", "pid=,time=,comm="]);
-
-  return new Map(
-    stdout.split("\n").flatMap((line) => {
-      const match = /^\s*(\d+)\s+([\d:.]+)\s+(.*)$/u.exec(line);
-
-      if (match === null || !tree.has(Number(match[1]))) return [];
-
-      const seconds = (match[2] ?? "0")
-        .split(":")
-        .reduce((total, part) => total * 60 + Number(part), 0);
-
-      return [[Number(match[1]), { command: match[3] ?? "", seconds }]];
-    }),
   );
 }
 
@@ -493,23 +468,6 @@ async function quit(application: ElectronApplication): Promise<void> {
     } catch {
       continue;
     }
-}
-
-async function closeWorkbenchTabs(page: Page): Promise<void> {
-  const tabs = page.getByRole("tablist", { name: "Workbench tabs" });
-
-  for (let left = await tabs.getByRole("tab").count(); left > 0; left--) {
-    const tab = tabs.getByRole("tab").first();
-    const label = await tab.getAttribute("aria-label");
-    await tab.hover({ position: { x: 8, y: 8 } });
-    await tabs.getByRole("button", { name: `Close ${label ?? ""} tab` }).click();
-    const confirm = page.getByRole("alertdialog").getByRole("button", { name: /^Close/u });
-
-    await confirm.click({ timeout: 2_000 }).catch(() => undefined);
-  }
-
-  await expect(tabs.getByRole("tab")).toHaveCount(0);
-  await expect(page.getByRole("navigation", { name: "Workbench navigation" })).toBeVisible();
 }
 
 async function step(
@@ -563,6 +521,7 @@ async function measure(
       await page.bringToFront();
       await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout });
       const cdp = await application.context().newCDPSession(page);
+      await cdp.send("Performance.enable");
       let { transcript } = fixture;
 
       await step(page, errors, "connect Anthropic", () => connectAnthropic(page));
@@ -595,14 +554,9 @@ async function measure(
       });
 
       await step(page, errors, "stream into the transcript", async () => {
+        notes.transcriptOldest = await loadAllMessages(page);
         await chooseScripted(page);
-        const streamed = model.nextStream();
-        const stop = await recordFrames(page);
-        const since = Value.Parse(Type.Number(), await page.evaluate(() => performance.now()));
-        await send(page, "/bench-stream");
-        const window = await streamed;
-        await page.waitForTimeout(300);
-        const intervals = await stop();
+        const { window, intervals, since } = await streamAnswer(page, cdp, model, "/bench-stream");
 
         const origin = Value.Parse(
           Type.Number(),
@@ -615,8 +569,9 @@ async function measure(
         add("streamFrameP95Ms", percentile(intervals, 0.95));
         add("streamFrameMaxMs", Math.max(...intervals));
         add("streamLongFrames", await longAnimationFrames(page, since));
-        await expect(messages(page)).toContainText(streamEnd, { timeout });
-        transcript = { ...transcript, lastMessage: streamEnd };
+        const scale = await streamAnswer(page, cdp, model, "/bench-scale");
+        add("streamScriptUs", scale.scriptUsPerDelta);
+        transcript = { ...transcript, lastMessage: streamEnds["/bench-scale"] };
       });
 
       await step(page, errors, "scroll the transcript", async () => {
@@ -681,10 +636,22 @@ async function measure(
         );
       });
 
+      await step(page, errors, "stream into the 50-message chat", async () => {
+        await switchTo(page, fixture.shortTranscript.title, fixture.shortTranscript.lastMessage);
+        await chooseScripted(page);
+        const { scriptUsPerDelta } = await streamAnswer(page, cdp, model, "/bench-scale");
+        add("shortStreamScriptUs", scriptUsPerDelta);
+
+        for (const long of metrics.streamScriptUs ?? []) {
+          add("streamScriptExtraUs", long - scriptUsPerDelta);
+          add("streamScriptGrowth", (long / scriptUsPerDelta) * 100);
+        }
+      });
+
       await step(page, errors, `${options.switches} session switches`, async () => {
         const targets = [...fixture.others.slice(0, 4), transcript.title];
         notes.switchTargets = targets;
-        const warm = { ...(await heap(cdp)), ...(await treeTotals(application)) };
+        const warm = { ...(await heap(cdp)), ...(await treeTotals(application.process().pid)) };
 
         for (let index = 0; index < options.switches; index++) {
           const title = targets[index % targets.length] ?? transcript.title;
@@ -692,11 +659,33 @@ async function measure(
           add(title === transcript.title ? "transcriptSwitchMs" : "switchMs", elapsed);
         }
 
-        const settled = { ...(await heap(cdp)), ...(await treeTotals(application)) };
+        const settled = { ...(await heap(cdp)), ...(await treeTotals(application.process().pid)) };
         notes.switches = { warm, settled };
         add("switchHeapGrowth", settled.heap - warm.heap);
         add("switchNodeGrowth", settled.nodes - warm.nodes);
         add("switchProcessGrowth", settled.processes - warm.processes);
+      });
+
+      await step(page, errors, `${distinctChats} distinct chats`, async () => {
+        const half = fixture.distinctChats.length / 2;
+        const oldest: string[] = [];
+
+        const visit = async (chats: typeof fixture.distinctChats) => {
+          for (const chat of chats) {
+            await switchTo(page, chat.title, chat.lastMessage);
+            oldest.push(await loadAllMessages(page));
+          }
+
+          return heap(cdp);
+        };
+
+        const before = await heap(cdp);
+        const first = await visit(fixture.distinctChats.slice(0, half));
+        const second = await visit(fixture.distinctChats.slice(half));
+        notes.distinct = { before, first, second, oldest };
+        add("distinctHeapPerChat", (first.heap - before.heap) / half);
+        add("laterHeapPerChat", (second.heap - first.heap) / half);
+        add("laterHeapShare", ((second.heap - first.heap) / (first.heap - before.heap)) * 100);
       });
 
       await step(page, errors, `soak of ${options.soakTurns} turns`, async () => {
@@ -732,7 +721,7 @@ async function measure(
               turn,
               heap: sample.heap,
               nodes: sample.nodes,
-              rss: (await treeTotals(application)).rss,
+              rss: (await treeTotals(application.process().pid)).rss,
             });
           }
         }
@@ -780,7 +769,7 @@ async function measure(
       }
     }
 
-    notes.fixture = { transcriptTurns: fixture.transcript.turns, others: fixture.others.length };
+    notes.fixture = { transcriptTurns: options.turns, others: fixture.others.length };
   } catch (cause) {
     errors.push(cause instanceof Error ? cause.message : String(cause));
   } finally {
@@ -816,9 +805,14 @@ async function serveScripted() {
 
     if (title !== null) return { content: [{ type: "text", text: title }] };
 
-    if (text === "/bench-stream")
+    if (text === "/bench-stream" || text === "/bench-scale")
       return {
-        content: [{ type: "text", text: `${paragraphs}\n\n${streamEnd}` }],
+        content: [
+          {
+            type: "text",
+            text: `${text === "/bench-stream" ? paragraphs : paragraphs.slice(0, 600)}\n\n${streamEnds[text]}`,
+          },
+        ],
         tokens: streamDeltas,
         timing: { deltaMs: 16 },
         tap: (streamed) => {
