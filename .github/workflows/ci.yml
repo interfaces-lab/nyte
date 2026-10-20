@@ -210,11 +210,11 @@ jobs:
         with:
           bun-version: latest
       - run: pnpm install --frozen-lockfile
-      - name: Install Electron system dependencies
+      - name: Install Electron system dependencies and Chromium
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
-          pnpm --dir packages/app exec playwright install-deps chromium
+          pnpm --dir packages/desktop exec playwright install --with-deps chromium
           if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
