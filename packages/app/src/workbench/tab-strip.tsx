@@ -237,7 +237,9 @@ export function WorkbenchTabStrip({
   };
 
   const closeTerminal = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
-    setTerminalClose({ kind: "closing", tab, terminal });
+    setTerminalClose((current) =>
+      current.kind === "closed" ? current : { kind: "closing", tab, terminal },
+    );
 
     try {
       await terminalActions.close(terminal.id);
@@ -258,7 +260,7 @@ export function WorkbenchTabStrip({
 
     const idle =
       terminal.state.kind === "running"
-        ? await terminalActions.idle(terminal.id).catch(() => false)
+        ? await terminalActions.idle(terminal.id).catch(() => true)
         : true;
 
     if (idle) await closeTerminal(tab, terminal);

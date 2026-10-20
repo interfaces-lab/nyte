@@ -293,7 +293,7 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
     expect(await job.resize({ columns: 80, rows: 24 })).toEqual({ kind: "missing" });
   });
 
-  it("runs the login shell for an empty command, takes keystrokes, and reads a prompt as idle", async () => {
+  it("detects an idle shell with an empty prompt and a running command with prompt-like output", async () => {
     const exec = localExec(await folder(), { shell: () => "/bin/sh" });
     const job = await exec([], { pty: { columns: 80, rows: 24 } });
     const reader = job.output()[Symbol.asyncIterator]();
@@ -309,19 +309,22 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
       }
     };
 
-    await job.write(new TextEncoder().encode("PS1='nyte$ '; echo ready-$((1+1))\r"));
-    await until(() => text.includes("ready-2"));
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      await job.write(new TextEncoder().encode("PS1=''; echo ready-$((1+1))\r"));
+      await until(() => text.includes("ready-2"));
 
-    expect(await job.idle()).toBe(true);
-    await job.write(new TextEncoder().encode("sleep 2\r"));
-    await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(await job.idle()).toBe(true);
+      await job.write(new TextEncoder().encode("printf 'nyte$ '; sleep 30\r"));
+      await until(() => text.includes("\r\nnyte$ "));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-    expect(await job.idle()).toBe(false);
-    expect(await job.stop()).toMatchObject({ kind: "settled", outcome: { reason: "terminated" } });
+      expect(await job.idle()).toBe(false);
+    } finally {
+      await job.stop();
+    }
   }, 10_000);
 
-  it("answers idle by OSC 133 prompt markers once the shell sends them", async () => {
+  it("does not mistake a command's OSC 133 prompt markers for an idle shell", async () => {
     const job = await localExec(await folder())(
       "printf '\\033]133;A\\007$ '; sleep 0.5; printf '\\033]133;C\\007'; sleep 2",
       { pty: { columns: 80, rows: 24 } },
@@ -331,7 +334,7 @@ describe.skipIf(!ptyLoads)("localExec in a pty", () => {
     await reader.next();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    expect(await job.idle()).toBe(true);
+    expect(await job.idle()).toBe(false);
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(await job.idle()).toBe(false);
     await job.stop();

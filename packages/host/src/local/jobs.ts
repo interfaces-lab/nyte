@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import type { IPty, IPtyForkOptions } from "@lydell/node-pty";
 import { asId, SdkError } from "@nyte-ai/schema";
 import type { JobEnd, OutputFrame, RequestOptions } from "@nyte-ai/schema";
@@ -14,7 +14,7 @@ import {
   tracing,
 } from "@nyte-ai/core";
 import type { EndSpan, ExecutionEnv, Job } from "@nyte-ai/core";
-import { findExecutable, killTree, spawnCommand } from "./command.ts";
+import { findExecutable, killTree, run, spawnCommand } from "./command.ts";
 
 type PtyModule = {
   spawn(file: string, args: string[] | string, options: IPtyForkOptions): IPty;
@@ -23,7 +23,7 @@ type PtyModule = {
 type Driver = {
   write(bytes: Uint8Array): Promise<void>;
   resize(size: { readonly columns: number; readonly rows: number }): boolean;
-  idle(): boolean;
+  idle(): boolean | Promise<boolean>;
   kill(signal: NodeJS.Signals): void;
   readonly pty: boolean;
 };
@@ -39,19 +39,11 @@ const STOP_GRACE_MS = 2_000;
 
 const CLOSE_GRACE_MS = 2_000;
 
-const QUIET_MS = 300;
-
 const DONE = { done: true, value: undefined } as const;
-
-const ESC = "\u001b";
-
-const BEL = "\u0007";
-
-const PROMPT_MARKER = new RegExp(`${ESC}\\]133;([ABCD])`, "g");
 
 let loaded: PtyModule | null | undefined;
 
-/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` answers whether a pty's shell sits at a prompt: by its OSC 133 prompt markers once it sent one, else when it has printed nothing for 300 ms and the cursor's line holds text after the last newline, as a prompt does (false for a pipe); `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
+/** Returns `exec` for a folder: each call starts one process as a `Job` (a fresh id; `key` null, core keys pty jobs) in `cwd` resolved against `root` (default `root`), with `env` laid over `process.env`. A string command runs through the platform shell (`/bin/sh -c`, `cmd.exe /d /s /c` on Windows) and an argv directly; `[]` with `pty` runs the login shell (`shell()` read at each start, else `$SHELL`, else `/bin/sh`, as a login shell; §37h), a pty's environment carrying `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=Nyte` without Electron's `ELECTRON_RUN_AS_NODE` and `NODE_OPTIONS`, and `[]` without one throws `SdkError("invalid")`. A program that cannot start throws `SdkError("unavailable")`. Without `pty` the process is piped through `node:child_process` in its own process group, stdout and stderr interleaved in `output` (with `stdio: "protocol"`, stderr's frames tagged `stream: "stderr"` and the pipe paced like a pty, so a reader open from the start misses nothing) and stdin fed by `write`; with `pty` it runs under `@lydell/node-pty`, loaded on first use through `createRequire` (§41a; `loadPty`, given, loads it instead, on every pty start), at the given size, and a platform where it does not load throws `SdkError("unavailable")`. `output()` opens a reader over the last 1 MiB of output that yields `bytes`, a `gap` where the reader fell behind or opened after output was dropped, and `exit { code }` last; a merged pipe never stalls, and a pty or a protocol pipe pauses while its slowest open reader is 256 KiB behind, resuming once it is within 64 KiB. `resize` resizes a pty (`not-pty` for a pipe, `missing` once it ended); `idle` checks the OS process table for a login shell with no live children (false for a pipe or explicit command, true once it ended); `stop` sends SIGTERM to a pipe's process group (SIGHUP to a pty), SIGKILL after 2 s (on Windows, which has no signals, it ends a pipe's process tree at once with `taskkill /T /F`), and answers `settled { outcome }` (also once it ended); `settled` resolves `exited { code, reason }` (`code` null after a signal), `reason` `exited` when the process ended on its own and `terminated` after `stop` or an aborted `signal`, and an aborted `settled` signal rejects with `SdkError("unavailable")`; `close` detaches this handle's readers. An aborted `signal` stops the process. `signal` on the options ends every reader of every job started here, leaving the processes running (what the provider's `close` does). */
 export function localExec(
   root: string,
   options?: {
@@ -168,7 +160,7 @@ export function localExec(
 
         return finished === null && driver.resize(size) ? { kind: "resized" } : { kind: "missing" };
       },
-      idle: async () => finished === null && driver.idle(),
+      idle: async () => driver.pty && (finished !== null || driver.idle()),
       stop: async () => ({ kind: "settled", outcome: await stop() }),
       settled: (request) => waitEnd(ended, request),
       close,
@@ -329,22 +321,8 @@ async function terminal(
   }
 
   const encoder = new TextEncoder();
-  let marker: string | null = null;
-  let line = "";
-  let quietSince = 0;
 
-  term.onData((text) => {
-    log.push(encoder.encode(text));
-    quietSince = Date.now();
-
-    marker = lastMarker(text) ?? marker;
-    const plain = withoutEscapes(text);
-    const broken = plain.lastIndexOf("\n");
-    line = (broken < 0 ? line + plain : plain.slice(broken + 1)).slice(-1024);
-    const returned = line.replace(/\r+$/, "").lastIndexOf("\r");
-
-    if (returned >= 0) line = line.slice(returned + 1);
-  });
+  term.onData((text) => log.push(encoder.encode(text)));
   term.onExit(({ exitCode, signal }) => finish(signal ? null : exitCode));
   log.throttle({ pause: () => term.pause(), resume: () => term.resume() });
 
@@ -358,10 +336,38 @@ async function terminal(
 
       return true;
     },
-    idle() {
-      if (marker !== null) return marker !== "C";
+    async idle() {
+      if (typeof command === "string" || command.length !== 0) return false;
 
-      return quietSince > 0 && Date.now() - quietSince >= QUIET_MS && line.trim() !== "";
+      const result = await run(
+        windows ? "powershell.exe" : "ps",
+        windows
+          ? [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${term.pid} AND Name != 'conhost.exe' AND Name != 'OpenConsole.exe'" | Select-Object -ExpandProperty ProcessId`,
+            ]
+          : ["-A", "-o", "pid=,ppid=,stat=,comm="],
+        { cwd: options.cwd, timeoutMs: 1_500 },
+      );
+
+      if (result.code !== 0) throw new SdkError("unavailable", "Cannot inspect terminal processes");
+      const processes = result.stdout.toString("utf8").trim();
+
+      if (windows) return processes === "";
+
+      return !processes.split("\n").some((line) => {
+        const [pid, parent, state, ...name] = line.trim().split(/\s+/);
+
+        if (state?.startsWith("Z")) return false;
+
+        if (Number(parent) === term.pid) return true;
+
+        return (
+          Number(pid) === term.pid && basename(name.join(" ")).replace(/^-/, "") !== basename(shell)
+        );
+      });
     },
     kill(signal) {
       try {
@@ -369,39 +375,6 @@ async function terminal(
       } catch {}
     },
   };
-}
-
-function lastMarker(text: string): string | null {
-  return Array.from(text.matchAll(PROMPT_MARKER), (match) => match[1]).at(-1) ?? null;
-}
-
-function withoutEscapes(text: string): string {
-  let plain = "";
-  let at = 0;
-
-  while (at < text.length) {
-    const char = text[at] ?? "";
-
-    if (char !== ESC) {
-      plain += char;
-      at += 1;
-      continue;
-    }
-
-    const kind = text[at + 1] ?? "";
-    at += 2;
-
-    if (kind === "[") {
-      while (at < text.length && !/[@-~]/.test(text[at] ?? "")) at += 1;
-      at += 1;
-    } else if (kind === "]") {
-      while (at < text.length && text[at] !== BEL && !(text[at] === ESC && text[at + 1] === "\\"))
-        at += 1;
-      at += text[at] === BEL ? 1 : 2;
-    }
-  }
-
-  return plain;
 }
 
 function loadPty(): PtyModule | null {
